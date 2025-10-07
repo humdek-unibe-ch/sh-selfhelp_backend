@@ -134,6 +134,44 @@ JWT_SECRET_KEY=your-jwt-secret-here
 CORS_ALLOW_ORIGIN=^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$
 ```
 
+## JWT Key Generation
+
+The application uses JWT (JSON Web Tokens) for API authentication. You need to generate RSA key pairs for JWT token signing and verification.
+
+### Generate JWT Keys
+
+```bash
+# Create JWT directory structure
+mkdir -p config/jwt
+
+# Generate private key (for production)
+openssl genrsa -out config/jwt/private.pem -aes256 4096
+
+# Generate public key from private key (for production)
+openssl rsa -pubout -in config/jwt/private.pem -out config/jwt/public.pem
+
+# For testing/development environment (no passphrase)
+mkdir -p config/jwt/test
+openssl genrsa -out config/jwt/test/private.pem 4096
+openssl rsa -pubout -in config/jwt/test/private.pem -out config/jwt/test/public.pem
+```
+
+### Environment Variables
+
+Update your `.env` file with the correct paths to the JWT keys:
+
+```env
+# For production
+JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem
+JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem
+
+# For testing (no passphrase required)
+# JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/test/private.pem
+# JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/test/public.pem
+```
+
+**Important**: Never commit JWT private keys to version control. Add `config/jwt/*.pem` to your `.gitignore` file.
+
 ## Database Migration
 
 ```bash

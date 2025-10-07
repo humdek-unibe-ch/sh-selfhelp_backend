@@ -128,6 +128,82 @@ class JWTService
 }
 ```
 
+## 🔑 JWT Key Generation & Configuration
+
+### RSA Key Pair Setup
+
+The JWT system uses RSA key pairs for token signing and verification. You must generate these keys before the authentication system will work.
+
+### Generate Production Keys (with passphrase)
+
+```bash
+# Create JWT directory
+mkdir -p config/jwt
+
+# Generate private key with AES256 encryption (4096-bit RSA)
+openssl genrsa -out config/jwt/private.pem -aes256 4096
+
+# Generate corresponding public key
+openssl rsa -pubout -in config/jwt/private.pem -out config/jwt/public.pem
+```
+
+### Generate Test Keys (no passphrase for easier development)
+
+```bash
+# Create test JWT directory
+mkdir -p config/jwt/test
+
+# Generate private key without passphrase (4096-bit RSA)
+openssl genrsa -out config/jwt/test/private.pem 4096
+
+# Generate corresponding public key
+openssl rsa -pubout -in config/jwt/test/private.pem -out config/jwt/test/public.pem
+```
+
+### Environment Configuration
+
+Update your `.env` file with the correct key paths:
+
+```env
+# Production keys (with passphrase)
+JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/private.pem
+JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem
+JWT_PASSPHRASE=your-passphrase-here
+
+# Test keys (no passphrase - easier for development)
+# JWT_SECRET_KEY=%kernel.project_dir%/config/jwt/test/private.pem
+# JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/test/public.pem
+# JWT_PASSPHRASE=
+```
+
+### Security Best Practices
+
+1. **Never commit private keys** to version control
+2. **Use strong passphrases** for production private keys
+3. **Regularly rotate keys** for security
+4. **Use different keys** for different environments
+5. **Store keys securely** with proper file permissions (`chmod 600`)
+
+### LexikJWTBundle Configuration
+
+The keys are configured in `config/packages/lexik_jwt_authentication.yaml`:
+
+```yaml
+lexik_jwt_authentication:
+    secret_key: '%env(resolve:JWT_SECRET_KEY)%'
+    public_key: '%env(resolve:JWT_PUBLIC_KEY)%'
+    pass_phrase: '%env(JWT_PASSPHRASE)%'
+    token_ttl: '%env(int:JWT_TOKEN_TTL)%'
+```
+
+### Troubleshooting
+
+**Common Issues:**
+- **"Unable to load private key"**: Check file paths and permissions
+- **"Bad passphrase"**: Verify JWT_PASSPHRASE in .env file
+- **"Invalid signature"**: Ensure public/private key pair match
+- **"Key file not found"**: Check config/jwt directory structure
+
 ### Token Refresh Process
 ```php
 public function processRefreshToken(string $refreshTokenString): array
