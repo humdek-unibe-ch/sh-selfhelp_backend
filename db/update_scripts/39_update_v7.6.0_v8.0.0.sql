@@ -2368,3 +2368,34 @@ DROP TABLE IF EXISTS styleType;
 
 CALL drop_foreign_key('styles', 'FK_B65AFAF57FE4B2B');
 CALL drop_table_column('styles', 'id_type');
+
+DROP VIEW IF EXISTS `view_styles`;
+CREATE VIEW `view_styles` AS
+SELECT
+  CAST(s.id AS UNSIGNED) AS style_id,
+  s.name AS style_name,
+  s.description AS style_description,
+  CAST(sg.id AS UNSIGNED) AS style_group_id,
+  sg.name AS style_group,
+  sg.description AS style_group_description,
+  sg.position AS style_group_position
+FROM styles s
+LEFT JOIN styleGroup sg
+  ON s.id_group = sg.id;
+  
+  DROP VIEW IF EXISTS view_fields;
+CREATE VIEW view_fields
+AS
+SELECT f.id AS field_id, f.`name` AS field_name, f.display, ft.id AS field_type_id, ft.`name` AS field_type, ft.position, f.config
+FROM `fields` f
+LEFT JOIN fieldType ft ON (f.id_type = ft.id);
+
+DROP VIEW IF EXISTS view_style_fields;
+CREATE VIEW view_style_fields 
+AS
+SELECT s.style_id, s.style_name, s.style_group, f.field_id, f.field_name, f.field_type, f.config, f.display, f.position, 
+sf.default_value, sf.help, sf.disabled, sf.hidden
+FROM view_styles s
+LEFT JOIN styles_fields sf ON (s.style_id = sf.id_styles)
+LEFT JOIN view_fields f ON (f.field_id = sf.id_fields);
+
