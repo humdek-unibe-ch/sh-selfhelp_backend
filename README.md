@@ -32,7 +32,8 @@ The system provides comprehensive functionality including:
 - **Job Scheduling**: Automated task scheduling and execution
 - **Multi-language Support**: Internationalization with translation system
 
- - For information about documentation refer to [DOCUMENTS](DOCUMENTS.md)
+ - For detailed architecture documentation refer to [ARCHITECTURE](ARCHITECTURE.md)
+ - For development patterns and best practices refer to [DEVELOPMENT_GUIDE](DEVELOPMENT_GUIDE.md)
  - For information about recent changes refer to [CHANGELOG](CHANGELOG.md)
 
 # Installation
@@ -607,7 +608,7 @@ composer install
 
 For support and bug reports:
 - Check the [CHANGELOG](CHANGELOG.md) for recent changes
-- Review [DOCUMENTS](DOCUMENTS.md) for detailed documentation
+- Review [ARCHITECTURE](ARCHITECTURE.md) for detailed technical documentation
 - Create issues at: `https://github.com/humdek-unibe-ch/sh-selfhelp/issues`
 
 ### Contributing

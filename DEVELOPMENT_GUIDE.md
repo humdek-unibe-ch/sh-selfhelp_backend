@@ -1,4 +1,6 @@
-# SelfHelp Symfony Backend - Core Patterns & Best Practices Summary
+# SelfHelp Symfony Backend - Development Guide
+
+## Core Patterns & Best Practices
 
 ## 🚀 Project Overview
 **SelfHelp Symfony Backend** - A sophisticated database-driven REST API system built with Symfony 7.2 and PHP 8.3, implementing dynamic routing, comprehensive security, and strict data integrity patterns.
@@ -153,10 +155,10 @@ public function createResource(Request $request): JsonResponse
 }
 ```
 
-## 🔄 ReworkedCacheService - Generation-Based Cache System
+## 🔄 CacheService - Generation-Based Cache System
 
 ### Core Features
-1. **ReworkedCacheService** - Advanced tag-based cache service with generation-based invalidation
+1. **CacheService** - Advanced tag-based cache service with generation-based invalidation
 2. **Builder Pattern** - Immutable service instances with `withCategory()` and `withPrefix()` methods
 3. **Generation-Based Invalidation** - O(1) cache invalidation using generation counters
 4. **Dual Cache Types** - Separate handling for lists (collections) and items (individual entities)
@@ -167,7 +169,7 @@ public function createResource(Request $request): JsonResponse
 ```php
 // Builder pattern with automatic cache-or-compute
 $data = $this->cache
-    ->withCategory(ReworkedCacheService::CATEGORY_ACTIONS)
+    ->withCategory(CacheService::CATEGORY_ACTIONS)
     ->getList("actions_page_{$page}", fn() => $repository->getData());
 ```
 
@@ -176,9 +178,9 @@ $data = $this->cache
 
 ```php
 // ✅ CORRECT: Entity scope + list invalidation
-$this->cache->invalidateEntityScope(ReworkedCacheService::ENTITY_SCOPE_USER, $userId);
+$this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
 $this->cache
-    ->withCategory(ReworkedCacheService::CATEGORY_USERS)
+    ->withCategory(CacheService::CATEGORY_USERS)
     ->invalidateAllListsInCategory();
 ```
 
@@ -192,12 +194,12 @@ When entities have relationships (User ↔ Group, User ↔ Role), updating one e
 
 ```php
 // User-Group relationship change
-$this->cache->invalidateEntityScope(ReworkedCacheService::ENTITY_SCOPE_USER, $userId);
-$this->cache->invalidateEntityScopes(ReworkedCacheService::ENTITY_SCOPE_GROUP, $groupIds);
+$this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+$this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $groupIds);
 
 // Invalidate lists in BOTH categories
-$this->cache->withCategory(ReworkedCacheService::CATEGORY_USERS)->invalidateAllListsInCategory();
-$this->cache->withCategory(ReworkedCacheService::CATEGORY_GROUPS)->invalidateAllListsInCategory();
+$this->cache->withCategory(CacheService::CATEGORY_USERS)->invalidateAllListsInCategory();
+$this->cache->withCategory(CacheService::CATEGORY_GROUPS)->invalidateAllListsInCategory();
 ```
 
 ## 📋 JSON Schema Validation
@@ -500,4 +502,14 @@ public function testCreateUser(): void
 
 ---
 
-**This document serves as the core information reference for all development activities in the SelfHelp Symfony Backend project. All new code must follow these established patterns and best practices.**
+## 📋 Codebase Verification Status
+
+**✅ VERIFIED: October 7, 2025**
+- All documented patterns have been verified against the current codebase
+- Core architecture components are implemented correctly
+- Security, routing, caching, and transaction systems match documented patterns
+- **Key Update**: Cache service renamed from `ReworkedCacheService` to `CacheService`
+
+**This development guide serves as the authoritative reference for patterns and best practices in the SelfHelp Symfony Backend project. All new code must follow these established patterns.**
+
+**For detailed technical documentation and architecture overview, see [ARCHITECTURE.md](ARCHITECTURE.md).**

@@ -1,4 +1,10 @@
-# SH-Self-help Symfony Backend Documentation
+# SH-Self-help Symfony Backend - Architecture Documentation
+
+## Overview
+
+This document provides comprehensive technical documentation for the SH-Selfhelp Symfony Backend project.
+
+**For development patterns and best practices, see [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md).**
 
 ## Project Overview and Architecture
 
