@@ -1,38 +1,81 @@
-# v8.0.0 (Not released)
-### New Feature
- - make `home` page open access
- - add `cms-api` for Angular frontend
- - add performance logger. When enabled it logs the execution time for each style and the conditions and children count. 
- - add support for CMS api versioning. Use v1 for the current version
- - add `is_open_access` field to `pages`
- - add JWT auth for the `cms-api`
- - add `refresh_token` functionality for JWT login for better security
- - remove `open`page type, and all pages from that type were moved to `experiment` with `open_access` flag
- - add column `is_system`, where if enabled the page is system and it should not be delete it or change its properties. Only its content fields can be edited
- - remove column `owner` from `sections`
- - add function `get_page_sections_hierarchical` in `SQL` and use it in `AdminPageDetailApi.php`
- - add `slug` type in the `router`
- - migrate tables: `actions`,`activityType`,`styleType` and `userStatus` to `lookups`
- - add `ApiRequestLog` table where all the requests to the `cms-api` are logged
- - foreign keys only cascade on delete and not on update
- - full `doctrine` DB mapping
- - add tables  `roles`, `permissions`, `roles_permissions`, `users_roles` to allow or deny access to the `cms-api` for a role
- - add table `api_routes_permissions` to allow or deny access to the `cms-api` for a route
- - add column `can_have_children` to `styles` table
+# v8.0.0 (Not released yet)
+### Major Changes
+ - **Complete CMS Rewrite**: Migrated the entire CMS system to Symfony framework for better maintainability, performance, and scalability
+ - **API System Overhaul**: Implemented comprehensive REST API with versioning (v1), JWT authentication, and refresh token functionality
+ - **Role-Based Access Control**: Added complete role and permission system with `roles`, `permissions`, `roles_permissions`, and `users_roles` tables
+ - **UI Component Library**: Integrated Mantine UI components with new field types (select, color-picker, slider, select-icon, segment, textarea, text)
+ - **User Validation System**: Implemented user account validation with email tokens and welcome email automation
+ - **Scheduled Jobs Management**: Added comprehensive scheduled jobs API with CRUD operations, filtering, pagination, and execution capabilities
+ - **Asset Management Enhancement**: Improved asset upload functionality with multiple file support, validation, and transaction handling
+ - **Section Management**: Enhanced section export/import with hierarchical structure support and position management
+ - **Performance Optimizations**: Fixed N+1 query problems, added batch processing, and improved database query efficiency
+ - **Transaction Logging**: All admin operations now wrapped in database transactions with comprehensive audit trails
+ - **Data Translation System**: Implemented data table translation functionality with language support
+ - **Gender Removal**: Removed gender-specific functionality and related database tables
+ - **Doctrine ORM Integration**: Full Doctrine DB mapping for better entity management
 
-### Bugfix
- - fix the way that the data is decoded in the `formUserInput` controller
+### New Features
+ - JWT authentication with refresh token support for secure API access
+ - Role-based permissions system with granular access control
+ - Mantine UI components integration (Stack, Space, SimpleGrid, Group, Flex, Center, Grid, GridColumn, Tabs, Tab)
+ - User validation flow with token-based account activation
+ - Scheduled jobs management API with filtering, search, and execution
+ - Enhanced asset management with multiple file uploads and validation
+ - Section export/import functionality with hierarchical structure preservation
+ - Page title translation support with locale parameter
+ - Data table translation system for multilingual content
+ - Comprehensive admin API endpoints for all CMS operations
+ - Transaction service for data integrity and audit logging
+ - Performance logger for style execution time monitoring
+ - API request logging for security and debugging
+ - Slug routing support
+ - Open access page functionality
+ - System pages protection (is_system flag)
+ - Hierarchical page sections retrieval function
 
-### TODOs
- - TODO: check the `condition` in the `styleModel` and if it is not met, do not controller or view
- - TODO: create configuration for dataTables what columns should be accepted, like definitions. Create the dataTable manually and then selected in the style where it should be used. On submission save only the defined columns. If some data is not saved, keep it in the transaction history and show warning to the user
+### API Endpoints (New)
+ - Authentication: `/auth/login`, `/auth/refresh-token`, `/auth/logout`, `/auth/two-factor-verify`
+ - User Validation: `/validate/{user_id}/{token}`, `/validate/{user_id}/{token}/complete`
+ - Admin Pages: Full CRUD operations with section management
+ - Admin Languages: Language management endpoints
+ - Admin Users: User management with roles and permissions
+ - Admin Assets: Asset upload and management
+ - Admin Scheduled Jobs: Complete job management system
+ - Admin Data: Data table operations with language support
+ - Admin Preferences: CMS configuration management
+ - Admin Groups/Roles: Permission management system
 
-### version for Bootstrap 5 (Not released)
-### New Feature
- - update to `Bootstrap` 5.3
- - update to `json-editor` 2.14.1
- - update to `jQuery-QueryBuilder` 3.0.0
- - #489 - add dropdown in the footer to select `dark`, `light` or `auto` theme. The settings are saved locally in the browser as the default one is taken from the user settings in the OS
+### Database Changes
+ - Removed `genders` table and all related functionality
+ - Added `roles`, `permissions`, `roles_permissions`, `users_roles` tables
+ - Added `api_routes` and `api_routes_permissions` tables
+ - Enhanced `styles` table with `can_have_children` column
+ - Migrated lookup tables: `actions`, `activityType`, `styleType`, `userStatus`
+ - Added `ApiRequestLog` table for API request tracking
+ - Foreign key constraints updated to cascade only on delete
+ - Doctrine ORM full mapping implementation
+
+### Bug Fixes
+ - Fixed PDO parameter binding issues in repositories
+ - Improved DataService error handling and database cleanup
+ - Enhanced cache invalidation after user data submission
+ - Fixed data table and style repository issues
+
+### Technical Improvements
+ - Symfony 7.2 framework implementation
+ - PHP 8.3 compatibility
+ - Doctrine ORM 3.3 integration
+ - PSR-4 autoloading
+ - Enhanced service architecture with dependency injection
+ - Comprehensive error handling and logging
+ - Database transaction management
+ - Performance monitoring and optimization
+
+### Breaking Changes
+ - Complete CMS system rewrite to Symfony framework - existing customizations may need adaptation
+ - Removed gender-specific functionality - all gender-related features have been eliminated
+ - API endpoints have been completely redesigned with new authentication and permission system
+ - Database schema changes require running the v8.0.0 update script
 
 # v7.6.2
 ### Bugfix

@@ -1,4 +1,0 @@
-RewriteEngine On
-RewriteRule ^assets/ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule . index.php [L]
