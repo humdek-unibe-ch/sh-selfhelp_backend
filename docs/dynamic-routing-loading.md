@@ -4,7 +4,7 @@ The application uses a database-driven routing system instead of traditional Sym
 
 ### How It Works:
 
-1. A custom route loader (`App\Routing\DatabaseRouteLoader`) is registered as a service in Symfony's container.
+1. A custom route loader (`App\Routing\ApiRouteLoader`) is registered as a service in Symfony's container.
 2. During application initialization, Symfony calls this loader to fetch routes.
 3. The loader queries the `api_routes` table and converts each record into a Symfony Route object.
 4. These Route objects are added to Symfony's RouteCollection.

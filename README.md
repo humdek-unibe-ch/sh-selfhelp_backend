@@ -35,6 +35,9 @@ The system provides comprehensive functionality including:
  - For detailed architecture documentation refer to [ARCHITECTURE](ARCHITECTURE.md)
  - For development patterns and best practices refer to [DEVELOPMENT_GUIDE](DEVELOPMENT_GUIDE.md)
  - For information about recent changes refer to [CHANGELOG](CHANGELOG.md)
+ - For comprehensive developer documentation refer to [Developer Docs](docs/developer/)
+ - For API security architecture refer to [Security Guide](docs/api-security-architecture.md)
+ - For permission system implementation refer to [Permission Guide](docs/permission-system-guide.md)
 
 # Installation
 

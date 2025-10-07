@@ -80,7 +80,7 @@ This project follows these core principles:
 
 ## 📖 Additional Resources
 
-- [Main Project Documentation](../../selfhelp.md) - Complete project documentation
+- [Main Project Documentation](../../ARCHITECTURE.md) - Complete project documentation
 - [API Routes Reference](../../db/update_scripts/api_routes.sql) - All available API routes
 - [Database Schema](../../db/structure_db.sql) - Complete database structure
 - [JSON Schemas](../../config/schemas/api/v1/) - Request/response validation schemas
