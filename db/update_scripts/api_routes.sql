@@ -1325,3 +1325,72 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 ('auth_user_name_update_v1', 'v1', '/auth/user/name', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::updateName', 'PUT', NULL, NULL),
 ('auth_user_password_update_v1', 'v1', '/auth/user/password', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::updatePassword', 'PUT', NULL, NULL),
 ('auth_user_account_delete_v1', 'v1', '/auth/user/account', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::deleteAccount', 'DELETE', NULL, NULL);
+
+-- Action Translations API Routes
+INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
+('admin_actions_translations_get_all_v1', 'v1', '/admin/actions/{actionId}/translations', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::getTranslations', 'GET', JSON_OBJECT('actionId', '[0-9]+'), JSON_OBJECT(
+    'language_id', JSON_OBJECT('in', 'query', 'required', false)
+)),
+('admin_actions_translations_create_v1', 'v1', '/admin/actions/{actionId}/translations', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::createTranslation', 'POST', JSON_OBJECT('actionId', '[0-9]+'), JSON_OBJECT(
+    'translation_key', JSON_OBJECT('in', 'body', 'required', true),
+    'id_languages', JSON_OBJECT('in', 'body', 'required', true),
+    'content', JSON_OBJECT('in', 'body', 'required', true)
+)),
+('admin_actions_translations_update_v1', 'v1', '/admin/actions/{actionId}/translations/{translationId}', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::updateTranslation', 'PUT', JSON_OBJECT(
+    'actionId', '[0-9]+',
+    'translationId', '[0-9]+'
+), JSON_OBJECT(
+    'content', JSON_OBJECT('in', 'body', 'required', true)
+)),
+('admin_actions_translations_delete_v1', 'v1', '/admin/actions/{actionId}/translations/{translationId}', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::deleteTranslation', 'DELETE', JSON_OBJECT(
+    'actionId', '[0-9]+',
+    'translationId', '[0-9]+'
+), NULL),
+('admin_actions_translations_bulk_create_v1', 'v1', '/admin/actions/{actionId}/translations/bulk', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::bulkCreateTranslations', 'POST', JSON_OBJECT('actionId', '[0-9]+'), JSON_OBJECT(
+    'translations', JSON_OBJECT('in', 'body', 'type', 'array', 'required', true)
+)),
+('admin_actions_translations_missing_v1', 'v1', '/admin/actions/{actionId}/translations/missing', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::getMissingTranslations', 'GET', JSON_OBJECT('actionId', '[0-9]+'), JSON_OBJECT(
+    'language_id', JSON_OBJECT('in', 'query', 'required', true)
+));
+
+-- Action Translation Permissions
+INSERT IGNORE INTO `permissions` (`name`, `description`)
+VALUES
+  ('admin.action_translation.read', 'Can read action translations'),
+  ('admin.action_translation.update', 'Can create/update action translations'),
+  ('admin.action_translation.delete', 'Can delete action translations');
+
+-- Grant action translation permissions to admin role
+INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.name = 'admin' AND p.name IN (
+  'admin.action_translation.read', 'admin.action_translation.update', 'admin.action_translation.delete'
+);
+
+-- Link Action Translation routes to permissions
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.action_translation.read'
+WHERE ar.`route_name` IN (
+  'admin_actions_translations_get_all_v1',
+  'admin_actions_translations_missing_v1'
+);
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.action_translation.update'
+WHERE ar.`route_name` IN (
+  'admin_actions_translations_create_v1',
+  'admin_actions_translations_update_v1',
+  'admin_actions_translations_bulk_create_v1'
+);
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.action_translation.delete'
+WHERE ar.`route_name` IN (
+  'admin_actions_translations_delete_v1'
+);

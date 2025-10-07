@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Create Action Translation Request",
+  "additionalProperties": false,
+  "required": ["translation_key", "id_languages", "content"],
+  "properties": {
+    "translation_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique key for the translatable content (e.g., 'block_0.job_0.notification.subject')"
+    },
+    "id_languages": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Language ID for the translation"
+    },
+    "content": {
+      "type": "string",
+      "description": "The localized content"
+    }
+  }
+}

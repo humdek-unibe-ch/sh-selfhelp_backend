@@ -2399,3 +2399,86 @@ FROM view_styles s
 LEFT JOIN styles_fields sf ON (s.style_id = sf.id_styles)
 LEFT JOIN view_fields f ON (f.field_id = sf.id_fields);
 
+-- ===========================================
+-- ACTION TRANSLATIONS SYSTEM
+-- ===========================================
+
+-- Action translations table for localized content
+DROP TABLE IF EXISTS `action_translations`;
+CREATE TABLE IF NOT EXISTS `action_translations` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `id_actions` int NOT NULL,
+  `translation_key` varchar(255) NOT NULL,
+  `id_languages` int NOT NULL,
+  `content` longtext NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)',
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `IDX_5AC50EA7DBD5589F` FOREIGN KEY (`id_actions`) REFERENCES `actions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `IDX_5AC50EA720E4EF5E` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+
+-- Helper procedure to create indexes safely (only if they don't exist)
+DELIMITER $$
+DROP PROCEDURE IF EXISTS `add_index`$$
+CREATE PROCEDURE `add_index`(
+    param_table VARCHAR(100),
+    param_index_name VARCHAR(100),
+    param_index_columns VARCHAR(1000),
+    param_is_unique BOOLEAN
+)
+BEGIN
+    DECLARE column_list TEXT DEFAULT '';
+    DECLARE remaining_columns TEXT DEFAULT param_index_columns;
+    DECLARE current_column VARCHAR(100);
+    DECLARE comma_pos INT;
+
+    -- Check if index already exists
+    IF (
+        SELECT COUNT(*)
+        FROM information_schema.STATISTICS
+        WHERE `table_schema` = DATABASE()
+        AND `table_name` = param_table
+        AND `index_name` = param_index_name
+    ) > 0 THEN
+        SELECT CONCAT('Index ', param_index_name, ' already exists on table ', param_table) AS message;
+    ELSE
+        -- Build column list with proper backticks
+        WHILE LENGTH(remaining_columns) > 0 DO
+            SET comma_pos = LOCATE(',', remaining_columns);
+            IF comma_pos > 0 THEN
+                SET current_column = TRIM(SUBSTRING(remaining_columns, 1, comma_pos - 1));
+                SET remaining_columns = SUBSTRING(remaining_columns, comma_pos + 1);
+            ELSE
+                SET current_column = TRIM(remaining_columns);
+                SET remaining_columns = '';
+            END IF;
+
+            IF LENGTH(column_list) > 0 THEN
+                SET column_list = CONCAT(column_list, ', `', current_column, '`');
+            ELSE
+                SET column_list = CONCAT('`', current_column, '`');
+            END IF;
+        END WHILE;
+
+        -- Create the index
+        SET @sqlstmt = CONCAT(
+            'CREATE ',
+            IF(param_is_unique, 'UNIQUE ', ''),
+            'INDEX ',
+            param_index_name,
+            ' ON `',
+            param_table,
+            '` (',
+            column_list,
+            ');'
+        );
+
+        PREPARE st FROM @sqlstmt;
+        EXECUTE st;
+        DEALLOCATE PREPARE st;
+
+        SELECT CONCAT('Index ', param_index_name, ' created on table ', param_table) AS message;
+    END IF;
+END$$
+DELIMITER ;
