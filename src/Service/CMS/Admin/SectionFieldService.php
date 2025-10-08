@@ -282,7 +282,7 @@ class SectionFieldService extends BaseService
      *
      * @return array The page keywords formatted as options
      */
-    private function getPageKeywords(): array
+    public function getPageKeywords(): array
     {
         $cacheKey = "page_keywords";
         return $this->cache

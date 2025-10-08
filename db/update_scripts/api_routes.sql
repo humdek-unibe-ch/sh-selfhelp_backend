@@ -135,6 +135,7 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 
 -- Admin routes
 ('admin_lookups', 'v1', '/admin/lookups', 'App\\Controller\\Api\\V1\\Admin\\Common\\LookupController::getAllLookups', 'GET', NULL, NULL),
+('admin_page_keywords', 'v1', '/admin/page-keywords', 'App\\Controller\\Api\\V1\\Admin\\Common\\LookupController::getPageKeywords', 'GET', NULL, NULL),
 ('admin_pages_get_all', 'v1', '/admin/pages', 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::getPages', 'GET', NULL, NULL),
 ('admin_pages_get_all_with_language', 'v1', '/admin/pages/language/{language_id}', 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::getPages', 'GET', JSON_OBJECT(
     'language_id', '[0-9]+'
@@ -327,7 +328,8 @@ FROM `api_routes`     AS ar
 JOIN `permissions`   AS p
   ON p.`name` = 'admin.access'
 WHERE ar.`route_name` IN (
-  'admin_lookups'
+  'admin_lookups',
+  'admin_page_keywords'
 );
 
 INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
