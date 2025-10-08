@@ -11,6 +11,31 @@
     "config": {
       "description": "Arbitrary action configuration; validated in UI, stored as-is.",
       "type": ["object", "string", "null"]
+    },
+    "translations": {
+      "type": "array",
+      "description": "Optional translations to create along with the action",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["translation_key", "id_languages", "content"],
+        "properties": {
+          "translation_key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unique key for the translatable content"
+          },
+          "id_languages": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Language ID for the translation"
+          },
+          "content": {
+            "type": "string",
+            "description": "The localized content"
+          }
+        }
+      }
     }
   }
 }

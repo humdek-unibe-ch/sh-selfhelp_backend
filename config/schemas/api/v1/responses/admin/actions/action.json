@@ -26,6 +26,64 @@
       },
       "required": ["id", "name"],
       "additionalProperties": false
+    },
+    "translations": {
+      "type": ["object", "null"],
+      "description": "Translations created along with the action",
+      "properties": {
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "translation_key": { "type": "string" },
+              "content": { "type": "string" },
+              "created_at": { "type": "string", "format": "date-time" },
+              "updated_at": { "type": "string", "format": "date-time" },
+              "language": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer" },
+                  "locale": { "type": "string" },
+                  "language": { "type": "string" }
+                },
+                "required": ["id", "locale", "language"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["id", "translation_key", "content", "created_at", "updated_at", "language"],
+            "additionalProperties": false
+          }
+        },
+        "updated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "translation_key": { "type": "string" },
+              "content": { "type": "string" },
+              "created_at": { "type": "string", "format": "date-time" },
+              "updated_at": { "type": "string", "format": "date-time" },
+              "language": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer" },
+                  "locale": { "type": "string" },
+                  "language": { "type": "string" }
+                },
+                "required": ["id", "locale", "language"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["id", "translation_key", "content", "created_at", "updated_at", "language"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["created", "updated"],
+      "additionalProperties": false
     }
   },
   "required": ["id", "name"],

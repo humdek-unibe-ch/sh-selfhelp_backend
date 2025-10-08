@@ -7,6 +7,7 @@ use App\Entity\Lookup;
 use App\Repository\ActionRepository;
 use App\Repository\LookupRepository;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -21,6 +22,7 @@ class AdminActionService extends BaseService
         private readonly TransactionService $transactionService,
         private readonly ActionRepository $actionRepository,
         private readonly LookupRepository $lookupRepository,
+        private readonly AdminActionTranslationService $adminActionTranslationService,
         private readonly CacheService $cache,
     ) {
     }
@@ -64,7 +66,7 @@ class AdminActionService extends BaseService
     }
 
     /**
-     * Update an action's basic fields and config
+     * Update an action's basic fields and config with optional translations
      */
     public function updateAction(int $actionId, array $data): array
     {
@@ -101,8 +103,6 @@ class AdminActionService extends BaseService
                     throw new ServiceException('Invalid data table', Response::HTTP_BAD_REQUEST);
                 }
                 $action->setDataTable($dataTable);
-            } else {
-                throw new ServiceException('Field "id_dataTables" is required', Response::HTTP_BAD_REQUEST);
             }
 
             $this->entityManager->flush();
@@ -116,6 +116,12 @@ class AdminActionService extends BaseService
                 'Action updated: ' . $action->getName() . ' (ID: ' . $action->getId() . ')'
             );
 
+            // Handle translations if provided
+            $translationsResult = null;
+            if (isset($data['translations']) && is_array($data['translations'])) {
+                $translationsResult = $this->adminActionTranslationService->bulkCreateTranslations($actionId, $data['translations']);
+            }
+
             $this->entityManager->commit();
 
             // Invalidate entity-scoped cache for this specific action
@@ -124,7 +130,12 @@ class AdminActionService extends BaseService
                 ->withCategory(CacheService::CATEGORY_ACTIONS)
                 ->invalidateAllListsInCategory();
 
-            return $this->formatAction($action);
+            $result = $this->formatAction($action);
+            if ($translationsResult) {
+                $result['translations'] = $translationsResult;
+            }
+
+            return $result;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException(
@@ -136,7 +147,7 @@ class AdminActionService extends BaseService
     }
 
     /**
-     * Create a new action
+     * Create a new action with optional translations
      */
     public function createAction(array $data): array
     {
@@ -185,6 +196,12 @@ class AdminActionService extends BaseService
                 'Action created: ' . $action->getName()
             );
 
+            // Handle translations if provided
+            $translationsResult = null;
+            if (isset($data['translations']) && is_array($data['translations'])) {
+                $translationsResult = $this->adminActionTranslationService->bulkCreateTranslations($action->getId(), $data['translations']);
+            }
+
             $this->entityManager->commit();
 
             // Invalidate all action lists since a new action was created
@@ -192,7 +209,12 @@ class AdminActionService extends BaseService
                 ->withCategory(CacheService::CATEGORY_ACTIONS)
                 ->invalidateAllListsInCategory();
 
-            return $this->formatAction($action);
+            $result = $this->formatAction($action);
+            if ($translationsResult) {
+                $result['translations'] = $translationsResult;
+            }
+
+            return $result;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException(

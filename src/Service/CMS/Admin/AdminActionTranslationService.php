@@ -52,168 +52,9 @@ class AdminActionTranslationService extends BaseService
             );
     }
 
-    /**
-     * Create or update a translation
-     */
-    public function createTranslation(int $actionId, array $data): array
-    {
-        $this->entityManager->beginTransaction();
-        try {
-            // Verify action exists
-            $action = $this->entityManager->find(Action::class, $actionId);
-            if (!$action instanceof Action) {
-                throw new ServiceException('Action not found', Response::HTTP_NOT_FOUND);
-            }
 
-            // Verify language exists
-            $language = $this->languageRepository->find($data['id_languages']);
-            if (!$language instanceof Language) {
-                throw new ServiceException('Language not found', Response::HTTP_NOT_FOUND);
-            }
 
-            // Check if translation already exists
-            $existingTranslation = $this->actionTranslationRepository->findByActionKeyAndLanguage(
-                $actionId,
-                $data['translation_key'],
-                $data['id_languages']
-            );
 
-            if ($existingTranslation) {
-                // Update existing translation
-                $originalTranslation = clone $existingTranslation;
-                $existingTranslation->setContent($data['content']);
-                $existingTranslation->setUpdatedAt(new \DateTime());
-
-                $this->entityManager->flush();
-
-                $this->transactionService->logTransaction(
-                    LookupService::TRANSACTION_TYPES_UPDATE,
-                    LookupService::TRANSACTION_BY_BY_USER,
-                    'action_translations',
-                    $existingTranslation->getId(),
-                    (object) ['old_translation' => $originalTranslation, 'new_translation' => $existingTranslation],
-                    'Action translation updated: ' . $existingTranslation->getTranslationKey()
-                );
-
-                $this->entityManager->commit();
-                $this->invalidateTranslationCache($actionId);
-
-                return $this->formatTranslation($existingTranslation);
-            }
-
-            // Create new translation
-            $translation = new ActionTranslation();
-            $translation->setAction($action);
-            $translation->setLanguage($language);
-            $translation->setTranslationKey($data['translation_key']);
-            $translation->setContent($data['content']);
-
-            $this->entityManager->persist($translation);
-            $this->entityManager->flush();
-
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_INSERT,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'action_translations',
-                $translation->getId(),
-                $translation,
-                'Action translation created: ' . $translation->getTranslationKey()
-            );
-
-            $this->entityManager->commit();
-            $this->invalidateTranslationCache($actionId);
-
-            return $this->formatTranslation($translation);
-        } catch (\Throwable $e) {
-            $this->entityManager->rollback();
-            throw $e instanceof ServiceException ? $e : new ServiceException(
-                'Failed to create translation: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR,
-                ['previous_exception' => $e->getMessage()]
-            );
-        }
-    }
-
-    /**
-     * Update an existing translation
-     */
-    public function updateTranslation(int $actionId, int $translationId, array $data): array
-    {
-        $this->entityManager->beginTransaction();
-        try {
-            // Verify translation exists and belongs to the action
-            $translation = $this->actionTranslationRepository->findOneByActionAndId($actionId, $translationId);
-            if (!$translation instanceof ActionTranslation) {
-                throw new ServiceException('Translation not found', Response::HTTP_NOT_FOUND);
-            }
-
-            $originalTranslation = clone $translation;
-            $translation->setContent($data['content']);
-            $translation->setUpdatedAt(new \DateTime());
-
-            $this->entityManager->flush();
-
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_UPDATE,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'action_translations',
-                $translation->getId(),
-                (object) ['old_translation' => $originalTranslation, 'new_translation' => $translation],
-                'Action translation updated: ' . $translation->getTranslationKey()
-            );
-
-            $this->entityManager->commit();
-            $this->invalidateTranslationCache($actionId);
-
-            return $this->formatTranslation($translation);
-        } catch (\Throwable $e) {
-            $this->entityManager->rollback();
-            throw $e instanceof ServiceException ? $e : new ServiceException(
-                'Failed to update translation: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR,
-                ['previous_exception' => $e->getMessage()]
-            );
-        }
-    }
-
-    /**
-     * Delete a translation
-     */
-    public function deleteTranslation(int $actionId, int $translationId): bool
-    {
-        $this->entityManager->beginTransaction();
-        try {
-            // Verify translation exists and belongs to the action
-            $translation = $this->actionTranslationRepository->findOneByActionAndId($actionId, $translationId);
-            if (!$translation instanceof ActionTranslation) {
-                throw new ServiceException('Translation not found', Response::HTTP_NOT_FOUND);
-            }
-
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_DELETE,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'action_translations',
-                $translation->getId(),
-                $translation,
-                'Action translation deleted: ' . $translation->getTranslationKey()
-            );
-
-            $this->entityManager->remove($translation);
-            $this->entityManager->flush();
-            $this->entityManager->commit();
-
-            $this->invalidateTranslationCache($actionId);
-
-            return true;
-        } catch (\Throwable $e) {
-            $this->entityManager->rollback();
-            throw $e instanceof ServiceException ? $e : new ServiceException(
-                'Failed to delete translation: ' . $e->getMessage(),
-                Response::HTTP_INTERNAL_SERVER_ERROR,
-                ['previous_exception' => $e->getMessage()]
-            );
-        }
-    }
 
     /**
      * Bulk create/update translations
@@ -249,7 +90,7 @@ class AdminActionTranslationService extends BaseService
                     // Update existing
                     $originalTranslation = clone $existingTranslation;
                     $existingTranslation->setContent($translationData['content']);
-                    $existingTranslation->setUpdatedAt(new \DateTime());
+                    $existingTranslation->setUpdatedAt(new \DateTimeImmutable());
                     $updatedTranslations[] = $this->formatTranslation($existingTranslation);
                 } else {
                     // Create new
@@ -295,43 +136,6 @@ class AdminActionTranslationService extends BaseService
         }
     }
 
-    /**
-     * Get missing translations for an action and language
-     */
-    public function getMissingTranslations(int $actionId, int $languageId): array
-    {
-        // Verify action exists
-        $action = $this->entityManager->find(Action::class, $actionId);
-        if (!$action instanceof Action) {
-            throw new ServiceException('Action not found', Response::HTTP_NOT_FOUND);
-        }
-
-        // Verify language exists
-        $language = $this->languageRepository->find($languageId);
-        if (!$language instanceof Language) {
-            throw new ServiceException('Language not found', Response::HTTP_NOT_FOUND);
-        }
-
-        // Extract translation keys from action config
-        $config = $action->getConfig();
-        if (!$config) {
-            return [];
-        }
-
-        $configData = json_decode($config, true);
-        if (!$configData || !isset($configData['blocks'])) {
-            return [];
-        }
-
-        $translationKeys = $this->extractTranslationKeysFromConfig($configData);
-
-        // Find existing translations
-        $existingTranslations = $this->actionTranslationRepository->findKeysByActionAndLanguage($actionId, $languageId);
-        $existingKeys = array_column($existingTranslations, 'translation_key');
-
-        // Return missing keys
-        return array_values(array_diff($translationKeys, $existingKeys));
-    }
 
     /**
      * Resolve translation for execution
