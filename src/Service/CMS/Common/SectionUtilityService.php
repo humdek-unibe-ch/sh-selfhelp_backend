@@ -394,11 +394,24 @@ class SectionUtilityService
                     $allFields = $dataConfig['all_fields'] ?? true;
 
                     if (!$allFields) {
-                        // Filter to only specified fields
+                        // Filter to only specified fields and apply field configurations
                         $fields = $dataConfig['fields'] ?? [];
                         if (!empty($fields)) {
-                            $fieldNames = array_column($fields, 'field_name');
-                            $record = array_intersect_key($record, array_flip($fieldNames));
+                            $processedRecord = [];
+                            foreach ($fields as $fieldConfig) {
+                                $fieldName = $fieldConfig['field_name'];
+                                $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
+                                $notFoundText = $fieldConfig['not_found_text'] ?? '';
+
+                                // Check if field has no value (empty, null, or not set)
+                                $value = $record[$fieldName] ?? '';
+                                if (empty($value)) {
+                                    $value = $notFoundText;
+                                }
+
+                                $processedRecord[$fieldHolder] = $value;
+                            }
+                            return $processedRecord;
                         }
                     }
 
@@ -435,11 +448,24 @@ class SectionUtilityService
             $allFields = $dataConfig['all_fields'] ?? true;
 
             if (!$allFields) {
-                // Filter to only specified fields
+                // Filter to only specified fields and apply field configurations
                 $fields = $dataConfig['fields'] ?? [];
                 if (!empty($fields)) {
-                    $fieldNames = array_column($fields, 'field_name');
-                    $record = array_intersect_key($record, array_flip($fieldNames));
+                    $processedRecord = [];
+                    foreach ($fields as $fieldConfig) {
+                        $fieldName = $fieldConfig['field_name'];
+                        $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
+                        $notFoundText = $fieldConfig['not_found_text'] ?? '';
+
+                        // Check if field has no value (empty, null, or not set)
+                        $value = $record[$fieldName] ?? '';
+                        if (empty($value)) {
+                            $value = $notFoundText;
+                        }
+
+                        $processedRecord[$fieldHolder] = $value;
+                    }
+                    return $processedRecord;
                 }
             }
 
@@ -453,23 +479,46 @@ class SectionUtilityService
         if ($allFields) {
             // Use all fields from the first record as template
             $fieldNames = array_keys($data[0]);
+            // For each field, collect values from all records and join with commas
+            foreach ($fieldNames as $fieldName) {
+                $values = [];
+                foreach ($data as $record) {
+                    $values[] = $record[$fieldName] ?? '';
+                }
+                $result[$fieldName] = implode(',', $values);
+            }
         } else {
-            // Filter to only specified fields
+            // Filter to only specified fields and apply field configurations
             $fields = $dataConfig['fields'] ?? [];
             if (empty($fields)) {
                 $fieldNames = array_keys($data[0]);
+                // For each field, collect values from all records and join with commas
+                foreach ($fieldNames as $fieldName) {
+                    $values = [];
+                    foreach ($data as $record) {
+                        $values[] = $record[$fieldName] ?? '';
+                    }
+                    $result[$fieldName] = implode(',', $values);
+                }
             } else {
-                $fieldNames = array_column($fields, 'field_name');
-            }
-        }
+                // Apply field configurations for specified fields
+                foreach ($fields as $fieldConfig) {
+                    $fieldName = $fieldConfig['field_name'];
+                    $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
+                    $notFoundText = $fieldConfig['not_found_text'] ?? '';
 
-        // For each field, collect values from all records and join with commas
-        foreach ($fieldNames as $fieldName) {
-            $values = [];
-            foreach ($data as $record) {
-                $values[] = $record[$fieldName] ?? '';
+                    $values = [];
+                    foreach ($data as $record) {
+                        // Check if field has no value (empty, null, or not set)
+                        $value = $record[$fieldName] ?? '';
+                        if (empty($value)) {
+                            $value = $notFoundText;
+                        }
+                        $values[] = $value;
+                    }
+                    $result[$fieldHolder] = implode(',', $values);
+                }
             }
-            $result[$fieldName] = implode(',', $values);
         }
 
         return $result;
@@ -495,23 +544,46 @@ class SectionUtilityService
         if ($allFields) {
             // Use all fields from the first record as template
             $fieldNames = array_keys($data[0]);
+            // For each field, collect values from all records into arrays
+            foreach ($fieldNames as $fieldName) {
+                $values = [];
+                foreach ($data as $record) {
+                    $values[] = $record[$fieldName] ?? null;
+                }
+                $result[$fieldName] = $values;
+            }
         } else {
-            // Filter to only specified fields
+            // Filter to only specified fields and apply field configurations
             $fields = $dataConfig['fields'] ?? [];
             if (empty($fields)) {
                 $fieldNames = array_keys($data[0]);
+                // For each field, collect values from all records into arrays
+                foreach ($fieldNames as $fieldName) {
+                    $values = [];
+                    foreach ($data as $record) {
+                        $values[] = $record[$fieldName] ?? null;
+                    }
+                    $result[$fieldName] = $values;
+                }
             } else {
-                $fieldNames = array_column($fields, 'field_name');
-            }
-        }
+                // Apply field configurations for specified fields
+                foreach ($fields as $fieldConfig) {
+                    $fieldName = $fieldConfig['field_name'];
+                    $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
+                    $notFoundText = $fieldConfig['not_found_text'] ?? '';
 
-        // For each field, collect values from all records into arrays
-        foreach ($fieldNames as $fieldName) {
-            $values = [];
-            foreach ($data as $record) {
-                $values[] = $record[$fieldName] ?? null;
+                    $values = [];
+                    foreach ($data as $record) {
+                        // Check if field has no value (empty, null, or not set)
+                        $value = $record[$fieldName] ?? '';
+                        if (empty($value)) {
+                            $value = $notFoundText;
+                        }
+                        $values[] = $value;
+                    }
+                    $result[$fieldHolder] = $values;
+                }
             }
-            $result[$fieldName] = $values;
         }
 
         return $result;
@@ -553,7 +625,11 @@ class SectionUtilityService
                     $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
                     $notFoundText = $fieldConfig['not_found_text'] ?? '';
 
-                    $value = $record[$fieldName] ?? $notFoundText;
+                    // Check if field has no value (empty, null, or not set)
+                    $value = $record[$fieldName] ?? '';
+                    if (empty($value)) {
+                        $value = $notFoundText;
+                    }
                     $processedRecord[$fieldHolder] = $value;
                 }
             } else {
