@@ -5,6 +5,8 @@ namespace App\Service\CMS\Common;
 use App\Repository\StylesFieldRepository;
 use App\Service\CMS\DataService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Auth\UserContextService;
+use App\Service\CMS\Common\StyleNames;
 
 /**
  * Utility service for section-related operations
@@ -15,7 +17,8 @@ class SectionUtilityService
     public function __construct(
         private readonly DataService $dataService,
         private readonly StylesFieldRepository $stylesFieldRepository,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly UserContextService $userContextService
     ) {
     }
 
@@ -268,8 +271,305 @@ class SectionUtilityService
     }
 
     /**
+     * Retrieve data based on JSON configuration
+     *
+     * @param array $dataConfig JSON structure defining data source
+     * @param array $params Parameters to replace in the config
+     * @return array Retrieved data or empty array if failed
+     */
+    public function retrieveData(array $dataConfig, array $params = []): array
+    {
+        $parsedConfig = $this->parseParams($dataConfig, $params);
+        if (!$parsedConfig) {
+            return [];
+        }
+
+        return $this->fetchData($parsedConfig);
+    }
+
+    /**
+     * Parse parameters in data config and replace placeholders
+     *
+     * @param array $dataConfig The JSON config structure
+     * @param array $params Parameters to replace (#param_name with actual values)
+     * @return array Parsed config with parameters replaced
+     */
+    private function parseParams(array $dataConfig, array $params = []): array
+    {
+        $strData = json_encode($dataConfig);
+        if (!$strData) {
+            return $dataConfig;
+        }
+
+        // Replace #param_name with actual parameter values
+        preg_match_all('~#\w+\b~', $strData, $matches);
+        foreach ($matches as $matchGroup) {
+            foreach ($matchGroup as $paramPlaceholder) {
+                $paramName = str_replace('#', '', $paramPlaceholder);
+                if (isset($params[$paramName])) {
+                    $strData = str_replace($paramPlaceholder, $params[$paramName], $strData);
+                }
+            }
+        }
+
+        $parsed = json_decode($strData, true);
+        return $parsed !== null ? $parsed : $dataConfig;
+    }
+
+    /**
+     * Fetch data based on parsed data configuration
+     *
+     * @param array $dataConfig Parsed data configuration
+     * @return array Retrieved data
+     */
+    private function fetchData(array $dataConfig): array
+    {
+        if (!isset($dataConfig['table'])) {
+            return [];
+        }
+
+        $tableName = $dataConfig['table'];
+        $retrieve = $dataConfig['retrieve'] ?? 'all';
+        $filter = $dataConfig['filter'] ?? '';
+        $currentUser = $dataConfig['current_user'] ?? true;
+        $allFields = $dataConfig['all_fields'] ?? true;
+
+        // Get data table
+        $dataTable = $this->dataService->getDataTableByName($tableName);
+        if (!$dataTable) {
+            return [];
+        }
+
+        $dataTableId = $dataTable->getId();
+
+        // Determine user filtering
+        $userId = null;
+        $ownEntriesOnly = $currentUser;
+        if ($currentUser) {
+            $currentUserObj = $this->userContextService->getCurrentUser();
+            $userId = $currentUserObj ? $currentUserObj->getId() : -1;
+        }
+
+        // Build filter based on retrieve type
+        $additionalFilter = '';
+        switch ($retrieve) {
+            case 'first':
+                $additionalFilter = 'ORDER BY record_id ASC LIMIT 1';
+                break;
+            case 'last':
+                $additionalFilter = 'ORDER BY record_id DESC LIMIT 1';
+                break;
+            case 'all':
+                // No additional filter
+                break;
+            case 'all_as_array':
+                // No additional filter, will be handled in post-processing
+                break;
+            case 'JSON':
+                // No additional filter, will be handled in post-processing
+                break;
+        }
+
+        // Combine filters
+        $combinedFilter = trim($filter . ' ' . $additionalFilter);
+
+        // Get data
+        $data = $this->dataService->getData(
+            $dataTableId,
+            $combinedFilter,
+            $ownEntriesOnly,
+            $userId,
+            false, // dbFirst - we'll handle this ourselves
+            true,  // excludeDeleted
+            1      // languageId - default language
+        );
+
+        // Post-process based on retrieve type
+        switch ($retrieve) {
+            case 'first':
+            case 'last':
+                // For first/last, we have a single record (due to LIMIT 1), apply same processing as processAll for single records
+                if (isset($data[0])) {
+                    $record = $data[0];
+                    $allFields = $dataConfig['all_fields'] ?? true;
+
+                    if (!$allFields) {
+                        // Filter to only specified fields
+                        $fields = $dataConfig['fields'] ?? [];
+                        if (!empty($fields)) {
+                            $fieldNames = array_column($fields, 'field_name');
+                            $record = array_intersect_key($record, array_flip($fieldNames));
+                        }
+                    }
+
+                    return $record;
+                }
+                return [];
+            case 'all_as_array':
+                return $this->processAllAsArray($data, $dataConfig);
+            case 'JSON':
+                return $this->processJSON($data, $dataConfig);
+            case 'all':
+            default:
+                return $this->processAll($data, $dataConfig);
+        }
+    }
+
+    /**
+     * Process data for 'all' retrieve type
+     *
+     * @param array $data Raw data from database
+     * @param array $dataConfig Data configuration
+     * @return array Processed data
+     */
+    private function processAll(array $data, array $dataConfig): array
+    {
+        // If no data, return empty array
+        if (empty($data)) {
+            return [];
+        }
+
+        // If only one record, return it as-is
+        if (count($data) === 1) {
+            $record = $data[0];
+            $allFields = $dataConfig['all_fields'] ?? true;
+
+            if (!$allFields) {
+                // Filter to only specified fields
+                $fields = $dataConfig['fields'] ?? [];
+                if (!empty($fields)) {
+                    $fieldNames = array_column($fields, 'field_name');
+                    $record = array_intersect_key($record, array_flip($fieldNames));
+                }
+            }
+
+            return $record;
+        }
+
+        // Multiple records: return each field as comma-separated values
+        $result = [];
+        $allFields = $dataConfig['all_fields'] ?? true;
+
+        if ($allFields) {
+            // Use all fields from the first record as template
+            $fieldNames = array_keys($data[0]);
+        } else {
+            // Filter to only specified fields
+            $fields = $dataConfig['fields'] ?? [];
+            if (empty($fields)) {
+                $fieldNames = array_keys($data[0]);
+            } else {
+                $fieldNames = array_column($fields, 'field_name');
+            }
+        }
+
+        // For each field, collect values from all records and join with commas
+        foreach ($fieldNames as $fieldName) {
+            $values = [];
+            foreach ($data as $record) {
+                $values[] = $record[$fieldName] ?? '';
+            }
+            $result[$fieldName] = implode(',', $values);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Process data for 'all_as_array' retrieve type
+     *
+     * @param array $data Raw data from database
+     * @param array $dataConfig Data configuration
+     * @return array Processed data as array
+     */
+    private function processAllAsArray(array $data, array $dataConfig): array
+    {
+        // If no data, return empty array
+        if (empty($data)) {
+            return [];
+        }
+
+        $result = [];
+        $allFields = $dataConfig['all_fields'] ?? true;
+
+        if ($allFields) {
+            // Use all fields from the first record as template
+            $fieldNames = array_keys($data[0]);
+        } else {
+            // Filter to only specified fields
+            $fields = $dataConfig['fields'] ?? [];
+            if (empty($fields)) {
+                $fieldNames = array_keys($data[0]);
+            } else {
+                $fieldNames = array_column($fields, 'field_name');
+            }
+        }
+
+        // For each field, collect values from all records into arrays
+        foreach ($fieldNames as $fieldName) {
+            $values = [];
+            foreach ($data as $record) {
+                $values[] = $record[$fieldName] ?? null;
+            }
+            $result[$fieldName] = $values;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Process data for 'JSON' retrieve type
+     *
+     * @param array $data Raw data from database
+     * @param array $dataConfig Data configuration
+     * @return array Processed data as JSON structure
+     */
+    private function processJSON(array $data, array $dataConfig): array
+    {
+        $result = [];
+
+        foreach ($data as $record) {
+            $processedRecord = [];
+
+            // Apply field mappings if specified
+            $mapFields = $dataConfig['map_fields'] ?? [];
+            if (!empty($mapFields)) {
+                foreach ($mapFields as $mapping) {
+                    $fieldName = $mapping['field_name'];
+                    $newName = $mapping['field_new_name'];
+
+                    if (isset($record[$fieldName])) {
+                        $processedRecord[$newName] = $record[$fieldName];
+                    }
+                }
+            }
+
+            // Apply field configurations
+            $fields = $dataConfig['fields'] ?? [];
+            if (!empty($fields)) {
+                // If fields are specified, use only those fields
+                foreach ($fields as $fieldConfig) {
+                    $fieldName = $fieldConfig['field_name'];
+                    $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
+                    $notFoundText = $fieldConfig['not_found_text'] ?? '';
+
+                    $value = $record[$fieldName] ?? $notFoundText;
+                    $processedRecord[$fieldHolder] = $value;
+                }
+            } else {
+                // If no fields are specified, return all fields from the record
+                $processedRecord = $record;
+            }
+
+            $result[] = $processedRecord;
+        }
+
+        return $result;
+    }
+
+    /**
      * Apply data to sections
-     * 
+     *
      * @param array &$sections The sections to apply data to (passed by reference)
      */
     public function applySectionsData(array &$sections): void
@@ -287,8 +587,31 @@ class SectionUtilityService
     public function applySectionData(array &$section): void
     {
         $section['section_data'] = [];
+
+        // Handle form record data
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
             $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($section['id']);
+        }
+
+        // Handle data_config field - parse and retrieve data without replacing content
+        if (isset($section['data_config']) && $section['data_config'] !== null) {
+            // Parse data_config as JSON string to array
+            $dataConfigArray = is_string($section['data_config'])
+                ? json_decode($section['data_config'], true)
+                : $section['data_config'];
+
+            if (is_array($dataConfigArray)) {
+                // data_config is an array of configuration objects, process each one
+                $retrievedData = [];
+                foreach ($dataConfigArray as $configIndex => $config) {
+                    $configData = $this->retrieveData($config);
+                    // Use the scope as key if available, otherwise use index
+                    $key = isset($config['scope']) ? $config['scope'] : $configIndex;
+                    $retrievedData[$key] = $configData;
+                }
+                // Add retrieved data as a new field
+                $section['retrieved_data'] = $retrievedData;
+            }
         }
     }
 }
