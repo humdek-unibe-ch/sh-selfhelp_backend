@@ -568,14 +568,48 @@ class SectionUtilityService
     }
 
     /**
-     * Apply data to sections
+     * Apply data to sections and propagate it down the hierarchy
      *
      * @param array &$sections The sections to apply data to (passed by reference)
      */
     public function applySectionsData(array &$sections): void
     {
+        // First, apply data to individual sections
         foreach ($sections as &$section) {
             $this->applySectionData($section);
+        }
+
+        // Then, propagate data down the hierarchy
+        $this->propagateSectionData($sections);
+    }
+
+    /**
+     * Propagate retrieved data from parent sections down to children recursively
+     *
+     * @param array &$sections The sections hierarchy to propagate data through
+     * @param array $parentData Optional parent data to propagate (used recursively)
+     */
+    private function propagateSectionData(array &$sections, array $parentData = []): void
+    {
+        foreach ($sections as &$section) {
+            // Merge parent's propagated data with section's own data
+            $currentData = $parentData;
+
+            // If section has its own retrieved_data, merge it with propagated data
+            if (isset($section['retrieved_data']) && is_array($section['retrieved_data'])) {
+                // Child data takes precedence over parent data for same scopes
+                $currentData = array_merge($currentData, $section['retrieved_data']);
+            }
+
+            // Update the section's retrieved_data with the merged data
+            if (!empty($currentData)) {
+                $section['retrieved_data'] = $currentData;
+            }
+
+            // Recursively propagate to children if they exist
+            if (isset($section['children']) && is_array($section['children'])) {
+                $this->propagateSectionData($section['children'], $currentData);
+            }
         }
     }
 
