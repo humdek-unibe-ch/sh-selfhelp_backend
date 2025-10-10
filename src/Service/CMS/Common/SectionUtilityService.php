@@ -24,11 +24,13 @@ class SectionUtilityService
 
     /**
      * Build a nested hierarchical structure from flat sections array
-     * 
+     *
      * @param array $sections Flat array of sections with path and level information
+     * @param bool $applyData Whether to apply data to sections
+     * @param int $languageId Language ID for data retrieval
      * @return array Hierarchical structure of sections
      */
-    public function buildNestedSections(array $sections, bool $applyData = false): array
+    public function buildNestedSections(array $sections, bool $applyData = false, int $languageId = 1): array
     {
         // Create a map of sections by ID for quick lookup
         $sectionsById = [];
@@ -38,7 +40,7 @@ class SectionUtilityService
         foreach ($sections as $section) {
             $section['children'] = [];
             if ($applyData) {
-                $this->applySectionData($section);
+                $this->applySectionData($section, $languageId);
             }
             $sectionsById[$section['id']] = $section;
         }
@@ -275,16 +277,17 @@ class SectionUtilityService
      *
      * @param array $dataConfig JSON structure defining data source
      * @param array $params Parameters to replace in the config
+     * @param int $languageId Language ID for data retrieval
      * @return array Retrieved data or empty array if failed
      */
-    public function retrieveData(array $dataConfig, array $params = []): array
+    public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1): array
     {
         $parsedConfig = $this->parseParams($dataConfig, $params);
         if (!$parsedConfig) {
             return [];
         }
 
-        return $this->fetchData($parsedConfig);
+        return $this->fetchData($parsedConfig, $languageId);
     }
 
     /**
@@ -320,9 +323,10 @@ class SectionUtilityService
      * Fetch data based on parsed data configuration
      *
      * @param array $dataConfig Parsed data configuration
+     * @param int $languageId Language ID for data retrieval
      * @return array Retrieved data
      */
-    private function fetchData(array $dataConfig): array
+    private function fetchData(array $dataConfig, int $languageId): array
     {
         if (!isset($dataConfig['table'])) {
             return [];
@@ -381,7 +385,7 @@ class SectionUtilityService
             $userId,
             false, // dbFirst - we'll handle this ourselves
             true,  // excludeDeleted
-            1      // languageId - default language
+            $languageId
         );
 
         // Post-process based on retrieve type
@@ -647,12 +651,13 @@ class SectionUtilityService
      * Apply data to sections and propagate it down the hierarchy
      *
      * @param array &$sections The sections to apply data to (passed by reference)
+     * @param int $languageId Language ID for data retrieval
      */
-    public function applySectionsData(array &$sections): void
+    public function applySectionsData(array &$sections, int $languageId = 1): void
     {
         // First, apply data to individual sections
         foreach ($sections as &$section) {
-            $this->applySectionData($section);
+            $this->applySectionData($section, $languageId);
         }
 
         // Then, propagate data down the hierarchy
@@ -693,8 +698,9 @@ class SectionUtilityService
      * Apply data to a section
      *
      * @param array &$section The section to apply data to (passed by reference)
+     * @param int $languageId Language ID for data retrieval
      */
-    public function applySectionData(array &$section): void
+    public function applySectionData(array &$section, int $languageId = 1): void
     {
         $section['section_data'] = [];
 
@@ -714,7 +720,7 @@ class SectionUtilityService
                 // data_config is an array of configuration objects, process each one
                 $retrievedData = [];
                 foreach ($dataConfigArray as $configIndex => $config) {
-                    $configData = $this->retrieveData($config);
+                    $configData = $this->retrieveData($config, [], $languageId);
                     // Use the scope as key if available, otherwise use index
                     $key = isset($config['scope']) ? $config['scope'] : $configIndex;
                     $retrievedData[$key] = $configData;

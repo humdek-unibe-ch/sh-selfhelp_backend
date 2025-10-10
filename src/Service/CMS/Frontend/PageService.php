@@ -376,7 +376,7 @@ class PageService extends BaseService
 
         return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId) {
             // Build nested hierarchical structure
-            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, true);
+            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, true, $languageId);
 
             // Extract all section IDs from the hierarchical structure
             $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
@@ -409,7 +409,7 @@ class PageService extends BaseService
             // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
             $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
 
-            $this->sectionUtilityService->applySectionsData($sections);
+            $this->sectionUtilityService->applySectionsData($sections, $languageId);
 
             return $sections;
         });
