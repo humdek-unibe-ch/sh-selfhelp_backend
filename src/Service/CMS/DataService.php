@@ -97,17 +97,7 @@ class DataService extends BaseService
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
-                        $this->cache
-                            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                            ->invalidateAllListsInCategory();
-
-                        $this->cache
-                            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
-
-                        $this->cache
-                            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $currentUser->getId());
+                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
 
                         return $updatedRecordId;
                     } else {
@@ -129,17 +119,7 @@ class DataService extends BaseService
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
-                        $this->cache
-                            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                            ->invalidateAllListsInCategory();
-
-                        $this->cache
-                            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
-
-                        $this->cache
-                            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $currentUser->getId());
+                        $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
 
                         return $recordId;
                     } elseif (count($updateBasedOn) > 0) {
@@ -156,13 +136,7 @@ class DataService extends BaseService
             $this->entityManager->commit();
 
             // Invalidate data table cache after creating new record
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateAllListsInCategory();
-
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
 
             return $recordId;
 
@@ -231,13 +205,7 @@ class DataService extends BaseService
             }
 
             // Invalidate data table cache after deleting record
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateAllListsInCategory();
-
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataRow->getDataTable()->getId());
+            $this->invalidateDataTableCache($dataRow->getDataTable(), $currentUser ? $currentUser->getId() : null);
 
             return true;
 
@@ -727,6 +695,106 @@ class DataService extends BaseService
                 ['previous' => $e, 'dataTableId' => $dataTableId]
             );
         }
+    }
+
+    /**
+     * Invalidate cache selectively based on data table current_user configurations
+     *
+     * @param DataTable $dataTable The data table entity
+     * @param int|null $userId The user ID (null for guest users)
+     */
+    private function invalidateDataTableCache(DataTable $dataTable, ?int $userId): void
+    {
+        $config = $this->getDataTableCurrentUserConfig($dataTable->getId());
+
+        // Always invalidate data table lists (this affects data table metadata)
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->invalidateAllListsInCategory();
+
+        // If the data table has global configs (current_user: false), invalidate the entire data table scope
+        if ($config['has_global_config']) {
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
+        }
+
+        // If the data table has user-specific configs (current_user: true) and we have a user,
+        // invalidate the user-specific scope for this user
+        if ($config['has_current_user_config'] && $userId) {
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+        }
+    }
+
+    /**
+     * Check if a data table has current_user configurations
+     *
+     * @param int $dataTableId The data table ID to check
+     * @return array Array with 'has_current_user_config' and 'has_global_config' boolean flags
+     */
+    public function getDataTableCurrentUserConfig(int $dataTableId): array
+    {
+        $cacheKey = "data_table_current_user_config_{$dataTableId}";
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+            ->getList($cacheKey, function () use ($dataTableId) {
+                $hasCurrentUserConfig = false;
+                $hasGlobalConfig = false;
+
+                // Find all sections that reference this data table
+                // We need to search through all sections to find data_config that references this table
+                $allSections = $this->sectionRepository->findAll();
+
+                foreach ($allSections as $section) {
+                    $dataConfig = $section->getDataConfig();
+                    if (!$dataConfig) {
+                        continue;
+                    }
+
+                    // Parse data_config as JSON string to array
+                    $dataConfigArray = is_string($dataConfig)
+                        ? json_decode($dataConfig, true)
+                        : $dataConfig;
+
+                    if (is_array($dataConfigArray)) {
+                        foreach ($dataConfigArray as $config) {
+                            if (isset($config['table'])) {
+                                $tableName = $config['table'];
+
+                                // Get data table by name to compare with our target
+                                try {
+                                    $dataTable = $this->getDataTableByName($tableName);
+                                    if ($dataTable && $dataTable->getId() === $dataTableId) {
+                                        $currentUser = $config['current_user'] ?? true; // Default to true
+
+                                        if ($currentUser) {
+                                            $hasCurrentUserConfig = true;
+                                        } else {
+                                            $hasGlobalConfig = true;
+                                        }
+
+                                        // If we found both types, we can stop early
+                                        if ($hasCurrentUserConfig && $hasGlobalConfig) {
+                                            break 2;
+                                        }
+                                    }
+                                } catch (\Exception $e) {
+                                    // Continue if there's an error getting the data table
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return [
+                    'has_current_user_config' => $hasCurrentUserConfig,
+                    'has_global_config' => $hasGlobalConfig
+                ];
+            });
     }
 
 

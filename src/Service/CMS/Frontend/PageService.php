@@ -221,7 +221,7 @@ class PageService extends BaseService
 
         // Get flat sections to extract data table dependencies for page-level cache
         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
-        $dataTableIds = $this->extractDataTableDependencies($flatSections, $page_id);
+        $dataTableConfigs = $this->extractDataTableDependencies($flatSections, $page_id);
 
         // Build cache service with entity scopes including data table dependencies
         $cacheService = $this->cache
@@ -231,8 +231,18 @@ class PageService extends BaseService
             ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
 
         // Add data table entity scopes for each data table this page depends on
-        foreach ($dataTableIds as $dataTableId) {
-            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+        foreach ($dataTableConfigs as $dataTableId => $config) {
+            // Always add data table scope for global configs (current_user: false)
+            if ($config['has_global_config']) {
+                $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+            }
+
+            // For user-specific configs (current_user: true), add user-data-table combined scope
+            if ($config['has_current_user_config']) {
+                $cacheService = $cacheService
+                    ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+                    ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+            }
         }
 
         return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
@@ -261,7 +271,7 @@ class PageService extends BaseService
      *
      * @param array $flatSections Flat sections array from repository
      * @param int $pageId The page ID for caching key
-     * @return array Array of unique data table IDs that sections depend on
+     * @return array Associative array with data table IDs as keys and config info as values
      */
     private function extractDataTableDependencies(array $flatSections, int $pageId): array
     {
@@ -271,7 +281,7 @@ class PageService extends BaseService
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
             ->getList($cacheKey, function () use ($flatSections) {
-                $dataTableIds = [];
+                $dataTableConfigs = [];
 
                 foreach ($flatSections as $section) {
                     if (isset($section['data_config']) && $section['data_config'] !== null) {
@@ -290,7 +300,23 @@ class PageService extends BaseService
                                     try {
                                         $dataTable = $this->dataService->getDataTableByName($tableName);
                                         if ($dataTable) {
-                                            $dataTableIds[] = $dataTable->getId();
+                                            $dataTableId = $dataTable->getId();
+                                            $currentUser = $config['current_user'] ?? true; // Default to true
+
+                                            // If we haven't seen this data table before, initialize it
+                                            if (!isset($dataTableConfigs[$dataTableId])) {
+                                                $dataTableConfigs[$dataTableId] = [
+                                                    'has_current_user_config' => false,
+                                                    'has_global_config' => false
+                                                ];
+                                            }
+
+                                            // Track if this table has current_user configurations
+                                            if ($currentUser) {
+                                                $dataTableConfigs[$dataTableId]['has_current_user_config'] = true;
+                                            } else {
+                                                $dataTableConfigs[$dataTableId]['has_global_config'] = true;
+                                            }
                                         }
                                     } catch (\Exception $e) {
                                         // If there's an error getting the data table, continue without it
@@ -302,8 +328,7 @@ class PageService extends BaseService
                     }
                 }
 
-                // Return unique data table IDs
-                return array_unique($dataTableIds);
+                return $dataTableConfigs;
             });
     }
 
@@ -326,7 +351,7 @@ class PageService extends BaseService
         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
 
         // Extract data table dependencies for cache scoping
-        $dataTableIds = $this->extractDataTableDependencies($flatSections, $page_id);
+        $dataTableConfigs = $this->extractDataTableDependencies($flatSections, $page_id);
 
         // Build cache service with entity scopes
         $cacheService = $this->cache
@@ -335,8 +360,18 @@ class PageService extends BaseService
             ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
 
         // Add data table entity scopes for each data table this page depends on
-        foreach ($dataTableIds as $dataTableId) {
-            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+        foreach ($dataTableConfigs as $dataTableId => $config) {
+            // Always add data table scope for global configs (current_user: false)
+            if ($config['has_global_config']) {
+                $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+            }
+
+            // For user-specific configs (current_user: true), add user-data-table combined scope
+            if ($config['has_current_user_config']) {
+                $cacheService = $cacheService
+                    ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+                    ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+            }
         }
 
         return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId) {
