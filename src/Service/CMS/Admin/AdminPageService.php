@@ -100,7 +100,6 @@ class AdminPageService extends BaseService
                 $result = $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
                     ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
-                    ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId())
                     ->getItem("page_sections_scoped_{$pageId}", function () use ($page) {
                         // Call stored procedure for hierarchical sections
                         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());

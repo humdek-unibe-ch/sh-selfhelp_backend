@@ -16,6 +16,19 @@ class DataTableRepository extends ServiceEntityRepository
     }
 
     /**
+     * Sanitize filter parameter for use in cache keys by replacing reserved characters
+     */
+    private function sanitizeFilterForCacheKey(string $filter): string
+    {
+        // Replace reserved characters that are not allowed in cache tags
+        return str_replace(
+            ['(', ')', ' ', '=', '>', '<', '!', '&', '|', '*', '?', '{', '}', '[', ']', '@', ':', '/', '\\'],
+            ['_LPAR_', '_RPAR_', '_SPACE_', '_EQ_', '_GT_', '_LT_', '_NOT_', '_AND_', '_OR_', '_STAR_', '_QMARK_', '_LBRACE_', '_RBRACE_', '_LBRACKET_', '_RBRACKET_', '_AT_', '_COLON_', '_SLASH_', '_BSLASH_'],
+            $filter
+        );
+    }
+
+    /**
      * Calls the stored procedure get_dataTable_with_filter and returns the result.
      */
     public function getDataTableWithFilter(int $tableId, int $userId, string $filter, bool $excludeDeleted, int $languageId = 1): array
@@ -26,8 +39,12 @@ class DataTableRepository extends ServiceEntityRepository
         if ($userId > 0) {
             $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
+
+        // Sanitize the filter parameter for cache key usage
+        $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
+
         return $cache
-            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$filter}_{$excludeDeleted}_{$languageId}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId) {
+            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId) {
                 $conn = $this->getEntityManager()->getConnection();
                 $sql = 'CALL get_dataTable_with_filter(:tableId, :userId, :filter, :excludeDeleted, :languageId)';
                 $stmt = $conn->prepare($sql);
@@ -54,8 +71,12 @@ class DataTableRepository extends ServiceEntityRepository
         if ($userId > 0) {
             $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
+
+        // Sanitize the filter parameter for cache key usage
+        $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
+
         return $cache
-            ->getList("data_table_with_all_languages_{$tableId}_{$userId}_{$filter}_{$excludeDeleted}", function () use ($tableId, $userId, $filter, $excludeDeleted) {
+            ->getList("data_table_with_all_languages_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}", function () use ($tableId, $userId, $filter, $excludeDeleted) {
                 $conn = $this->getEntityManager()->getConnection();
                 $sql = 'CALL get_dataTable_with_all_languages(:tableId, :userId, :filter, :excludeDeleted)';
                 $stmt = $conn->prepare($sql);
