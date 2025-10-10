@@ -611,6 +611,7 @@ class SectionUtilityService
                 }
                 // Add retrieved data as a new field
                 $section['retrieved_data'] = $retrievedData;
+                $section['data_config'] = $dataConfigArray;
             }
         }
     }

@@ -1969,7 +1969,7 @@ BEGIN
     -- Select the result
     SELECT
         id,
-        `name`,
+        `name` AS section_name,
         id_styles,
         style_name,
         can_have_children,
