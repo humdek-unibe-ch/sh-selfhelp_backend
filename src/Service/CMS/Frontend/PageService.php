@@ -10,6 +10,7 @@ use App\Repository\StylesFieldRepository;
 use App\Repository\PagesFieldsTranslationRepository;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
@@ -32,7 +33,8 @@ class PageService extends BaseService
         private readonly SectionUtilityService $sectionUtilityService,
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CacheService $cache,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly DataService $dataService
     ) {
     }
 
@@ -217,29 +219,91 @@ class PageService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        return $this->cache
+        // Get flat sections to extract data table dependencies for page-level cache
+        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
+        $dataTableIds = $this->extractDataTableDependencies($flatSections, $page_id);
+
+        // Build cache service with entity scopes including data table dependencies
+        $cacheService = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId())
-            ->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
-                // Check if user has access to the page
-                $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
 
-                $pageData = [
-                    'page' => [
-                        'id' => $page->getId(),
-                        'keyword' => $page->getKeyword(),
-                        'url' => $page->getUrl(),
-                        'parent_page_id' => $page->getParentPage()?->getId(),
-                        'is_headless' => $page->isHeadless(),
-                        'nav_position' => $page->getNavPosition(),
-                        'footer_position' => $page->getFooterPosition(),
-                        'sections' => $this->getPageSections($page->getId(), $languageId)
-                    ]
-                ];
+        // Add data table entity scopes for each data table this page depends on
+        foreach ($dataTableIds as $dataTableId) {
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+        }
 
-                return $pageData;
+        return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
+            // Check if user has access to the page
+            $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+
+            $pageData = [
+                'page' => [
+                    'id' => $page->getId(),
+                    'keyword' => $page->getKeyword(),
+                    'url' => $page->getUrl(),
+                    'parent_page_id' => $page->getParentPage()?->getId(),
+                    'is_headless' => $page->isHeadless(),
+                    'nav_position' => $page->getNavPosition(),
+                    'footer_position' => $page->getFooterPosition(),
+                    'sections' => $this->getPageSections($page->getId(), $languageId)
+                ]
+            ];
+
+            return $pageData;
+        });
+    }
+
+    /**
+     * Extract data table dependencies from sections (with caching)
+     *
+     * @param array $flatSections Flat sections array from repository
+     * @param int $pageId The page ID for caching key
+     * @return array Array of unique data table IDs that sections depend on
+     */
+    private function extractDataTableDependencies(array $flatSections, int $pageId): array
+    {
+        $cacheKey = "page_data_table_deps_{$pageId}";
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
+            ->getList($cacheKey, function () use ($flatSections) {
+                $dataTableIds = [];
+
+                foreach ($flatSections as $section) {
+                    if (isset($section['data_config']) && $section['data_config'] !== null) {
+                        // Parse data_config as JSON string to array
+                        $dataConfigArray = is_string($section['data_config'])
+                            ? json_decode($section['data_config'], true)
+                            : $section['data_config'];
+
+                        if (is_array($dataConfigArray)) {
+                            // data_config is an array of configuration objects, process each one
+                            foreach ($dataConfigArray as $config) {
+                                if (isset($config['table'])) {
+                                    $tableName = $config['table'];
+
+                                    // Get data table by name to get its ID
+                                    try {
+                                        $dataTable = $this->dataService->getDataTableByName($tableName);
+                                        if ($dataTable) {
+                                            $dataTableIds[] = $dataTable->getId();
+                                        }
+                                    } catch (\Exception $e) {
+                                        // If there's an error getting the data table, continue without it
+                                        // This prevents cache failures due to missing/invalid data tables
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Return unique data table IDs
+                return array_unique($dataTableIds);
             });
     }
 
@@ -258,52 +322,62 @@ class PageService extends BaseService
 
         $cacheKey = "page_sections_{$page_id}_{$languageId}";
 
-        return $this->cache
+        // Get flat sections first to extract data table dependencies
+        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
+
+        // Extract data table dependencies for cache scoping
+        $dataTableIds = $this->extractDataTableDependencies($flatSections, $page_id);
+
+        // Build cache service with entity scopes
+        $cacheService = $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id)
-            ->getList($cacheKey, function () use ($page_id, $languageId) {
-                // Get flat sections with hierarchical information
-                $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
 
-                // Build nested hierarchical structure
-                $sections = $this->sectionUtilityService->buildNestedSections($flatSections, true);
+        // Add data table entity scopes for each data table this page depends on
+        foreach ($dataTableIds as $dataTableId) {
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+        }
 
-                // Extract all section IDs from the hierarchical structure
-                $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
+        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId) {
+            // Build nested hierarchical structure
+            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, true);
 
-                // Get default language ID for fallback translations
-                $defaultLanguageId = null;
-                try {
-                    $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
-                    if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                        $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
-                    }
-                } catch (\Exception $e) {
-                    // If there's an error getting the default language, continue without fallback
+            // Extract all section IDs from the hierarchical structure
+            $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
+
+            // Get default language ID for fallback translations
+            $defaultLanguageId = null;
+            try {
+                $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
+                if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
+                    $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
                 }
+            } catch (\Exception $e) {
+                // If there's an error getting the default language, continue without fallback
+            }
 
-                // Fetch all translations for these sections with fallback to default language
-                $translations = $this->translationRepository->fetchTranslationsForSectionsWithFallback(
-                    $sectionIds,
-                    $languageId,
-                    $defaultLanguageId
-                );
+            // Fetch all translations for these sections with fallback to default language
+            $translations = $this->translationRepository->fetchTranslationsForSectionsWithFallback(
+                $sectionIds,
+                $languageId,
+                $defaultLanguageId
+            );
 
-                // Fetch property translations (language ID 1) for fields of type 1
-                $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
-                    $sectionIds,
-                    self::PROPERTY_LANGUAGE_ID
-                );
+            // Fetch property translations (language ID 1) for fields of type 1
+            $propertyTranslations = $this->translationRepository->fetchTranslationsForSections(
+                $sectionIds,
+                self::PROPERTY_LANGUAGE_ID
+            );
 
-                // Apply translations to the sections recursively
-                // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
-                $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
+            // Apply translations to the sections recursively
+            // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
+            $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
 
-                $this->sectionUtilityService->applySectionsData($sections);
+            $this->sectionUtilityService->applySectionsData($sections);
 
-                return $sections;
-            });
+            return $sections;
+        });
     }
 
     /**

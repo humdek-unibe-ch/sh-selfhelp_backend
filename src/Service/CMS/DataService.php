@@ -160,6 +160,10 @@ class DataService extends BaseService
                 ->withCategory(CacheService::CATEGORY_DATA_TABLES)
                 ->invalidateAllListsInCategory();
 
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
+
             return $recordId;
 
         } catch (\Throwable $e) {
