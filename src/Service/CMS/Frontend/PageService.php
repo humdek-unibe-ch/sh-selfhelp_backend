@@ -14,6 +14,7 @@ use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
+use App\Service\Core\InterpolationService;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -34,7 +35,8 @@ class PageService extends BaseService
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CacheService $cache,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly DataService $dataService
+        private readonly DataService $dataService,
+        private readonly InterpolationService $interpolationService
     ) {
     }
 
@@ -411,6 +413,9 @@ class PageService extends BaseService
 
             $this->sectionUtilityService->applySectionsData($sections, $languageId);
 
+            // Apply variable interpolation for retrieved_data
+            $this->applyInterpolationToSections($sections);
+
             return $sections;
         });
     }
@@ -445,5 +450,130 @@ class PageService extends BaseService
 
         // Fallback to language ID 2 if no default language is configured
         return 2;
+    }
+
+    /**
+     * Apply variable interpolation to sections recursively
+     *
+     * Replaces {{variable_name}} patterns in content fields with values from retrieved_data
+     *
+     * @param array &$sections The sections array to process (passed by reference)
+     */
+    private function applyInterpolationToSections(array &$sections): void
+    {
+        foreach ($sections as &$section) {
+            // Apply interpolation to the current section's content fields
+            $this->interpolateSectionContent($section);
+
+            // Recursively apply to children if they exist
+            if (isset($section['children']) && is_array($section['children'])) {
+                $this->applyInterpolationToSections($section['children']);
+            }
+        }
+    }
+
+    /**
+     * Apply interpolation to a single section's content fields
+     *
+     * @param array &$section The section to process (passed by reference)
+     */
+    private function interpolateSectionContent(array &$section): void
+    {
+        // Check if section has retrieved_data to interpolate with
+        $interpolationData = [];
+        if (isset($section['retrieved_data']) && is_array($section['retrieved_data'])) {
+            $interpolationData[] = $section['retrieved_data'];
+        }
+
+        // If no data to interpolate with, skip
+        if (empty($interpolationData)) {
+            return;
+        }
+
+        // Interpolate content fields
+        if (isset($section['content']) && is_array($section['content'])) {
+            $section['content'] = $this->interpolationService->interpolateArray($section['content'], ...$interpolationData);
+        }
+
+        // Interpolate meta fields if they exist
+        if (isset($section['meta']) && is_array($section['meta'])) {
+            $section['meta'] = $this->interpolationService->interpolateArray($section['meta'], ...$interpolationData);
+        }
+
+        // Interpolate content fields that may contain variables
+        $this->interpolateContentFields($section, $interpolationData);
+    }
+
+    /**
+     * Interpolate content fields that may contain {{variable}} patterns
+     *
+     * @param array &$section The section to process (passed by reference)
+     * @param array $interpolationData The data arrays for interpolation
+     */
+    private function interpolateContentFields(array &$section, array $interpolationData): void
+    {
+        // Direct string fields that may contain variables
+        $directStringFields = [
+            'css',
+            'css_mobile',
+            'condition'
+        ];
+
+        foreach ($directStringFields as $field) {
+            if (isset($section[$field]) && is_string($section[$field])) {
+                $section[$field] = $this->interpolationService->interpolate($section[$field], ...$interpolationData);
+            }
+        }
+
+        // Object fields with "content" sub-property that may contain variables
+        $contentObjectFields = [
+            // Text content fields
+            'text',
+            'html',
+            'markdown',
+            'content',
+
+            // Form field labels and descriptions
+            'label',
+            'placeholder',
+            'description',
+
+            // Button labels
+            'btn_save_label',
+            'btn_update_label',
+            'btn_cancel_label',
+
+            // Alert messages
+            'alert_success',
+            'alert_error',
+
+            // Form names and titles
+            'name',
+            'title',
+
+            // URLs and redirects
+            'redirect_at_end',
+            'btn_cancel_url',
+
+            // Mantine style properties that might contain variables
+            'mantine_rich_text_editor_placeholder',
+
+            // Any other fields that might contain user-editable content
+        ];
+
+        foreach ($contentObjectFields as $field) {
+            if (isset($section[$field]) && is_array($section[$field]) && isset($section[$field]['content'])) {
+                if (is_string($section[$field]['content'])) {
+                    $section[$field]['content'] = $this->interpolationService->interpolate($section[$field]['content'], ...$interpolationData);
+                }
+            }
+        }
+
+        // Special handling for nested structures like children
+        if (isset($section['children']) && is_array($section['children'])) {
+            foreach ($section['children'] as &$child) {
+                $this->interpolateContentFields($child, $interpolationData);
+            }
+        }
     }
 }
