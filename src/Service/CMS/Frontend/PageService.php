@@ -555,8 +555,27 @@ class PageService extends BaseService
             'redirect_at_end',
             'btn_cancel_url',
 
-            // Mantine style properties that might contain variables
+            // Mantine translatable content fields (based on TypeScript definitions)
             'mantine_rich_text_editor_placeholder',
+            'mantine_highlight_highlight',           // Translatable text to highlight
+            'mantine_spoiler_show_label',            // Translatable show label
+            'mantine_spoiler_hide_label',            // Translatable hide label
+            'mantine_switch_on_label',               // Translatable on label
+            'mantine_switch_off_label',              // Translatable off label
+            'mantine_tooltip_label',                 // Translatable tooltip text
+            'mantine_list_item_content',             // Translatable list item content
+            'mantine_datepicker_placeholder',        // Translatable placeholder
+            'mantine_color_picker_button_label',     // Translatable button label
+            'mantine_text_gradient',                 // Gradient configuration (might contain variables)
+            'mantine_accordion_item_value',          // Accordion item value
+            'mantine_accordion_default_value',       // Default open accordion items
+            'confirmation_title',                    // Confirmation dialog title
+            'confirmation_continue',                 // Continue button text
+            'confirmation_message',                  // Confirmation message
+            'mantine_notification_title',            // Notification title
+            'mantine_title_text_wrap',               // Text wrap setting
+            'mantine_text_gradient',                 // Text gradient configuration
+            'mantine_blockquote_icon_size',          // Icon size (numeric, but might be templated)
 
             // Any other fields that might contain user-editable content
         ];
