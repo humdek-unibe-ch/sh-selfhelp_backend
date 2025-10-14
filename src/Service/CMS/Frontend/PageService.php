@@ -526,56 +526,115 @@ class PageService extends BaseService
         }
 
         // Object fields with "content" sub-property that may contain variables
+        // Based on TypeScript IContentField<string> definitions - all user-editable content fields
         $contentObjectFields = [
-            // Text content fields
-            'text',
-            'html',
-            'markdown',
-            'content',
+            // Core content fields
+            'content',                              // Main content field
+            'text',                                 // Text content
+            'html',                                 // HTML content
+            'markdown',                             // Markdown content
+            'title',                                // Titles
+            'name',                                 // Names (sometimes user-editable)
 
-            // Form field labels and descriptions
-            'label',
-            'placeholder',
-            'description',
+            // Form field content
+            'label',                                // Field labels
+            'placeholder',                          // Input placeholders
+            'description',                          // Field descriptions
+            'value',                                // Field values (sometimes contain text)
 
-            // Button labels
-            'btn_save_label',
-            'btn_update_label',
-            'btn_cancel_label',
+            // Button and action labels
+            'btn_save_label',                       // Save button labels
+            'btn_update_label',                     // Update button labels
+            'btn_cancel_label',                     // Cancel button labels
+            'label_cancel',                         // Cancel button label (alternative)
 
-            // Alert messages
-            'alert_success',
-            'alert_error',
+            // Alert and message content
+            'alert_success',                        // Success alert messages
+            'alert_error',                          // Error alert messages
+            'close_button_label',                   // Close button labels
 
-            // Form names and titles
-            'name',
-            'title',
+            // URLs and navigation
+            'redirect_at_end',                      // Redirect URLs
+            'btn_cancel_url',                       // Cancel button URLs
+            'url',                                  // General URLs
+            'page_keyword',                         // Page keywords
 
-            // URLs and redirects
-            'redirect_at_end',
-            'btn_cancel_url',
+            // Confirmation dialogs
+            'confirmation_title',                   // Confirmation dialog titles
+            'confirmation_continue',                // Continue button text
+            'confirmation_message',                 // Confirmation messages
 
-            // Mantine translatable content fields (based on TypeScript definitions)
-            'mantine_rich_text_editor_placeholder',
-            'mantine_highlight_highlight',           // Translatable text to highlight
-            'mantine_spoiler_show_label',            // Translatable show label
-            'mantine_spoiler_hide_label',            // Translatable hide label
-            'mantine_switch_on_label',               // Translatable on label
-            'mantine_switch_off_label',              // Translatable off label
-            'mantine_tooltip_label',                 // Translatable tooltip text
-            'mantine_list_item_content',             // Translatable list item content
-            'mantine_datepicker_placeholder',        // Translatable placeholder
-            'mantine_color_picker_button_label',     // Translatable button label
-            'mantine_text_gradient',                 // Gradient configuration (might contain variables)
-            'mantine_accordion_item_value',          // Accordion item value
-            'mantine_accordion_default_value',       // Default open accordion items
-            'confirmation_title',                    // Confirmation dialog title
-            'confirmation_continue',                 // Continue button text
-            'confirmation_message',                  // Confirmation message
-            'mantine_notification_title',            // Notification title
-            'mantine_title_text_wrap',               // Text wrap setting
-            'mantine_text_gradient',                 // Text gradient configuration
-            'mantine_blockquote_icon_size',          // Icon size (numeric, but might be templated)
+            // Mantine component translatable content
+            'mantine_notification_title',           // Notification titles
+            'mantine_alert_title',                  // Alert titles
+            'mantine_spoiler_show_label',           // Spoiler show labels
+            'mantine_spoiler_hide_label',           // Spoiler hide labels
+            'mantine_switch_on_label',              // Switch on labels
+            'mantine_switch_off_label',             // Switch off labels
+            'mantine_tooltip_label',                // Tooltip text
+            'mantine_list_item_content',            // List item content
+            'mantine_highlight_highlight',          // Text to highlight
+            'mantine_datepicker_placeholder',       // Date picker placeholders
+            'mantine_color_picker_button_label',    // Color picker button labels
+            'mantine_rich_text_editor_placeholder', // Rich text editor placeholders
+            'mantine_text_gradient',                // Text gradient configurations
+            'mantine_accordion_item_value',         // Accordion item values
+            'mantine_accordion_default_value',      // Default accordion values
+            'mantine_title_text_wrap',              // Title text wrap settings
+            'mantine_blockquote_cite',              // Blockquote citations
+            'mantine_background_image_src',         // Background image sources
+            'mantine_fieldset_legend',              // Fieldset legends
+            'mantine_list_item_icon',               // List item icons
+            'mantine_carousel_next_control_icon',   // Carousel control icons
+            'mantine_carousel_previous_control_icon', // Carousel control icons
+            'mantine_left_icon',                    // Left icons
+            'mantine_right_icon',                   // Right icons
+            'mantine_avatar_initials',              // Avatar initials
+            'mantine_chip_on_value',                // Chip on values
+            'mantine_chip_off_value',               // Chip off values
+            'mantine_switch_on_value',              // Switch on values
+            'mantine_switch_off_value',             // Switch off values
+            'mantine_rating_empty_icon',            // Rating empty icons
+            'mantine_rating_full_icon',             // Rating full icons
+            'mantine_progress_section_label',       // Progress section labels
+            'mantine_tooltip_label',                // Tooltip labels (duplicate for completeness)
+            'mantine_accordion_item_icon',          // Accordion item icons
+            'mantine_theme_icon',                   // Theme icons
+
+            // Additional translatable fields from various components
+            'alt',                                  // Image alt text
+            'caption',                              // Figure captions
+            'caption_title',                        // Caption titles
+            'img_src',                              // Image sources
+            'cite',                                 // Blockquote citations
+            'legend',                               // Fieldset legends
+            'subject_user',                         // Email subjects
+            'email_user',                           // Email addresses
+            'anonymous_user_name_description',      // User descriptions
+            'pw_placeholder',                       // Password placeholders
+            'success',                              // Success messages
+            'login_title',                          // Login titles
+            'subtitle',                             // Subtitles
+            'type',                                 // Types (sometimes contain text)
+            'is_active',                            // Active states (sometimes contain text)
+            'icon',                                 // Icon references
+            'chip_value',                           // Chip values
+            'checkbox_value',                       // Checkbox values
+            'mantine_checkbox_icon',                // Checkbox icons
+            'mantine_file_input_accept',            // File input accept types
+            'mantine_color_picker_saturation_label', // Color picker labels
+            'mantine_color_picker_hue_label',       // Color picker labels
+            'mantine_color_picker_alpha_label',     // Color picker labels
+            'mantine_segmented_control_data',       // Segmented control data (JSON)
+            'mantine_combobox_options',             // Combobox options (JSON)
+            'mantine_multi_select_data',            // Multi-select data (JSON)
+            'mantine_radio_options',                // Radio options (JSON)
+            'mantine_slider_marks_values',          // Slider marks (JSON)
+            'mantine_color_picker_swatches',        // Color swatches (JSON)
+            'mantine_color_input_swatches',         // Color input swatches
+            'mantine_file_input_accept',            // File accept types (duplicate)
+            'mantine_combobox_data',                // Combobox data (JSON)
+            'mantine_carousel_embla_options',       // Carousel options (JSON)
 
             // Any other fields that might contain user-editable content
         ];
