@@ -139,7 +139,8 @@ src/
 ### Content Management
 - **AdminPageService**: Page CRUD operations
 - **AdminSectionService**: Section management
-- **AdminFieldService**: Field content management
+- **PageFieldService**: Field content management
+- **SectionFieldService**: Section field management
 - **AdminAssetService**: File upload and asset management
 
 ### System Services

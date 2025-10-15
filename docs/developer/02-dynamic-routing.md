@@ -117,6 +117,12 @@ The system automatically maps database controller references to versioned namesp
 ```php
 // Database: App\Controller\AdminPageController::getPages
 // Maps to: App\Controller\Api\V1\Admin\AdminPageController::getPages
+
+// The mapping logic:
+// 1. Skip if already using versioned namespace
+// 2. Parse controller string (e.g., "App\Controller\AuthController::login")
+// 3. Extract controller name and determine domain
+// 4. Map to versioned namespace: App\Controller\Api\{Version}\{Domain}\{Domain}Controller
 ```
 
 ## 🎯 Dynamic Controller Resolution

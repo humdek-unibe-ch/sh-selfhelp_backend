@@ -135,9 +135,10 @@ INSERT INTO `permissions` (`name`, `description`) VALUES
 ```
 
 #### Junction Tables
-- **`users_groups`**: Links users to groups (many-to-many) - **Frontend users only**
-- **`users_roles`**: Links users to roles (many-to-many) - **Admin users only**
-- **`roles_permissions`**: Links roles to permissions (many-to-many) - **Admin system**
+- **`users_groups`**: Links users to groups (many-to-many) - Used for both admin and frontend user group memberships
+- **`users_roles`**: Links users to roles (many-to-many) - Admin role assignments (super_admin, admin, editor, viewer)
+- **`user_groups_permissions`**: Links groups to permissions (many-to-many) - Group-based permissions
+- **`roles_permissions`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
 
 ### 2. Dynamic Routing Tables
 

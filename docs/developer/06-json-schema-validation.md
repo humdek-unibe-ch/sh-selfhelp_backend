@@ -96,57 +96,84 @@ class JsonSchemaValidationService
 
     public function __construct(KernelInterface $kernel)
     {
+        // Set up the base directory for schemas
         $this->schemaBaseDir = $kernel->getProjectDir() . '/config/schemas/api/v1/';
+        $this->schemaBaseDir = str_replace('\\', '/', $this->schemaBaseDir);
+
+        // Configure the URI retriever
         $this->retriever = new UriRetriever();
+
+        // Set up schema storage with proper URI resolution
         $this->schemaStorage = new SchemaStorage($this->retriever);
+
+        // Create the factory with schema storage
         $factory = new Factory($this->schemaStorage);
+
+        // Create the validator with the factory
         $this->validator = new Validator($factory);
     }
 
     /**
-     * Validates data against a JSON schema
+     * Validates data against a given JSON schema.
      *
-     * @param object|array $data The data to validate
-     * @param string $schemaName Schema path (e.g., "requests/admin/create_page")
-     * @return array Validation error messages (empty if valid)
+     * @param object|array $data The data to validate (decoded JSON).
+     * @param string $schemaName The relative path of the schema file from schemaBaseDir (e.g., "requests/user_create").
+     * @return array An array of validation error messages. Empty if valid.
      */
     public function validate(object|array $data, string $schemaName): array
     {
+        // Build the full schema file path
         $schemaFilePath = $this->schemaBaseDir . $schemaName . '.json';
-        
+
+        // Check if the schema file exists
         if (!file_exists($schemaFilePath)) {
-            throw new FileNotFoundException("Schema file not found: {$schemaName}");
+            throw new \Symfony\Component\Filesystem\Exception\FileNotFoundException(
+                "Schema file not found: {$schemaName}.json"
+            );
         }
 
-        $schemaUri = 'file://' . str_replace('\\', '/', realpath($schemaFilePath));
-        
-        // Pre-load referenced schemas
-        $this->preLoadReferencedSchemas(dirname($schemaFilePath));
-        
-        $schemaObject = $this->retriever->retrieve($schemaUri);
-        
-        $this->validator->validate(
-            $data, 
-            $schemaObject, 
-            Constraint::CHECK_MODE_VALIDATE_SCHEMA | 
-            Constraint::CHECK_MODE_APPLY_DEFAULTS
-        );
-        
-        $errors = [];
-        if (!$this->validator->isValid()) {
-            foreach ($this->validator->getErrors() as $error) {
-                $pointer = $error['property'] ?? $error['pointer'] ?? 'object';
-                $message = $error['message'] ?? 'Unknown validation error';
-                $errors[] = sprintf(
-                    "Field '%s': %s", 
-                    str_replace('/', '.', ltrim($pointer, '/')), 
-                    $message
-                );
+        // Convert to file URI for the schema retriever
+        $schemaUri = 'file://' . realpath($schemaFilePath);
+
+        try {
+            // Retrieve and validate against the schema
+            $schema = $this->retriever->retrieve($schemaUri);
+
+            // Perform validation with defaults applied
+            $this->validator->validate(
+                $data,
+                $schema,
+                Constraint::CHECK_MODE_VALIDATE_SCHEMA |
+                Constraint::CHECK_MODE_APPLY_DEFAULTS
+            );
+
+            // Collect validation errors
+            $errors = [];
+            if (!$this->validator->isValid()) {
+                foreach ($this->validator->getErrors() as $error) {
+                    $property = $error['property'] ?? $error['pointer'] ?? '';
+                    $message = $error['message'] ?? 'Unknown validation error';
+
+                    // Format property path for readability
+                    $propertyPath = str_replace('/', '.', ltrim($property, '/'));
+                    if (empty($propertyPath)) {
+                        $propertyPath = 'root';
+                    }
+
+                    $errors[] = "Field '{$propertyPath}': {$message}";
+                }
             }
+
+            return $errors;
+
+        } catch (\JsonSchema\Exception\ExceptionInterface $e) {
+            return ["Schema validation error: " . $e->getMessage()];
+        } catch (\Exception $e) {
+            return ["Unexpected error during validation: " . $e->getMessage()];
+        } finally {
+            // Always reset the validator
+            $this->validator->reset();
         }
-        
-        $this->validator->reset();
-        return $errors;
     }
 }
 ```

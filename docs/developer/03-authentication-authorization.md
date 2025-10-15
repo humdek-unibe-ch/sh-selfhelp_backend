@@ -54,13 +54,13 @@ graph TD
   "payload": {
     "iat": 1642680000,
     "exp": 1642683600,
-    "roles": ["ROLE_USER"],
-    "username": "admin",
-    "user_id": 1
+    "id_users": 1
   },
   "signature": "..."
 }
 ```
+
+**Security Note**: JWT tokens contain only the minimal required user identifier (`id_users`) for security best practices. User roles, permissions, and other context are fetched from the database on each request rather than being embedded in the token.
 
 ### Authentication Flow
 ```mermaid
@@ -95,35 +95,86 @@ namespace App\Service\Auth;
 
 class JWTService
 {
-    public function createTokens(User $user): array
+    public function createToken(User $user): string
     {
-        // Create access token (short-lived)
-        $accessToken = $this->createToken($user);
-        
-        // Create refresh token (long-lived)
-        $refreshToken = $this->createRefreshToken($user);
-        
-        return [
-            'access_token' => $accessToken,
-            'refresh_token' => $refreshToken->getTokenHash(),
-            'expires_in' => $this->accessTokenTTL
+        // Create payload with minimal claims - no roles/permissions for security
+        $payload = [
+            'id_users' => $user->getId()
         ];
+
+        // Note: Token TTL is configured in lexik_jwt_authentication.yaml
+        // using the JWT_TOKEN_TTL environment variable
+
+        // Create token with minimal payload
+        $user->setUserName($user->getEmail());
+        return $this->jwtManager->createFromPayload($user, $payload);
     }
-    
+
+    public function createRefreshToken(User $user): RefreshToken
+    {
+        $refreshToken = new RefreshToken();
+        $refreshToken->setUser($user);
+        $refreshToken->setTokenHash(bin2hex(random_bytes(32)));
+
+        // Get refresh token TTL from environment (in seconds) and convert to DateInterval
+        $refreshTokenTtl = $this->params->get('jwt_refresh_token_ttl');
+        $expiresAt = new \DateTime();
+        $expiresAt->modify('+' . $refreshTokenTtl . ' seconds');
+
+        $refreshToken->setExpiresAt($expiresAt);
+
+        $this->entityManager->persist($refreshToken);
+        $this->entityManager->flush();
+
+        return $refreshToken;
+    }
+
     public function verifyAndDecodeAccessToken(string $token, bool $checkBlacklist = true): array
     {
         // Check blacklist first
-        if ($checkBlacklist && $this->isTokenBlacklisted($token)) {
-            throw new AuthenticationException('Token is blacklisted');
+        if ($checkBlacklist) {
+            $cacheKey = self::BLACKLIST_PREFIX . md5($token);
+            $cachedValue = $this->cache->get($cacheKey, function(ItemInterface $item) use ($cacheKey) {
+                return false; // Default value if not found (meaning not blacklisted)
+            });
+
+            if ($cachedValue === true) {
+                throw new AuthenticationException('Token has been blacklisted.');
+            }
         }
-        
-        // Verify and decode token
-        return $this->jwtEncoder->decode($token);
+
+        try {
+            $payload = $this->jwtEncoder->decode($token);
+            if (!$payload) {
+                throw new AuthenticationException('Invalid token payload.');
+            }
+            return $payload;
+        } catch (JWTDecodeFailureException $e) {
+            throw new AuthenticationException('Invalid token: ' . $e->getReason(), 0, $e);
+        } catch (\Exception $e) {
+            throw new AuthenticationException('Token validation failed: ' . $e->getMessage(), 0, $e);
+        }
     }
-    
-    public function blacklistToken(string $token): void
+
+    public function blacklistAccessToken(string $accessToken): void
     {
-        $this->cache->set('blacklist_' . hash('sha256', $token), true, $this->accessTokenTTL);
+        try {
+            $payload = $this->jwtEncoder->decode($accessToken);
+            $tokenTtl = $this->params->get('jwt_token_ttl');
+            $expiresAt = $payload['exp'] ?? (time() + $tokenTtl);
+            $remainingLifetime = $expiresAt - time();
+
+            if ($remainingLifetime > 0) {
+                $cacheKey = self::BLACKLIST_PREFIX . md5($accessToken);
+                $this->cache->delete($cacheKey);
+                $this->cache->get($cacheKey, function (ItemInterface $item) use ($remainingLifetime) {
+                    $item->expiresAfter($remainingLifetime);
+                    return true; // Store true to mark as blacklisted
+                });
+            }
+        } catch (\Exception $e) {
+            // Not adding to blacklist if it's already invalid might be acceptable.
+        }
     }
 }
 ```
@@ -371,24 +422,23 @@ CREATE TABLE `acl_groups` (
 );
 ```
 
-### ACL Stored Procedure
-```sql
-DELIMITER //
-CREATE PROCEDURE get_user_acl(IN userId INT, IN pageId INT)
-BEGIN
-    SELECT 
-        COALESCE(MAX(au.acl_select), MAX(ag.acl_select), 0) as acl_select,
-        COALESCE(MAX(au.acl_insert), MAX(ag.acl_insert), 0) as acl_insert,
-        COALESCE(MAX(au.acl_update), MAX(ag.acl_update), 0) as acl_update,
-        COALESCE(MAX(au.acl_delete), MAX(ag.acl_delete), 0) as acl_delete
-    FROM users u
-    LEFT JOIN acl_users au ON u.id = au.id_users AND au.id_pages = pageId
-    LEFT JOIN users_groups ug ON u.id = ug.id_users
-    LEFT JOIN acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
-    WHERE u.id = userId;
-END //
-DELIMITER ;
+### ACL Repository Implementation
+The ACL system uses a repository-based approach with cached database queries for performance:
+
+```php
+<?php
+class AclRepository
+{
+    public function getUserAcl(int $userId, int $pageId = null): array
+    {
+        // Build complex query to get user ACL permissions
+        // Includes both user-specific and group-based permissions
+        // Returns array of pages with their ACL permissions
+    }
+}
 ```
+
+The ACL logic combines user-specific permissions with group permissions, where user permissions take precedence over group permissions.
 
 ### ACLService Implementation
 ```php
@@ -397,43 +447,64 @@ namespace App\Service\ACL;
 
 class ACLService
 {
-    public function hasAccess(int $userId, int $pageId, string $accessType = 'select'): bool
+    public function hasAccess(int|string|null $userId, int $pageId, string $accessType = 'select'): bool
     {
-        $connection = $this->entityManager->getConnection();
-        
-        $sql = 'CALL get_user_acl(:userId, :pageId)';
-        $stmt = $connection->prepare($sql);
-        $result = $stmt->executeQuery([
-            'userId' => $userId,
-            'pageId' => $pageId
-        ])->fetchAssociative();
-        
-        if (!$result) {
-            return false;
-        }
-        
-        $aclColumn = 'acl_' . $accessType;
-        return ((int)$result[$aclColumn] === 1);
+        $cacheKey = "user_acl_{$pageId}";
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getItem($cacheKey, function () use ($userId, $pageId, $accessType) {
+                // Handle null or non-integer userId
+                if ($userId === null) {
+                    $userId = 1; // Guest user ID
+                } elseif (!is_int($userId)) {
+                    $userId = (int) $userId;
+                }
+
+                // Map accessType to column
+                $modeMap = [
+                    'select' => 'acl_select',
+                    'insert' => 'acl_insert',
+                    'update' => 'acl_update',
+                    'delete' => 'acl_delete',
+                ];
+                $aclColumn = $modeMap[$accessType];
+
+                // Get ACL for specific page using repository (cached)
+                $results = $this->cache
+                    ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+                    ->getItem("user_acl_{$userId}_{$pageId}", fn() => $this->aclRepository->getUserAcl($userId, $pageId));
+
+                // If no results or empty array, deny access
+                if (empty($results)) {
+                    return false;
+                }
+
+                $result = $results[0] ?? null;
+
+                // If no result or ACL column doesn't exist, deny access
+                if (!$result || !array_key_exists($aclColumn, $result)) {
+                    return false;
+                }
+
+                // Grant if column is 1
+                return (int) $result[$aclColumn] === 1;
+            });
     }
-    
-    public function getUserPagePermissions(int $userId, int $pageId): array
+
+    public function getAllUserAcls(int|string|null $userId): array
     {
-        // Returns array with all CRUD permissions for the page
-        $connection = $this->entityManager->getConnection();
-        
-        $sql = 'CALL get_user_acl(:userId, :pageId)';
-        $stmt = $connection->prepare($sql);
-        $result = $stmt->executeQuery([
-            'userId' => $userId,
-            'pageId' => $pageId
-        ])->fetchAssociative();
-        
-        return [
-            'select' => (bool)($result['acl_select'] ?? 0),
-            'insert' => (bool)($result['acl_insert'] ?? 0),
-            'update' => (bool)($result['acl_update'] ?? 0),
-            'delete' => (bool)($result['acl_delete'] ?? 0),
-        ];
+        // Handle null or non-integer userId
+        if ($userId === null) {
+            $userId = 1; // Guest user ID
+        } elseif (!is_int($userId)) {
+            $userId = (int) $userId;
+        }
+
+        // Use the repository to get all ACLs (cached)
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->getList("user_acl_{$userId}", fn() => $this->aclRepository->getUserAcl($userId));
     }
 }
 ```
