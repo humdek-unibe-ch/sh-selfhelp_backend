@@ -1,11 +1,49 @@
 # Page Versioning & Publishing System
 
 ## Overview
-Implement a page versioning and publishing system where published page versions are stored as complete JSON structures, while drafts are always loaded fresh from the database. This allows users to publish specific versions for end users while developers continue working on drafts.
+Implement a page versioning and publishing system using a **hybrid approach**:
+
+- **Published versions** store complete JSON structures (all languages, conditions, data table configs) for consistency
+- **Dynamic elements** (data retrieval, condition evaluation) are re-run when serving published versions to ensure freshness
+- **Drafts** are always loaded fresh from database (no JSON storage) for development
+
+This approach ensures published pages remain consistent while keeping dynamic content current.
+
+## Hybrid Serving Architecture
+
+### Published Version Serving
+When serving a published version:
+1. **Load stored JSON structure** from `page_versions` table (contains all languages, conditions, data table configs)
+2. **Re-run data retrieval** using stored data table configurations to get fresh data
+3. **Re-evaluate conditions** using current context (user permissions, time-based conditions, etc.)
+4. **Apply translations** using stored language data, but allow fallback to current translations if needed
+
+### What Gets Stored vs. What Gets Re-run
+**Stored in published JSON:**
+- Page metadata (id, keyword, url, etc.)
+- Section structure and hierarchy
+- Field configurations and properties
+- Translation content for all languages
+- Data table configurations
+- Condition definitions
+- Style configurations
+
+**Re-run dynamically:**
+- Data retrieval from data tables (using stored configs)
+- Condition evaluation (user permissions, business logic)
+- Variable interpolation with fresh data
+- Cache invalidation logic
+
+**Why this hybrid approach matters:**
+- Prevents stale data in published pages (data tables might be updated)
+- Ensures conditions are evaluated with current context (user permissions, time-based logic)
+- Maintains published page consistency while allowing dynamic content freshness
+- Users won't miss important updates when refreshing published pages
 
 ## Core Requirements
-- Store complete published page JSON structures as versions
+- Store complete published page JSON structures as versions (including all languages, conditions, data table configs)
 - Drafts are always loaded fresh from database (no JSON storage)
+- Published versions serve stored structure but re-run dynamic elements (data retrieval, condition evaluation)
 - Publish/unpublish page versions for end users
 - Version comparison using php-diff library
 - Version restoration functionality
@@ -57,9 +95,15 @@ Implement a page versioning and publishing system where published page versions 
 ### 2. Modified PageService
 - `getPage()` method updated to:
   - Check if published version exists in page_versions table
-  - Return published version JSON for regular users
-  - Return fresh draft from database for developers/admins (existing getPage logic)
+  - For published versions: load stored JSON structure and re-run dynamic elements (data retrieval, conditions)
+  - For drafts: return fresh data from database for developers/admins (existing getPage logic)
   - Add preview parameter to force draft serving
+- `getPageSections()` method updated for hybrid serving:
+  - For published versions: use stored section structure but re-run data retrieval and condition evaluation
+  - For drafts: use existing database-driven logic
+- New `servePublishedVersion()` method to handle hybrid serving logic
+- New `hydratePublishedPage()` method to re-run dynamic elements on stored structure
+- New `hydratePublishedSections()` method to refresh dynamic content in stored sections
 
 ## Version Comparison Features
 
@@ -118,11 +162,14 @@ Implement a page versioning and publishing system where published page versions 
 4. Add version listing and retrieval methods
 5. Update PageService to check for published versions first
 
-### Phase 3: Page Serving Logic
-1. Modify PageService.getPage() to serve published versions for regular users
-2. Keep existing draft serving for developers/admins
-3. Add preview parameter support
-4. Implement fallback logic (serve draft if no published version)
+### Phase 3: Hybrid Page Serving Logic
+1. Implement `servePublishedVersion()` method to load stored JSON and re-run dynamic elements
+2. Implement `hydratePublishedPage()` method for data retrieval and condition evaluation on stored structure
+3. Implement `hydratePublishedSections()` method to refresh dynamic content in stored section structures
+4. Modify PageService.getPage() and getPageSections() to route between published vs draft serving
+5. Add preview parameter support to force draft serving for authorized users
+6. Implement fallback logic (serve draft if no published version exists)
+7. Add proper error handling for corrupted or missing published versions
 
 ### Phase 4: Version Comparison & Diff
 1. Implement version comparison using php-diff library
@@ -144,8 +191,9 @@ Implement a page versioning and publishing system where published page versions 
 4. Cache optimization for frequently accessed published versions
 
 ## Success Criteria
-- End users see published versions from stored JSON snapshots
+- End users see published versions with fresh data (stored structure + dynamic elements)
 - Developers see live drafts from database (always current)
+- Published pages maintain consistency while showing fresh dynamic content
 - Version comparison works with php-diff library
 - Publishing workflow is intuitive and reliable
 - Performance impact is minimal on page serving
