@@ -372,3 +372,1471 @@ Implement timezone-aware scheduling for user notifications with a single configu
 - Proper access controls for timezone updates
 - Audit trail for timezone changes
 - Server timezone detection with fallback to UTC
+
+
+## Docker Deployment & Installation System
+
+### Overview
+Implement a complete Docker-based deployment system that enables one-click installation and setup of the entire CMS stack (Symfony backend, React frontend, MySQL, Redis). Users should be able to deploy on any server with Docker support and access a web-based installer for initial configuration.
+
+### Critical Security & Race Condition Fixes
+
+#### 1. Update Race Condition Prevention
+**Risk**: Multiple admins clicking "Install/Update" simultaneously causes double execution, corrupted state, or resource conflicts.
+
+**Solution**: Database advisory locks with UI prevention
+- Use MySQL `GET_LOCK('cms_update_operation', 300)` before any update/installation
+- UI shows "Update in progress by [user]" with real-time status
+- Queue concurrent requests or reject with clear error message
+- Lock automatically releases on completion or timeout
+
+#### 2. Docker Socket Security
+**Risk**: Direct app access to `/var/run/docker.sock` is privilege escalation - app can control host Docker daemon.
+
+**Solution**: Sidecar orchestrator pattern with restricted API
+- Run minimal `cms-orchestrator` sidecar container with Docker socket access
+- App communicates via HTTP API with allowlist: `pull`, `restart`, `logs` only
+- mTLS authentication between app and orchestrator
+- Shared secret validation for all API calls
+- Orchestrator validates container names against allowlist
+
+#### 3. Secrets Management
+**Risk**: Plain `.env` files contain production secrets, backups may leak credentials.
+
+**Solution**: Docker secrets with split configuration
+- **Docker Secrets**: Use Docker secrets for sensitive data (DB passwords, JWT keys)
+- **Split Config**: `.env` (non-secret config) vs `.env.secrets` (mounted secrets)
+- **Never in Images**: Secrets never baked into container images
+- **Vault Integration**: Consider HashiCorp Vault for enterprise deployments
+- **Backup Safety**: Secrets excluded from backup archives
+
+### Core Requirements
+- **Multi-stage Docker build** for optimized production images (separate dev/prod stages)
+- **Docker Compose orchestration** for complete stack (backend, frontend, database, cache, reverse proxy)
+- **Web-based installation wizard** accessible at first startup for initial setup
+- **Automatic SSL certificate generation** using Let's Encrypt or self-signed certificates
+- **Environment-based configuration** with .env file generation
+- **Database initialization scripts** that run automatically on first startup
+- **Volume management** for persistent data (database, uploads, logs, certificates)
+- **Health checks** for all services with automatic restart policies
+
+### What Gets Deployed vs. What Persists
+
+#### What You Push/Update
+- **Backend Image**: `your-registry/cms-backend:1.2.3` (Symfony app with new code/features)
+- **Frontend Image**: `your-registry/cms-frontend:1.2.3` (React/Next.js built assets)
+- **Optional**: Reverse proxy image updates (nginx/caddy with new config)
+
+#### What Persists (Never Overwritten)
+- **Database Data**: Lives in persistent Docker volume or external MySQL service
+- **User Uploads**: Files, images, documents in dedicated volumes
+- **Configuration**: Custom settings, SSL certificates, environment configs
+- **Database Schema**: Evolves through migrations, not replacement
+
+#### Database Strategies (Both Safe)
+
+**Option A - MySQL in Docker (Recommended for simplicity):**
+```yaml
+services:
+  db:
+    image: mysql:8
+    volumes:
+      - db_data:/var/lib/mysql  # Persistent - survives image updates
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password  # Docker secret
+    secrets:
+      - db_root_password
+
+  backend:
+    image: your-registry/cms-backend:1.2.3
+    volumes:
+      - plugins_data:/var/www/html/plugins  # ← Plugin files persist
+      - app_uploads:/var/www/html/public/uploads
+    environment:
+      DOCKER_ORCHESTRATOR_URL: http://orchestrator:8080
+      DOCKER_ORCHESTRATOR_SECRET: ${DOCKER_SECRET}
+    depends_on:
+      - orchestrator
+
+  orchestrator:  # ← Security sidecar for Docker operations
+    image: your-registry/cms-orchestrator:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Only orchestrator has socket access
+    environment:
+      SHARED_SECRET: ${DOCKER_SECRET}
+    ports:
+      - "8080"  # Internal API for app communication
+
+volumes:
+  db_data:      # Database data persists
+  plugins_data: # Plugin files persist across updates
+  app_uploads:  # User uploads persist
+
+secrets:
+  db_root_password:
+    file: ./secrets/db_root_password.txt  # Never in git
+```
+
+**Option B - External MySQL (Cloud/VM):**
+- RDS, Aurora, Cloud SQL, or dedicated MySQL server
+- App connects via `DATABASE_URL` environment variable
+- Database persists independently of Docker deployments
+
+### Database Update Strategy (No Overwrites)
+
+#### Doctrine Migrations Approach (Recommended)
+- **What**: Each version gets Doctrine migration classes (e.g., `Version20251010AddSystemUpdates`)
+- **Tracking**: `doctrine_migration_versions` table tracks applied migrations
+- **Execution**: Only pending migrations run - nothing overwritten
+- **Safety**: Transactional execution with rollback capability
+
+**Example Migration:**
+```php
+final class Version20251010AddSystemUpdates extends AbstractMigration
+{
+    public function getDescription(): string
+    {
+        return 'Add system_updates tables for auto-update system';
+    }
+
+    public function up(Schema $schema): void
+    {
+        $this->addSql(<<<SQL
+CREATE TABLE system_updates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  version_from VARCHAR(20),
+  version_to VARCHAR(20),
+  update_type ENUM('minor','major','patch','security'),
+  status ENUM('pending','downloading','installing','migrating','completed','failed','rolled_back'),
+  started_at DATETIME,
+  completed_at DATETIME NULL,
+  rollback_available BOOLEAN DEFAULT FALSE,
+  backup_path VARCHAR(500) NULL,
+  error_message TEXT NULL,
+  initiated_by INT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SQL);
+    }
+
+    public function down(Schema $schema): void
+    {
+        $this->addSql('DROP TABLE system_updates');
+    }
+}
+```
+
+#### How Updates Work
+1. **Version v1.0.0**: Initial schema created
+2. **Version v1.1.0**: Migration adds `system_updates` table
+3. **Version v1.2.0**: Migration adds `system_versions` table
+4. **User at v1.1.0**: Downloads v1.2.0 → Only migration for v1.2.0 runs
+5. **Result**: Database evolves incrementally, data preserved
+
+#### Alternative: Raw SQL Scripts
+- **Tracking Table**: `schema_applied_scripts` (script_name, applied_at)
+- **Execution**: Scan directory, run only unapplied scripts in order
+- **Same Safety**: Only needed scripts run, transactional execution
+
+### Update Process Flow
+
+#### Automated Update Sequence with Race Condition Prevention
+1. **Admin clicks "Install Update" in CMS UI**
+2. **Acquire Update Lock**: Get MySQL advisory lock `GET_LOCK('cms_update_operation', 300)`
+   - If lock fails: Show "Update in progress by [other admin]" message
+   - UI prevents multiple concurrent update attempts
+3. **Enable maintenance mode** (503 for non-admins)
+4. **Create backup** (database + uploads, excluding secrets)
+5. **Pull new images** via orchestrator sidecar:
+   ```bash
+   # App calls orchestrator API (not direct Docker)
+   POST /orchestrator/pull?service=backend,frontend
+   ```
+6. **Restart containers** via orchestrator:
+   ```bash
+   POST /orchestrator/restart?service=backend,frontend
+   ```
+7. **Run migrations** inside backend container via orchestrator:
+   ```bash
+   POST /orchestrator/exec?service=backend&command=php bin/console doctrine:migrations:migrate --no-interaction --all-or-nothing
+   ```
+8. **Health checks** verify system works
+9. **Release Update Lock**: `RELEASE_LOCK('cms_update_operation')`
+10. **Disable maintenance mode**
+
+#### Lock Management Implementation
+```php
+// In UpdateService
+public function acquireUpdateLock(string $userId): bool
+{
+    $lockAcquired = $this->connection->executeQuery(
+        "SELECT GET_LOCK('cms_update_operation', 300) as lock_acquired"
+    )->fetchOne();
+
+    if ($lockAcquired) {
+        // Store lock holder info
+        $this->connection->executeStatement(
+            "INSERT INTO system_update_locks (lock_name, user_id, acquired_at)
+             VALUES ('cms_update_operation', ?, NOW())
+             ON DUPLICATE KEY UPDATE user_id = ?, acquired_at = NOW()",
+            [$userId, $userId]
+        );
+        return true;
+    }
+
+    // Return who holds the lock
+    $holder = $this->connection->executeQuery(
+        "SELECT u.name FROM system_update_locks l JOIN users u ON l.user_id = u.id
+         WHERE l.lock_name = 'cms_update_operation'"
+    )->fetchOne();
+
+    throw new UpdateInProgressException("Update in progress by: " . $holder);
+}
+```
+
+#### Rollback Process with Non-Reversible Migration Handling
+1. **Admin clicks "Rollback"**
+2. **Acquire Update Lock**: Same locking mechanism prevents concurrent operations
+3. **Enable maintenance mode**
+4. **Assess Rollback Options**:
+   - **Check Migration Reversibility**: Query migration classes for `isTransactional()` and `down()` methods
+   - **Mark Non-Reversible**: Flag migrations that cannot be safely reversed
+   - **Prioritize Backup Restore**: For non-reversible migrations, use backup restoration
+5. **Execute Rollback Strategy**:
+   - **Option A - Reversible Migrations**: Run `down()` methods in reverse order
+   - **Option B - Non-Reversible**: Restore from pre-update backup (database + plugins)
+   - **Hybrid**: Run reversible migrations, then restore non-reversible via backup
+6. **Switch to previous image tags** via orchestrator
+7. **Restart containers** and verify system health
+
+#### Migration Reversibility Tracking
+```php
+// In MigrationService
+public function assessMigrationReversibility(string $version): array
+{
+    $migrations = $this->getMigrationsForVersion($version);
+    $assessment = [];
+
+    foreach ($migrations as $migration) {
+        $reflection = new ReflectionClass($migration);
+        $hasDownMethod = $reflection->hasMethod('down');
+        $isTransactional = $reflection->hasMethod('isTransactional') ?
+            $migration->isTransactional() : true;
+
+        $assessment[] = [
+            'class' => $migration::class,
+            'reversible' => $hasDownMethod,
+            'transactional' => $isTransactional,
+            'risk_level' => $this->calculateRiskLevel($migration)
+        ];
+    }
+
+    return $assessment;
+}
+
+public function calculateRiskLevel(AbstractMigration $migration): string
+{
+    // Analyze migration for DROP TABLE, data deletion, etc.
+    $sql = $migration->getSql(); // Hypothetical method
+    if (str_contains($sql, 'DROP TABLE') || str_contains($sql, 'DELETE FROM')) {
+        return 'high'; // Requires backup restore
+    }
+    return 'low'; // Safe to reverse with down() method
+}
+```
+
+### Key Safety Features
+
+#### Data Persistence Guarantee
+- **Docker volumes**: Survive container/image updates
+- **External databases**: Independent of application deployment
+- **Incremental schema changes**: Only additions/modifications, never full replacement
+
+#### Update Safety
+- **Pre-update backup**: Full database and file backup before any changes
+- **Transactional migrations**: All-or-nothing execution
+- **Health verification**: Automated checks after updates
+- **Rollback capability**: Multiple rollback strategies available
+
+#### No Overwrite Scenarios
+- ✅ **App code**: Updates via new images
+- ✅ **Database schema**: Evolves via migrations
+- ✅ **User data**: Persists in volumes/external storage
+- ✅ **Configuration**: Environment files and volumes
+- ❌ **No**: Full database replacement or data loss
+
+### Database Schema Changes
+
+#### 1. New Table: `system_installation`
+- **Purpose**: Track installation state and configuration
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY, single row expected)
+  - `installation_completed` BOOLEAN DEFAULT FALSE
+  - `installed_version` VARCHAR(20) - Current installed version
+  - `installed_at` DATETIME
+  - `admin_user_created` BOOLEAN DEFAULT FALSE
+  - `database_initialized` BOOLEAN DEFAULT FALSE
+  - `ssl_configured` BOOLEAN DEFAULT FALSE
+  - `installation_token` VARCHAR(64) - One-time token for installation security
+
+#### 2. New Table: `system_versions`
+- **Purpose**: Track available versions for auto-updates
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `version` VARCHAR(20) UNIQUE - Version number (e.g., "1.0.0")
+  - `release_date` DATETIME
+  - `is_current` BOOLEAN DEFAULT FALSE
+  - `update_available` BOOLEAN DEFAULT FALSE
+  - `changelog` TEXT - Release notes
+  - `download_url` VARCHAR(500) - Docker image or update package URL
+  - `migration_scripts` JSON - List of SQL scripts to run for this version
+
+### API Endpoints
+
+#### Installation Wizard
+- `GET /install` - Serve installation wizard UI (only accessible if not installed)
+- `POST /install/database` - Configure database connection and initialize
+- `POST /install/admin-user` - Create initial admin user
+- `POST /install/complete` - Mark installation as complete
+- `GET /install/status` - Check installation progress
+
+#### System Management
+- `GET /admin/system/status` - Get system health and version info
+- `GET /admin/system/info` - Get system information (Docker, versions, etc.)
+- `POST /admin/system/restart` - Restart services (admin only)
+- `GET /admin/system/locks` - Check active update locks and holders
+
+#### Orchestrator API (Internal - Sidecar Communication)
+- `POST /orchestrator/pull` - Pull Docker images (allowlist: backend, frontend)
+- `POST /orchestrator/restart` - Restart containers (allowlist validation)
+- `POST /orchestrator/exec` - Execute commands in containers (restricted)
+- `GET /orchestrator/status` - Get container status
+- `GET /orchestrator/logs` - Get container logs (authenticated)
+
+### Service Layer Changes
+
+#### 1. InstallationService
+- `isInstalled(): bool` - Check if system is already installed
+- `initializeDatabase(): bool` - Run initial database setup
+- `createAdminUser(array $userData): User` - Create first admin user
+- `completeInstallation(): bool` - Mark installation as complete
+- `generateSecureToken(): string` - Generate installation security token
+- `validateInstallationToken(string $token): bool` - Validate token
+
+#### 2. SystemService
+- `getSystemInfo(): array` - Get system status, versions, Docker info
+- `checkHealth(): array` - Health check all services
+- `restartServices(): bool` - Restart Docker services
+- `getDockerInfo(): array` - Get Docker container information
+
+#### 3. DockerService (Updated with Orchestrator)
+- `pullImages(array $services): bool` - Pull new images via orchestrator sidecar
+- `restartContainers(array $services): bool` - Restart containers via orchestrator
+- `executeInContainer(string $service, string $command): string` - Execute commands safely via orchestrator
+- `getContainerStatus(): array` - Get status via orchestrator API
+- `getLogs(string $service): array` - Get container logs via orchestrator
+
+#### 4. OrchestratorService (New)
+- **Purpose**: Secure communication with Docker orchestrator sidecar
+- `callOrchestrator(string $endpoint, array $params): array` - Make authenticated API calls
+- `validateResponse(array $response): bool` - Verify orchestrator responses
+- `handleOrchestratorError(array $error): void` - Process orchestrator errors
+
+### Implementation Strategy
+
+#### Phase 1: Docker Infrastructure Setup
+1. Create multi-stage Dockerfile for Symfony backend with PHP 8.3, optimized for production
+2. Create Dockerfile for React Next.js frontend with Node.js build process
+3. Create docker-compose.yml with all services (backend, frontend, mysql:8, redis, nginx)
+4. Implement environment variable management with .env template
+5. Add Docker health checks and restart policies
+6. Create volume configuration for persistent data
+
+#### Phase 2: Installation Wizard Backend
+1. Create InstallationController with web-based wizard endpoints
+2. Implement InstallationService for database setup and admin user creation
+3. Add installation middleware to protect system until setup is complete
+4. Create installation templates using Twig (responsive design)
+5. Implement secure token-based installation process
+6. Add database migration handling for initial setup
+
+#### Phase 3: System Management & Monitoring
+1. Create SystemController for admin system management
+2. Implement DockerService for container management
+3. Add system health check endpoints
+4. Create system info dashboard for admins
+5. Implement service restart functionality
+6. Add logging and monitoring integration
+
+#### Phase 4: Production Optimization & Security
+1. Implement SSL certificate management (Let's Encrypt integration)
+2. Add security headers and Docker hardening
+3. Create backup/restore scripts for Docker volumes
+4. Implement log rotation and monitoring
+5. Add rate limiting and security middleware
+6. Create production deployment documentation
+
+### Security Considerations
+
+#### 1. Installation Security
+- **One-time installation token** required for setup access
+- **Secure admin password requirements** (complexity, length)
+- **Installation lockout** after completion to prevent re-installation
+- **Secure defaults** for all configuration options
+
+#### 2. Docker Security
+- **Non-root user execution** in all containers
+- **Minimal base images** to reduce attack surface
+- **Secret management** for database passwords and API keys
+- **Network isolation** between services
+- **Regular security updates** for base images
+
+#### 3. Runtime Security
+- **Container vulnerability scanning** in CI/CD
+- **Intrusion detection** and monitoring
+- **Secure defaults** for all services
+- **Regular security audits** and updates
+
+### Dependencies
+- Add Docker and Docker Compose to deployment requirements
+- Add `symfony/twig-bundle` for installation templates (if not already present)
+- Consider adding monitoring tools (Prometheus, Grafana) for production deployments
+
+### Success Criteria
+- **One-command deployment**: `docker-compose up -d` starts entire system
+- **Web-based setup**: Users complete installation through browser wizard
+- **Production ready**: Optimized images, security hardening, monitoring
+- **Easy maintenance**: Update commands, backup/restore, health monitoring
+- **Scalable**: Support for multiple environments (dev/staging/prod)
+
+## Modern CMS Installation Wizard
+
+### Overview
+Create a professional, user-friendly web-based installation wizard that guides users through initial CMS setup, similar to WordPress installation. Users access the site URL after Docker deployment and are automatically redirected to the installer if the system isn't configured yet.
+
+### Current Issues
+- **Manual setup complexity**: Requires command-line database setup and manual configuration
+- **No guided experience**: Users must understand Symfony/PHP/MySQL configuration
+- **Security risks**: Default credentials and exposed configuration during setup
+- **No validation**: Users can create insecure installations
+
+### Core Requirements
+- **Automatic installer detection** - Redirect to installer if system not configured
+- **Step-by-step wizard** - Database config → Admin user → Site settings → Complete
+- **Input validation** - Real-time validation with helpful error messages
+- **Secure defaults** - Automatically generate secure passwords and tokens
+- **Progress tracking** - Visual progress indicator and ability to resume
+- **Responsive design** - Works on mobile and desktop
+- **Multi-language support** - Installation wizard respects language settings
+
+### Database Schema Changes
+
+#### 1. Update `system_installation` table (from Docker section)
+- Add installation step tracking columns
+- Store installation progress and user inputs
+- Track installation attempts and security
+
+#### 2. New Table: `installation_steps`
+- **Purpose**: Track individual installation steps and their status
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `step_key` VARCHAR(50) UNIQUE - e.g., 'database', 'admin_user', 'site_config'
+  - `step_name` VARCHAR(100) - Human readable name
+  - `step_order` INT - Execution order
+  - `completed` BOOLEAN DEFAULT FALSE
+  - `completed_at` DATETIME NULL
+  - `error_message` TEXT NULL - Any errors during this step
+
+### API Endpoints
+
+#### Installation Steps
+- `GET /install/steps` - Get available installation steps and current progress
+- `POST /install/step/{step_key}` - Execute specific installation step
+- `GET /install/validate/{step_key}` - Validate data for specific step
+- `POST /install/skip/{step_key}` - Skip optional installation step
+
+#### Data Validation
+- `POST /install/validate/database` - Test database connection
+- `POST /install/validate/admin-user` - Validate admin user data
+- `POST /install/validate/site` - Validate site configuration
+
+### Service Layer Changes
+
+#### 1. InstallationWizardService
+- `getInstallationSteps(): array` - Get all available steps with status
+- `executeStep(string $stepKey, array $data): array` - Execute specific step
+- `validateStepData(string $stepKey, array $data): array` - Validate step input
+- `getCurrentStep(): string` - Get current active step
+- `canSkipStep(string $stepKey): bool` - Check if step can be skipped
+- `resetInstallation(): void` - Reset installation (admin only, dangerous)
+
+#### 2. DatabaseSetupService
+- `testConnection(array $config): bool` - Test database connectivity
+- `initializeDatabase(): bool` - Run schema creation and initial data
+- `createTables(): bool` - Execute CREATE TABLE statements
+- `runInitialMigrations(): bool` - Run initial data migrations
+- `validateDatabaseVersion(): bool` - Ensure MySQL 8 compatibility
+
+#### 3. SiteConfigurationService
+- `createAdminUser(array $userData): User` - Create first admin user
+- `setSiteSettings(array $settings): bool` - Configure initial site settings
+- `generateSecurityKeys(): array` - Generate JWT keys, app secrets
+- `setupDefaultContent(): bool` - Create default pages, sections, content
+
+### Implementation Strategy
+
+#### Phase 1: Installation Framework
+1. Create InstallationWizardController with step management
+2. Implement InstallationWizardService for step orchestration
+3. Add installation routing and middleware
+4. Create step validation system with JSON Schema
+5. Implement progress tracking and persistence
+
+#### Phase 2: Database Setup Step
+1. Create database configuration form with real-time validation
+2. Implement DatabaseSetupService for connection testing
+3. Add automatic schema creation from SQL files
+4. Create initial data seeding system
+5. Implement rollback on database setup failure
+
+#### Phase 3: Admin User Creation Step
+1. Create admin user form with password strength validation
+2. Implement secure password generation and validation
+3. Add email verification if SMTP is configured
+4. Create initial admin role and permissions
+5. Implement user creation with transaction safety
+
+#### Phase 4: Site Configuration Step
+1. Create site settings form (site name, description, timezone, etc.)
+2. Implement default language and locale setup
+3. Add initial content creation (welcome page, default sections)
+4. Configure system preferences and defaults
+5. Generate and store security keys (JWT, app secret)
+
+#### Phase 5: Completion & Finalization
+1. Create installation completion page with summary
+2. Implement system lockdown after installation
+3. Add post-installation cleanup (remove installer routes)
+4. Create admin dashboard redirect
+5. Send completion notifications if email configured
+
+### Security Considerations
+
+#### 1. Installation Access Control
+- **Secure token required** for all installation endpoints
+- **IP-based restrictions** for installation access
+- **Time-limited access** to prevent prolonged exposure
+- **Installation lockout** after completion
+
+#### 2. Input Validation & Sanitization
+- **Strict validation** for all user inputs using JSON Schema
+- **SQL injection prevention** in database configuration
+- **Password complexity requirements** for admin user
+- **XSS prevention** in site name and configuration inputs
+
+#### 3. Secure Defaults
+- **Auto-generated secrets** for JWT keys and app secrets
+- **Secure password requirements** with strength validation
+- **Safe database defaults** with minimal privileges
+- **HTTPS enforcement** for production installations
+
+### Dependencies
+- Add `symfony/form` for installation forms (optional, can use JSON API)
+- Add `symfony/validator` for input validation (likely already present)
+- Add `symfony/twig-bundle` for installation templates
+- Consider adding `symfony/translation` for multi-language installer
+
+### Success Criteria
+- **Guided experience**: Step-by-step wizard with clear instructions
+- **Error handling**: Helpful error messages and recovery options
+- **Security**: Secure installation with proper validation and defaults
+- **User-friendly**: Responsive design, progress tracking, input validation
+- **Complete setup**: Fully configured system ready for use after installation
+
+## Auto-Update & Version Management System
+
+### Overview
+Implement an automatic update system that can detect new versions, download and install updates, run database migrations, and provide rollback capabilities. The system should work seamlessly with Docker deployments and provide administrators with full control over update timing and rollback options.
+
+### Current Issues
+- **Manual updates**: No automated way to update the system
+- **Version tracking**: No system to track installed versions and available updates
+- **Migration management**: Database schema updates require manual intervention
+- **Rollback capability**: No way to revert problematic updates
+- **Update security**: No verification of update authenticity
+
+### Core Requirements
+- **Version checking service** that polls for new releases
+- **Automated update downloads** from trusted sources
+- **Database migration handling** with transaction safety
+- **Rollback capabilities** with backup restoration
+- **Update scheduling** and approval workflow
+- **Health checks** before and after updates
+- **Security verification** for downloaded updates
+- **Update logging** and audit trail
+
+### Database Schema Changes
+
+#### 1. Update `system_versions` table (from Docker section)
+- Add update status tracking columns
+- Store update metadata and verification hashes
+- Track update attempts and success/failure
+
+#### 2. New Table: `system_updates`
+- **Purpose**: Track update attempts, status, and rollback information
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `version_from` VARCHAR(20) - Version being updated from
+  - `version_to` VARCHAR(20) - Target version
+  - `update_type` ENUM('minor', 'major', 'patch', 'security') - Update classification
+  - `status` ENUM('pending', 'downloading', 'installing', 'migrating', 'completed', 'failed', 'rolled_back')
+  - `started_at` DATETIME
+  - `completed_at` DATETIME NULL
+  - `rollback_available` BOOLEAN DEFAULT FALSE
+  - `backup_path` VARCHAR(500) NULL - Path to backup for rollback
+  - `error_message` TEXT NULL
+  - `initiated_by` INT - User who initiated update (FK to users)
+
+#### 3. New Table: `system_update_logs`
+- **Purpose**: Detailed logging of update process steps
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `update_id` INT (FK to system_updates)
+  - `step` VARCHAR(100) - Update step (e.g., 'download', 'backup', 'migration')
+  - `status` ENUM('started', 'completed', 'failed')
+  - `message` TEXT - Log message
+  - `timestamp` DATETIME
+  - `duration_ms` INT NULL - Step execution time
+
+### API Endpoints
+
+#### Version Management
+- `GET /admin/system/version/current` - Get current installed version
+- `GET /admin/system/version/available` - Check for available updates
+- `GET /admin/system/version/changelog/{version}` - Get changelog for specific version
+
+#### Update Management
+- `POST /admin/system/updates/check` - Manually check for updates
+- `POST /admin/system/updates/download/{version}` - Download specific version
+- `POST /admin/system/updates/install/{version}` - Install downloaded update
+- `GET /admin/system/updates/status` - Get update status and progress
+- `POST /admin/system/updates/cancel` - Cancel in-progress update
+
+#### Rollback Management
+- `GET /admin/system/updates/rollback/available` - List available rollback points
+- `POST /admin/system/updates/rollback/{update_id}` - Rollback to specific update
+- `GET /admin/system/updates/backup/status` - Check backup status
+
+### Service Layer Changes
+
+#### 1. VersionManagementService
+- `getCurrentVersion(): string` - Get currently installed version
+- `checkForUpdates(): array` - Check remote server for new versions
+- `downloadVersion(string $version): bool` - Download update package
+- `validateUpdatePackage(string $path): bool` - Verify package integrity
+- `getVersionChangelog(string $version): string` - Get release notes
+
+#### 2. UpdateService
+- `startUpdate(string $version): Update` - Initiate update process
+- `executeUpdate(Update $update): bool` - Execute update steps
+- `rollbackUpdate(int $updateId): bool` - Rollback to previous version
+- `getUpdateStatus(int $updateId): array` - Get detailed update progress
+- `cancelUpdate(int $updateId): bool` - Cancel in-progress update
+- `cleanupFailedUpdate(int $updateId): bool` - Clean up after failed update
+
+#### 3. BackupService
+- `createBackup(): string` - Create system backup before update
+- `validateBackup(string $path): bool` - Verify backup integrity
+- `restoreBackup(string $path): bool` - Restore from backup
+- `cleanupOldBackups(): bool` - Remove old backup files
+- `getBackupInfo(): array` - Get backup status and size
+
+#### 4. MigrationService
+- `runMigrations(string $version): bool` - Execute database migrations for version
+- `validateMigrations(string $version): array` - Pre-validate migration scripts
+- `rollbackMigrations(string $version): bool` - Rollback database changes
+- `getMigrationStatus(): array` - Check migration execution status
+
+### Implementation Strategy
+
+#### Phase 1: Version Tracking Infrastructure
+1. Create VersionManagementService for version checking and tracking
+2. Implement system version detection from composer.json or version file
+3. Add version endpoint for remote update server communication
+4. Create version comparison and dependency checking
+5. Implement security verification for version packages (checksums, signatures)
+6. **Docker Integration**: Store version info in system_versions table for tracking
+
+#### Phase 2: Update Download & Validation
+1. Create UpdateService for managing update lifecycle
+2. Implement secure download from trusted update servers
+3. Add package integrity verification (SHA256, GPG signatures)
+4. Create update staging area for downloaded packages
+5. Implement update package extraction and validation
+
+#### Phase 3: Database Migration System
+1. Create MigrationService for handling database schema updates
+2. Implement migration script discovery and ordering
+3. Add transaction-based migration execution with rollback capability
+4. Create migration pre-validation (syntax, permissions, conflicts)
+5. Implement migration logging and error recovery
+
+#### Phase 4: Backup & Rollback System
+1. Create BackupService for system state preservation
+2. Implement database backup (mysqldump) and file system backup
+3. Add backup compression and encryption
+4. Create rollback procedures with validation
+5. Implement backup cleanup and retention policies
+
+#### Phase 5: Update Orchestration & UI
+1. Create update orchestration with step-by-step execution
+2. Implement health checks before/after updates
+3. Add update progress tracking and real-time status
+4. Create admin UI for update management
+5. Implement update scheduling and approval workflows
+6. **Docker Integration**: Implement maintenance mode, image pulling, container restarts
+7. **Migration Integration**: Automatic Doctrine migration execution in containers
+
+#### Phase 6: Monitoring & Maintenance
+1. Add comprehensive update logging and audit trails
+2. Implement update success/failure notifications
+3. Create system health monitoring post-update
+4. Add automated testing for updates in staging environments
+5. Implement update analytics and success rate tracking
+
+### Docker Update Process Integration
+
+#### Automated Update Workflow
+1. **Version Detection**: CMS checks remote update server for new versions
+2. **Admin Approval**: Admin sees available updates in system dashboard
+3. **Maintenance Mode**: System enables maintenance mode (503 responses)
+4. **Backup Creation**: Automatic database + file backup before changes
+5. **Image Download**: Pull new backend/frontend Docker images
+6. **Container Restart**: `docker compose up -d` with new images
+7. **Migration Execution**:
+   ```bash
+   # Inside backend container
+   php bin/console doctrine:migrations:migrate --no-interaction --all-or-nothing
+   ```
+8. **Health Verification**: Automated health checks on all services
+9. **Maintenance Off**: Disable maintenance mode, system live
+
+#### Rollback Workflow
+1. **Rollback Trigger**: Admin clicks rollback in emergency
+2. **Maintenance Mode**: Enable maintenance mode
+3. **Strategy Selection**:
+   - **Option A**: Run Doctrine down migrations (if available)
+   - **Option B**: Restore from pre-update backup
+4. **Image Revert**: Switch Docker Compose to previous image tags
+5. **Container Restart**: `docker compose up -d` with old images
+6. **Verification**: Health checks and manual testing
+7. **Maintenance Off**: Return to normal operation
+
+#### Migration Safety Features
+- **Transactional Execution**: All migrations run in single transaction
+- **Version Tracking**: `doctrine_migration_versions` table prevents re-runs
+- **Incremental Updates**: Only pending migrations execute (e.g., update3 if at update2)
+- **Down Migrations**: Reversible changes with rollback capability
+- **Backup Integration**: Full backup before any schema changes
+
+### Security Considerations
+
+#### 1. Update Source Verification
+- **Signed packages** with GPG verification
+- **Checksum validation** for all downloaded files
+- **Trusted update servers** with certificate pinning
+- **Package integrity checks** before installation
+
+#### 2. Database Migration Security
+- **Transaction safety** for all migrations
+- **Backup verification** before destructive operations
+- **Permission validation** for database user
+- **Migration rollback testing** in development
+
+#### 3. Runtime Security During Updates
+- **Maintenance mode** during updates to prevent user access
+- **Service isolation** during update process
+- **Timeout handling** to prevent hanging updates
+- **Resource limits** to prevent update process from consuming all resources
+
+#### 4. Rollback Security
+- **Backup encryption** and secure storage
+- **Rollback validation** before execution
+- **Access controls** for rollback operations
+- **Audit logging** for all rollback activities
+
+### Dependencies
+- Add `guzzlehttp/guzzle` for HTTP client (likely already present)
+- Add `symfony/process` for executing system commands (likely already present)
+- Add `symfony/filesystem` for file operations (likely already present)
+- Consider adding `paragonie/halite` for encryption/signing operations
+
+### Success Criteria
+- **Automated updates**: System can detect, download, and install updates automatically
+- **Safe migrations**: Database changes are transactional with full rollback capability
+- **Admin control**: Administrators can schedule, approve, and monitor updates
+- **Reliability**: Comprehensive error handling and recovery mechanisms
+- **Security**: All updates are verified and validated before installation
+- **Monitoring**: Full audit trail and health monitoring for all update operations
+
+## Plugin Management System
+
+### Overview
+Implement a comprehensive plugin system that allows runtime installation, updates, and management of CMS extensions. Plugins must survive core system updates, automatically resolve compatible versions, and execute database migrations safely within the Docker deployment architecture.
+
+### Core Requirements
+- **Runtime Plugin Installation**: Download and install plugins from a registry at runtime
+- **Persistent Plugin Storage**: Plugins survive Docker image updates via persistent volumes
+- **Version Compatibility**: Automatic resolution of plugin versions compatible with core versions
+- **Plugin Migrations**: Safe execution of plugin database migrations with rollback capability
+- **Plugin Lifecycle Management**: Enable/disable, update, and remove plugins through admin UI
+- **Security Validation**: Signed packages with integrity verification
+- **Dependency Resolution**: Handle plugin dependencies and conflicts
+
+### Plugin Architecture (Plan A - Runtime-Installed Plugins)
+
+**Chosen Approach**: Runtime-installed plugins with Doctrine migrations for maximum flexibility and safety.
+
+- **Storage**: Plugins downloaded to persistent volume (`/var/www/html/plugins`)
+- **Persistence**: Plugins survive Docker image updates via named volumes
+- **Updates**: Dynamic downloads from plugin registry with automatic compatibility resolution
+- **Migrations**: Doctrine migrations per plugin with full rollback capability
+- **Security**: GPG signature verification and SHA256 integrity checks
+
+### Docker Integration
+
+#### Persistent Plugin Storage
+```yaml
+services:
+  backend:
+    volumes:
+      - plugins_data:/var/www/html/plugins        # ← Plugin files persist
+      - app_uploads:/var/www/html/public/uploads
+      - app_logs:/var/www/html/var/log
+
+volumes:
+  plugins_data:  # Survives all deployments
+  app_uploads:
+  app_logs:
+```
+
+#### Plugin Directory Structure
+```
+/var/www/html/plugins/
+├── _staging/          # Temporary download area
+├── acme/
+│   ├── seo/
+│   │   ├── plugin.json
+│   │   ├── migrations/
+│   │   ├── src/
+│   │   └── assets/
+│   └── forms/
+└── vendor/
+```
+
+### Plugin Package Format
+
+#### Plugin Manifest (plugin.json)
+```json
+{
+  "name": "acme/seo",
+  "displayName": "ACME SEO Plugin",
+  "version": "2.3.1",
+  "description": "SEO optimization tools",
+  "engines": {
+    "core": ">=1.6.0 <2.0.0",
+    "php": ">=8.2",
+    "mysql": ">=8.0"
+  },
+  "dependencies": {
+    "acme/core": ">=1.0.0"
+  },
+  "migrations": [
+    "migrations/2025_01_10_init.sql",
+    "migrations/2025_03_01_add_idx.sql"
+  ],
+  "symfonyBundles": [
+    "Acme\\Seo\\AcmeSeoBundle"
+  ],
+  "frontend": {
+    "assets": [
+      "dist/seo-widget.js",
+      "dist/seo-widget.css"
+    ]
+  },
+  "checksums": {
+    "archiveSha256": "...",
+    "filesSha256": {...}
+  },
+  "signature": "BASE64_GPG_SIGNATURE"
+}
+```
+
+### Database Schema Changes
+
+#### 1. New Table: `installed_plugins`
+- **Purpose**: Track installed plugins and their state
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `name` VARCHAR(150) UNIQUE - e.g., 'acme/seo'
+  - `display_name` VARCHAR(200)
+  - `version` VARCHAR(50)
+  - `state` ENUM('enabled','disabled','installing','error','incompatible') DEFAULT 'disabled'
+  - `installed_at` DATETIME
+  - `updated_at` DATETIME
+  - `integrity_sha256` CHAR(64) NULL
+  - `source_url` VARCHAR(500) NULL
+  - `engines_core` VARCHAR(100) - Compatibility range
+  - `dependencies` JSON - Plugin dependencies
+
+#### 2. New Table: `plugin_migrations`
+- **Purpose**: Track applied plugin database migrations
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `plugin_name` VARCHAR(150)
+  - `migration_key` VARCHAR(255) - e.g., '2025_03_01_add_idx.sql'
+  - `applied_at` DATETIME
+  - `checksum` VARCHAR(64) - Migration file integrity
+  - UNIQUE KEY `plugin_migration` (`plugin_name`, `migration_key`)
+
+#### 3. New Table: `system_update_locks`
+- **Purpose**: Track active update operations and prevent race conditions
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `lock_name` VARCHAR(100) UNIQUE - e.g., 'cms_update_operation', 'plugin_install'
+  - `user_id` INT (FK to users) - Admin who acquired the lock
+  - `acquired_at` DATETIME - When lock was acquired
+  - `expires_at` DATETIME - Lock timeout (300 seconds from acquired_at)
+  - `operation_type` ENUM('core_update', 'plugin_install', 'plugin_update', 'rollback') - Type of operation
+
+#### 4. Update `system_updates` table
+- Add `plugin_updates` JSON field to track plugin changes in updates
+
+### API Endpoints
+
+#### Plugin Management
+- `GET /admin/plugins` - List installed plugins with status
+- `GET /admin/plugins/available` - List available plugins from registry
+- `POST /admin/plugins/install` - Install plugin from registry
+- `POST /admin/plugins/{name}/update` - Update specific plugin
+- `POST /admin/plugins/{name}/enable` - Enable plugin
+- `POST /admin/plugins/{name}/disable` - Disable plugin
+- `DELETE /admin/plugins/{name}` - Remove plugin
+- `GET /admin/plugins/{name}/status` - Get plugin health status
+- `GET /admin/plugins/updates/plan` - Plan updates for core upgrade
+
+#### Plugin Registry
+- `GET /api/plugins/registry/search` - Search plugin registry
+- `GET /api/plugins/registry/{name}` - Get plugin details
+- `GET /api/plugins/registry/{name}/versions` - Get available versions
+
+### Service Layer Changes
+
+#### 1. PluginManagerService
+- `installPlugin(string $name, string $version): bool` - Install plugin from registry
+- `updatePlugin(string $name, string $version): bool` - Update existing plugin
+- `removePlugin(string $name): bool` - Safely remove plugin
+- `enablePlugin(string $name): bool` - Enable plugin
+- `disablePlugin(string $name): bool` - Disable plugin
+- `checkPluginHealth(string $name): array` - Verify plugin integrity
+
+#### 2. PluginRegistryService
+- `searchPlugins(string $query): array` - Search available plugins
+- `getPluginInfo(string $name): array` - Get plugin metadata
+- `getCompatibleVersions(string $name, string $coreVersion): array` - Find compatible versions
+- `downloadPlugin(string $name, string $version): string` - Download plugin package
+- `verifyPluginPackage(string $path, array $manifest): bool` - Verify package integrity
+
+#### 3. PluginMigrationService
+- `runPluginMigrations(string $pluginName): bool` - Execute pending Doctrine migrations for plugin
+- `rollbackPluginMigrations(string $pluginName, string $toVersion): bool` - Rollback plugin migrations
+- `getPendingMigrations(string $pluginName): array` - List unapplied Doctrine migrations
+- `validateMigrations(string $pluginName): array` - Pre-validate migration classes
+- `loadPluginMigrations(string $pluginName): void` - Dynamically load plugin migration classes
+
+#### 4. PluginCompatibilityService
+- `resolveCompatibleVersions(array $plugins, string $targetCoreVersion): array` - Resolve version conflicts
+- `checkPluginCompatibility(string $pluginName, string $version, string $coreVersion): bool`
+- `findUpgradePath(string $pluginName, string $currentVersion, string $targetVersion): array`
+
+### Plugin Update Workflows
+
+#### How Plugins Survive Core Updates
+1. **Persistent Storage**: Plugins stored in `plugins_data` Docker volume
+2. **Volume Persistence**: Docker volumes survive container/image updates
+3. **Compatibility Check**: On core update, system checks plugin compatibility
+4. **Auto-Resolution**: Incompatible plugins automatically updated to compatible versions
+5. **Fallback**: If no compatible version exists, plugin disabled (not removed)
+
+#### Core Update with Plugin Compatibility Resolution
+1. **Version Detection**: Admin initiates core update to version X.X.X
+2. **Compatibility Analysis**: For each installed plugin:
+   - Check `engines.core` range in plugin.json against target core version
+   - Query plugin registry for compatible versions
+   - Select highest compatible version (or disable if none found)
+3. **Update Planning**: Generate plan showing:
+   - ✅ **Keep**: Plugin compatible, no changes needed
+   - 🔄 **Update**: Plugin needs newer version for compatibility
+   - ❌ **Disable**: No compatible version available (temporary)
+4. **Execution** (maintenance mode with backups):
+   - Create DB backup + plugin directory snapshot
+   - Pull new core Docker images and restart containers
+   - Download updated plugins to `/plugins/_staging`
+   - Verify GPG signatures and SHA256 checksums
+   - Atomically swap plugin directories (`_staging` → plugin folder)
+   - Run **only pending Doctrine migrations** per plugin
+   - Clear/warmup Symfony cache (loads new plugin bundles)
+   - Health checks and re-enable site
+
+#### Plugin-Only Updates
+1. **Manual Update**: Admin selects plugin for update from CMS UI
+2. **Version Resolution**: System finds latest compatible version
+3. **Download & Verify**: Download to staging, verify integrity
+4. **Migration Preview**: Show which Doctrine migrations will run
+5. **Atomic Update**: Swap plugin files, run pending migrations
+6. **Cache Rebuild**: Clear Symfony cache to load new plugin code
+7. **Health Checks**: Verify plugin functionality
+
+#### Plugin Registry Integration
+- **Registry API**: JSON endpoint returning available plugin versions
+- **Compatibility Data**: Each version includes `engines.core` range
+- **Download URLs**: Secure links with checksums and signatures
+- **Version Resolution**: Semantic version comparison with compatibility constraints
+
+#### Example Compatibility Resolution
+```php
+// Target core: 1.8.0
+// Plugin: acme/seo current: 2.2.0
+
+$compatibleVersions = $registry->getVersions('acme/seo', [
+    'engines.core' => '>=1.6.0 <2.0.0'  // From plugin.json
+]);
+
+// Available: 2.2.0, 2.3.1, 3.0.0
+// Compatible with core 1.8.0: 2.2.0, 2.3.1
+// Select: 2.3.1 (highest compatible)
+
+// Result: Update acme/seo from 2.2.0 → 2.3.1
+```
+
+#### Plugin Persistence Guarantee
+- ✅ **Files**: Stored in Docker volume, survive image updates
+- ✅ **Database**: Plugin migrations tracked in Doctrine tables
+- ✅ **Configuration**: Plugin settings persist across updates
+- ✅ **User Data**: Plugin-generated content preserved
+- ❌ **No Loss**: Plugins never deleted during core updates
+
+### Doctrine Migration Handling for Plugins
+
+**Chosen Strategy**: Doctrine migrations per plugin for consistency with core system and full rollback capability.
+
+#### Plugin Migration Structure
+- Each plugin includes namespaced Doctrine migration classes
+- Example: `Acme\Seo\Migrations\Version20250110Init`
+- Migrations follow standard Doctrine patterns with `up()` and `down()` methods
+- Migration execution scoped to plugin namespace to avoid conflicts
+
+#### Migration Execution Process
+1. **Plugin Installation/Update**: Load plugin migration classes dynamically
+2. **Namespace Isolation**: Execute migrations within plugin-specific namespace
+3. **Version Tracking**: Doctrine's `doctrine_migration_versions` table tracks applied migrations
+4. **Transactional Safety**: All migrations run transactionally with rollback capability
+
+#### Plugin Migration Example
+```php
+<?php
+declare(strict_types=1);
+
+namespace Acme\Seo\Migrations;
+
+use Doctrine\DBAL\Schema\Schema;
+use Doctrine\Migrations\AbstractMigration;
+
+final class Version20250110Init extends AbstractMigration
+{
+    public function getDescription(): string
+    {
+        return 'Initialize SEO plugin tables';
+    }
+
+    public function up(Schema $schema): void
+    {
+        $this->addSql(<<<SQL
+CREATE TABLE acme_seo_metadata (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    page_id INT NOT NULL,
+    title VARCHAR(255),
+    description TEXT,
+    keywords VARCHAR(500),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+SQL);
+    }
+
+    public function down(Schema $schema): void
+    {
+        $this->addSql('DROP TABLE acme_seo_metadata');
+    }
+}
+```
+
+### Implementation Strategy
+
+#### Phase 1: Plugin Infrastructure
+1. Create persistent volume structure for plugin storage
+2. Implement plugin manifest validation and parsing
+3. Create installed_plugins and plugin_migrations tables
+4. Build PluginManagerService foundation
+5. Add plugin directory management utilities
+
+#### Phase 2: Plugin Registry Integration
+1. Create PluginRegistryService for external plugin discovery
+2. Implement plugin download and signature verification
+3. Add plugin package extraction and integrity checking
+4. Create plugin manifest caching system
+5. Build plugin search and browsing interface
+
+#### Phase 3: Plugin Lifecycle Management
+1. Implement install/update/remove operations
+2. Create enable/disable functionality with dependency checking
+3. Add plugin health monitoring and self-checks
+4. Implement plugin configuration management
+5. Create plugin permission and security controls
+
+#### Phase 4: Migration System Integration
+1. Choose migration strategy (Doctrine vs SQL files)
+2. Implement PluginMigrationService
+3. Create migration dependency resolution
+4. Add rollback capability for plugin updates
+5. Integrate with core update process
+
+#### Phase 5: Compatibility & Auto-Resolution
+1. Implement PluginCompatibilityService
+2. Create version conflict resolution algorithms
+3. Add automatic plugin updates during core upgrades
+4. Implement compatibility testing framework
+5. Create admin interface for compatibility management
+
+#### Phase 6: Advanced Features & Security
+1. Add plugin marketplace with ratings/reviews
+2. Implement plugin dependency management
+3. Create sandboxed plugin execution environment
+4. Add comprehensive security scanning
+5. Implement plugin update scheduling and automation
+
+### Security Considerations
+
+#### 1. Plugin Package Security
+- **GPG Signature Verification**: All plugins must be signed by trusted developers
+- **SHA256 Integrity Checks**: Verify package and file integrity
+- **Sandbox Execution**: Plugins run in restricted environment
+- **File System Isolation**: Plugins limited to designated directories
+
+#### 2. Runtime Security
+- **Permission System**: Plugins request specific permissions
+- **Database Access Control**: Limited database operations per plugin
+- **Network Restrictions**: Control external API access
+- **Resource Limits**: CPU/memory limits per plugin
+
+#### 3. Update Security
+- **Trusted Registry**: Only install from verified plugin registry
+- **Version Validation**: Prevent downgrade attacks
+- **Migration Auditing**: Log all database changes by plugins
+- **Rollback Verification**: Ensure rollback operations are safe
+
+### Dependencies
+- Add `guzzlehttp/guzzle` for registry API calls (if not present)
+- Add `symfony/finder` for plugin file discovery
+- Add `paragonie/halite` or similar for signature verification
+- Consider adding `composer/semver` for version compatibility checking
+
+### Dynamic Plugin Loading in Symfony
+
+#### PSR-4 Autoloading for Plugins
+- **Runtime Autoloading**: Plugins register PSR-4 namespaces on enable
+- **ClassLoader Integration**: Modify Composer autoloader to include plugin paths
+- **Cache Management**: Clear/warmup Symfony cache after plugin changes
+
+#### Symfony Bundle Registration
+- **Dynamic Bundles**: Plugins can include Symfony bundles in manifest
+- **Kernel Integration**: Register plugin bundles with Symfony kernel
+- **Compiler Passes**: Allow plugins to register custom compiler passes
+
+#### Plugin Loading Process
+1. **Boot Time**: Scan enabled plugins in `installed_plugins` table
+2. **Autoloader Setup**: Register PSR-4 paths for each plugin
+3. **Bundle Registration**: Load and register Symfony bundles
+4. **Cache Warmup**: Rebuild container with new plugin classes
+
+#### Symfony Container Cache Management (Critical)
+**Risk**: Runtime bundle changes require proper cache management; incorrect handling causes odd bugs, class loading issues, or stale container definitions.
+
+**Solution**: Comprehensive cache rebuild with PHP-FPM bounce
+```php
+// In PluginLoaderService - Critical for runtime bundle changes
+public function loadEnabledPlugins(): void
+{
+    $enabledPlugins = $this->pluginRepository->findEnabledPlugins();
+
+    foreach ($enabledPlugins as $plugin) {
+        // Register PSR-4 autoloading
+        $this->autoloader->addPsr4(
+            $plugin->getPsr4Namespace(),
+            "/var/www/html/plugins/{$plugin->getName()}/src"
+        );
+
+        // Register Symfony bundles
+        foreach ($plugin->getSymfonyBundles() as $bundleClass) {
+            $this->kernel->registerBundle(new $bundleClass());
+        }
+    }
+
+    // CRITICAL: Full cache rebuild sequence
+    $this->rebuildSymfonyCache();
+}
+
+// Critical cache rebuild sequence after plugin changes
+public function rebuildSymfonyCache(): void
+{
+    // Step 1: Clear cache without warmup (invalidate old container)
+    $this->process->run('php bin/console cache:clear --no-warmup --env=prod');
+
+    // Step 2: Clear OPcache if available (prevent stale bytecode)
+    if (function_exists('opcache_reset')) {
+        opcache_reset();
+    }
+
+    // Step 3: Full cache warmup with new bundle definitions
+    $this->process->run('php bin/console cache:warmup --env=prod');
+
+    // Step 4: Graceful PHP-FPM reload (load new code without killing connections)
+    $this->orchestrator->exec('backend', 'kill -USR2 $(pidof php-fpm)');
+
+    // Step 5: Health check to verify plugin loading
+    $this->healthChecker->verifyPluginLoading();
+}
+```
+
+#### Cache Rebuild Triggers
+- **Plugin Enable/Disable**: Full cache rebuild required
+- **Plugin Update**: Cache rebuild after migration execution
+- **Core Update**: Cache rebuild after image restart
+- **Emergency**: Manual cache rebuild available in admin UI
+
+#### OPcache Invalidation
+```php
+// In PluginLoaderService
+public function invalidateOpcodeCache(): void
+{
+    // Reset OPcache to load new plugin classes
+    if (function_exists('opcache_reset')) {
+        opcache_reset();
+    }
+
+    // Invalidate specific plugin files if possible
+    if (function_exists('opcache_invalidate')) {
+        foreach ($this->getPluginFiles() as $file) {
+            opcache_invalidate($file, true);
+        }
+    }
+}
+```
+
+### Success Criteria
+- **Seamless Updates**: Plugins survive core updates with automatic compatibility resolution
+- **Safe Migrations**: Plugin database changes are transactional with rollback
+- **User Experience**: Easy plugin discovery, installation, and management
+- **Security**: All plugins verified and sandboxed
+- **Performance**: Plugin loading and execution optimized
+- **Compatibility**: Automatic version resolution prevents conflicts
+
+## Professional Deployment Integration
+
+### Overview
+Create a comprehensive deployment and operations system that provides enterprise-grade deployment capabilities, monitoring, backup/restore, and maintenance tools. This system should integrate seamlessly with modern DevOps practices while maintaining the simplicity of Docker-based deployment.
+
+### Current Issues
+- **No deployment automation**: Manual Docker commands and configuration
+- **Limited monitoring**: No system health monitoring or alerting
+- **Backup complexity**: No automated backup/restore procedures
+- **Environment management**: Difficult to manage multiple environments
+- **Maintenance burden**: Manual maintenance tasks and troubleshooting
+
+### Core Requirements
+- **CI/CD integration** with automated testing and deployment
+- **Multi-environment support** (development, staging, production)
+- **Comprehensive monitoring** with dashboards and alerting
+- **Automated backup/restore** with retention policies
+- **Log aggregation** and analysis
+- **Performance monitoring** and optimization
+- **Security scanning** and compliance checking
+- **Documentation generation** and deployment guides
+
+### Database Schema Changes
+
+#### 1. New Table: `system_environments`
+- **Purpose**: Track different deployment environments
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `name` VARCHAR(50) UNIQUE - e.g., 'production', 'staging', 'development'
+  - `description` TEXT
+  - `is_active` BOOLEAN DEFAULT TRUE
+  - `config` JSON - Environment-specific configuration
+  - `created_at` DATETIME
+  - `updated_at` DATETIME
+
+#### 2. New Table: `system_backups`
+- **Purpose**: Track backup operations and status
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `backup_type` ENUM('full', 'incremental', 'database', 'files')
+  - `environment_id` INT (FK to system_environments)
+  - `status` ENUM('pending', 'running', 'completed', 'failed')
+  - `file_path` VARCHAR(500)
+  - `file_size` BIGINT
+  - `checksum` VARCHAR(128) - SHA256 hash
+  - `created_at` DATETIME
+  - `completed_at` DATETIME NULL
+  - `retention_days` INT DEFAULT 30
+
+#### 3. New Table: `system_monitoring`
+- **Purpose**: Store monitoring metrics and alerts
+- **Structure** (MySQL 8):
+  - `id` (PRIMARY KEY)
+  - `metric_type` VARCHAR(100) - e.g., 'cpu_usage', 'memory_usage', 'response_time'
+  - `metric_value` DECIMAL(10,2)
+  - `environment_id` INT (FK to system_environments)
+  - `service_name` VARCHAR(100) - e.g., 'backend', 'frontend', 'database'
+  - `timestamp` DATETIME
+  - `alert_triggered` BOOLEAN DEFAULT FALSE
+  - `alert_message` TEXT NULL
+
+### API Endpoints
+
+#### Environment Management
+- `GET /admin/system/environments` - List all environments
+- `POST /admin/system/environments` - Create new environment
+- `PUT /admin/system/environments/{id}` - Update environment configuration
+- `DELETE /admin/system/environments/{id}` - Remove environment
+
+#### Backup & Restore
+- `POST /admin/system/backup/create` - Create system backup
+- `GET /admin/system/backup/list` - List available backups
+- `POST /admin/system/backup/restore/{backup_id}` - Restore from backup
+- `DELETE /admin/system/backup/{backup_id}` - Delete backup
+- `GET /admin/system/backup/status` - Get backup operation status
+
+#### Monitoring & Health
+- `GET /admin/system/health` - System health check
+- `GET /admin/system/metrics` - Get system metrics
+- `GET /admin/system/logs` - Get system logs
+- `POST /admin/system/alerts/test` - Test alert system
+- `GET /admin/system/performance` - Get performance metrics
+
+### Service Layer Changes
+
+#### 1. DeploymentService
+- `deployToEnvironment(string $environment, string $version): bool` - Deploy specific version to environment
+- `rollbackEnvironment(string $environment, string $version): bool` - Rollback environment to previous version
+- `getDeploymentStatus(string $environment): array` - Get deployment status
+- `validateDeployment(string $environment): array` - Pre-deployment validation
+
+#### 2. MonitoringService
+- `collectMetrics(): array` - Collect system metrics
+- `checkHealth(): array` - Perform health checks
+- `sendAlerts(array $alerts): bool` - Send monitoring alerts
+- `getPerformanceData(): array` - Get performance statistics
+- `analyzeLogs(): array` - Analyze system logs for issues
+
+#### 3. BackupRestoreService
+- `createBackup(array $options): Backup` - Create system backup
+- `restoreBackup(int $backupId): bool` - Restore from backup
+- `validateBackup(int $backupId): bool` - Verify backup integrity
+- `cleanupOldBackups(): bool` - Remove expired backups
+- `getBackupSchedule(): array` - Get backup scheduling information
+
+#### 4. EnvironmentService
+- `createEnvironment(array $config): Environment` - Create new environment
+- `updateEnvironment(int $id, array $config): bool` - Update environment
+- `syncEnvironments(): bool` - Sync environment configurations
+- `validateEnvironment(int $id): array` - Validate environment configuration
+
+### Implementation Strategy
+
+#### Phase 1: Infrastructure Automation
+1. Create Docker Compose templates for different environments
+2. Implement environment configuration management
+3. Add automated SSL certificate management
+4. Create deployment scripts and CI/CD pipelines
+5. Implement blue-green deployment strategy
+
+#### Phase 2: Monitoring & Observability
+1. Integrate Prometheus/Grafana for metrics collection
+2. Implement health check endpoints for all services
+3. Add log aggregation with ELK stack or similar
+4. Create alerting system for critical issues
+5. Implement performance monitoring and profiling
+
+#### Phase 3: Backup & Disaster Recovery
+1. Create automated backup system for database and files
+2. Implement backup encryption and secure storage
+3. Add backup validation and integrity checking
+4. Create disaster recovery procedures and testing
+5. Implement backup retention and cleanup policies
+
+#### Phase 4: Security & Compliance
+1. Add security scanning for containers and dependencies
+2. Implement compliance checking (GDPR, HIPAA, etc.)
+3. Create security audit logging and reporting
+4. Add intrusion detection and prevention
+5. Implement secure configuration management
+
+#### Phase 5: Operations & Maintenance
+1. Create automated maintenance scripts (log rotation, cleanup)
+2. Implement capacity planning and scaling
+3. Add performance optimization tools
+4. Create operational runbooks and documentation
+5. Implement change management and approval workflows
+
+#### Phase 6: CI/CD Integration
+1. Create GitHub Actions or similar CI/CD pipelines
+2. Implement automated testing (unit, integration, e2e)
+3. Add deployment approval and rollback workflows
+4. Create staging environment automation
+5. Implement canary deployment strategies
+
+### Security Considerations
+
+#### 1. Access Control
+- **Role-based access** for deployment and monitoring operations
+- **Audit logging** for all administrative actions
+- **Multi-factor authentication** for critical operations
+- **API key management** for external integrations
+
+#### 2. Data Protection
+- **Encryption at rest** for backups and sensitive data
+- **Secure communication** between all services
+- **Data classification** and appropriate protection levels
+- **Compliance frameworks** for different regulations
+
+#### 3. Infrastructure Security
+- **Container hardening** and vulnerability scanning
+- **Network segmentation** and firewall rules
+- **Secret management** and credential rotation
+- **Regular security updates** and patch management
+
+### Dependencies
+- Add monitoring stack (Prometheus, Grafana, Alertmanager)
+- Add logging stack (ELK or Loki)
+- Add backup tools (restic, borgbackup)
+- Add security scanning tools (Trivy, Clair)
+- Consider cloud provider integrations (AWS, Azure, GCP)
+
+### Success Criteria
+- **Automated deployment**: One-click deployment to any environment
+- **Full observability**: Complete monitoring and alerting system
+- **Reliable backups**: Automated, tested backup/restore procedures
+- **Security compliance**: Enterprise-grade security and compliance
+- **Operational excellence**: Automated maintenance and optimization
+- **Scalability**: Support for high-traffic production deployments
