@@ -52,20 +52,19 @@ When serving a published version:
 
 ### 1. New Table: `page_versions`
 - **Purpose**: Store complete published page JSON structures as versions
-- **Structure**:
+- **Structure** (MySQL 8):
   - `id` (PRIMARY KEY)
   - `id_pages` (FOREIGN KEY to pages.id)
   - `version_number` (INT, incremental per page)
   - `version_name` (VARCHAR, optional user-defined name)
-  - `page_json` (LONGTEXT, complete JSON structure from getPage())
-  - `is_current` (BOOLEAN, marks the currently published version)
+  - `page_json` (JSON, complete JSON structure from getPage())
   - `created_by` (INT, user who created the version)
   - `created_at` (DATETIME)
   - `published_at` (DATETIME, when version was published)
   - `metadata` (JSON, additional info like change summary)
 
 ### 2. Update `pages` table
-- Add `id_page_versions` (published_version_id) (INT, points to currently published version in page_versions table)
+- Add `published_version_id` (INT, points to currently published version in page_versions table)
 
 ## API Endpoints
 
@@ -107,11 +106,13 @@ When serving a published version:
 
 ## Version Comparison Features
 
-### 1. JSON Diff Using php-diff Library
-- Use [jfcherng/php-diff](https://github.com/jfcherng/php-diff) library for text diff functionality
-- Convert page JSON to formatted strings for comparison
-- Support multiple diff formats (unified, side-by-side HTML, JSON)
-- Highlight changes in page content, sections, and translations
+### 1. Semantic JSON Diff with Multiple Formats
+- **JSON Patch (RFC 6902)**: Semantic diff showing add/remove/replace operations
+- **JSON Merge Patch**: Simplified patch format for partial updates
+- **php-diff library**: For human-readable side-by-side views with normalized, pretty-printed JSON
+- **Normalization**: Stable key ordering and consistent formatting to reduce noise
+- **Multi-format support**: Unified, side-by-side HTML, and semantic patch outputs
+- **Content-aware highlighting**: Changes in page content, sections, and translations
 
 ### 2. Visual Diff Interface
 - Web interface to compare versions side-by-side
@@ -119,16 +120,12 @@ When serving a published version:
 - Show changes in page structure and content
 - Allow filtering by content sections
 
-## Migration Strategy
+## Implementation Strategy
 
-### 1. Fresh Implementation
-- This is the first version - no backward compatibility needed
+### Fresh Implementation
+- First version implementation - no legacy compatibility concerns
 - All pages start without published versions (serve drafts by default)
 - Users must explicitly publish versions to make them live
-
-### 2. Clean Implementation
-- No legacy data migration concerns
-- Direct implementation of new versioning system
 - Existing getPage functionality remains unchanged for draft serving
 
 ## Security Considerations
@@ -146,14 +143,30 @@ When serving a published version:
 ## Dependencies
 - Add `jfcherng/php-diff` package to composer.json for version comparison functionality
 
+## Storage Optimization
+
+### Version Storage Strategy (MySQL 8)
+- Use MySQL JSON type for `page_json` column with native JSON operations
+- Implement gzip compression for large JSON blobs with length tracking
+- Consider sharding large assets (per-section storage) for very large pages
+- Implement retention policies (keep last N versions, or all published + GC drafts)
+
+### Cache Security & Draft Exposure Prevention
+- **Strict authentication** required for all preview/draft endpoints
+- **Cache-Control: no-store** headers on draft/preview responses
+- **X-Robots-Tag: noindex** to prevent search engine indexing
+- **Return 404 for unpublished pages** to public users (never serve drafts)
+- **CDN/proxy-safe** headers to prevent accidental caching of sensitive content
+
 ## Implementation Tasks
 
 ### Phase 1: Database & Core Infrastructure
-1. Create `page_versions` table structure with SQL migration
+1. Create `page_versions` table with MySQL 8 JSON type and proper indexing
 2. Update `pages` table to add `published_version_id` column
-3. Create PageVersion entity with proper Doctrine mappings
-4. Create PageVersionRepository with basic query methods
+3. Create PageVersion entity with Doctrine JSON type mappings
+4. Create PageVersionRepository with JSON query methods
 5. Add jfcherng/php-diff dependency to composer.json
+6. Implement JSON normalization utilities for consistent diff comparison
 
 ### Phase 2: Version Management Core
 1. Implement PageVersionService with basic CRUD operations
@@ -168,14 +181,18 @@ When serving a published version:
 3. Implement `hydratePublishedSections()` method to refresh dynamic content in stored section structures
 4. Modify PageService.getPage() and getPageSections() to route between published vs draft serving
 5. Add preview parameter support to force draft serving for authorized users
-6. Implement fallback logic (serve draft if no published version exists)
-7. Add proper error handling for corrupted or missing published versions
+6. **Security**: Implement strict auth + no-cache headers for draft/preview endpoints
+7. **Security**: Return 404 for unpublished pages to public users (never expose drafts)
+8. Implement fallback logic (serve draft if no published version exists)
+9. Add proper error handling for corrupted or missing published versions
 
-### Phase 4: Version Comparison & Diff
-1. Implement version comparison using php-diff library
-2. Create API endpoint for version comparison
-3. Format page JSON for readable diff display
-4. Add support for different diff formats (unified, side-by-side)
+### Phase 4: Version Comparison & Semantic Diff
+1. Implement JSON Patch (RFC 6902) for semantic diff operations
+2. Implement JSON Merge Patch for simplified patch format
+3. Add JSON normalization utilities (stable key ordering, consistent formatting)
+4. Integrate php-diff library for human-readable side-by-side views
+5. Create API endpoints for version comparison (multiple formats)
+6. Implement diff caching for performance
 
 ### Phase 5: API Endpoints & UI Integration
 1. Implement all admin API endpoints for version management
@@ -184,17 +201,22 @@ When serving a published version:
 4. Add publish/preview controls to page editor
 5. Implement version history browser with diff visualization
 
-### Phase 6: Testing & Optimization
-1. Unit tests for PageVersionService and version logic
-2. Integration tests for publish/serve workflow
-3. Performance tests for version storage and retrieval
-4. Cache optimization for frequently accessed published versions
+### Phase 6: Storage Optimization & Testing
+1. Implement MySQL 8 JSON operations and indexing strategies
+2. Add version retention policies (configurable keep last N versions)
+3. Implement storage monitoring and automated cleanup
+4. Unit tests for PageVersionService and JSON operations
+5. Integration tests for publish/serve workflow with security validation
+6. Performance tests for JSON storage, retrieval, and diff generation
+7. Cache optimization for frequently accessed published versions
+8. Security tests for draft exposure prevention
 
 ## Success Criteria
-- End users see published versions with fresh data (stored structure + dynamic elements)
-- Developers see live drafts from database (always current)
-- Published pages maintain consistency while showing fresh dynamic content
-- Version comparison works with php-diff library
-- Publishing workflow is intuitive and reliable
-- Performance impact is minimal on page serving
-- Security and access controls work correctly
+- **Data Freshness**: End users see published versions with fresh data (stored structure + dynamic elements)
+- **Developer Experience**: Developers see live drafts from database (always current)
+- **Consistency**: Published pages maintain structure consistency while showing fresh dynamic content
+- **Version Comparison**: Semantic diff works with JSON Patch/Merge Patch and php-diff visualization
+- **Security**: Draft content never exposed to public users (404 for unpublished pages)
+- **Performance**: Minimal impact on page serving with optimized storage and caching
+- **Scalability**: Storage growth controlled with retention policies and compression
+- **Reliability**: Single source of truth prevents desync issues in version management
