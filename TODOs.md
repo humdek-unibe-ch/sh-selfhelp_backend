@@ -1651,6 +1651,536 @@ public function invalidateOpcodeCache(): void
 - **Performance**: Plugin loading and execution optimized
 - **Compatibility**: Automatic version resolution prevents conflicts
 
+## Group-Based User Data Access Control
+
+### Overview
+Implement role-based and group-based data access control system where users can only see and manage data (users, user data) from groups they are authorized to access. This prevents data leakage and ensures proper data segregation in multi-tenant environments.
+
+### Core Requirements
+- **Role-Based Access**: Three distinct roles for different access levels
+- **Group-Based Filtering**: Users only see data from their authorized groups
+- **Strict Referential Integrity**: All database relationships properly enforced
+- **Audit Trail**: All data access attempts logged with full context
+- **Automatic Filtering**: API endpoints automatically filter data based on permissions
+
+### Role Structure
+
+#### 1. `data_admin` Role
+- **Purpose**: Full access to all users and user data across all groups
+- **Permissions**:
+  - View all users regardless of group
+  - Edit all users regardless of group
+  - View all user data regardless of group
+  - Edit all user data regardless of group
+  - Bypass all group-based restrictions
+- **Use Case**: System administrators, compliance officers
+
+#### 2. `user_manager` Role
+- **Purpose**: Manage users within selected groups
+- **Permissions**:
+  - View users only in assigned groups
+  - Edit users only in assigned groups
+  - Create users in assigned groups
+  - Delete users in assigned groups
+  - Cannot access user data (financial, personal info)
+- **Use Case**: HR managers, team leads
+
+#### 3. `user_data_manager` Role
+- **Purpose**: Manage user data within selected groups
+- **Permissions**:
+  - View user data only for users in assigned groups
+  - Edit user data only for users in assigned groups
+  - Cannot view or edit user accounts themselves
+  - Cannot create/delete users
+- **Use Case**: Customer service, data processors
+
+### Database Schema Changes
+
+#### 1. Unified Table: `data_access_permissions`
+- **Purpose**: Single comprehensive permissions table with typed nullable FKs for referential integrity
+- **Structure** (MySQL 8, Strict Referential Integrity):
+  - `id` INT PRIMARY KEY AUTO_INCREMENT
+  - `role_id` INT NOT NULL (FK to roles.id, CASCADE DELETE)
+  - `group_id` INT NULL (FK to groups.id, CASCADE DELETE) - Whose data: NULL means "all groups/users"
+  - `data_type` ENUM('users','user_data','pages','assets','all') NOT NULL - What type: users, user_data, pages, etc.
+  - **Typed Resource FKs (enforced referential integrity):**
+    - `data_table_id` INT NULL (FK to data_tables.id, CASCADE DELETE) - Specific data table
+    - `page_id` INT NULL (FK to pages.id, CASCADE DELETE) - Specific page
+    - `asset_id` INT NULL (FK to assets.id, CASCADE DELETE) - Specific asset
+  - `crud_mask` TINYINT UNSIGNED NOT NULL DEFAULT 2 - Bitmask: 1=C, 2=R, 4=U, 8=D
+  - `rule_type` ENUM('allowed','excluded','masked','readonly','conditional') DEFAULT 'allowed'
+  - `conditions` JSON NULL - Future: Time-based, context-based conditions
+  - `field_permissions` JSON NULL - Future: Field-level access control
+  - `metadata` JSON NULL - Future: Extensible configuration options
+  - `priority` INT NOT NULL DEFAULT 0 - Resolution priority for conflicts
+  - `is_active` BOOLEAN NOT NULL DEFAULT TRUE
+  - `created_by` INT NOT NULL (FK to users.id, RESTRICT)
+  - `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  - `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  - **Integrity Constraint**: Only one resource FK can be set per row
+  - KEY `idx_role_group` (`role_id`, `group_id`, `data_type`)
+  - KEY `idx_data_table` (`role_id`, `data_type`, `data_table_id`, `is_active`)
+  - KEY `idx_page` (`role_id`, `data_type`, `page_id`, `is_active`)
+  - KEY `idx_asset` (`role_id`, `data_type`, `asset_id`, `is_active`)
+  - KEY `idx_priority` (`priority`, `is_active`)
+
+**Permission Logic Clarification:**
+- **`group_id`**: Controls WHOSE data the user can access (which users' data)
+- **`Typed Resource FKs`**: Controls WHICH specific resource within that data type
+- **Example**: "User Manager can READ users in Sales group" vs "Data Manager can READ data for ALL users but only from dataTable #5"
+
+**Design Benefits:**
+- ✅ **Referential Integrity**: Real FKs prevent orphaned resource IDs
+- ✅ **Performance**: Targeted indexes per resource family
+- ✅ **Type Safety**: No polymorphic ambiguity in queries
+- ✅ **Extensible**: Easy to add new resource families with new nullable columns
+- ✅ **Future-Ready**: JSON fields for advanced features
+
+#### 3. New Table: `data_access_audit`
+- **Purpose**: Comprehensive audit log for data access operations
+- **Structure** (MySQL 8, Strict Referential Integrity):
+  - `id` INT PRIMARY KEY AUTO_INCREMENT
+  - `user_id` INT NOT NULL (FK to users.id, RESTRICT)
+  - `action` INT NOT NULL (FK to lookups.id) - References lookup table for actions
+  - `data_type` INT NOT NULL (FK to lookups.id) - References lookup table for data types
+  - `data_record_id` INT NULL
+  - `data_table_id` INT NULL (FK to data_tables.id, SET NULL) - For user_data, which specific data table
+  - `user_groups_at_time` JSON NOT NULL
+  - `user_roles_at_time` JSON NOT NULL
+  - `access_granted` BOOLEAN NOT NULL
+  - `filter_criteria` JSON NULL
+  - `records_affected_count` INT NULL
+  - `ip_address` VARCHAR(45) NULL
+  - `user_agent` VARCHAR(500) NULL
+  - `timestamp` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  - KEY `idx_user_timestamp` (`user_id`, `timestamp`)
+  - KEY `idx_action` (`action`, `timestamp`)
+  - KEY `idx_data_type_audit` (`data_type`, `timestamp`)
+  - KEY `idx_access_granted` (`access_granted`, `timestamp`)
+  - KEY `idx_data_table_audit` (`data_table_id`, `timestamp`)
+
+#### 4. Enhanced Configuration Options for User Data
+
+**Data Table Selection Modes:**
+- **All Tables**: Access to all data tables for users in assigned groups (default)
+- **Specific Tables**: Access only to explicitly selected data tables
+- **Exclude Tables**: Access to all tables except explicitly excluded ones
+
+**Custom Data Table Control:**
+- **Individual Table Permissions**: Configure different CRUD permissions for each data table
+- **Field-Level Access**: Control access to specific fields within data tables
+- **Conditional Access**: Time-based or context-based access to data tables
+- **Data Masking**: Automatically mask sensitive fields based on user role
+- **Audit Trail**: Track all data table access with detailed field-level logging
+
+**Configuration Structure in role_group_permissions:**
+- `user_data_table_mode` INT NOT NULL (FK to lookups.id) - References lookup table for modes
+- `created_by` INT NOT NULL (FK to users.id, RESTRICT)
+- `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+- `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+
+**Required Lookup Values:**
+```sql
+-- Data Types
+INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `sort_order`) VALUES
+('DATA_TYPES', 'users', 'Users', 1),
+('DATA_TYPES', 'user_data', 'User Data', 2),
+('DATA_TYPES', 'pages', 'Pages', 3),
+('DATA_TYPES', 'content', 'Content', 4),
+('DATA_TYPES', 'assets', 'Assets', 5),
+('DATA_TYPES', 'all', 'All Data Types', 6);
+
+-- Permission Scopes
+INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `sort_order`) VALUES
+('PERMISSION_SCOPES', 'assigned_groups', 'Assigned Groups Only', 1),
+('PERMISSION_SCOPES', 'all_groups', 'All Groups', 2);
+
+-- Permission Modes (General)
+INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `sort_order`) VALUES
+('PERMISSION_MODES', 'all', 'All Resources', 1),
+('PERMISSION_MODES', 'specific', 'Specific Resources Only', 2),
+('PERMISSION_MODES', 'exclude', 'Exclude Specific Resources', 3);
+
+-- Rule Types (Specific rules for resources)
+INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `sort_order`) VALUES
+('RULE_TYPES', 'allowed', 'Allowed Access', 1),
+('RULE_TYPES', 'excluded', 'Excluded Access', 2),
+('RULE_TYPES', 'masked', 'Masked Data', 3),
+('RULE_TYPES', 'readonly', 'Read Only', 4),
+('RULE_TYPES', 'conditional', 'Conditional Access', 5);
+
+-- Resource Types
+INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `sort_order`) VALUES
+('RESOURCE_TYPES', 'data_table', 'Data Table', 1),
+('RESOURCE_TYPES', 'page', 'Page', 2),
+('RESOURCE_TYPES', 'section', 'Section', 3),
+('RESOURCE_TYPES', 'asset', 'Asset', 4),
+('RESOURCE_TYPES', 'field', 'Field', 5);
+
+-- Audit Actions
+INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `sort_order`) VALUES
+('AUDIT_ACTIONS', 'create', 'Create', 1),
+('AUDIT_ACTIONS', 'read', 'Read', 2),
+('AUDIT_ACTIONS', 'update', 'Update', 3),
+('AUDIT_ACTIONS', 'delete', 'Delete', 4),
+('AUDIT_ACTIONS', 'list', 'List', 5),
+('AUDIT_ACTIONS', 'filter', 'Filter', 6),
+('AUDIT_ACTIONS', 'export', 'Export', 7),
+('AUDIT_ACTIONS', 'import', 'Import', 8);
+```
+
+**Example Configurations:**
+
+```sql
+-- 1. User Manager: Can READ users in Sales group only
+INSERT INTO data_access_permissions (
+    role_id, group_id, data_type, crud_mask, rule_type
+) VALUES (
+    (SELECT id FROM roles WHERE name = 'user_manager'),
+    (SELECT id FROM groups WHERE name = 'sales'),
+    'users',
+    2, -- READ (binary: 0010)
+    'allowed'
+);
+
+-- 2. Data Manager: Can access ALL user data for ALL users, but only from dataTable #5
+INSERT INTO data_access_permissions (
+    role_id, group_id, data_type, data_table_id, crud_mask, rule_type
+) VALUES (
+    (SELECT id FROM roles WHERE name = 'user_data_manager'),
+    NULL, -- ALL groups/users
+    'user_data',
+    5, -- Specific data table ID
+    6, -- READ + UPDATE (binary: 0110)
+    'allowed'
+);
+
+-- 3. Customer Service: Can READ contact data for ALL users, but EXCLUDE sensitive financial data
+INSERT INTO data_access_permissions (
+    role_id, group_id, data_type, data_table_id, crud_mask, rule_type
+) VALUES (
+    (SELECT id FROM roles WHERE name = 'user_data_manager'),
+    NULL, -- ALL groups/users
+    'user_data',
+    2, -- Financial data table ID
+    2, -- READ allowed
+    'excluded' -- But this table is excluded
+);
+```
+
+**Permission Logic Examples:**
+- **Example 1**: User Manager can see user accounts only from Sales group
+- **Example 2**: Data Manager can see ALL user data, but only from dataTable #5 (specific table restriction)
+- **Example 3**: Customer Service can see contact data for all users, but financial data table #2 is excluded
+
+### Effective Access Logic
+
+#### Effective Groups Calculation
+```
+effective_groups = union(
+  groups where (user has membership) ∩ (role grants assigned_groups),
+  all groups where (role grants all_groups)
+)
+```
+
+#### Conflict Resolution Rule
+- **Deny-by-default**: Access is denied unless explicitly granted
+- **Allow if any role grants**: If any role grants permission for the specific data_type & action within effective groups, allow access
+- **Most restrictive wins**: For conflicting permissions, the most restrictive setting applies
+
+### JSON Group Assignment Integrity Problem
+
+#### Issue: Orphaned Group References
+When groups are deleted, JSON arrays containing group IDs (`allowed_data_table_ids`, `excluded_data_table_ids`) won't be automatically updated, leading to:
+- **Stale references**: JSON contains IDs of deleted groups
+- **Inconsistent permissions**: Access rules reference non-existent groups
+- **Security risks**: Unexpected access patterns due to orphaned references
+- **Maintenance burden**: Manual cleanup required after group deletions
+
+#### Solution: Proper Relational Design
+**Replaced JSON approach with junction tables** to maintain referential integrity:
+
+**permission_data_table_rules table** (instead of JSON arrays):
+- `role_group_permission_id` → `role_group_permissions.id` (CASCADE DELETE)
+- `data_table_id` → `data_tables.id` (CASCADE DELETE)
+- `rule_type` → `lookups.id` ('allowed' or 'excluded')
+
+**Benefits:**
+- ✅ **Automatic cleanup**: Deleting groups automatically removes related permissions
+- ✅ **Referential integrity**: Foreign key constraints prevent orphaned records
+- ✅ **Performance**: Indexed joins instead of JSON parsing
+- ✅ **Maintainability**: Standard SQL queries instead of JSON operations
+- ✅ **Auditability**: Clear relationship tracking
+
+#### Migration Strategy for Existing JSON Data
+1. **Extract JSON arrays** from existing `role_group_permissions` records
+2. **Create junction table records** for each group ID in JSON arrays
+3. **Remove JSON columns** after data migration
+4. **Update application code** to use junction table queries
+
+#### Example Migration Query
+```sql
+-- Migrate allowed_data_table_ids JSON to junction table
+INSERT INTO permission_data_table_rules (
+    role_group_permission_id,
+    data_table_id,
+    rule_type,
+    created_by,
+    created_at
+)
+SELECT
+    rgp.id,
+    JSON_UNQUOTE(JSON_EXTRACT(allowed_table.value, '$')) as data_table_id,
+    (SELECT id FROM lookups WHERE lookup_code = 'allowed' AND type_code = 'DATA_TABLE_RULE_TYPES'),
+    rgp.created_by,
+    rgp.created_at
+FROM role_group_permissions rgp
+CROSS JOIN JSON_TABLE(rgp.allowed_data_table_ids, '$[*]' COLUMNS (value INT PATH '$')) allowed_table
+WHERE rgp.allowed_data_table_ids IS NOT NULL;
+```
+
+### SQL-Based Filtering Strategy
+
+#### Core Filtering Pattern (MySQL 8)
+```sql
+-- List users I can READ (whose user accounts I can see):
+SELECT DISTINCT u.*
+FROM users u
+JOIN user_group_members ugm ON ugm.user_id = u.id
+JOIN data_access_permissions dap
+  ON dap.data_type IN ('users', 'all')
+ AND (dap.crud_mask & 2) = 2  -- Check READ bit (0010)
+ AND dap.is_active = 1
+ AND dap.rule_type = 'allowed'
+ AND (dap.group_id IS NULL OR dap.group_id = ugm.group_id) -- User's group matches permission
+JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+WHERE :caller_is_data_admin = 1 OR dap.id IS NOT NULL;
+
+-- Read user_data for specific user (Example: "all data for all users but only dataTable=5"):
+SELECT ud.*
+FROM user_data ud
+JOIN users u ON u.id = ud.user_id
+JOIN user_group_members ugm ON ugm.user_id = u.id
+JOIN data_access_permissions dap
+  ON dap.data_type IN ('user_data', 'all')
+ AND (dap.crud_mask & 2) = 2  -- Check READ bit
+ AND dap.is_active = 1
+ AND (dap.group_id IS NULL OR dap.group_id = ugm.group_id) -- Can access this user's data
+ AND (dap.data_table_id IS NULL OR dap.data_table_id = ud.data_table_id) -- Specific table check
+ AND dap.rule_type = 'allowed'
+JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+WHERE u.id = :target_user
+  AND (:caller_is_data_admin = 1 OR dap.id IS NOT NULL);
+
+-- Check if user can EXCLUDE access to financial data table:
+SELECT 1
+FROM data_access_permissions dap
+JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+WHERE dap.data_type IN ('user_data', 'all')
+  AND (dap.crud_mask & 2) = 2  -- Has READ permission
+  AND dap.is_active = 1
+  AND dap.data_table_id = :financial_table_id  -- Specific table
+  AND dap.rule_type = 'excluded'  -- But it's excluded
+LIMIT 1;
+
+-- List available data tables for a user (which tables I can access for this user):
+SELECT DISTINCT dt.*
+FROM data_tables dt
+CROSS JOIN users target_user
+JOIN user_group_members target_ugm ON target_ugm.user_id = target_user.id
+JOIN data_access_permissions dap
+  ON dap.data_type IN ('user_data', 'all')
+ AND (dap.crud_mask & 2) = 2  -- Has READ permission
+ AND dap.is_active = 1
+ AND (dap.group_id IS NULL OR dap.group_id = target_ugm.group_id) -- Can access this user's data
+ AND (dap.data_table_id IS NULL OR dap.data_table_id = dt.id) -- Table is allowed
+ AND dap.rule_type = 'allowed'
+LEFT JOIN data_access_permissions dap_exclude
+  ON dap_exclude.data_type IN ('user_data', 'all')
+ AND dap_exclude.data_table_id = dt.id
+ AND dap_exclude.rule_type = 'excluded'
+ AND dap_exclude.role_id = dap.role_id
+ AND (dap_exclude.group_id IS NULL OR dap_exclude.group_id = target_ugm.group_id)
+JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+WHERE target_user.id = :target_user_id
+  AND (:caller_is_data_admin = 1 OR dap.id IS NOT NULL)
+  AND dap_exclude.id IS NULL; -- Not explicitly excluded
+```
+
+#### Required Indexes
+- `user_group_members` (`user_id`, `group_id`)
+- `user_roles` (`user_id`, `role_id`)
+- `data_access_permissions` (`role_id`, `group_id`, `data_type`, `is_active`)
+- `data_access_permissions` (`role_id`, `data_type`, `data_table_id`, `is_active`)
+- `data_access_permissions` (`role_id`, `data_type`, `page_id`, `is_active`)
+- `data_access_permissions` (`role_id`, `data_type`, `asset_id`, `is_active`)
+- `data_access_permissions` (`priority`, `is_active`)
+
+### Service Layer Architecture
+
+#### 1. DataAccessControlService (Core Service)
+- `hasPermission(int $userId, string $dataType, string $action, ?int $dataTableId = null, ?int $pageId = null, ?int $assetId = null): bool`
+- `getAccessibleGroups(int $userId, string $dataType): array`
+- `filterDataByPermissions(array $data, int $userId, string $dataType, callable $resourceExtractor): array`
+- `auditAccess(int $userId, string $action, string $dataType, ?int $dataTableId, ?int $pageId, ?int $assetId, bool $granted, array $context): void`
+- `getUserEffectivePermissions(int $userId, string $dataType): array`
+- `resolvePermissionConflicts(array $permissions): array` - Priority-based conflict resolution
+
+#### 2. RoleBasedAccessControlService
+- `getUserRoles(int $userId): array`
+- `hasRole(int $userId, string $roleName): bool`
+- `isDataAdmin(int $userId): bool`
+- `isUserManager(int $userId): bool`
+- `isUserDataManager(int $userId): bool`
+
+#### 3. PermissionManagementService
+- `createPermission(int $roleId, ?int $groupId, string $dataType, array $config): DataAccessPermission`
+- `updatePermission(int $permissionId, array $config): DataAccessPermission`
+- `configureDataTableAccess(int $permissionId, ?int $dataTableId, string $ruleType): void`
+- `configurePageAccess(int $permissionId, ?int $pageId, string $ruleType): void`
+- `configureAssetAccess(int $permissionId, ?int $assetId, string $ruleType): void`
+- `setPermissionPriority(int $permissionId, int $priority): void`
+- `activatePermission(int $permissionId): void`
+- `deactivatePermission(int $permissionId): void`
+
+#### 4. ResourceAccessService
+- `canAccessDataTable(int $userId, int $dataTableId, string $action): bool`
+- `canAccessPage(int $userId, int $pageId, string $action): bool`
+- `canAccessAsset(int $userId, int $assetId, string $action): bool`
+- `getAccessibleDataTables(int $userId, string $action): array`
+- `getAccessiblePages(int $userId, string $action): array`
+- `getAccessibleAssets(int $userId, string $action): array`
+
+#### 5. Modified AdminUserService
+- Integrate with DataAccessControlService for automatic filtering
+- Add role-based permission checks
+- Implement group-based data segregation
+
+### API Endpoints Structure
+
+#### Role & Permission Management
+- `GET /admin/roles/data-access` - List data access roles
+- `POST /admin/roles/{roleId}/data-access/{groupId}` - Assign group access to role
+- `DELETE /admin/roles/{roleId}/data-access/{groupId}` - Remove group access from role
+
+#### Data Access Configuration
+- `GET /admin/data-access/roles/{roleId}/permissions` - Get role data permissions
+- `PUT /admin/data-access/roles/{roleId}/permissions` - Update role data permissions
+- `GET /admin/data-access/groups/{groupId}/assignments` - Get group access assignments
+- `PUT /admin/data-access/roles/{roleId}/groups/{groupId}/user-data-tables` - Configure data table access for user data
+- `GET /admin/data-access/roles/{roleId}/groups/{groupId}/user-data-tables` - Get data table configuration
+
+#### User Data Permissions
+- `GET /admin/users/{userId}/data-permissions` - Get user data access permissions
+- `POST /admin/users/{userId}/data-permissions` - Grant user data access
+- `DELETE /admin/users/{userId}/data-permissions/{category}` - Revoke user data access
+
+#### Filtered Data Access (Modified Endpoints)
+- `GET /admin/users` - Returns users based on caller's permissions
+- `GET /admin/users/{id}` - Returns user if caller has permission
+- `GET /admin/users/{id}/data` - Returns user data if caller has permission
+- `GET /admin/users/{id}/data/tables` - List data tables accessible for this user
+- `GET /admin/users/{id}/data/tables/{tableId}` - Get specific data table data if permitted
+- `POST /admin/users/{id}/data/tables/{tableId}` - Create data in table if permitted
+- `PUT /admin/users/{id}/data/tables/{tableId}` - Update data in table if permitted
+- `DELETE /admin/users/{id}/data/tables/{tableId}` - Delete data from table if permitted
+
+#### Audit & Monitoring
+- `GET /admin/data-access/audit` - Get data access audit logs
+- `GET /admin/data-access/audit/users/{userId}` - Get audit for specific user
+- `GET /admin/data-access/audit/summary` - Get access summary reports
+
+### Implementation Strategy
+
+#### Phase 1: Unified Database Schema
+1. Create unified `data_access_permissions` table with extensible design
+2. Create the three data access roles (`data_admin`, `user_manager`, `user_data_manager`)
+3. Populate all required lookup values (data types, scopes, modes, rule types, resource types)
+4. Create comprehensive database migration scripts with proper indexes
+
+#### Phase 2: Core Access Control Foundation
+1. Implement RoleBasedAccessControlService for role management
+2. Create DataAccessControlService with unified permission checking
+3. Implement PermissionManagementService for CRUD operations on permissions
+4. Add comprehensive audit logging infrastructure with new audit actions
+
+#### Phase 3: Resource-Based Access Control
+1. Implement ResourceAccessService for flexible resource permission checking
+2. Create permission conflict resolution with priority system
+3. Add support for conditional access rules (time-based, context-based)
+4. Implement field-level permissions preparation in metadata JSON
+
+#### Phase 4: Data Table Customization
+1. Implement data table selection modes (all, specific, exclude)
+2. Create resource-specific permission configuration
+3. Add data masking and field-level access control preparation
+4. Implement custom permission rule engine for complex scenarios
+
+#### Phase 5: Service Layer Integration
+1. Modify AdminUserService with unified data access control
+2. Update all data services to integrate with DataAccessControlService
+3. Implement automatic SQL-based filtering for all data operations
+4. Add comprehensive error handling and access denied responses
+
+#### Phase 6: Advanced Features
+1. Implement time-based and context-based conditional permissions
+2. Add data masking capabilities for sensitive fields
+3. Create permission inheritance and cascading rules
+4. Implement bulk permission operations for efficiency
+
+#### Phase 7: Administration & Monitoring
+1. Create unified admin UI for permission management
+2. Add real-time permission conflict detection and resolution
+3. Implement comprehensive audit log viewer with filtering
+4. Create permission analytics and usage reporting
+
+#### Phase 8: Performance Optimization & Testing
+1. Optimize SQL queries with proper indexing strategy
+2. Implement permission caching with invalidation logic
+3. Create comprehensive unit and integration test suites
+4. Performance testing with large datasets and complex permission scenarios
+5. Security testing for data leakage prevention and audit validation
+
+### Security Considerations
+
+#### 1. Data Leakage Prevention
+- **Strict Access Control**: All data access validated against permissions
+- **No Circumvention**: Direct database access blocked by application layer
+- **Audit Everything**: Every data access attempt logged
+- **Fail-Safe Defaults**: Deny access when permissions unclear
+
+#### 2. Referential Integrity
+- **Cascade Deletes**: Clean up permissions when groups/roles/users deleted
+- **Restrict Deletes**: Prevent deletion of referenced entities
+- **Foreign Key Constraints**: Enforce all relationships at database level
+- **Transaction Safety**: All permission changes in transactions
+
+#### 3. Performance Security
+- **Efficient Queries**: Optimized permission checking
+- **Caching Strategy**: Cache permissions with proper invalidation
+- **Rate Limiting**: Prevent brute force permission checking
+- **Resource Protection**: Limit expensive operations
+
+### Success Criteria
+- **Zero Data Leakage**: Users can only access data they're authorized for
+- **Role-Based Access**: Three distinct roles with appropriate permissions
+- **Strict Integrity**: All database relationships properly enforced
+- **Comprehensive Audit**: All access attempts logged and auditable
+- **Performance**: Efficient permission checking without performance impact
+- **Scalability**: Support for large numbers of users and groups
+
+Data Access Matrix:
+┌─────────────────┬──────────────────────┐
+│    WHOSE data   │    WHAT data         │
+├─────────────────┼──────────────────────┤
+│ group_id        │ resource_id          │
+│ (user groups)   │ (specific resources) │
+│                 │                      │
+│ • NULL = all    │ • NULL = all         │
+│ • Group ID =    │ • Resource ID =      │
+│   specific group│   specific resource  │
+└─────────────────┴──────────────────────┘
+
 ## Professional Deployment Integration
 
 ### Overview
