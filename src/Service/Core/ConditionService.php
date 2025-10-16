@@ -286,9 +286,14 @@ class ConditionService
         // If no specific variables required, load all (backward compatibility)
         if (empty($requiredVariables)) {
             $requiredVariables = [
-                'user_group', 'language', 'last_login',
-                'current_date', 'current_datetime', 'current_time',
-                'page_keyword', 'platform'
+                'user_group',
+                'language',
+                'last_login',
+                'current_date',
+                'current_datetime',
+                'current_time',
+                'page_keyword',
+                'platform'
             ];
         }
 
@@ -414,11 +419,6 @@ class ConditionService
                     $section['keyword'] ?? 'unknown'
                 );
 
-                // Always include condition information
-                $section['condition_failed'] = !$conditionResult['result'];
-                $section['condition_error'] = $conditionResult['fields'] ?? '';
-                $section['condition_variables'] = $conditionResult['debug']['variables'] ?? [];
-
                 // Include the original condition as an object for easier frontend handling
                 $conditionObject = $section['condition'];
                 if (is_string($conditionObject)) {
@@ -429,7 +429,12 @@ class ConditionService
                         $conditionObject = json_decode($conditionObject, true);
                     }
                 }
-                $section['condition_object'] = $conditionObject;
+                $section['condition_debug'] = [
+                    "result" => $conditionResult['result'],
+                    "error" => $conditionResult['fields'],
+                    "variables" => $conditionResult['debug']['variables'],
+                    "condition_object" => $conditionObject
+                ];
 
                 // Ensure condition is returned as proper JSON string (not escaped)
                 if (is_string($section['condition'])) {
