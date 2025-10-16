@@ -14,6 +14,7 @@ use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
+use App\Service\Core\ConditionService;
 use App\Service\Core\InterpolationService;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,7 +37,8 @@ class PageService extends BaseService
         private readonly CacheService $cache,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly DataService $dataService,
-        private readonly InterpolationService $interpolationService
+        private readonly InterpolationService $interpolationService,
+        private readonly ConditionService $conditionService
     ) {
     }
 
@@ -415,6 +417,11 @@ class PageService extends BaseService
 
             // Apply variable interpolation for retrieved_data
             $this->applyInterpolationToSections($sections);
+
+            // Apply condition filtering
+            $user = $this->userContextAwareService->getCurrentUser();
+            $userId = $user ? $user->getId() : null;
+            $sections = $this->conditionService->filterSectionsByConditions($sections, $userId);
 
             return $sections;
         });

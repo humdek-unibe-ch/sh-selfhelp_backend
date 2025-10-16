@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7be75d651f52cd0e9e921ef9a519a141",
+    "content-hash": "5d5c28fa8cd4899a05bc629d1b6dab94",
     "packages": [
         {
             "name": "doctrine/cache",
@@ -1297,6 +1297,49 @@
                 "source": "https://github.com/jsonrainbow/json-schema/tree/6.4.1"
             },
             "time": "2025-04-04T13:08:07+00:00"
+        },
+        {
+            "name": "jwadhams/json-logic-php",
+            "version": "1.5.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/jwadhams/json-logic-php.git",
+                "reference": "060aab5ad36ae1fdd74d3006131b197ca777fa48"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/jwadhams/json-logic-php/zipball/060aab5ad36ae1fdd74d3006131b197ca777fa48",
+                "reference": "060aab5ad36ae1fdd74d3006131b197ca777fa48",
+                "shasum": ""
+            },
+            "require": {
+                "php": ">=7.2.0"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^9.3.3"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-0": {
+                    "JWadhams": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Jeremy Wadhams",
+                    "email": "jwadhams@dealerinspire.com"
+                }
+            ],
+            "description": "Build rules with complex comparisons and boolean operators, serialized as JSON, and execute them in PHP",
+            "support": {
+                "issues": "https://github.com/jwadhams/json-logic-php/issues",
+                "source": "https://github.com/jwadhams/json-logic-php/tree/1.5.1"
+            },
+            "time": "2024-07-09T15:20:54+00:00"
         },
         {
             "name": "lcobucci/clock",

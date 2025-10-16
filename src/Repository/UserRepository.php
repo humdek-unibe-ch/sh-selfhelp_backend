@@ -169,4 +169,54 @@ class UserRepository extends ServiceEntityRepository
 
         return $qb->getQuery()->getResult();
     }
+
+    /**
+     * Get user's language ID
+     *
+     * @param int $userId
+     * @return int|null
+     */
+    public function getUserLanguageId(int $userId): ?int
+    {
+        $user = $this->find($userId);
+        return $user ? $user->getIdLanguages() : null;
+    }
+
+    /**
+     * Get user's last login date
+     *
+     * @param int $userId
+     * @return string|null
+     */
+    public function getUserLastLoginDate(int $userId): ?string
+    {
+        $user = $this->find($userId);
+        if (!$user || !$user->getLastLogin()) {
+            return null;
+        }
+
+        return $user->getLastLogin()->format('Y-m-d');
+    }
+
+
+    /**
+     * Get all user's group names
+     *
+     * @param int $userId
+     * @return array
+     */
+    public function getUserGroupNames(int $userId): array
+    {
+        $results = $this->createQueryBuilder('u')
+            ->select('g.name')
+            ->innerJoin('u.usersGroups', 'ug')
+            ->innerJoin('ug.group', 'g')
+            ->where('u.id = :userId')
+            ->orderBy('g.id', 'ASC')
+            ->setParameter('userId', $userId)
+            ->getQuery()
+            ->getScalarResult();
+
+        return array_column($results, 'name');
+    }
 }

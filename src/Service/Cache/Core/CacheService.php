@@ -68,6 +68,9 @@ class CacheService
     /** @var string Cache category for data tables */
     public const CATEGORY_DATA_TABLES = 'data_tables';
 
+    /** @var string Cache category for condition evaluations */
+    public const CATEGORY_CONDITIONS = 'conditions';
+
     /** @var string Cache category for API routes */
     public const CATEGORY_DEFAULT = 'default';
 
@@ -87,6 +90,7 @@ class CacheService
         self::CATEGORY_ACTIONS,
         self::CATEGORY_API_ROUTES,
         self::CATEGORY_DATA_TABLES,
+        self::CATEGORY_CONDITIONS,
         self::CATEGORY_DEFAULT,
     ];
 
