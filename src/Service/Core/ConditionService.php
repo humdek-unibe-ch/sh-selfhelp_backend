@@ -161,13 +161,17 @@ class ConditionService
             $variables = $this->getConditionVariables($userId, $requiredVariables);
 
             // Apply JsonLogic with the fixed condition and loaded variables
-            $result['result'] = \JWadhams\JsonLogic::apply($fixedCondition, $variables);
+            $logicResult = \JWadhams\JsonLogic::apply($fixedCondition, $variables);
+            $result['result'] = \JWadhams\JsonLogic::truthy($logicResult);
 
             // Add debugging information
             $result['debug'] = [
                 'original_condition' => $originalCondition,
+                'fixed_condition' => $fixedCondition,
+                'logic_result' => $logicResult,
                 'required_variables' => $requiredVariables,
-                'variables' => $variables
+                'variables' => $variables,
+                'literal_values_detected' => $this->detectLiteralValuesInCondition($condition)
             ];
 
         } catch (\Exception | \ArgumentCountError $e) {
@@ -209,6 +213,13 @@ class ConditionService
         if (is_array($condition)) {
             foreach ($condition as $key => $value) {
                 if ($key === 'var' && is_string($value)) {
+                    // Skip literal values that look like numbers or interpolated values
+                    // These should not be treated as variable names to look up
+                    if ($this->isLiteralValue($value)) {
+                        // Don't add literal values to variables list
+                        continue;
+                    }
+
                     // Handle wrapped variables like {{var}}
                     if (preg_match('/^\{\{(.+)\}\}$/', $value, $matches)) {
                         $variables[] = $matches[1]; // Extract inner variable name
@@ -224,13 +235,66 @@ class ConditionService
     }
 
     /**
+     * Check if a value should be treated as a literal value rather than a variable name
+     *
+     * @param string $value The value to check
+     * @return bool True if this should be treated as a literal value
+     */
+    private function isLiteralValue(string $value): bool
+    {
+        // Check if it's a number (integer or float)
+        if (is_numeric($value)) {
+            return true;
+        }
+
+        // Check if it looks like an interpolated record ID or similar
+        // This handles cases where {{record_id}} gets replaced with "38"
+        // We consider it literal if it doesn't match known variable patterns
+        $knownVariables = [
+            'user_group', 'user_groups', 'language', 'user_language', 'last_login', 'user_last_login',
+            'current_date', 'current_datetime', 'current_time', 'page_keyword', 'platform'
+        ];
+
+        return !in_array($value, $knownVariables) && !preg_match('/^\{\{(.+)\}\}$/', $value);
+    }
+
+    /**
+     * Detect literal values in a condition for debugging purposes
+     *
+     * @param mixed $condition The condition to analyze
+     * @return array Array of literal values found in the condition
+     */
+    private function detectLiteralValuesInCondition($condition): array
+    {
+        $literalValues = [];
+
+        if (is_array($condition)) {
+            foreach ($condition as $key => $value) {
+                if ($key === 'var' && is_string($value) && $this->isLiteralValue($value)) {
+                    $literalValues[] = $value;
+                } elseif (is_array($value)) {
+                    $literalValues = array_merge($literalValues, $this->detectLiteralValuesInCondition($value));
+                }
+            }
+        }
+
+        return array_unique($literalValues);
+    }
+
+    /**
      * Fix JsonLogic operators that have parameter order differences with React Query Builder
      *
      * @param array $condition The condition array to fix
-     * @return array The fixed condition array
+     * @return mixed The fixed condition (array or literal value)
      */
-    private function fixOperatorParameters(array $condition): array
+    private function fixOperatorParameters(array $condition): mixed
     {
+        // Special case: if this is a single {"var": "literal_value"} structure
+        if (count($condition) === 1 && isset($condition['var']) && is_string($condition['var']) && $this->isLiteralValue($condition['var'])) {
+            // Return the literal value directly instead of the var structure
+            return $condition['var'];
+        }
+
         $result = [];
 
         foreach ($condition as $key => $value) {
@@ -261,6 +325,17 @@ class ConditionService
                         is_array($value[1]) ? $this->fixOperatorParameters($value[1]) : $value[1],
                         is_array($value[0]) ? $this->fixOperatorParameters($value[0]) : $value[0]
                     ];
+                }
+            } elseif ($key === 'var' && is_string($value)) {
+                // Handle var operators - check if this is a literal value that shouldn't be looked up
+                if ($this->isLiteralValue($value)) {
+                    // For literal values, return the value directly instead of the var structure
+                    // But we need to handle this at the parent level, so we'll keep the var structure for now
+                    // and let the special case at the top of this method handle it
+                    $result[$key] = $value;
+                } else {
+                    // For actual variables, keep the var structure
+                    $result[$key] = $value;
                 }
             } elseif (is_array($value)) {
                 $result[$key] = $this->fixOperatorParameters($value);
@@ -429,7 +504,8 @@ class ConditionService
                         $conditionObject = json_decode($conditionObject, true);
                     }
                 }
-                $section['condition_debug'] = [
+                $section['condition_debug'] =
+                 [
                     "result" => $conditionResult['result'],
                     "error" => $conditionResult['fields'],
                     "variables" => $conditionResult['debug']['variables'],
