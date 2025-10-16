@@ -96,6 +96,46 @@ class InterpolationService extends BaseService
     }
 
     /**
+     * Interpolate condition with debug support
+     *
+     * Preserves the original condition as 'condition_original' before interpolating.
+     * Handles JSON decoding for proper storage of the original condition.
+     *
+     * @param array &$section The section array (passed by reference to modify condition_original)
+     * @param array $dataArrays One or more arrays containing variable => value mappings
+     * @return string The interpolated condition
+     */
+    public function interpolateConditionWithDebug(array &$section, array ...$dataArrays): string
+    {
+        // Get the original condition
+        $originalCondition = $section['condition'] ?? '';
+
+        // Preserve the original condition (properly decoded)
+        if (!empty($originalCondition)) {
+            // Handle JSON decoding similar to ConditionService to avoid escaped strings
+            $conditionOriginal = $originalCondition;
+            if (is_string($conditionOriginal)) {
+                // Handle double-encoded JSON strings - decode to get proper JSON string
+                $decoded = json_decode($conditionOriginal, true);
+                if (is_string($decoded)) {
+                    // If we got a string back, that's the unescaped JSON string we want
+                    $conditionOriginal = $decoded;
+                } elseif (is_array($decoded) || is_object($decoded)) {
+                    // If we got an object/array, encode it back to string
+                    $conditionOriginal = json_encode($decoded);
+                }
+                // If decode failed or returned null, keep original
+            } else {
+                $conditionOriginal = json_encode($conditionOriginal);
+            }
+            $section['condition_original'] = $conditionOriginal;
+        }
+
+        // Perform normal interpolation
+        return $this->interpolate($originalCondition, ...$dataArrays);
+    }
+
+    /**
      * Flatten a nested array into dot-notation keys for easier variable access
      *
      * @param array $array The array to flatten

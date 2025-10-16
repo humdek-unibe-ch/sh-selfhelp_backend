@@ -497,6 +497,9 @@ class PageService extends BaseService
             return;
         }
 
+        // Check if debug is enabled for this section
+        $isDebugEnabled = isset($section['debug']) && $section['debug'];
+
         // Interpolate content fields
         if (isset($section['content']) && is_array($section['content'])) {
             $section['content'] = $this->interpolationService->interpolateArray($section['content'], ...$interpolationData);
@@ -508,7 +511,8 @@ class PageService extends BaseService
         }
 
         // Interpolate content fields that may contain variables
-        $this->interpolateContentFields($section, $interpolationData);
+        // Include condition interpolation only if debug is enabled
+        $this->interpolateContentFields($section, $interpolationData, $isDebugEnabled);
     }
 
     /**
@@ -516,8 +520,9 @@ class PageService extends BaseService
      *
      * @param array &$section The section to process (passed by reference)
      * @param array $interpolationData The data arrays for interpolation
+     * @param bool $includeCondition Whether to include condition field interpolation (only when debug enabled)
      */
-    private function interpolateContentFields(array &$section, array $interpolationData): void
+    private function interpolateContentFields(array &$section, array $interpolationData, bool $includeCondition = false): void
     {
         // Direct string fields that may contain variables
         $directStringFields = [
@@ -528,7 +533,12 @@ class PageService extends BaseService
 
         foreach ($directStringFields as $field) {
             if (isset($section[$field]) && is_string($section[$field])) {
-                $section[$field] = $this->interpolationService->interpolate($section[$field], ...$interpolationData);
+                // Special handling for condition field with debug support
+                if ($section['debug'] && $field === 'condition') {
+                    $section[$field] = $this->interpolationService->interpolateConditionWithDebug($section, ...$interpolationData);
+                } else {
+                    $section[$field] = $this->interpolationService->interpolate($section[$field], ...$interpolationData);
+                }
             }
         }
 
