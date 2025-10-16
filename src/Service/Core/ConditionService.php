@@ -2,6 +2,7 @@
 
 namespace App\Service\Core;
 
+use App\Entity\Page;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -358,6 +359,9 @@ class ConditionService
     {
         $variables = [];
 
+        // Get request at the beginning to avoid unassigned variable error
+        $request = $this->requestStack->getCurrentRequest();
+
         // If no specific variables required, load all (backward compatibility)
         if (empty($requiredVariables)) {
             $requiredVariables = [
@@ -378,7 +382,18 @@ class ConditionService
         }
 
         if (in_array('language', $requiredVariables) || in_array('user_language', $requiredVariables)) {
-            $languageId = $this->getUserLanguageId($userId) ?? 2;
+            $languageId = null;
+
+            // First priority: language_id from request query parameter (like ?language_id=2)
+            if ($request && $request->query->has('language_id')) {
+                $languageId = (int) $request->query->get('language_id');
+            }
+
+            // Second priority: user's default language from database
+            if ($languageId === null) {
+                $languageId = $this->getUserLanguageId($userId) ?? 2;
+            }
+
             $variables['language'] = $languageId;
         }
 
@@ -400,15 +415,20 @@ class ConditionService
             $variables['current_time'] = date('H:i');
         }
 
-        // Load context variables only if needed
-        $request = $this->requestStack->getCurrentRequest();
-
         if (in_array('page_keyword', $requiredVariables)) {
             $pageKeyword = '';
             if ($request) {
                 try {
                     $currentRoute = $this->router->match($request->getPathInfo());
-                    $pageKeyword = $currentRoute['_route'] ?? '';
+                    $pageId = $currentRoute['page_id'] ?? null;
+
+                    if ($pageId) {
+                        // Get the actual page keyword from database
+                        $page = $this->entityManager->getRepository(Page::class)->find($pageId);
+                        if ($page) {
+                            $pageKeyword = $page->getKeyword() ?? '';
+                        }
+                    }
                 } catch (\Exception $e) {
                     // Route matching failed, keep empty
                 }
@@ -418,9 +438,15 @@ class ConditionService
 
         if (in_array('platform', $requiredVariables)) {
             $platform = 'web';
-            if ($request && $request->request->get('mobile')) {
+
+            // Check both query parameters and request data for mobile flag
+            if ($request && (
+                $request->query->get('mobile') ||
+                $request->request->get('mobile')
+            )) {
                 $platform = 'mobile';
             }
+
             $variables['platform'] = $platform;
         }
 
