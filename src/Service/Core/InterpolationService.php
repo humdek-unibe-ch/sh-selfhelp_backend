@@ -5,15 +5,74 @@ namespace App\Service\Core;
 use App\Service\Core\BaseService;
 
 /**
- * Service for handling variable interpolation in content fields
+ * Service for handling variable interpolation in content fields using Mustache templating
  *
- * Replaces {{variable_name}} patterns with actual values from provided data arrays.
- * Supports nested data structures and multiple data sources.
+ * Uses Mustache templating engine to replace {{variable_name}} patterns with actual values.
+ * Supports nested data structures, custom helpers, and multiple data sources.
+ * Provides a clean, professional API that's easily extensible and reusable.
  */
 class InterpolationService extends BaseService
 {
+    private \Mustache\Engine $mustache;
+
+    /**
+     * Configuration options for the interpolation service
+     */
+    private array $config;
+
+    /**
+     * Constructor - Initialize Mustache engine
+     *
+     * @param array $config Configuration options:
+     *   - custom_helpers: Array of custom Mustache helpers (optional)
+     */
+    public function __construct(array $config = [])
+    {
+        $this->config = $config;
+
+        // Create Mustache engine with explicit empty array
+        $this->mustache = new \Mustache\Engine([]);
+
+        // Add custom helpers if provided
+        if (!empty($config['custom_helpers'])) {
+            foreach ($config['custom_helpers'] as $name => $helper) {
+                $this->mustache->addHelper($name, $helper);
+            }
+        }
+    }
+
+    /**
+     * Perform Mustache rendering with error handling
+     *
+     * @param string $content The content containing {{variable}} patterns
+     * @param array $dataArrays One or more arrays containing variable => value mappings
+     * @return string The content with variables replaced or original content on error
+     */
+    private function performInterpolation(string $content, array $dataArrays): string
+    {
+        try {
+            // Merge all data arrays into one context, with later arrays taking precedence
+            $context = $this->mergeDataContexts($dataArrays);
+
+            // Render the template with Mustache
+            return $this->mustache->render($content, $context);
+
+        } catch (\Exception $e) {
+            // Log the error but return original content to maintain backward compatibility
+            $this->logError('Mustache interpolation failed: ' . $e->getMessage());
+            return $content;
+        }
+    }
+
     /**
      * Replace {{variable_name}} patterns in content with values from provided data
+     *
+     * Uses Mustache templating engine for robust variable interpolation with support for:
+     * - Nested object properties: {{user.name}}
+     * - Array indexing: {{items.0.name}}
+     * - Conditional sections: {{#user}}...{{/user}}
+     * - Loops: {{#items}}...{{/items}}
+     * - Custom helpers and lambdas
      *
      * @param string $content The content containing {{variable}} patterns
      * @param array $dataArrays One or more arrays containing variable => value mappings
@@ -25,49 +84,14 @@ class InterpolationService extends BaseService
             return $content;
         }
 
-        // Merge all data arrays into one, with later arrays taking precedence
-        $variables = [];
-        foreach ($dataArrays as $dataArray) {
-            $variables = array_merge($variables, $this->flattenArray($dataArray));
-        }
-
-        // Find all {{variable}} patterns
-        preg_match_all('/\{\{([^}]+)\}\}/', $content, $matches);
-
-        if (empty($matches[1])) {
-            return $content;
-        }
-
-        $result = $content;
-
-        // Replace each variable
-        foreach ($matches[1] as $variable) {
-            $variable = trim($variable); // Remove any whitespace
-
-            if (isset($variables[$variable])) {
-                $value = $variables[$variable];
-
-                // Convert arrays/objects to JSON strings for replacement
-                if (is_array($value) || is_object($value)) {
-                    $value = json_encode($value);
-                } elseif (is_bool($value)) {
-                    $value = $value ? 'true' : 'false';
-                } elseif ($value === null) {
-                    $value = '';
-                } else {
-                    $value = (string) $value;
-                }
-
-                $result = str_replace('{{' . $variable . '}}', $value, $result);
-            }
-            // If variable not found, leave it as-is (don't remove the {{variable}})
-        }
-
-        return $result;
+        return $this->performInterpolation($content, $dataArrays);
     }
 
     /**
      * Interpolate variables in an array of content fields recursively
+     *
+     * Processes arrays recursively, interpolating string values while preserving
+     * the structure of nested arrays and objects.
      *
      * @param array $contentArray Array containing content fields to interpolate
      * @param array $dataArrays One or more arrays containing variable => value mappings
@@ -83,7 +107,7 @@ class InterpolationService extends BaseService
             } elseif (is_array($value)) {
                 $result[$key] = $this->interpolateArray($value, ...$dataArrays);
             } elseif (is_object($value)) {
-                // For objects, we'll convert to array, interpolate, then back to object
+                // For objects, convert to array, interpolate, then convert back
                 $arrayValue = json_decode(json_encode($value), true);
                 $interpolatedArray = $this->interpolateArray($arrayValue, ...$dataArrays);
                 $result[$key] = json_decode(json_encode($interpolatedArray));
@@ -136,31 +160,92 @@ class InterpolationService extends BaseService
     }
 
     /**
-     * Flatten a nested array into dot-notation keys for easier variable access
+     * Render a Mustache template with partial support
      *
-     * @param array $array The array to flatten
-     * @param string $prefix Prefix for nested keys
-     * @return array Flattened array with dot-notation keys
+     * Allows rendering templates with reusable partials for better organization.
+     *
+     * @param string $template The Mustache template content
+     * @param array $context Data context for rendering
+     * @param array $partials Optional partial templates (name => content)
+     * @return string The rendered template
      */
-    private function flattenArray(array $array, string $prefix = ''): array
+    public function renderTemplate(string $template, array $context = [], array $partials = []): string
     {
-        $result = [];
-
-        foreach ($array as $key => $value) {
-            $fullKey = $prefix ? $prefix . '.' . $key : $key;
-
-            if (is_array($value)) {
-                $result = array_merge($result, $this->flattenArray($value, $fullKey));
-            } else {
-                $result[$fullKey] = $value;
+        try {
+            if (!empty($partials)) {
+                $loader = new \Mustache\Loader\ArrayLoader($partials);
+                $this->mustache->setPartialsLoader($loader);
             }
 
-            // Also keep the original key for direct access
-            if (!isset($result[$key])) {
-                $result[$key] = $value;
-            }
+            return $this->mustache->render($template, $context);
+
+        } catch (\Exception $e) {
+            $this->logError('Mustache template rendering failed: ' . $e->getMessage());
+            return $template;
+        }
+    }
+
+    /**
+     * Add a custom Mustache helper
+     *
+     * Allows extending Mustache functionality with custom helpers for complex logic.
+     *
+     * @param string $name Helper name (used as {{name}} in templates)
+     * @param callable $helper The helper function
+     * @return self For method chaining
+     */
+    public function addHelper(string $name, callable $helper): self
+    {
+        $this->mustache->addHelper($name, $helper);
+        return $this;
+    }
+
+    /**
+     * Get the Mustache engine instance for advanced usage
+     *
+     * Allows direct access to the Mustache engine for advanced templating features.
+     *
+     * @return \Mustache\Engine The configured Mustache engine
+     */
+    public function getMustacheEngine(): \Mustache\Engine
+    {
+        return $this->mustache;
+    }
+
+    /**
+     * Merge multiple data arrays into a single context
+     *
+     * Later arrays take precedence over earlier ones, allowing for layered configuration.
+     *
+     * @param array $dataArrays Arrays to merge
+     * @return array Merged context array
+     */
+    private function mergeDataContexts(array $dataArrays): array
+    {
+        $context = [];
+
+        foreach ($dataArrays as $dataArray) {
+            $context = array_merge($context, $dataArray);
         }
 
-        return $result;
+        return $context;
+    }
+
+    /**
+     * Log interpolation errors
+     *
+     * Centralized error logging for interpolation failures.
+     *
+     * @param string $message Error message
+     * @return void
+     */
+    private function logError(string $message): void
+    {
+        // Use Symfony's logger if available, otherwise fallback to error_log
+        if (method_exists($this, 'getLogger')) {
+            $this->getLogger()->error($message);
+        } else {
+            error_log($message);
+        }
     }
 }

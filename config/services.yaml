@@ -54,3 +54,9 @@ services:
     App\Service\CMS\FormFileUploadService:
         arguments:
             $projectDir: '%kernel.project_dir%'
+
+    # Interpolation Service - Mustache-based template interpolation
+    App\Service\Core\InterpolationService:
+        autowire: false
+        autoconfigure: false
+        arguments: []
