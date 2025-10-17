@@ -379,8 +379,8 @@ class PageService extends BaseService
         }
 
         return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId) {
-            // Build nested hierarchical structure
-            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, true, $languageId);
+            // Build nested hierarchical structure (without applying data initially)
+            $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
 
             // Extract all section IDs from the hierarchical structure
             $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
@@ -413,15 +413,11 @@ class PageService extends BaseService
             // Note: fallback is now handled internally by fetchTranslationsForSectionsWithFallback
             $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
 
-            $this->sectionUtilityService->applySectionsData($sections, $languageId);
-
-            // Apply variable interpolation for retrieved_data
-            $this->applyInterpolationToSections($sections);
-
-            // Apply condition filtering
+            // Process sections recursively with proper data inheritance and sequential operations
+            // This replaces the bulk applySectionsData, interpolation, and condition filtering
             $user = $this->userContextAwareService->getCurrentUser();
             $userId = $user ? $user->getId() : null;
-            $sections = $this->conditionService->filterSectionsByConditions($sections, $userId);
+            $sections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
 
             return $sections;
         });
@@ -460,7 +456,242 @@ class PageService extends BaseService
     }
 
     /**
-     * Apply variable interpolation to sections recursively
+     * Process sections recursively with proper data inheritance and sequential operations
+     *
+     * For each section:
+     * 1. Apply first interpolation pass using parent data
+     * 2. Retrieve data from data_config
+     * 3. Apply second interpolation pass using newly retrieved data
+     * 4. Evaluate condition to determine if section should be included
+     * 5. Process children recursively if condition passes
+     *
+     * @param array $sections The sections to process
+     * @param array $parentData Parent data to inherit (default empty array)
+     * @param int|null $userId User ID for condition evaluation
+     * @param int $languageId Language ID for data retrieval
+     * @return array Processed sections that pass conditions
+     */
+    private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = 1): array
+    {
+        $processedSections = [];
+
+        foreach ($sections as $section) {
+            // Step 1: First interpolation pass using parent data
+            $this->applyInterpolationWithData($section, $parentData);
+
+            // Step 2: Retrieve data from data_config
+            $this->retrieveSectionData($section, $parentData, $languageId);
+
+            // Combine parent data with newly retrieved data for this section
+            $sectionData = array_merge($parentData, $section['retrieved_data'] ?? []);
+
+            // Update the section's retrieved_data with the merged data (for visibility to children and interpolation)
+            if (!empty($sectionData)) {
+                $section['retrieved_data'] = $sectionData;
+            }
+
+            // Step 3: Second interpolation pass using combined data
+            $this->applyInterpolationWithData($section, $sectionData);
+
+            // Step 4: Evaluate condition
+            $conditionResult = $this->evaluateSectionCondition($section, $userId);
+
+            // Step 5: If condition passes, include section and process children
+            if ($conditionResult['passes']) {
+                // Add condition debug info if available
+                if (isset($conditionResult['debug'])) {
+                    $section['condition_debug'] = $conditionResult['debug'];
+                }
+
+                // Process children recursively with inherited data
+                if (isset($section['children']) && is_array($section['children'])) {
+                    $section['children'] = $this->processSectionsRecursively($section['children'], $sectionData, $userId, $languageId);
+                }
+
+                $processedSections[] = $section;
+            }
+        }
+
+        return $processedSections;
+    }
+
+    /**
+     * Apply interpolation to a section using provided data
+     *
+     * @param array &$section The section to interpolate
+     * @param array $interpolationData The data to use for interpolation
+     */
+    private function applyInterpolationWithData(array &$section, array $interpolationData): void
+    {
+        if (empty($interpolationData)) {
+            return;
+        }
+
+        // Check if debug is enabled for this section
+        $isDebugEnabled = isset($section['debug']) && $section['debug'];
+
+        // Interpolate content fields
+        if (isset($section['content']) && is_array($section['content'])) {
+            $section['content'] = $this->interpolationService->interpolateArray($section['content'], $interpolationData);
+        }
+
+        // Interpolate meta fields if they exist
+        if (isset($section['meta']) && is_array($section['meta'])) {
+            $section['meta'] = $this->interpolationService->interpolateArray($section['meta'], $interpolationData);
+        }
+
+        // Interpolate content fields that may contain variables
+        $this->interpolateContentFields($section, [$interpolationData], $isDebugEnabled);
+    }
+
+    /**
+     * Retrieve data for a single section from its data_config
+     *
+     * @param array &$section The section to retrieve data for
+     * @param array $availableData Available data for interpolation (parent data)
+     * @param int $languageId The language ID for data retrieval
+     */
+    private function retrieveSectionData(array &$section, array $availableData, int $languageId): void
+    {
+
+        // Handle data_config field - parse and retrieve data
+        if (isset($section['data_config']) && $section['data_config'] !== null) {
+            // Parse data_config as JSON string to array
+            $dataConfigArray = is_string($section['data_config'])
+                ? json_decode($section['data_config'], true)
+                : $section['data_config'];
+
+            if (is_array($dataConfigArray)) {
+                // data_config is an array of configuration objects, process each one
+                $retrievedData = [];
+                foreach ($dataConfigArray as $configIndex => $config) {
+                    try {
+                        // Interpolate the config before retrieving data
+                        $interpolatedConfig = $this->interpolateDataConfig($config, $availableData);
+                        $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
+                        // Use the scope as key if available, otherwise use index
+                        $key = isset($config['scope']) ? $config['scope'] : $configIndex;
+                        $retrievedData[$key] = $configData;
+                    } catch (\Exception $e) {
+                        // If there's an error retrieving data, continue without it
+                        // This prevents failures due to invalid data configs
+                    }
+                }
+                // Add retrieved data as a new field
+                $section['retrieved_data'] = $retrievedData;
+                $section['data_config'] = $dataConfigArray;
+            }
+        }
+    }
+
+    /**
+     * Interpolate variables in data config before data retrieval
+     *
+     * @param array $config The data config to interpolate
+     * @param array $availableData Available data for interpolation
+     * @return array The interpolated config
+     */
+    private function interpolateDataConfig(array $config, array $availableData): array
+    {
+        if (empty($availableData)) {
+            return $config;
+        }
+
+        $interpolatedConfig = $config;
+
+        // Interpolate string fields that might contain variables
+        $fieldsToInterpolate = ['filter', 'table', 'retrieve'];
+
+        foreach ($fieldsToInterpolate as $field) {
+            if (isset($interpolatedConfig[$field]) && is_string($interpolatedConfig[$field])) {
+                $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
+            }
+        }
+
+        // Interpolate fields array if it exists
+        if (isset($interpolatedConfig['fields']) && is_array($interpolatedConfig['fields'])) {
+            foreach ($interpolatedConfig['fields'] as &$field) {
+                if (is_array($field)) {
+                    foreach ($field as $key => $value) {
+                        if (is_string($value)) {
+                            $field[$key] = $this->interpolationService->interpolate($value, $availableData);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Interpolate map_fields array if it exists
+        if (isset($interpolatedConfig['map_fields']) && is_array($interpolatedConfig['map_fields'])) {
+            foreach ($interpolatedConfig['map_fields'] as &$mapField) {
+                if (is_array($mapField)) {
+                    foreach ($mapField as $key => $value) {
+                        if (is_string($value)) {
+                            $mapField[$key] = $this->interpolationService->interpolate($value, $availableData);
+                        }
+                    }
+                }
+            }
+        }
+
+        return $interpolatedConfig;
+    }
+
+    /**
+     * Evaluate condition for a section
+     *
+     * @param array $section The section to evaluate
+     * @param int|null $userId User ID for condition evaluation
+     * @return array Result with 'passes' boolean and optional 'debug' info
+     */
+    private function evaluateSectionCondition(array $section, ?int $userId): array
+    {
+        // Check if section has a condition
+        if (!isset($section['condition']) || empty($section['condition'])) {
+            return ['passes' => true]; // No condition means section passes
+        }
+
+        $conditionResult = $this->conditionService->evaluateCondition(
+            $section['condition'],
+            $userId,
+            $section['keyword'] ?? 'unknown'
+        );
+
+        // Include the original condition as an object for easier frontend handling
+        $conditionObject = $section['condition'];
+        if (is_string($conditionObject)) {
+            // Handle double-encoded JSON strings
+            $conditionObject = json_decode($conditionObject, true);
+            if (is_string($conditionObject)) {
+                // If still a string, try decoding again
+                $conditionObject = json_decode($conditionObject, true);
+            }
+        }
+
+        $debugInfo = [
+            "result" => $conditionResult['result'],
+            "error" => $conditionResult['fields'],
+            "variables" => $conditionResult['debug']['variables'],
+            "condition_object" => $conditionObject
+        ];
+
+        // Ensure condition is returned as proper JSON string (not escaped)
+        if (is_string($section['condition'])) {
+            // Handle escaped JSON strings - decode to get proper JSON string
+            $decoded = json_decode($section['condition']);
+            if ($decoded !== null) {
+                $section['condition'] = json_encode($decoded);
+            }
+        }
+
+        return [
+            'passes' => $conditionResult['result'],
+            'debug' => $debugInfo
+        ];
+    }
+
+    /**
+     * Apply variable interpolation to sections recursively (legacy method for backward compatibility)
      *
      * Replaces {{variable_name}} patterns in content fields with values from retrieved_data
      *
