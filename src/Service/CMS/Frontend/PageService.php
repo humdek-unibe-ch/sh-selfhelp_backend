@@ -458,12 +458,12 @@ class PageService extends BaseService
     /**
      * Process sections recursively with proper data inheritance and sequential operations
      *
-     * For each section:
-     * 1. Apply first interpolation pass using parent data
-     * 2. Retrieve data from data_config
-     * 3. Apply second interpolation pass using newly retrieved data
+     * CRITICAL ORDER: This order must be maintained for correct functionality
+     * 1. Interpolate data_config fields using parent data (for filters that reference parent data)
+     * 2. Retrieve data from data_config (using interpolated filters)
+     * 3. Interpolate ALL content fields using combined parent + own data
      * 4. Evaluate condition to determine if section should be included
-     * 5. Process children recursively if condition passes
+     * 5. Process children recursively with inherited data
      *
      * @param array $sections The sections to process
      * @param array $parentData Parent data to inherit (default empty array)
@@ -476,34 +476,31 @@ class PageService extends BaseService
         $processedSections = [];
 
         foreach ($sections as $section) {
-            // Step 1: First interpolation pass using parent data
-            $this->applyInterpolationWithData($section, $parentData);
+            // Step 1: CRITICAL - Interpolate data_config fields using parent data
+            // This allows filters like "record_id = {{parent.record_id}}" to work
+            $this->interpolateDataConfigInSection($section, $parentData);
 
-            // Step 2: Retrieve data from data_config
+            // Step 2: Retrieve data from data_config (now with properly interpolated filters)
             $this->retrieveSectionData($section, $parentData, $languageId);
 
-            // Combine parent data with newly retrieved data for this section
-            $sectionData = array_merge($parentData, $section['retrieved_data'] ?? []);
+            // Step 3: Merge parent data with newly retrieved data efficiently
+            $sectionData = $this->mergeDataEfficiently($parentData, $section['retrieved_data'] ?? []);
 
-            // Update the section's retrieved_data with the merged data (for visibility to children and interpolation)
-            if (!empty($sectionData)) {
-                $section['retrieved_data'] = $sectionData;
-            }
+            // Step 4: CRITICAL - Interpolate ALL content fields using combined data
+            // Now we have both parent data and newly retrieved data available
+            $this->applyOptimizedInterpolationPass($section, $sectionData);
 
-            // Step 3: Second interpolation pass using combined data
-            $this->applyInterpolationWithData($section, $sectionData);
-
-            // Step 4: Evaluate condition
+            // Step 5: Evaluate condition using fully interpolated data
             $conditionResult = $this->evaluateSectionCondition($section, $userId);
 
-            // Step 5: If condition passes, include section and process children
+            // Step 6: Include section if condition passes
             if ($conditionResult['passes']) {
                 // Add condition debug info if available
                 if (isset($conditionResult['debug'])) {
                     $section['condition_debug'] = $conditionResult['debug'];
                 }
 
-                // Process children recursively with inherited data
+                // Step 7: Process children recursively with inherited data
                 if (isset($section['children']) && is_array($section['children'])) {
                     $section['children'] = $this->processSectionsRecursively($section['children'], $sectionData, $userId, $languageId);
                 }
@@ -516,7 +513,133 @@ class PageService extends BaseService
     }
 
     /**
-     * Apply interpolation to a section using provided data
+     * Efficiently merge parent and section data
+     * Avoids unnecessary array_merge when one array is empty
+     *
+     * @param array $parentData
+     * @param array $sectionData
+     * @return array
+     */
+    private function mergeDataEfficiently(array $parentData, array $sectionData): array
+    {
+        if (empty($parentData)) {
+            return $sectionData;
+        }
+        if (empty($sectionData)) {
+            return $parentData;
+        }
+        return array_merge($parentData, $sectionData);
+    }
+
+    /**
+     * Interpolate data_config fields in a section using parent data
+     * This is critical for filters that reference parent data
+     *
+     * @param array &$section The section to process
+     * @param array $parentData Parent data for interpolation
+     */
+    private function interpolateDataConfigInSection(array &$section, array $parentData): void
+    {
+        if (empty($parentData) || !isset($section['data_config'])) {
+            return;
+        }
+
+        // Parse data_config if it's a string
+        $dataConfig = is_string($section['data_config'])
+            ? json_decode($section['data_config'], true)
+            : $section['data_config'];
+
+        if (!is_array($dataConfig)) {
+            return;
+        }
+
+        // Interpolate each config entry
+        foreach ($dataConfig as &$config) {
+            $config = $this->interpolateDataConfig($config, $parentData);
+        }
+
+        // Update the section's data_config
+        $section['data_config'] = $dataConfig;
+    }
+
+    /**
+     * Apply optimized interpolation pass for ALL fields using combined data
+     * This happens after data retrieval so all parent + own data is available
+     *
+     * @param array &$section The section to interpolate
+     * @param array $interpolationData The combined data to use for interpolation
+     */
+    private function applyOptimizedInterpolationPass(array &$section, array $interpolationData): void
+    {
+        if (empty($interpolationData)) {
+            return;
+        }
+
+        // Check if debug is enabled for this section
+        $isDebugEnabled = isset($section['debug']) && $section['debug'];
+
+        // Update section's retrieved_data for interpolation access
+        $section['retrieved_data'] = $interpolationData;
+
+        // Interpolate direct string fields that exist
+        $directStringFields = ['css', 'css_mobile'];
+        if ($isDebugEnabled) {
+            $directStringFields[] = 'condition';
+        }
+
+        foreach ($directStringFields as $field) {
+            if (isset($section[$field]) && is_string($section[$field])) {
+                $section[$field] = $this->interpolationService->interpolate($section[$field], $interpolationData);
+            }
+        }
+
+        // Interpolate content and meta fields if they exist
+        if (isset($section['content']) && is_array($section['content'])) {
+            $section['content'] = $this->interpolationService->interpolateArray($section['content'], $interpolationData);
+        }
+
+        if (isset($section['meta']) && is_array($section['meta'])) {
+            $section['meta'] = $this->interpolationService->interpolateArray($section['meta'], $interpolationData);
+        }
+
+        // Interpolate only fields that actually exist in this section
+        $this->interpolateExistingContentFields($section, $interpolationData, $isDebugEnabled);
+    }
+
+    /**
+     * Interpolate only content fields that actually exist in the section
+     * Much more efficient than checking 100+ field names
+     *
+     * @param array &$section The section to process
+     * @param array $interpolationData Data for interpolation
+     * @param bool $includeCondition Whether to include condition field
+     */
+    private function interpolateExistingContentFields(array &$section, array $interpolationData, bool $includeCondition = false): void
+    {
+        // Common content field patterns
+        $contentFieldSuffixes = ['_label', '_placeholder', '_description', '_title', '_text', '_message', '_url', '_value'];
+
+        foreach ($section as $fieldName => &$fieldValue) {
+            // Skip non-content fields
+            if (!is_array($fieldValue) || !isset($fieldValue['content'])) {
+                continue;
+            }
+
+            // Special handling for condition field
+            if ($fieldName === 'condition' && $includeCondition) {
+                $fieldValue['content'] = $this->interpolationService->interpolateConditionWithDebug($section, $interpolationData);
+                continue;
+            }
+
+            // Interpolate content if it's a string
+            if (is_string($fieldValue['content'])) {
+                $fieldValue['content'] = $this->interpolationService->interpolate($fieldValue['content'], $interpolationData);
+            }
+        }
+    }
+
+    /**
+     * Apply interpolation to a section using provided data (legacy method)
      *
      * @param array &$section The section to interpolate
      * @param array $interpolationData The data to use for interpolation

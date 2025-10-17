@@ -214,6 +214,111 @@ class PagesSection
 - **Content Management**: Reusable sections maintain their content across all pages where used
 - **Style Consistency**: The `refContainer` style ensures consistent appearance across pages
 
+## 🔄 **CRITICAL: Section Processing Order**
+
+### ⚠️ **Architectural Requirement**
+
+The section processing order in `PageService::processSectionsRecursively()` is **critically important** for correct functionality. This order **MUST NOT** be changed without thorough understanding of the data flow dependencies.
+
+### 📋 **Processing Sequence**
+
+```mermaid
+graph TD
+    A[Start Section Processing] --> B[1. Interpolate data_config ONLY<br/>Using parent data for filters]
+    B --> C[2. Retrieve data from data_config<br/>Using interpolated filters]
+    C --> D[3. Merge parent + own data]
+    D --> E[4. Interpolate ALL content fields<br/>Using combined data]
+    E --> F[5. Evaluate conditions<br/>Using fully interpolated data]
+    F --> G[6. Process children recursively<br/>With inherited data]
+    G --> H[End Section Processing]
+```
+
+### 🔍 **Detailed Step-by-Step Explanation**
+
+#### **Step 1: Data Config Interpolation (Parent Data Only)**
+```php
+// CRITICAL: Only data_config fields are interpolated here
+$this->interpolateDataConfigInSection($section, $parentData);
+```
+- **Purpose**: Allows data filters to reference parent data
+- **Example**: Filter `"record_id = {{parent.record_id}}"` becomes `"record_id = '38'"`
+- **Why**: Data retrieval depends on correctly interpolated filters
+- **Data Available**: Only parent data at this stage
+
+#### **Step 2: Data Retrieval**
+```php
+// Now retrieve data using properly interpolated filters
+$this->retrieveSectionData($section, $parentData, $languageId);
+```
+- **Purpose**: Fetch data from configured sources (database, APIs, etc.)
+- **Why Order Matters**: Must happen after filter interpolation
+- **Result**: Section now has its own data in `$section['retrieved_data']`
+
+#### **Step 3: Data Merging**
+```php
+// Combine parent and own data efficiently
+$sectionData = $this->mergeDataEfficiently($parentData, $section['retrieved_data'] ?? []);
+```
+- **Purpose**: Create complete data context for the section
+- **Inheritance**: Child sections can access all ancestor data
+- **Efficiency**: Avoids unnecessary array operations
+
+#### **Step 4: Full Content Interpolation**
+```php
+// CRITICAL: Now interpolate ALL content using combined data
+$this->applyOptimizedInterpolationPass($section, $sectionData);
+```
+- **Purpose**: Replace variables in content, styles, conditions, etc.
+- **Why After Data Retrieval**: Needs both parent and own data
+- **Data Available**: Complete merged dataset
+
+#### **Step 5: Condition Evaluation**
+```php
+// Evaluate conditions using fully interpolated data
+$conditionResult = $this->evaluateSectionCondition($section, $userId);
+```
+- **Purpose**: Determine if section should be displayed
+- **Why Last**: Conditions may reference interpolated content and data
+- **Result**: Section is included/excluded from final output
+
+#### **Step 6: Recursive Processing**
+```php
+// Process children with inherited data
+$section['children'] = $this->processSectionsRecursively($section['children'], $sectionData, $userId, $languageId);
+```
+- **Purpose**: Apply same processing to child sections
+- **Inheritance**: Children receive parent's merged data
+- **Recursion**: Maintains hierarchical processing
+
+### 🚨 **Why This Order Is Critical**
+
+1. **Data Dependencies**: Filters need parent data before data retrieval
+2. **Interpolation Dependencies**: Content needs complete data context
+3. **Condition Dependencies**: Conditions need fully interpolated values
+4. **Performance**: Early data operations avoid redundant processing
+5. **Correctness**: Wrong order breaks data filtering and inheritance
+
+### 💡 **Common Pitfalls to Avoid**
+
+- **Interpolating content before data retrieval**: Variables won't have values
+- **Evaluating conditions before full interpolation**: Conditions may fail incorrectly
+- **Processing children before parent data is complete**: Inheritance breaks
+- **Changing the order without understanding dependencies**: Breaks functionality
+
+### 🔧 **Implementation Location**
+
+This logic is implemented in:
+- **File**: `src/Service/CMS/Frontend/PageService.php`
+- **Method**: `processSectionsRecursively()`
+- **Critical**: Order must be maintained when modifying this code
+
+### 📚 **Related Components**
+
+- **Interpolation Service**: Handles `{{variable}}` replacement
+- **Data Service**: Retrieves data from various sources
+- **Condition Service**: Evaluates display conditions
+- **Section Utility Service**: Handles section hierarchy and data
+
 ## 🎨 Style System
 
 ### Style Entity
