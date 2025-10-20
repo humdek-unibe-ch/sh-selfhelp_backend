@@ -42,9 +42,29 @@
                         },
                         "required": ["id", "name", "title", "type", "display", "translations"]
                     }
+                },
+                "languages": {
+                    "type": "array",
+                    "description": "List of languages available for this section",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "integer", "description": "Language ID" },
+                            "locale": { "type": ["string", "null"], "description": "Language locale" }
+                        },
+                        "required": ["id"]
+                    }
+                },
+                "data_variables": {
+                    "type": "array",
+                    "description": "List of available data variables for use in templates and dropdowns",
+                    "items": {
+                        "type": "string",
+                        "description": "Variable name (e.g., 'scope.field_name', 'global.var_name', or 'user_name')"
+                    }
                 }
             },
-            "required": ["section", "fields"]
+            "required": ["section", "fields", "languages", "data_variables"]
         }
     },
     "required": ["data"]

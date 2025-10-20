@@ -33,6 +33,7 @@ class AdminSectionController extends AbstractController
                 'section' => $section['section'] ?? $section,
                 'fields' => $section['fields'] ?? [],
                 'languages' => $section['languages'] ?? [],
+                'data_variables' => isset($section['data_variables']) ? $section['data_variables'] : [],
             ],
             'responses/admin/sections/section',
             Response::HTTP_OK

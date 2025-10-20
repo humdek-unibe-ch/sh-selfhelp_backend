@@ -18,6 +18,7 @@ use App\Service\CMS\Admin\SectionFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\SectionCreationService;
 use App\Service\CMS\Admin\AdminSectionUtilityService;
+use App\Service\CMS\DataVariableResolver;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -42,6 +43,7 @@ class AdminSectionService extends BaseService
         private readonly SectionCreationService $sectionCreationService,
         private readonly AdminSectionUtilityService $adminSectionUtilityService,
         private readonly SectionExportImportService $sectionExportImportService,
+        private readonly DataVariableResolver $dataVariableResolver,
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
@@ -123,10 +125,13 @@ class AdminSectionService extends BaseService
         }
         $languages = array_values($languages);
 
+        $normalizedSection = $this->normalizeSection($section);
+
         return [
-            'section' => $this->normalizeSection($section),
+            'section' => $normalizedSection,
             'fields' => $formattedFields,
             'languages' => $languages,
+            'data_variables' => $this->dataVariableResolver->getDataVariables($normalizedSection),
         ];
     }
 
