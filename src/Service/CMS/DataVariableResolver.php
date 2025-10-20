@@ -467,6 +467,7 @@ class DataVariableResolver extends BaseService
             'user_name',
             'user_email',
             'user_code',
+            'user_id',
             'platform',
             'language',
             'current_date',
