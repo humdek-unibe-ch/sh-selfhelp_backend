@@ -191,7 +191,7 @@ class DataVariableResolver extends BaseService
             ->getList($cacheKey, function () use ($tableId) {
                 try {
                     $conn = $this->entityManager->getConnection();
-                    $sql = 'SELECT DISTINCT `name` FROM dataCols WHERE id_dataTables = :tableId AND `name` NOT IN (\'id_users\', \'record_id\', \'user_name\', \'id_actionTriggerTypes\', \'triggerType\', \'entry_date\', \'user_code\') ORDER BY `name`';
+                    $sql = 'SELECT DISTINCT `name` FROM dataCols WHERE id_dataTables = :tableId ORDER BY `name`';
                     $stmt = $conn->prepare($sql);
                     $stmt->bindValue('tableId', $tableId, \PDO::PARAM_INT);
                     $result = $stmt->executeQuery();
@@ -199,6 +199,14 @@ class DataVariableResolver extends BaseService
                     $columnNames = [];
                     foreach ($result->fetchAllAssociative() as $row) {
                         $columnNames[] = $row['name'];
+                    }
+
+                    // Add the standard columns that always exist as variables
+                    $standardColumns = ['id_users', 'record_id', 'user_name', 'id_actionTriggerTypes', 'triggerType', 'entry_date', 'user_code'];
+                    foreach ($standardColumns as $column) {
+                        if (!in_array($column, $columnNames)) {
+                            $columnNames[] = $column;
+                        }
                     }
 
                     return $columnNames;
