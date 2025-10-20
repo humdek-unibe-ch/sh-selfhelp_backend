@@ -4,6 +4,8 @@ namespace App\Service\CMS;
 
 use App\Entity\Field;
 use App\Entity\Page;
+use App\Entity\Section;
+use App\Entity\SectionsHierarchy;
 use App\Repository\DataTableRepository;
 use App\Repository\PageRepository;
 use App\Service\Cache\Core\CacheService;
@@ -18,7 +20,7 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 class DataVariableResolver extends BaseService
 {
-    private const SH_GLOBAL_VALUES_KEYWORD = 'sh_global_values';
+    private const SH_GLOBAL_VALUES_KEYWORD = 'sh-global-values';
     private const PF_GLOBAL_VALUES = 'global_values'; // Page field name for global values
 
     public function __construct(
@@ -38,27 +40,192 @@ class DataVariableResolver extends BaseService
      */
     public function getDataVariables(array $section): array
     {
-        $variables = [];
-
-        // Get custom variables from data_config if available
-        $customVariables = $this->parseDataConfig($section);
-        if (!empty($customVariables)) {
-            $variables = array_merge($variables, $customVariables);
-        } else {
-            // Get table variables if no custom variables defined
-            $tableVariables = $this->getTableVariables($section);
-            $variables = array_merge($variables, $tableVariables);
+        $sectionId = $section['id'] ?? null;
+        if (!$sectionId) {
+            return [];
         }
 
-        // Add global variables
-        $globalVariables = $this->getGlobalVariables();
-        $variables = array_merge($variables, $globalVariables);
+        $cacheKey = "section_data_variables_{$sectionId}";
 
-        // Add system variables
-        $systemVariables = $this->getSystemVariables();
-        $variables = array_merge($variables, $systemVariables);
+        // Get all sections in hierarchy first to extract dependencies
+        $allSections = $this->getSectionHierarchy($sectionId);
+        $dataTableIds = $this->extractDataTableDependencies($allSections);
 
-        return $variables;
+        // Build cache service with all dependencies
+        $cacheService = $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+
+        // Add data table dependencies to cache scope
+        foreach ($dataTableIds as $dataTableId) {
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+        }
+
+        // Add global variables page dependency
+        $globalPage = $this->pageRepository->findOneBy(['keyword' => self::SH_GLOBAL_VALUES_KEYWORD]);
+        if ($globalPage) {
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $globalPage->getId());
+        }
+
+        return $cacheService->getList($cacheKey, function () use ($allSections) {
+            $variables = [];
+
+            // Process variables from all sections in hierarchy (parent to child order)
+            foreach ($allSections as $sectionData) {
+                // Get custom variables from data_config if available
+                $customVariables = $this->parseDataConfig($sectionData);
+                if (!empty($customVariables)) {
+                    $variables = array_merge($variables, $customVariables);
+                } else {
+                    // Get table variables if no custom variables defined
+                    $tableVariables = $this->getTableVariables($sectionData);
+                    $variables = array_merge($variables, $tableVariables);
+                }
+            }
+
+            // Add global variables
+            $globalVariables = $this->getGlobalVariables();
+            $variables = array_merge($variables, $globalVariables);
+
+            // Add system variables
+            $systemVariables = $this->getSystemVariables();
+            $variables = array_merge($variables, $systemVariables);
+
+            // Remove duplicates while preserving order
+            return array_unique($variables);
+        });
+    }
+
+    /**
+     * Extract all data table IDs that sections in the hierarchy depend on
+     *
+     * @param array $sections Array of section data arrays
+     * @return array Array of unique data table IDs
+     */
+    private function extractDataTableDependencies(array $sections): array
+    {
+        $dataTableIds = [];
+
+        foreach ($sections as $section) {
+            if (!isset($section['global_fields']['data_config'])) {
+                continue;
+            }
+
+            $dataConfigJson = $section['global_fields']['data_config'];
+            $dataConfig = json_decode($dataConfigJson, true);
+
+            if (!is_array($dataConfig)) {
+                continue;
+            }
+
+            // Process each config entry
+            foreach ($dataConfig as $config) {
+                if (isset($config['table'])) {
+                    try {
+                        $dataTable = $this->dataService->getDataTableByName($config['table']);
+                        if ($dataTable) {
+                            $dataTableIds[] = $dataTable->getId();
+                        }
+                    } catch (\Exception $e) {
+                        // Continue if data table not found
+                    }
+                }
+            }
+        }
+
+        return array_unique($dataTableIds);
+    }
+
+    /**
+     * Get all sections in the hierarchy from root to current section
+     *
+     * @param int $sectionId The section ID to get hierarchy for
+     * @return array Array of section data arrays from root to current section
+     */
+    private function getSectionHierarchy(int $sectionId): array
+    {
+        $cacheKey = "section_hierarchy_{$sectionId}";
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId)
+            ->getList($cacheKey, function () use ($sectionId) {
+                $hierarchy = [];
+                $currentSectionId = $sectionId;
+
+                // Traverse up the hierarchy to get all parent sections
+                while ($currentSectionId !== null) {
+                    $section = $this->getSectionData($currentSectionId);
+                    if (!$section) {
+                        break;
+                    }
+
+                    // Add to beginning of array (root first)
+                    array_unshift($hierarchy, $section);
+
+                    // Find parent section ID
+                    $currentSectionId = $this->getParentSectionId($currentSectionId);
+                }
+
+                return $hierarchy;
+            });
+    }
+
+    /**
+     * Get section data by ID
+     *
+     * @param int $sectionId The section ID
+     * @return array|null Section data or null if not found
+     */
+    private function getSectionData(int $sectionId): ?array
+    {
+        try {
+            $cacheKey = "section_data_{$sectionId}";
+
+            return $this->cache
+                ->withCategory(CacheService::CATEGORY_SECTIONS)
+                ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId)
+                ->getItem($cacheKey, function () use ($sectionId) {
+                    $section = $this->entityManager->getRepository(Section::class)->find($sectionId);
+                    if (!$section) {
+                        return null;
+                    }
+
+                    // Return normalized section data similar to AdminSectionService
+                    return [
+                        'id' => $section->getId(),
+                        'name' => $section->getName(),
+                        'data_config' => $section->getDataConfig(),
+                        'global_fields' => [
+                            'condition' => $section->getCondition(),
+                            'data_config' => $section->getDataConfig(),
+                            'css' => $section->getCss(),
+                            'css_mobile' => $section->getCssMobile(),
+                            'debug' => $section->isDebug(),
+                        ]
+                    ];
+                });
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Get parent section ID for a given section
+     *
+     * @param int $sectionId The child section ID
+     * @return int|null Parent section ID or null if no parent
+     */
+    private function getParentSectionId(int $sectionId): ?int
+    {
+        try {
+            $hierarchy = $this->entityManager->getRepository(SectionsHierarchy::class)
+                ->findOneBy(['childSection' => $sectionId]);
+
+            return $hierarchy ? $hierarchy->getParentSection()->getId() : null;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**
