@@ -574,5 +574,19 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->language = $language;
         return $this;
     }
+
+    /**
+     * Returns a string representation of the User for debugging purposes
+     * This helps identify User entities in Doctrine error messages
+     */
+    public function __toString(): string
+    {
+        return sprintf(
+            'User(id=%s, email=%s, name=%s)',
+            $this->getId(),
+            $this->getEmail(),
+            $this->getName() ?? 'null'
+        );
+    }
 }
 // ENTITY RULE

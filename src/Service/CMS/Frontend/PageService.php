@@ -38,7 +38,8 @@ class PageService extends BaseService
         private readonly UserContextAwareService $userContextAwareService,
         private readonly DataService $dataService,
         private readonly InterpolationService $interpolationService,
-        private readonly ConditionService $conditionService
+        private readonly ConditionService $conditionService,
+        private readonly \App\Repository\PageVersionRepository $pageVersionRepository
     ) {
     }
 
@@ -200,12 +201,17 @@ class PageService extends BaseService
     /**
      * Get page by ID with translated sections
      * 
+     * This method supports hybrid versioning:
+     * - If a published version exists and preview=false: serves published version with refreshed dynamic elements
+     * - If no published version or preview=true: serves fresh draft from database
+     * 
      * @param int $page_id The page ID
      * @param int|null $language_id Optional language ID for translations
+     * @param bool $preview Force draft serving (bypasses published version)
      * @return array The page object with translated sections
      * @throws \App\Exception\ServiceException If page not found or access denied
      */
-    public function getPage(int $page_id, ?int $language_id = null): array
+    public function getPage(int $page_id, ?int $language_id = null, bool $preview = false): array
     {
         // Determine which language ID to use for translations
         $languageId = $this->determineLanguageId($language_id);
@@ -214,14 +220,149 @@ class PageService extends BaseService
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? $user->getId() : 1; // guest user
 
-        // Try to get from cache first
-        $cacheKey = "page_{$page_id}_{$languageId}";
-
         // First get the page to get its ID for entity scope
         $page = $this->pageRepository->find($page_id);
         if (!$page) {
             $this->throwNotFound('Page not found');
         }
+
+        // Check if user has access to the page
+        $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+
+        // If preview mode is disabled and a published version exists, serve it
+        if (!$preview && $page->getPublishedVersionId()) {
+            return $this->servePublishedVersion($page_id, $languageId);
+        }
+
+        // Otherwise serve the draft version (fresh from database)
+        return $this->serveDraftVersion($page_id, $languageId, $page);
+    }
+
+    /**
+     * Serve published version with refreshed dynamic elements
+     * 
+     * Hybrid approach:
+     * - Load stored JSON structure from page_versions table
+     * - Re-run dynamic elements (data retrieval, condition evaluation)
+     * - Apply fresh interpolation
+     * 
+     * @param int $page_id The page ID
+     * @param int $languageId The language ID for translations
+     * @return array The hydrated page data
+     */
+    private function servePublishedVersion(int $page_id, int $languageId): array
+    {
+        // Get the published version from database
+        $page = $this->pageRepository->find($page_id);
+        $versionId = $page->getPublishedVersionId();
+        
+        $publishedVersion = $this->pageVersionRepository->find($versionId);
+        if (!$publishedVersion) {
+            // Fallback to draft if published version not found
+            return $this->serveDraftVersion($page_id, $languageId, $page);
+        }
+
+        // Get the stored page JSON
+        $storedPageData = $publishedVersion->getPageJson();
+
+        // Hydrate the published page with fresh dynamic elements
+        return $this->hydratePublishedPage($storedPageData, $languageId);
+    }
+
+    /**
+     * Hydrate published page with fresh dynamic elements
+     * 
+     * This method:
+     * 1. Extracts language-specific translations from stored multi-language data
+     * 2. Re-runs data retrieval from data tables
+     * 3. Re-evaluates conditions
+     * 4. Applies variable interpolation
+     * 
+     * @param array $storedPageData The stored page JSON structure with ALL languages
+     * @param int $languageId The language ID to extract and serve
+     * @return array The hydrated page data with single language
+     */
+    private function hydratePublishedPage(array $storedPageData, int $languageId): array
+    {
+        // Extract sections from stored data
+        if (!isset($storedPageData['page']['sections'])) {
+            return $storedPageData;
+        }
+
+        $sections = $storedPageData['page']['sections'];
+
+        // Step 1: Extract language-specific translations from multi-language data
+        $this->extractLanguageTranslations($sections, $languageId);
+
+        // Step 2: Re-process sections with dynamic element refresh (data retrieval, conditions, interpolation)
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user ? $user->getId() : null;
+        
+        $hydratedSections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
+
+        // Update the page data with hydrated sections
+        $storedPageData['page']['sections'] = $hydratedSections;
+
+        return $storedPageData;
+    }
+
+    /**
+     * Extract language-specific translations from multi-language translation data
+     * 
+     * Converts from:
+     * section['translations'][language_id][field_name] = {content, meta}
+     * 
+     * To:
+     * section[field_name] = {content, meta}
+     * 
+     * IMPORTANT: This method ONLY adds/overrides translatable fields.
+     * All other section fields (structure, config, etc.) are preserved.
+     * 
+     * @param array &$sections Sections array (passed by reference)
+     * @param int $languageId Language ID to extract
+     */
+    private function extractLanguageTranslations(array &$sections, int $languageId): void
+    {
+        foreach ($sections as &$section) {
+            // If section has translations data, extract the specific language
+            if (isset($section['translations']) && is_array($section['translations'])) {
+                if (isset($section['translations'][$languageId])) {
+                    // Apply the language-specific translations as direct fields
+                    // This OVERRIDES existing field values but doesn't remove other fields
+                    foreach ($section['translations'][$languageId] as $fieldName => $fieldData) {
+                        $section[$fieldName] = $fieldData;
+                    }
+                }
+                
+                // Remove the translations array after extraction
+                unset($section['translations']);
+            }
+
+            // Recursively process children
+            if (isset($section['children']) && is_array($section['children'])) {
+                $this->extractLanguageTranslations($section['children'], $languageId);
+            }
+        }
+    }
+
+    /**
+     * Serve draft version (fresh from database)
+     * 
+     * This is the existing getPage logic for serving current page state
+     * 
+     * @param int $page_id The page ID
+     * @param int $languageId The language ID
+     * @param \App\Entity\Page $page The page entity
+     * @return array The page data
+     */
+    private function serveDraftVersion(int $page_id, int $languageId, \App\Entity\Page $page): array
+    {
+        // Get current user for caching
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user ? $user->getId() : 1; // guest user
+
+        // Try to get from cache first
+        $cacheKey = "page_draft_{$page_id}_{$languageId}";
 
         // Get flat sections to extract data table dependencies for page-level cache
         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
@@ -250,9 +391,6 @@ class PageService extends BaseService
         }
 
         return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
-            // Check if user has access to the page
-            $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
-
             $pageData = [
                 'page' => [
                     'id' => $page->getId(),

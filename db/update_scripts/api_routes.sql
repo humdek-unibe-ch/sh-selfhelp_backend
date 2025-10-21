@@ -1351,3 +1351,162 @@ JOIN `permissions` p ON p.`name` = 'admin.action_translation.read'
 WHERE ar.`route_name` IN (
   'admin_actions_translations_get_all_v1'
 );
+
+-- ============================================================================
+-- Page Versioning & Publishing System API Routes
+-- ============================================================================
+
+-- Add new permissions for page versioning operations
+INSERT IGNORE INTO `permissions` (`name`, `description`)
+VALUES
+  ('admin.page_version.read',   'Can read and list page versions'),
+  ('admin.page_version.create',   'Can create new page versions'),
+  ('admin.page_version.publish',   'Can publish page versions'),
+  ('admin.page_version.unpublish',   'Can unpublish page versions'),
+  ('admin.page_version.compare',   'Can compare page versions');
+
+-- Grant page versioning permissions to the admin role
+INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
+SELECT r.id, p.id 
+FROM roles r
+CROSS JOIN permissions p
+WHERE r.`name` = 'admin' 
+  AND p.`name` IN (
+    'admin.page_version.read',
+    'admin.page_version.create',
+    'admin.page_version.publish',
+    'admin.page_version.unpublish',
+    'admin.page_version.compare'
+  );
+
+-- Page Versioning Admin API Routes
+INSERT IGNORE INTO api_routes (route_name, version, `path`, controller, methods, requirements, params)
+VALUES
+  -- Publish a new version (creates version from current page state)
+  (
+    'admin_page_publish',
+    'v1',
+    '/admin/pages/{page_id}/versions/publish',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::publishPage',
+    'POST',
+    JSON_OBJECT('page_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version_name', JSON_OBJECT('in', 'body', 'required', false),
+      'metadata', JSON_OBJECT('in', 'body', 'required', false)
+    )
+  ),
+  -- Publish a specific existing version
+  (
+    'admin_page_publish_specific_version',
+    'v1',
+    '/admin/pages/{page_id}/versions/{version_id}/publish',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::publishSpecificVersion',
+    'POST',
+    JSON_OBJECT('page_id', '[0-9]+', 'version_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version_id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  ),
+  -- Unpublish current version (revert to draft mode)
+  (
+    'admin_page_unpublish',
+    'v1',
+    '/admin/pages/{page_id}/versions/unpublish',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::unpublishPage',
+    'POST',
+    JSON_OBJECT('page_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  ),
+  -- List all versions for a page
+  (
+    'admin_page_versions_list',
+    'v1',
+    '/admin/pages/{page_id}/versions',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::listVersions',
+    'GET',
+    JSON_OBJECT('page_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  ),
+  -- Get specific version details
+  (
+    'admin_page_version_get',
+    'v1',
+    '/admin/pages/{page_id}/versions/{version_id}',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::getVersion',
+    'GET',
+    JSON_OBJECT('page_id', '[0-9]+', 'version_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version_id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  ),
+  -- Compare two versions
+  (
+    'admin_page_versions_compare',
+    'v1',
+    '/admin/pages/{page_id}/versions/compare/{version1_id}/{version2_id}',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::compareVersions',
+    'GET',
+    JSON_OBJECT('page_id', '[0-9]+', 'version1_id', '[0-9]+', 'version2_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version1_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version2_id', JSON_OBJECT('in', 'path', 'required', true),
+      'format', JSON_OBJECT('in', 'query', 'required', false)
+    )
+  ),
+  -- Delete a version (soft delete)
+  (
+    'admin_page_version_delete',
+    'v1',
+    '/admin/pages/{page_id}/versions/{version_id}',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::deleteVersion',
+    'DELETE',
+    JSON_OBJECT('page_id', '[0-9]+', 'version_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version_id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  );
+
+-- Link page versioning routes to permissions
+INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
+SELECT ar.id, p.id 
+FROM api_routes ar
+JOIN permissions p ON p.`name` = 'admin.page_version.publish'
+WHERE ar.`route_name` IN (
+  'admin_page_publish',
+  'admin_page_publish_specific_version',
+  'admin_page_unpublish'
+);
+
+INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
+SELECT ar.id, p.id 
+FROM api_routes ar
+JOIN permissions p ON p.`name` = 'admin.page_version.read'
+WHERE ar.`route_name` IN (
+  'admin_page_versions_list',
+  'admin_page_version_get'
+);
+
+INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
+SELECT ar.id, p.id 
+FROM api_routes ar
+JOIN permissions p ON p.`name` = 'admin.page_version.compare'
+WHERE ar.`route_name` = 'admin_page_versions_compare';
+
+INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
+SELECT ar.id, p.id 
+FROM api_routes ar
+JOIN permissions p ON p.`name` = 'admin.page_version.delete'
+WHERE ar.`route_name` = 'admin_page_version_delete';
+
+-- Frontend Page Serving Routes (no special permissions - inherits page ACL)
+-- Note: The existing page serving route will be modified to serve published versions
+-- Preview endpoints will require authentication but use existing page ACL permissions

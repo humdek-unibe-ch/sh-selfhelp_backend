@@ -52,6 +52,16 @@ class PageController extends AbstractController
 
     /**
      * @Route("/cms-api/v1/pages/{page_id}", name="get_page", methods={"GET"})
+     * 
+     * Get a page by ID. 
+     * 
+     * Hybrid Versioning Support:
+     * - Default (preview=false): Serves published version if it exists, otherwise returns 404
+     * - With preview=true: Serves current draft version (requires authentication)
+     * 
+     * Security:
+     * - Draft/preview mode requires proper page ACL permissions
+     * - Published pages use standard page ACL
      */
     public function getPage(Request $request, int $page_id): JsonResponse
     {
@@ -59,12 +69,28 @@ class PageController extends AbstractController
             // Get language_id from query parameter
             $language_id = $request->query->get('language_id') ? (int) $request->query->get('language_id') : null;
             
-            $page = $this->pageService->getPage($page_id, $language_id);
-            return $this->responseFormatter->formatSuccess(
+            // Get preview parameter (defaults to false)
+            $preview = $request->query->getBoolean('preview', false);
+            
+            // Get the page (respects published version unless preview=true)
+            $page = $this->pageService->getPage($page_id, $language_id, $preview);
+            
+            // Create response
+            $response = $this->responseFormatter->formatSuccess(
                 $page,
                 'responses/frontend/get_page',
                 Response::HTTP_OK
             );
+            
+            // Security: Add no-cache headers for draft/preview mode
+            if ($preview) {
+                $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $response->headers->set('Pragma', 'no-cache');
+                $response->headers->set('Expires', '0');
+                $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+            }
+            
+            return $response;
         } catch (\Throwable $e) {
             $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
             return $this->responseFormatter->formatError(

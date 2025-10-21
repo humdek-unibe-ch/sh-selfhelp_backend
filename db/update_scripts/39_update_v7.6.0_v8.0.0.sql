@@ -2482,3 +2482,45 @@ BEGIN
     END IF;
 END$$
 DELIMITER ;
+
+-- ============================================================================
+-- Page Versioning & Publishing System
+-- ============================================================================
+-- Add page versioning and publishing capabilities to allow storing complete
+-- published page JSON structures as versions. This hybrid approach stores
+-- page structure while re-running dynamic elements (data retrieval, conditions)
+-- when serving to ensure freshness.
+
+-- 1. Create page_versions table
+-- This table stores complete published page JSON structures as versions
+DROP TABLE IF EXISTS `page_versions`;
+CREATE TABLE `page_versions` (
+  `id` INT AUTO_INCREMENT NOT NULL,
+  `id_pages` INT NOT NULL,
+  `version_number` INT NOT NULL COMMENT 'Incremental version number per page',
+  `version_name` VARCHAR(255) DEFAULT NULL COMMENT 'Optional user-defined name for the version',
+  `page_json` JSON NOT NULL COMMENT 'Complete JSON structure from getPage() including all languages, conditions, data table configs',
+  `created_by` INT DEFAULT NULL COMMENT 'User who created the version',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `published_at` DATETIME DEFAULT NULL COMMENT 'When this version was published',
+  `metadata` JSON DEFAULT NULL COMMENT 'Additional info like change summary, tags, etc.',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_page_version_number` (`id_pages`, `version_number`),
+  KEY `idx_id_pages` (`id_pages`),
+  KEY `idx_created_by` (`created_by`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_published_at` (`published_at`),
+  CONSTRAINT `FK_page_versions_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_page_versions_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores published page versions with complete JSON structures';
+
+-- 2. Update pages table to add published_version_id
+-- This column points to the currently published version in page_versions table
+CALL add_table_column('pages', 'published_version_id', 'INT DEFAULT NULL');
+CALL add_index('pages', 'IDX_2074E575B5D68A8D', 'published_version_id', FALSE);
+CALL add_foreign_key('pages', 'FK_2074E575B5D68A8D', 'published_version_id', 'page_versions (id)');
+
+ALTER TABLE pages DROP FOREIGN KEY FK_2074E575B5D68A8D;
+DROP INDEX IDX_2074E575B5D68A8D ON pages;
+ALTER TABLE pages ADD CONSTRAINT FK_2074E575B5D68A8D FOREIGN KEY (published_version_id) REFERENCES page_versions (id);
+ALTER TABLE page_versions CHANGE created_by created_by INT DEFAULT NULL, CHANGE created_at created_at DATETIME NOT NULL;

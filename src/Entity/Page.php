@@ -7,6 +7,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'pages')]
+#[ORM\Index(name: 'IDX_pages_published_version_id', columns: ['published_version_id'])]
 class Page
 {
     #[ORM\Id]
@@ -46,6 +47,17 @@ class Page
 
     #[ORM\Column(name: 'is_system', type: 'boolean', options: ['default' => 0], nullable: true)]
     private ?bool $is_system = false;
+
+    /**
+     * Reference to the currently published version of this page
+     *
+     * Points to the PageVersion that is currently live/published for this page.
+     * Only one version per page can be published at any time.
+     * Indexed for efficient queries on published versions.
+     */
+    #[ORM\ManyToOne(targetEntity: PageVersion::class)]
+    #[ORM\JoinColumn(name: 'published_version_id', referencedColumnName: 'id', nullable: true)]
+    private ?PageVersion $publishedVersion = null;
 
     public function getId(): ?int
     {
@@ -181,6 +193,23 @@ class Page
         $this->is_system = $is_system;
 
         return $this;
+    }
+
+    public function getPublishedVersion(): ?PageVersion
+    {
+        return $this->publishedVersion;
+    }
+
+    public function setPublishedVersion(?PageVersion $publishedVersion): static
+    {
+        $this->publishedVersion = $publishedVersion;
+
+        return $this;
+    }
+
+    public function getPublishedVersionId(): ?int
+    {
+        return $this->publishedVersion?->getId();
     }
 }
 // ENTITY RULE
