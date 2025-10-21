@@ -493,8 +493,9 @@ class PageService extends BaseService
             // Step 5: Evaluate condition using fully interpolated data
             $conditionResult = $this->evaluateSectionCondition($section, $userId);
 
-            // Step 6: Include section if condition passes
+            // Step 6: Handle condition results with debug support
             if ($conditionResult['passes']) {
+                // Condition passes: include section with children
                 // Add condition debug info if available
                 if (isset($conditionResult['debug'])) {
                     $section['condition_debug'] = $conditionResult['debug'];
@@ -506,7 +507,19 @@ class PageService extends BaseService
                 }
 
                 $processedSections[] = $section;
+            } elseif (isset($section['debug']) && $section['debug']) {
+                // Condition failed but debug is enabled: include section without children
+                // Add condition debug info for debugging purposes
+                if (isset($conditionResult['debug'])) {
+                    $section['condition_debug'] = $conditionResult['debug'];
+                }
+
+                // Remove children for failed conditions with debug enabled
+                $section['children'] = [];
+
+                $processedSections[] = $section;
             }
+            // Condition failed and debug not enabled: skip section entirely (do nothing)
         }
 
         return $processedSections;
