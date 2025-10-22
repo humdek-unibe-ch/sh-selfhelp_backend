@@ -1,0 +1,97 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Page Versions List Success Response",
+    "description": "Schema for the successful response of listing page versions for an admin.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "versions": {
+                    "type": "array",
+                    "description": "List of page versions.",
+                    "items": { "$ref": "#/definitions/versionItem" }
+                },
+                "pagination": {
+                    "type": "object",
+                    "properties": {
+                        "total_count": {
+                            "type": "integer",
+                            "description": "Total number of versions available.",
+                            "minimum": 0
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Number of versions returned per page.",
+                            "minimum": 1
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "Number of versions skipped from the beginning.",
+                            "minimum": 0
+                        }
+                    },
+                    "required": ["total_count", "limit", "offset"]
+                }
+            },
+            "required": ["versions", "pagination"]
+        }
+    },
+    "required": ["data"],
+    "definitions": {
+        "versionItem": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "Unique identifier of the page version."
+                },
+                "version_number": {
+                    "type": "integer",
+                    "description": "Sequential version number within the page.",
+                    "minimum": 1
+                },
+                "version_name": {
+                    "type": ["string", "null"],
+                    "description": "Optional human-readable name for the version."
+                },
+                "created_by": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "description": "ID of the user who created this version."
+                        },
+                        "name": {
+                            "type": ["string", "null"],
+                            "description": "Name or email of the user who created this version."
+                        }
+                    },
+                    "required": ["id", "name"]
+                },
+                "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Timestamp when this version was created (ISO 8601 format)."
+                },
+                "published_at": {
+                    "type": ["string", "null"],
+                    "format": "date-time",
+                    "description": "Timestamp when this version was published (ISO 8601 format), null if not published."
+                },
+                "is_published": {
+                    "type": "boolean",
+                    "description": "Whether this version is currently published."
+                },
+                "metadata": {
+                    "type": ["object", "null"],
+                    "description": "Additional metadata for the version.",
+                    "additionalProperties": true
+                }
+            },
+            "required": ["id", "version_number", "version_name", "created_by", "created_at", "published_at", "is_published", "metadata"]
+        }
+    }
+}

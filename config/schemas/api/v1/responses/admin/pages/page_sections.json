@@ -9,14 +9,14 @@
         "data": {
             "type": "object",
             "properties": {
-                "pageKeyword": { "type": "string", "description": "The keyword of the page these sections belong to." },
+                "pageId": { "type": "integer", "description": "The ID of the page these sections belong to." },
                 "sections": {
                     "type": "array",
                     "description": "List of page sections.",
                     "items": { "$ref": "#/definitions/sectionItem" }
                 }
             },
-            "required": ["pageKeyword", "sections"]
+            "required": ["pageId", "sections"]
         }
     },
     "required": ["data"],

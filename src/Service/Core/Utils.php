@@ -3,6 +3,7 @@
 namespace App\Service\Core;
 
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
 
@@ -26,8 +27,12 @@ class Utils
             return $data;
         }
         
-        // Create a serializer instance with appropriate normalizers and encoders
-        $normalizer = new ObjectNormalizer(null, null, null, null, null, null, [
+        // Create normalizers - DateTimeNormalizer must come before ObjectNormalizer
+        $dateTimeNormalizer = new DateTimeNormalizer([
+            DateTimeNormalizer::FORMAT_KEY => \DateTimeInterface::ATOM, // ISO 8601 format
+        ]);
+
+        $objectNormalizer = new ObjectNormalizer(null, null, null, null, null, null, [
             ObjectNormalizer::CIRCULAR_REFERENCE_HANDLER => function ($object) {
                 // For circular references, just return the ID if available
                 return method_exists($object, 'getId') ? ['id' => $object->getId()] : null;
@@ -36,8 +41,8 @@ class Utils
             // Ignore Doctrine proxy properties
             ObjectNormalizer::IGNORED_ATTRIBUTES => ['__initializer__', '__cloner__', '__isInitialized__']
         ]);
-        
-        $serializer = new Serializer([$normalizer], [new JsonEncoder()]);
+
+        $serializer = new Serializer([$dateTimeNormalizer, $objectNormalizer], [new JsonEncoder()]);
         
         // First serialize to JSON, then decode back to array
         $json = $serializer->serialize($data, 'json');

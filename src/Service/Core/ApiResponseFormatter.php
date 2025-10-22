@@ -22,7 +22,7 @@ class ApiResponseFormatter
      * 
      * @var bool
      */
-    private const VALIDATE_RESPONSE_SCHEMA = false;
+    private const VALIDATE_RESPONSE_SCHEMA = true;
     
     public function __construct(
         private readonly Security $security,
@@ -60,12 +60,12 @@ class ApiResponseFormatter
             // validation field is not included in success responses
         ];
 
-        // Only perform schema validation in non-production environments
-        if (self::VALIDATE_RESPONSE_SCHEMA) {
+        // Only perform schema validation in non-production environments and when a schema is specified
+        if (self::VALIDATE_RESPONSE_SCHEMA && $responseSchemaName !== null) {
             try {
                 // Deep convert arrays to objects for proper JSON Schema validation
                 $responseDataForValidation = $this->arrayToObject($responseData);
-                
+
                 // Validate the entire responseData object
                 $validationErrors = $this->jsonSchemaValidationService->validate($responseDataForValidation, $responseSchemaName);
 

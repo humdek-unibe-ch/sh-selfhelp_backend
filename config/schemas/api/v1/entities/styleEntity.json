@@ -16,14 +16,58 @@
             "type": ["string", "null"],
             "description": "The description of the style"
         },
-        "typeId": {
-            "type": "integer",
-            "description": "The ID of the style type"
-        },
-        "type": {
-            "type": "string",
-            "description": "The name of the style type"
+        "relationships": {
+            "type": "object",
+            "description": "Relationships defining allowed parent and child styles",
+            "properties": {
+                "allowedChildren": {
+                    "type": "array",
+                    "description": "Array of allowed child style IDs or objects",
+                    "items": {
+                        "oneOf": [
+                            {
+                                "type": "integer",
+                                "description": "Child style ID"
+                            },
+                            {
+                                "type": "object",
+                                "description": "Child style object",
+                                "properties": {
+                                    "id": {
+                                        "type": "integer",
+                                        "description": "The ID of the allowed child style"
+                                    },
+                                    "name": {
+                                        "type": "string",
+                                        "description": "The name of the allowed child style"
+                                    }
+                                },
+                                "required": ["id", "name"]
+                            }
+                        ]
+                    }
+                },
+                "allowedParents": {
+                    "type": "array",
+                    "description": "Array of allowed parent style objects",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "integer",
+                                "description": "The ID of the allowed parent style"
+                            },
+                            "name": {
+                                "type": "string",
+                                "description": "The name of the allowed parent style"
+                            }
+                        },
+                        "required": ["id", "name"]
+                    }
+                }
+            },
+            "required": ["allowedChildren", "allowedParents"]
         }
     },
-    "required": ["id", "name", "typeId", "type"]
+    "required": ["id", "name", "relationships"]
 }

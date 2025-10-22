@@ -7,7 +7,7 @@
       "type": "integer",
       "description": "Unique identifier for the section."
     },
-    "name": {
+    "section_name": {
       "type": "string",
       "description": "Name of the section."
     },
@@ -22,7 +22,46 @@
     "can_have_children": {
       "type": "integer",
       "description": "Whether the style can have children."
+    },
+    "condition": {
+      "type": ["string", "null"],
+      "description": "Condition logic for the section."
+    },
+    "css": {
+      "type": ["string", "null"],
+      "description": "Custom CSS for the section."
+    },
+    "css_mobile": {
+      "type": ["string", "null"],
+      "description": "Mobile-specific CSS for the section."
+    },
+    "debug": {
+      "type": "integer",
+      "description": "Debug flag for the section."
+    },
+    "data_config": {
+      "type": ["string", "null"],
+      "description": "Data configuration for the section."
+    },
+    "position": {
+      "type": "integer",
+      "description": "Position of the section for ordering."
+    },
+    "level": {
+      "type": "integer",
+      "description": "Level/depth of the section in the hierarchy."
+    },
+    "path": {
+      "type": "string",
+      "description": "Path representation of the section hierarchy."
+    },
+    "children": {
+      "type": "array",
+      "description": "Child sections of this section.",
+      "items": {
+        "$ref": "#"
+      }
     }
   },
-  "required": ["id", "name", "id_styles", "style_name", "can_have_children"]
+  "required": ["id", "section_name", "id_styles", "style_name", "can_have_children", "position", "level", "path", "children"]
 }

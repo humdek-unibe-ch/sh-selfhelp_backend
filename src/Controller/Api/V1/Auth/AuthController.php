@@ -92,8 +92,8 @@ class AuthController extends AbstractController
                     'id' => $user->getId(),
                     'email' => $user->getEmail(),
                     'name' => $user->getName(),
-                    'language_id' => $userLanguageInfo['language_id'],
-                    'language_locale' => $userLanguageInfo['language_locale']
+                    'language_id' => $userLanguageInfo['id'],
+                    'language_locale' => $userLanguageInfo['locale']
                 ]
             ], 'responses/auth/login', Response::HTTP_OK, true);
         } catch (RequestValidationException $e) {

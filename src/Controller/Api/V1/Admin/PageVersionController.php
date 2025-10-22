@@ -50,7 +50,7 @@ class PageVersionController extends AbstractController
                     'version_id' => $version->getId(),
                     'version_number' => $version->getVersionNumber(),
                     'version_name' => $version->getVersionName(),
-                    'published_at' => $version->getPublishedAt()->format('Y-m-d H:i:s'),
+                    'published_at' => $version->getPublishedAt(),
                     'message' => 'Page version published successfully'
                 ],
                 'responses/admin/page_version_published',
@@ -79,7 +79,7 @@ class PageVersionController extends AbstractController
                     'version_id' => $version->getId(),
                     'version_number' => $version->getVersionNumber(),
                     'version_name' => $version->getVersionName(),
-                    'published_at' => $version->getPublishedAt()->format('Y-m-d H:i:s'),
+                    'published_at' => $version->getPublishedAt(),
                     'message' => 'Version published successfully'
                 ],
                 'responses/admin/page_version_published',
@@ -138,12 +138,12 @@ class PageVersionController extends AbstractController
                     'id' => $version->getId(),
                     'version_number' => $version->getVersionNumber(),
                     'version_name' => $version->getVersionName(),
-                    'created_by' => [
-                        'id' => $version->getCreatedBy()?->getId(),
-                        'name' => $version->getCreatedBy()?->getName() ?? $version->getCreatedBy()?->getEmail()
-                    ],
-                    'created_at' => $version->getCreatedAt()->format('Y-m-d H:i:s'),
-                    'published_at' => $version->getPublishedAt()?->format('Y-m-d H:i:s'),
+                    'created_by' => $version->getCreatedBy() ? [
+                        'id' => $version->getCreatedBy()->getId(),
+                        'name' => $version->getCreatedBy()->getName() ?? $version->getCreatedBy()->getEmail()
+                    ] : null,
+                    'created_at' => $version->getCreatedAt(),
+                    'published_at' => $version->getPublishedAt(),
                     'is_published' => $version->isPublished(),
                     'metadata' => $version->getMetadata()
                 ];
@@ -194,12 +194,12 @@ class PageVersionController extends AbstractController
                 'page_id' => $version->getPage()->getId(),
                 'version_number' => $version->getVersionNumber(),
                 'version_name' => $version->getVersionName(),
-                'created_by' => [
-                    'id' => $version->getCreatedBy()?->getId(),
-                    'name' => $version->getCreatedBy()?->getName() ?? $version->getCreatedBy()?->getEmail()
-                ],
-                'created_at' => $version->getCreatedAt()->format('Y-m-d H:i:s'),
-                'published_at' => $version->getPublishedAt()?->format('Y-m-d H:i:s'),
+                'created_by' => $version->getCreatedBy() ? [
+                    'id' => $version->getCreatedBy()->getId(),
+                    'name' => $version->getCreatedBy()->getName() ?? $version->getCreatedBy()->getEmail()
+                ] : null,
+                'created_at' => $version->getCreatedAt(),
+                'published_at' => $version->getPublishedAt(),
                 'is_published' => $version->isPublished(),
                 'metadata' => $version->getMetadata()
             ];

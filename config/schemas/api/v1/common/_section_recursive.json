@@ -8,7 +8,7 @@
             "type": "integer",
             "description": "Unique identifier for the section"
         },
-        "name": {
+        "section_name": {
             "type": "string",
             "description": "Name of the section"
         },
@@ -24,6 +24,33 @@
             "type": ["string", "null"],
             "description": "CSS condition/classes for the section"
         },
+        "condition_debug": {
+            "type": "object",
+            "description": "Debug information for conditional sections",
+            "properties": {
+                "result": {
+                    "type": "boolean",
+                    "description": "Whether the condition evaluated to true"
+                },
+                "error": {
+                    "type": "array",
+                    "description": "Array of errors during condition evaluation",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "variables": {
+                    "type": "object",
+                    "description": "Variables used in condition evaluation",
+                    "additionalProperties": true
+                },
+                "condition_object": {
+                    "type": "object",
+                    "description": "Parsed condition object",
+                    "additionalProperties": true
+                }
+            }
+        },
         "css": {
             "type": ["string", "null"],
             "description": "Custom CSS for the section"
@@ -37,8 +64,19 @@
             "description": "Debug flag for the section"
         },
         "data_config": {
-            "type": ["integer", "string", "null"],
-            "description": "Data configuration for the section"
+            "oneOf": [
+                {
+                    "type": "array",
+                    "description": "Array of data configuration objects",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                {
+                    "type": ["integer", "string", "null"],
+                    "description": "Data configuration as single value (legacy support)"
+                }
+            ]
         },
         "can_have_children": {
             "type": ["integer", "null"],
@@ -89,36 +127,13 @@
                 "type": "object"
             }
         },
-        "fields": {
-            "oneOf": [
-                {
-                    "type": "object",
-                    "description": "Section fields organized by field name",
-                    "patternProperties": {
-                        ".*": {
-                            "type": "object",
-                            "properties": {
-                                "content": {
-                                    "type": ["string", "integer", "null"],
-                                    "description": "Field content value"
-                                },
-                                "meta": {
-                                    "type": ["string", "object", "null"],
-                                    "description": "Field metadata"
-                                }
-                            }
-                        }
-                    }
-                },
-                {
-                    "type": "array",
-                    "description": "Empty array for sections with no fields",
-                    "items": false
-                }
-            ]
+        "retrieved_data": {
+            "type": "object",
+            "description": "Data retrieved from external sources based on data_config",
+            "additionalProperties": true
         }
     },
-    "required": ["id", "name", "id_styles", "style_name", "position", "level", "path", "children", "section_data", "fields"],
+    "required": ["id", "section_name", "id_styles", "style_name", "position", "level", "path", "children", "section_data"],
     "allOf": [
         {
             "if": {
@@ -363,6 +378,1817 @@
                             "meta": {
                                 "type": ["string", "null"],
                                 "description": "Confirmation message metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "text" } }
+            },
+            "then": {
+                "properties": {
+                    "text": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text content"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "mantine_spacing_margin_padding": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine spacing configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Spacing metadata"
+                            }
+                        }
+                    },
+                    "mantine_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine color configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Color metadata"
+                            }
+                        }
+                    },
+                    "mantine_size": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine size configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Size metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_font_weight": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Font weight configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Font weight metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_font_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Font style configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Font style metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_text_decoration": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text decoration configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text decoration metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_text_transform": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text transform configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text transform metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_align": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text alignment configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text alignment metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text variant configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text variant metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_gradient": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Text gradient configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text gradient metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_truncate": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Text truncation configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text truncation metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_line_clamp": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Line clamp configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Line clamp metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_inherit": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text inherit configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text inherit metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_span": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text span configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text span metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "form-log" } }
+            },
+            "then": {
+                "properties": {
+                    "name": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Form name"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Form name metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "is_log": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether this is a log form"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Log form metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "mantine_spacing_margin_padding": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine spacing configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Spacing metadata"
+                            }
+                        }
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_size": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button size configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button size metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_radius": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button radius configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button radius metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button variant configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button variant metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_position": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button position configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button position metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_order": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button order configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button order metadata"
+                            }
+                        }
+                    },
+                    "mantine_btn_save_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Save button color"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Save button color metadata"
+                            }
+                        }
+                    },
+                    "mantine_btn_cancel_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Cancel button color"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Cancel button color metadata"
+                            }
+                        }
+                    },
+                    "redirect_at_end": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Redirect URL after form submission"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Redirect metadata"
+                            }
+                        }
+                    },
+                    "btn_cancel_url": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Cancel button URL"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Cancel URL metadata"
+                            }
+                        }
+                    },
+                    "alert_success": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Success alert message"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Success alert metadata"
+                            }
+                        }
+                    },
+                    "btn_save_label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Save button label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Save button label metadata"
+                            }
+                        }
+                    },
+                    "btn_cancel_label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Cancel button label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Cancel button label metadata"
+                            }
+                        }
+                    },
+                    "alert_error": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Error alert message"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Error alert metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "form-record" } }
+            },
+            "then": {
+                "properties": {
+                    "name": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Form name"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Form name metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "is_log": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether this is a log form"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Log form metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "mantine_spacing_margin_padding": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine spacing configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Spacing metadata"
+                            }
+                        }
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_size": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button size configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button size metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_radius": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button radius configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button radius metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button variant configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button variant metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_position": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button position configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button position metadata"
+                            }
+                        }
+                    },
+                    "mantine_buttons_order": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Button order configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Button order metadata"
+                            }
+                        }
+                    },
+                    "mantine_btn_save_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Save button color"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Save button color metadata"
+                            }
+                        }
+                    },
+                    "mantine_btn_update_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Update button color"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Update button color metadata"
+                            }
+                        }
+                    },
+                    "mantine_btn_cancel_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Cancel button color"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Cancel button color metadata"
+                            }
+                        }
+                    },
+                    "redirect_at_end": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Redirect URL after form submission"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Redirect metadata"
+                            }
+                        }
+                    },
+                    "btn_cancel_url": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Cancel button URL"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Cancel URL metadata"
+                            }
+                        }
+                    },
+                    "alert_success": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Success alert message"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Success alert metadata"
+                            }
+                        }
+                    },
+                    "btn_save_label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Save button label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Save button label metadata"
+                            }
+                        }
+                    },
+                    "btn_update_label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Update button label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Update button label metadata"
+                            }
+                        }
+                    },
+                    "btn_cancel_label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Cancel button label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Cancel button label metadata"
+                            }
+                        }
+                    },
+                    "alert_error": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Error alert message"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Error alert metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "text-input" } }
+            },
+            "then": {
+                "properties": {
+                    "is_required": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is required"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Required field metadata"
+                            }
+                        }
+                    },
+                    "name": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field name"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field name metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "value": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field value"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field value metadata"
+                            }
+                        }
+                    },
+                    "disabled": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is disabled"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Disabled field metadata"
+                            }
+                        }
+                    },
+                    "mantine_spacing_margin": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine margin configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Margin metadata"
+                            }
+                        }
+                    },
+                    "translatable": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is translatable"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Translatable metadata"
+                            }
+                        }
+                    },
+                    "mantine_size": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine size configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Size metadata"
+                            }
+                        }
+                    },
+                    "mantine_radius": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine radius configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Radius metadata"
+                            }
+                        }
+                    },
+                    "mantine_left_icon": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Left icon configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Left icon metadata"
+                            }
+                        }
+                    },
+                    "mantine_right_icon": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Right icon configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Right icon metadata"
+                            }
+                        }
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
+                            }
+                        }
+                    },
+                    "mantine_text_input_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text input variant"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text input variant metadata"
+                            }
+                        }
+                    },
+                    "label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Label metadata"
+                            }
+                        }
+                    },
+                    "placeholder": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field placeholder"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Placeholder metadata"
+                            }
+                        }
+                    },
+                    "description": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field description"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Description metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "textarea" } }
+            },
+            "then": {
+                "properties": {
+                    "is_required": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is required"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Required field metadata"
+                            }
+                        }
+                    },
+                    "name": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field name"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field name metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "value": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field value"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field value metadata"
+                            }
+                        }
+                    },
+                    "disabled": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is disabled"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Disabled field metadata"
+                            }
+                        }
+                    },
+                    "locked_after_submit": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is locked after submit"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Locked after submit metadata"
+                            }
+                        }
+                    },
+                    "mantine_spacing_margin": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine margin configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Margin metadata"
+                            }
+                        }
+                    },
+                    "translatable": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is translatable"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Translatable metadata"
+                            }
+                        }
+                    },
+                    "mantine_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine variant configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Variant metadata"
+                            }
+                        }
+                    },
+                    "mantine_size": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine size configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Size metadata"
+                            }
+                        }
+                    },
+                    "mantine_radius": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine radius configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Radius metadata"
+                            }
+                        }
+                    },
+                    "mantine_left_icon": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Left icon configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Left icon metadata"
+                            }
+                        }
+                    },
+                    "mantine_right_icon": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Right icon configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Right icon metadata"
+                            }
+                        }
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
+                            }
+                        }
+                    },
+                    "mantine_textarea_autosize": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Textarea autosize configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Textarea autosize metadata"
+                            }
+                        }
+                    },
+                    "mantine_textarea_min_rows": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Minimum rows configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Minimum rows metadata"
+                            }
+                        }
+                    },
+                    "mantine_textarea_max_rows": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Maximum rows configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Maximum rows metadata"
+                            }
+                        }
+                    },
+                    "mantine_textarea_resize": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Textarea resize configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Textarea resize metadata"
+                            }
+                        }
+                    },
+                    "mantine_textarea_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Textarea variant configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Textarea variant metadata"
+                            }
+                        }
+                    },
+                    "mantine_textarea_rows": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Textarea rows configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Textarea rows metadata"
+                            }
+                        }
+                    },
+                    "label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Label metadata"
+                            }
+                        }
+                    },
+                    "placeholder": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field placeholder"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Placeholder metadata"
+                            }
+                        }
+                    },
+                    "description": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field description"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Description metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "datepicker" } }
+            },
+            "then": {
+                "properties": {
+                    "is_required": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is required"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Required field metadata"
+                            }
+                        }
+                    },
+                    "name": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field name"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field name metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "value": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field value"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field value metadata"
+                            }
+                        }
+                    },
+                    "disabled": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is disabled"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Disabled field metadata"
+                            }
+                        }
+                    },
+                    "mantine_spacing_margin": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine margin configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Margin metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_type": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Datepicker type (date, datetime, etc.)"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Datepicker type metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_format": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Date format configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Date format metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_locale": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Datepicker locale"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Locale metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_min_date": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Minimum date configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Minimum date metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_max_date": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Maximum date configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Maximum date metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_first_day_of_week": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "First day of week configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "First day of week metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_weekend_days": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Weekend days configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Weekend days metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_clearable": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the datepicker is clearable"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Clearable metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_allow_deseselect": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether deselection is allowed"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Allow deselect metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_readonly": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the datepicker is readonly"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Readonly metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_with_time_grid": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to show time grid"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Time grid metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_consistent_weeks": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Consistent weeks configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Consistent weeks metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_hide_outside_dates": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Hide outside dates configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Hide outside dates metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_hide_weekends": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Hide weekends configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Hide weekends metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_time_step": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Time step configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Time step metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_time_format": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Time format configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Time format metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_date_format": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Date format configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Date format metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_time_grid_config": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Time grid configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Time grid metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_with_seconds": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to include seconds"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Seconds metadata"
+                            }
+                        }
+                    },
+                    "label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Label metadata"
+                            }
+                        }
+                    },
+                    "description": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field description"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Description metadata"
+                            }
+                        }
+                    },
+                    "mantine_datepicker_placeholder": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Datepicker placeholder"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Placeholder metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "rich-text-editor" } }
+            },
+            "then": {
+                "properties": {
+                    "is_required": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is required"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Required field metadata"
+                            }
+                        }
+                    },
+                    "name": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field name"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field name metadata"
+                            }
+                        },
+                        "required": ["content"]
+                    },
+                    "value": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field value"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Field value metadata"
+                            }
+                        }
+                    },
+                    "disabled": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is disabled"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Disabled field metadata"
+                            }
+                        }
+                    },
+                    "mantine_spacing_margin": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine margin configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Margin metadata"
+                            }
+                        }
+                    },
+                    "translatable": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether the field is translatable"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Translatable metadata"
+                            }
+                        }
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
+                            }
+                        }
+                    },
+                    "mantine_rich_text_editor_variant": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Rich text editor variant"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Rich text editor variant metadata"
+                            }
+                        }
+                    },
+                    "mantine_rich_text_editor_bubble_menu": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Bubble menu configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Bubble menu metadata"
+                            }
+                        }
+                    },
+                    "mantine_rich_text_editor_text_color": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Text color configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Text color metadata"
+                            }
+                        }
+                    },
+                    "mantine_rich_text_editor_task_list": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Task list configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Task list metadata"
+                            }
+                        }
+                    },
+                    "label": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Field label"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Label metadata"
+                            }
+                        }
+                    },
+                    "description": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": ["string", "null"],
+                                "description": "Field description"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Description metadata"
+                            }
+                        }
+                    },
+                    "mantine_rich_text_editor_placeholder": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Rich text editor placeholder"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Placeholder metadata"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "style_name": { "const": "box" } }
+            },
+            "then": {
+                "properties": {
+                    "content": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Box content"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Box content metadata"
+                            }
+                        }
+                    },
+                    "mantine_spacing_margin_padding": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Mantine spacing configuration"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Spacing metadata"
+                            }
+                        }
+                    },
+                    "use_mantine_style": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "Whether to use Mantine styling"
+                            },
+                            "meta": {
+                                "type": ["string", "null"],
+                                "description": "Mantine style metadata"
                             }
                         }
                     }

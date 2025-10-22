@@ -1,0 +1,51 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "API Response Envelope",
+    "description": "Common structure for all successful API responses",
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "integer",
+            "description": "HTTP status code",
+            "minimum": 100,
+            "maximum": 599
+        },
+        "message": {
+            "type": "string",
+            "description": "Human-readable status message"
+        },
+        "error": {
+            "type": ["string", "null"],
+            "description": "Error message, null for successful responses"
+        },
+        "logged_in": {
+            "type": "boolean",
+            "description": "Whether the current user is authenticated"
+        },
+        "meta": {
+            "type": "object",
+            "description": "Metadata about the response",
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "description": "API version"
+                },
+                "timestamp": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Response timestamp in ISO 8601 format"
+                }
+            },
+            "required": ["version", "timestamp"]
+        },
+        "data": {
+            "description": "Response payload data"
+        },
+        "_debug": {
+            "type": "object",
+            "description": "Debug information (only present in non-production environments during validation errors)",
+            "additionalProperties": true
+        }
+    },
+    "required": ["status", "message", "error", "logged_in", "meta", "data"]
+}

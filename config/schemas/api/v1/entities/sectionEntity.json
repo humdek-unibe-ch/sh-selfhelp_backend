@@ -13,7 +13,27 @@
             "description": "The name of the section"
         },
         "style": {
-            "$ref": "styleEntity.json"
+            "type": "object",
+            "description": "Style information for the section",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "The unique identifier of the style"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "The name of the style"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "The description of the style"
+                },
+                "canHaveChildren": {
+                    "type": "boolean",
+                    "description": "Whether this style can have children"
+                }
+            },
+            "required": ["id", "name", "description", "canHaveChildren"]
         },
         "global_fields": {
             "type": "object",

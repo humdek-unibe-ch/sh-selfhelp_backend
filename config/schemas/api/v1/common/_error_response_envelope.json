@@ -1,0 +1,59 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "API Error Response Envelope",
+    "description": "Common structure for all error API responses",
+    "type": "object",
+    "properties": {
+        "status": {
+            "type": "integer",
+            "description": "HTTP status code",
+            "minimum": 100,
+            "maximum": 599
+        },
+        "message": {
+            "type": "string",
+            "description": "Human-readable status message"
+        },
+        "error": {
+            "type": "string",
+            "description": "Error message"
+        },
+        "logged_in": {
+            "type": "boolean",
+            "description": "Whether the current user is authenticated"
+        },
+        "meta": {
+            "type": "object",
+            "description": "Metadata about the response",
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "description": "API version"
+                },
+                "timestamp": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Response timestamp in ISO 8601 format"
+                }
+            },
+            "required": ["version", "timestamp"]
+        },
+        "data": {
+            "description": "Additional error data"
+        },
+        "validation": {
+            "type": "array",
+            "description": "Validation errors (optional)",
+            "items": {
+                "type": "object",
+                "additionalProperties": true
+            }
+        },
+        "_debug": {
+            "type": "object",
+            "description": "Debug information (only present in non-production environments during validation errors)",
+            "additionalProperties": true
+        }
+    },
+    "required": ["status", "message", "error", "logged_in", "meta"]
+}

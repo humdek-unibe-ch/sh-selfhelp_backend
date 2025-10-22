@@ -618,20 +618,23 @@ class PageService extends BaseService
             // This allows filters like "record_id = {{parent.record_id}}" to work
             $this->interpolateDataConfigInSection($section, $parentData);
 
-            // Step 2: Retrieve data from data_config (now with properly interpolated filters)
+            // Step 2: Apply section data (for form-record sections)
+            $this->sectionUtilityService->applySectionData($section, $languageId);
+
+            // Step 3: Retrieve data from data_config (now with properly interpolated filters)
             $this->retrieveSectionData($section, $parentData, $languageId);
 
-            // Step 3: Merge parent data with newly retrieved data efficiently
+            // Step 4: Merge parent data with newly retrieved data efficiently
             $sectionData = $this->mergeDataEfficiently($parentData, $section['retrieved_data'] ?? []);
 
-            // Step 4: CRITICAL - Interpolate ALL content fields using combined data
+            // Step 5: CRITICAL - Interpolate ALL content fields using combined data
             // Now we have both parent data and newly retrieved data available
             $this->applyOptimizedInterpolationPass($section, $sectionData);
 
-            // Step 5: Evaluate condition using fully interpolated data
+            // Step 6: Evaluate condition using fully interpolated data
             $conditionResult = $this->evaluateSectionCondition($section, $userId);
 
-            // Step 6: Handle condition results with debug support
+            // Step 7: Handle condition results with debug support
             if ($conditionResult['passes']) {
                 // Condition passes: include section with children
                 // Add condition debug info if available
@@ -639,7 +642,7 @@ class PageService extends BaseService
                     $section['condition_debug'] = $conditionResult['debug'];
                 }
 
-                // Step 7: Process children recursively with inherited data
+                // Step 8: Process children recursively with inherited data
                 if (isset($section['children']) && is_array($section['children'])) {
                     $section['children'] = $this->processSectionsRecursively($section['children'], $sectionData, $userId, $languageId);
                 }

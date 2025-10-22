@@ -562,24 +562,24 @@ class DataService extends BaseService
         if (!$dataTable) {
             return [];
         }
+
         $dataTableId = $dataTable->getId();
-        $data = $this->getDataWithAllLanguages($dataTableId, '', true, $this->userContextService->getCurrentUser()->getId(), false, true);
+        $currentUser = $this->userContextService->getCurrentUser();
+        $userId = $currentUser ? $currentUser->getId() : null;
 
-        // Filter to only return records for the highest record_id
-        if (!empty($data)) {
-            // Find the maximum record_id
-            $maxRecordId = max(array_column($data, 'record_id'));
-
-            // Filter data to only include records with the maximum record_id
-            $data = array_filter($data, function ($record) use ($maxRecordId) {
-                return $record['record_id'] === $maxRecordId;
-            });
-
-            // Reset array keys
-            $data = array_values($data);
+        if (!$userId) {
+            return []; // No user, no form record data
         }
 
-        return $data;
+        $cacheKey = "form_record_data_{$dataTableName}_{$userId}";
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList($cacheKey, function () use ($dataTableId, $userId) {
+                return $this->getDataWithAllLanguages($dataTableId, 'ORDER BY record_id DESC LIMIT 1', true, $userId, false, true);
+            });
     }
 
     /**
@@ -726,6 +726,29 @@ class DataService extends BaseService
                 ->withCategory(CacheService::CATEGORY_DATA_TABLES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
+
+        // Additionally invalidate form-record cache for this data table and user
+        $this->invalidateFormRecordCache($dataTable, $userId);
+    }
+
+    /**
+     * Invalidate form-record cache for a specific data table and user
+     *
+     * @param DataTable $dataTable The data table entity
+     * @param int|null $userId The user ID
+     */
+    private function invalidateFormRecordCache(DataTable $dataTable, ?int $userId): void
+    {
+        if (!$userId) {
+            return; // No user, no form record cache to invalidate
+        }
+
+        // Invalidate the specific form-record cache entry
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId())
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->invalidateItem("form_record_data_{$dataTable->getName()}_{$userId}");
     }
 
     /**
