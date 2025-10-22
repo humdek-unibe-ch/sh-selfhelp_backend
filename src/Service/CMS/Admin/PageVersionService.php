@@ -547,13 +547,13 @@ class PageVersionService extends BaseService
 
     /**
      * Get raw page structure with ALL languages
-     * 
+     *
      * This returns the raw page structure including:
      * - Page metadata
      * - Sections with ALL language translations (not just one)
      * - Conditions and data_config
      * - NO retrieved_data or condition_debug (dynamic elements)
-     * 
+     *
      * @param int $pageId The page ID
      * @return array Raw page structure with all languages
      * @throws \App\Exception\ServiceException If page not found
@@ -569,16 +569,39 @@ class PageVersionService extends BaseService
         // Get all sections for this page (flat structure from DB)
         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($pageId);
 
-        // Build nested hierarchical structure (without applying data)
-        $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false);
+        // Build nested hierarchical structure (without applying data) - use language ID 1 for property translations
+        $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, 1);
 
         // Extract all section IDs
         $sectionIds = $this->sectionUtilityService->extractSectionIds($sections);
 
-        // Fetch ALL language translations for these sections
+        // Get default language ID for fallback translations
+        $defaultLanguageId = null;
+        try {
+            $cmsPreference = $this->entityManager->getRepository(\App\Entity\CmsPreference::class)->findOneBy([]);
+            if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
+                $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
+            }
+        } catch (\Exception $e) {
+            // If there's an error getting the default language, continue without fallback
+        }
+
+        // Fetch property translations (language ID 1) for fields of type 1
+        $propertyTranslations = $this->translationRepository->fetchTranslationsForSections($sectionIds, 1);
+
+        // Fetch default language translations for fallback
+        $defaultTranslations = [];
+        if ($defaultLanguageId) {
+            $defaultTranslations = $this->translationRepository->fetchTranslationsForSections($sectionIds, $defaultLanguageId);
+        }
+
+        // Apply property translations and default values (but NOT regular translations yet)
+        $this->sectionUtilityService->applySectionTranslations($sections, [], $defaultTranslations, $propertyTranslations);
+
+        // Now fetch ALL language translations for these sections
         $allTranslations = $this->fetchAllLanguageTranslations($sectionIds);
 
-        // Apply ALL language translations to sections
+        // Apply ALL language translations to sections (this adds the 'translations' field for multi-language support)
         $this->applyAllLanguageTranslations($sections, $allTranslations);
 
         // Build the page structure
