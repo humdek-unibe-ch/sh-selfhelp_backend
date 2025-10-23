@@ -1461,6 +1461,32 @@ VALUES
       'format', JSON_OBJECT('in', 'query', 'required', false)
     )
   ),
+  -- Compare current draft with a specific version
+  (
+    'admin_page_versions_compare_draft',
+    'v1',
+    '/admin/pages/{page_id}/versions/compare-draft/{version_id}',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::compareDraftWithVersion',
+    'GET',
+    JSON_OBJECT('page_id', '[0-9]+', 'version_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true),
+      'version_id', JSON_OBJECT('in', 'path', 'required', true),
+      'format', JSON_OBJECT('in', 'query', 'required', false)
+    )
+  ),
+  -- Lightweight check for unpublished changes (fast hash comparison)
+  (
+    'admin_page_versions_has_changes',
+    'v1',
+    '/admin/pages/{page_id}/versions/has-changes',
+    'App\\Controller\\Api\\V1\\Admin\\PageVersionController::hasUnpublishedChanges',
+    'GET',
+    JSON_OBJECT('page_id', '[0-9]+'),
+    JSON_OBJECT(
+      'page_id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  ),
   -- Delete a version (soft delete)
   (
     'admin_page_version_delete',
@@ -1492,14 +1518,15 @@ FROM api_routes ar
 JOIN permissions p ON p.`name` = 'admin.page_version.read'
 WHERE ar.`route_name` IN (
   'admin_page_versions_list',
-  'admin_page_version_get'
+  'admin_page_version_get',
+  'admin_page_versions_has_changes'
 );
 
 INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
 SELECT ar.id, p.id 
 FROM api_routes ar
 JOIN permissions p ON p.`name` = 'admin.page_version.compare'
-WHERE ar.`route_name` = 'admin_page_versions_compare';
+WHERE ar.`route_name` IN ('admin_page_versions_compare', 'admin_page_versions_compare_draft');
 
 INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
 SELECT ar.id, p.id 

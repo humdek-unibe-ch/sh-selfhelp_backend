@@ -123,6 +123,11 @@ class PageVersionController extends AbstractController
      * List all versions for a page
      * 
      * GET /cms-api/v1/admin/pages/{page_id}/versions
+     * 
+     * Includes:
+     * - List of versions with pagination
+     * - Current published version ID
+     * - Fast check for unpublished changes (hash-based comparison)
      */
     public function listVersions(Request $request, int $page_id): JsonResponse
     {
@@ -131,6 +136,10 @@ class PageVersionController extends AbstractController
             $offset = $request->query->getInt('offset', 0);
 
             $result = $this->pageVersionService->getVersionHistory($page_id, $limit, $offset);
+
+            // Get the currently published version ID
+            $publishedVersion = $this->pageVersionService->getPublishedVersion($page_id);
+            $currentPublishedVersionId = $publishedVersion ? $publishedVersion->getId() : null;
 
             // Format versions for response
             $formattedVersions = array_map(function ($version) {
@@ -156,7 +165,9 @@ class PageVersionController extends AbstractController
                         'total_count' => $result['total_count'],
                         'limit' => $result['limit'],
                         'offset' => $result['offset']
-                    ]
+                    ],
+                    'current_published_version_id' => $currentPublishedVersionId,
+                    'has_unpublished_changes' => $result['has_unpublished_changes']
                 ],
                 'responses/admin/page_versions_list',
                 Response::HTTP_OK
@@ -276,6 +287,86 @@ class PageVersionController extends AbstractController
                     'message' => 'Version deleted successfully'
                 ],
                 'responses/admin/page_version_deleted',
+                Response::HTTP_OK
+            );
+        } catch (\Throwable $e) {
+            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) 
+                ? $e->getCode() 
+                : Response::HTTP_INTERNAL_SERVER_ERROR;
+            return $this->responseFormatter->formatError($e->getMessage(), $statusCode);
+        }
+    }
+
+    /**
+     * Compare current draft with a specific version
+     * 
+     * This endpoint allows comparing the current unsaved draft page state with a published version.
+     * Useful for showing real-time changes before creating a new version.
+     * 
+     * GET /cms-api/v1/admin/pages/{page_id}/versions/compare-draft/{version_id}
+     * 
+     * @param Request $request
+     * @param int $page_id The page ID
+     * @param int $version_id The version ID to compare the draft against
+     * @return JsonResponse
+     */
+    public function compareDraftWithVersion(Request $request, int $page_id, int $version_id): JsonResponse
+    {
+        try {
+            $format = $request->query->get('format', 'side_by_side');
+            
+            // Validate format
+            $validFormats = ['unified', 'side_by_side', 'json_patch', 'summary'];
+            if (!in_array($format, $validFormats)) {
+                return $this->responseFormatter->formatError(
+                    "Invalid format. Must be one of: " . implode(', ', $validFormats),
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
+            $comparison = $this->pageVersionService->compareDraftWithVersion($page_id, $version_id, $format);
+
+            return $this->responseFormatter->formatSuccess(
+                $comparison,
+                'responses/admin/page_draft_comparison',
+                Response::HTTP_OK
+            );
+        } catch (\Throwable $e) {
+            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) 
+                ? $e->getCode() 
+                : Response::HTTP_INTERNAL_SERVER_ERROR;
+            return $this->responseFormatter->formatError($e->getMessage(), $statusCode);
+        }
+    }
+
+    /**
+     * Check if page has unpublished changes (lightweight check)
+     * 
+     * This is a very fast endpoint (typically < 50ms) that uses hash comparison
+     * to detect if the current draft differs from the published version.
+     * 
+     * Perfect for real-time UI status indicators without the overhead of full comparison.
+     * 
+     * GET /cms-api/v1/admin/pages/{page_id}/versions/has-changes
+     * 
+     * @param Request $request
+     * @param int $page_id The page ID
+     * @return JsonResponse
+     */
+    public function hasUnpublishedChanges(Request $request, int $page_id): JsonResponse
+    {
+        try {
+            $hasChanges = $this->pageVersionService->hasUnpublishedChanges($page_id);
+            $publishedVersion = $this->pageVersionService->getPublishedVersion($page_id);
+
+            return $this->responseFormatter->formatSuccess(
+                [
+                    'page_id' => $page_id,
+                    'has_unpublished_changes' => $hasChanges,
+                    'current_published_version_id' => $publishedVersion ? $publishedVersion->getId() : null,
+                    'current_published_version_number' => $publishedVersion ? $publishedVersion->getVersionNumber() : null
+                ],
+                'responses/admin/page_has_changes',
                 Response::HTTP_OK
             );
         } catch (\Throwable $e) {

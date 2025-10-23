@@ -1,0 +1,73 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Page Versions Comparison Success Response",
+    "description": "Schema for the successful response of comparing two page versions for an admin.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "version1": {
+                    "type": "object",
+                    "description": "Details of the first version being compared.",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "description": "Unique identifier of the first version."
+                        },
+                        "version_number": {
+                            "type": "integer",
+                            "description": "Sequential version number of the first version.",
+                            "minimum": 1
+                        },
+                        "version_name": {
+                            "type": ["string", "null"],
+                            "description": "Optional human-readable name for the first version."
+                        },
+                        "created_at": {
+                            "type": "string",
+                            "description": "Timestamp when the first version was created."
+                        }
+                    },
+                    "required": ["id", "version_number", "version_name", "created_at"]
+                },
+                "version2": {
+                    "type": "object",
+                    "description": "Details of the second version being compared.",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "description": "Unique identifier of the second version."
+                        },
+                        "version_number": {
+                            "type": "integer",
+                            "description": "Sequential version number of the second version.",
+                            "minimum": 1
+                        },
+                        "version_name": {
+                            "type": ["string", "null"],
+                            "description": "Optional human-readable name for the second version."
+                        },
+                        "created_at": {
+                            "type": "string",
+                            "description": "Timestamp when the second version was created."
+                        }
+                    },
+                    "required": ["id", "version_number", "version_name", "created_at"]
+                },
+                "format": {
+                    "type": "string",
+                    "description": "Format of the comparison output.",
+                    "enum": ["unified", "side_by_side", "json_patch", "summary"]
+                },
+                "diff": {
+                    "description": "The actual diff content, format depends on the requested format type."
+                }
+            },
+            "required": ["version1", "version2", "format", "diff"]
+        }
+    },
+    "required": ["data"]
+}

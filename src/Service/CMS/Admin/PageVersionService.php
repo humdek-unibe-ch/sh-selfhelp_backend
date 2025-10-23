@@ -307,22 +307,88 @@ class PageVersionService extends BaseService
     /**
      * Get version history with pagination
      * 
+     * Includes a fast check to detect if the current draft has unpublished changes
+     * compared to the published version using MD5 hash comparison.
+     * 
      * @param int $pageId The page ID
      * @param int $limit Maximum number of versions to return
      * @param int $offset Offset for pagination
-     * @return array Array containing versions and total count
+     * @return array Array containing versions, total count, and unpublished changes flag
      */
     public function getVersionHistory(int $pageId, int $limit = 10, int $offset = 0): array
     {
         $versions = $this->pageVersionRepository->getVersionHistory($pageId, $limit, $offset);
         $totalCount = $this->pageVersionRepository->countVersionsByPage($pageId);
 
+        // Fast check: Does the draft have unpublished changes?
+        $hasUnpublishedChanges = $this->hasUnpublishedChanges($pageId);
+
         return [
             'versions' => $versions,
             'total_count' => $totalCount,
             'limit' => $limit,
-            'offset' => $offset
+            'offset' => $offset,
+            'has_unpublished_changes' => $hasUnpublishedChanges
         ];
+    }
+
+    /**
+     * Fast check to determine if current draft has unpublished changes
+     * 
+     * Uses MD5 hash comparison of normalized JSON structures for speed.
+     * This is much faster than full diff comparison (typically < 50ms).
+     * 
+     * @param int $pageId The page ID
+     * @return bool True if draft differs from published version, false otherwise
+     */
+    public function hasUnpublishedChanges(int $pageId): bool
+    {
+        try {
+            // Get the published version
+            $publishedVersion = $this->getPublishedVersion($pageId);
+            
+            // If no published version exists, there are always "unpublished changes"
+            if (!$publishedVersion) {
+                return true;
+            }
+
+            // Get current draft structure
+            $draftJson = $this->getRawPageStructure($pageId);
+            
+            // Get published version structure
+            $publishedJson = $publishedVersion->getPageJson();
+            
+            // Generate normalized hashes for comparison
+            $draftHash = $this->generateStructureHash($draftJson);
+            $publishedHash = $this->generateStructureHash($publishedJson);
+            
+            // If hashes differ, there are unpublished changes
+            return $draftHash !== $publishedHash;
+        } catch (\Exception $e) {
+            // If any error occurs, assume there are changes (fail-safe)
+            return true;
+        }
+    }
+
+    /**
+     * Generate a fast hash of page structure for comparison
+     *
+     * Normalizes the JSON structure to ensure consistent hashing:
+     * - Sorts arrays by keys recursively (handles property order differences)
+     * - Consistent formatting without whitespace
+     * - Uses MD5 for speed (we only need equality check, not security)
+     *
+     * @param array $pageStructure The page JSON structure
+     * @return string MD5 hash of normalized structure
+     */
+    private function generateStructureHash(array $pageStructure): string
+    {
+        // Use JsonNormalizer to sort keys consistently before hashing
+        // This ensures identical content with different property orders hash the same
+        $normalizedJson = JsonNormalizer::normalize($pageStructure, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        // Use MD5 for speed (collision resistance not needed for this use case)
+        return md5($normalizedJson);
     }
 
     /**
@@ -398,6 +464,86 @@ class PageVersionService extends BaseService
                 $result['diff'] = DiffHelper::calculate(
                     $normalized1,
                     $normalized2,
+                    'Unified',
+                    ['detailLevel' => 'line']
+                );
+                break;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Compare current draft page with a specific version
+     * 
+     * This allows comparing the current unsaved draft state with a published version
+     * to show what changes have been made since the last publish.
+     * 
+     * @param int $pageId The page ID
+     * @param int $versionId The version ID to compare against
+     * @param string $format Diff format (unified, side_by_side, json_patch, summary)
+     * @return array Comparison result with draft and version data
+     * @throws \App\Exception\ServiceException If page or version not found
+     */
+    public function compareDraftWithVersion(int $pageId, int $versionId, string $format = 'side_by_side'): array
+    {
+        // Get the current draft page structure
+        $draftJson = $this->getRawPageStructure($pageId);
+
+        // Get the version to compare against
+        $version = $this->getVersionById($versionId);
+
+        // Verify the version belongs to this page
+        if ($version->getPage()->getId() !== $pageId) {
+            $this->throwBadRequest("Version {$versionId} does not belong to page {$pageId}");
+        }
+
+        $versionJson = $version->getPageJson();
+
+        // Normalize the JSON structures for comparison (sort keys to handle property order differences)
+        $normalizedDraft = JsonNormalizer::normalize($draftJson, JSON_PRETTY_PRINT);
+        $normalizedVersion = JsonNormalizer::normalize($versionJson, JSON_PRETTY_PRINT);
+
+        $result = [
+            'draft' => [
+                'id_pages' => $pageId,
+                'keyword' => $draftJson['page']['keyword'] ?? null,
+                'url' => $draftJson['page']['url'] ?? null,
+                'updated_at' => (new \DateTime())->format('Y-m-d H:i:s')
+            ],
+            'published_version' => [
+                'id' => $version->getId(),
+                'version_number' => $version->getVersionNumber(),
+                'version_name' => $version->getVersionName(),
+                'published_at' => $version->getPublishedAt() ? $version->getPublishedAt()->format('Y-m-d H:i:s') : null
+            ],
+            'format' => $format
+        ];
+
+        // Generate diff based on format
+        switch ($format) {
+            case 'side_by_side':
+                $result['diff'] = DiffHelper::calculate(
+                    $normalizedVersion,
+                    $normalizedDraft,
+                    'SideBySide',
+                    ['detailLevel' => 'word']
+                );
+                break;
+
+            case 'json_patch':
+                $result['diff'] = $this->createJsonPatch($versionJson, $draftJson);
+                break;
+
+            case 'summary':
+                $result['diff'] = JsonNormalizer::getDifferenceSummary($versionJson, $draftJson);
+                break;
+
+            case 'unified':
+            default:
+                $result['diff'] = DiffHelper::calculate(
+                    $normalizedVersion,
+                    $normalizedDraft,
                     'Unified',
                     ['detailLevel' => 'line']
                 );

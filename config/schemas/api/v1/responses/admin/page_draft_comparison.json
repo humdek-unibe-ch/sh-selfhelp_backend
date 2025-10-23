@@ -1,0 +1,72 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Page Draft Comparison Success Response",
+    "description": "Schema for the successful response of comparing a page draft with a published version for an admin.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "draft": {
+                    "type": "object",
+                    "description": "Information about the current draft state.",
+                    "properties": {
+                        "id_pages": {
+                            "type": "integer",
+                            "description": "The ID of the page in draft."
+                        },
+                        "keyword": {
+                            "type": "string",
+                            "description": "The keyword/identifier of the page."
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "The URL path of the page."
+                        },
+                        "updated_at": {
+                            "type": "string",
+                            "description": "Timestamp when the draft was last updated."
+                        }
+                    },
+                    "required": ["id_pages", "keyword", "url", "updated_at"]
+                },
+                "published_version": {
+                    "type": "object",
+                    "description": "Information about the published version being compared.",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "description": "The ID of the published version."
+                        },
+                        "version_number": {
+                            "type": "integer",
+                            "description": "The sequential version number.",
+                            "minimum": 1
+                        },
+                        "version_name": {
+                            "type": ["string", "null"],
+                            "description": "Optional human-readable name for the version."
+                        },
+                        "published_at": {
+                            "type": "string",
+                            "description": "Timestamp when this version was published."
+                        }
+                    },
+                    "required": ["id", "version_number", "version_name", "published_at"]
+                },
+                "format": {
+                    "type": "string",
+                    "description": "Format of the comparison output.",
+                    "enum": ["unified", "side_by_side", "json_patch", "summary"]
+                },
+                "diff": {
+                    "description": "The actual diff content, format depends on the requested format type."
+                }
+            },
+            "required": ["draft", "published_version", "format", "diff"]
+        }
+    },
+    "required": ["data"]
+}
