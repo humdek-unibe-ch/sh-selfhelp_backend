@@ -355,14 +355,18 @@ class SectionExportImportService extends BaseService
 
             // Set section name - preserve original for restoration, add timestamp for import
             $baseName = $sectionData['section_name'] ?? 'Imported Section';
+            $sectionName = $baseName; // Default to original name
+
             if ($preserveNames) {
-                // For restoration: preserve original names (no conflicts since we cleared everything)
-                $section->setName($baseName);
+                // For restoration: we'll try original name first, but prepare fallback
+                $sectionName = $baseName;
             } else {
                 // For import: add timestamp suffix to ensure uniqueness
                 $timestamp = time();
-                $section->setName($baseName . '-' . $timestamp);
+                $sectionName = $baseName . '-' . $timestamp;
             }
+
+            $section->setName($sectionName);
             
             // Find style by name
             $styleName = $sectionData['style_name'] ?? null;
