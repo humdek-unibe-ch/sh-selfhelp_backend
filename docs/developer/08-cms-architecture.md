@@ -835,6 +835,70 @@ public function importSectionsToPage(string $pageKeyword, array $sectionsData, ?
 }
 ```
 
+### Section Restoration from Published Versions
+
+The CMS supports restoring page sections from published versions, allowing users to revert their current draft to any previously published state. This is particularly useful for iterative development and content versioning.
+
+#### API Endpoint
+```http
+POST /cms-api/v1/admin/pages/{page_id}/sections/restore-from-version/{version_id}
+```
+
+#### Restoration Process
+1. **Version Validation**: Ensures the specified version exists and is published
+2. **Structure Conversion**: Transforms complex published version JSON into import-compatible format
+3. **Content Clearing**: Removes all existing sections from the target page
+4. **Data Import**: Imports sections, fields, and translations from the published version
+5. **Position Normalization**: Ensures proper section ordering
+6. **Cache Invalidation**: Updates relevant caches after restoration
+
+#### Key Implementation Details
+
+**Structure Conversion Logic:**
+- Published versions store data in a complex format with translations organized by language ID
+- Restoration converts this to the simpler export format expected by import logic
+- Preserves all multilingual content, conditions, data configurations, and styling
+
+**Data Preservation:**
+- ✅ Multilingual field translations
+- ✅ Section conditions and data configurations
+- ✅ CSS styling (both regular and mobile)
+- ✅ Debug settings and global section properties
+- ✅ Hierarchical section relationships
+
+#### Usage Example
+```javascript
+// Restore page 88 sections from published version 115
+const response = await fetch('/cms-api/v1/admin/pages/88/sections/restore-from-version/115', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer your-jwt-token'
+  }
+});
+
+const result = await response.json();
+// Returns restoration confirmation with section details
+```
+
+#### Service Implementation
+```php
+<?php
+namespace App\Service\CMS\Admin;
+
+class SectionExportImportService extends BaseService
+{
+    public function restoreSectionsFromVersion(int $pageId, int $versionId): array
+    {
+        // Convert published version to export format
+        $sectionsToRestore = $this->convertPublishedSectionsToExportFormat($publishedSections);
+
+        // Clear existing sections and import new ones
+        $this->clearPageSections($page);
+        return $this->importSections($sectionsToRestore, $page, null, null);
+    }
+}
+```
+
 ## 🔒 Access Control Integration
 
 ### Page-Level ACL

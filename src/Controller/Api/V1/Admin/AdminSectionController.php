@@ -328,4 +328,34 @@ class AdminSectionController extends AbstractController
             );
         }
     }
+
+    /**
+     * Restore sections from a published version to the current draft
+     *
+     * POST /cms-api/v1/admin/pages/{page_id}/sections/restore-from-version/{version_id}
+     *
+     * @param int $page_id The ID of the page to restore sections to
+     * @param int $version_id The ID of the published version to restore from
+     * @return Response JSON response with the result of the restoration operation
+     */
+    public function restoreSectionsFromVersion(int $page_id, int $version_id): Response
+    {
+        try {
+            // Restore the sections
+            $result = $this->adminSectionService->restoreSectionsFromVersion($page_id, $version_id);
+
+            return $this->apiResponseFormatter->formatSuccess(
+                $result,
+                null,
+                Response::HTTP_OK
+            );
+        } catch (\App\Exception\ServiceException $e) {
+            return $this->apiResponseFormatter->formatException($e);
+        } catch (\Exception $e) {
+            return $this->apiResponseFormatter->formatError(
+                $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
 }

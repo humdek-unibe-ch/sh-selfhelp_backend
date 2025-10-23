@@ -274,6 +274,10 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
     'sections', JSON_OBJECT('in', 'body', 'required', true, 'type', 'array'),
     'position', JSON_OBJECT('in', 'body', 'required', false, 'type', 'integer')
 )),
+('admin_sections_restore_from_version', 'v1', '/admin/pages/{page_id}/sections/restore-from-version/{version_id}', 'App\\Controller\\Api\\V1\\Admin\\AdminSectionController::restoreSectionsFromVersion', 'POST', JSON_OBJECT(
+    'page_id', '[0-9]+',
+    'version_id', '[0-9]+'
+), NULL),
 
 -- Public pages route
 ('pages_get_all', 'v1', '/pages', 'App\\Controller\\Api\\V1\\Frontend\\PageController::getPages', 'GET', NULL, NULL),
@@ -392,7 +396,7 @@ FROM `api_routes`     AS ar
 JOIN `permissions`   AS p
   ON p.`name` = 'admin.page.export'
 WHERE ar.`route_name` IN (
-  'admin_sections_export_page','admin_sections_export_section','admin_sections_import_to_page','admin_sections_import_to_section'
+  'admin_sections_export_page','admin_sections_export_section','admin_sections_import_to_page','admin_sections_import_to_section','admin_sections_restore_from_version'
 );
 
 -- User Management API Routes

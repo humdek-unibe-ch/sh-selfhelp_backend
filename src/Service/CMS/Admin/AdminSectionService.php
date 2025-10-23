@@ -564,4 +564,54 @@ class AdminSectionService extends BaseService
 
 
 
+    /**
+     * Restore sections from a published version to the current draft
+     *
+     * This method takes sections from a published version and replaces all current
+     * sections on the page with those sections, effectively restoring the page
+     * to a previous published state while keeping it as a draft for further editing.
+     *
+     * @param int $page_id The ID of the page to restore sections to
+     * @param int $version_id The ID of the published version to restore from
+     * @return array Result of the restoration operation
+     * @throws ServiceException If page/version not found, version not published, or access denied
+     */
+    public function restoreSectionsFromVersion(int $page_id, int $version_id): array
+    {
+        // Get the page
+        $page = $this->pageRepository->find($page_id);
+        if (!$page) {
+            $this->throwNotFound('Page not found');
+        }
+
+        // Permission check
+        $this->userContextAwareService->checkAccess($page->getKeyword(), 'update');
+
+        // Start transaction
+        $this->entityManager->beginTransaction();
+
+        try {
+            // Delegate core restoration logic to SectionExportImportService
+            $result = $this->sectionExportImportService->restoreSectionsFromVersion($page_id, $version_id);
+
+            // Additional AdminSectionService-specific functionality
+            // Normalize positions after restoration
+            $this->positionManagementService->normalizePageSectionPositions($page->getId(), true);
+
+            // Commit transaction
+            $this->entityManager->commit();
+
+            return $result;
+        } catch (\Throwable $e) {
+            // Rollback transaction
+            $this->entityManager->rollback();
+
+            throw $e instanceof ServiceException ? $e : new ServiceException(
+                'Failed to restore sections from version: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous_exception' => $e->getMessage()]
+            );
+        }
+    }
+
 }

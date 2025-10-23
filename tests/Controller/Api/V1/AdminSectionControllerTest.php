@@ -836,7 +836,7 @@ class AdminSectionControllerTest extends BaseControllerTest
             
             // Verify the structure of exported sections (simplified format)
             foreach ($sectionsData as $sectionData) {
-                $this->assertArrayHasKey('name', $sectionData);
+                $this->assertArrayHasKey('section_name', $sectionData);
                 $this->assertArrayHasKey('style_name', $sectionData);
                 $this->assertArrayHasKey('fields', $sectionData);
                 $this->assertArrayHasKey('children', $sectionData);
@@ -903,7 +903,7 @@ class AdminSectionControllerTest extends BaseControllerTest
             
             // Verify the structure of the exported section (simplified format)
             $sectionData = $sectionsData[0];
-            $this->assertArrayHasKey('name', $sectionData);
+            $this->assertArrayHasKey('section_name', $sectionData);
             $this->assertArrayHasKey('style_name', $sectionData);
             $this->assertArrayHasKey('fields', $sectionData);
             $this->assertArrayHasKey('children', $sectionData);
@@ -935,7 +935,7 @@ class AdminSectionControllerTest extends BaseControllerTest
         // Prepare test sections data for import (simplified format - no gender)
         $sectionsData = [
             [
-                'name' => 'Imported Test Section',
+                'section_name' => 'Imported Test Section',
                 'style_name' => 'header', // Assuming this style exists
                 'fields' => [
                     'title' => [
@@ -970,8 +970,8 @@ class AdminSectionControllerTest extends BaseControllerTest
         
         $importedSection = $responseData['data']['importedSections'][0];
         $this->assertArrayHasKey('id', $importedSection);
-        $this->assertArrayHasKey('name', $importedSection);
-        $this->assertSame('Imported Test Section', $importedSection['name']);
+        $this->assertArrayHasKey('section_name', $importedSection);
+        $this->assertSame('Imported Test Section', $importedSection['section_name']);
         
         // Clean up - delete the imported section
         $sectionId = $importedSection['id'];

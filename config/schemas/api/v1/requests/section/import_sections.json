@@ -10,7 +10,7 @@
             "items": {
                 "type": "object",
                 "properties": {
-                    "name": {
+                    "section_name": {
                         "type": "string",
                         "description": "The name of the section"
                     },
@@ -84,7 +84,7 @@
                         }
                     }
                 },
-                "required": ["name"]
+                "required": ["section_name"]
             }
         },
         "position": {

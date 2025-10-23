@@ -37,4 +37,24 @@ class SectionRepository extends ServiceEntityRepository
                 return $result->fetchAllAssociative();
             });
     }
+
+    /**
+     * Get all section IDs for a given page
+     *
+     * @param int $pageId
+     * @return array Array of section IDs
+     */
+    public function getSectionIdsForPage(int $pageId): array
+    {
+        $conn = $this->getEntityManager()->getConnection();
+        $sql = 'SELECT DISTINCT s.id FROM sections s
+                INNER JOIN pages_sections ps ON ps.id_sections = s.id
+                WHERE ps.id_pages = :page_id';
+        $stmt = $conn->prepare($sql);
+        $stmt->bindValue('page_id', $pageId, \PDO::PARAM_INT);
+        $result = $stmt->executeQuery();
+        $rows = $result->fetchAllAssociative();
+
+        return array_column($rows, 'id');
+    }
 }
