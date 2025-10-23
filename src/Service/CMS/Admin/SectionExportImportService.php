@@ -336,14 +336,15 @@ class SectionExportImportService extends BaseService
     
     /**
      * Import sections from JSON data
-     * 
+     *
      * @param array $sectionsData The sections data to import
      * @param Page|null $page The target page (if importing to page)
      * @param Section|null $parentSection The parent section (if importing to section)
      * @param int|null $globalPosition The global position for the first level of imported sections
+     * @param bool $preserveNames Whether to preserve original section names (for restoration) or add timestamps (for import)
      * @return array Result of the import operation
      */
-    private function importSections(array $sectionsData, ?Page $page = null, ?Section $parentSection = null, ?int $globalPosition = null): array
+    private function importSections(array $sectionsData, ?Page $page = null, ?Section $parentSection = null, ?int $globalPosition = null, bool $preserveNames = false): array
     {
         $importedSections = [];
         $currentPosition = $globalPosition;
@@ -351,11 +352,17 @@ class SectionExportImportService extends BaseService
         foreach ($sectionsData as $index => $sectionData) {
             // Create new section
             $section = new Section();
-            
-            // Add timestamp suffix to section name to ensure uniqueness
-            $timestamp = time();
+
+            // Set section name - preserve original for restoration, add timestamp for import
             $baseName = $sectionData['section_name'] ?? 'Imported Section';
-            $section->setName($baseName . '-' . $timestamp);
+            if ($preserveNames) {
+                // For restoration: preserve original names (no conflicts since we cleared everything)
+                $section->setName($baseName);
+            } else {
+                // For import: add timestamp suffix to ensure uniqueness
+                $timestamp = time();
+                $section->setName($baseName . '-' . $timestamp);
+            }
             
             // Find style by name
             $styleName = $sectionData['style_name'] ?? null;
@@ -473,7 +480,7 @@ class SectionExportImportService extends BaseService
             
             // Import child sections recursively if present
             if (isset($sectionData['children']) && is_array($sectionData['children'])) {
-                $childResults = $this->importSections($sectionData['children'], null, $section);
+                $childResults = $this->importSections($sectionData['children'], null, $section, null, $preserveNames);
                 $importedSections = array_merge($importedSections, $childResults);
             }
         }
@@ -536,8 +543,8 @@ class SectionExportImportService extends BaseService
             // Step 1: Clear existing sections for the page
             $this->clearPageSections($page);
 
-            // Step 2: Import sections from the published version
-            $importedSections = $this->importSections($sectionsToRestore, $page, null, null);
+            // Step 2: Import sections from the published version (preserve original names)
+            $importedSections = $this->importSections($sectionsToRestore, $page, null, null, true);
 
             // Step 3: Invalidate page and sections cache after restoration
             $this->cache
