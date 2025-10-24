@@ -2,12 +2,7 @@
 
 namespace App\Service\Core;
 
-use App\Entity\Page;
-use App\Repository\UserRepository;
-use App\Service\Cache\Core\CacheService;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\Routing\RouterInterface;
+use App\Service\Core\VariableResolverService;
 use App\Service\Core\UserContextAwareService;
 
 /**
@@ -34,51 +29,12 @@ use App\Service\Core\UserContextAwareService;
 class ConditionService
 {
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly UserRepository $userRepository,
-        private readonly CacheService $cache,
-        private readonly RequestStack $requestStack,
-        private readonly RouterInterface $router,
+        private readonly VariableResolverService $variableResolverService,
         private readonly UserContextAwareService $userContextAwareService
     ) {
     }
 
 
-    /**
-     * Get the user's selected language ID
-     *
-     * @param int $userId User ID
-     * @return int|null Language ID or null if not found
-     */
-    private function getUserLanguageId(int $userId): ?int
-    {
-        $cacheKey = "user_language_{$userId}";
-
-        return $this->cache
-            ->withCategory(CacheService::CATEGORY_CONDITIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getItem($cacheKey, function () use ($userId) {
-                return $this->userRepository->getUserLanguageId($userId);
-            });
-    }
-
-    /**
-     * Get the user's last login date
-     *
-     * @param int $userId User ID
-     * @return string|null Last login date or null if not found
-     */
-    private function getUserLastLoginDate(int $userId): ?string
-    {
-        $cacheKey = "user_last_login_{$userId}";
-
-        return $this->cache
-            ->withCategory(CacheService::CATEGORY_CONDITIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getItem($cacheKey, function () use ($userId) {
-                return $this->userRepository->getUserLastLoginDate($userId);
-            });
-    }
 
 
     /**
@@ -349,144 +305,37 @@ class ConditionService
     }
 
     /**
-     * Get condition variables for a user and current context (lazy loading)
+     * Get condition variables for a user and current context
      *
      * @param int $userId User ID
-     * @param array $requiredVariables Array of variable names that are needed
+     * @param array $requiredVariables Array of variable names that are needed (for backward compatibility)
      * @return array Associative array of variable names to values
      */
     private function getConditionVariables(int $userId, array $requiredVariables = []): array
     {
-        $variables = [];
+        // Get all variables from the unified service
+        $allVariables = $this->variableResolverService->getAllVariables($userId, 1, false); // Don't include global vars for conditions
 
-        // Get request at the beginning to avoid unassigned variable error
-        $request = $this->requestStack->getCurrentRequest();
-
-        // If no specific variables required, load all (backward compatibility)
-        if (empty($requiredVariables)) {
-            $requiredVariables = [
-                'user_group',
-                'language',
-                'last_login',
-                'current_date',
-                'current_datetime',
-                'current_time',
-                'page_keyword',
-                'platform'
-            ];
-        }
-
-        // Load user-related variables only if needed
-        if (in_array('user_group', $requiredVariables) || in_array('user_groups', $requiredVariables)) {
-            $variables['user_group'] = $this->getUserGroups($userId);
-        }
-
-        if (in_array('language', $requiredVariables) || in_array('user_language', $requiredVariables)) {
-            $languageId = null;
-
-            // First priority: language_id from request query parameter (like ?language_id=2)
-            if ($request && $request->query->has('language_id')) {
-                $languageId = (int) $request->query->get('language_id');
-            }
-
-            // Second priority: user's default language from database
-            if ($languageId === null) {
-                $languageId = $this->getUserLanguageId($userId) ?? 2;
-            }
-
-            $variables['language'] = $languageId;
-        }
-
-        if (in_array('last_login', $requiredVariables) || in_array('user_last_login', $requiredVariables)) {
-            $lastLogin = $this->getUserLastLoginDate($userId) ?? '';
-            $variables['last_login'] = $lastLogin;
-        }
-
-        // Load date/time variables only if needed
-        if (in_array('current_date', $requiredVariables)) {
-            $variables['current_date'] = date('Y-m-d');
-        }
-
-        if (in_array('current_datetime', $requiredVariables)) {
-            $variables['current_datetime'] = date('Y-m-d H:i');
-        }
-
-        if (in_array('current_time', $requiredVariables)) {
-            $variables['current_time'] = date('H:i');
-        }
-
-        if (in_array('page_keyword', $requiredVariables)) {
-            $pageKeyword = '';
-            if ($request) {
-                try {
-                    $currentRoute = $this->router->match($request->getPathInfo());
-                    $pageId = $currentRoute['page_id'] ?? null;
-
-                    if ($pageId) {
-                        // Get the actual page keyword from database
-                        $page = $this->entityManager->getRepository(Page::class)->find($pageId);
-                        if ($page) {
-                            $pageKeyword = $page->getKeyword() ?? '';
-                        }
-                    }
-                } catch (\Exception $e) {
-                    // Route matching failed, keep empty
+        // If specific variables are required, filter the results for backward compatibility
+        if (!empty($requiredVariables)) {
+            $filteredVariables = [];
+            foreach ($requiredVariables as $requiredVar) {
+                if (isset($allVariables[$requiredVar])) {
+                    $filteredVariables[$requiredVar] = $allVariables[$requiredVar];
+                }
+                // Also check for wrapped variables like {{var}}
+                $wrappedVar = "{{$requiredVar}}";
+                if (isset($allVariables[$wrappedVar])) {
+                    $filteredVariables[$wrappedVar] = $allVariables[$wrappedVar];
                 }
             }
-            $variables['page_keyword'] = $pageKeyword;
+            return $filteredVariables;
         }
 
-        if (in_array('platform', $requiredVariables)) {
-            $platform = 'web';
-
-            // Check both query parameters and request data for mobile flag
-            if ($request && (
-                $request->query->get('mobile') ||
-                $request->request->get('mobile')
-            )) {
-                $platform = 'mobile';
-            }
-
-            $variables['platform'] = $platform;
-        }
-
-        // Add custom variables from request (supporting {{var}} syntax from frontend)
-        if ($request) {
-            $allRequestData = array_merge(
-                $request->query->all(),
-                $request->request->all()
-            );
-
-            foreach ($allRequestData as $key => $value) {
-                // Check if this custom variable is required
-                if (in_array($key, $requiredVariables) || in_array("{{$key}}", $requiredVariables)) {
-                    $variables[$key] = $value;
-                    $variables["{{$key}}"] = $value; // Also support {{var}} format
-                }
-            }
-        }
-
-        return $variables;
+        return $allVariables;
     }
 
 
-    /**
-     * Get all user's group names
-     *
-     * @param int $userId User ID
-     * @return array Array of group names
-     */
-    private function getUserGroups(int $userId): array
-    {
-        $cacheKey = "user_groups_{$userId}";
-
-        return $this->cache
-            ->withCategory(CacheService::CATEGORY_CONDITIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getItem($cacheKey, function () use ($userId) {
-                return $this->userRepository->getUserGroupNames($userId);
-            });
-    }
 
     /**
      * Filter sections based on conditions

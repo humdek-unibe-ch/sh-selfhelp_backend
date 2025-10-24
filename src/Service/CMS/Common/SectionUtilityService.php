@@ -7,6 +7,9 @@ use App\Service\CMS\DataService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Common\StyleNames;
+use App\Service\Core\InterpolationService;
+use App\Service\CMS\DataVariableResolver;
+use App\Service\Core\VariableResolverService;
 
 /**
  * Utility service for section-related operations
@@ -18,7 +21,10 @@ class SectionUtilityService
         private readonly DataService $dataService,
         private readonly StylesFieldRepository $stylesFieldRepository,
         private readonly CacheService $cache,
-        private readonly UserContextService $userContextService
+        private readonly UserContextService $userContextService,
+        private readonly InterpolationService $interpolationService,
+        private readonly DataVariableResolver $dataVariableResolver,
+        private readonly VariableResolverService $variableResolverService
     ) {
     }
 
@@ -650,6 +656,19 @@ class SectionUtilityService
 
 
     /**
+     * Get actual values for global and system variables for interpolation
+     *
+     * @param int $languageId Language ID for data retrieval
+     * @return array Array of variable names to their actual values
+     */
+    private function getGlobalAndSystemVariableValues(int $languageId = 1): array
+    {
+        // Use the unified variable resolver service
+        return $this->variableResolverService->getAllVariables(null, $languageId, true);
+    }
+
+
+    /**
      * Apply data to a section
      *
      * @param array &$section The section to apply data to (passed by reference)
@@ -664,6 +683,14 @@ class SectionUtilityService
             $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($section['id']);
         }
 
+        // Always interpolate global and system variables in section content
+        // This happens regardless of whether there's a data_config or not
+        $variableValues = $this->getGlobalAndSystemVariableValues($languageId);
+        $section = $this->interpolationService->interpolateArray($section, $variableValues);
+
+        // Always set retrieved_data with available variables, even without data_config
+        $retrievedData = [];
+
         // Handle data_config field - parse and retrieve data without replacing content
         if (isset($section['data_config']) && $section['data_config'] !== null) {
             // Parse data_config as JSON string to array
@@ -673,7 +700,6 @@ class SectionUtilityService
 
             if (is_array($dataConfigArray)) {
                 // data_config is an array of configuration objects, process each one
-                $retrievedData = [];
                 foreach ($dataConfigArray as $configIndex => $config) {
                     $configData = $this->retrieveData($config, [], $languageId);
                     // Use the scope as key if available, otherwise use index
@@ -681,9 +707,14 @@ class SectionUtilityService
                     $retrievedData[$key] = $configData;
                 }
                 // Add retrieved data as a new field
-                $section['retrieved_data'] = $retrievedData;
                 $section['data_config'] = $dataConfigArray;
             }
         }
+
+        // Add global variables to retrieved_data so they're always available
+        $retrievedData['globals'] = $variableValues;
+
+        // Set retrieved_data in section
+        $section['retrieved_data'] = $retrievedData;
     }
 }
