@@ -2,7 +2,7 @@
 
 ## 🔄 Overview
 
-The SelfHelp Symfony Backend implements a comprehensive versioning strategy that covers database schema, API endpoints, and system components. This ensures smooth evolution while maintaining backward compatibility.
+The SelfHelp Symfony Backend implements a comprehensive versioning strategy that covers database schema, API endpoints, and system components. This ensures smooth evolution of the system.
 
 ## 📊 Version Types & Semantic Versioning
 
@@ -240,31 +240,7 @@ graph TD
     J --> K[Deploy to production]
 ```
 
-### API Migration Workflow
-```mermaid
-graph TD
-    A[Plan API Changes] --> B{Breaking Changes?}
-    B -->|Yes| C[Create New API Version]
-    B -->|No| D[Update Current Version]
-    
-    C --> E[Create new controller namespace]
-    E --> F[Copy and modify controllers]
-    F --> G[Create new JSON schemas]
-    G --> H[Add versioned routes to database]
-    
-    D --> I[Update existing controllers]
-    I --> J[Update JSON schemas]
-    
-    H --> K[Test new version]
-    J --> K
-    K --> L[Deploy]
-```
 
-### Backward Compatibility Strategy
-1. **Maintain Old Versions**: Keep v1 controllers and schemas
-2. **Gradual Migration**: Allow clients to migrate at their own pace
-3. **Deprecation Notices**: Add deprecation headers to old versions
-4. **Documentation**: Maintain migration guides
 
 ## 🚀 Deployment Strategy
 
@@ -448,11 +424,8 @@ public function testDatabaseMigration(): void
 5. **Backup before major versions**
 
 ### API Versioning
-1. **Maintain backward compatibility** when possible
-2. **Use semantic versioning** for API changes
-3. **Provide migration guides** for breaking changes
-4. **Version JSON schemas** alongside APIs
-5. **Monitor usage** of deprecated versions
+1. **Use semantic versioning** for API changes
+2. **Version JSON schemas** alongside APIs
 
 ### Code Versioning
 1. **Tag releases** in version control
