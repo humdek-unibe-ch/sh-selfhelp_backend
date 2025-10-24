@@ -6,15 +6,17 @@ The Page Versioning & Publishing System provides a robust, hybrid approach to ma
 
 ## 🎯 Key Features
 
-- **Hybrid Versioning**: Store page structure while re-running dynamic elements (data retrieval, conditions)
-- **Multi-Language Support**: Store all language translations in a single version
+- **Hybrid Versioning**: Store page structure while re-running dynamic elements (data retrieval, conditions, interpolation)
+- **Multi-Language Support**: Store all language translations in a single version, extract on-demand
 - **Complete JSON Storage**: Store all languages, conditions, data table configs in published versions
-- **Fresh Data**: Data tables are re-queried when serving published versions
+- **Fresh Data Guarantee**: Data tables always re-queried fresh (no stale data in published versions)
 - **Version Comparison**: Multiple diff formats (unified, side-by-side, JSON Patch, summary)
 - **Draft Comparison**: Real-time comparison between current draft and published version
 - **Fast Change Detection**: Hash-based detection of unpublished changes (< 50ms)
-- **Retention Policies**: Automated cleanup of old versions
-- **Security**: Draft exposure prevention with proper headers
+- **Section Restoration**: Restore page sections from published versions
+- **Dual Caching Strategy**: Separate caching for draft (complex) vs published (structure-only)
+- **Entity-Scoped Invalidation**: Smart cache invalidation based on data dependencies
+- **Security**: Draft exposure prevention with proper headers and ACL controls
 
 ## 🏗️ Architecture
 
@@ -22,17 +24,20 @@ The Page Versioning & Publishing System provides a robust, hybrid approach to ma
 
 ```mermaid
 graph TD
-    A[User Requests Page] --> B{Preview Mode?}
-    B -->|Yes| C[Serve Draft from DB]
-    B -->|No| D{Published Version Exists?}
-    D -->|Yes| E[Load Stored JSON]
-    D -->|No| F[Return 404 or Draft]
-    E --> G[Re-run Data Retrieval]
-    G --> H[Re-evaluate Conditions]
-    H --> I[Apply Fresh Interpolation]
-    I --> J[Serve Hydrated Page]
-    C --> K[Apply ACL]
-    K --> L[Serve Fresh Draft]
+    A[User Requests Page] --> B{preview=true OR no published version?}
+    B -->|Yes| C[Serve Draft Mode]
+    B -->|No| D[Serve Published Mode]
+
+    C --> E[Load from Database]
+    E --> F[Apply Complex Caching]
+    F --> G[Return Cached Interpolated Page]
+
+    D --> H[Load Stored JSON from page_versions]
+    H --> I[Extract Language Translations]
+    I --> J[Re-run Data Retrieval]
+    J --> K[Re-evaluate Conditions]
+    K --> L[Apply Fresh Interpolation]
+    L --> M[Serve Hydrated Page - No Final Cache]
 ```
 
 ### Multi-Language Version Storage
@@ -106,6 +111,81 @@ $hasChanges = $pageVersionService->hasUnpublishedChanges($pageId);
 - Condition evaluation (user permissions, business logic)
 - Variable interpolation with fresh data
 - Cache invalidation logic
+
+## 🔄 Page and Section Restoration
+
+### Section Restoration (Currently Implemented)
+Sections can be restored from published versions, allowing granular rollback of page content.
+
+#### API Endpoint
+```http
+POST /cms-api/v1/admin/pages/{page_id}/sections/restore-from-version/{version_id}
+```
+
+#### Process Flow
+```mermaid
+graph TD
+    A[Validate Version] --> B{Version Published?}
+    B -->|No| C[Throw Error]
+    B -->|Yes| D[Extract Sections from Version JSON]
+    D --> E[Convert to Export Format]
+    E --> F[Clear Existing Sections]
+    F --> G[Import Sections with Translations]
+    G --> H[Normalize Positions]
+    H --> I[Invalidate Caches]
+    I --> J[Log Transaction]
+```
+
+#### Implementation Details
+1. **Validation**: Ensures version exists, belongs to page, and is published
+2. **Data Extraction**: Pulls sections from stored `page_versions.page_json`
+3. **Format Conversion**: Transforms version JSON to import-compatible format
+4. **Atomic Operation**: Uses database transactions for consistency
+5. **Cache Management**: Invalidates page and section caches after restoration
+6. **Audit Trail**: Logs restoration in transaction history
+
+#### Code Implementation
+```php
+// SectionExportImportService::restoreSectionsFromVersion()
+public function restoreSectionsFromVersion(int $pageId, int $versionId): array
+{
+    // 1. Permission and validation checks
+    $this->userContextAwareService->checkAccessById($pageId, 'update');
+
+    // 2. Extract sections from published version JSON
+    $pageJson = $version->getPageJson();
+    $sectionsToRestore = $this->convertPublishedSectionsToExportFormat($pageJson['page']['sections']);
+
+    // 3. Transaction-wrapped restoration
+    $this->entityManager->beginTransaction();
+    try {
+        $this->clearPageSections($page);
+        $importedSections = $this->importSections($sectionsToRestore, $page, null, null, true);
+
+        // 4. Cache invalidation
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+
+        $this->entityManager->commit();
+    } catch (\Exception $e) {
+        $this->entityManager->rollback();
+        throw $e;
+    }
+}
+```
+
+#### Limitations
+- **Scope**: Only restores sections, not page-level metadata (title, URL, settings)
+- **Granularity**: Cannot restore individual fields or specific sections
+- **Relationships**: May break section-to-section relationships if parent sections are not restored
+
+### Full Page Restoration (Not Yet Implemented)
+Full page restoration would restore:
+- Page metadata (title, URL, navigation settings)
+- All sections and their hierarchy
+- Field configurations and translations
+- Page-level settings and ACLs
+
+**Status**: Planned for future releases as the complexity requires careful consideration of data integrity and user experience.
 
 ## 🗄️ Database Schema
 
@@ -285,15 +365,48 @@ GET /cms-api/v1/admin/pages/{page_id}/versions/has-changes
 GET /cms-api/v1/pages/{page_id}?preview=false&language_id=1
 ```
 
-Parameters:
+**Serving Logic Implementation:**
+```php
+// PageService::getPage()
+public function getPage(int $page_id, ?int $language_id = null, bool $preview = false): array
+{
+    // Determine serving mode based on parameters and published version availability
+    if (!$preview && $page->getPublishedVersionId()) {
+        return $this->servePublishedVersion($page_id, $languageId);  // Published mode
+    } else {
+        return $this->serveDraftVersion($page_id, $languageId, $page);  // Draft mode
+    }
+}
+```
+
+#### Parameters
 - `preview`: Set to `true` to force draft serving (requires authentication)
 - `language_id`: Optional language ID for translations
 
-**Security Headers for Preview Mode:**
-- `Cache-Control: no-store, no-cache, must-revalidate, max-age=0`
-- `Pragma: no-cache`
-- `Expires: 0`
-- `X-Robots-Tag: noindex, nofollow`
+#### Serving Modes
+
+##### Published Mode (`preview=false` + published version exists)
+- **Source**: Stored JSON from `page_versions` table
+- **Processing**: `hydratePublishedPage()` - extracts language and re-runs dynamic elements
+- **Caching**: No caching of final interpolated results
+- **Security**: Standard page ACL applies
+
+##### Draft Mode (`preview=true` OR no published version)
+- **Source**: Live database entities
+- **Processing**: Full page assembly with caching
+- **Caching**: Complex multi-entity scoped caching
+- **Security**: Requires authentication, draft exposure prevention headers
+
+#### Security Headers for Draft Mode
+```php
+// Applied in draft/preview serving
+$headers = [
+    'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma' => 'no-cache',
+    'Expires' => '0',
+    'X-Robots-Tag' => 'noindex, nofollow'
+];
+```
 
 ## 💻 Service Layer
 
@@ -438,6 +551,128 @@ High-level change summary:
   ]
 }
 ```
+
+## 💾 Caching Architecture for Page Serving
+
+### Dual Caching Strategy: Page Structure vs. Dynamic Data
+
+The system implements **separate caching layers** for different types of data to balance performance and data freshness.
+
+#### Draft Page Caching (Complex Multi-Entity Scoping)
+```php
+// PageService::serveDraftVersion()
+private function serveDraftVersion(int $page_id, int $languageId, Page $page): array
+{
+    $cacheKey = "page_draft_{$page_id}_{$languageId}";
+
+    // Extract data table dependencies for cache scoping
+    $dataTableConfigs = $this->extractDataTableDependencies($flatSections, $page_id);
+
+    // Build cache service with multiple entity scopes
+    $cacheService = $this->cache
+        ->withCategory(CacheService::CATEGORY_PAGES)
+        ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
+        ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+        ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+
+    // Add data table scopes for dynamic content dependencies
+    foreach ($dataTableConfigs as $dataTableId => $config) {
+        if ($config['has_global_config']) {
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+        }
+        if ($config['has_current_user_config']) {
+            $cacheService = $cacheService
+                ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+                ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+        }
+    }
+
+    // Cache the fully interpolated page
+    return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
+        return $this->buildFullPageData($page_id, $languageId, $page);
+    });
+}
+```
+
+**Draft Caching Characteristics:**
+- **Cache Key**: `page_draft_{page_id}_{languageId}`
+- **Entity Scopes**: Page, User, Language, Data Tables
+- **Content**: Fully interpolated page with dynamic data
+- **Invalidation**: When page structure, user data, or dependent data tables change
+
+#### Published Page Caching (Structure Only, No Interpolation Cache)
+```php
+// PageService::servePublishedVersion()
+private function servePublishedVersion(int $page_id, int $languageId): array
+{
+    // Get stored page JSON (structure only)
+    $publishedVersion = $this->pageVersionRepository->find($versionId);
+    $storedPageData = $publishedVersion->getPageJson();
+
+    // Always re-run interpolation - NO caching of final result
+    return $this->hydratePublishedPage($storedPageData, $languageId);
+}
+```
+
+**Published Caching Characteristics:**
+- **Structure**: Stored in `page_versions.page_json` (no cache layer)
+- **Dynamic Elements**: Re-run on every request (data retrieval, conditions, interpolation)
+- **Caching**: Only static page structure is "cached" in database
+- **Freshness**: Data tables always queried fresh, conditions re-evaluated
+
+### Cache Invalidation Strategy
+
+#### Draft Page Invalidation
+```php
+// When page structure changes
+$this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+
+// When user data changes (affects all pages with user-specific content)
+$this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+
+// When data table content changes
+$this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
+```
+
+#### Published Page Invalidation
+Published pages don't cache interpolated results, so invalidation only affects:
+- Page structure cache (when page metadata changes)
+- Section caches (when sections are modified)
+- Data table caches (automatically invalidated by data changes)
+
+### Performance Implications
+
+#### Draft Pages
+- **Fast Serving**: Cached interpolated results serve instantly
+- **Complex Invalidation**: Multiple entity dependencies require sophisticated cache management
+- **User-Specific**: Each user sees personalized cached content
+- **Data Dependencies**: Cache automatically invalidates when underlying data changes
+
+#### Published Pages
+- **Fresh Data**: Dynamic elements always current (no stale data risk)
+- **Slower Serving**: Re-run interpolation on every request
+- **Simpler Invalidation**: Only page structure changes affect cache
+- **Consistent Experience**: All users see identical published content
+
+### Data Table Dependency Tracking
+```php
+// Extract data table dependencies for cache scoping
+private function extractDataTableDependencies(array $flatSections, int $pageId): array
+{
+    $cacheKey = "page_data_table_deps_{$pageId}";
+
+    return $this->cache->withCategory(CacheService::CATEGORY_PAGES)
+        ->getList($cacheKey, function () use ($flatSections) {
+            // Analyze sections for data table references
+            // Return array of [dataTableId => ['has_global_config', 'has_current_user_config']]
+        });
+}
+```
+
+**Dependency Types:**
+- **Global Config**: `current_user: false` - affects all users
+- **User-Specific Config**: `current_user: true` - affects individual users
+- **Dynamic References**: Variables in data_config that reference data tables
 
 ## 📊 Performance Characteristics
 

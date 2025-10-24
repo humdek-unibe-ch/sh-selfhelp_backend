@@ -69,6 +69,7 @@ namespace App\Entity;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'pages')]
+#[ORM\Index(name: 'IDX_pages_published_version_id', columns: ['published_version_id'])]
 class Page
 {
     #[ORM\Id]
@@ -82,9 +83,6 @@ class Page
     #[ORM\Column(name: 'url', type: 'string', length: 255, nullable: true)]
     private ?string $url = null;
 
-    #[ORM\Column(name: 'protocol', type: 'string', length: 10, options: ['default' => 'https'])]
-    private string $protocol = 'https';
-
     #[ORM\ManyToOne(targetEntity: Page::class)]
     #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Page $parentPage = null;
@@ -93,17 +91,33 @@ class Page
     #[ORM\JoinColumn(name: 'id_type', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?PageType $pageType = null;
 
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_pageAccessTypes', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    private ?Lookup $pageAccessType = null;
+
     #[ORM\Column(name: 'is_headless', type: 'boolean', options: ['default' => 0])]
     private bool $is_headless = false;
 
     #[ORM\Column(name: 'nav_position', type: 'integer', nullable: true)]
     private ?int $nav_position = null;
 
+    #[ORM\Column(name: 'footer_position', type: 'integer', nullable: true)]
+    private ?int $footer_position = null;
+
     #[ORM\Column(name: 'is_open_access', type: 'boolean', options: ['default' => 0], nullable: true)]
     private ?bool $is_open_access = false;
 
     #[ORM\Column(name: 'is_system', type: 'boolean', options: ['default' => 0], nullable: true)]
     private ?bool $is_system = false;
+
+    /**
+     * Reference to the currently published version of this page
+     */
+    #[ORM\ManyToOne(targetEntity: PageVersion::class)]
+    #[ORM\JoinColumn(name: 'published_version_id', referencedColumnName: 'id', nullable: true)]
+    private ?PageVersion $publishedVersion = null;
+
+    // ... getters and setters ...
 }
 // ENTITY RULE
 ```
@@ -556,51 +570,73 @@ namespace App\Service\CMS\Admin;
 
 class AdminPageService extends BaseService
 {
-    public function createPage(array $pageData): Page
+    public function getPageWithFields(int $pageId): array
     {
-        $this->entityManager->beginTransaction();
-        
-        try {
-            $page = new Page();
-            $page->setKeyword($pageData['keyword']);
-            $page->setUrl($pageData['url'] ?? null);
-            $page->setProtocol($pageData['protocol'] ?? 'https');
-            
-            // Set page type
-            $pageType = $this->pageTypeRepository->find($pageData['pageType']);
-            $page->setPageType($pageType);
-            
-            // Set parent if specified
-            if (!empty($pageData['parentId'])) {
-                $parent = $this->pageRepository->find($pageData['parentId']);
-                $page->setParentPage($parent);
-            }
-            
-            $page->setIsHeadless($pageData['isHeadless'] ?? false);
-            $page->setNavPosition($pageData['navPosition'] ?? null);
-            $page->setIsOpenAccess($pageData['isOpenAccess'] ?? false);
-            $page->setIsSystem($pageData['isSystem'] ?? false);
-            
-            $this->entityManager->persist($page);
-            $this->entityManager->flush();
-            
-            // Log transaction
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_INSERT,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'pages',
-                $page->getId(),
-                $page,
-                'Page created: ' . $page->getKeyword()
-            );
-            
-            $this->entityManager->commit();
-            return $page;
-            
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        return $this->pageFieldService->getPageWithFields($pageId);
+    }
+
+    public function createPage(
+        string $keyword,
+        string $pageAccessTypeCode,
+        bool $headless = false,
+        bool $openAccess = false,
+        ?string $url = null,
+        ?int $navPosition = null,
+        ?int $footerPosition = null,
+        ?int $parent = null
+    ): Page {
+        // Implementation handles page creation with proper validation and ACL checks
+        // Includes transaction logging and cache invalidation
+    }
+
+    public function updatePage(int $pageId, array $pageData, array $fields): void
+    {
+        // Implementation handles page and field updates with versioning support
+        // Includes ACL checks and transaction logging
+    }
+
+    public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
+    {
+        // Implementation manages section positioning and hierarchy
+        // Includes position normalization and cache invalidation
+    }
+}
+```
+
+### PageVersionService
+```php
+<?php
+namespace App\Service\CMS\Admin;
+
+class PageVersionService extends BaseService
+{
+    public function createVersion(int $pageId, ?string $versionName = null, ?array $metadata = null, ?int $languageId = null): PageVersion
+    {
+        // Creates a new version from current page state
+        // Stores complete page JSON with all languages and configurations
+    }
+
+    public function publishVersion(int $pageId, int $versionId): PageVersion
+    {
+        // Publishes a specific version, unpublishing any currently published version
+        // Updates page.published_version_id reference
+    }
+
+    public function createAndPublishVersion(int $pageId, ?string $versionName = null, ?array $metadata = null): PageVersion
+    {
+        // Atomic operation: create version and publish it in one transaction
+    }
+
+    public function hasUnpublishedChanges(int $pageId): bool
+    {
+        // Fast hash-based comparison (< 50ms) to detect unpublished changes
+        // Compares normalized JSON structures of draft vs published version
+    }
+
+    public function compareVersions(int $version1Id, int $version2Id, string $format = 'unified'): array
+    {
+        // Supports multiple diff formats: unified, side-by-side, json_patch, summary
+        // Uses Jfcherng\Diff\DiffHelper for high-quality comparisons
     }
 }
 ```

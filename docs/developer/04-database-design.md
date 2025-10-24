@@ -8,42 +8,53 @@ The SelfHelp Symfony Backend uses a sophisticated MySQL database design that sup
 
 ```mermaid
 erDiagram
-    %% Core Authentication & Authorization - Admin Users
+    %% Core Authentication & Authorization - Admin Users (Role-based)
     User ||--o{ UsersRole : has_roles
     UsersRole }o--|| Role : belongs_to
     Role ||--o{ RolePermission : grants
     RolePermission }o--|| Permission : permission_type
-    
-    %% Frontend User Groups (for page access)
+
+    %% Frontend User Groups (for page ACL)
     User ||--o{ UsersGroup : belongs_to
     UsersGroup }o--|| Group : represents
-    
+
     %% API Routes & Permissions (Admin Access)
     ApiRoute ||--o{ ApiRoutePermission : requires
     ApiRoutePermission }o--|| Permission : grants
-    
+
     %% CMS Content Structure
     Page ||--o{ PagesSection : contains
     PagesSection }o--|| Section : has
     Section ||--o{ SectionsField : contains
     SectionsField }o--|| Field : has
-    Section }o--|| StyleEntity : styled_by
-    
+    Section }o--|| Style : styled_by
+
+    %% Page Versioning & Publishing
+    Page ||--o{ PageVersion : has_versions
+    PageVersion }o--|| User : created_by
+    Page ||--|| PageVersion : published_version
+
     %% Fine-grained Access Control (Frontend Users)
     Page ||--o{ AclUser : user_acl
     Page ||--o{ AclGroup : group_acl
     AclUser }o--|| User : for_user
     AclGroup }o--|| Group : for_group
-    
+
     %% Multi-language Support
     Field ||--o{ FieldsTranslation : translations
     FieldsTranslation }o--|| Language : in_language
     Page ||--o{ PagesFieldsTranslation : page_translations
     PagesFieldsTranslation }o--|| Language : in_language
-    
-    %% Field Types (Separate Table)
+
+    %% Dynamic Data Tables System
+    DataTable ||--o{ DataRow : contains
+    DataRow ||--o{ DataCell : has
+    DataCell }o--|| DataCol : column
+    DataCell }o--|| Language : language
+
+    %% Field Types
     Field }o--|| FieldType : field_type
-    
+
     %% System Components
     User ||--o{ Transaction : performed_by
     User ||--o{ ApiRequestLog : made_requests
@@ -99,20 +110,20 @@ CREATE TABLE `permissions` (
 ```sql
 CREATE TABLE `roles` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) NOT NULL,
-  `description` varchar(255) DEFAULT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `name` varchar(50) NOT NULL,
+  `description` varchar(255) NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UNIQ_B63E2EC75E237E06` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Admin roles for CMS backend access
 INSERT INTO `roles` (`name`, `description`) VALUES
-('super_admin', 'Super Administrator - Full system access'),
-('admin', 'Administrator - Standard admin access'),
-('editor', 'Editor - Content management access'),
-('viewer', 'Viewer - Read-only access');
+('admin', 'Administrator role with full access');
 ```
+
+#### Junction Tables
+- **`users_roles`**: Links users to roles (many-to-many) - Admin role assignments
+- **`roles_permissions`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
 
 #### `permissions` - System Permissions
 ```sql
@@ -135,9 +146,8 @@ INSERT INTO `permissions` (`name`, `description`) VALUES
 ```
 
 #### Junction Tables
-- **`users_groups`**: Links users to groups (many-to-many) - Used for both admin and frontend user group memberships
-- **`users_roles`**: Links users to roles (many-to-many) - Admin role assignments (super_admin, admin, editor, viewer)
-- **`user_groups_permissions`**: Links groups to permissions (many-to-many) - Group-based permissions
+- **`users_groups`**: Links users to groups (many-to-many) - Used for frontend user group memberships (page ACL)
+- **`users_roles`**: Links users to roles (many-to-many) - Admin role assignments
 - **`roles_permissions`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
 
 ### 2. Dynamic Routing Tables
@@ -183,8 +193,7 @@ CREATE TABLE `api_routes_permissions` (
 CREATE TABLE `pages` (
   `id` int NOT NULL AUTO_INCREMENT,
   `keyword` varchar(100) NOT NULL,
-  `url` varchar(255) DEFAULT NULL,
-  `protocol` varchar(10) DEFAULT 'https',
+  `url` varchar(255) NULL,
   `parent` int DEFAULT NULL,
   `id_type` int NOT NULL,
   `id_pageAccessTypes` int DEFAULT NULL,
@@ -193,12 +202,15 @@ CREATE TABLE `pages` (
   `footer_position` int DEFAULT NULL,
   `is_open_access` tinyint(1) DEFAULT '0',
   `is_system` tinyint(1) DEFAULT '0',
+  `published_version_id` int DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UNIQ_2074E575A17F5E88` (`keyword`),
+  KEY `IDX_pages_published_version_id` (`published_version_id`),
   FOREIGN KEY (`parent`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
   FOREIGN KEY (`id_type`) REFERENCES `pageTypes` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_pageAccessTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+  FOREIGN KEY (`id_pageAccessTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`published_version_id`) REFERENCES `page_versions` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 #### `sections` - Content Sections

@@ -110,44 +110,169 @@ sequenceDiagram
 
 ```
 src/
-├── Controller/              # HTTP request handlers
-│   └── Api/V1/             # Versioned API controllers
-│       ├── Admin/          # Administrative endpoints
-│       ├── Auth/           # Authentication endpoints
-│       └── Frontend/       # Public endpoints
-├── Entity/                 # Doctrine ORM entities
-├── Repository/             # Data access layer
-├── Service/                # Business logic layer
-│   ├── ACL/               # Access control services
-│   ├── Auth/              # Authentication services
-│   ├── CMS/               # Content management services
-│   └── Core/              # Core application services
-├── Security/              # Security components
+├── Command/                # Symfony console commands
+├── Controller/             # HTTP request handlers
+│   ├── Api/V1/            # Versioned API controllers
+│   │   ├── Admin/         # Administrative endpoints
+│   │   │   ├── AdminActionController.php
+│   │   │   ├── AdminAssetController.php
+│   │   │   ├── AdminCacheController.php
+│   │   │   ├── AdminCmsPreferenceController.php
+│   │   │   ├── AdminDataController.php
+│   │   │   ├── AdminGroupController.php
+│   │   │   ├── AdminLanguageController.php
+│   │   │   ├── AdminPageController.php
+│   │   │   ├── AdminRoleController.php
+│   │   │   ├── AdminScheduledJobController.php
+│   │   │   ├── AdminSectionController.php
+│   │   │   ├── AdminSectionUtilityController.php
+│   │   │   ├── AdminStyleController.php
+│   │   │   ├── AdminUserController.php
+│   │   │   ├── AdminActionTranslationController.php
+│   │   │   ├── Common/
+│   │   │   │   └── LookupController.php
+│   │   │   └── PageVersionController.php
+│   │   ├── Auth/          # Authentication endpoints
+│   │   │   ├── AuthController.php
+│   │   │   ├── ProfileController.php
+│   │   │   ├── UserDataController.php
+│   │   │   └── UserValidationController.php
+│   │   └── Frontend/      # Public endpoints
+│   │       ├── FormController.php
+│   │       ├── LanguageController.php
+│   │       └── PageController.php
+│   └── DefaultController.php
+│   └── Trait/
+│       └── RequestValidatorTrait.php
+├── Entity/                 # Doctrine ORM entities (59 entities)
+│   ├── AclGroup.php
+│   ├── AclUser.php
+│   ├── Action.php
+│   ├── ActionTranslation.php
+│   ├── ApiRequestLog.php
+│   ├── ApiRoute.php
+│   ├── Asset.php
+│   ├── CallbackLog.php
+│   ├── CmsPreference.php
+│   ├── CodesGroup.php
+│   ├── DataCell.php
+│   ├── DataCol.php
+│   ├── DataRow.php
+│   ├── DataTable.php
+│   ├── Field.php
+│   ├── FieldType.php
+│   ├── Group.php
+│   ├── Hook.php
+│   ├── Language.php
+│   ├── Library.php
+│   ├── LogPerformance.php
+│   ├── Lookup.php
+│   ├── MailAttachment.php
+│   ├── MailQueue.php
+│   ├── Notification.php
+│   ├── Page.php
+│   ├── PagesField.php
+│   ├── PagesFieldsTranslation.php
+│   ├── PagesSection.php
+│   ├── PageType.php
+│   ├── PageTypeField.php
+│   ├── PageVersion.php
+│   ├── Permission.php
+│   ├── Plugin.php
+│   ├── RefreshToken.php
+│   ├── Role.php
+│   ├── ScheduledJob.php
+│   ├── ScheduledJobsAction.php
+│   ├── ScheduledJobsMailQueue.php
+│   ├── ScheduledJobsNotification.php
+│   ├── ScheduledJobsReminder.php
+│   ├── ScheduledJobsTask.php
+│   ├── ScheduledJobsUser.php
+│   ├── Section.php
+│   ├── SectionsFieldsTranslation.php
+│   ├── SectionsHierarchy.php
+│   ├── SectionsNavigation.php
+│   ├── Style.php
+│   ├── StyleGroup.php
+│   ├── StylesAllowedRelationship.php
+│   ├── StylesField.php
+│   ├── Task.php
+│   ├── Transaction.php
+│   ├── User.php
+│   ├── UserActivity.php
+│   ├── Users2faCode.php
+│   ├── UsersGroup.php
+│   ├── ValidationCode.php
+│   └── Version.php
 ├── EventListener/         # Event subscribers
-├── Routing/               # Custom route loading
-└── Util/                  # Utility classes
+│   ├── ApiExceptionListener.php
+│   ├── ApiRequestLoggerListener.php
+│   ├── ApiSecurityListener.php
+│   └── ApiVersionListener.php
+├── Exception/             # Custom exceptions
+│   ├── RequestValidationException.php
+│   └── ServiceException.php
+├── Kernel.php            # Symfony kernel
+├── Repository/           # Data access layer (27 repositories)
+├── Routing/              # Custom route loading
+│   └── ApiRouteLoader.php
+├── Security/             # Security components
+│   ├── JWTTokenAuthenticator.php
+│   └── Voter/
+├── Service/              # Business logic layer
+│   ├── ACL/              # Access control services
+│   │   └── ACLService.php
+│   ├── Auth/             # Authentication services
+│   │   ├── JWTService.php
+│   │   ├── LoginService.php
+│   │   ├── ProfileService.php
+│   │   ├── UserContextService.php
+│   │   ├── UserDataService.php
+│   │   └── UserValidationService.php
+│   ├── Cache/            # Cache management services
+│   │   ├── Command/
+│   │   └── Core/
+│   ├── CMS/              # Content management services
+│   │   ├── Admin/        # Admin CMS services
+│   │   ├── Common/       # Common CMS services
+│   │   └── Frontend/     # Frontend CMS services
+│   ├── Core/             # Core application services
+│   ├── Dynamic/          # Dynamic routing services
+│   ├── JSON/             # JSON handling services
+│   └── Util/             # Utility classes
+└── Repository/           # Doctrine repositories
 ```
 
 ## 🔧 Core Services
 
 ### Authentication & Authorization
 - **JWTService**: Token generation, validation, blacklisting
-- **JWTTokenAuthenticator**: Symfony authenticator implementation
+- **LoginService**: User authentication and login logic
 - **UserContextService**: Current user context management
+- **UserDataService**: User data retrieval for JWT tokens
+- **ProfileService**: User profile management (name, password changes)
+- **UserValidationService**: User validation and activation
+- **JWTTokenAuthenticator**: Symfony authenticator implementation
 - **ACLService**: Fine-grained access control
 
 ### Content Management
-- **AdminPageService**: Page CRUD operations
-- **AdminSectionService**: Section management
-- **PageFieldService**: Field content management
+- **AdminPageService**: Page CRUD operations and versioning
+- **AdminSectionService**: Section management and export/import
+- **PageFieldService**: Field content management with translations
 - **SectionFieldService**: Section field management
 - **AdminAssetService**: File upload and asset management
+- **PageVersionService**: Page versioning and publishing workflow
+- **SectionCreationService**: Section creation utilities
+- **SectionRelationshipService**: Section hierarchy management
+- **PositionManagementService**: Section positioning logic
 
 ### System Services
 - **TransactionService**: Audit trail and change logging
 - **JobSchedulerService**: Background task scheduling
 - **ApiResponseFormatter**: Standardized response formatting
 - **JsonSchemaValidationService**: Request/response validation
+- **CacheService**: Global cache management
+- **CacheStatsService**: Cache statistics and monitoring
 
 ### Dynamic Routing
 - **ApiRouteLoader**: Database-driven route loading
@@ -159,32 +284,48 @@ src/
 ### Entity Relationships
 ```mermaid
 erDiagram
-    User ||--o{ UsersGroup : belongs_to
-    UsersGroup }o--|| Group : has
-    Group ||--o{ UserGroupsPermission : has
-    UserGroupsPermission }o--|| Permission : grants
-    
+    User ||--o{ UsersRole : has_roles
+    UsersRole }o--|| Role : belongs_to
+    Role ||--o{ RolePermission : grants
+    RolePermission }o--|| Permission : permission_type
+
+    User ||--o{ UsersGroup : belongs_to_groups
+    UsersGroup }o--|| Group : represents
+
     ApiRoute ||--o{ ApiRoutePermission : requires
     ApiRoutePermission }o--|| Permission : grants
-    
+
     Page ||--o{ PagesSection : contains
     PagesSection }o--|| Section : has
     Section ||--o{ SectionsField : contains
     SectionsField }o--|| Field : has
-    
+
+    Page ||--o{ PageVersion : has_versions
+    PageVersion }o--|| User : created_by
+
     Page ||--o{ AclUser : user_acl
     Page ||--o{ AclGroup : group_acl
     AclUser }o--|| User : for_user
     AclGroup }o--|| Group : for_group
+
+    Field ||--o{ FieldsTranslation : translations
+    FieldsTranslation }o--|| Language : in_language
+    Page ||--o{ PagesFieldsTranslation : page_translations
+    PagesFieldsTranslation }o--|| Language : in_language
 ```
 
 ### Key Database Tables
-- **`api_routes`**: Dynamic route definitions
-- **`users`, `groups`, `permissions`**: Authentication/authorization
+- **`api_routes`**: Dynamic route definitions with permissions
+- **`users`, `roles`, `permissions`**: Authentication/authorization (role-based)
+- **`users_groups`**: Group memberships (for page ACL)
 - **`pages`, `sections`, `fields`**: CMS content structure
-- **`acl_users`, `acl_groups`**: Fine-grained access control
-- **`transactions`**: Audit trail
-- **`scheduledJobs`**: Background task queue
+- **`page_versions`**: Page versioning and publishing system
+- **`acl_users`, `acl_groups`**: Fine-grained access control for pages
+- **`fields_translations`, `sections_fields_translations`**: Multi-language support
+- **`transactions`**: Comprehensive audit trail
+- **`scheduled_jobs`**: Background task scheduling system
+- **`data_tables`, `data_rows`, `data_cols`, `data_cells`**: Dynamic data tables
+- **`assets`**: File upload and asset management
 
 ## 🔐 Security Architecture
 
