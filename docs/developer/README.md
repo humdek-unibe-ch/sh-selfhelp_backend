@@ -20,7 +20,7 @@ This developer documentation is organized into the following sections:
 ### Content Management System
 - [📄 **CMS Architecture**](./08-cms-architecture.md) - Page, section, and field management
 - [🎨 **Asset Management**](./09-asset-management.md) - File upload and asset handling
-- [🌍 **Multi-language Support**](./10-multi-language.md) - Translation and localization system
+- [🔧 **Interpolation System**](./10-interpolation-system.md) - Variable interpolation and templating
 
 ### System Services
 - [⚡ **Scheduled Jobs**](./11-scheduled-jobs.md) - Background task scheduling and execution
