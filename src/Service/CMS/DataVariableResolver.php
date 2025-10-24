@@ -7,9 +7,11 @@ use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\SectionsHierarchy;
 use App\Repository\DataTableRepository;
+use App\Repository\LanguageRepository;
 use App\Repository\PageRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
+use App\Service\CMS\GlobalVariableService;
 use App\Service\Core\BaseService;
 use Doctrine\DBAL\Exception;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,15 +22,14 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 class DataVariableResolver extends BaseService
 {
-    private const SH_GLOBAL_VALUES_KEYWORD = 'sh-global-values';
-    private const PF_GLOBAL_VALUES = 'global_values'; // Page field name for global values
-
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly DataTableRepository $dataTableRepository,
+        private readonly LanguageRepository $languageRepository,
         private readonly PageRepository $pageRepository,
         private readonly DataService $dataService,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly GlobalVariableService $globalVariableService
     ) {
     }
 
@@ -61,11 +62,7 @@ class DataVariableResolver extends BaseService
             $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
         }
 
-        // Add global variables page dependency
-        $globalPage = $this->pageRepository->findOneBy(['keyword' => self::SH_GLOBAL_VALUES_KEYWORD]);
-        if ($globalPage) {
-            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $globalPage->getId());
-        }
+        // Note: Global variable dependencies are handled by GlobalVariableService
 
         return $cacheService->getList($cacheKey, function () use ($allSections) {
             $variables = [];
@@ -82,10 +79,6 @@ class DataVariableResolver extends BaseService
                     $variables = array_merge($variables, $tableVariables);
                 }
             }
-
-            // Add global variables
-            $globalVariables = $this->getGlobalVariables();
-            $variables = array_merge($variables, $globalVariables);
 
             // Add system variables
             $systemVariables = $this->getSystemVariables();
@@ -384,86 +377,24 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Get global variables from sh_global_values page
+     * Get global variables from sh_global_values page for all languages
      *
      * @return array List of global variable names with 'global.' prefix
      */
-    private function getGlobalVariables(): array
+    public function getGlobalVariables(): array
     {
-        $cacheKey = "global_variables";
-        $globalPage = $this->pageRepository->findOneBy(['keyword' => self::SH_GLOBAL_VALUES_KEYWORD]);
-
-        return $this->cache        
-            ->withCategory(CacheService::CATEGORY_PAGES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $globalPage->getId())
-            ->getList($cacheKey, function () use ($globalPage) {
-                $variables = [];
-
-                try {
-                    // Find the sh_global_values page
-                    if (!$globalPage) {
-                        return $variables;
-                    }
-
-                    // Get the global values from page fields
-                    // This follows the pattern from the old code
-                    $globalValuesJson = $this->getPageFieldValue($globalPage, self::PF_GLOBAL_VALUES);
-                    if ($globalValuesJson) {
-                        $globalValues = json_decode($globalValuesJson, true);
-                        if (is_array($globalValues)) {
-                            foreach (array_keys($globalValues) as $key) {
-                                $variables[] = 'global.' . $key;
-                            }
-                        }
-                    }
-                } catch (\Exception $e) {
-                    // If there's an error getting global values, continue without them
-                }
-
-                return $variables;
-            });
-    }
-
-    /**
-     * Get page field value by field name
-     *
-     * @param Page $page The page entity
-     * @param string $fieldName The field name to look for
-     * @return string|null The field value or null if not found
-     */
-    private function getPageFieldValue(Page $page, string $fieldName): ?string
-    {
-        try {
-            $conn = $this->entityManager->getConnection();
-            $sql = "
-                SELECT pft.content
-                FROM pages_fields_translation pft
-                INNER JOIN fields f ON pft.id_fields = f.id
-                WHERE pft.id_pages = :pageId
-                AND f.name = :fieldName
-                AND pft.id_languages = 1
-                LIMIT 1
-            ";
-            $stmt = $conn->prepare($sql);
-            $stmt->bindValue('pageId', $page->getId(), \PDO::PARAM_INT);
-            $stmt->bindValue('fieldName', $fieldName, \PDO::PARAM_STR);
-            $result = $stmt->executeQuery();
-
-            $row = $result->fetchAssociative();
-            return $row ? $row['content'] : null;
-        } catch (\Exception $e) {
-            return null;
-        }
+        // Use the centralized global variable service
+        return $this->globalVariableService->getGlobalVariableNames();
     }
 
     /**
      * Get hardcoded system variables
      *
-     * @return array List of system variable names (without scope prefix)
+     * @return array List of system variable names with 'system.' prefix
      */
     private function getSystemVariables(): array
     {
-        return [
+        $systemVars = [
             'user_name',
             'user_email',
             'user_code',
@@ -471,9 +402,15 @@ class DataVariableResolver extends BaseService
             'page_keyword',
             'platform',
             'language',
+            'user_group',
+            'last_login',
             'current_date',
             'current_datetime',
+            'current_time',
             'project_name'
         ];
+
+        // Add system. prefix to all variables
+        return array_map(fn($var) => 'system.' . $var, $systemVars);
     }
 }

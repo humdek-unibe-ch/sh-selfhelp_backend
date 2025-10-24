@@ -62,13 +62,17 @@ class AdminSectionService extends BaseService
     {
         $cacheKey = "section_{$section_id}_" . ($page_id ?? 'auto');
 
-        return $this->cache
+        $result = $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id)
             ->getItem(
                 $cacheKey,
                 fn() => $this->fetchSectionFromDatabase($page_id, $section_id)
             );
+        
+        $globalVariables = $this->dataVariableResolver->getGlobalVariables();
+        $result['data_variables'] = array_merge($result['data_variables'], $globalVariables);
+        return $result;
     }
 
     private function fetchSectionFromDatabase(?int $page_id, int $section_id): array

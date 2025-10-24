@@ -7,6 +7,7 @@ use App\Entity\User;
 use App\Repository\PageRepository;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\GlobalVariableService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Routing\RouterInterface;
@@ -27,7 +28,8 @@ class VariableResolverService
         private readonly RequestStack $requestStack,
         private readonly RouterInterface $router,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly PageRepository $pageRepository
+        private readonly PageRepository $pageRepository,
+        private readonly GlobalVariableService $globalVariableService
     ) {
     }
 
@@ -97,7 +99,7 @@ class VariableResolverService
 
         // Add global variables if requested
         if ($includeGlobalVars) {
-            $this->addGlobalVariables($variables);
+            $this->addGlobalVariables($variables, $languageId);
         }
 
         // Add custom variables from request (supporting {{var}} syntax from frontend)
@@ -248,60 +250,20 @@ class VariableResolverService
      * Add global variables from sh_global_values page to the variables array
      *
      * @param array &$variables Reference to variables array to update
+     * @param int $languageId Language ID for caching separation
      */
-    private function addGlobalVariables(array &$variables): void
+    private function addGlobalVariables(array &$variables, int $languageId): void
     {
         try {
-            // Find the sh_global_values page
-            $globalPage = $this->pageRepository->findOneBy(['keyword' => 'sh-global-values']);
-            if (!$globalPage) {
-                return;
-            }
+            // Use the centralized global variable service
+            $globalVariables = $this->globalVariableService->getGlobalVariableValues($languageId);
 
-            // Get the global values from page fields
-            $globalValuesJson = $this->getPageFieldValue($globalPage, 'global_values');
-            if ($globalValuesJson) {
-                $globalValues = json_decode($globalValuesJson, true);
-                if (is_array($globalValues)) {
-                    foreach ($globalValues as $key => $value) {
-                        $variables['global.' . $key] = $value;
-                    }
-                }
+            // Merge global variables into the variables array
+            foreach ($globalVariables as $key => $value) {
+                $variables[$key] = $value;
             }
         } catch (\Exception $e) {
             // If there's an error getting global values, continue without them
-        }
-    }
-
-    /**
-     * Get page field value by field name
-     *
-     * @param object $page The page entity
-     * @param string $fieldName The field name to look for
-     * @return string|null The field value or null if not found
-     */
-    private function getPageFieldValue($page, string $fieldName): ?string
-    {
-        try {
-            $conn = $this->entityManager->getConnection();
-            $sql = "
-                SELECT pft.content
-                FROM pages_fields_translation pft
-                INNER JOIN fields f ON pft.id_fields = f.id
-                WHERE pft.id_pages = :pageId
-                AND f.name = :fieldName
-                AND pft.id_languages = 1
-                LIMIT 1
-            ";
-            $stmt = $conn->prepare($sql);
-            $stmt->bindValue('pageId', $page->getId(), \PDO::PARAM_INT);
-            $stmt->bindValue('fieldName', $fieldName, \PDO::PARAM_STR);
-            $result = $stmt->executeQuery();
-
-            $row = $result->fetchAssociative();
-            return $row ? $row['content'] : null;
-        } catch (\Exception $e) {
-            return null;
         }
     }
 }

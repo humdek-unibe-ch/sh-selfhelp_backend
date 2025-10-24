@@ -683,38 +683,102 @@ class SectionUtilityService
             $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($section['id']);
         }
 
-        // Always interpolate global and system variables in section content
-        // This happens regardless of whether there's a data_config or not
+        // Get variable values (flat array from VariableResolverService)
         $variableValues = $this->getGlobalAndSystemVariableValues($languageId);
-        $section = $this->interpolationService->interpolateArray($section, $variableValues);
 
-        // Always set retrieved_data with available variables, even without data_config
-        $retrievedData = [];
+        // Structure variables with proper namespacing for interpolation
+        // This creates the initial retrieved_data with ONLY system and globals
+        // Data from data_config will be added later by PageService
+        $structuredVariables = $this->structureSystemAndGlobalVariables($variableValues);
+        
+        // Initialize retrieved_data with system and globals
+        // PageService will add data scopes (parent, test, etc.) later after interpolating data_config
+        $section['retrieved_data'] = $structuredVariables;
+    }
 
-        // Handle data_config field - parse and retrieve data without replacing content
-        if (isset($section['data_config']) && $section['data_config'] !== null) {
-            // Parse data_config as JSON string to array
-            $dataConfigArray = is_string($section['data_config'])
-                ? json_decode($section['data_config'], true)
-                : $section['data_config'];
+    /**
+     * Structure system and global variables with proper namespacing
+     *
+     * Separates flat variable array into system and globals namespaces
+     *
+     * @param array $variableValues Flat array of system and global variables
+     * @return array Structured data with system and globals namespaces
+     */
+    private function structureSystemAndGlobalVariables(array $variableValues): array
+    {
+        $structured = [];
 
-            if (is_array($dataConfigArray)) {
-                // data_config is an array of configuration objects, process each one
-                foreach ($dataConfigArray as $configIndex => $config) {
-                    $configData = $this->retrieveData($config, [], $languageId);
-                    // Use the scope as key if available, otherwise use index
-                    $key = isset($config['scope']) ? $config['scope'] : $configIndex;
-                    $retrievedData[$key] = $configData;
-                }
-                // Add retrieved data as a new field
-                $section['data_config'] = $dataConfigArray;
+        // Separate system variables from global variables
+        $systemVariables = [];
+        $globalVariables = [];
+
+        foreach ($variableValues as $key => $value) {
+            // Check if this is a system variable or global variable
+            if ($this->isSystemVariable($key)) {
+                $systemVariables[$key] = $value;
+            } else {
+                $globalVariables[$key] = $value;
             }
         }
 
-        // Add global variables to retrieved_data so they're always available
-        $retrievedData['globals'] = $variableValues;
+        // Add system variables under 'system' namespace
+        if (!empty($systemVariables)) {
+            $structured['system'] = $systemVariables;
+        }
 
-        // Set retrieved_data in section
-        $section['retrieved_data'] = $retrievedData;
+        // Add global variables under 'globals' namespace
+        if (!empty($globalVariables)) {
+            $structured['globals'] = $globalVariables;
+        }
+
+        return $structured;
+    }
+
+    /**
+     * Merge structured system/global variables with retrieved data scopes
+     *
+     * Combines initial structured variables (system, globals) with data scopes (parent, test, etc.)
+     *
+     * @param array $structuredVariables Structured system and global variables
+     * @param array $retrievedData Retrieved data scopes from data_config
+     * @return array Final structured data with all namespaces
+     */
+    private function mergeStructuredData(array $structuredVariables, array $retrievedData): array
+    {
+        $merged = $structuredVariables;
+
+        // Add all data scopes (parent, test, etc.) at root level
+        foreach ($retrievedData as $scope => $data) {
+            $merged[$scope] = $data;
+        }
+
+        return $merged;
+    }
+
+    /**
+     * Check if a variable name is a system variable
+     *
+     * @param string $variableName Variable name to check
+     * @return bool True if system variable, false if global variable
+     */
+    private function isSystemVariable(string $variableName): bool
+    {
+        $systemVariables = [
+            'user_name',
+            'user_email',
+            'user_code',
+            'user_id',
+            'page_keyword',
+            'platform',
+            'language',
+            'user_group',
+            'last_login',
+            'current_date',
+            'current_datetime',
+            'current_time',
+            'project_name'
+        ];
+
+        return in_array($variableName, $systemVariables);
     }
 }

@@ -830,7 +830,6 @@ class PageService extends BaseService
      */
     private function retrieveSectionData(array &$section, array $availableData, int $languageId): void
     {
-
         // Handle data_config field - parse and retrieve data
         if (isset($section['data_config']) && $section['data_config'] !== null) {
             // Parse data_config as JSON string to array
@@ -844,6 +843,7 @@ class PageService extends BaseService
                 foreach ($dataConfigArray as $configIndex => $config) {
                     try {
                         // Interpolate the config before retrieving data
+                        // availableData contains the structured parent data (system, globals, parent scopes)
                         $interpolatedConfig = $this->interpolateDataConfig($config, $availableData);
                         $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
                         // Use the scope as key if available, otherwise use index
@@ -854,8 +854,15 @@ class PageService extends BaseService
                         // This prevents failures due to invalid data configs
                     }
                 }
-                // Add retrieved data as a new field
-                $section['retrieved_data'] = $retrievedData;
+                
+                // Merge retrieved data scopes with existing retrieved_data (system, globals)
+                // This adds data scopes (parent, test, etc.) to the structure
+                if (isset($section['retrieved_data']) && is_array($section['retrieved_data'])) {
+                    $section['retrieved_data'] = array_merge($section['retrieved_data'], $retrievedData);
+                } else {
+                    $section['retrieved_data'] = $retrievedData;
+                }
+                
                 $section['data_config'] = $dataConfigArray;
             }
         }
