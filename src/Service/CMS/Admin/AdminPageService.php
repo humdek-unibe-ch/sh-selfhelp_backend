@@ -487,6 +487,14 @@ class AdminPageService extends BaseService
                 ->setParameter('page', $page)
                 ->execute();
 
+            // Clear the published version reference to avoid foreign key constraint violations
+            // Use direct SQL to avoid Doctrine trying to load non-existent PageVersion entities
+            $this->entityManager->createQuery(
+                'UPDATE App\\Entity\\Page p SET p.publishedVersion = NULL WHERE p.id = :pageId'
+            )
+                ->setParameter('pageId', $page->getId())
+                ->execute();
+
             // Store page keyword for logging before deletion
             $pageKeywordForLog = $page->getKeyword();
             $pageIdForLog = $page->getId();
@@ -495,7 +503,8 @@ class AdminPageService extends BaseService
             $this->entityManager->remove($page);
             $this->entityManager->flush();
 
-            // Log the page deletion transaction with the deleted page object
+
+            // Log the page deletion transaction after commit to avoid EntityManager conflicts
             // This ensures we capture the page data even after it's removed from the database
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
@@ -505,7 +514,7 @@ class AdminPageService extends BaseService
                 $deleted_page, // Pass the page object directly instead of a boolean
                 'Page deleted with keyword: ' . $pageKeywordForLog
             );
-
+            
             $this->entityManager->commit();
             
             // Invalidate entity-scoped cache for this specific page

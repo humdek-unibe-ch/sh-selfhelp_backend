@@ -139,10 +139,11 @@ graph TD
 #### Implementation Details
 1. **Validation**: Ensures version exists, belongs to page, and is published
 2. **Data Extraction**: Pulls sections from stored `page_versions.page_json`
-3. **Format Conversion**: Transforms version JSON to import-compatible format
-4. **Atomic Operation**: Uses database transactions for consistency
-5. **Cache Management**: Invalidates page and section caches after restoration
-6. **Audit Trail**: Logs restoration in transaction history
+3. **ID Preservation**: Creates sections with original IDs from published version
+4. **Smart Restoration**: Handles additions, updates, and deletions intelligently
+5. **Relationship Rebuilding**: Recreates page and hierarchy relationships
+6. **Cache Management**: Invalidates all relevant caches after restoration
+7. **Audit Trail**: Logs restoration statistics in transaction history
 
 #### Code Implementation
 ```php
@@ -152,24 +153,85 @@ public function restoreSectionsFromVersion(int $pageId, int $versionId): array
     // 1. Permission and validation checks
     $this->userContextAwareService->checkAccessById($pageId, 'update');
 
-    // 2. Extract sections from published version JSON
+    // 2. Get published sections with original IDs
     $pageJson = $version->getPageJson();
-    $sectionsToRestore = $this->convertPublishedSectionsToExportFormat($pageJson['page']['sections']);
+    $publishedSections = $pageJson['page']['sections'];
 
-    // 3. Transaction-wrapped restoration
+    // 3. Perform smart restoration that preserves section IDs
     $this->entityManager->beginTransaction();
     try {
-        $this->clearPageSections($page);
-        $importedSections = $this->importSections($sectionsToRestore, $page, null, null, true);
+        $restorationResult = $this->performSmartSectionRestoration($page, $publishedSections);
 
-        // 4. Cache invalidation
+        // 4. Cache invalidation and logging
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
 
         $this->entityManager->commit();
+
+        return [
+            'message' => 'Sections successfully restored from published version (IDs preserved)',
+            'sections_created' => $restorationResult['sections_created'],
+            'sections_updated' => $restorationResult['sections_updated'],
+            'sections_deleted' => $restorationResult['sections_deleted']
+        ];
     } catch (\Exception $e) {
         $this->entityManager->rollback();
         throw $e;
     }
+}
+```
+
+#### Smart Section Restoration Process
+
+The new approach preserves section IDs by selectively updating existing sections and creating missing ones:
+
+```php
+private function performSmartSectionRestoration(Page $page, array $publishedSections): array
+{
+    // 1. Get current sections on the page
+    $currentSectionIds = $this->sectionRepository->getSectionIdsForPage($page->getId());
+
+    // 2. Process each section from published version
+    foreach ($publishedSections as $sectionData) {
+        $sectionId = $sectionData['id'];
+        $existingSection = $this->sectionRepository->find($sectionId);
+
+        if ($existingSection) {
+            // Update existing section with published data
+            $this->updateSectionFromPublishedData($existingSection, $sectionData);
+            // Remove from deletion list
+            $currentSectionIds = array_diff($currentSectionIds, [$sectionId]);
+        } else {
+            // Create new section with preserved ID
+            $this->createSectionWithId($sectionData);
+        }
+    }
+
+    // 3. Remove sections that don't exist in published version
+    $sectionsDeleted = $this->removeOrphanedSectionsByIds($currentSectionIds);
+
+    // 4. Rebuild relationships
+    $this->rebuildSectionRelationships($page, $publishedSections);
+}
+```
+
+**ID Preservation** is achieved by setting the ID manually before persisting:
+
+```php
+private function createSectionWithId(array $sectionData): Section
+{
+    $section = new Section();
+
+    // Manually set the ID to preserve from published version
+    $reflection = new \ReflectionClass($section);
+    $idProperty = $reflection->getProperty('id');
+    $idProperty->setAccessible(true);
+    $idProperty->setValue($section, $sectionData['id']);
+
+    // Set other properties and persist
+    $this->entityManager->persist($section);
+    $this->entityManager->flush();
+
+    return $section;
 }
 ```
 
@@ -284,6 +346,43 @@ GET /cms-api/v1/admin/pages/{page_id}/versions?limit=10&offset=0
 ```
 
 The `has_unpublished_changes` flag is automatically calculated using fast hash comparison.
+
+#### Restore Sections Response
+```http
+POST /cms-api/v1/admin/pages/{page_id}/sections/restore-from-version/{version_id}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Sections successfully restored from published version (IDs preserved)",
+    "page_id": 88,
+    "version_restored_from": {
+      "id": 121,
+      "version_number": 2,
+      "version_name": "Published Version",
+      "published_at": "2025-10-24T15:00:00+02:00"
+    },
+    "sections_created": 2,
+    "sections_updated": 3,
+    "sections_deleted": 1,
+    "sections": [
+      {
+        "id": 123,
+        "section_name": "Contact Form",
+        "action": "updated"
+      },
+      {
+        "id": 456,
+        "section_name": "Hero Section",
+        "action": "created"
+      }
+    ]
+  }
+}
+```
 
 #### Get Version Details
 ```http

@@ -496,8 +496,8 @@ class SectionExportImportService extends BaseService
      * Restore sections from a published version to the current draft
      *
      * This method takes sections from a published version and replaces all current
-     * sections on the page with those sections, effectively restoring the page
-     * to a previous published state while keeping it as a draft for further editing.
+     * sections on the page with those sections, preserving the original section IDs
+     * to maintain referential integrity with dataTables and other relationships.
      *
      * @param int $pageId The ID of the page to restore sections to
      * @param int $versionId The ID of the published version to restore from
@@ -537,20 +537,19 @@ class SectionExportImportService extends BaseService
             $this->throwBadRequest('No sections found in the published version');
         }
 
-        // Convert published version sections to export format for import
-        $sectionsToRestore = $this->convertPublishedSectionsToExportFormat($pageJson['page']['sections']);
+        $publishedSections = $pageJson['page']['sections'];
 
         // Start transaction
         $this->entityManager->beginTransaction();
 
         try {
-            // Step 1: Clear existing sections for the page
-            $this->clearPageSections($page);
+            // Step 1: Perform smart restoration that preserves section IDs
+            $restorationResult = $this->performSmartSectionRestoration($page, $publishedSections);
 
-            // Step 2: Import sections from the published version (preserve original names)
-            $importedSections = $this->importSections($sectionsToRestore, $page, null, null, true);
+            // Step 2: Force flush to ensure all operations are committed to database
+            $this->entityManager->flush();
 
-            // Step 3: Invalidate page and sections cache after restoration
+            // Step 3: Invalidate caches
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
@@ -569,16 +568,19 @@ class SectionExportImportService extends BaseService
                     'keyword' => $page->getKeyword(),
                     'url' => $page->getUrl(),
                     'version_restored' => $version->getVersionNumber(),
-                    'version_name' => $version->getVersionName()
+                    'version_name' => $version->getVersionName(),
+                    'sections_updated' => $restorationResult['sections_updated'],
+                    'sections_created' => $restorationResult['sections_created'],
+                    'sections_deleted' => $restorationResult['sections_deleted']
                 ],
-                "Restored sections from published version {$version->getVersionNumber()} for page '{$page->getKeyword()}'"
+                "Restored sections from published version {$version->getVersionNumber()} for page '{$page->getKeyword()}' (preserved IDs)"
             );
 
             // Commit transaction
             $this->entityManager->commit();
 
             return [
-                'message' => 'Sections successfully restored from published version',
+                'message' => 'Sections successfully restored from published version (IDs preserved)',
                 'page_id' => $pageId,
                 'version_restored_from' => [
                     'id' => $version->getId(),
@@ -586,8 +588,10 @@ class SectionExportImportService extends BaseService
                     'version_name' => $version->getVersionName(),
                     'published_at' => $version->getPublishedAt()
                 ],
-                'sections_restored' => count($importedSections),
-                'imported_sections' => $importedSections
+                'sections_updated' => $restorationResult['sections_updated'],
+                'sections_created' => $restorationResult['sections_created'],
+                'sections_deleted' => $restorationResult['sections_deleted'],
+                'sections' => $restorationResult['sections']
             ];
         } catch (\Throwable $e) {
             // Rollback transaction
@@ -851,5 +855,526 @@ class SectionExportImportService extends BaseService
         }
 
         $this->entityManager->flush();
+    }
+
+    /**
+     * Perform smart section restoration that preserves section IDs
+     *
+     * This method restores sections from a published version while preserving
+     * the original section IDs to maintain referential integrity with dataTables.
+     *
+     * @param Page $page The page to restore sections to
+     * @param array $publishedSections The sections from the published version
+     * @return array Restoration result with statistics
+     */
+    private function performSmartSectionRestoration(Page $page, array $publishedSections): array
+    {
+        // Step 1: Flatten published sections for processing
+        $flatPublishedSections = $this->flattenPublishedSections($publishedSections);
+
+        // Step 2: Ensure auto-increment is set high enough for manual ID inserts
+        $this->ensureAutoIncrementForManualIds($flatPublishedSections);
+
+        // Step 3: Get current sections on the page for comparison
+        $currentSectionIds = $this->sectionRepository->getSectionIdsForPage($page->getId());
+
+        // Step 4: Process each section from published version
+        $restoredSections = [];
+        $sectionsCreated = 0;
+        $sectionsUpdated = 0;
+
+        foreach ($flatPublishedSections as $sectionData) {
+            $sectionId = $sectionData['id'];
+
+            // Check if section with this ID already exists
+            $existingSection = $this->sectionRepository->find($sectionId);
+
+            if ($existingSection) {
+                // Update existing section with published data
+                $this->updateSectionFromPublishedData($existingSection, $sectionData);
+                $sectionsUpdated++;
+
+                // Remove from current sections list (it's being kept)
+                $currentSectionIds = array_diff($currentSectionIds, [$sectionId]);
+            } else {
+                // Create new section with preserved ID
+                $newSection = $this->createSectionWithId($sectionData);
+                $sectionsCreated++;
+            }
+
+            $restoredSections[] = [
+                'id' => $sectionId,
+                'section_name' => $sectionData['section_name'],
+                'action' => $existingSection ? 'updated' : 'created'
+            ];
+        }
+
+        // Step 5: Remove sections that exist in current page but not in published version
+        $sectionsDeleted = $this->removeOrphanedSectionsByIds($currentSectionIds);
+
+        // Step 6: Rebuild section relationships (PagesSection and SectionsHierarchy)
+        // Do this last to ensure all sections exist first
+        $this->rebuildSectionRelationships($page, $publishedSections);
+
+        return [
+            'sections' => $restoredSections,
+            'sections_created' => $sectionsCreated,
+            'sections_updated' => $sectionsUpdated,
+            'sections_deleted' => $sectionsDeleted
+        ];
+    }
+
+    /**
+     * Create a section with a specific ID (preserving from published version)
+     *
+     * @param array $sectionData Section data from published version
+     * @return Section The created section
+     */
+    private function createSectionWithId(array $sectionData): Section
+    {
+        try {
+            $sectionId = $sectionData['id'];
+
+            // Create new section entity
+            $section = new \App\Entity\Section();
+
+            // Set properties first
+            $section->setName($sectionData['section_name'] ?? 'Restored Section');
+
+            if ($sectionData['style_name']) {
+                $style = $this->styleRepository->findOneBy(['name' => $sectionData['style_name']]);
+                if ($style) {
+                    $section->setStyle($style);
+                }
+            }
+
+            $section->setCondition($sectionData['condition'] ?? null);
+            $section->setDataConfig($sectionData['data_config'] ?? null);
+            $section->setCss($sectionData['css'] ?? null);
+            $section->setCssMobile($sectionData['css_mobile'] ?? null);
+            $section->setDebug(isset($sectionData['debug']) ? (bool)$sectionData['debug'] : false);
+
+            // Use raw SQL to insert with specific ID (avoid Doctrine auto-generation)
+            $conn = $this->entityManager->getConnection();
+
+            $styleId = $section->getStyle() ? $section->getStyle()->getId() : null;
+
+            $sql = "
+                INSERT INTO sections (
+                    id, name, id_styles, `condition`, data_config, css, css_mobile, debug, timestamp
+                ) VALUES (
+                    :id, :name, :style_id, :condition, :data_config, :css, :css_mobile, :debug, :timestamp
+                )
+            ";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([
+                'id' => $sectionId,
+                'name' => $section->getName(),
+                'style_id' => $styleId,
+                'condition' => $section->getCondition(),
+                'data_config' => $section->getDataConfig() ? json_encode($section->getDataConfig()) : null,
+                'css' => $section->getCss(),
+                'css_mobile' => $section->getCssMobile(),
+                'debug' => $section->isDebug() ? 1 : 0,
+                'timestamp' => (new \DateTime())->format('Y-m-d H:i:s')
+            ]);
+
+            // Clear Doctrine's identity map for this entity to avoid conflicts
+            $this->entityManager->detach($section);
+
+            // Now retrieve the entity from database
+            $section = $this->sectionRepository->find($sectionId);
+            if (!$section) {
+                throw new \Exception("Failed to retrieve section after creation");
+            }
+
+            // Import field translations
+            if (isset($sectionData['translations'])) {
+                $this->importSectionTranslations($section, $sectionData['translations']);
+            }
+
+            return $section;
+
+        } catch (\Throwable $e) {
+            // Log the error
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_SYSTEM,
+                'sections',
+                $sectionData['id'] ?? 0,
+                (object) [
+                    'error' => $e->getMessage(),
+                    'section_data' => $sectionData
+                ],
+                "Failed to create section with ID {$sectionData['id']}: " . $e->getMessage()
+            );
+
+            // Re-throw to maintain transaction integrity
+            throw $e;
+        }
+    }
+
+    /**
+     * Update an existing section with published data
+     *
+     * @param Section $section The section to update
+     * @param array $sectionData Published section data
+     */
+    private function updateSectionFromPublishedData(Section $section, array $sectionData): void
+    {
+        $section->setName($sectionData['section_name'] ?? $section->getName());
+
+        if ($sectionData['style_name']) {
+            $style = $this->styleRepository->findOneBy(['name' => $sectionData['style_name']]);
+            if ($style) {
+                $section->setStyle($style);
+            }
+        }
+
+        $section->setCondition($sectionData['condition'] ?? null);
+        $section->setDataConfig($sectionData['data_config'] ?? null);
+        $section->setCss($sectionData['css'] ?? null);
+        $section->setCssMobile($sectionData['css_mobile'] ?? null);
+        $section->setDebug(isset($sectionData['debug']) ? (bool)$sectionData['debug'] : false);
+
+        // Clear existing translations and import new ones
+        $this->clearSectionTranslations($section);
+        if (isset($sectionData['translations'])) {
+            $this->importSectionTranslations($section, $sectionData['translations']);
+        }
+    }
+
+    /**
+     * Flatten published sections into a flat array with full data
+     *
+     * @param array $sections Hierarchical sections
+     * @param array $parentData Parent section data for hierarchy
+     * @return array Flat array of section data
+     */
+    private function flattenPublishedSections(array $sections, array $parentData = []): array
+    {
+        $flat = [];
+
+        foreach ($sections as $index => $section) {
+            $sectionData = [
+                'id' => $section['id'],
+                'section_name' => $section['section_name'] ?? '',
+                'style_name' => $section['style_name'] ?? null,
+                'condition' => $section['condition'] ?? null,
+                'data_config' => $section['data_config'] ?? null,
+                'css' => $section['css'] ?? null,
+                'css_mobile' => $section['css_mobile'] ?? null,
+                'debug' => $section['debug'] ?? false,
+                'translations' => $section['translations'] ?? [],
+                'position' => $section['position'] ?? $index,
+                'parent_id' => $parentData['id'] ?? null,
+                'parent_position' => $parentData['position'] ?? null
+            ];
+
+            $flat[] = $sectionData;
+
+            // Process children recursively
+            if (isset($section['children']) && is_array($section['children'])) {
+                $childParentData = [
+                    'id' => $section['id'],
+                    'position' => $sectionData['position']
+                ];
+                $flat = array_merge($flat, $this->flattenPublishedSections($section['children'], $childParentData));
+            }
+        }
+
+        return $flat;
+    }
+
+    /**
+     * Rebuild section relationships (PagesSection and SectionsHierarchy)
+     *
+     * @param Page $page The page
+     * @param array $publishedSections The hierarchical sections structure
+     */
+    private function rebuildSectionRelationships(Page $page, array $publishedSections): void
+    {
+        // Get all section IDs that will be involved in the restoration
+        $flatPublishedSections = $this->flattenPublishedSections($publishedSections);
+        $sectionIds = array_column($flatPublishedSections, 'id');
+
+        // Aggressively clear ALL existing relationships for these sections
+        if (!empty($sectionIds)) {
+            try {
+                // Clear ALL PagesSection relationships for these sections (across all pages)
+                $deletedPagesSections = $this->entityManager->createQueryBuilder()
+                    ->delete(\App\Entity\PagesSection::class, 'ps')
+                    ->where('ps.section IN (:sectionIds)')
+                    ->setParameter('sectionIds', $sectionIds)
+                    ->getQuery()
+                    ->execute();
+
+                // Clear ALL SectionsHierarchy relationships for these sections
+                $deletedHierarchy = $this->entityManager->createQueryBuilder()
+                    ->delete(\App\Entity\SectionsHierarchy::class, 'sh')
+                    ->where('sh.parentSection IN (:sectionIds) OR sh.childSection IN (:sectionIds)')
+                    ->setParameter('sectionIds', $sectionIds)
+                    ->getQuery()
+                    ->execute();
+
+                // Log the clearing operation
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_UPDATE,
+                    LookupService::TRANSACTION_BY_BY_SYSTEM,
+                    'relationships',
+                    0,
+                    (object) [
+                        'page_id' => $page->getId(),
+                        'sections_cleared' => count($sectionIds),
+                        'pages_sections_deleted' => $deletedPagesSections,
+                        'hierarchy_deleted' => $deletedHierarchy
+                    ],
+                    "Cleared relationships for section restoration on page {$page->getId()}"
+                );
+
+            } catch (\Exception $e) {
+                // Log the Doctrine failure
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_UPDATE,
+                    LookupService::TRANSACTION_BY_BY_SYSTEM,
+                    'relationships',
+                    0,
+                    (object) [
+                        'error' => 'Doctrine clearing failed: ' . $e->getMessage(),
+                        'page_id' => $page->getId(),
+                        'fallback' => 'raw_sql'
+                    ],
+                    "Doctrine relationship clearing failed, using raw SQL fallback"
+                );
+
+                // If Doctrine queries fail, try raw SQL
+                $conn = $this->entityManager->getConnection();
+                $idsString = implode(',', $sectionIds);
+
+                $conn->executeStatement("DELETE FROM pages_sections WHERE id_pages = {$page->getId()}");
+                $conn->executeStatement("DELETE FROM sections_hierarchy WHERE parent IN ({$idsString}) OR child IN ({$idsString})");
+            }
+        }
+
+        // Rebuild relationships from published structure
+        $this->rebuildRelationshipsRecursive($page, $publishedSections, null, null);
+    }
+
+    /**
+     * Recursively rebuild section relationships
+     *
+     * @param Page $page The page
+     * @param array $sections Sections array
+     * @param Section|null $parentSection Parent section (null for root level)
+     * @param int|null $parentPosition Parent position
+     */
+    private function rebuildRelationshipsRecursive(Page $page, array $sections, ?Section $parentSection, ?int $parentPosition): void
+    {
+        foreach ($sections as $position => $sectionData) {
+            $section = $this->sectionRepository->find($sectionData['id']);
+
+            if ($section) {
+                try {
+                    if ($page && !$parentSection) {
+                        // Root level - add to page
+                        $pageSection = new \App\Entity\PagesSection();
+                        $pageSection->setPage($page);
+                        $pageSection->setSection($section);
+                        $pageSection->setPosition($position);
+                        $this->entityManager->persist($pageSection);
+                    } elseif ($parentSection) {
+                        // Child level - add to parent
+                        $sectionHierarchy = new \App\Entity\SectionsHierarchy();
+                        $sectionHierarchy->setParentSection($parentSection);
+                        $sectionHierarchy->setChildSection($section);
+                        $sectionHierarchy->setPosition($position);
+                        $this->entityManager->persist($sectionHierarchy);
+                    }
+
+                    // Process children
+                    if (isset($sectionData['children']) && is_array($sectionData['children'])) {
+                        $this->rebuildRelationshipsRecursive($page, $sectionData['children'], $section, $position);
+                    }
+                } catch (\Exception $e) {
+                    // Log relationship creation failure
+                    $this->transactionService->logTransaction(
+                        LookupService::TRANSACTION_TYPES_UPDATE,
+                        LookupService::TRANSACTION_BY_BY_SYSTEM,
+                        'relationships',
+                        0,
+                        (object) [
+                            'error' => $e->getMessage(),
+                            'section_id' => $sectionData['id'],
+                            'parent_id' => $parentSection ? $parentSection->getId() : null,
+                            'position' => $position
+                        ],
+                        "Failed to create relationship for section {$sectionData['id']}: " . $e->getMessage()
+                    );
+
+                    // Continue with other sections instead of failing completely
+                    continue;
+                }
+            } else {
+                // Log missing section
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_UPDATE,
+                    LookupService::TRANSACTION_BY_BY_SYSTEM,
+                    'relationships',
+                    0,
+                    (object) [
+                        'warning' => 'Section not found',
+                        'section_id' => $sectionData['id'],
+                        'page_id' => $page->getId()
+                    ],
+                    "Section {$sectionData['id']} not found during relationship rebuilding"
+                );
+            }
+        }
+
+        try {
+            $this->entityManager->flush();
+        } catch (\Exception $e) {
+            // Log flush failure
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_SYSTEM,
+                'relationships',
+                0,
+                (object) [
+                    'error' => 'Flush failed: ' . $e->getMessage(),
+                    'page_id' => $page->getId()
+                ],
+                "Failed to flush relationships during restoration"
+            );
+
+            // Don't re-throw, let the transaction continue
+        }
+    }
+
+    /**
+     * Remove sections by their IDs
+     *
+     * @param array $sectionIds Array of section IDs to delete
+     * @return int Number of sections deleted
+     */
+    private function removeOrphanedSectionsByIds(array $sectionIds): int
+    {
+        if (empty($sectionIds)) {
+            return 0;
+        }
+
+        $deletedCount = 0;
+        foreach ($sectionIds as $sectionId) {
+            $section = $this->sectionRepository->find($sectionId);
+            if (!$section) {
+                continue;
+            }
+
+            // Delete relationships first
+            $this->entityManager->createQueryBuilder()
+                ->delete(\App\Entity\PagesSection::class, 'ps')
+                ->where('ps.section = :section')
+                ->setParameter('section', $section)
+                ->getQuery()
+                ->execute();
+
+            $this->entityManager->createQueryBuilder()
+                ->delete(\App\Entity\SectionsHierarchy::class, 'sh')
+                ->where('sh.parentSection = :section OR sh.childSection = :section')
+                ->setParameter('section', $section)
+                ->getQuery()
+                ->execute();
+
+            // Delete translations
+            $this->entityManager->createQueryBuilder()
+                ->delete(\App\Entity\SectionsFieldsTranslation::class, 'sft')
+                ->where('sft.section = :section')
+                ->setParameter('section', $section)
+                ->getQuery()
+                ->execute();
+
+            // Delete the section
+            $this->entityManager->remove($section);
+            $deletedCount++;
+        }
+
+        $this->entityManager->flush();
+        return $deletedCount;
+    }
+
+    /**
+     * Import translations for a section
+     *
+     * @param Section $section The section
+     * @param array $translations Translations data
+     */
+    private function importSectionTranslations(Section $section, array $translations): void
+    {
+        foreach ($translations as $languageId => $languageTranslations) {
+            $language = $this->entityManager->getRepository(\App\Entity\Language::class)->find($languageId);
+            if (!$language) continue;
+
+            foreach ($languageTranslations as $fieldName => $fieldData) {
+                $field = $this->entityManager->getRepository(\App\Entity\Field::class)
+                    ->findOneBy(['name' => $fieldName]);
+
+                if ($field) {
+                    $translation = new \App\Entity\SectionsFieldsTranslation();
+                    $translation->setSection($section);
+                    $translation->setField($field);
+                    $translation->setLanguage($language);
+                    $translation->setContent($fieldData['content'] ?? '');
+                    $translation->setMeta($fieldData['meta'] ?? null);
+
+                    $this->entityManager->persist($translation);
+                }
+            }
+        }
+
+        $this->entityManager->flush();
+    }
+
+    /**
+     * Ensure auto-increment value is set high enough to avoid conflicts with manual ID inserts
+     *
+     * @param array $sectionDataArray Array of section data
+     */
+    private function ensureAutoIncrementForManualIds(array $sectionDataArray): void
+    {
+        if (empty($sectionDataArray)) {
+            return;
+        }
+
+        // Find the highest ID we need to insert
+        $maxId = max(array_column($sectionDataArray, 'id'));
+
+        // Get current auto-increment value
+        $conn = $this->entityManager->getConnection();
+        $result = $conn->executeQuery("SHOW TABLE STATUS LIKE 'sections'");
+        $tableStatus = $result->fetchAssociative();
+
+        $currentAutoIncrement = $tableStatus['Auto_increment'] ?? 1;
+
+        // If our max ID is higher than current auto-increment, update it
+        if ($maxId >= $currentAutoIncrement) {
+            $newAutoIncrement = $maxId + 1;
+            $conn->executeStatement("ALTER TABLE sections AUTO_INCREMENT = {$newAutoIncrement}");
+        }
+    }
+
+    /**
+     * Clear all translations for a section
+     *
+     * @param Section $section The section
+     */
+    private function clearSectionTranslations(Section $section): void
+    {
+        $this->entityManager->createQueryBuilder()
+            ->delete(\App\Entity\SectionsFieldsTranslation::class, 'sft')
+            ->where('sft.section = :section')
+            ->setParameter('section', $section)
+            ->getQuery()
+            ->execute();
     }
 } 
