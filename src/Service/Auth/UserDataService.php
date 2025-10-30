@@ -2,6 +2,7 @@
 
 namespace App\Service\Auth;
 
+use App\Entity\CmsPreference;
 use App\Entity\Language;
 use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
@@ -29,28 +30,47 @@ class UserDataService
 
     /**
      * Get comprehensive user data including roles, permissions, and language
+     *
+     * Enhanced caching with entity scopes for roles and groups to ensure
+     * proper invalidation when role/group permissions change.
      */
     public function getUserData(User $user): array
     {
         $cacheKey = 'user_data_' . $user->getId();
 
-        return $this->cache
+        // Fetch user with roles and groups to build entity scopes
+        $user = $this->entityManager->getRepository(User::class)->find($user->getId());
+
+        // Build entity scopes for all roles and groups this user has
+        $cacheBuilder = $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId())
-            ->getItem($cacheKey, function () use ($user) {
-                $user = $this->entityManager->getRepository(User::class)->find($user->getId());
-                return [
-                    'id' => $user->getId(),
-                    'email' => $user->getEmail(),
-                    'name' => $user->getName(),
-                    'user_name' => $user->getUserName(),
-                    'blocked' => $user->isBlocked(),
-                    'language' => $this->getUserLanguageInfo($user),
-                    'roles' => $this->getUserRoles($user),
-                    'permissions' => $this->getUserPermissions($user),
-                    'groups' => $this->getUserGroups($user)
-                ];
-            });
+            ->withCategory(CacheService::CATEGORY_ROLES)
+            ->withCategory(CacheService::CATEGORY_GROUPS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+
+        // Add entity scopes for each role
+        foreach ($user->getUserRoles() as $role) {
+            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+        }
+
+        // Add entity scopes for each group
+        foreach ($user->getGroups() as $group) {
+            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, $group->getId());
+        }
+
+        return $cacheBuilder->getItem($cacheKey, function () use ($user) {
+            return [
+                'id' => $user->getId(),
+                'email' => $user->getEmail(),
+                'name' => $user->getName(),
+                'user_name' => $user->getUserName(),
+                'blocked' => $user->isBlocked(),
+                'language' => $this->getUserLanguageInfo($user),
+                'roles' => $this->getUserRoles($user),
+                'permissions' => $this->getUserPermissions($user),
+                'groups' => $this->getUserGroups($user)
+            ];
+        });
     }
 
     /**

@@ -399,6 +399,133 @@ public function deleteUser(int $userId): bool
 }
 ```
 
+## UserDataService: Enhanced Role-Based Cache Invalidation
+
+### Overview
+
+The `UserDataService` provides comprehensive user data caching with advanced invalidation based on user roles and groups. This ensures that when permissions change (roles are modified or users are added/removed from groups), all affected user data caches are properly invalidated.
+
+### Key Features
+
+- **Entity Scope Dependencies**: User data cache depends on the user entity, all user roles, and all user groups
+- **Automatic Role Invalidation**: When a role's permissions change, all users with that role get their cache invalidated
+- **Automatic Group Invalidation**: When group permissions change, all users in that group get their cache invalidated
+- **Cross-Category Invalidation**: Role/group changes invalidate user data across all categories
+
+### Implementation
+
+```php
+/**
+ * Get comprehensive user data including roles, permissions, and language
+ *
+ * Enhanced caching with entity scopes for roles and groups to ensure
+ * proper invalidation when role/group permissions change.
+ */
+public function getUserData(User $user): array
+{
+    $cacheKey = 'user_data_' . $user->getId();
+
+    // Fetch user with roles and groups to build entity scopes
+    $user = $this->entityManager->getRepository(User::class)->find($user->getId());
+
+    // Build entity scopes for all roles and groups this user has
+    $cacheBuilder = $this->cache
+        ->withCategory(CacheService::CATEGORY_USERS)
+        ->withCategory(CacheService::CATEGORY_ROLES)
+        ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+        ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+
+    // Add entity scopes for each role
+    foreach ($user->getUserRoles() as $role) {
+        $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+    }
+
+    // Add entity scopes for each group
+    foreach ($user->getGroups() as $group) {
+        $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, $group->getId());
+    }
+
+    return $cacheBuilder->getItem($cacheKey, function () use ($user) {
+        return [
+            'id' => $user->getId(),
+            'email' => $user->getEmail(),
+            'name' => $user->getName(),
+            'user_name' => $user->getUserName(),
+            'blocked' => $user->isBlocked(),
+            'language' => $this->getUserLanguageInfo($user),
+            'roles' => $this->getUserRoles($user),
+            'permissions' => $this->getUserPermissions($user),
+            'groups' => $this->getUserGroups($user)
+        ];
+    });
+}
+```
+
+### Cache Invalidation Scenarios
+
+#### When a Role Changes (Permissions Added/Removed)
+
+```php
+// When updating a role's permissions
+public function updateRolePermissions(int $roleId, array $permissions): void
+{
+    // Update role permissions in database
+    $this->updateRolePermissionsInDb($roleId, $permissions);
+
+    // Invalidate ALL users who have this role
+    // This automatically invalidates UserDataService cache for all affected users
+    $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
+
+    // Also invalidate role category lists
+    $this->cache
+        ->withCategory(CacheService::CATEGORY_ROLES)
+        ->invalidateAllListsInCategory();
+}
+```
+
+#### When User Group Membership Changes
+
+```php
+// When adding/removing users from groups
+public function updateUserGroups(int $userId, array $groupIds): void
+{
+    // Update user-group relationships
+    $this->updateUserGroupRelationships($userId, $groupIds);
+
+    // Invalidate user cache (includes group changes)
+    $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+
+    // Invalidate affected groups
+    $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $groupIds);
+
+    // Invalidate category lists
+    $this->cache->withCategory(CacheService::CATEGORY_USERS)->invalidateAllListsInCategory();
+    $this->cache->withCategory(CacheService::CATEGORY_GROUPS)->invalidateAllListsInCategory();
+}
+```
+
+### Benefits
+
+1. **Automatic Invalidation**: When roles or groups change, all dependent user caches are automatically invalidated
+2. **Performance**: O(1) invalidation using entity scopes - no cache scanning required
+3. **Consistency**: User permissions are always up-to-date after role/group changes
+4. **Scalability**: Works efficiently even with thousands of users per role/group
+
+### Cache Key Structure
+
+The UserDataService generates cache keys like:
+```
+cms-users-g1-roles-g2-permissions-g3-euser_id_123_g4-erole_id_5_g6-erole_id_7_g8-egroup_id_12_g9-item-user_data_123
+```
+
+This key includes:
+- Categories: `users`, `roles`, `permissions`
+- User entity scope: `euser_id_123_g4`
+- Role entity scopes: `erole_id_5_g6`, `erole_id_7_g8`
+- Group entity scopes: `egroup_id_12_g9`
+
+When any role or group changes, the generation counters increment, making all dependent cache keys invalid automatically.
+
 ## Real-World Implementation Examples
 
 ### AdminUserService: Complete Cache Integration

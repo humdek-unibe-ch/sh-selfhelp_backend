@@ -31,12 +31,18 @@ class UserPermissionService
     {
 
         $cacheKey = 'user_permissions_' . $user->getId();
-        return $this->cache
+        $cacheBuilder = $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId())
-            ->getItem($cacheKey, function() use ($user) {
-                return $this->fetchUserPermissionsFromDatabase($user->getId());
-            });
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+
+        // Add entity scopes for each role
+        foreach ($user->getUserRoles() as $role) {
+            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+        }
+
+        return $cacheBuilder->getItem($cacheKey, function () use ($user) {
+            return $this->fetchUserPermissionsFromDatabase($user->getId());
+        });
     }
 
     /**
@@ -47,7 +53,7 @@ class UserPermissionService
     {
         return $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->getItem("route_permissions_{$routeName}", function() use ($routeName) {
+            ->getItem("route_permissions_{$routeName}", function () use ($routeName) {
                 return $this->fetchRoutePermissionsFromRouter($routeName);
             });
     }
@@ -70,7 +76,7 @@ class UserPermissionService
         $stmt = $this->entityManager->getConnection()->prepare($sql);
         $stmt->bindValue('userId', $userId);
         $result = $stmt->executeQuery();
-        
+
         return array_column($result->fetchAllAssociative(), 'name');
     }
 
@@ -85,7 +91,7 @@ class UserPermissionService
             // Route not found, return empty permissions
             return [];
         }
-        
+
         // Get permissions from route options
         return $route->getOption('permissions') ?? [];
     }
