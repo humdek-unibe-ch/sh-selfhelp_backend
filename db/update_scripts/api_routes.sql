@@ -69,9 +69,6 @@ VALUES
   ('admin.user.unblock',   'Can unblock users'),
   ('admin.user.impersonate',   'Can impersonate users');
 
--- 3) Grant those permissions to the admin role
-INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
-SELECT (SELECT id FROM roles WHERE `name` = 'admin'), id FROM permissions;
 
 -- 4) Assign the admin role to the admin group users
 INSERT IGNORE INTO `users_roles` (`id_users`, `id_roles`)
@@ -1723,3 +1720,8 @@ CREATE TABLE data_access_audit (
     INDEX IDX_data_access_audit_http_method (http_method),           -- HTTP method index
     INDEX IDX_data_access_audit_request_body_hash (request_body_hash) -- request body hash index
 );
+
+
+-- Grant all permissions to the admin role ALWAYS LAST
+INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
+SELECT (SELECT id FROM roles WHERE `name` = 'admin'), id FROM permissions;

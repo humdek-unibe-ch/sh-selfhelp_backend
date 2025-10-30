@@ -19,6 +19,7 @@ class AdminAuditService extends BaseService
 
     /**
      * Get data access audit logs with filtering and pagination
+     * Processes array results from repository for memory efficiency
      */
     public function getDataAccessLogs(Request $request): array
     {
@@ -32,7 +33,7 @@ class AdminAuditService extends BaseService
         $page = max(1, (int)$request->query->get('page', 1));
         $pageSize = min(100, max(1, (int)$request->query->get('pageSize', 20)));
 
-        return $this->auditRepository->findAuditLogs(
+        $result = $this->auditRepository->findAuditLogs(
             $userId,
             $resourceType,
             $action,
@@ -43,14 +44,27 @@ class AdminAuditService extends BaseService
             $page,
             $pageSize
         );
+
+        // Format the array results for API response
+        $result['data'] = array_map(function ($auditLog) {
+            return $this->formatAuditLogForApi($auditLog);
+        }, $result['data']);
+
+        return $result;
     }
 
     /**
      * Get specific audit log details by ID
      */
-    public function getDataAccessLog(int $id)
+    public function getDataAccessLog(int $id): ?array
     {
-        return $this->auditRepository->findAuditLogById($id);
+        $auditLog = $this->auditRepository->findAuditLogById($id);
+
+        if (!$auditLog) {
+            return null;
+        }
+
+        return $this->formatAuditLogForApi($auditLog);
     }
 
     /**
@@ -62,5 +76,57 @@ class AdminAuditService extends BaseService
         $dateTo = $request->query->get('date_to');
 
         return $this->auditRepository->getAuditStatistics($dateFrom, $dateTo);
+    }
+
+    /**
+     * Format audit log array data for API response
+     */
+    private function formatAuditLogForApi(array $auditLog): array
+    {
+        return [
+            // Raw database fields as required by schema
+            'id' => $auditLog['id'],
+            'idUsers' => $auditLog['idUsers'],
+            'idResourceTypes' => $auditLog['idResourceTypes'],
+            'resourceId' => $auditLog['resourceId'],
+            'idActions' => $auditLog['idActions'],
+            'idPermissionResults' => $auditLog['idPermissionResults'],
+            'crudPermission' => $auditLog['crudPermission'],
+            'httpMethod' => $auditLog['httpMethod'],
+            'requestBodyHash' => $auditLog['requestBodyHash'],
+            'ipAddress' => $auditLog['ipAddress'],
+            'userAgent' => $auditLog['userAgent'],
+            'requestUri' => $auditLog['requestUri'],
+            'notes' => $auditLog['notes'],
+            'createdAt' => $auditLog['createdAt']?->format('c'),
+
+            // Formatted nested objects as required by schema
+            'user' => [
+                'id' => $auditLog['idUsers'],
+                'username' => $auditLog['username'] ?? null,
+                'email' => $auditLog['email'] ?? null,
+            ],
+            'resourceType' => [
+                'id' => $auditLog['idResourceTypes'],
+                'lookupCode' => $auditLog['resourceTypeCode'] ?? null,
+                'lookupValue' => $auditLog['resourceTypeName'] ?? null,
+                'code' => $auditLog['resourceTypeCode'] ?? null,  // User-friendly alias
+                'name' => $auditLog['resourceTypeName'] ?? null,  // User-friendly alias
+            ],
+            'action' => [
+                'id' => $auditLog['idActions'],
+                'lookupCode' => $auditLog['actionCode'] ?? null,
+                'lookupValue' => $auditLog['actionName'] ?? null,
+                'code' => $auditLog['actionCode'] ?? null,  // User-friendly alias
+                'name' => $auditLog['actionName'] ?? null,  // User-friendly alias
+            ],
+            'permissionResult' => [
+                'id' => $auditLog['idPermissionResults'],
+                'lookupCode' => $auditLog['permissionResultCode'] ?? null,
+                'lookupValue' => $auditLog['permissionResultName'] ?? null,
+                'code' => $auditLog['permissionResultCode'] ?? null,  // User-friendly alias
+                'name' => $auditLog['permissionResultName'] ?? null,  // User-friendly alias
+            ],
+        ];
     }
 }

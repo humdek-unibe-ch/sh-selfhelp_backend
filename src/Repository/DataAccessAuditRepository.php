@@ -22,6 +22,7 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
     /**
      * Find audit logs with filtering and pagination
+     * Returns array results for memory efficiency
      */
     public function findAuditLogs(
         ?int $userId = null,
@@ -35,11 +36,35 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         int $pageSize = 20
     ): array {
         $qb = $this->createQueryBuilder('a')
+            ->select([
+                'a.id',
+                'a.idUsers',
+                'a.idResourceTypes',
+                'a.resourceId',
+                'a.idActions',
+                'a.idPermissionResults',
+                'a.crudPermission',
+                'a.httpMethod',
+                'a.requestBodyHash',
+                'a.ipAddress',
+                'a.userAgent',
+                'a.requestUri',
+                'a.notes',
+                'a.createdAt',
+                'u.user_name as username',
+                'u.email',
+                'u.name',
+                'rt.lookupValue as resourceTypeName',
+                'rt.lookupCode as resourceTypeCode',
+                'act.lookupValue as actionName',
+                'act.lookupCode as actionCode',
+                'pr.lookupValue as permissionResultName',
+                'pr.lookupCode as permissionResultCode'
+            ])
             ->leftJoin('a.user', 'u')
             ->leftJoin('a.resourceType', 'rt')
             ->leftJoin('a.action', 'act')
-            ->leftJoin('a.permissionResult', 'pr')
-            ->addSelect(['u', 'rt', 'act', 'pr']);
+            ->leftJoin('a.permissionResult', 'pr');
 
         // Apply filters
         if ($userId !== null) {
@@ -80,19 +105,26 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         // Order by creation date descending
         $qb->orderBy('a.createdAt', 'DESC');
 
-        // Get total count
-        $totalCount = $this->getTotalCount($qb);
+        // Get total count with separate optimized query
+        $countQb = clone $qb;
+        $countQb->select('COUNT(a.id)')
+                ->resetDQLPart('orderBy')
+                ->setFirstResult(null)
+                ->setMaxResults(null);
+        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
 
-        // Apply pagination
+        // Apply pagination and get results
         $qb->setFirstResult(($page - 1) * $pageSize)
            ->setMaxResults($pageSize);
 
+        $results = $qb->getQuery()->getArrayResult();
+
         return [
-            'data' => $qb->getQuery()->getResult(),
+            'data' => $results,
             'total' => $totalCount,
             'page' => $page,
             'pageSize' => $pageSize,
-            'totalPages' => ceil($totalCount / $pageSize)
+            'totalPages' => (int) ceil($totalCount / $pageSize)
         ];
     }
 
@@ -171,56 +203,79 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
     /**
      * Get recent denied attempts
+     * Uses array results for memory efficiency
      */
     private function getRecentDeniedAttempts(): array
     {
         return $this->createQueryBuilder('a')
+            ->select([
+                'a.id',
+                'a.idUsers',
+                'a.resourceId',
+                'a.crudPermission',
+                'a.httpMethod',
+                'a.ipAddress',
+                'a.createdAt',
+                'u.user_name as username',
+                'u.email',
+                'u.name',
+                'rt.lookupValue as resourceTypeName',
+                'act.lookupValue as actionName',
+                'pr.lookupValue as permissionResultName'
+            ])
             ->leftJoin('a.user', 'u')
             ->leftJoin('a.resourceType', 'rt')
             ->leftJoin('a.action', 'act')
             ->leftJoin('a.permissionResult', 'pr')
-            ->addSelect(['u', 'rt', 'act', 'pr'])
             ->where('pr.lookupCode = :denied')
             ->setParameter('denied', 'denied')
             ->orderBy('a.createdAt', 'DESC')
             ->setMaxResults(10)
             ->getQuery()
-            ->getResult();
-    }
-
-    /**
-     * Get total count for pagination
-     */
-    private function getTotalCount(QueryBuilder $qb): int
-    {
-        $qbClone = clone $qb;
-        $qbClone->select('COUNT(a.id)');
-
-        // Remove SELECT, ORDER BY, and pagination from clone
-        $qbClone->resetDQLPart('select');
-        $qbClone->resetDQLPart('orderBy');
-        $qbClone->setFirstResult(null);
-        $qbClone->setMaxResults(null);
-
-        $qbClone->select('COUNT(a.id)');
-
-        return (int) $qbClone->getQuery()->getSingleScalarResult();
+            ->getArrayResult();
     }
 
     /**
      * Find audit log by ID with relationships
+     * Returns array result for memory efficiency
      */
-    public function findAuditLogById(int $id): ?DataAccessAudit
+    public function findAuditLogById(int $id): ?array
     {
-        return $this->createQueryBuilder('a')
+        $result = $this->createQueryBuilder('a')
+            ->select([
+                'a.id',
+                'a.idUsers',
+                'a.idResourceTypes',
+                'a.resourceId',
+                'a.idActions',
+                'a.idPermissionResults',
+                'a.crudPermission',
+                'a.httpMethod',
+                'a.requestBodyHash',
+                'a.ipAddress',
+                'a.userAgent',
+                'a.requestUri',
+                'a.notes',
+                'a.createdAt',
+                'u.user_name as username',
+                'u.email',
+                'u.name',
+                'rt.lookupValue as resourceTypeName',
+                'rt.lookupCode as resourceTypeCode',
+                'act.lookupValue as actionName',
+                'act.lookupCode as actionCode',
+                'pr.lookupValue as permissionResultName',
+                'pr.lookupCode as permissionResultCode'
+            ])
             ->leftJoin('a.user', 'u')
             ->leftJoin('a.resourceType', 'rt')
             ->leftJoin('a.action', 'act')
             ->leftJoin('a.permissionResult', 'pr')
-            ->addSelect(['u', 'rt', 'act', 'pr'])
             ->where('a.id = :id')
             ->setParameter('id', $id)
             ->getQuery()
-            ->getOneOrNullResult();
+            ->getArrayResult();
+
+        return $result[0] ?? null;
     }
 }

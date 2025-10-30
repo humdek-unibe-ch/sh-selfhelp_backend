@@ -46,8 +46,7 @@
         },
         "ipAddress": {
             "type": ["string", "null"],
-            "description": "IP address of the client making the request",
-            "format": "ipv4"
+            "description": "IP address of the client making the request"
         },
         "userAgent": {
             "type": ["string", "null"],
