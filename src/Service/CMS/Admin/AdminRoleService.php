@@ -533,4 +533,78 @@ class AdminRoleService extends BaseService
 
         $this->entityManager->flush();
     }
+
+    /**
+     * Get all API routes with their required permissions for the current user
+     * This allows the frontend to check permissions before making API calls
+     */
+    public function getApiRoutesWithPermissions(): array
+    {
+        $cacheKey = "api_routes_with_permissions";
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->getList($cacheKey, function () {
+                return $this->fetchApiRoutesWithPermissionsFromDatabase();
+            });
+    }
+
+    /**
+     * Fetch API routes with permissions from database
+     */
+    private function fetchApiRoutesWithPermissionsFromDatabase(): array
+    {
+        $sql = "
+            SELECT
+                ar.id,
+                ar.route_name,
+                ar.version,
+                ar.path,
+                ar.controller,
+                ar.methods,
+                ar.requirements,
+                ar.params,
+                GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ',') as required_permissions,
+                GROUP_CONCAT(DISTINCT p.description ORDER BY p.name SEPARATOR '||') as permission_descriptions
+            FROM api_routes ar
+            LEFT JOIN api_routes_permissions arp ON ar.id = arp.id_api_routes
+            LEFT JOIN permissions p ON arp.id_permissions = p.id
+            WHERE ar.route_name NOT LIKE 'auth_%'  -- Exclude auth routes as they're handled separately
+            GROUP BY ar.id, ar.route_name, ar.version, ar.path, ar.controller, ar.methods, ar.requirements, ar.params
+            ORDER BY ar.route_name ASC
+        ";
+
+        $stmt = $this->entityManager->getConnection()->prepare($sql);
+        $result = $stmt->executeQuery();
+        $rows = $result->fetchAllAssociative();
+
+        $routes = [];
+        foreach ($rows as $row) {
+            $permissions = [];
+            if (!empty($row['required_permissions'])) {
+                $permissionNames = explode(',', $row['required_permissions']);
+                $permissionDescriptions = explode('||', $row['permission_descriptions']);
+
+                for ($i = 0; $i < count($permissionNames); $i++) {
+                    $permissions[] = [
+                        'name' => $permissionNames[$i],
+                        'description' => $permissionDescriptions[$i] ?? null
+                    ];
+                }
+            }
+
+            $routes[] = [
+                'id' => (int)$row['id'],
+                'route_name' => $row['route_name'],
+                'version' => $row['version'],
+                'path' => $row['path'],
+                'controller' => $row['controller'],
+                'methods' => $row['methods'],
+                'requirements' => $row['requirements'] ? json_decode($row['requirements'], true) : null,
+                'params' => $row['params'] ? json_decode($row['params'], true) : null,
+                'required_permissions' => $permissions
+            ];
+        }
+
+        return $routes;
+    }
 }

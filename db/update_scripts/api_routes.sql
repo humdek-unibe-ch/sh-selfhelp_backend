@@ -685,7 +685,8 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 
 -- Get all permissions
 INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
-('admin_permissions_get_all_v1', 'v1', '/admin/permissions', 'App\\Controller\\Api\\V1\\Admin\\AdminRoleController::getAllPermissions', 'GET', NULL, NULL);
+('admin_permissions_get_all_v1', 'v1', '/admin/permissions', 'App\\Controller\\Api\\V1\\Admin\\AdminRoleController::getAllPermissions', 'GET', NULL, NULL),
+('admin_api_routes_get_all_v1', 'v1', '/admin/api-routes', 'App\\Controller\\Api\\V1\\Admin\\AdminRoleController::getApiRoutesWithPermissions', 'GET', NULL, NULL);
 
 -- Create permissions for groups and roles management
 INSERT IGNORE INTO `permissions` (`name`, `description`)
@@ -843,7 +844,8 @@ FROM `api_routes`     AS ar
 JOIN `permissions`   AS p
   ON p.`name` = 'admin.permission.read'
 WHERE ar.`route_name` IN (
-  'admin_permissions_get_all_v1'
+  'admin_permissions_get_all_v1',
+  'admin_api_routes_get_all_v1'
 );
 
 
@@ -1159,7 +1161,8 @@ FROM `api_routes`     AS ar
 JOIN `permissions`   AS p
   ON p.`name` = 'admin.permission.read'
 WHERE ar.`route_name` IN (
-  'admin_permissions_get_all_v1'
+  'admin_permissions_get_all_v1',
+  'admin_api_routes_get_all_v1'
 );
 
 -- Link scheduled jobs routes to permissions

@@ -246,4 +246,27 @@ class AdminRoleController extends AbstractController
             );
         }
     }
+
+    /**
+     * Get all API routes with their required permissions
+     * This allows the frontend to check permissions before making API calls
+     *
+     * @route /cms-api/v1/admin/api-routes
+     * @method GET
+     */
+    public function getApiRoutesWithPermissions(): JsonResponse
+    {
+        try {
+            $routes = $this->adminRoleService->getApiRoutesWithPermissions();
+            return $this->responseFormatter->formatSuccess([
+                'routes' => $routes,
+                'total' => count($routes)
+            ]);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
 } 

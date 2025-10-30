@@ -216,6 +216,102 @@ class ApiResponseFormatter
 | 422 | Validation failure | Invalid entity data |
 | 500 | Server error | Internal server error |
 
+## 🔍 API Discovery Pattern
+
+### API Routes Endpoint
+The SelfHelp API provides an endpoint for frontend applications to discover available API routes and their required permissions. This allows frontend code to dynamically check permissions before making API calls, reducing unnecessary requests and improving user experience.
+
+#### Endpoint
+```
+GET /cms-api/v1/admin/api-routes
+```
+
+#### Response Format
+```json
+{
+    "status": 200,
+    "message": "OK",
+    "error": null,
+    "logged_in": true,
+    "meta": {
+        "version": "v1",
+        "timestamp": "2025-10-30T14:26:39+01:00"
+    },
+    "data": {
+        "routes": [
+            {
+                "id": 8,
+                "route_name": "admin_lookups",
+                "version": "v1",
+                "path": "/admin/lookups",
+                "controller": "App\\Controller\\Api\\V1\\Admin\\Common\\LookupController::getAllLookups",
+                "methods": "GET",
+                "requirements": null,
+                "params": null,
+                "required_permissions": [
+                    {
+                        "name": "admin.access",
+                        "description": "Can view and enter the admin/backend area"
+                    }
+                ]
+            },
+            {
+                "id": 10,
+                "route_name": "admin_pages_get_all",
+                "version": "v1",
+                "path": "/admin/pages",
+                "controller": "App\\Controller\\Api\\V1\\Admin\\AdminPageController::getPages",
+                "methods": "GET",
+                "requirements": null,
+                "params": {
+                    "page": {"in": "query", "required": false},
+                    "pageSize": {"in": "query", "required": false}
+                },
+                "required_permissions": [
+                    {
+                        "name": "admin.page.read",
+                        "description": "Can read existing pages"
+                    }
+                ]
+            }
+        ],
+        "total": 150
+    }
+}
+```
+
+#### Usage Pattern
+```javascript
+// Frontend: Check if user can read pages before fetching
+const apiRoutes = await fetch('/cms-api/v1/admin/api-routes');
+const routesData = await apiRoutes.json();
+
+// Find the route for reading pages
+const pagesRoute = routesData.data.routes.find(route =>
+    route.route_name === 'admin_pages_get_all'
+);
+
+// Check if user has required permissions
+const userPermissions = ['admin.page.read', 'admin.access'];
+const canReadPages = pagesRoute.required_permissions.every(perm =>
+    userPermissions.includes(perm.name)
+);
+
+if (canReadPages) {
+    // Safe to make the API call
+    const pages = await fetch('/cms-api/v1/admin/pages');
+} else {
+    // Show permission denied message or hide UI element
+    console.log('User lacks required permissions');
+}
+```
+
+#### Implementation Benefits
+- **Reduced API calls**: Frontend can check permissions before making requests
+- **Better UX**: UI elements can be conditionally shown/hidden based on permissions
+- **Centralized permission logic**: Single source of truth for API permissions
+- **Dynamic UI**: Frontend can adapt based on user's actual permissions
+
 ## 📊 Pagination Pattern
 
 ### Request Parameters
