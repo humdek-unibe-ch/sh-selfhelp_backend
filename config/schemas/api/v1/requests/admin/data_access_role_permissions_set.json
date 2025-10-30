@@ -1,0 +1,37 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Set Role Permissions Request Schema",
+    "description": "Schema for bulk setting permissions for a role (replaces all existing permissions)",
+    "type": "object",
+    "properties": {
+        "permissions": {
+            "type": "array",
+            "description": "Array of permission objects to set for the role. Empty array removes all permissions.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "resource_type_id": {
+                        "type": "integer",
+                        "description": "ID of the resource type (from lookups table with typeCode='resourceTypes')",
+                        "minimum": 1
+                    },
+                    "resource_id": {
+                        "type": "integer",
+                        "description": "ID of the specific resource within the resource type",
+                        "minimum": 1
+                    },
+                    "crud_permissions": {
+                        "type": "integer",
+                        "description": "Bitwise CRUD permissions: 0=NONE, 1=CREATE, 2=READ, 4=UPDATE, 8=DELETE (can be combined)",
+                        "minimum": 0,
+                        "maximum": 15,
+                        "default": 2
+                    }
+                },
+                "required": ["resource_type_id", "resource_id", "crud_permissions"],
+                "additionalProperties": false
+            }
+        }
+    },
+    "required": ["permissions"]
+}

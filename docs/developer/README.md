@@ -26,6 +26,7 @@ This developer documentation is organized into the following sections:
 - [⚡ **Scheduled Jobs**](./11-scheduled-jobs.md) - Background task scheduling and execution
 - [📈 **Transaction Logging**](./12-transaction-logging.md) - Audit trail and change tracking
 - [🔍 **Access Control Lists (ACL)**](./13-acl-system.md) - Fine-grained permission system
+- [🔒 **Data Access Management**](./19-data-access-management.md) - Role-based data access control with auditing
 
 ### Development Guidelines
 - [🛠️ **Development Workflow**](./14-development-workflow.md) - How to add features and maintain code

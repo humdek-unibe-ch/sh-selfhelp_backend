@@ -251,7 +251,7 @@ class AdminUserService extends BaseService
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getItem(
-                "user_roles_{$userId}",
+                "users_roles_{$userId}",
                 fn() => $this->fetchUserRoles($userId)
             );
     }
@@ -1235,7 +1235,7 @@ class AdminUserService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->invalidateItemAndLists("user_roles_{$userId}");
+            ->invalidateItemAndLists("users_roles_{$userId}");
 
         $this->cache
             ->withCategory(CacheService::CATEGORY_ROLES)

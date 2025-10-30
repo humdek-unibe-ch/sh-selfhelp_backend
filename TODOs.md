@@ -1746,7 +1746,7 @@ Implement role-based and group-based data access control system where users can 
   - `data_record_id` INT NULL
   - `data_table_id` INT NULL (FK to data_tables.id, SET NULL) - For user_data, which specific data table
   - `user_groups_at_time` JSON NOT NULL
-  - `user_roles_at_time` JSON NOT NULL
+  - `users_roles_at_time` JSON NOT NULL
   - `access_granted` BOOLEAN NOT NULL
   - `filter_criteria` JSON NULL
   - `records_affected_count` INT NULL
@@ -1953,7 +1953,7 @@ JOIN data_access_permissions dap
  AND dap.is_active = 1
  AND dap.rule_type = 'allowed'
  AND (dap.group_id IS NULL OR dap.group_id = ugm.group_id) -- User's group matches permission
-JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+JOIN users_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
 WHERE :caller_is_data_admin = 1 OR dap.id IS NOT NULL;
 
 -- Read user_data for specific user (Example: "all data for all users but only dataTable=5"):
@@ -1968,14 +1968,14 @@ JOIN data_access_permissions dap
  AND (dap.group_id IS NULL OR dap.group_id = ugm.group_id) -- Can access this user's data
  AND (dap.data_table_id IS NULL OR dap.data_table_id = ud.data_table_id) -- Specific table check
  AND dap.rule_type = 'allowed'
-JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+JOIN users_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
 WHERE u.id = :target_user
   AND (:caller_is_data_admin = 1 OR dap.id IS NOT NULL);
 
 -- Check if user can EXCLUDE access to financial data table:
 SELECT 1
 FROM data_access_permissions dap
-JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+JOIN users_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
 WHERE dap.data_type IN ('user_data', 'all')
   AND (dap.crud_mask & 2) = 2  -- Has READ permission
   AND dap.is_active = 1
@@ -2001,7 +2001,7 @@ LEFT JOIN data_access_permissions dap_exclude
  AND dap_exclude.rule_type = 'excluded'
  AND dap_exclude.role_id = dap.role_id
  AND (dap_exclude.group_id IS NULL OR dap_exclude.group_id = target_ugm.group_id)
-JOIN user_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
+JOIN users_roles ur ON ur.user_id = :caller_id AND ur.role_id = dap.role_id
 WHERE target_user.id = :target_user_id
   AND (:caller_is_data_admin = 1 OR dap.id IS NOT NULL)
   AND dap_exclude.id IS NULL; -- Not explicitly excluded
@@ -2009,7 +2009,7 @@ WHERE target_user.id = :target_user_id
 
 #### Required Indexes
 - `user_group_members` (`user_id`, `group_id`)
-- `user_roles` (`user_id`, `role_id`)
+- `users_roles` (`user_id`, `role_id`)
 - `data_access_permissions` (`role_id`, `group_id`, `data_type`, `is_active`)
 - `data_access_permissions` (`role_id`, `data_type`, `data_table_id`, `is_active`)
 - `data_access_permissions` (`role_id`, `data_type`, `page_id`, `is_active`)

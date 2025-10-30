@@ -2524,3 +2524,25 @@ ALTER TABLE pages DROP FOREIGN KEY FK_2074E575B5D68A8D;
 DROP INDEX IDX_2074E575B5D68A8D ON pages;
 ALTER TABLE pages ADD CONSTRAINT FK_2074E575B5D68A8D FOREIGN KEY (published_version_id) REFERENCES page_versions (id);
 ALTER TABLE page_versions CHANGE created_by created_by INT DEFAULT NULL, CHANGE created_at created_at DATETIME NOT NULL;
+
+-- Insert resource types into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('resourceTypes', 'group', 'Group', 'User groups for data access control'),
+('resourceTypes', 'data_table', 'Data Table', 'Custom data tables'),
+('resourceTypes', 'pages', 'Pages', 'Admin pages access control')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- Insert audit actions into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('auditActions', 'filter', 'Filter', 'Data filtering applied to READ operations'),
+('auditActions', 'create', 'Create', 'Permission check for CREATE operations'),
+('auditActions', 'read', 'Read', 'Permission check for specific READ operations'),
+('auditActions', 'update', 'Update', 'Permission check for UPDATE operations'),
+('auditActions', 'delete', 'Delete', 'Permission check for DELETE operations')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- Insert permission results into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('permissionResults', 'granted', 'Granted', 'Permission was granted'),
+('permissionResults', 'denied', 'Denied', 'Permission was denied')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);

@@ -118,7 +118,7 @@ CREATE TABLE data_access_audit (
 
 ### What Gets Logged
 
-Every permission check performed by the `CustomDataAccessSecurityService` is automatically logged:
+Every permission check performed by the `DataAccessSecurityService` is automatically logged:
 
 #### **Filter Operations (READ access):**
 ```sql
@@ -292,7 +292,7 @@ SELECT
     rda.resource_id,
     BIT_OR(rda.crud_permissions) as unified_permissions
 FROM role_data_access rda
-INNER JOIN user_roles ur ON ur.id_roles = rda.id_roles
+INNER JOIN users_roles ur ON ur.id_roles = rda.id_roles
 WHERE ur.id_users = :user_id
 GROUP BY rda.id_resourceTypes, rda.resource_id;
 ```
@@ -325,7 +325,7 @@ GROUP BY rda.id_resourceTypes, rda.resource_id;
 // 1. User roles cache with entity scope dependencies
 $userRoles = $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
                    ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-                   ->getItem("user_roles", fn() => $this->getUserRoleIds($userId));
+                   ->getItem("users_roles", fn() => $this->getUserRoleIds($userId));
 
 // 2. Role permissions cache with role dependencies
 $rolePerms = $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
@@ -386,8 +386,8 @@ $unifiedPerms = $cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
 
 #### 1. Create Global Security Service with Audit Logging
 ```php
-// src/Service/Security/CustomDataAccessSecurityService.php
-class CustomDataAccessSecurityService
+// src/Service/Security/DataAccessSecurityService.php
+class DataAccessSecurityService
 {
     public function __construct(
         private DataAccessAuditRepository $auditRepository,
@@ -606,7 +606,7 @@ public function updateUser(int $userId, Request $request): JsonResponse
         $currentUserId,
         LookupService::RESOURCE_TYPES_GROUP, // Check group access
         $this->getUserGroupId($userId), // Get the group of the user being updated
-        CustomDataAccessSecurityService::PERMISSION_UPDATE
+        DataAccessSecurityService::PERMISSION_UPDATE
     )) {
         return $this->responseFormatter->formatError('Access denied', 403);
     }
@@ -627,7 +627,7 @@ public function deleteRecord(Request $request, int $recordId): JsonResponse
         $currentUserId,
         LookupService::RESOURCE_TYPES_DATA_TABLE,
         $this->getDataTableId($tableName),
-        CustomDataAccessSecurityService::PERMISSION_DELETE
+        DataAccessSecurityService::PERMISSION_DELETE
     )) {
         return $this->responseFormatter->formatError('Access denied', 403);
     }
@@ -642,7 +642,7 @@ public function deleteRecord(Request $request, int $recordId): JsonResponse
 
 1. **Create data_access_audit table** for logging all permission checks
 2. **Add lookup entries** for auditActions and permissionResults type codes
-3. **Create CustomDataAccessSecurityService** with `filterData()`, `hasPermission()`, audit logging, and caching
+3. **Create DataAccessSecurityService** with `filterData()`, `hasPermission()`, audit logging, and caching
 4. **Implement cache invalidation system** with proper triggers for role/permission changes
 5. **Update LookupService constants** for all new lookup types
 6. **Update AdminUserController** - Add permission checks to all CREATE/UPDATE/DELETE operations + READ filtering

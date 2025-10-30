@@ -1,6 +1,8 @@
 DROP TABLE IF EXISTS `roles_permissions`;
 DROP TABLE IF EXISTS `users_roles`;
 DROP TABLE IF EXISTS `api_routes_permissions`;
+DROP TABLE IF EXISTS `role_data_access`;
+DROP TABLE IF EXISTS `data_access_audit`;
 
 -- 1. Roles
 DROP TABLE IF EXISTS `roles`;
@@ -1538,6 +1540,186 @@ FROM api_routes ar
 JOIN permissions p ON p.`name` = 'admin.page_version.delete'
 WHERE ar.`route_name` = 'admin_page_version_delete';
 
+-- Data Management Access Control System v8.1.0
+-- Audit Management and Data Access Management APIs
+
+-- Audit Management API Routes
+INSERT IGNORE INTO `api_routes` (
+  `route_name`,
+  `version`,
+  `path`,
+  `controller`,
+  `methods`,
+  `requirements`,
+  `params`
+) VALUES
+  -- List audit logs with filtering and pagination
+  (
+    'admin_audit_data_access_list',
+    'v1',
+    '/admin/audit/data-access',
+    'App\\Controller\\Api\\V1\\Admin\\AdminAuditController::getDataAccessLogs',
+    'GET',
+    JSON_OBJECT(),
+    JSON_OBJECT(
+      'user_id', JSON_OBJECT('in', 'query', 'required', false),
+      'resource_type', JSON_OBJECT('in', 'query', 'required', false),
+      'action', JSON_OBJECT('in', 'query', 'required', false),
+      'permission_result', JSON_OBJECT('in', 'query', 'required', false),
+      'date_from', JSON_OBJECT('in', 'query', 'required', false),
+      'date_to', JSON_OBJECT('in', 'query', 'required', false),
+      'page', JSON_OBJECT('in', 'query', 'required', false, 'default', 1),
+      'pageSize', JSON_OBJECT('in', 'query', 'required', false, 'default', 20)
+    )
+  ),
+  -- Get specific audit log details
+  (
+    'admin_audit_data_access_detail',
+    'v1',
+    '/admin/audit/data-access/{id}',
+    'App\\Controller\\Api\\V1\\Admin\\AdminAuditController::getDataAccessLog',
+    'GET',
+    JSON_OBJECT('id', '[0-9]+'),
+    JSON_OBJECT(
+      'id', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  ),
+  -- Get audit statistics
+  (
+    'admin_audit_data_access_stats',
+    'v1',
+    '/admin/audit/data-access/stats',
+    'App\\Controller\\Api\\V1\\Admin\\AdminAuditController::getDataAccessStats',
+    'GET',
+    JSON_OBJECT(),
+    JSON_OBJECT()
+  );
+
+-- Data Access Management API Routes
+INSERT IGNORE INTO `api_routes` (
+  `route_name`,
+  `version`,
+  `path`,
+  `controller`,
+  `methods`,
+  `requirements`,
+  `params`
+) VALUES
+  -- List all roles with their data access permissions
+  (
+    'admin_data_access_roles_list',
+    'v1',
+    '/admin/data-access/roles',
+    'App\\Controller\\Api\\V1\\Admin\\AdminDataAccessController::getRolesWithPermissions',
+    'GET',
+    JSON_OBJECT(),
+    JSON_OBJECT()
+  ),
+  -- Set (add or update) custom permission to a role (upsert operation)
+  (
+    'admin_data_access_role_permission_set',
+    'v1',
+    '/admin/data-access/roles/{roleId}/permissions',
+    'App\\Controller\\Api\\V1\\Admin\\AdminDataAccessController::setRolePermissions',
+    'POST',
+    JSON_OBJECT('roleId', '[0-9]+'),
+    JSON_OBJECT(
+      'roleId', JSON_OBJECT('in', 'path', 'required', true),
+      'permissions', JSON_OBJECT('in', 'body', 'required', true)
+    )
+  ),
+  -- Show effective permissions for a role
+  (
+    'admin_data_access_role_effective_permissions',
+    'v1',
+    '/admin/data-access/roles/{roleId}/effective-permissions',
+    'App\\Controller\\Api\\V1\\Admin\\AdminDataAccessController::getRoleEffectivePermissions',
+    'GET',
+    JSON_OBJECT('roleId', '[0-9]+'),
+    JSON_OBJECT(
+      'roleId', JSON_OBJECT('in', 'path', 'required', true)
+    )
+  );
+
+-- Add permissions for audit and data access management
+INSERT IGNORE INTO `permissions` (`name`, `description`) VALUES
+  ('admin.audit.view', 'View audit logs and security monitoring data'),
+  ('admin.role.read', 'Read role information and permissions'),
+  ('admin.role.update', 'Modify role permissions and data access rules');
+
+-- Link audit routes to admin.audit.view permission
+INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
+SELECT ar.id, p.id
+FROM api_routes ar
+JOIN permissions p ON p.`name` = 'admin.audit.view'
+WHERE ar.`route_name` IN (
+  'admin_audit_data_access_list',
+  'admin_audit_data_access_detail',
+  'admin_audit_data_access_stats'
+);
+
+-- Link data access routes to admin.role.read and admin.role.update permissions
+INSERT IGNORE INTO api_routes_permissions (id_api_routes, id_permissions)
+SELECT ar.id, p.id
+FROM api_routes ar
+JOIN permissions p ON p.`name` IN ('admin.role.read', 'admin.role.update')
+WHERE ar.`route_name` IN (
+  'admin_data_access_roles_list',
+  'admin_data_access_role_permission_set',
+  'admin_data_access_role_effective_permissions'
+);
+
 -- Frontend Page Serving Routes (no special permissions - inherits page ACL)
 -- Note: The existing page serving route will be modified to serve published versions
 -- Preview endpoints will require authentication but use existing page ACL permissions
+
+-- Create role_data_access table for storing custom data access permissions
+CREATE TABLE role_data_access (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    id_roles INT NOT NULL,
+    id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
+    resource_id INT NOT NULL,
+    crud_permissions SMALLINT UNSIGNED NOT NULL DEFAULT 2, -- 2 = Read only
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    FOREIGN KEY (id_roles) REFERENCES role(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_resourceTypes) REFERENCES lookups(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_role_resource (id_roles, id_resourceTypes, resource_id),
+    INDEX IDX_role_data_access_roles (id_roles),
+    INDEX IDX_role_data_access_resource_types (id_resourceTypes),
+    INDEX IDX_role_data_access_resource_id (resource_id),
+    INDEX IDX_role_data_access_permissions (crud_permissions)
+);
+
+-- Create data_access_audit table for logging all permission checks
+CREATE TABLE data_access_audit (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    id_users INT NOT NULL,                    -- Who performed the action
+    id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
+    resource_id INT NOT NULL,                -- ID of the resource accessed
+    id_actions INT NOT NULL,                 -- References lookups table (type_code = 'auditActions')
+    id_permissionResults INT NOT NULL,       -- References lookups table (type_code = 'permissionResults')
+    crud_permission SMALLINT UNSIGNED DEFAULT NULL,   -- Bit flags for the permission checked
+    http_method VARCHAR(10) NULL,            -- HTTP method (GET, POST, PUT, DELETE)
+    request_body_hash VARCHAR(64) NULL,      -- SHA-256 hash of request body (forensic tracking)
+    ip_address VARCHAR(45) NULL,             -- Client IP
+    user_agent LONGTEXT DEFAULT NULL,        -- Browser/client info
+    request_uri LONGTEXT DEFAULT NULL,       -- API endpoint accessed
+    notes LONGTEXT DEFAULT NULL,             -- Additional notes about the action
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    FOREIGN KEY (id_users) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_resourceTypes) REFERENCES lookups(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_actions) REFERENCES lookups(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_permissionResults) REFERENCES lookups(id) ON DELETE CASCADE,
+
+    INDEX IDX_ED7BEBFBDBD5589F (id_actions), -- action index
+    INDEX IDX_data_access_audit_users (id_users),                    -- user index
+    INDEX IDX_data_access_audit_resource_types (id_resourceTypes),   -- resource type index
+    INDEX IDX_data_access_audit_resource_id (resource_id),           -- resource id index
+    INDEX IDX_data_access_audit_created_at (created_at),             -- timestamp index
+    INDEX IDX_data_access_audit_permission_results (id_permissionResults), -- permission result index
+    INDEX IDX_data_access_audit_http_method (http_method),           -- HTTP method index
+    INDEX IDX_data_access_audit_request_body_hash (request_body_hash) -- request body hash index
+);

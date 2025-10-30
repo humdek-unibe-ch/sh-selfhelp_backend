@@ -1,0 +1,54 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Bulk Operation Result Response Schema",
+    "description": "Schema for the response from bulk operations like setting role permissions",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "description": "Result of the bulk operation",
+            "properties": {
+                "role_id": {
+                    "type": "integer",
+                    "description": "ID of the role that was modified"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Success message"
+                },
+                "changes": {
+                    "type": "object",
+                    "description": "Summary of changes made",
+                    "properties": {
+                        "added": {
+                            "type": "integer",
+                            "description": "Number of permissions added",
+                            "minimum": 0
+                        },
+                        "updated": {
+                            "type": "integer",
+                            "description": "Number of permissions updated",
+                            "minimum": 0
+                        },
+                        "removed": {
+                            "type": "integer",
+                            "description": "Number of permissions removed",
+                            "minimum": 0
+                        },
+                        "total": {
+                            "type": "integer",
+                            "description": "Total number of permissions in the final set",
+                            "minimum": 0
+                        }
+                    },
+                    "required": ["added", "updated", "removed", "total"]
+                }
+            },
+            "required": ["role_id", "message", "changes"]
+        }
+    },
+    "required": ["data"]
+}

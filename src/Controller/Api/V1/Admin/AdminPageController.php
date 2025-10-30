@@ -4,11 +4,13 @@ namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
+use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminPageService;
 use App\Service\CMS\Frontend\PageService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -31,12 +33,15 @@ class AdminPageController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly PageService $pageService,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly UserContextService $userContextService
     ) {
     }
 
     /**
      * Get all pages for admin
-     * 
+     * Filtered by page access permissions
+     *
      * @route /admin/pages
      * @route /admin/pages/{language_id}
      * @method GET
@@ -44,8 +49,17 @@ class AdminPageController extends AbstractController
     public function getPages(Request $request, ?int $language_id = null): JsonResponse
     {
         try {
-            // Mode detection logic: default to 'web', could be extended to accept a query param
-            $pages = $this->pageService->getAllAccessiblePagesForUser(LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB, true, $language_id);
+            $userId = $this->userContextService->getCurrentUser()?->getId();
+
+            $pages = $this->dataAccessSecurityService->filterData(
+                function() use ($language_id) {
+                    // Mode detection logic: default to 'web', could be extended to accept a query param
+                    return $this->pageService->getAllAccessiblePagesForUser(LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB, true, $language_id);
+                },
+                $userId,
+                LookupService::RESOURCE_TYPES_PAGES
+            );
+
             return $this->responseFormatter->formatSuccess(
                 $pages,
                 'responses/common/_acl_page_definition',

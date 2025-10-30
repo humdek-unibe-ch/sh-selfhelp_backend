@@ -138,6 +138,25 @@ final class LookupService
     // plugins
     public const PLUGINS_CALC_SLEEP_EFFICIENCY = 'calc_sleep_efficiency';
 
+    // resourceTypes
+    public const RESOURCE_TYPES = 'resourceTypes';
+    public const RESOURCE_TYPES_GROUP = 'group';
+    public const RESOURCE_TYPES_DATA_TABLE = 'data_table';
+    public const RESOURCE_TYPES_PAGES = 'pages';
+
+    // auditActions
+    public const AUDIT_ACTIONS = 'auditActions';
+    public const AUDIT_ACTIONS_FILTER = 'filter';
+    public const AUDIT_ACTIONS_CREATE = 'create';
+    public const AUDIT_ACTIONS_READ = 'read';
+    public const AUDIT_ACTIONS_UPDATE = 'update';
+    public const AUDIT_ACTIONS_DELETE = 'delete';
+
+    // permissionResults
+    public const PERMISSION_RESULTS = 'permissionResults';
+    public const PERMISSION_RESULTS_GRANTED = 'granted';
+    public const PERMISSION_RESULTS_DENIED = 'denied';
+
     public function __construct(
         private readonly LookupRepository $lookupRepository,
         private readonly CacheService $cache

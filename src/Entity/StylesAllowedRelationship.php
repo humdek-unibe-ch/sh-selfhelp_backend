@@ -15,12 +15,12 @@ use Doctrine\ORM\Mapping as ORM;
 class StylesAllowedRelationship
 {
     #[ORM\Id]
-    #[ORM\ManyToOne(targetEntity: Style::class)]
+    #[ORM\ManyToOne(targetEntity: Style::class, inversedBy: 'allowedChildrenRelationships')]
     #[ORM\JoinColumn(name: 'id_parent_style', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Style $parentStyle = null;
 
     #[ORM\Id]
-    #[ORM\ManyToOne(targetEntity: Style::class)]
+    #[ORM\ManyToOne(targetEntity: Style::class, inversedBy: 'allowedParentsRelationships')]
     #[ORM\JoinColumn(name: 'id_child_style', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Style $childStyle = null;
 

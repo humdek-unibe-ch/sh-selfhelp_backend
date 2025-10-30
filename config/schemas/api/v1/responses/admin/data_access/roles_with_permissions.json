@@ -1,0 +1,72 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Roles with Permissions Response Schema",
+    "description": "Schema for the admin/data-access/roles endpoint response",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "array",
+            "description": "Array of roles with their custom data access permissions",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "role_id": {
+                        "type": "integer",
+                        "description": "Unique identifier for the role"
+                    },
+                    "role_name": {
+                        "type": "string",
+                        "description": "Name of the role"
+                    },
+                    "role_description": {
+                        "type": ["string", "null"],
+                        "description": "Description of the role"
+                    },
+                    "permissions": {
+                        "type": "array",
+                        "description": "Array of custom permissions for this role",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "resource_type_id": {
+                                    "type": "integer",
+                                    "description": "ID of the resource type"
+                                },
+                                "resource_type_name": {
+                                    "type": "string",
+                                    "description": "Name of the resource type"
+                                },
+                                "resource_id": {
+                                    "type": "integer",
+                                    "description": "ID of the specific resource"
+                                },
+                                "crud_permissions": {
+                                    "type": "integer",
+                                    "description": "Bitwise CRUD permissions",
+                                    "minimum": 1,
+                                    "maximum": 15
+                                },
+                                "created_at": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "When the permission was created"
+                                },
+                                "updated_at": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "description": "When the permission was last updated"
+                                }
+                            },
+                            "required": ["resource_type_id", "resource_id", "crud_permissions", "created_at", "updated_at"]
+                        }
+                    }
+                },
+                "required": ["role_id", "role_name", "permissions"]
+            }
+        }
+    },
+    "required": ["data"]
+}

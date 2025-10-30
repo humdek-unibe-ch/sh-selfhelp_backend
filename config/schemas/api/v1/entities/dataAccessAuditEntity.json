@@ -1,0 +1,102 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Data Access Audit Entity Schema",
+    "description": "Schema for a single DataAccessAudit entity",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Unique identifier for the audit log entry"
+        },
+        "idUsers": {
+            "type": "integer",
+            "description": "ID of the user who performed the action"
+        },
+        "idResourceTypes": {
+            "type": "integer",
+            "description": "ID of the resource type being accessed"
+        },
+        "resourceId": {
+            "type": "integer",
+            "description": "ID of the specific resource being accessed"
+        },
+        "idActions": {
+            "type": "integer",
+            "description": "ID of the action being performed"
+        },
+        "idPermissionResults": {
+            "type": "integer",
+            "description": "ID of the permission check result"
+        },
+        "crudPermission": {
+            "type": ["integer", "null"],
+            "description": "Bitwise CRUD permission value (1=CREATE, 2=READ, 4=UPDATE, 8=DELETE)",
+            "minimum": 1,
+            "maximum": 15
+        },
+        "httpMethod": {
+            "type": ["string", "null"],
+            "description": "HTTP method used in the request",
+            "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+        },
+        "requestBodyHash": {
+            "type": ["string", "null"],
+            "description": "SHA hash of the request body for integrity checking",
+            "pattern": "^[a-f0-9]{64}$"
+        },
+        "ipAddress": {
+            "type": ["string", "null"],
+            "description": "IP address of the client making the request",
+            "format": "ipv4"
+        },
+        "userAgent": {
+            "type": ["string", "null"],
+            "description": "User agent string from the client request"
+        },
+        "requestUri": {
+            "type": ["string", "null"],
+            "description": "Request URI that was accessed"
+        },
+        "notes": {
+            "type": ["string", "null"],
+            "description": "Additional notes about the access attempt"
+        },
+        "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the audit entry was created"
+        },
+        "user": {
+            "type": "object",
+            "description": "User who performed the action",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "User ID"
+                },
+                "username": {
+                    "type": "string",
+                    "description": "Username"
+                },
+                "email": {
+                    "type": "string",
+                    "description": "User email"
+                }
+            },
+            "required": ["id", "username"]
+        },
+        "resourceType": {
+            "$ref": "./lookupEntity.json",
+            "description": "Type of resource being accessed"
+        },
+        "action": {
+            "$ref": "./lookupEntity.json",
+            "description": "Action being performed"
+        },
+        "permissionResult": {
+            "$ref": "./lookupEntity.json",
+            "description": "Result of the permission check"
+        }
+    },
+    "required": ["id", "idUsers", "idResourceTypes", "resourceId", "idActions", "idPermissionResults", "createdAt"]
+}

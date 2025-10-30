@@ -3,9 +3,13 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminUserService;
 use App\Service\Core\ApiResponseFormatter;
+use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Service\Security\DataAccessSecurityService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -23,20 +27,16 @@ class AdminUserController extends AbstractController
     public function __construct(
         private readonly AdminUserService $adminUserService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly UserContextService $userContextService,
+        private readonly EntityManagerInterface $entityManager
     ) {
     }
 
     /**
      * Get users with pagination, search, and sorting
-     * 
-     * @route /admin/users
-     * @method GET
-     * @param page: which page of results (default: 1)
-     * @param pageSize: how many users per page (default: 20, max: 100)
-     * @param search: search term for email, name, or username
-     * @param sort: sort field (email, name, last_login, blocked, user_type)
-     * @param sortDirection: asc or desc (default: asc)
+     * Filtered by group access permissions
      */
     public function getUsers(Request $request): JsonResponse
     {
@@ -46,8 +46,13 @@ class AdminUserController extends AbstractController
             $search = $request->query->get('search');
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
+            $userId = $this->userContextService->getCurrentUser()?->getId();
 
-            $result = $this->adminUserService->getUsers($page, $pageSize, $search, $sort, $sortDirection);
+            $result = $this->dataAccessSecurityService->filterData(
+                fn() => $this->adminUserService->getUsers($page, $pageSize, $search, $sort, $sortDirection),
+                $userId,
+                LookupService::RESOURCE_TYPES_GROUP
+            );
 
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
@@ -60,13 +65,27 @@ class AdminUserController extends AbstractController
 
     /**
      * Get single user by ID
-     * 
+     * Filtered by group access permissions
+     *
      * @route /admin/users/{userId}
      * @method GET
      */
     public function getUserById(int $userId): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to view this specific user
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_READ
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $user = $this->adminUserService->getUserById($userId);
             return $this->responseFormatter->formatSuccess($user);
         } catch (\Exception $e) {
@@ -79,7 +98,8 @@ class AdminUserController extends AbstractController
 
     /**
      * Create new user
-     * 
+     * Checks if user can create users in specified groups
+     *
      * @route /admin/users
      * @method POST
      */
@@ -87,9 +107,27 @@ class AdminUserController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/create_user', $this->jsonSchemaValidationService);
-            
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user can create users in the specified groups
+            if (isset($data['group_ids']) && is_array($data['group_ids'])) {
+                foreach ($data['group_ids'] as $groupId) {
+                    if (!$this->dataAccessSecurityService->hasPermission(
+                        $currentUserId,
+                        LookupService::RESOURCE_TYPES_GROUP,
+                        (int) $groupId,
+                        DataAccessSecurityService::PERMISSION_CREATE
+                    )) {
+                        return $this->responseFormatter->formatError(
+                            'Access denied: Cannot create users in group ' . $groupId,
+                            Response::HTTP_FORBIDDEN
+                        );
+                    }
+                }
+            }
+
             $user = $this->adminUserService->createUser($data);
-            
+
             return $this->responseFormatter->formatSuccess(
                 $user,
                 null,
@@ -105,17 +143,31 @@ class AdminUserController extends AbstractController
 
     /**
      * Update existing user
-     * 
+     * Checks if user can update users in the target user's group
+     *
      * @route /admin/users/{userId}
      * @method PUT
      */
     public function updateUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has UPDATE permission for this specific user
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $data = $this->validateRequest($request, 'requests/admin/update_user', $this->jsonSchemaValidationService);
-            
+
             $user = $this->adminUserService->updateUser($userId, $data);
-            
+
             return $this->responseFormatter->formatSuccess($user);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -127,15 +179,29 @@ class AdminUserController extends AbstractController
 
     /**
      * Delete user
-     * 
+     * Checks if user can delete users in the target user's group
+     *
      * @route /admin/users/{userId}
      * @method DELETE
      */
     public function deleteUser(int $userId): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has DELETE permission for this specific user
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_DELETE
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $this->adminUserService->deleteUser($userId);
-            
+
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -147,18 +213,32 @@ class AdminUserController extends AbstractController
 
     /**
      * Block/Unblock user
-     * 
+     * Checks if user can update users in the target user's group
+     *
      * @route /admin/users/{userId}/block
      * @method PATCH
      */
     public function toggleUserBlock(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has UPDATE permission for this specific user
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $data = json_decode($request->getContent(), true);
             $blocked = $data['blocked'] ?? true;
-            
+
             $user = $this->adminUserService->toggleUserBlock($userId, $blocked);
-            
+
             return $this->responseFormatter->formatSuccess($user);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -170,13 +250,27 @@ class AdminUserController extends AbstractController
 
     /**
      * Get user groups
-     * 
+     * Filtered by group access permissions
+     *
      * @route /admin/users/{userId}/groups
      * @method GET
      */
     public function getUserGroups(int $userId): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to view this user's groups
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_READ
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $groups = $this->adminUserService->getUserGroups($userId);
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
@@ -189,13 +283,27 @@ class AdminUserController extends AbstractController
 
     /**
      * Get user roles
-     * 
+     * Filtered by group access permissions
+     *
      * @route /admin/users/{userId}/roles
      * @method GET
      */
     public function getUserRoles(int $userId): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to view this user's roles
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_READ
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $roles = $this->adminUserService->getUserRoles($userId);
             return $this->responseFormatter->formatSuccess(['roles' => $roles]);
         } catch (\Exception $e) {
@@ -208,25 +316,39 @@ class AdminUserController extends AbstractController
 
     /**
      * Add groups to user
-     * 
+     * Checks if user can update users in the target user's group
+     *
      * @route /admin/users/{userId}/groups
      * @method POST
      */
     public function addGroupsToUser(int $userId, Request $request): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has UPDATE permission for this specific user
+            $userGroupId = $this->getUserGroupId($userId);
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroupId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $data = json_decode($request->getContent(), true);
             $groupIds = $data['group_ids'] ?? [];
-            
+
             if (!is_array($groupIds) || empty($groupIds)) {
                 return $this->responseFormatter->formatError(
                     'group_ids array is required',
                     Response::HTTP_BAD_REQUEST
                 );
             }
-            
+
             $groups = $this->adminUserService->addGroupsToUser($userId, $groupIds);
-            
+
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -378,7 +500,7 @@ class AdminUserController extends AbstractController
 
     /**
      * Impersonate user
-     * 
+     *
      * @route /admin/users/{userId}/impersonate
      * @method POST
      */
@@ -392,6 +514,26 @@ class AdminUserController extends AbstractController
                 $e->getMessage(),
                 $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
             );
+        }
+    }
+
+    /**
+     * Get the group ID for a user (helper method for permission checks)
+     */
+    private function getUserGroupId(int $userId): int
+    {
+        try {
+            // Get user's primary group ID
+            $conn = $this->entityManager->getConnection();
+            $sql = "SELECT id_groups FROM users_groups WHERE id_users = :user_id LIMIT 1";
+            $stmt = $conn->prepare($sql);
+            $stmt->bindValue('user_id', $userId, \PDO::PARAM_INT);
+            $result = $stmt->executeQuery();
+            $row = $result->fetchAssociative();
+
+            return $row ? (int) $row['id_groups'] : 0;
+        } catch (\Exception $e) {
+            return 0; // Default to no access if we can't determine group
         }
     }
 } 

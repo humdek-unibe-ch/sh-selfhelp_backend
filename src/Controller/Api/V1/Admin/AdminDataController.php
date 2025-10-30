@@ -4,10 +4,13 @@ namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
+use App\Service\Auth\UserContextService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\ApiResponseFormatter;
+use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,25 +24,36 @@ class AdminDataController extends AbstractController
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly UserContextService $userContextService
     ) {
     }
 
     /**
      * Get all data tables
+     * Filtered by table access permissions
      */
     public function getDataTables(): JsonResponse
     {
         try {
-            $tables = $this->dataTableService->getFormDataTables();
-            $result = array_map(static function ($table) {
-                return [
-                    'id' => $table->getId(),
-                    'name' => $table->getName(),
-                    'displayName' => $table->getDisplayName(),
-                    'created' => $table->getTimestamp()?->format(DATE_ATOM),
-                ];
-            }, $tables);
+            $userId = $this->userContextService->getCurrentUser()?->getId();
+
+            $result = $this->dataAccessSecurityService->filterData(
+                function() {
+                    $tables = $this->dataTableService->getFormDataTables();
+                    return array_map(static function ($table) {
+                        return [
+                            'id' => $table->getId(),
+                            'name' => $table->getName(),
+                            'displayName' => $table->getDisplayName(),
+                            'created' => $table->getTimestamp()?->format(DATE_ATOM),
+                        ];
+                    }, $tables);
+                },
+                $userId,
+                LookupService::RESOURCE_TYPES_DATA_TABLE
+            );
 
             return $this->responseFormatter->formatSuccess(['dataTables' => $result]);
         } catch (\Throwable $e) {
@@ -52,6 +66,7 @@ class AdminDataController extends AbstractController
 
     /**
      * Get data rows from a data table
+     * Filtered by table access permissions
      * Supported query params: table_name (string, required), user_id (int|null), exclude_deleted (bool, default true), language_id (int, default 1)
      * Other legacy parameters are fixed: filter = '', own_entries_only = false, db_first = false
      */
@@ -66,6 +81,18 @@ class AdminDataController extends AbstractController
             $dataTable = $this->dataService->getDataTableByName($tableName);
             if (!$dataTable) {
                 return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to access this data table
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_DATA_TABLE,
+                $dataTable->getId(),
+                DataAccessSecurityService::PERMISSION_READ
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
             $userId = $request->query->has('user_id') ? (int)$request->query->get('user_id') : null;
@@ -91,10 +118,33 @@ class AdminDataController extends AbstractController
 
     /**
      * Delete a single record from any data table (soft-delete via trigger type)
+     * Checks if user has DELETE permission for the data table
      */
     public function deleteRecord(Request $request, int $recordId): JsonResponse
     {
         try {
+            $tableName = $request->query->get('table_name');
+            if (!$tableName) {
+                return $this->responseFormatter->formatError('table_name parameter is required', Response::HTTP_BAD_REQUEST);
+            }
+
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has DELETE permission for this data table
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_DATA_TABLE,
+                $dataTable->getId(),
+                DataAccessSecurityService::PERMISSION_DELETE
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $ownEntriesOnly = filter_var($request->query->get('own_entries_only', 'true'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             $ownEntriesOnly = $ownEntriesOnly === null ? true : $ownEntriesOnly;
 
@@ -115,10 +165,28 @@ class AdminDataController extends AbstractController
 
     /**
      * Delete an entire data table and all associated rows/columns/cells
+     * Checks if user has DELETE permission for the data table
      */
     public function deleteDataTable(string $tableName): JsonResponse
     {
         try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has DELETE permission for this data table
+            if (!$this->dataAccessSecurityService->hasPermission(
+                $currentUserId,
+                LookupService::RESOURCE_TYPES_DATA_TABLE,
+                $dataTable->getId(),
+                DataAccessSecurityService::PERMISSION_DELETE
+            )) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
             $deleted = $this->dataTableService->deleteDataTable($tableName);
             if (!$deleted) {
                 return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);

@@ -1,0 +1,47 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Data Access Logs Response Schema",
+    "description": "Schema for the admin/audit/data-access endpoint response (paginated list)",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "description": "Paginated audit logs data",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "description": "Array of audit log entries",
+                    "items": {
+                        "$ref": "../../../entities/dataAccessAuditEntity.json"
+                    }
+                },
+                "total": {
+                    "type": "integer",
+                    "description": "Total number of audit logs matching the filters",
+                    "minimum": 0
+                },
+                "page": {
+                    "type": "integer",
+                    "description": "Current page number",
+                    "minimum": 1
+                },
+                "pageSize": {
+                    "type": "integer",
+                    "description": "Number of items per page",
+                    "minimum": 1,
+                    "maximum": 100
+                },
+                "totalPages": {
+                    "type": "integer",
+                    "description": "Total number of pages",
+                    "minimum": 0
+                }
+            },
+            "required": ["data", "total", "page", "pageSize", "totalPages"]
+        }
+    },
+    "required": ["data"]
+}

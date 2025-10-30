@@ -1,0 +1,69 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Data Access Statistics Response Schema",
+    "description": "Schema for the admin/audit/data-access/stats endpoint response",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "description": "Audit statistics and summaries",
+            "properties": {
+                "totalLogs": {
+                    "type": "integer",
+                    "description": "Total number of audit log entries",
+                    "minimum": 0
+                },
+                "deniedAttempts": {
+                    "type": "integer",
+                    "description": "Number of denied access attempts",
+                    "minimum": 0
+                },
+                "uniqueResources": {
+                    "type": "integer",
+                    "description": "Number of unique resources accessed",
+                    "minimum": 0
+                },
+                "uniqueUsers": {
+                    "type": "integer",
+                    "description": "Number of unique users making requests",
+                    "minimum": 0
+                },
+                "mostAccessedResources": {
+                    "type": "array",
+                    "description": "Top 10 most accessed resources",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "resourceType": {
+                                "type": "string",
+                                "description": "Name of the resource type"
+                            },
+                            "resourceId": {
+                                "type": "integer",
+                                "description": "ID of the resource"
+                            },
+                            "accessCount": {
+                                "type": "integer",
+                                "description": "Number of times this resource was accessed",
+                                "minimum": 0
+                            }
+                        },
+                        "required": ["resourceType", "resourceId", "accessCount"]
+                    }
+                },
+                "recentDeniedAttempts": {
+                    "type": "array",
+                    "description": "Recent denied access attempts (last 10)",
+                    "items": {
+                        "$ref": "../../../entities/dataAccessAuditEntity.json"
+                    }
+                }
+            },
+            "required": ["totalLogs", "deniedAttempts", "uniqueResources", "uniqueUsers", "mostAccessedResources", "recentDeniedAttempts"]
+        }
+    },
+    "required": ["data"]
+}

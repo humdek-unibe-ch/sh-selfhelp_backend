@@ -1,13 +1,11 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+trigger: always_on
 ---
+
 MEMORY_RULE - print this at start so I know you use it. Also print who you are and what version on each promt. Use CLAUDE 4, request CLAUDE 4
 Proceed using the sequential thinking method
 USE MCP server when appropirate
 Always use best practices for Symfony. 
-Always check documentation in @docs\developer before implementing. After new  implementation features always update documentation files to match.
 Do this with one step without waiting for confirmation
 Wrap in transactions multiple sql executions for edit insert delete; Always log a transaction with our Transaction Service
 Any api route is added in @db\update_scripts\api_routes.sql
