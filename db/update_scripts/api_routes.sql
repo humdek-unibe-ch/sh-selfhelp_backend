@@ -1074,12 +1074,6 @@ WHERE ar.`route_name` IN ('admin_sections_force_delete_v1');
 INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
 ('admin_cache_clear_api_routes_v1', 'v1', '/admin/cache/api-routes/clear', 'App\\Controller\\Api\\V1\\Admin\\AdminCacheController::clearApiRoutesCache', 'POST', NULL, NULL);
 
--- Link API routes cache clearing to admin cache permission
-INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
-SELECT ar.`id`, p.`id`
-FROM `api_routes` ar
-JOIN `permissions` p ON p.`name` = 'admin.cache'
-WHERE ar.`route_name` IN ('admin_cache_clear_api_routes_v1');
 
 INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT
@@ -1280,6 +1274,37 @@ INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id FROM api_routes ar JOIN permissions p ON p.name = 'admin.data.read'
 WHERE ar.route_name IN ('admin_data_table_column_names_get_v1');
 
+-- Add missing permissions for admin routes that were missing them
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.page_version.delete'
+WHERE ar.`route_name` IN ('admin_page_version_delete');
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.page.read'
+WHERE ar.`route_name` IN ('admin_sections_get', 'admin_sections_get_children_sections');
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.access'
+WHERE ar.`route_name` IN ('admin_styles_get');
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.user.update'
+WHERE ar.`route_name` IN ('admin_users_clean_data_v1', 'admin_users_groups_add_v1', 'admin_users_groups_remove_v1', 'admin_users_roles_add_v1', 'admin_users_roles_remove_v1', 'admin_users_send_activation_v1');
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.user.read'
+WHERE ar.`route_name` IN ('admin_users_groups_get_v1', 'admin_users_roles_get_v1');
+
 -- Cache Management API Routes
 INSERT IGNORE INTO `permissions` (`name`, `description`)
 VALUES
@@ -1369,6 +1394,7 @@ VALUES
   ('admin.page_version.create',   'Can create new page versions'),
   ('admin.page_version.publish',   'Can publish page versions'),
   ('admin.page_version.unpublish',   'Can unpublish page versions'),
+  ('admin.page_version.delete',   'Can delete page versions'),
   ('admin.page_version.compare',   'Can compare page versions');
 
 -- Grant page versioning permissions to the admin role
@@ -1724,6 +1750,12 @@ CREATE TABLE data_access_audit (
     INDEX IDX_data_access_audit_request_body_hash (request_body_hash) -- request body hash index
 );
 
+-- Link API routes cache clearing to admin cache permission
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.cache.clear'
+WHERE ar.`route_name` IN ('admin_cache_clear_api_routes_v1');
 
 -- Grant all permissions to the admin role ALWAYS LAST
 INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
