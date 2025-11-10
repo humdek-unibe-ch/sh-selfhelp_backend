@@ -53,8 +53,8 @@ class AdminPageController extends AbstractController
 
             $pages = $this->dataAccessSecurityService->filterData(
                 function() use ($language_id) {
-                    // Mode detection logic: default to 'web', could be extended to accept a query param
-                    return $this->pageService->getAllAccessiblePagesForUser(LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB, true, $language_id);
+                    // For admin pages, use AdminPageService without ACL filtering
+                    return $this->adminPageService->getAllPagesForAdmin($language_id);
                 },
                 $userId,
                 LookupService::RESOURCE_TYPES_PAGES

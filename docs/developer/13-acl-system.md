@@ -19,9 +19,24 @@ These systems are **completely separate** and serve different purposes:
 ### 👥 Frontend User ACL System (Website Access)
 - **Purpose**: Fine-grained page-level permissions for website content
 - **Users**: Frontend website users, regular users
-- **Tables**: `groups`, `users_groups`, `acl_users`, `acl_groups` 
+- **Tables**: `groups`, `users_groups`, `acl_users`, `acl_groups`
 - **Scope**: Page visibility and interaction permissions
 - **Examples**: Can view specific pages, can comment on pages, can edit page content
+
+### 🔄 Admin vs Frontend Page Access
+
+**Admin Page Retrieval** (CMS Backend):
+- **ACL Bypass**: Admin users retrieving pages for management bypass ACL filtering
+- **Permission-Based**: Access controlled via role-based permissions through `DataAccessSecurityService`
+- **Implementation**: `AdminPageService::getAllPagesForAdmin()` returns all pages without ACL checks
+- **Filtering**: `DataAccessSecurityService::filterData()` applies permission-based filtering
+- **ACL Fields**: `DataAccessSecurityService::applyFilters()` sets ACL fields based on actual permissions
+- **Purpose**: Allows admins to see all pages for management while maintaining security through permissions
+
+**Frontend Page Retrieval** (Website):
+- **ACL Required**: Pages filtered based on user ACL rules for visibility
+- **Implementation**: `PageService::getAllAccessiblePagesForUser()` applies ACL filtering
+- **Purpose**: Controls what content each user can see on the website
 
 ## 🏗️ ACL Architecture
 

@@ -291,8 +291,43 @@ class DataAccessSecurityService
 
         return $hasPermission;
     }
-}
+
 ```
+
+### Dynamic Data Filtering
+
+The `applyFilters()` method provides **global, dynamic filtering** capability across different resource types with varying data structures:
+
+**Resource Type Field Mapping:**
+- **Pages**: `id_pages` → `id` → `page_id`
+- **Data Tables**: `id_dataTables` → `id`
+- **Groups**: `id_groups` → `group_id` → `id`
+
+**Permission Map Structure:**
+```php
+$permissionMap = [
+    1 => 2,  // Resource ID 1 has READ permission (2)
+    2 => 0,  // Resource ID 2 has no permissions
+    3 => 6,  // Resource ID 3 has READ+UPDATE (2+4=6)
+];
+```
+
+**ACL Field Setting:**
+The method automatically sets ACL fields based on actual permissions:
+```php
+// For a resource with permission value 6 (READ+UPDATE)
+'acl_select' => 1,  // Has READ permission
+'acl_insert' => 0,  // No CREATE permission
+'acl_update' => 1,  // Has UPDATE permission
+'acl_delete' => 0   // No DELETE permission
+```
+
+**Data Structure Compatibility:**
+- Automatically detects resource IDs from various field names
+- Works with hierarchical data (pages with children)
+- Sets ACL fields based on actual user permissions
+- Maintains original data structure while filtering
+- Supports all resource types through unified interface
 
 ### AdminDataAccessService
 ```php

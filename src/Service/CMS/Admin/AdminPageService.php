@@ -2,12 +2,14 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\CmsPreference;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\PagesSection;
 use App\Entity\User;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
+use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageTypeRepository;
 use App\Repository\SectionRepository;
 use App\Service\ACL\ACLService;
@@ -57,6 +59,7 @@ class AdminPageService extends BaseService
         private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
+        private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly UserContextService $userContextService,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly CacheService $cache
@@ -586,5 +589,160 @@ class AdminPageService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
+    }
+
+    /**
+     * Get all pages for admin purposes without ACL filtering
+     * Returns pages in the same format as PageService for compatibility
+     *
+     * @param int|null $language_id Optional language ID for translations
+     * @return array Array of pages in hierarchical structure
+     */
+    public function getAllPagesForAdmin(?int $language_id = null): array
+    {
+        // Determine which language ID to use for translations
+        $languageId = $this->determineLanguageId($language_id);
+
+        // Get current user for caching
+        $user = $this->userContextAwareService->getCurrentUser();
+        $userId = $user ? $user->getId() : 1; // guest user
+
+        // Cache key for admin pages (no ACL filtering)
+        $cacheKey = "admin_pages_{$languageId}";
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
+            ->getList($cacheKey, function () use ($languageId, $userId) {
+                // Get all pages from repository (no ACL filtering)
+                $pages = $this->pageRepository->findAll();
+
+                // Convert entities to array format similar to ACL service output
+                $allPages = [];
+                foreach ($pages as $page) {
+                    $allPages[] = [
+                        'id_users' => $userId, // Current user (admin) for admin pages
+                        'id_pages' => $page->getId(),
+                        'parent' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
+                        'keyword' => $page->getKeyword(),
+                        'url' => $page->getUrl(),
+                        'nav_position' => $page->getNavPosition(),
+                        'footer_position' => $page->getFooterPosition(),
+                        'is_headless' => $page->isHeadless() ? 1 : 0,
+                        'is_open_access' => $page->isOpenAccess() ? 1 : 0,
+                        'id_pageAccessTypes' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
+                        'id_type' => $page->getPageType() ? $page->getPageType()->getId() : null,
+                        // ACL fields will be set by DataAccessSecurityService based on permissions
+                        'acl_select' => 0,
+                        'acl_insert' => 0,
+                        'acl_update' => 0,
+                        'acl_delete' => 0
+                    ];
+                }
+
+                // Get default language ID for fallback translations
+                $defaultLanguageId = null;
+                try {
+                    $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
+                    if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
+                        $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
+                    }
+                } catch (\Exception $e) {
+                    // If there's an error getting the default language, continue without fallback
+                }
+
+                // Extract page IDs for fetching translations
+                $pageIds = array_column($allPages, 'id_pages');
+
+                // Fetch all page title translations in one query
+                $pageTitleTranslations = [];
+                if (!empty($pageIds)) {
+                    $pageTitleTranslations = $this->pagesFieldsTranslationRepository->fetchTitleTranslationsWithFallback(
+                        $pageIds,
+                        $languageId,
+                        $defaultLanguageId
+                    );
+                }
+
+                // Create a map of pages by their ID for quick lookup
+                $pagesMap = [];
+                foreach ($allPages as &$page) {
+                    // Add title translations to page
+                    $pageId = $page['id_pages'];
+                    $page['title'] = null; // Default title
+                    if (isset($pageTitleTranslations[$pageId])) {
+                        // Look for a 'title' field first, otherwise take the first available field
+                        if (isset($pageTitleTranslations[$pageId]['title'])) {
+                            $page['title'] = $pageTitleTranslations[$pageId]['title'];
+                        } else {
+                            // Take the first available translation field as title
+                            $page['title'] = reset($pageTitleTranslations[$pageId]) ?: null;
+                        }
+                    }
+
+                    $page['children'] = []; // Initialize children array
+                    $pagesMap[$page['id_pages']] = &$page;
+                }
+                unset($page); // Break the reference
+
+                // Build the hierarchy
+                $nestedPages = [];
+                foreach ($pagesMap as $id => &$page) {
+                    if (isset($page['parent']) && $page['parent'] !== null && isset($pagesMap[$page['parent']])) {
+                        // This is a child page, add it to its parent's children array
+                        $pagesMap[$page['parent']]['children'][] = &$page;
+                    } else {
+                        // This is a root level page
+                        $nestedPages[] = &$page;
+                    }
+                }
+                unset($page); // Break the reference
+
+                // Optional: Sort children by nav_position if needed
+                $this->sortPagesRecursively($nestedPages);
+
+                return $nestedPages;
+            });
+    }
+
+    /**
+     * Determine language ID for translations
+     */
+    private function determineLanguageId(?int $language_id = null): int
+    {
+        if ($language_id !== null) {
+            return $language_id;
+        }
+
+        // Get default language from CMS preferences
+        try {
+            $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
+            if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
+                return $cmsPreference->getDefaultLanguage()->getId();
+            }
+        } catch (\Exception $e) {
+            // Continue with default
+        }
+
+        return 1; // Default fallback
+    }
+
+    /**
+     * Sort pages recursively by nav_position
+     */
+    private function sortPagesRecursively(array &$pages): void
+    {
+        usort($pages, function ($a, $b) {
+            $posA = $a['nav_position'] ?? PHP_INT_MAX;
+            $posB = $b['nav_position'] ?? PHP_INT_MAX;
+            return $posA <=> $posB;
+        });
+
+        foreach ($pages as &$page) {
+            if (!empty($page['children'])) {
+                $this->sortPagesRecursively($page['children']);
+            }
+        }
     }
 }

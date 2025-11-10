@@ -474,7 +474,9 @@ public function updateRolePermissions(int $roleId, array $permissions): void
 
     // Invalidate ALL users who have this role
     // This automatically invalidates UserDataService cache for all affected users
-    $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
+    // The DataAccessSecurityService.invalidateRolePermissions() method handles both
+    // role scope invalidation and user permission invalidation
+    $this->dataAccessSecurityService->invalidateRolePermissions($roleId);
 
     // Also invalidate role category lists
     $this->cache
