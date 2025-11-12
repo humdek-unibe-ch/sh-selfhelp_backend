@@ -12,14 +12,14 @@ use Doctrine\ORM\Mapping as ORM;
  * Provides complete audit trail for security monitoring and compliance
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'data_access_audit')]
-#[ORM\Index(name: 'IDX_data_access_audit_users', columns: ['id_users'])]
-#[ORM\Index(name: 'IDX_data_access_audit_resource_types', columns: ['id_resourceTypes'])]
-#[ORM\Index(name: 'IDX_data_access_audit_resource_id', columns: ['resource_id'])]
-#[ORM\Index(name: 'IDX_data_access_audit_created_at', columns: ['created_at'])]
-#[ORM\Index(name: 'IDX_data_access_audit_permission_results', columns: ['id_permissionResults'])]
-#[ORM\Index(name: 'IDX_data_access_audit_http_method', columns: ['http_method'])]
-#[ORM\Index(name: 'IDX_data_access_audit_request_body_hash', columns: ['request_body_hash'])]
+#[ORM\Table(name: 'dataAccessAudit')]
+#[ORM\Index(name: 'IDX_dataAccessAudit_users', columns: ['id_users'])]
+#[ORM\Index(name: 'IDX_dataAccessAudit_resource_types', columns: ['id_resourceTypes'])]
+#[ORM\Index(name: 'IDX_dataAccessAudit_resource_id', columns: ['resource_id'])]
+#[ORM\Index(name: 'IDX_dataAccessAudit_created_at', columns: ['created_at'])]
+#[ORM\Index(name: 'IDX_dataAccessAudit_permission_results', columns: ['id_permissionResults'])]
+#[ORM\Index(name: 'IDX_dataAccessAudit_http_method', columns: ['http_method'])]
+#[ORM\Index(name: 'IDX_dataAccessAudit_request_body_hash', columns: ['request_body_hash'])]
 class DataAccessAudit
 {
     #[ORM\Id]

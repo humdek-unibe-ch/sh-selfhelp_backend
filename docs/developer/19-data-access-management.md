@@ -44,7 +44,7 @@ graph TD
 | **Users** | Frontend website users | Admin/CMS users |
 | **Granularity** | Page access (select/insert/update/delete) | Resource-specific permissions |
 | **Logic** | User > Group permissions | Role aggregation (BIT_OR) |
-| **Tables** | `acl_users`, `acl_groups` | `role_data_access`, `data_access_audit` |
+| **Tables** | `acl_users`, `acl_groups` | `role_data_access`, `dataAccessAudit` |
 | **Caching** | Stored procedure based | Advanced CacheService integration |
 
 ## 🗄️ Database Schema
@@ -72,7 +72,7 @@ CREATE TABLE role_data_access (
 
 ### Data Access Audit Table
 ```sql
-CREATE TABLE data_access_audit (
+CREATE TABLE dataAccessAudit (
   id int NOT NULL AUTO_INCREMENT,
   id_users int NOT NULL,
   id_resourceTypes int NOT NULL,
@@ -88,17 +88,17 @@ CREATE TABLE data_access_audit (
   notes text COLLATE utf8mb4_unicode_ci,
   created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY IDX_data_access_audit_users (id_users),
-  KEY IDX_data_access_audit_resource_types (id_resourceTypes),
-  KEY IDX_data_access_audit_resource_id (resource_id),
-  KEY IDX_data_access_audit_created_at (created_at),
-  KEY IDX_data_access_audit_permission_results (id_permissionResults),
-  KEY IDX_data_access_audit_http_method (http_method),
-  KEY IDX_data_access_audit_request_body_hash (request_body_hash),
-  CONSTRAINT FK_data_access_audit_users FOREIGN KEY (id_users) REFERENCES users (id),
-  CONSTRAINT FK_data_access_audit_resource_types FOREIGN KEY (id_resourceTypes) REFERENCES lookups (id),
-  CONSTRAINT FK_data_access_audit_actions FOREIGN KEY (id_actions) REFERENCES lookups (id),
-  CONSTRAINT FK_data_access_audit_permission_results FOREIGN KEY (id_permissionResults) REFERENCES lookups (id)
+  KEY IDX_dataAccessAudit_users (id_users),
+  KEY IDX_dataAccessAudit_resource_types (id_resourceTypes),
+  KEY IDX_dataAccessAudit_resource_id (resource_id),
+  KEY IDX_dataAccessAudit_created_at (created_at),
+  KEY IDX_dataAccessAudit_permission_results (id_permissionResults),
+  KEY IDX_dataAccessAudit_http_method (http_method),
+  KEY IDX_dataAccessAudit_request_body_hash (request_body_hash),
+  CONSTRAINT FK_dataAccessAudit_users FOREIGN KEY (id_users) REFERENCES users (id),
+  CONSTRAINT FK_dataAccessAudit_resource_types FOREIGN KEY (id_resourceTypes) REFERENCES lookups (id),
+  CONSTRAINT FK_dataAccessAudit_actions FOREIGN KEY (id_actions) REFERENCES lookups (id),
+  CONSTRAINT FK_dataAccessAudit_permission_results FOREIGN KEY (id_permissionResults) REFERENCES lookups (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
@@ -191,7 +191,7 @@ class RoleDataAccess
 namespace App\Entity;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'data_access_audit')]
+#[ORM\Table(name: 'dataAccessAudit')]
 class DataAccessAudit
 {
     #[ORM\Id]
@@ -832,7 +832,7 @@ SELECT
     da.ip_address,
     da.user_agent,
     da.created_at
-FROM data_access_audit da
+FROM dataAccessAudit da
 JOIN users u ON da.id_users = u.id
 JOIN lookups rt ON da.id_resourceTypes = rt.id
 JOIN lookups a ON da.id_actions = a.id
@@ -847,7 +847,7 @@ SELECT
     COUNT(*) as permission_checks,
     SUM(CASE WHEN pr.lookup_code = 'granted' THEN 1 ELSE 0 END) as granted,
     SUM(CASE WHEN pr.lookup_code = 'denied' THEN 1 ELSE 0 END) as denied
-FROM data_access_audit da
+FROM dataAccessAudit da
 JOIN users u ON da.id_users = u.id
 JOIN lookups pr ON da.id_permissionResults = pr.id
 WHERE da.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)

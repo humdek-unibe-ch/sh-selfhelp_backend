@@ -70,7 +70,7 @@ CREATE TABLE role_data_access (
 );
 
 -- Audit table for custom data access checks
-CREATE TABLE data_access_audit (
+CREATE TABLE dataAccessAudit (
     id INT PRIMARY KEY AUTO_INCREMENT,
     id_users INT NOT NULL,                    -- Who performed the action
     id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
@@ -123,7 +123,7 @@ Every permission check performed by the `DataAccessSecurityService` is automatic
 #### **Filter Operations (READ access):**
 ```sql
 -- When filtering user lists, data tables, pages, etc.
-INSERT INTO data_access_audit (
+INSERT INTO dataAccessAudit (
     id_users, id_resourceTypes, resource_id, id_actions, id_permissionResults,
     crud_permission, http_method, request_body_hash, ip_address, notes
 ) VALUES (
@@ -136,7 +136,7 @@ INSERT INTO data_access_audit (
 #### **Permission Checks (CREATE/UPDATE/DELETE):**
 ```sql
 -- When checking permissions for specific operations
-INSERT INTO data_access_audit (
+INSERT INTO dataAccessAudit (
     id_users, id_resourceTypes, resource_id, id_actions, id_permissionResults,
     crud_permission, http_method, request_body_hash, ip_address, notes
 ) VALUES (
@@ -149,7 +149,7 @@ INSERT INTO data_access_audit (
 #### **Denied Access Attempts:**
 ```sql
 -- When users try to access resources they don't have permission for
-INSERT INTO data_access_audit (
+INSERT INTO dataAccessAudit (
     id_users, id_resourceTypes, resource_id, id_actions, id_permissionResults,
     crud_permission, http_method, request_body_hash, ip_address, notes
 ) VALUES (
@@ -640,7 +640,7 @@ public function deleteRecord(Request $request, int $recordId): JsonResponse
 
 ### Migration Plan
 
-1. **Create data_access_audit table** for logging all permission checks
+1. **Create dataAccessAudit table** for logging all permission checks
 2. **Add lookup entries** for auditActions and permissionResults type codes
 3. **Create DataAccessSecurityService** with `filterData()`, `hasPermission()`, audit logging, and caching
 4. **Implement cache invalidation system** with proper triggers for role/permission changes
@@ -714,7 +714,7 @@ public function deleteRecord(Request $request, int $recordId): JsonResponse
 
 #### Security Considerations:
 - Access controlled by existing `admin.role.read`, `admin.role.update` permissions or admin role
-- All permission changes are audited in the data_access_audit table
+- All permission changes are audited in the dataAccessAudit table
 - **Admin roles are immutable** - cannot be modified through APIs
 - Cannot modify permissions for admin roles (enforced in business logic)
 - Validation ensures permission combinations are valid

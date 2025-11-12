@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS `roles_permissions`;
 DROP TABLE IF EXISTS `users_roles`;
 DROP TABLE IF EXISTS `api_routes_permissions`;
 DROP TABLE IF EXISTS `role_data_access`;
-DROP TABLE IF EXISTS `data_access_audit`;
+DROP TABLE IF EXISTS `dataAccessAudit`;
 
 -- 1. Roles
 DROP TABLE IF EXISTS `roles`;
@@ -1718,8 +1718,8 @@ CREATE TABLE role_data_access (
     INDEX IDX_role_data_access_permissions (crud_permissions)
 );
 
--- Create data_access_audit table for logging all permission checks
-CREATE TABLE data_access_audit (
+-- Create dataAccessAudit table for logging all permission checks
+CREATE TABLE dataAccessAudit (
     id INT PRIMARY KEY AUTO_INCREMENT,
     id_users INT NOT NULL,                    -- Who performed the action
     id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
@@ -1740,14 +1740,14 @@ CREATE TABLE data_access_audit (
     FOREIGN KEY (id_actions) REFERENCES lookups(id) ON DELETE CASCADE,
     FOREIGN KEY (id_permissionResults) REFERENCES lookups(id) ON DELETE CASCADE,
 
-    INDEX IDX_ED7BEBFBDBD5589F (id_actions), -- action index
-    INDEX IDX_data_access_audit_users (id_users),                    -- user index
-    INDEX IDX_data_access_audit_resource_types (id_resourceTypes),   -- resource type index
-    INDEX IDX_data_access_audit_resource_id (resource_id),           -- resource id index
-    INDEX IDX_data_access_audit_created_at (created_at),             -- timestamp index
-    INDEX IDX_data_access_audit_permission_results (id_permissionResults), -- permission result index
-    INDEX IDX_data_access_audit_http_method (http_method),           -- HTTP method index
-    INDEX IDX_data_access_audit_request_body_hash (request_body_hash) -- request body hash index
+    INDEX IDX_D2C78316DBD5589F (id_actions), -- action index
+    INDEX IDX_dataAccessAudit_users (id_users),                    -- user index
+    INDEX IDX_dataAccessAudit_resource_types (id_resourceTypes),   -- resource type index
+    INDEX IDX_dataAccessAudit_resource_id (resource_id),           -- resource id index
+    INDEX IDX_dataAccessAudit_created_at (created_at),             -- timestamp index
+    INDEX IDX_dataAccessAudit_permission_results (id_permissionResults), -- permission result index
+    INDEX IDX_dataAccessAudit_http_method (http_method),           -- HTTP method index
+    INDEX IDX_dataAccessAudit_request_body_hash (request_body_hash) -- request body hash index
 );
 
 -- Link API routes cache clearing to admin cache permission

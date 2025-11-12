@@ -1736,7 +1736,7 @@ Implement role-based and group-based data access control system where users can 
 - ✅ **Extensible**: Easy to add new resource families with new nullable columns
 - ✅ **Future-Ready**: JSON fields for advanced features
 
-#### 3. New Table: `data_access_audit`
+#### 3. New Table: `dataAccessAudit`
 - **Purpose**: Comprehensive audit log for data access operations
 - **Structure** (MySQL 8, Strict Referential Integrity):
   - `id` INT PRIMARY KEY AUTO_INCREMENT
