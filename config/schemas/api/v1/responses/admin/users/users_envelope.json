@@ -1,25 +1,60 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "title": "Users List Response Envelope",
-  "description": "Standard API response envelope for users list",
-  "properties": {
-    "status": { "type": "integer", "description": "HTTP status code" },
-    "message": { "type": "string", "description": "Response message" },
-    "logged_in": { "type": "boolean", "description": "Whether user is logged in" },
-    "meta": {
-      "type": "object",
-      "properties": {
-        "version": { "type": "string", "description": "API version" },
-        "timestamp": { "type": "string", "format": "date-time", "description": "Response timestamp" }
-      },
-      "required": ["version", "timestamp"],
-      "additionalProperties": false
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Users List Response Schema",
+    "description": "Schema for the admin/users endpoint response",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "description": "Users list data with pagination",
+            "properties": {
+                "users": {
+                    "type": "array",
+                    "description": "Array of users",
+                    "items": { "$ref": "user.json" }
+                },
+                "pagination": {
+                    "type": "object",
+                    "description": "Pagination information",
+                    "properties": {
+                        "page": {
+                            "type": "integer",
+                            "description": "Current page number"
+                        },
+                        "pageSize": {
+                            "type": "integer",
+                            "description": "Number of items per page"
+                        },
+                        "totalCount": {
+                            "type": "integer",
+                            "description": "Total number of users"
+                        },
+                        "totalPages": {
+                            "type": "integer",
+                            "description": "Total number of pages"
+                        },
+                        "hasNext": {
+                            "type": "boolean",
+                            "description": "Whether there is a next page"
+                        },
+                        "hasPrevious": {
+                            "type": "boolean",
+                            "description": "Whether there is a previous page"
+                        }
+                    },
+                    "required": ["page", "pageSize", "totalCount", "totalPages", "hasNext", "hasPrevious"]
+                }
+            },
+            "required": ["users", "pagination"]
+        },
+        "_debug": {
+            "type": "object",
+            "description": "Debug information (only present in non-production environments during validation errors)",
+            "additionalProperties": true
+        }
     },
-    "data": { "$ref": "users.json" }
-  },
-  "required": ["status", "message", "logged_in", "meta", "data"],
-  "additionalProperties": false
+    "required": ["data"]
 }
-
-

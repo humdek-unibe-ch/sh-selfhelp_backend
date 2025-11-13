@@ -52,15 +52,18 @@ class DataAccessSecurityService
         try {
             $isAdmin = $this->userHasAdminRole($userId);
         } catch (\Exception $e) {
-            // If admin check fails (e.g., in test environment), assume admin and grant full access
-            error_log('Admin role check failed, assuming admin for safety: ' . $e->getMessage());
-            $isAdmin = true;
+            $isAdmin = false;
         }
 
         if ($isAdmin) {
             // Skip audit logging for admin users to avoid database issues in test environments
             $data = $dataFetcher(); // Full access
-            $this->addCrudFieldRecursively($data, 15); // Full permissions (1+2+4+8)
+            if (isset($data['users'])) {
+                // Special handling for users list - filter users based on group memberships
+                $this->addCrudFieldRecursively($data['users'], 15); // Full permissions (1+2+4+8)
+            } else {
+                $this->addCrudFieldRecursively($data, 15); // Full permissions (1+2+4+8)
+            }
             return $data;
         }
 
@@ -82,7 +85,7 @@ class DataAccessSecurityService
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
                 ->withEntityScope(CacheService::ENTITY_SCOPE_PERMISSION, $resourceTypeId)
-                ->getItem("unified_permissions_{$resourceType}", function() use ($userId, $resourceTypeId) {
+                ->getItem("unified_permissions_{$resourceType}", function () use ($userId, $resourceTypeId) {
                     return $this->roleDataAccessRepository->getUserPermissionsForResourceType($userId, $resourceTypeId);
                 });
         } catch (\Exception $e) {
@@ -354,7 +357,7 @@ class DataAccessSecurityService
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getItem("user_has_admin_role", function() use ($userId) {
+            ->getItem("user_has_admin_role", function () use ($userId) {
                 // Query to check if user has admin role
                 $conn = $this->entityManager->getConnection();
                 $sql = "

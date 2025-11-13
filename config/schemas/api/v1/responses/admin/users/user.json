@@ -14,7 +14,8 @@
     "code": { "type": "string", "description": "Validation code" },
     "groups": { "type": ["string", "array"], "description": "User groups (string for list view, array for detail view)" },
     "roles": {
-      "type": "array",
+      "type": ["string", "array"],
+      "description": "User roles (string for list view, array for detail view)",
       "items": {
         "type": "object",
         "properties": {
@@ -22,15 +23,15 @@
           "name": {"type": "string"},
           "description": {"type": ["string", "null"]}
         }
-      },
-      "description": "User roles (only in detail view)"
+      }
     },
     "user_activity": { "type": "integer", "description": "User activity count" },
     "user_type_code": { "type": ["string", "null"], "description": "User type code" },
     "user_type": { "type": ["string", "null"], "description": "User type name" },
     "id_genders": { "type": ["integer", "null"], "description": "Gender ID" },
     "id_languages": { "type": ["integer", "null"], "description": "Language ID" },
-    "id_userTypes": { "type": ["integer", "null"], "description": "User type ID" }
+    "id_userTypes": { "type": ["integer", "null"], "description": "User type ID" },
+    "crud": { "type": "integer", "description": "CRUD permissions bitmask", "minimum": 0, "maximum": 15 }
   },
   "required": ["id", "email"],
   "additionalProperties": false

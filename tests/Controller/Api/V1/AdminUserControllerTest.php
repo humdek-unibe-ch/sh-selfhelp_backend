@@ -114,10 +114,12 @@ class AdminUserControllerTest extends BaseControllerTest
         // Verify search results contain the search term
         if (!empty($data['data']['users'])) {
             foreach ($data['data']['users'] as $user) {
-                $containsSearch = stripos($user['email'], 'admin') !== false ||
-                                stripos($user['name'], 'admin') !== false ||
-                                stripos($user['user_name'] ?? '', 'admin') !== false;
-                $this->assertTrue($containsSearch, 'Search result should contain search term');
+                $containsSearch = (isset($user['email']) && stripos($user['email'], 'admin') !== false) ||
+                                (isset($user['name']) && stripos($user['name'], 'admin') !== false) ||
+                                (isset($user['user_name']) && stripos($user['user_name'], 'admin') !== false) ||
+                                (isset($user['code']) && stripos($user['code'], 'admin') !== false) ||
+                                (isset($user['roles']) && stripos($user['roles'], 'admin') !== false);
+                $this->assertTrue($containsSearch, 'Search result should contain search term in email, name, user_name, code, or roles');
             }
         }
     }

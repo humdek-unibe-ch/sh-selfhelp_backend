@@ -59,9 +59,9 @@ class AdminUserController extends AbstractController
                 fn() => $this->adminUserService->getUsers($page, $pageSize, $search, $sort, $sortDirection),
                 $userId,
                 LookupService::RESOURCE_TYPES_GROUP
-            );
+            );            
 
-            return $this->responseFormatter->formatSuccess($result);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/users_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
@@ -94,7 +94,7 @@ class AdminUserController extends AbstractController
             }
 
             $user = $this->adminUserService->getUserById($userId);
-            return $this->responseFormatter->formatSuccess($user);
+            return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
@@ -137,7 +137,7 @@ class AdminUserController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(
                 $user,
-                null,
+                'responses/admin/users/user_envelope',
                 Response::HTTP_CREATED
             );
         } catch (\Exception $e) {
@@ -175,7 +175,7 @@ class AdminUserController extends AbstractController
 
             $user = $this->adminUserService->updateUser($userId, $data);
 
-            return $this->responseFormatter->formatSuccess($user);
+            return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
@@ -246,7 +246,7 @@ class AdminUserController extends AbstractController
 
             $user = $this->adminUserService->toggleUserBlock($userId, $blocked);
 
-            return $this->responseFormatter->formatSuccess($user);
+            return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
