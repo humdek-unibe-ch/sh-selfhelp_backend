@@ -39,6 +39,13 @@ class AdminDataController extends AbstractController
         try {
             $userId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $result = $this->dataAccessSecurityService->filterData(
                 function() {
                     $tables = $this->dataTableService->getFormDataTables();

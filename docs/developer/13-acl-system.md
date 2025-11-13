@@ -29,8 +29,8 @@ These systems are **completely separate** and serve different purposes:
 - **ACL Bypass**: Admin users retrieving pages for management bypass ACL filtering
 - **Permission-Based**: Access controlled via role-based permissions through `DataAccessSecurityService`
 - **Implementation**: `AdminPageService::getAllPagesForAdmin()` returns all pages without ACL checks
-- **Filtering**: `DataAccessSecurityService::filterData()` applies permission-based filtering
-- **ACL Fields**: `DataAccessSecurityService::applyFilters()` sets ACL fields based on actual permissions
+- **Filtering**: `DataAccessSecurityService::filterData()` applies permission-based filtering and calculates crud permissions
+- **CRUD Field**: `DataAccessSecurityService::filterData()` sets a `crud` field (bitwise value) based on actual permissions
 - **Purpose**: Allows admins to see all pages for management while maintaining security through permissions
 
 **Frontend Page Retrieval** (Website):

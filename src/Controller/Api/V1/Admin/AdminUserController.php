@@ -48,6 +48,13 @@ class AdminUserController extends AbstractController
             $sortDirection = $request->query->get('sortDirection', 'asc');
             $userId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $result = $this->dataAccessSecurityService->filterData(
                 fn() => $this->adminUserService->getUsers($page, $pageSize, $search, $sort, $sortDirection),
                 $userId,

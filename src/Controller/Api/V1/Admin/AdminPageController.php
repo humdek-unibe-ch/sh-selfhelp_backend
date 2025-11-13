@@ -46,15 +46,22 @@ class AdminPageController extends AbstractController
      * @route /admin/pages/{language_id}
      * @method GET
      */
-    public function getPages(Request $request, ?int $language_id = null): JsonResponse
+    public function getPages(): JsonResponse
     {
         try {
             $userId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             $pages = $this->dataAccessSecurityService->filterData(
-                function() use ($language_id) {
+                function() {
                     // For admin pages, use AdminPageService without ACL filtering
-                    return $this->adminPageService->getAllPagesForAdmin($language_id);
+                    return $this->adminPageService->getAllPagesForAdmin();
                 },
                 $userId,
                 LookupService::RESOURCE_TYPES_PAGES
