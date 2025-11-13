@@ -71,7 +71,7 @@ This project follows these core principles:
 
 ## 🔧 Technology Stack
 
-- **Framework**: Symfony 7.2
+- **Framework**: Symfony 7.3
 - **PHP Version**: 8.3
 - **ORM**: Doctrine ORM 3.3
 - **Architecture**: PSR-4 compliant

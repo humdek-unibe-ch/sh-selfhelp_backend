@@ -1,4 +1,9 @@
 # v8.0.0 (Not released yet)
+
+### Framework Upgrade
+ - **Symfony 7.3 Upgrade**: Updated from Symfony 7.2.* to 7.3.* for latest features and security improvements
+ - **Dependency Updates**: Updated all Symfony components, Doctrine ORM, and related packages to compatible versions
+
 ### Major Changes
  - **Complete CMS Rewrite**: Migrated the entire CMS system to Symfony framework for better maintainability, performance, and scalability
  - **API System Overhaul**: Implemented comprehensive REST API with versioning (v1), JWT authentication, and refresh token functionality

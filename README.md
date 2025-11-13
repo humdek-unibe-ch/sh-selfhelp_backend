@@ -13,7 +13,7 @@ The application is built with a modular architecture where:
 
 ## Technical Stack
 
-- **Framework**: Symfony 7.2
+- **Framework**: Symfony 7.3
 - **PHP**: 8.3+
 - **Database**: MySQL 8.0+ with Doctrine ORM 3.3
 - **API**: RESTful API with JWT authentication
