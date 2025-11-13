@@ -67,7 +67,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: ValidationCode::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $validationCodes;
 
-    #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'users')]
+    #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'users', fetch: 'EAGER')]
     #[ORM\JoinTable(
         name: 'users_roles',
         joinColumns: [new ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')],

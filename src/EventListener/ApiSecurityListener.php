@@ -59,6 +59,17 @@ class ApiSecurityListener implements EventSubscriberInterface
         }
         
         try {
+            // Debug logging for specific URL
+            // keep this for debugging purposes - change the route name to the one you want to check
+            if ($path === '/cms-api/v1/admin/lookups') {
+                $this->logger->debug('DEBUG: Permission check for lookups endpoint', [
+                    'path' => $path,
+                    'method' => $request->getMethod(),
+                    'headers' => $request->headers->all(),
+                    'query_params' => $request->query->all()
+                ]);
+            }
+
             // Get the current route name
             $routeName = $request->attributes->get('_route');
             if (!$routeName) {
@@ -79,15 +90,9 @@ class ApiSecurityListener implements EventSubscriberInterface
             if (!$user) {
                 throw new AccessDeniedException('User not authenticated.');
             }
-            
+
             // Get the user's permissions using optimized cache service
             $userPermissions = $this->permissionService->getUserPermissions($user);
-            
-            $this->logger->debug('Checking permissions for route', [
-                'route' => $routeName,
-                'requiredPermissions' => $requiredPermissions,
-                'userPermissions' => $userPermissions
-            ]);
             
             // Check if the user has at least one of the required permissions
             $hasPermission = false;
