@@ -358,21 +358,19 @@ class DataAccessSecurityService
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getItem("user_has_admin_role", function () use ($userId) {
-                // Query to check if user has admin role
-                $conn = $this->entityManager->getConnection();
-                $sql = "
-                    SELECT COUNT(*) as count
-                    FROM users_roles ur
-                    INNER JOIN roles r ON ur.id_roles = r.id
-                    WHERE ur.id_users = :user_id AND r.name = 'admin'
-                ";
+                // Use Doctrine QueryBuilder to check if user has admin role
+                $qb = $this->entityManager->createQueryBuilder();
+                $count = $qb->select('COUNT(r.id)')
+                    ->from(User::class, 'u')
+                    ->innerJoin('u.roles', 'r')
+                    ->where('u.id = :userId')
+                    ->andWhere('r.name = :adminRole')
+                    ->setParameter('userId', $userId)
+                    ->setParameter('adminRole', 'admin')
+                    ->getQuery()
+                    ->getSingleScalarResult();
 
-                $stmt = $conn->prepare($sql);
-                $stmt->bindValue('user_id', $userId, \PDO::PARAM_INT);
-                $result = $stmt->executeQuery();
-                $row = $result->fetchAssociative();
-
-                return ($row['count'] ?? 0) > 0;
+                return (int) $count > 0;
             });
     }
 
