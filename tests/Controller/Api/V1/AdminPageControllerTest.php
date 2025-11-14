@@ -64,7 +64,7 @@ class AdminPageControllerTest extends BaseControllerTest
         // Validate response against JSON schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
             $data, // Validate the full response object
-            'responses/common/_acl_page_definition' // Schema for page list
+            'responses/common/_admin_page_definition' // Schema for admin page list
         );
         $this->assertEmpty($validationErrors, "Response for /cms-api/v1/admin/pages failed schema validation:\n" . implode("\n", $validationErrors));
     }

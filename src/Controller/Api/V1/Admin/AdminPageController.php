@@ -69,7 +69,7 @@ class AdminPageController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(
                 $pages,
-                'responses/common/_acl_page_definition',
+                'responses/common/_admin_page_definition',
                 Response::HTTP_OK // Explicitly pass the status code
             );
         } catch (\Throwable $e) {
