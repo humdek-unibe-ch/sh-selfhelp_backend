@@ -2,7 +2,10 @@
 
 namespace App\Repository;
 
+use App\Entity\Lookup;
+use App\Entity\Role;
 use App\Entity\RoleDataAccess;
+use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -182,9 +185,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'rda.createdAt',
                 'rda.updatedAt'
             ])
-            ->from('App\Entity\Role', 'r')
-            ->leftJoin('App\Entity\RoleDataAccess', 'rda', 'WITH', 'rda.role = r')
-            ->leftJoin('App\Entity\Lookup', 'rt', 'WITH', 'rt.id = rda.idResourceTypes AND rt.typeCode = :resourceTypes')
+            ->from(Role::class, 'r')
+            ->leftJoin(RoleDataAccess::class, 'rda', 'WITH', 'rda.role = r')
+            ->leftJoin(Lookup::class, 'rt', 'WITH', 'rt.id = rda.idResourceTypes AND rt.typeCode = :resourceTypes')
             ->setParameter('resourceTypes', 'resourceTypes')
             ->orderBy('r.name', 'ASC')
             ->addOrderBy('rda.idResourceTypes', 'ASC')
@@ -225,10 +228,10 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'rt.lookupValue as resource_type_name',
                 'rda.crudPermissions'
             ])
-            ->from('App\Entity\User', 'u')
+            ->from(User::class, 'u')
             ->innerJoin('u.roles', 'r')
-            ->leftJoin('App\Entity\RoleDataAccess', 'rda', 'WITH', 'rda.role = r')
-            ->leftJoin('App\Entity\Lookup', 'rt', 'WITH', 'rt.id = rda.idResourceTypes AND rt.typeCode = :resourceTypes')
+            ->leftJoin(RoleDataAccess::class, 'rda', 'WITH', 'rda.role = r')
+            ->leftJoin(Lookup::class, 'rt', 'WITH', 'rt.id = rda.idResourceTypes AND rt.typeCode = :resourceTypes')
             ->where('u.id = :userId')
             ->setParameter('userId', $userId)
             ->setParameter('resourceTypes', 'resourceTypes')
