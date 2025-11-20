@@ -1,8 +1,36 @@
 parameters:
-    level: 6
+    level: max
+
     paths:
         - bin/
         - config/
         - public/
         - src/
-        - tests/
+
+    excludePaths:
+        analyse:
+            - src/Controllers/*
+            - tests/*
+
+    # Dead code detection configuration
+    shipmonkDeadCode:
+        detect:
+            deadMethods: true
+            deadConstants: true
+            deadEnumCases: false
+        usageProviders:
+            symfony:
+                enabled: true
+                configDir: config/
+            doctrine:
+                enabled: true
+        usageExcluders:
+            tests:
+                enabled: true
+                devPaths: []
+
+    # Report unmatched ignored errors
+    reportUnmatchedIgnoredErrors: false
+
+    # Only ignore specific errors if needed
+    ignoreErrors:

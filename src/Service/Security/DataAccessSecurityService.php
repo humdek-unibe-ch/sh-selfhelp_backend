@@ -91,111 +91,7 @@ class DataAccessSecurityService
         return $hasPermission;
     }
 
-    /**
-     * Get user permissions for multiple resources in batch
-     * Returns array of resource IDs that the user can access
-     *
-     * @param int $userId User ID
-     * @param string $resourceType Resource type (group, data_table, pages)
-     * @param array|null $resourceIds Specific resource IDs to check, null for all accessible
-     * @return array Array of accessible resource IDs
-     */
-    public function getUserResourcePermissions(int $userId, string $resourceType, ?array $resourceIds = null): array
-    {
-        // Admin role has access to all resources
-        if ($this->userHasAdminRole($userId)) {
-            return $resourceIds ?? []; // Return requested IDs or empty array
-        }
 
-        // Get resource type ID
-        $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, $resourceType);
-
-        if (!$resourceTypeId) {
-            $this->auditLog($userId, $resourceType, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, 0, 'Invalid resource type');
-            return [];
-        }
-
-        // Get permissions from repository
-        try {
-            $permissions = $this->roleDataAccessRepository->getUserPermissionsForResources($userId, $resourceTypeId, $resourceIds);
-
-            $this->auditLog($userId, $resourceType, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, 0, 'Batch permissions retrieved');
-
-            return array_keys($permissions);
-        } catch (\Exception $e) {
-            error_log('Failed to get batch permissions: ' . $e->getMessage());
-
-            $this->auditLog($userId, $resourceType, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, 0, 'Batch permissions query failed');
-
-            return [];
-        }
-    }
-
-    /**
-     * Check permissions for multiple resources in batch
-     * Returns array mapping resource IDs to boolean permission results
-     *
-     * @param int $userId User ID
-     * @param string $resourceType Resource type
-     * @param array $resourceIds Resource IDs to check
-     * @param int $permission Required permission bit flag
-     * @return array Array mapping resource IDs to permission results
-     */
-    public function hasPermissionBatch(int $userId, string $resourceType, array $resourceIds, int $permission): array
-    {
-        // Admin role has all permissions
-        if ($this->userHasAdminRole($userId)) {
-            $results = [];
-            foreach ($resourceIds as $resourceId) {
-                $results[$resourceId] = true;
-            }
-            return $results;
-        }
-
-        // Get resource type ID
-        $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, $resourceType);
-
-        if (!$resourceTypeId) {
-            $results = [];
-            foreach ($resourceIds as $resourceId) {
-                $results[$resourceId] = false;
-            }
-            return $results;
-        }
-
-        // Get permissions from repository
-        try {
-            $permissions = $this->roleDataAccessRepository->getUserPermissionsForResources($userId, $resourceTypeId, $resourceIds);
-
-            $results = [];
-            foreach ($resourceIds as $resourceId) {
-                $hasPermission = isset($permissions[$resourceId]) && ($permissions[$resourceId] & $permission) === $permission;
-                $results[$resourceId] = $hasPermission;
-
-                // Audit each permission check
-                $this->auditLog(
-                    $userId,
-                    $resourceType,
-                    $resourceId,
-                    $this->getActionName($permission),
-                    $hasPermission ? LookupService::PERMISSION_RESULTS_GRANTED : LookupService::PERMISSION_RESULTS_DENIED,
-                    $permission,
-                    $hasPermission ? 'Batch permission granted' : 'Batch permission denied'
-                );
-            }
-
-            return $results;
-        } catch (\Exception $e) {
-            error_log('Failed to check batch permissions: ' . $e->getMessage());
-
-            // Return false for all on error
-            $results = [];
-            foreach ($resourceIds as $resourceId) {
-                $results[$resourceId] = false;
-            }
-            return $results;
-        }
-    }
 
 
     /**
@@ -332,17 +228,7 @@ class DataAccessSecurityService
         }
     }
 
-    public function invalidateResourceTypePermissions(int $resourceTypeId): void
-    {
-        // Clear all caches for a specific resource type
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PERMISSION, $resourceTypeId);
-    }
 
-    public function invalidateAllPermissions(): void
-    {
-        // Nuclear option - clear entire permissions category
-        $this->cache->withCategory(CacheService::CATEGORY_PERMISSIONS)->invalidateCategory();
-    }
 
     /**
      * Helper methods for audit logging

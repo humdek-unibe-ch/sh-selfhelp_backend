@@ -51,13 +51,5 @@ abstract class BaseService
     {
         throw new ServiceException($message, Response::HTTP_CONFLICT);
     }
-    
-    /**
-     * Check if a user is logged in
-     * This method should be overridden by child classes that have access to authentication
-     */
-    protected function isUserLoggedIn(): bool
-    {
-        return false;
-    }
+
 }

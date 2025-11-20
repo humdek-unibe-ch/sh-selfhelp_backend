@@ -25,13 +25,6 @@ class UserContextAwareService extends BaseService
         return $this->userContextService->getCurrentUser();
     }
 
-    /**
-     * Check if a user is logged in
-     */
-    public function isUserLoggedIn(): bool
-    {
-        return $this->userContextService->getCurrentUser() !== null;
-    }
 
     /**
      * Check if the current user has access to page
