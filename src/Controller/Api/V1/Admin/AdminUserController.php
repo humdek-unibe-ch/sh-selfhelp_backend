@@ -55,11 +55,9 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            // For group-based filtering, use SQL filtering with pagination
-            $result = $this->dataAccessSecurityService->filterData(
-                null, // No dataFetcher needed for SQL-based group filtering
+            // Use service-level filtering for users with permission checking
+            $result = $this->adminUserService->getFilteredUsers(
                 $userId,
-                LookupService::RESOURCE_TYPES_GROUP,
                 $page,
                 $pageSize,
                 $search,
@@ -168,20 +166,16 @@ class AdminUserController extends AbstractController
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
-            // Check if user has UPDATE permission for this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_UPDATE
-            )) {
-                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
             }
 
             $data = $this->validateRequest($request, 'requests/admin/update_user', $this->jsonSchemaValidationService);
 
-            $user = $this->adminUserService->updateUser($userId, $data);
+            $user = $this->adminUserService->updateUser($currentUserId, $userId, $data);
 
             return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
@@ -204,18 +198,14 @@ class AdminUserController extends AbstractController
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
-            // Check if user has DELETE permission for this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_DELETE
-            )) {
-                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
             }
 
-            $this->adminUserService->deleteUser($userId);
+            $this->adminUserService->deleteUser($currentUserId, $userId);
 
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {

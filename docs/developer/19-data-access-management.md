@@ -4,6 +4,8 @@
 
 The SelfHelp Symfony Backend implements a **Data Access Management (DAM)** system that provides **fine-grained, role-based data access control** with comprehensive auditing capabilities. This system complements the existing ACL system by providing customizable permissions at the data level rather than just page-level access.
 
+**Recent Changes:** The system has evolved to use **service-specific custom filtering** approaches where each admin service implements optimized filtering methods tailored to their specific data structures, replacing the previous generic filtering strategy for better performance and maintainability.
+
 ## 🏗️ System Architecture
 
 The DAM system consists of three interconnected components:
@@ -14,15 +16,15 @@ The DAM system consists of three interconnected components:
 
 ```mermaid
 graph TD
-    A[API Request] --> B[DataAccessSecurityService.filterData()]
+    A[API Request] --> B[Service.getFiltered*()]
     B --> C[Check Role Permissions]
     C --> D{Cache Hit?}
     D -->|Yes| E[Return Cached Permissions]
-    D -->|No| F[Query role_data_access Table]
+    D -->|No| F[Query role_data_access Table via Repository]
     F --> G[BIT_OR Aggregate Permissions]
     G --> H[Cache Result]
     H --> E
-    E --> I[Apply Data Filtering]
+    E --> I[Apply Custom Filtering Logic]
     I --> J[Audit Log Access]
     J --> K[Return Filtered Data]
 
@@ -229,111 +231,117 @@ class DataAccessAudit
 
 ## 🔧 Service Architecture
 
-### DataAccessSecurityService Hybrid Filtering Approach
+### Service-Specific Custom Filtering Approach
 
-The `DataAccessSecurityService` implements a **hybrid filtering strategy** that optimizes performance by using different filtering mechanisms based on resource types and data complexity.
+The system now implements **service-specific custom filtering** where each admin service (AdminUserService, AdminGroupService, AdminPageService, DataTableService) provides optimized filtering methods tailored to their specific data structures and performance requirements.
 
-#### Hybrid Filtering Strategy
+#### Custom Filtering Strategy
 
-The `filterData()` method routes to appropriate filtering strategies based on resource type:
+Each service implements its own `getFiltered*()` method with optimized filtering logic:
 
 ```php
-public function filterData(?callable $dataFetcher, int $userId, string $resourceType): array
-{
-    // Check admin role first - no caching needed for admin
-    $isAdmin = $this->userHasAdminRole($userId);
+// AdminUserService
+public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
 
-    // Route to appropriate filtering strategy based on resource type
-    return match ($resourceType) {
-        LookupService::RESOURCE_TYPES_PAGES => $this->filterPagesWithSql($userId, $isAdmin),
-        LookupService::RESOURCE_TYPES_DATA_TABLE => $this->filterDataTablesWithSql($userId, $isAdmin),
-        default => $this->filterWithPhpLogic($dataFetcher, $userId, $resourceType, $isAdmin)
-    };
-}
+// AdminGroupService
+public function getFilteredGroups(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+
+// AdminPageService
+public function getFilteredPages(int $userId, array $filters = []): array
+
+// DataTableService
+public function getFilteredDataTables(int $userId, array $filters = []): array
 ```
 
-#### SQL-Based Filtering (Pages & Data Tables)
+#### Repository-Based SQL Filtering
 
 **When Used:**
-- `RESOURCE_TYPES_PAGES` - Page management operations
-- `RESOURCE_TYPES_DATA_TABLE` - Data table access operations
+- All resource types now use optimized repository methods
+- Direct SQL queries with permission joins for maximum performance
 
-**Why SQL-Based:**
-- Direct permission resources with simple relationships
-- More efficient than fetching all records and filtering in PHP
-- Reduces memory usage and improves performance for large datasets
-- Leverages database joins for optimal query execution
+**Why Repository-Based:**
+- Each service uses specialized repository methods optimized for its data structure
+- Eliminates the overhead of generic filtering logic
+- Better performance through targeted SQL queries
+- Cleaner separation of concerns between services and security
 
-**Implementation:**
+**Implementation Pattern:**
 ```php
-private function filterPagesWithSql(int $userId, bool $isAdmin): array
+// In AdminUserService
+private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
 {
-    if ($isAdmin) {
-        // Admin gets all pages with full permissions
-        $pages = $this->roleDataAccessRepository->getAllPagesWithFullPermissions();
+    $resourceTypeId = $this->lookupService->getLookupIdByCode(
+        LookupService::RESOURCE_TYPES,
+        LookupService::RESOURCE_TYPES_GROUP
+    );
+
+    if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+        $users = $this->roleDataAccessRepository->getAllUsersWithFullPermissions($page, $pageSize, $search, $sort, $sortDirection);
     } else {
-        // Regular users get filtered pages based on permissions
-        $pages = $this->roleDataAccessRepository->getAccessiblePagesForUser($userId, $resourceTypeId);
+        $users = $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection);
     }
 
-    $this->auditLog($userId, LookupService::RESOURCE_TYPES_PAGES, 0, LookupService::AUDIT_ACTIONS_FILTER,
-        LookupService::PERMISSION_RESULTS_GRANTED, null, 'SQL-based page filtering applied');
-    return $pages;
+    return $users;
 }
 ```
 
 **How to Handle Further:**
-- Results already include `crud` field with unified permissions
-- No additional PHP filtering needed
-- Ready for direct API response formatting
-- Supports hierarchical page structures (parent/child relationships)
+- Each service implements custom logic for its specific data type
+- Repository methods return data with built-in permission filtering
+- Results include `crud` field with unified permissions
+- Ready for direct API response formatting with pagination support
 
-#### PHP-Based Filtering (Groups & Complex Relationships)
+#### Service-Specific Custom Logic
 
 **When Used:**
-- `RESOURCE_TYPES_GROUP` - User and group management
-- Any resource type not optimized for SQL filtering
-- Complex relationships requiring PHP logic
+- Each admin service implements its own filtering logic
+- Optimized for specific data structures and business requirements
+- Handles complex relationships and custom formatting
 
-**Why PHP-Based:**
-- Complex relationships (users belong to groups, nested permissions)
-- Dynamic data structures that vary by resource type
-- Need for flexible filtering logic and data transformation
-- Better suited for business logic that can't be expressed in SQL
+**Why Service-Specific:**
+- Better performance through targeted implementations
+- Cleaner code with business logic in appropriate services
+- Easier maintenance and testing
+- Each service can implement caching strategies optimized for its use case
 
-**Implementation:**
+**Implementation Pattern:**
 ```php
-private function filterWithPhpLogic(?callable $dataFetcher, int $userId, string $resourceType, bool $isAdmin): array
+// Each service implements its own optimized filtering
+public function getFilteredGroups(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
 {
-    if ($isAdmin) {
-        // Admin gets full access - requires dataFetcher for admin case
-        $data = $dataFetcher();
-        $this->addCrudFieldRecursively($data, 15); // Full permissions
-        return $data;
-    }
+    // Validate parameters
+    [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
 
-    // Get permissions with advanced caching
-    $permissions = $this->cache->withCategory(CacheService::CATEGORY_PERMISSIONS)
+    // Create cache key specific to this service
+    $cacheKey = $this->buildCacheKey('filtered_groups', $userId, $page, $pageSize, $search, $sort, $sortDirection);
+
+    // Use service-specific caching category
+    return $this->cache
+        ->withCategory(CacheService::CATEGORY_GROUPS)
         ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-        ->getItem("unified_permissions_{$resourceType}", function () use ($userId, $resourceTypeId) {
-            return $this->roleDataAccessRepository->getUserPermissionsForResourceType($userId, $resourceTypeId);
-        });
-
-    if (empty($permissions)) {
-        return []; // No access
-    }
-
-    // Apply PHP-based filtering logic
-    return $this->applyFilters($dataFetcher(), $permissions, $resourceType);
+        ->getList($cacheKey, fn() => $this->fetchFilteredGroupsFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection));
 }
 ```
 
+#### Key Changes from Previous Approach
+
+**Before (Generic Filtering):**
+- Single `DataAccessSecurityService.filterData()` method for all resource types
+- Generic PHP-based filtering logic
+- Higher memory usage for large datasets
+- Complex routing logic to determine filtering strategy
+
+**After (Custom Filtering):**
+- Service-specific `getFiltered*()` methods optimized per data type
+- Direct SQL queries in repositories for maximum performance
+- Reduced memory footprint through database-level filtering
+- Cleaner separation of concerns and easier maintenance
+
 **How to Handle Further:**
-- Results need additional processing by `applyFilters()` method
-- `crud` field is set based on actual user permissions for each item
-- Hierarchical data (with `children` arrays) gets recursive permission setting
-- Supports complex data structures and field mappings
-- Ready for frontend consumption with proper ACL indicators
+- Each service handles its own data formatting and pagination
+- Custom repository methods optimize queries for specific data types
+- Results include service-specific metadata and formatting
+- Supports advanced features like search, sorting, and filtering
 
 #### Permission Field Mapping Strategy
 
@@ -373,31 +381,25 @@ class DataAccessSecurityService
     public const PERMISSION_DELETE = 8;
 
     /**
-     * Filter data for READ operations with hybrid strategy
-     */
-    public function filterData(?callable $dataFetcher, int $userId, string $resourceType): array
-    {
-        // Admin override check
-        if ($this->userHasAdminRole($userId)) {
-            return $dataFetcher(); // Full access
-        }
-
-        // Route to appropriate filtering strategy based on resource type
-        return match ($resourceType) {
-            LookupService::RESOURCE_TYPES_PAGES => $this->filterPagesWithSql($userId, $isAdmin),
-            LookupService::RESOURCE_TYPES_DATA_TABLE => $this->filterDataTablesWithSql($userId, $isAdmin),
-            default => $this->filterWithPhpLogic($dataFetcher, $userId, $resourceType, $isAdmin)
-        };
-    }
-
-    /**
      * Check permissions for CREATE/UPDATE/DELETE operations
+     * This is the primary method for permission checking
      */
     public function hasPermission(int $userId, string $resourceType, int $resourceId, int $requiredPermission): bool
     {
         // Admin override
         if ($this->userHasAdminRole($userId)) {
+            $this->auditLog($userId, $resourceType, $resourceId, $this->getActionName($requiredPermission),
+                LookupService::PERMISSION_RESULTS_GRANTED, $requiredPermission, 'Admin role override');
             return true;
+        }
+
+        // Get resource type ID
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, $resourceType);
+
+        if (!$resourceTypeId) {
+            $this->auditLog($userId, $resourceType, $resourceId, $this->getActionName($requiredPermission),
+                LookupService::PERMISSION_RESULTS_DENIED, $requiredPermission, 'Invalid resource type');
+            return false;
         }
 
         // Get specific resource permissions
@@ -408,7 +410,8 @@ class DataAccessSecurityService
 
         // Audit the check
         $this->auditLog($userId, $resourceType, $resourceId, $this->getActionName($requiredPermission),
-            $hasPermission ? 'granted' : 'denied', $requiredPermission);
+            $hasPermission ? LookupService::PERMISSION_RESULTS_GRANTED : LookupService::PERMISSION_RESULTS_DENIED,
+            $requiredPermission, $hasPermission ? 'Permission granted' : 'Insufficient permissions');
 
         return $hasPermission;
     }
@@ -699,26 +702,35 @@ private function auditLog(?int $userId, string $resourceType, int $resourceId, s
 <?php
 class AdminUserService extends BaseService
 {
-    public function getUsersForAdmin(int $adminUserId): array
+    /**
+     * Get filtered users with permission-based access control
+     * Uses optimized repository methods for better performance
+     */
+    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
-        // Check if admin has permission to view users
-        if (!$this->dataAccessSecurityService->hasPermission(
-            $adminUserId,
-            LookupService::RESOURCE_TYPES_GROUP,
-            0, // Resource ID 0 means "all users in this resource type"
-            DataAccessSecurityService::PERMISSION_READ
-        )) {
-            throw new AccessDeniedException('Insufficient permissions to view users');
-        }
+        // Validate pagination parameters
+        [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
 
-        // Get all users (this would normally be filtered by permissions)
-        $users = $this->userRepository->findAll();
+        // Create cache key based on user and parameters
+        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection);
 
-        // Apply data filtering based on permissions
-        return $this->dataAccessSecurityService->filterData(
-            fn() => $users,
-            $adminUserId,
-            LookupService::RESOURCE_TYPES_GROUP
+        // Use optimized caching with user scope
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList($cacheKey, fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection));
+    }
+
+    /**
+     * Check if user can access a specific user for CRUD operations
+     */
+    public function canAccessUser(int $userId, int $targetUserId, int $permission): bool
+    {
+        return $this->dataAccessSecurityService->hasPermission(
+            $userId,
+            LookupService::RESOURCE_TYPES_GROUP, // Users are accessed via group permissions
+            $targetUserId,
+            $permission
         );
     }
 
@@ -747,10 +759,22 @@ class AdminUserService extends BaseService
 <?php
 class AdminUserController extends AbstractController
 {
-    public function listUsers(int $adminUserId): JsonResponse
+    public function listUsers(Request $request): JsonResponse
     {
         try {
-            $users = $this->adminUserService->getUsersForAdmin($adminUserId);
+            $adminUserId = $this->userContextService->getCurrentUser()->getId();
+
+            // Extract pagination and filtering parameters
+            $page = (int) $request->query->get('page', 1);
+            $pageSize = (int) $request->query->get('pageSize', 20);
+            $search = $request->query->get('search');
+            $sort = $request->query->get('sort');
+            $sortDirection = $request->query->get('sortDirection', 'asc');
+
+            // Use the new filtered method with optimized performance
+            $users = $this->adminUserService->getFilteredUsers(
+                $adminUserId, $page, $pageSize, $search, $sort, $sortDirection
+            );
 
             return $this->responseFormatter->formatSuccess(
                 $users,
@@ -840,29 +864,26 @@ class DataAccessSecurityServiceTest extends KernelTestCase
         ));
     }
 
-    public function testDataFiltering(): void
+    public function testCustomFiltering(): void
     {
         $userId = 2;
-        $resourceType = 'data_table';
 
-        // Create test data
-        $data = [
-            ['id' => 1, 'table_id' => 10, 'name' => 'Table 1'],
-            ['id' => 2, 'table_id' => 20, 'name' => 'Table 2'],
-            ['id' => 3, 'table_id' => 30, 'name' => 'Table 3']
-        ];
+        // Create test users with different access levels
+        $user1 = $this->createTestUser('user1@test.com');
+        $user2 = $this->createTestUser('user2@test.com');
+        $user3 = $this->createTestUser('user3@test.com');
 
-        // User only has access to table_id 10 and 30
+        // User only has access to user1 and user3
         $roleDataAccess1 = new RoleDataAccess();
         $roleDataAccess1->setIdRoles(2);
-        $roleDataAccess1->setIdResourceTypes(2); // Data table resource type
-        $roleDataAccess1->setResourceId(10);
+        $roleDataAccess1->setIdResourceTypes(1); // Group resource type
+        $roleDataAccess1->setResourceId($user1->getId());
         $roleDataAccess1->setCrudPermissions(DataAccessSecurityService::PERMISSION_READ);
 
         $roleDataAccess2 = new RoleDataAccess();
         $roleDataAccess2->setIdRoles(2);
-        $roleDataAccess2->setIdResourceTypes(2);
-        $roleDataAccess2->setResourceId(30);
+        $roleDataAccess2->setIdResourceTypes(1);
+        $roleDataAccess2->setResourceId($user3->getId());
         $roleDataAccess2->setCrudPermissions(DataAccessSecurityService::PERMISSION_READ);
 
         $this->entityManager->persist($roleDataAccess1);
@@ -871,17 +892,15 @@ class DataAccessSecurityServiceTest extends KernelTestCase
 
         $this->addUserToRole($userId, 2);
 
-        // Filter data
-        $filteredData = $this->securityService->filterData(
-            fn() => $data,
-            $userId,
-            $resourceType
-        );
+        // Use the new service-specific filtering method
+        $filteredUsers = $this->adminUserService->getFilteredUsers($userId);
 
-        // Should only return 2 items (table_id 10 and 30)
-        $this->assertCount(2, $filteredData);
-        $this->assertEquals(10, $filteredData[0]['table_id']);
-        $this->assertEquals(30, $filteredData[1]['table_id']);
+        // Should only return 2 users (user1 and user3)
+        $this->assertCount(2, $filteredUsers['users']);
+        $userIds = array_column($filteredUsers['users'], 'id');
+        $this->assertContains($user1->getId(), $userIds);
+        $this->assertContains($user3->getId(), $userIds);
+        $this->assertNotContains($user2->getId(), $userIds);
     }
 }
 ```

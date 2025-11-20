@@ -59,11 +59,7 @@ class AdminPageController extends AbstractController
             }
 
             // Use SQL-based filtering for pages (no dataFetcher needed)
-            $pages = $this->dataAccessSecurityService->filterData(
-                null, // No dataFetcher needed for SQL filtering
-                $userId,
-                LookupService::RESOURCE_TYPES_PAGES
-            );
+            $pages = $this->adminPageService->getFilteredPages($userId);
 
             return $this->responseFormatter->formatSuccess(
                 $pages,

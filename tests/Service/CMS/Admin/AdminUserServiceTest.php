@@ -141,7 +141,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertSame($userData['blocked'], $result['blocked']);
 
         // Cleanup
-        $this->adminUserService->deleteUser($result['id']);
+        $this->adminUserService->deleteUser(1, 1, $result['id']);
     }
 
     /**
@@ -185,7 +185,7 @@ class AdminUserServiceTest extends KernelTestCase
             $this->adminUserService->createUser($userData);
         } finally {
             // Cleanup
-            $this->adminUserService->deleteUser($userId);
+            $this->adminUserService->deleteUser(1, $userId);
         }
     }
 
@@ -218,7 +218,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertIsArray($result['roles']);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -255,7 +255,7 @@ class AdminUserServiceTest extends KernelTestCase
             'blocked' => true
         ];
 
-        $result = $this->adminUserService->updateUser($userId, $updateData);
+        $result = $this->adminUserService->updateUser(1, $userId, $updateData);
 
         $this->assertIsArray($result);
         $this->assertSame($userId, $result['id']);
@@ -264,7 +264,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertSame($userData['email'], $result['email']); // Email should remain unchanged
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -276,7 +276,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->expectExceptionMessage('User not found');
         $this->expectExceptionCode(Response::HTTP_NOT_FOUND);
 
-        $this->adminUserService->updateUser(999999, ['name' => 'Test']);
+        $this->adminUserService->updateUser(1, 999999, ['name' => 'Test']);
     }
 
     /**
@@ -304,7 +304,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertFalse($result['blocked']);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -323,7 +323,7 @@ class AdminUserServiceTest extends KernelTestCase
         $userId = $createdUser['id'];
 
         // Delete the user
-        $result = $this->adminUserService->deleteUser($userId);
+        $result = $this->adminUserService->deleteUser(1, $userId);
         $this->assertTrue($result);
 
         // Verify user is deleted
@@ -341,7 +341,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->expectExceptionMessage('User not found');
         $this->expectExceptionCode(Response::HTTP_NOT_FOUND);
 
-        $this->adminUserService->deleteUser(999999);
+        $this->adminUserService->deleteUser(1, 999999);
     }
 
     /**
@@ -365,7 +365,7 @@ class AdminUserServiceTest extends KernelTestCase
             $this->expectExceptionMessage('Cannot delete system users');
             $this->expectExceptionCode(Response::HTTP_FORBIDDEN);
 
-            $this->adminUserService->deleteUser($adminUser['id']);
+            $this->adminUserService->deleteUser(1, $adminUser['id']);
         } else {
             $this->markTestSkipped('No admin user found to test system user deletion protection');
         }
@@ -390,7 +390,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertIsArray($result);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -412,7 +412,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertIsArray($result);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -479,7 +479,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertArrayHasKey('validation_url', $result);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -501,7 +501,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertTrue($result);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 
     /**
@@ -524,6 +524,6 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertArrayHasKey('impersonation_token', $result);
 
         // Cleanup
-        $this->adminUserService->deleteUser($userId);
+        $this->adminUserService->deleteUser(1, $userId);
     }
 } 

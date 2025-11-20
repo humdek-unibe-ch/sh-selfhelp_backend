@@ -11,6 +11,7 @@ use App\Exception\ServiceException;
 use App\Repository\PageRepository;
 use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageTypeRepository;
+use App\Repository\RoleDataAccessRepository;
 use App\Repository\SectionRepository;
 use App\Service\ACL\ACLService;
 use App\Service\Auth\UserContextService;
@@ -25,6 +26,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\HttpFoundation\Response;
@@ -63,6 +65,8 @@ class AdminPageService extends BaseService
         private readonly UserContextService $userContextService,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly CacheService $cache,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly RoleDataAccessRepository $roleDataAccessRepository,
     ) {
     }
 
@@ -673,5 +677,85 @@ class AdminPageService extends BaseService
                 $this->sortPagesRecursively($page['children']);
             }
         }
+    }
+
+    /**
+     * Get filtered pages with permission-based access control
+     * Includes proper caching with user scope
+     * Uses RoleDataAccessRepository optimized methods
+     */
+    public function getFilteredPages(int $userId, array $filters = []): array
+    {
+        // Create cache key based on user and filters
+        $cacheKey = "filtered_pages_{$userId}_" . md5(serialize($filters));
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList(
+                $cacheKey,
+                fn() => $this->fetchFilteredPagesFromRepository($userId, $filters)
+            );
+    }
+
+    /**
+     * Check if user can access a specific page for a given permission
+     */
+    public function canAccessPage(int $userId, int $pageId, int $permission): bool
+    {
+        return $this->dataAccessSecurityService->hasPermission(
+            $userId,
+            LookupService::RESOURCE_TYPES_PAGES,
+            $pageId,
+            $permission
+        );
+    }
+
+    /**
+     * Fetch filtered pages from repository with permission checking
+     * Uses RoleDataAccessRepository optimized SQL queries
+     */
+    private function fetchFilteredPagesFromRepository(int $userId, array $filters): array
+    {
+        // Get resource type ID
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_PAGES
+        );
+
+        if (!$resourceTypeId) {
+            return [];
+        }
+
+        // Check if user is admin - use repository method for all pages
+        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            $pages = $this->roleDataAccessRepository->getAllPagesWithFullPermissions();
+        } else {
+            // Use repository method for accessible pages
+            $pages = $this->roleDataAccessRepository->getAccessiblePagesForUser($userId, $resourceTypeId);
+        }
+
+        // Apply additional filters if provided (keyword, type)
+        if (!empty($filters)) {
+            $pages = array_filter($pages, function ($page) use ($filters) {
+                // Filter by keyword
+                if (isset($filters['keyword']) && $filters['keyword']) {
+                    if (stripos($page['keyword'], $filters['keyword']) === false) {
+                        return false;
+                    }
+                }
+
+                // Filter by type
+                if (isset($filters['type']) && $filters['type']) {
+                    if ($page['id_type'] != $filters['type']) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
+
+        return array_values($pages);
     }
 }

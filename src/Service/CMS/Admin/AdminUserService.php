@@ -8,6 +8,7 @@ use App\Entity\Role;
 use App\Entity\ValidationCode;
 use App\Entity\UsersGroup;
 use App\Entity\Language;
+use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
@@ -15,6 +16,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Auth\UserContextService;
 use App\Service\Auth\UserValidationService;
+use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -40,30 +42,80 @@ class AdminUserService extends BaseService
         private readonly TransactionService $transactionService,
         private readonly UserValidationService $userValidationService,
         private readonly CacheService $cache,
-        private readonly EntityManagerInterface $entityManager
+        private readonly EntityManagerInterface $entityManager,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly RoleDataAccessRepository $roleDataAccessRepository
     ) {
     }
 
+
     /**
-     * Get users with pagination, search, and sorting
+     * Get filtered users with permission-based access control
+     * Includes proper caching with user scope
+     * Uses RoleDataAccessRepository optimized methods
      */
-    public function getUsers(
-        int $page = 1,
-        int $pageSize = 20,
-        ?string $search = null,
-        ?string $sort = null,
-        ?string $sortDirection = 'asc'
-    ): array {
+    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    {
         [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
 
-        $cacheKey = $this->buildCacheKey('users_list', $page, $pageSize, $search, $sort, $sortDirection);
+        // Create cache key based on user and parameters
+        $cacheKey = $this->buildCacheKey('filtered_users', $userId, $page, $pageSize, $search, $sort, $sortDirection);
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList(
                 $cacheKey,
-                fn() => $this->fetchUsersFromDatabase($page, $pageSize, $search, $sort, $sortDirection)
+                fn() => $this->fetchFilteredUsersFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection)
             );
+    }
+
+    /**
+     * Check if user can access a specific user for a given permission
+     */
+    public function canAccessUser(int $userId, int $targetUserId, int $permission): bool
+    {
+        return $this->dataAccessSecurityService->hasPermission(
+            $userId,
+            LookupService::RESOURCE_TYPES_GROUP, // Users are accessed via group permissions
+            $targetUserId,
+            $permission
+        );
+    }
+
+    /**
+     * Fetch filtered users from repository with permission checking
+     * Uses RoleDataAccessRepository optimized SQL queries with pagination
+     */
+    private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
+    {
+        // Get resource type ID for groups (users are filtered via group access)
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_GROUP
+        );
+
+        if (!$resourceTypeId) {
+            return [
+                'users' => [],
+                'pagination' => [
+                    'page' => $page,
+                    'pageSize' => $pageSize,
+                    'totalCount' => 0,
+                    'totalPages' => 0,
+                    'hasNext' => false,
+                    'hasPrevious' => false
+                ]
+            ];
+        }
+
+        // Check if user is admin - use repository method for all users
+        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            return $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection);
+        } else {
+            // Use repository method for accessible users (via group permissions)
+            return $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection);
+        }
     }
 
     /**
@@ -130,8 +182,13 @@ class AdminUserService extends BaseService
     /**
      * Update existing user
      */
-    public function updateUser(int $userId, array $userData): array
+    public function updateUser(int $currentUserId, int $userId, array $userData): array
     {
+        // Check permission before any operations
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+            throw new ServiceException('Insufficient permissions to update user', Response::HTTP_FORBIDDEN);
+        }
+
         return $this->executeInTransaction(function () use ($userId, $userData) {
             $user = $this->findUserOrThrow($userId);
             $this->validateUserData($userData, false, $user);
@@ -173,8 +230,13 @@ class AdminUserService extends BaseService
     /**
      * Delete user
      */
-    public function deleteUser(int $userId): bool
+    public function deleteUser(int $currentUserId, int $userId): bool
     {
+        // Check permission before any operations
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_DELETE)) {
+            throw new ServiceException('Insufficient permissions to delete user', Response::HTTP_FORBIDDEN);
+        }
+
         return $this->executeInTransaction(function () use ($userId) {
             $user = $this->findUserOrThrow($userId);
 
@@ -487,98 +549,6 @@ class AdminUserService extends BaseService
         return $user;
     }
 
-    /**
-     * Fetch users from database with pagination and filtering
-     */
-    private function fetchUsersFromDatabase(int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
-    {
-        $qb = $this->createUserQueryBuilder();
-
-        // Apply search filter
-        if ($search) {
-            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search OR vc.code LIKE :search OR ur.name LIKE :search)')
-                ->setParameter('search', '%' . $search . '%');
-        }
-
-        // Apply sorting
-        $this->applySorting($qb, $sort, $sortDirection);
-
-        // Get total count
-        $totalCount = $this->getTotalUserCount($search);
-
-        // Apply pagination
-        $offset = ($page - 1) * $pageSize;
-        $qb->setFirstResult($offset)->setMaxResults($pageSize);
-
-        $users = $qb->getQuery()->getResult();
-
-        return [
-            'users' => array_map([$this, 'formatUserForList'], $users),
-            'pagination' => $this->buildPaginationInfo($page, $pageSize, $totalCount)
-        ];
-    }
-
-    /**
-     * Create optimized query builder for users
-     */
-    private function createUserQueryBuilder(): QueryBuilder
-    {
-        return $this->entityManager->createQueryBuilder()
-            ->select('u')
-            ->from(User::class, 'u')
-            ->leftJoin('u.usersGroups', 'ug')
-            ->leftJoin('u.roles', 'ur')
-            ->leftJoin('u.userType', 'ut')
-            ->leftJoin('ug.group', 'g')
-            ->leftJoin('u.userActivities', 'ua')
-            ->leftJoin('u.validationCodes', 'vc')
-            ->leftJoin('u.status', 'us')
-            ->where('u.intern = :intern AND u.id_status > 0')
-            ->setParameter('intern', false)
-            ->addSelect('ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us');
-    }
-
-    /**
-     * Apply sorting to query builder
-     */
-    private function applySorting(QueryBuilder $qb, ?string $sort, string $sortDirection): void
-    {
-        if ($sort && in_array($sort, self::VALID_SORT_FIELDS)) {
-            switch ($sort) {
-                case 'user_type':
-                    $qb->orderBy('ut.lookupValue', $sortDirection);
-                    break;
-                case 'last_login':
-                    $qb->orderBy('u.last_login', $sortDirection);
-                    break;
-                default:
-                    $qb->orderBy('u.' . $sort, $sortDirection);
-                    break;
-            }
-        } else {
-            $qb->orderBy('u.email', 'asc');
-        }
-    }
-
-    /**
-     * Get total user count for pagination
-     */
-    private function getTotalUserCount(?string $search): int
-    {
-        $countQb = $this->entityManager->createQueryBuilder()
-            ->select('COUNT(DISTINCT u.id)')
-            ->from(User::class, 'u')
-            ->leftJoin('u.validationCodes', 'vc')
-            ->where('u.intern = :intern AND u.id_status > 0')
-            ->setParameter('intern', false);
-
-        if ($search) {
-            $countQb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search OR vc.code LIKE :search)')
-                ->setParameter('search', '%' . $search . '%');
-        }
-
-        return (int) $countQb->getQuery()->getSingleScalarResult();
-    }
 
     /**
      * Build pagination information

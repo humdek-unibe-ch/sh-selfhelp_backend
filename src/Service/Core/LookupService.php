@@ -140,7 +140,7 @@ final class LookupService
 
     // resourceTypes
     public const RESOURCE_TYPES = 'resourceTypes';
-    public const RESOURCE_TYPES_GROUP = 'group';
+    public const RESOURCE_TYPES_GROUP = 'group';    
     public const RESOURCE_TYPES_DATA_TABLE = 'data_table';
     public const RESOURCE_TYPES_PAGES = 'pages';
 

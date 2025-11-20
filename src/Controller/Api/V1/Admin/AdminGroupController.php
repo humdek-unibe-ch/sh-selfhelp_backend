@@ -3,9 +3,12 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminGroupService;
 use App\Service\Core\ApiResponseFormatter;
+use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -24,18 +27,15 @@ class AdminGroupController extends AbstractController
     public function __construct(
         private readonly AdminGroupService $adminGroupService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly UserContextService $userContextService
     ) {
     }
 
     /**
      * Get groups with pagination, search, and sorting
      * 
-     * @param page: which page of results (default: 1)
-     * @param pageSize: how many groups per page (default: 20, max: 100)
-     * @param search: search term for name or description
-     * @param sort: sort field (name, description, requires_2fa)
-     * @param sortDirection: asc or desc (default: asc)
      */
     #[Route('/cms-api/v1/admin/groups', name: 'admin_groups_list', methods: ['GET'])]
     public function getGroups(Request $request): JsonResponse
@@ -46,8 +46,24 @@ class AdminGroupController extends AbstractController
             $search = $request->query->get('search');
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
+            $userId = $this->userContextService->getCurrentUser()?->getId();
 
-            $result = $this->adminGroupService->getGroups($page, $pageSize, $search, $sort, $sortDirection);
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            // Use service-level filtering for groups with permission checking
+            $result = $this->adminGroupService->getFilteredGroups(
+                $userId,
+                $page,
+                $pageSize,
+                $search,
+                $sort,
+                $sortDirection
+            );
 
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
@@ -113,8 +129,16 @@ class AdminGroupController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/update_group', $this->jsonSchemaValidationService);
-            
-            $group = $this->adminGroupService->updateGroup($groupId, $data);
+            $userId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $group = $this->adminGroupService->updateGroup($userId, $groupId, $data);
             // Group cache is automatically invalidated by the service
             
             return $this->responseFormatter->formatSuccess($group);
@@ -135,7 +159,16 @@ class AdminGroupController extends AbstractController
     public function deleteGroup(int $groupId): JsonResponse
     {
         try {
-            $this->adminGroupService->deleteGroup($groupId);
+            $userId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($userId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            $this->adminGroupService->deleteGroup($userId, $groupId);
             
             // Group cache is automatically invalidated by the service
             

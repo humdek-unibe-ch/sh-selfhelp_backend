@@ -9,12 +9,14 @@ use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Common\StyleNames;
 use App\Repository\DataTableRepository;
+use App\Repository\RoleDataAccessRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\ACL\ACLService;
 use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Security\DataAccessSecurityService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -34,7 +36,10 @@ class DataTableService extends BaseService
         private readonly UserContextService $userContextService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly RoleDataAccessRepository $roleDataAccessRepository,
+        private readonly LookupService $lookupService
     ) {
     }
 
@@ -397,5 +402,82 @@ class DataTableService extends BaseService
             $result[] = $col->getName();
         }
         return $result;
+    }
+
+    /**
+     * Get filtered data tables with permission-based access control
+     * Includes proper caching with user scope
+     * Uses RoleDataAccessRepository optimized methods
+     */
+    public function getFilteredDataTables(int $userId, array $filters = []): array
+    {
+        // Create cache key based on user and filters
+        $cacheKey = "filtered_data_tables_{$userId}_" . md5(serialize($filters));
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList(
+                $cacheKey,
+                fn() => $this->fetchFilteredDataTablesFromRepository($userId, $filters)
+            );
+    }
+
+    /**
+     * Check if user can access a specific data table for a given permission
+     */
+    public function canAccessDataTable(int $userId, int $dataTableId, int $permission): bool
+    {
+        return $this->dataAccessSecurityService->hasPermission(
+            $userId,
+            LookupService::RESOURCE_TYPES_DATA_TABLE,
+            $dataTableId,
+            $permission
+        );
+    }
+
+    /**
+     * Fetch filtered data tables from repository with permission checking
+     * Uses RoleDataAccessRepository optimized SQL queries
+     */
+    private function fetchFilteredDataTablesFromRepository(int $userId, array $filters): array
+    {
+        // Get resource type ID
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_DATA_TABLE
+        );
+
+        if (!$resourceTypeId) {
+            return [];
+        }
+
+        // Check if user is admin - use repository method for all data tables
+        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            $dataTables = $this->roleDataAccessRepository->getAllDataTablesWithFullPermissions();
+        } else {
+            // Use repository method for accessible data tables
+            $dataTables = $this->roleDataAccessRepository->getAccessibleDataTablesForUser($userId, $resourceTypeId);
+        }
+
+        // Apply additional filters if provided (name)
+        if (!empty($filters) && isset($filters['name']) && $filters['name']) {
+            $dataTables = array_filter($dataTables, function ($dataTable) use ($filters) {
+                return stripos($dataTable['name'], $filters['name']) !== false;
+            });
+        }
+
+        // Format the timestamp for consistency
+        $dataTables = array_map(function ($table) {
+            return [
+                'id' => $table['id'],
+                'name' => $table['name'],
+                'displayName' => $table['displayName'] ?? $table['display_name'] ?? null,
+                'created' => $table['created'] instanceof \DateTime ? $table['created']->format('Y-m-d H:i:s') : $table['created'],
+                'crud' => $table['crud']
+            ];
+        }, $dataTables);
+
+        return array_values($dataTables);
     }
 }

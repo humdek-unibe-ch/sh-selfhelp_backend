@@ -7,8 +7,8 @@ use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
-use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
+use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -32,7 +32,7 @@ class AdminDataController extends AbstractController
 
     /**
      * Get all data tables
-     * Filtered by table access permissions
+     * Filtered by table access permissions with caching
      */
     public function getDataTables(): JsonResponse
     {
@@ -46,12 +46,8 @@ class AdminDataController extends AbstractController
                 );
             }
 
-            // Use SQL-based filtering for dataTables (no dataFetcher needed)
-            $dataTables = $this->dataAccessSecurityService->filterData(
-                null, // No dataFetcher needed for SQL filtering
-                $userId,
-                LookupService::RESOURCE_TYPES_DATA_TABLE
-            );
+            // Use service-level filtering with caching
+            $dataTables = $this->dataTableService->getFilteredDataTables($userId);
 
             // Format the timestamp for each dataTable to match expected format
             $result = array_map(function ($table) {
@@ -59,7 +55,7 @@ class AdminDataController extends AbstractController
                     'id' => $table['id'],
                     'name' => $table['name'],
                     'displayName' => $table['displayName'],
-                    'created' => $table['created']?->format(DATE_ATOM),
+                    'created' => is_string($table['created']) ? $table['created'] : $table['created']?->format(DATE_ATOM),
                     'crud' => $table['crud']
                 ];
             }, $dataTables);

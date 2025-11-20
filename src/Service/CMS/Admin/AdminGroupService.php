@@ -5,12 +5,14 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Group;
 use App\Entity\AclGroup;
 use App\Entity\Page;
+use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Auth\UserContextService;
+use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -25,79 +27,81 @@ class AdminGroupService extends BaseService
         private readonly UserRepository $userRepository,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
-        private readonly EntityManagerInterface $entityManager
+        private readonly EntityManagerInterface $entityManager,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly RoleDataAccessRepository $roleDataAccessRepository,
+        private readonly LookupService $lookupService
     ) {
     }
 
-    /**
-     * Get groups with pagination, search, and sorting
-     */
-    public function getGroups(
-        int $page = 1,
-        int $pageSize = 20,
-        ?string $search = null,
-        ?string $sort = null,
-        ?string $sortDirection = 'asc'
-    ): array {
-        if ($page < 1)
-            $page = 1;
-        if ($pageSize < 1 || $pageSize > 100)
-            $pageSize = 20;
-        if (!in_array($sortDirection, ['asc', 'desc']))
-            $sortDirection = 'asc';
 
-        // Create cache key based on parameters
-        $cacheKey = "groups_list_{$page}_{$pageSize}_" . md5(($search ?? '') . ($sort ?? '') . $sortDirection);
+    /**
+     * Get filtered groups with permission-based access control
+     * Includes proper caching with user scope
+     * Uses RoleDataAccessRepository optimized methods
+     */
+    public function getFilteredGroups(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    {
+        if ($page < 1) $page = 1;
+        if ($pageSize < 1 || $pageSize > 100) $pageSize = 20;
+        if (!in_array($sortDirection, ['asc', 'desc'])) $sortDirection = 'asc';
+
+        // Create cache key based on user and parameters
+        $cacheKey = "filtered_groups_{$userId}_{$page}_{$pageSize}_" . md5(($search ?? '') . ($sort ?? '') . $sortDirection);
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_GROUPS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList(
                 $cacheKey,
-                fn() => $this->fetchGroupsFromDatabase($page, $pageSize, $search, $sort, $sortDirection)
+                fn() => $this->fetchFilteredGroupsFromRepository($userId, $page, $pageSize, $search, $sort, $sortDirection)
             );
     }
 
-
-    private function fetchGroupsFromDatabase(int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
+    /**
+     * Check if user can access a specific group for a given permission
+     */
+    public function canAccessGroup(int $userId, int $groupId, int $permission): bool
     {
-        $qb = $this->entityManager->getRepository(Group::class)
-        ->createQueryBuilder('g');
+        return $this->dataAccessSecurityService->hasPermission(
+            $userId,
+            LookupService::RESOURCE_TYPES_GROUP,
+            $groupId,
+            $permission
+        );
+    }
 
-        // Apply search filter
-        if ($search) {
-            $qb->andWhere('(g.name LIKE :search OR g.description LIKE :search)')
-                ->setParameter('search', '%' . $search . '%');
+    /**
+     * Fetch filtered groups from repository with permission checking
+     * Uses RoleDataAccessRepository optimized SQL queries with pagination
+     */
+    private function fetchFilteredGroupsFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
+    {
+        // Get resource type ID for groups
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(
+            LookupService::RESOURCE_TYPES,
+            LookupService::RESOURCE_TYPES_GROUP
+        );
+
+        if (!$resourceTypeId) {
+            return [
+                'groups' => [],
+                'pagination' => [
+                    'page' => $page,
+                    'pageSize' => $pageSize,
+                    'totalCount' => 0,
+                    'totalPages' => 0,
+                    'hasNext' => false,
+                    'hasPrevious' => false
+                ]
+            ];
         }
 
-        // Apply sorting
-        $allowedSortFields = ['name', 'description', 'requires_2fa'];
-        if ($sort && in_array($sort, $allowedSortFields)) {
-            $qb->orderBy('g.' . $sort, $sortDirection);
-        } else {
-            $qb->orderBy('g.name', 'asc');
-        }
+        // Check if user is admin
+        $isAdmin = $this->dataAccessSecurityService->userHasAdminRole($userId);
 
-        // Get total count for pagination
-        $countQb = clone $qb;
-        $totalCount = $countQb->select('COUNT(g.id)')->getQuery()->getSingleScalarResult();
-
-        // Apply pagination
-        $qb->setFirstResult(($page - 1) * $pageSize)
-            ->setMaxResults($pageSize);
-
-        $groups = $qb->getQuery()->getResult();
-
-        return [
-            'groups' => array_map([$this, 'formatGroupForList'], $groups),
-            'pagination' => [
-                'page' => $page,
-                'pageSize' => $pageSize,
-                'totalCount' => (int) $totalCount,
-                'totalPages' => (int) ceil($totalCount / $pageSize),
-                'hasNext' => $page < ceil($totalCount / $pageSize),
-                'hasPrevious' => $page > 1
-            ]
-        ];
+        // Use repository method for accessible groups (admin or filtered)
+        return $this->roleDataAccessRepository->getAccessibleGroupsForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection, $isAdmin);
     }
 
     /**
@@ -173,8 +177,13 @@ class AdminGroupService extends BaseService
     /**
      * Update existing group
      */
-    public function updateGroup(int $groupId, array $groupData): array
+    public function updateGroup(int $userId, int $groupId, array $groupData): array
     {
+        // Check permission before any operations
+        if (!$this->canAccessGroup($userId, $groupId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+            throw new ServiceException('Insufficient permissions to update group', Response::HTTP_FORBIDDEN);
+        }
+
         $this->entityManager->beginTransaction();
 
         try {
@@ -232,8 +241,13 @@ class AdminGroupService extends BaseService
     /**
      * Delete group
      */
-    public function deleteGroup(int $groupId): void
+    public function deleteGroup(int $userId, int $groupId): void
     {
+        // Check permission before any operations
+        if (!$this->canAccessGroup($userId, $groupId, DataAccessSecurityService::PERMISSION_DELETE)) {
+            throw new ServiceException('Insufficient permissions to delete group', Response::HTTP_FORBIDDEN);
+        }
+
         $this->entityManager->beginTransaction();
 
         try {
@@ -347,20 +361,6 @@ class AdminGroupService extends BaseService
         }
     }
 
-    /**
-     * Format group for list view
-     */
-    private function formatGroupForList(Group $group): array
-    {
-        return [
-            'id' => $group->getId(),
-            'name' => $group->getName(),
-            'description' => $group->getDescription(),
-            'id_group_types' => $group->getIdGroupTypes(),
-            'requires_2fa' => $group->isRequires2fa(),
-            'users_count' => $group->getUsersGroups()->count()
-        ];
-    }
 
     /**
      * Format group for detail view

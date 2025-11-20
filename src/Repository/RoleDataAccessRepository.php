@@ -10,6 +10,7 @@ use App\Entity\Role;
 use App\Entity\RoleDataAccess;
 use App\Entity\User;
 use App\Entity\UserActivity;
+use App\Entity\UsersGroup;
 use App\Entity\ValidationCode;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -695,6 +696,204 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'totalCount' => $totalCount,
                 'totalPages' => (int) ceil($totalCount / $pageSize)
             ]
+        ];
+    }
+
+    /**
+     * Get groups that a user can access based on their role permissions
+     * Returns groups with pagination and user count
+     *
+     * @param int $userId User ID performing the operation
+     * @param int $resourceTypeId Resource type ID for groups
+     * @param int $page Page number (1-based)
+     * @param int $pageSize Number of groups per page
+     * @param string|null $search Search term for name or description
+     * @param string|null $sort Sort field
+     * @param string $sortDirection Sort direction ('asc' or 'desc')
+     * @param bool $isAdmin Whether the user is an admin (has access to all groups)
+     * @return array Array of groups with pagination info
+     */
+    public function getAccessibleGroupsForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', bool $isAdmin = false): array
+    {
+        // Admin users get all groups
+        if ($isAdmin) {
+            $accessibleGroupIds = null; // Will query all groups below
+        } else {
+            // Get all groups that the user can access
+            $accessibleGroupIds = $this->createQueryBuilder('rda')
+                ->select('rda.resourceId')
+                ->innerJoin('rda.role', 'r')
+                ->innerJoin('r.users', 'u')
+                ->where('u.id = :userId')
+                ->andWhere('rda.idResourceTypes = :resourceTypeId')
+                ->andWhere('rda.crudPermissions > 0')
+                ->setParameter('userId', $userId)
+                ->setParameter('resourceTypeId', $resourceTypeId)
+                ->getQuery()
+                ->getSingleColumnResult();
+
+            if (empty($accessibleGroupIds)) {
+                return [
+                    'groups' => [],
+                    'pagination' => $this->createPaginationInfo($page, $pageSize, 0)
+                ];
+            }
+        }
+
+        // Get groups with their related data
+        $qb = $this->getEntityManager()->createQueryBuilder()
+            ->select('g')
+            ->from(Group::class, 'g')
+            ->leftJoin('g.usersGroups', 'ug')
+            ->leftJoin('ug.user', 'u')
+            ->groupBy('g.id');
+
+        // Apply group ID filter only for non-admin users
+        if ($accessibleGroupIds !== null) {
+            $qb->where('g.id IN (:groupIds)')
+                ->setParameter('groupIds', $accessibleGroupIds);
+        }
+
+        // Add user count subquery
+        $userCountSubQuery = $this->getEntityManager()->createQueryBuilder()
+            ->select('COUNT(ug2.user)')
+            ->from(UsersGroup::class, 'ug2')
+            ->where('ug2.group = g.id')
+            ->getDQL();
+
+        $qb->addSelect("($userCountSubQuery) as users_count");
+
+        // Apply search filter
+        if ($search) {
+            $qb->andWhere('(g.name LIKE :search OR g.description LIKE :search)')
+                ->setParameter('search', '%' . $search . '%');
+        }
+
+        // Apply sorting
+        $allowedSortFields = ['name', 'description', 'requires_2fa'];
+        if ($sort && in_array($sort, $allowedSortFields)) {
+            $qb->orderBy('g.' . $sort, $sortDirection);
+        } else {
+            $qb->orderBy('g.name', 'asc');
+        }
+
+        // Get total count for pagination
+        $countQb = $this->getEntityManager()->createQueryBuilder()
+            ->select('COUNT(DISTINCT g.id)')
+            ->from(Group::class, 'g');
+
+        // Apply group ID filter only for non-admin users
+        if ($accessibleGroupIds !== null) {
+            $countQb->where('g.id IN (:groupIds)')
+                ->setParameter('groupIds', $accessibleGroupIds);
+        }
+
+        // Apply search filter
+        if ($search) {
+            $countQb->andWhere('(g.name LIKE :search OR g.description LIKE :search)')
+                ->setParameter('search', '%' . $search . '%');
+        }
+
+        $totalCount = $countQb->getQuery()->getSingleScalarResult();
+
+        // Apply pagination
+        $qb->setFirstResult(($page - 1) * $pageSize)
+            ->setMaxResults($pageSize);
+
+        $groups = $qb->getQuery()->getResult();
+
+        // Format groups for response
+        $formattedGroups = [];
+        foreach ($groups as $row) {
+            $group = $row[0];
+            $userCount = $row['users_count'];
+
+            $formattedGroups[] = [
+                'id' => $group->getId(),
+                'name' => $group->getName(),
+                'description' => $group->getDescription(),
+                'id_group_types' => $group->getIdGroupTypes(),
+                'requires_2fa' => $group->isRequires2fa(),
+                'users_count' => (int) $userCount,
+                'crud' => 15 // Full permissions for accessible groups
+            ];
+        }
+
+        // Return paginated response
+        return [
+            'groups' => $formattedGroups,
+            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount)
+        ];
+    }
+
+    /**
+     * Get user permissions for multiple resources in batch
+     * Returns array mapping resource IDs to permission bitmasks
+     *
+     * @param int $userId User ID
+     * @param int $resourceTypeId Resource type ID
+     * @param array|null $resourceIds Specific resource IDs to check, null for all accessible
+     * @return array Array mapping resource IDs to permission values
+     */
+    public function getUserPermissionsForResources(int $userId, int $resourceTypeId, ?array $resourceIds = null): array
+    {
+        $qb = $this->createQueryBuilder('rda')
+            ->select('rda.resourceId, BIT_OR(rda.crudPermissions) as permissions')
+            ->innerJoin('rda.role', 'r')
+            ->innerJoin('r.users', 'u')
+            ->where('u.id = :userId')
+            ->andWhere('rda.idResourceTypes = :resourceTypeId')
+            ->andWhere('rda.crudPermissions > 0')
+            ->setParameter('userId', $userId)
+            ->setParameter('resourceTypeId', $resourceTypeId)
+            ->groupBy('rda.resourceId');
+
+        if ($resourceIds !== null) {
+            $qb->andWhere('rda.resourceId IN (:resourceIds)')
+                ->setParameter('resourceIds', $resourceIds);
+        }
+
+        $results = $qb->getQuery()->getResult();
+
+        // Convert to associative array
+        $permissions = [];
+        foreach ($results as $result) {
+            $permissions[$result['resourceId']] = (int) $result['permissions'];
+        }
+
+        return $permissions;
+    }
+
+    /**
+     * Get all accessible resource IDs for a user
+     *
+     * @param int $userId User ID
+     * @param int $resourceTypeId Resource type ID
+     * @return array Array of accessible resource IDs
+     */
+    public function getAccessibleResourceIds(int $userId, int $resourceTypeId): array
+    {
+        $permissions = $this->getUserPermissionsForResources($userId, $resourceTypeId);
+        return array_keys($permissions);
+    }
+
+    /**
+     * Create pagination information array
+     *
+     * @param int $page Current page number
+     * @param int $pageSize Page size
+     * @param int $totalCount Total number of items
+     * @return array Pagination information
+     */
+    private function createPaginationInfo(int $page, int $pageSize, int $totalCount): array
+    {
+        return [
+            'page' => $page,
+            'pageSize' => $pageSize,
+            'totalCount' => $totalCount,
+            'totalPages' => (int) ceil($totalCount / $pageSize),
+            'hasNext' => $page < ceil($totalCount / $pageSize),
+            'hasPrevious' => $page > 1
         ];
     }
 }
