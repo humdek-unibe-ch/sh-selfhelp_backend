@@ -75,12 +75,30 @@ class AdminUserService extends BaseService
      */
     public function canAccessUser(int $userId, int $targetUserId, int $permission): bool
     {
-        return $this->dataAccessSecurityService->hasPermission(
-            $userId,
-            LookupService::RESOURCE_TYPES_GROUP, // Users are accessed via group permissions
-            $targetUserId,
-            $permission
-        );
+        // Admin users bypass permission checks
+        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            return true;
+        }
+
+        // Get the target user and check all their groups
+        $user = $this->entityManager->getRepository(User::class)->find($targetUserId);
+        if (!$user) {
+            return false;
+        }
+
+        // Check if user has permission to access ANY of the target user's groups
+        foreach ($user->getUsersGroups() as $userGroup) {
+            if ($this->dataAccessSecurityService->hasPermission(
+                $userId,
+                LookupService::RESOURCE_TYPES_GROUP,
+                $userGroup->getGroup()->getId(),
+                $permission
+            )) {
+                return true; // Access granted if permission exists for any group
+            }
+        }
+
+        return false; // No permission found for any of the user's groups
     }
 
     /**

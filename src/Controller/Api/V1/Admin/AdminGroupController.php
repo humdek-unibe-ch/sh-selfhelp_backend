@@ -76,13 +76,36 @@ class AdminGroupController extends AbstractController
 
     /**
      * Get single group by ID with ACLs
-     * 
+     * Filtered by group access permissions
+     *
      * @route /admin/groups/{groupId}
      * @method GET
      */
     public function getGroupById(int $groupId): JsonResponse
     {
         try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            // Check if user has permission to read this specific group
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+                if (!$this->dataAccessSecurityService->hasPermission(
+                    $currentUserId,
+                    LookupService::RESOURCE_TYPES_GROUP,
+                    $groupId,
+                    DataAccessSecurityService::PERMISSION_READ
+                )) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
             $group = $this->adminGroupService->getGroupById($groupId);
             return $this->responseFormatter->formatSuccess($group);
         } catch (\Exception $e) {
@@ -121,7 +144,8 @@ class AdminGroupController extends AbstractController
 
     /**
      * Update existing group
-     * 
+     * Filtered by group access permissions
+     *
      * @route /admin/groups/{groupId}
      * @method PUT
      */
@@ -138,9 +162,17 @@ class AdminGroupController extends AbstractController
                 );
             }
 
+            // Check if user has permission to update this specific group
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($userId)) {
+                if (!$this->adminGroupService->canAccessGroup($userId, $groupId, DataAccessSecurityService::PERMISSION_UPDATE)) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
             $group = $this->adminGroupService->updateGroup($userId, $groupId, $data);
             // Group cache is automatically invalidated by the service
-            
+
             return $this->responseFormatter->formatSuccess($group);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -152,7 +184,8 @@ class AdminGroupController extends AbstractController
 
     /**
      * Delete group
-     * 
+     * Filtered by group access permissions
+     *
      * @route /admin/groups/{groupId}
      * @method DELETE
      */
@@ -168,10 +201,18 @@ class AdminGroupController extends AbstractController
                 );
             }
 
+            // Check if user has permission to delete this specific group
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($userId)) {
+                if (!$this->adminGroupService->canAccessGroup($userId, $groupId, DataAccessSecurityService::PERMISSION_DELETE)) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
             $this->adminGroupService->deleteGroup($userId, $groupId);
-            
+
             // Group cache is automatically invalidated by the service
-            
+
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(

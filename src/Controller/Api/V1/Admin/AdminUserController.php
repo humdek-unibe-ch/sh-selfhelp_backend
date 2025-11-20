@@ -89,14 +89,11 @@ class AdminUserController extends AbstractController
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
             // Check if user has permission to view this specific user
-            $userGroupId = $this->getUserGroupId($userId);
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroupId,
-                DataAccessSecurityService::PERMISSION_READ
-            )) {
-                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+                if (!$this->adminUserService->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_READ)) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
             }
 
             $user = $this->adminUserService->getUserById($userId);

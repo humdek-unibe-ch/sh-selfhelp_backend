@@ -213,10 +213,26 @@ class AdminDataController extends AbstractController
     /**
      * Delete selected columns from a data table
      * Expects JSON body: { "columns": ["colA", "colB", ...] }
+     * Filtered by data table access permissions
      */
     public function deleteColumns(Request $request, string $tableName): JsonResponse
     {
         try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to update this data table (since we're modifying structure)
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+                if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
             $data = $this->validateRequest($request, 'requests/admin/delete_data_columns', $this->jsonSchemaValidationService);
             $columns = $data['columns'] ?? [];
 
@@ -240,10 +256,26 @@ class AdminDataController extends AbstractController
 
     /**
      * Get columns for a given data table
+     * Filtered by data table access permissions
      */
     public function getColumns(string $tableName): JsonResponse
     {
         try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to read this data table
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+                if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
             $columns = $this->dataTableService->getColumns($tableName);
             if ($columns === false) {
                 return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
@@ -264,10 +296,26 @@ class AdminDataController extends AbstractController
 
     /**
      * Get column names for a given data table
+     * Filtered by data table access permissions
      */
     public function getColumnNames(string $tableName): JsonResponse
     {
         try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            // Check if user has permission to read this data table
+            // Admin users bypass permission checks
+            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+                if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
             $columnNames = $this->dataTableService->getColumnsNames($tableName);
             if ($columnNames === false) {
                 return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
