@@ -2,7 +2,9 @@
 
 namespace App\Repository;
 
+use App\Entity\DataTable;
 use App\Entity\Lookup;
+use App\Entity\Page;
 use App\Entity\Role;
 use App\Entity\RoleDataAccess;
 use App\Entity\User;
@@ -308,5 +310,133 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->setParameter('resourceId', $resourceId)
             ->getQuery()
             ->execute();
+    }
+
+    /**
+     * Get accessible pages for a user with permissions joined at SQL level
+     * More efficient than fetching all pages and filtering in PHP
+     *
+     * @param int $userId User ID
+     * @param int $resourceTypeId Resource type ID for pages
+     * @return array Array of pages with crud permissions in the expected format
+     */
+    public function getAccessiblePagesForUser(int $userId, int $resourceTypeId): array
+    {
+        // Join pages with role_data_access to filter at SQL level
+        $qb = $this->createQueryBuilder('rda')
+            ->select([
+                'p.id as id_pages',
+                'p.parentPage as parent',
+                'p.keyword',
+                'p.url',
+                'p.navPosition as nav_position',
+                'p.footerPosition as footer_position',
+                'p.isHeadless as is_headless',
+                'p.isOpenAccess as is_open_access',
+                'p.isSystem as is_system',
+                'pat.id as id_pageAccessTypes',
+                'pt.id as id_type',
+                'rda.crudPermissions as crud'
+            ])
+            ->innerJoin('rda.role', 'r')
+            ->innerJoin('r.users', 'u')
+            ->innerJoin(Page::class, 'p', 'WITH', 'p.id = rda.resourceId')
+            ->leftJoin('p.pageAccessType', 'pat')
+            ->leftJoin('p.pageType', 'pt')
+            ->where('u.id = :userId')
+            ->andWhere('rda.idResourceTypes = :resourceTypeId')
+            ->andWhere('(rda.crudPermissions & :readPermission) = :readPermission') // Must have READ permission
+            ->setParameter('userId', $userId)
+            ->setParameter('resourceTypeId', $resourceTypeId)
+            ->setParameter('readPermission', 2) // PERMISSION_READ = 2
+            ->orderBy('p.id', 'ASC');
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Get accessible dataTables for a user with permissions joined at SQL level
+     * More efficient than fetching all dataTables and filtering in PHP
+     *
+     * @param int $userId User ID
+     * @param int $resourceTypeId Resource type ID for dataTables
+     * @return array Array of dataTables with crud permissions in the expected format
+     */
+    public function getAccessibleDataTablesForUser(int $userId, int $resourceTypeId): array
+    {
+        // Join dataTables with role_data_access to filter at SQL level
+        $qb = $this->createQueryBuilder('rda')
+            ->select([
+                'dt.id',
+                'dt.name',
+                'dt.displayName',
+                'dt.timestamp as created',
+                'rda.crudPermissions as crud'
+            ])
+            ->innerJoin('rda.role', 'r')
+            ->innerJoin('r.users', 'u')
+            ->innerJoin(DataTable::class, 'dt', 'WITH', 'dt.id = rda.resourceId')
+            ->where('u.id = :userId')
+            ->andWhere('rda.idResourceTypes = :resourceTypeId')
+            ->andWhere('(rda.crudPermissions & :readPermission) = :readPermission') // Must have READ permission
+            ->setParameter('userId', $userId)
+            ->setParameter('resourceTypeId', $resourceTypeId)
+            ->setParameter('readPermission', 2) // PERMISSION_READ = 2
+            ->orderBy('dt.id', 'ASC');
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Get all pages with full permissions for admin users
+     * Admin users get access to all pages with full CRUD permissions
+     *
+     * @return array Array of all pages with full permissions (crud=15)
+     */
+    public function getAllPagesWithFullPermissions(): array
+    {
+        // Get all pages with full permissions for admin (no permission filtering)
+        $qb = $this->getEntityManager()->createQueryBuilder()
+            ->select([
+                'p.id as id_pages',
+                'IDENTITY(p.parentPage) as parent', // Use IDENTITY() to get foreign key value
+                'p.keyword',
+                'p.url',
+                'p.nav_position as nav_position',
+                'p.footer_position as footer_position',
+                'p.is_headless as is_headless',
+                'p.is_open_access as is_open_access',
+                'p.is_system as is_system',
+                'IDENTITY(p.pageAccessType) as id_pageAccessTypes',
+                'IDENTITY(p.pageType) as id_type',
+                '15 as crud' // Full permissions for admin
+            ])
+            ->from(Page::class, 'p')
+            ->orderBy('p.id', 'ASC');
+
+        return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Get all dataTables with full permissions for admin users
+     * Admin users get access to all dataTables with full CRUD permissions
+     *
+     * @return array Array of all dataTables with full permissions (crud=15)
+     */
+    public function getAllDataTablesWithFullPermissions(): array
+    {
+        // Get all dataTables with full permissions for admin (no permission filtering)
+        $qb = $this->getEntityManager()->createQueryBuilder()
+            ->select([
+                'dt.id',
+                'dt.name',
+                'dt.displayName',
+                'dt.timestamp as created',
+                '15 as crud' // Full permissions for admin
+            ])
+            ->from(DataTable::class, 'dt')
+            ->orderBy('dt.id', 'ASC');
+
+        return $qb->getQuery()->getResult();
     }
 }

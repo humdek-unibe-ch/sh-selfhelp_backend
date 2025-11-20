@@ -39,14 +39,17 @@ class DataAccessSecurityService
     }
 
     /**
-     * Filter data for READ operations with advanced caching
+     * Filter data for READ operations using hybrid filtering strategy
      *
-     * @param callable $dataFetcher Function that returns the full dataset
+     * SQL-based filtering for direct permission resources (pages, dataTables)
+     * PHP-based filtering for complex relationships (groups/users)
+     *
+     * @param callable|null $dataFetcher Function that returns the full dataset (required for groups/users)
      * @param int $userId User ID performing the operation
      * @param string $resourceType Resource type (group, data_table, pages)
      * @return array Filtered data or empty array if no permissions
      */
-    public function filterData(callable $dataFetcher, int $userId, string $resourceType): array
+    public function filterData(?callable $dataFetcher, int $userId, string $resourceType): array
     {
         // Check admin role first - no caching needed for admin
         try {
@@ -55,8 +58,107 @@ class DataAccessSecurityService
             $isAdmin = false;
         }
 
+        // Route to appropriate filtering strategy based on resource type
+        return match ($resourceType) {
+            LookupService::RESOURCE_TYPES_PAGES => $this->filterPagesWithSql($userId, $isAdmin),
+            LookupService::RESOURCE_TYPES_DATA_TABLE => $this->filterDataTablesWithSql($userId, $isAdmin),
+            default => $this->filterWithPhpLogic($dataFetcher, $userId, $resourceType, $isAdmin)
+        };
+    }
+
+    /**
+     * Filter pages using SQL joins with role_data_access table
+     * More efficient than fetching all pages and filtering in PHP
+     *
+     * @param int $userId User ID performing the operation
+     * @param bool $isAdmin Whether the user has admin role
+     * @return array Filtered pages with crud permissions
+     */
+    private function filterPagesWithSql(int $userId, bool $isAdmin): array
+    {
+        // Get resource type ID
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_PAGES);
+        if (!$resourceTypeId) {
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_PAGES, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, null, 'Invalid resource type');
+            return [];
+        }
+
+        try {
+            if ($isAdmin) {
+                // Admin gets all pages with full permissions
+                $pages = $this->roleDataAccessRepository->getAllPagesWithFullPermissions();
+            } else {
+                // Regular users get filtered pages based on permissions
+                $pages = $this->roleDataAccessRepository->getAccessiblePagesForUser($userId, $resourceTypeId);
+            }
+
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_PAGES, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, 'SQL-based page filtering applied');
+
+            return $pages;
+        } catch (\Exception $e) {
+            error_log('SQL page filtering failed, access denied for security: ' . $e->getMessage());
+
+            // For security, deny access if SQL filtering fails
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_PAGES, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, null, 'SQL filtering failed, access denied for security');
+            return [];
+        }
+    }
+
+    /**
+     * Filter dataTables using SQL joins with role_data_access table
+     * More efficient than fetching all tables and filtering in PHP
+     *
+     * @param int $userId User ID performing the operation
+     * @param bool $isAdmin Whether the user has admin role
+     * @return array Filtered dataTables with crud permissions
+     */
+    private function filterDataTablesWithSql(int $userId, bool $isAdmin): array
+    {
+        // Get resource type ID
+        $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_DATA_TABLE);
+        if (!$resourceTypeId) {
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_DATA_TABLE, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, null, 'Invalid resource type');
+            return [];
+        }
+
+        try {
+            if ($isAdmin) {
+                // Admin gets all dataTables with full permissions
+                $dataTables = $this->roleDataAccessRepository->getAllDataTablesWithFullPermissions();
+            } else {
+                // Regular users get filtered dataTables based on permissions
+                $dataTables = $this->roleDataAccessRepository->getAccessibleDataTablesForUser($userId, $resourceTypeId);
+            }
+
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_DATA_TABLE, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, 'SQL-based dataTable filtering applied');
+
+            return $dataTables;
+        } catch (\Exception $e) {
+            error_log('SQL dataTable filtering failed, access denied for security: ' . $e->getMessage());
+
+            // For security, deny access if SQL filtering fails
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_DATA_TABLE, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, null, 'SQL filtering failed, access denied for security');
+            return [];
+        }
+    }
+
+    /**
+     * Original PHP-based filtering logic for complex relationships (groups/users)
+     * Used as fallback and for resource types that benefit from PHP filtering
+     *
+     * @param callable $dataFetcher Function that returns the full dataset
+     * @param int $userId User ID performing the operation
+     * @param string $resourceType Resource type
+     * @param bool $isAdmin Whether the user has admin role
+     * @return array Filtered data
+     */
+    private function filterWithPhpLogic(?callable $dataFetcher, int $userId, string $resourceType, bool $isAdmin): array
+    {
         if ($isAdmin) {
-            // Skip audit logging for admin users to avoid database issues in test environments
+            // Admin gets full access - requires dataFetcher for admin case
+            if ($dataFetcher === null) {
+                throw new \InvalidArgumentException('dataFetcher is required for admin users with group resources');
+            }
             $data = $dataFetcher(); // Full access
             if (isset($data['users'])) {
                 // Special handling for users list - filter users based on group memberships
@@ -65,6 +167,11 @@ class DataAccessSecurityService
                 $this->addCrudFieldRecursively($data, 15); // Full permissions (1+2+4+8)
             }
             return $data;
+        }
+
+        // Non-admin users require dataFetcher for PHP filtering
+        if ($dataFetcher === null) {
+            throw new \InvalidArgumentException('dataFetcher is required for non-admin users with group resources');
         }
 
         // Get resource type ID for entity scoping
@@ -111,7 +218,7 @@ class DataAccessSecurityService
         }
 
         try {
-            $this->auditLog($userId, $resourceType, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, 'Custom filter applied');
+            $this->auditLog($userId, $resourceType, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, 'PHP-based filter applied');
         } catch (\Exception $e) {
             // Audit logging should not affect main operation
             error_log('Failed to log filter applied audit: ' . $e->getMessage());

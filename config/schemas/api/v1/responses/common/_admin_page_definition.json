@@ -17,9 +17,9 @@
                 "url": { "type": ["string", "null"] },
                 "nav_position": { "type": ["integer", "null"] },
                 "footer_position": { "type": ["integer", "null"] },
-                "is_headless": { "type": "integer", "enum": [0, 1] },
-                "is_open_access": { "type": "integer", "enum": [0, 1] },
-                "is_system": { "type": "integer", "enum": [0, 1] },
+                "is_headless": { "type": "boolean" },
+                "is_open_access": { "type": "boolean" },
+                "is_system": { "type": "boolean" },
                 "id_pageAccessTypes": { "type": "integer" },
                 "id_type": { "type": "integer" },
                 "crud": { "type": "integer", "minimum": 0, "maximum": 15 }

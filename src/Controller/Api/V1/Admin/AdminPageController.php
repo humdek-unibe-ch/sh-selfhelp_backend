@@ -58,11 +58,9 @@ class AdminPageController extends AbstractController
                 );
             }
 
+            // Use SQL-based filtering for pages (no dataFetcher needed)
             $pages = $this->dataAccessSecurityService->filterData(
-                function() {
-                    // For admin pages, use AdminPageService without ACL filtering
-                    return $this->adminPageService->getAllPagesForAdmin();
-                },
+                null, // No dataFetcher needed for SQL filtering
                 $userId,
                 LookupService::RESOURCE_TYPES_PAGES
             );

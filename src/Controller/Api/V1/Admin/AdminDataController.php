@@ -46,21 +46,23 @@ class AdminDataController extends AbstractController
                 );
             }
 
-            $result = $this->dataAccessSecurityService->filterData(
-                function() {
-                    $tables = $this->dataTableService->getFormDataTables();
-                    return array_map(static function ($table) {
-                        return [
-                            'id' => $table->getId(),
-                            'name' => $table->getName(),
-                            'displayName' => $table->getDisplayName(),
-                            'created' => $table->getTimestamp()?->format(DATE_ATOM),
-                        ];
-                    }, $tables);
-                },
+            // Use SQL-based filtering for dataTables (no dataFetcher needed)
+            $dataTables = $this->dataAccessSecurityService->filterData(
+                null, // No dataFetcher needed for SQL filtering
                 $userId,
                 LookupService::RESOURCE_TYPES_DATA_TABLE
             );
+
+            // Format the timestamp for each dataTable to match expected format
+            $result = array_map(function ($table) {
+                return [
+                    'id' => $table['id'],
+                    'name' => $table['name'],
+                    'displayName' => $table['displayName'],
+                    'created' => $table['created']?->format(DATE_ATOM),
+                    'crud' => $table['crud']
+                ];
+            }, $dataTables);
 
             return $this->responseFormatter->formatSuccess(['dataTables' => $result]);
         } catch (\Throwable $e) {
