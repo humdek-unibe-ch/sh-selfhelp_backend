@@ -3,11 +3,14 @@
 namespace App\Repository;
 
 use App\Entity\DataTable;
+use App\Entity\Group;
 use App\Entity\Lookup;
 use App\Entity\Page;
 use App\Entity\Role;
 use App\Entity\RoleDataAccess;
 use App\Entity\User;
+use App\Entity\UserActivity;
+use App\Entity\ValidationCode;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -436,5 +439,106 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->orderBy('dt.id', 'ASC');
 
         return $qb->getQuery()->getResult();
+    }
+
+    /**
+     * Get accessible users for a user based on group permissions
+     * Returns users who belong to groups that the current user can access
+     *
+     * @param int $userId User ID
+     * @param int $resourceTypeId Resource type ID for groups
+     * @return array Array of users with their group membership info
+     */
+    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId): array
+    {
+        // First, get all groups that the user can access
+        $accessibleGroupIds = $this->createQueryBuilder('rda')
+            ->select('rda.resourceId')
+            ->innerJoin('rda.role', 'r')
+            ->innerJoin('r.users', 'u')
+            ->where('u.id = :userId')
+            ->andWhere('rda.idResourceTypes = :resourceTypeId')
+            ->andWhere('rda.crudPermissions > 0')
+            ->setParameter('userId', $userId)
+            ->setParameter('resourceTypeId', $resourceTypeId)
+            ->getQuery()
+            ->getSingleColumnResult();
+
+        if (empty($accessibleGroupIds)) {
+            return [];
+        }
+
+        // Now get all users who belong to these accessible groups
+        // Use a subquery approach to avoid GROUP_CONCAT issues and improve performance
+        $subQuery = $this->getEntityManager()->createQueryBuilder()
+            ->select('DISTINCT u2.id')
+            ->from(User::class, 'u2')
+            ->innerJoin('u2.usersGroups', 'ug2')
+            ->innerJoin('ug2.group', 'g2')
+            ->where('g2.id IN (:groupIds)')
+            ->andWhere('u2.intern = :intern')
+            ->andWhere('u2.id_status > 0')
+            ->getDQL();
+
+        // Get users with their related data for formatting
+        $qb = $this->getEntityManager()->createQueryBuilder()
+            ->select('u')
+            ->from(User::class, 'u')
+            ->leftJoin('u.usersGroups', 'ug')
+            ->leftJoin('ug.group', 'g')
+            ->leftJoin('u.roles', 'r')
+            ->leftJoin('u.userActivities', 'ua')
+            ->leftJoin('u.validationCodes', 'vc')
+            ->leftJoin('u.status', 'us')
+            ->leftJoin('u.userType', 'ut')
+            ->where('u.id IN (' . $subQuery . ')')
+            ->andWhere('u.intern = :intern')
+            ->andWhere('u.id_status > 0')
+            ->setParameter('groupIds', $accessibleGroupIds)
+            ->setParameter('intern', false)
+            ->groupBy('u.id')
+            ->orderBy('u.id', 'ASC');
+
+        $users = $qb->getQuery()->getResult();
+
+        // Format users to match AdminUserService.formatUserForList output
+        $formattedUsers = [];
+        foreach ($users as $user) {
+            $lastLogin = $user->getLastLogin();
+            $lastLoginFormatted = 'never';
+            if ($lastLogin) {
+                $daysDiff = (new \DateTime())->diff($lastLogin)->days;
+                $lastLoginFormatted = $lastLogin->format('Y-m-d') . ' (' . $daysDiff . ' days ago)';
+            }
+
+            $groups = array_map(fn($group) => $group->getName(), $user->getGroups()->toArray());
+            $roles = array_map(fn($role) => $role->getName(), $user->getUserRoles()->toArray());
+
+            // Get validation code (simplified - you might need to implement this logic)
+            $validationCode = '';
+            $validationCodes = $user->getValidationCodes();
+            if (!$validationCodes->isEmpty()) {
+                $validationCode = $validationCodes->first()->getCode();
+            }
+
+            $formattedUsers[] = [
+                'id' => $user->getId(),
+                'email' => $user->getEmail(),
+                'name' => $user->getName(),
+                'user_name' => $user->getUserName(),
+                'last_login' => $lastLoginFormatted,
+                'status' => $user->getStatus()?->getLookupValue(),
+                'blocked' => $user->isBlocked(),
+                'code' => $validationCode,
+                'groups' => implode('; ', $groups),
+                'user_activity' => $user->getUserActivities()->count(),
+                'user_type_code' => $user->getUserType()?->getLookupCode(),
+                'user_type' => $user->getUserType()?->getLookupValue(),
+                'roles' => implode('; ', $roles),
+                'crud' => 15 // Full permissions since they're in accessible groups
+            ];
+        }
+
+        return $formattedUsers;
     }
 }
