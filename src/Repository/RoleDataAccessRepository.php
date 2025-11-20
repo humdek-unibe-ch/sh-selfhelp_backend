@@ -322,18 +322,18 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function getAccessiblePagesForUser(int $userId, int $resourceTypeId): array
     {
-        // Join pages with role_data_access to filter at SQL level
+        // Join pages with role_data_access - permission filtering done in service layer
         $qb = $this->createQueryBuilder('rda')
             ->select([
                 'p.id as id_pages',
-                'p.parentPage as parent',
+                'IDENTITY(p.parentPage) as parent',
                 'p.keyword',
                 'p.url',
-                'p.navPosition as nav_position',
-                'p.footerPosition as footer_position',
-                'p.isHeadless as is_headless',
-                'p.isOpenAccess as is_open_access',
-                'p.isSystem as is_system',
+                'p.nav_position as nav_position',
+                'p.footer_position as footer_position',
+                'p.is_headless as is_headless',
+                'p.is_open_access as is_open_access',
+                'p.is_system as is_system',
                 'pat.id as id_pageAccessTypes',
                 'pt.id as id_type',
                 'rda.crudPermissions as crud'
@@ -345,10 +345,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->leftJoin('p.pageType', 'pt')
             ->where('u.id = :userId')
             ->andWhere('rda.idResourceTypes = :resourceTypeId')
-            ->andWhere('(rda.crudPermissions & :readPermission) = :readPermission') // Must have READ permission
+            ->andWhere('rda.crudPermissions > 0')
             ->setParameter('userId', $userId)
             ->setParameter('resourceTypeId', $resourceTypeId)
-            ->setParameter('readPermission', 2) // PERMISSION_READ = 2
             ->orderBy('p.id', 'ASC');
 
         return $qb->getQuery()->getResult();
@@ -364,7 +363,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function getAccessibleDataTablesForUser(int $userId, int $resourceTypeId): array
     {
-        // Join dataTables with role_data_access to filter at SQL level
+        // Join dataTables with role_data_access - permission filtering done in service layer
         $qb = $this->createQueryBuilder('rda')
             ->select([
                 'dt.id',
@@ -378,10 +377,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->innerJoin(DataTable::class, 'dt', 'WITH', 'dt.id = rda.resourceId')
             ->where('u.id = :userId')
             ->andWhere('rda.idResourceTypes = :resourceTypeId')
-            ->andWhere('(rda.crudPermissions & :readPermission) = :readPermission') // Must have READ permission
+            ->andWhere('rda.crudPermissions > 0')
             ->setParameter('userId', $userId)
             ->setParameter('resourceTypeId', $resourceTypeId)
-            ->setParameter('readPermission', 2) // PERMISSION_READ = 2
             ->orderBy('dt.id', 'ASC');
 
         return $qb->getQuery()->getResult();
