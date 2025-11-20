@@ -449,7 +449,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * @param int $resourceTypeId Resource type ID for groups
      * @return array Array of users with their group membership info
      */
-    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId): array
+    public function getAccessibleUsersForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
         // First, get all groups that the user can access
         $accessibleGroupIds = $this->createQueryBuilder('rda')
@@ -496,8 +496,43 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->andWhere('u.id_status > 0')
             ->setParameter('groupIds', $accessibleGroupIds)
             ->setParameter('intern', false)
-            ->groupBy('u.id')
-            ->orderBy('u.id', 'ASC');
+            ->groupBy('u.id');
+
+        // Apply search filter
+        if ($search) {
+            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS string) LIKE :search OR vc.code LIKE :search OR r.name LIKE :search)')
+                ->setParameter('search', '%' . $search . '%');
+        }
+
+        // Apply sorting
+        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
+        if ($sort && in_array($sort, $validSortFields)) {
+            switch ($sort) {
+                case 'user_type':
+                    $qb->orderBy('ut.lookupValue', $sortDirection);
+                    break;
+                case 'last_login':
+                    $qb->orderBy('u.last_login', $sortDirection);
+                    break;
+                default:
+                    $qb->orderBy('u.' . $sort, $sortDirection);
+                    break;
+            }
+        } else {
+            $qb->orderBy('u.email', 'asc');
+        }
+
+        // Get total count
+        $countQb = clone $qb;
+        $countQb->select('COUNT(DISTINCT u.id)')
+                ->resetDQLPart('orderBy')
+                ->setFirstResult(null)
+                ->setMaxResults(null);
+        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
+
+        // Apply pagination
+        $offset = ($page - 1) * $pageSize;
+        $qb->setFirstResult($offset)->setMaxResults($pageSize);
 
         $users = $qb->getQuery()->getResult();
 
@@ -539,7 +574,16 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ];
         }
 
-        return $formattedUsers;
+        // Return paginated response with pagination info
+        return [
+            'users' => $formattedUsers,
+            'pagination' => [
+                'page' => $page,
+                'pageSize' => $pageSize,
+                'totalCount' => $totalCount,
+                'totalPages' => (int) ceil($totalCount / $pageSize)
+            ]
+        ];
     }
 
     /**
@@ -548,7 +592,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @return array Array of formatted users
      */
-    public function getAllUsersForAdmin(): array
+    public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
         // Get all users with their related data (similar to AdminUserService.createUserQueryBuilder)
         $qb = $this->getEntityManager()->createQueryBuilder()
@@ -564,8 +608,43 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->where('u.intern = :intern')
             ->andWhere('u.id_status > 0')
             ->setParameter('intern', false)
-            ->addSelect('ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us')
-            ->orderBy('u.id', 'ASC');
+            ->addSelect('ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us');
+
+        // Apply search filter
+        if ($search) {
+            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS string) LIKE :search OR vc.code LIKE :search OR ur.name LIKE :search)')
+                ->setParameter('search', '%' . $search . '%');
+        }
+
+        // Apply sorting
+        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
+        if ($sort && in_array($sort, $validSortFields)) {
+            switch ($sort) {
+                case 'user_type':
+                    $qb->orderBy('ut.lookupValue', $sortDirection);
+                    break;
+                case 'last_login':
+                    $qb->orderBy('u.last_login', $sortDirection);
+                    break;
+                default:
+                    $qb->orderBy('u.' . $sort, $sortDirection);
+                    break;
+            }
+        } else {
+            $qb->orderBy('u.email', 'asc');
+        }
+
+        // Get total count
+        $countQb = clone $qb;
+        $countQb->select('COUNT(DISTINCT u.id)')
+                ->resetDQLPart('orderBy')
+                ->setFirstResult(null)
+                ->setMaxResults(null);
+        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
+
+        // Apply pagination
+        $offset = ($page - 1) * $pageSize;
+        $qb->setFirstResult($offset)->setMaxResults($pageSize);
 
         $users = $qb->getQuery()->getResult();
 
@@ -607,6 +686,15 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ];
         }
 
-        return $formattedUsers;
+        // Return paginated response with pagination info
+        return [
+            'users' => $formattedUsers,
+            'pagination' => [
+                'page' => $page,
+                'pageSize' => $pageSize,
+                'totalCount' => $totalCount,
+                'totalPages' => (int) ceil($totalCount / $pageSize)
+            ]
+        ];
     }
 }

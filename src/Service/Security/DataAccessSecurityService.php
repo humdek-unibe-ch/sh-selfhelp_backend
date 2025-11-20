@@ -47,9 +47,14 @@ class DataAccessSecurityService
      * @param callable|null $dataFetcher Function that returns the full dataset (required for groups/users)
      * @param int $userId User ID performing the operation
      * @param string $resourceType Resource type (group, data_table, pages)
+     * @param int $page Page number for pagination
+     * @param int $pageSize Page size for pagination
+     * @param string|null $search Search term
+     * @param string|null $sort Sort field
+     * @param string $sortDirection Sort direction (asc/desc)
      * @return array Filtered data or empty array if no permissions
      */
-    public function filterData(?callable $dataFetcher, int $userId, string $resourceType): array
+    public function filterData(?callable $dataFetcher, int $userId, string $resourceType, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
         // Check admin role first - no caching needed for admin
         try {
@@ -62,7 +67,7 @@ class DataAccessSecurityService
         return match ($resourceType) {
             LookupService::RESOURCE_TYPES_PAGES => $this->filterPagesWithSql($userId, $isAdmin),
             LookupService::RESOURCE_TYPES_DATA_TABLE => $this->filterDataTablesWithSql($userId, $isAdmin),
-            LookupService::RESOURCE_TYPES_GROUP => $this->filterUsersWithSql($userId, $isAdmin),
+            LookupService::RESOURCE_TYPES_GROUP => $this->filterUsersWithSql($userId, $isAdmin, $page, $pageSize, $search, $sort, $sortDirection),
             default => $this->filterWithPhpLogic($dataFetcher, $userId, $resourceType, $isAdmin)
         };
     }
@@ -152,7 +157,7 @@ class DataAccessSecurityService
      * @param bool $isAdmin Whether the user has admin role
      * @return array Filtered users with crud permissions
      */
-    private function filterUsersWithSql(int $userId, bool $isAdmin): array
+    private function filterUsersWithSql(int $userId, bool $isAdmin, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, ?string $sortDirection = 'asc'): array
     {
         // Get resource type ID for groups
         $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, LookupService::RESOURCE_TYPES_GROUP);
@@ -164,19 +169,17 @@ class DataAccessSecurityService
         try {
             if ($isAdmin) {
                 // Admin gets all users - use SQL query similar to AdminUserService
-                $users = $this->roleDataAccessRepository->getAllUsersForAdmin();
+                $result = $this->roleDataAccessRepository->getAllUsersForAdmin($page, $pageSize, $search, $sort, $sortDirection);
                 $auditMessage = 'SQL-based admin user filtering applied';
             } else {
                 // Regular users get filtered users based on group permissions
-                $users = $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId);
+                $result = $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId, $page, $pageSize, $search, $sort, $sortDirection);
                 $auditMessage = 'SQL-based user filtering applied';
             }
 
-            $totalCount = count($users);
-
             $this->auditLog($userId, LookupService::RESOURCE_TYPES_GROUP, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, $auditMessage);
 
-            return $this->formatUserResponse($users, $totalCount);
+            return $result;
         } catch (\Exception $e) {
             error_log('SQL user filtering failed: ' . $e->getMessage());
 

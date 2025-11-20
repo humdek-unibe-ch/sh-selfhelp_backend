@@ -55,21 +55,19 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            // For group-based filtering, use SQL filtering without dataFetcher
+            // For group-based filtering, use SQL filtering with pagination
             $result = $this->dataAccessSecurityService->filterData(
                 null, // No dataFetcher needed for SQL-based group filtering
                 $userId,
-                LookupService::RESOURCE_TYPES_GROUP
+                LookupService::RESOURCE_TYPES_GROUP,
+                $page,
+                $pageSize,
+                $search,
+                $sort,
+                $sortDirection
             );
 
-            // If SQL filtering returned empty (fallback case), use PHP filtering
-            if (empty($result)) {
-                $result = $this->dataAccessSecurityService->filterData(
-                    fn() => $this->adminUserService->getUsers($page, $pageSize, $search, $sort, $sortDirection),
-                    $userId,
-                    LookupService::RESOURCE_TYPES_GROUP
-                );
-            }            
+
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/users_envelope');
         } catch (\Exception $e) {
