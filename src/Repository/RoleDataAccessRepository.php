@@ -541,4 +541,72 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         return $formattedUsers;
     }
+
+    /**
+     * Get all users for admin users (SQL-based, no pagination)
+     * Returns all users formatted to match AdminUserService output
+     *
+     * @return array Array of formatted users
+     */
+    public function getAllUsersForAdmin(): array
+    {
+        // Get all users with their related data (similar to AdminUserService.createUserQueryBuilder)
+        $qb = $this->getEntityManager()->createQueryBuilder()
+            ->select('u')
+            ->from(User::class, 'u')
+            ->leftJoin('u.usersGroups', 'ug')
+            ->leftJoin('u.roles', 'ur')
+            ->leftJoin('u.userType', 'ut')
+            ->leftJoin('ug.group', 'g')
+            ->leftJoin('u.userActivities', 'ua')
+            ->leftJoin('u.validationCodes', 'vc')
+            ->leftJoin('u.status', 'us')
+            ->where('u.intern = :intern')
+            ->andWhere('u.id_status > 0')
+            ->setParameter('intern', false)
+            ->addSelect('ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us')
+            ->orderBy('u.id', 'ASC');
+
+        $users = $qb->getQuery()->getResult();
+
+        // Format users to match AdminUserService.formatUserForList output
+        $formattedUsers = [];
+        foreach ($users as $user) {
+            $lastLogin = $user->getLastLogin();
+            $lastLoginFormatted = 'never';
+            if ($lastLogin) {
+                $daysDiff = (new \DateTime())->diff($lastLogin)->days;
+                $lastLoginFormatted = $lastLogin->format('Y-m-d') . ' (' . $daysDiff . ' days ago)';
+            }
+
+            $groups = array_map(fn($group) => $group->getName(), $user->getGroups()->toArray());
+            $roles = array_map(fn($role) => $role->getName(), $user->getUserRoles()->toArray());
+
+            // Get validation code
+            $validationCode = '';
+            $validationCodes = $user->getValidationCodes();
+            if (!$validationCodes->isEmpty()) {
+                $validationCode = $validationCodes->first()->getCode();
+            }
+
+            $formattedUsers[] = [
+                'id' => $user->getId(),
+                'email' => $user->getEmail(),
+                'name' => $user->getName(),
+                'user_name' => $user->getUserName(),
+                'last_login' => $lastLoginFormatted,
+                'status' => $user->getStatus()?->getLookupValue(),
+                'blocked' => $user->isBlocked(),
+                'code' => $validationCode,
+                'groups' => implode('; ', $groups),
+                'user_activity' => $user->getUserActivities()->count(),
+                'user_type_code' => $user->getUserType()?->getLookupCode(),
+                'user_type' => $user->getUserType()?->getLookupValue(),
+                'roles' => implode('; ', $roles),
+                'crud' => 15 // Full permissions for admin
+            ];
+        }
+
+        return $formattedUsers;
+    }
 }

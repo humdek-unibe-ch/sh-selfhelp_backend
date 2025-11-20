@@ -163,37 +163,48 @@ class DataAccessSecurityService
 
         try {
             if ($isAdmin) {
-                // For admin, we still need to fall back to PHP logic since admin gets all users
-                // But we can optimize this later if needed
-                return [];
+                // Admin gets all users - use SQL query similar to AdminUserService
+                $users = $this->roleDataAccessRepository->getAllUsersForAdmin();
+                $auditMessage = 'SQL-based admin user filtering applied';
             } else {
                 // Regular users get filtered users based on group permissions
                 $users = $this->roleDataAccessRepository->getAccessibleUsersForUser($userId, $resourceTypeId);
-
-                // Format the response to match the expected structure with users and pagination
-                $totalCount = count($users);
-
-                $this->auditLog($userId, LookupService::RESOURCE_TYPES_GROUP, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, 'SQL-based user filtering applied');
-
-                return [
-                    'users' => $users,
-                    'pagination' => [
-                        'page' => 1,
-                        'pageSize' => $totalCount,
-                        'totalCount' => $totalCount,
-                        'totalPages' => 1,
-                        'hasNext' => false,
-                        'hasPrevious' => false
-                    ]
-                ];
+                $auditMessage = 'SQL-based user filtering applied';
             }
-        } catch (\Exception $e) {
-            error_log('SQL user filtering failed, falling back to PHP logic: ' . $e->getMessage());
 
-            // For security, don't deny access - fall back to PHP filtering
+            $totalCount = count($users);
+
+            $this->auditLog($userId, LookupService::RESOURCE_TYPES_GROUP, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_GRANTED, null, $auditMessage);
+
+            return $this->formatUserResponse($users, $totalCount);
+        } catch (\Exception $e) {
+            error_log('SQL user filtering failed: ' . $e->getMessage());
+
             $this->auditLog($userId, LookupService::RESOURCE_TYPES_GROUP, 0, LookupService::AUDIT_ACTIONS_FILTER, LookupService::PERMISSION_RESULTS_DENIED, null, 'SQL filtering failed, access denied for security');
             return [];
         }
+    }
+
+    /**
+     * Format user response with pagination structure
+     *
+     * @param array $users Array of formatted users
+     * @param int $totalCount Total number of users
+     * @return array Formatted response with users and pagination
+     */
+    private function formatUserResponse(array $users, int $totalCount): array
+    {
+        return [
+            'users' => $users,
+            'pagination' => [
+                'page' => 1,
+                'pageSize' => $totalCount,
+                'totalCount' => $totalCount,
+                'totalPages' => 1,
+                'hasNext' => false,
+                'hasPrevious' => false
+            ]
+        ];
     }
 
     /**
@@ -279,16 +290,7 @@ class DataAccessSecurityService
         }
 
         $data = $dataFetcher();
-
-        // Special handling for users list - filter users array separately from pagination data
-        if (isset($data['users'])) {
-            $filteredUsers = $this->applyFilters($data['users'], $permissions, $resourceType);
-            $data['users'] = $filteredUsers;
-        } else {
-            // For other data structures, apply filters normally
-            $data = $this->applyFilters($data, $permissions, $resourceType);
-        }
-
+        $data = $this->applyFilters($data, $permissions, $resourceType);
         return $data;
     }
 
