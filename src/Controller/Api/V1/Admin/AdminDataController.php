@@ -9,6 +9,7 @@ use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\LookupService;
 use App\Service\Core\ApiResponseFormatter;
+use App\Service\Core\TransactionService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -26,7 +27,9 @@ class AdminDataController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
-        private readonly UserContextService $userContextService
+        private readonly UserContextService $userContextService,
+        private readonly TransactionService $transactionService,
+        private readonly LookupService $lookupService
     ) {
     }
 
@@ -78,7 +81,7 @@ class AdminDataController extends AbstractController
     public function getData(Request $request): JsonResponse
     {
         try {
-            $tableName = (string)$request->query->get('table_name', '');
+            $tableName = (string) $request->query->get('table_name', '');
             if ($tableName === '') {
                 return $this->responseFormatter->formatError('Missing or invalid table_name', Response::HTTP_BAD_REQUEST);
             }
@@ -91,21 +94,49 @@ class AdminDataController extends AbstractController
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
             // Check if user has permission to access this data table
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_DATA_TABLE,
-                $dataTable->getId(),
-                DataAccessSecurityService::PERMISSION_READ
-            )) {
+            if (
+                !$this->dataAccessSecurityService->hasPermission(
+                    $currentUserId,
+                    LookupService::RESOURCE_TYPES_DATA_TABLE,
+                    $dataTable->getId(),
+                    DataAccessSecurityService::PERMISSION_READ
+                )
+            ) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
-            $userId = $request->query->has('user_id') ? (int)$request->query->get('user_id') : null;
+            $userId = $request->query->has('user_id') ? (int) $request->query->get('user_id') : null;
             $excludeDeleted = filter_var($request->query->get('exclude_deleted', 'true'), FILTER_VALIDATE_BOOLEAN);
-            $languageId = $request->query->has('language_id') ? (int)$request->query->get('language_id') : 1;
+            $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : 1;
 
-            // filter = '', ownEntriesOnly = false, dbFirst = false
-            $rows = $this->dataService->getData($dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
+            // Check if user is admin
+            $isAdmin = $this->dataAccessSecurityService->userHasAdminRole($currentUserId);
+
+            if ($isAdmin) {
+                // Admin users see all data (existing behavior)
+                // filter = '', ownEntriesOnly = false, dbFirst = false
+                $rows = $this->dataService->getData($dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
+            } else {
+                // Non-admin users: use group-based filtering where permissions are calculated server-side
+                $rows = $this->dataService->getDataWithUserGroupFilter(
+                    $dataTable->getId(),
+                    $currentUserId,
+                    '', // filter
+                    $excludeDeleted,
+                    $languageId
+                );
+
+                // Log the filtering for audit purposes
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_SELECT,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    'dataTables',
+                    $dataTable->getId(),
+                    false,
+
+                    'Group-based filtering for data table ' . $dataTable->getName() . ' by user ' . $currentUserId
+                );
+            }
 
             return $this->responseFormatter->formatSuccess(['rows' => $rows]);
         } catch (ServiceException $e) {
@@ -141,12 +172,14 @@ class AdminDataController extends AbstractController
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
             // Check if user has DELETE permission for this data table
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_DATA_TABLE,
-                $dataTable->getId(),
-                DataAccessSecurityService::PERMISSION_DELETE
-            )) {
+            if (
+                !$this->dataAccessSecurityService->hasPermission(
+                    $currentUserId,
+                    LookupService::RESOURCE_TYPES_DATA_TABLE,
+                    $dataTable->getId(),
+                    DataAccessSecurityService::PERMISSION_DELETE
+                )
+            ) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -183,12 +216,14 @@ class AdminDataController extends AbstractController
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
             // Check if user has DELETE permission for this data table
-            if (!$this->dataAccessSecurityService->hasPermission(
-                $currentUserId,
-                LookupService::RESOURCE_TYPES_DATA_TABLE,
-                $dataTable->getId(),
-                DataAccessSecurityService::PERMISSION_DELETE
-            )) {
+            if (
+                !$this->dataAccessSecurityService->hasPermission(
+                    $currentUserId,
+                    LookupService::RESOURCE_TYPES_DATA_TABLE,
+                    $dataTable->getId(),
+                    DataAccessSecurityService::PERMISSION_DELETE
+                )
+            ) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 

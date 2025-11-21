@@ -640,6 +640,49 @@ class DataService extends BaseService
     }
 
     /**
+     * Fetch data records from a data table with user group filtering.
+     * Used for non-admin users who should only see data from users in their accessible groups.
+     * The accessible users are determined server-side based on current user's permissions.
+     *
+     * @param int $dataTableId Data table ID
+     * @param int $currentUserId Current user ID making the request
+     * @param string $filter Filter string
+     * @param bool $excludeDeleted Whether to exclude deleted records
+     * @param int $languageId Language ID for translations
+     * @return array
+     */
+    public function getDataWithUserGroupFilter(
+        int $dataTableId,
+        int $currentUserId,
+        string $filter = '',
+        bool $excludeDeleted = true,
+        int $languageId = 1
+    ): array {
+        try {
+            // Guard: ignore malformed dynamic filter attempts
+            if (str_contains($filter, '{{')) {
+                $filter = '';
+            }
+
+            $rows = $this->dataTableRepository->getDataTableWithUserGroupFilter(
+                $dataTableId,
+                $currentUserId,
+                $filter,
+                $excludeDeleted,
+                $languageId
+            );
+
+            return $rows;
+        } catch (\Throwable $e) {
+            throw new ServiceException(
+                'Failed to fetch data with user group filter: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'dataTableId' => $dataTableId]
+            );
+        }
+    }
+
+    /**
      * Fetch data records from a data table with all languages returned.
      * This method returns all language versions for each record.
      *
@@ -750,6 +793,7 @@ class DataService extends BaseService
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->invalidateItem("form_record_data_{$dataTable->getName()}_{$userId}");
     }
+
 
     /**
      * Check if a data table has current_user configurations

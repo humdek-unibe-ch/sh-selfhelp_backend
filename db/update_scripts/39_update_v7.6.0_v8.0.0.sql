@@ -2546,3 +2546,170 @@ INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) V
 ('permissionResults', 'granted', 'Granted', 'Permission was granted'),
 ('permissionResults', 'denied', 'Denied', 'Permission was denied')
 ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- =================================================
+-- Create get_dataTable_with_user_group_filter procedure
+-- =================================================
+-- This procedure filters data by user groups instead of individual users
+-- Used for non-admin users who should only see data from users in their accessible groups
+
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS `get_dataTable_with_user_group_filter`$$
+
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_user_group_filter`(
+	IN table_id_param INT,
+	IN current_user_id_param INT, -- Current user making the request
+	IN filter_param VARCHAR(1000),
+	IN exclude_deleted_param BOOLEAN, -- If true it will exclude the deleted records and it will not return them
+	IN language_id_param INT -- Language ID for translations (default 1 = internal language only)
+)
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN
+	SET @@group_concat_max_len = 32000000;
+	SET @sql = NULL;
+
+	-- Build the dynamic column selection (same as before)
+	SELECT
+	GROUP_CONCAT(DISTINCT
+		CONCAT(
+			'MAX(CASE WHEN col.`name` = "',
+				col.name,
+				'" THEN `value` END) AS `',
+			replace(col.name, ' ', ''), '`'
+		)
+	) INTO @sql
+	FROM  dataTables t
+	INNER JOIN dataCols col on (t.id = col.id_dataTables)
+	WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
+
+	IF (@sql is null) THEN
+		SELECT `name` from view_dataTables where 1=2;
+	ELSE
+		BEGIN
+			-- User group filter - find accessible users dynamically
+			-- Get resource type ID for groups
+			SET @group_resource_type_id = (SELECT id FROM lookups WHERE type_code = 'resourceTypes' AND lookup_code = 'group' LIMIT 1);
+
+			-- Find all users that the current user can access through group permissions
+			DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
+			CREATE TEMPORARY TABLE accessible_users_temp AS
+			SELECT DISTINCT ug.id_users
+			FROM users_groups ug
+			WHERE ug.id_groups IN (
+				-- Find groups the current user can access
+				SELECT rda.resource_id
+				FROM role_data_access rda
+				INNER JOIN roles r ON rda.id_roles = r.id
+				INNER JOIN users_roles ur ON r.id = ur.id_roles
+				WHERE ur.id_users = current_user_id_param
+				AND rda.id_resourceTypes = @group_resource_type_id
+				AND rda.crud_permissions > 0
+			);
+
+			-- Build user filter using the accessible users
+			SET @user_filter = '';
+			SET @accessible_user_count = (SELECT COUNT(*) FROM accessible_users_temp);
+			IF @accessible_user_count > 0 THEN
+				SET @user_filter = ' AND r.id_users IN (SELECT id_users FROM accessible_users_temp)';
+			ELSE
+				-- No accessible users - return no results
+				SET @user_filter = ' AND 1=0';
+			END IF;
+
+			-- Time period filter (same as before)
+			SET @time_period_filter = '';
+			CASE
+				WHEN filter_param LIKE '%LAST_HOUR%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
+				WHEN filter_param LIKE '%LAST_DAY%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
+				WHEN filter_param LIKE '%LAST_WEEK%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
+				WHEN filter_param LIKE '%LAST_MONTH%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
+				WHEN filter_param LIKE '%LAST_YEAR%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
+				ELSE
+					SET @time_period_filter = '';
+			END CASE;
+
+			-- Exclude deleted filter (same as before)
+			SET @exclude_deleted_filter = '';
+			CASE
+				WHEN exclude_deleted_param = TRUE THEN
+					SET @exclude_deleted_filter = CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
+				ELSE
+					SET @exclude_deleted_filter = '';
+			END CASE;
+
+			-- Language filter for translations
+			-- Always include language 1 (internal), and also include the requested language if different
+			SET @language_filter = '';
+			IF language_id_param IS NULL OR language_id_param = 1 THEN
+				-- Default: only internal language (language_id = 1)
+				SET @language_filter = ' AND cell.id_languages = 1';
+			ELSE
+				-- Include both internal language (1) and requested language
+				-- This ensures we always have fallback to language 1, and translations where available
+				SET @language_filter = CONCAT(' AND cell.id_languages IN (1, ', language_id_param, ')');
+			END IF;
+
+			-- Build the main query with user group filtering
+			SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
+					r.`timestamp` AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
+					' FROM dataTables t
+					INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+					INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+					INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+					LEFT JOIN users u ON (r.id_users = u.id)
+					LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+					LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+					WHERE t.id = ', table_id_param, @user_filter, @time_period_filter, @exclude_deleted_filter, @language_filter,
+					' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
+
+			-- select @sql; -- Uncomment for debugging
+			PREPARE stmt FROM @sql;
+			EXECUTE stmt;
+			DEALLOCATE PREPARE stmt;
+
+			-- Clean up temporary table
+			DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
+		END;
+	END IF;
+END$$
+
+DELIMITER ;
+
+-- =================================================
+-- Documentation: User Group Filtering System
+-- =================================================
+--
+-- 1. Purpose:
+--    - get_dataTable_with_user_group_filter is used for non-admin users
+--    - Dynamically determines accessible users based on current user's group permissions
+--    - Filters data to only show records from users in their accessible groups
+--    - Maintains same functionality as get_dataTable_with_filter but with group-based user filtering
+--
+-- 2. Parameters:
+--    - table_id_param: Data table ID
+--    - current_user_id_param: User ID of the current user making the request
+--    - filter_param: Additional SQL filter conditions
+--    - exclude_deleted_param: Whether to exclude deleted records
+--    - language_id_param: Language ID for translations
+--
+-- 3. Permission Logic:
+--    - Finds all groups the current user can access via role_data_access
+--    - Finds all users who belong to those groups via users_groups
+--    - Filters data to only include records from those accessible users
+--
+-- 4. Usage Examples:
+--    - CALL get_dataTable_with_user_group_filter(1, 123, '', TRUE, 1); -- User 123's accessible data
+--    - CALL get_dataTable_with_user_group_filter(2, 456, 'AND triggerType = "finished"', TRUE, 2);
+--
+-- 5. Security:
+--    - Permission logic is calculated server-side based on current user's roles
+--    - Admin users should continue using the original get_dataTable_with_filter procedure
+--    - If user has no group access, returns no results (secure by default)
+--    - No risk of parameter size limits since only current user ID is passed

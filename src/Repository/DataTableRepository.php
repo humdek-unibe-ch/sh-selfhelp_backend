@@ -60,6 +60,36 @@ class DataTableRepository extends ServiceEntityRepository
     }
 
     /**
+     * Calls the stored procedure get_dataTable_with_user_group_filter for group-based user filtering.
+     * Used for non-admin users who should only see data from users in their accessible groups.
+     * The stored procedure internally determines accessible users based on current user's permissions.
+     */
+    public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1): array
+    {
+        $cache = $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
+
+        // Sanitize the filter parameter for cache key usage
+        $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
+
+        return $cache
+            ->getList("data_table_with_user_group_filter_{$tableId}_{$currentUserId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}", function () use ($tableId, $currentUserId, $filter, $excludeDeleted, $languageId) {
+                $conn = $this->getEntityManager()->getConnection();
+                $sql = 'CALL get_dataTable_with_user_group_filter(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId)';
+                $stmt = $conn->prepare($sql);
+                $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
+                $stmt->bindValue('currentUserId', $currentUserId, PDO::PARAM_INT);
+                $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
+                $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
+                $stmt->bindValue('languageId', $languageId, PDO::PARAM_INT);
+                $result = $stmt->executeQuery();
+
+                return $result->fetchAllAssociative();
+            });
+    }
+
+    /**
      * Calls the stored procedure get_dataTable_with_all_languages and returns the result.
      * This procedure returns all languages for each record (no language filtering).
      */
