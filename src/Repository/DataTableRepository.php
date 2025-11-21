@@ -68,7 +68,8 @@ class DataTableRepository extends ServiceEntityRepository
     {
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $currentUserId);
 
         // Sanitize the filter parameter for cache key usage
         $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);

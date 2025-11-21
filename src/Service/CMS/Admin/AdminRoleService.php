@@ -205,10 +205,34 @@ class AdminRoleService extends BaseService
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
 
+            // If permissions were updated, also invalidate ALL users who have this role
+            if (isset($roleData['permission_ids']) && is_array($roleData['permission_ids'])) {
+                $this->invalidateUsersWithRole($roleId);
+            }
+
             return $this->formatRoleForDetail($role);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
+        }
+    }
+
+    /**
+     * Invalidate cache for all users who have a specific role
+     *
+     * When role permissions change, all users with that role need their cached
+     * permissions, data access, and other role-dependent data refreshed.
+     *
+     * @param int $roleId The role ID whose users need cache invalidation
+     */
+    private function invalidateUsersWithRole(int $roleId): void
+    {
+        // Find all users who have this role
+        $usersWithRole = $this->userRepository->findByRole($roleId);
+
+        // Invalidate each user's cache to ensure they get fresh permissions/data
+        foreach ($usersWithRole as $user) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
         }
     }
 
@@ -250,6 +274,10 @@ class AdminRoleService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
+
+            // CRITICAL: Also invalidate ALL users who HAD this role
+            // When a role is deleted, all users who had that role lose those permissions
+            $this->invalidateUsersWithRole($roleId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
@@ -398,6 +426,10 @@ class AdminRoleService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
+
+            // CRITICAL: Also invalidate ALL users who have this role
+            // When role permissions change, all users with this role need their cached permissions refreshed
+            $this->invalidateUsersWithRole($roleId);
 
             return $this->getRolePermissions($roleId);
         } catch (\Exception $e) {
