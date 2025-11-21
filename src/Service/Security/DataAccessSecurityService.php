@@ -72,45 +72,23 @@ class DataAccessSecurityService
             return false;
         }
 
-        // Create cache key with user, roles, and resource details
-        $cacheKey = "permission_{$userId}_{$resourceType}_{$resourceId}_{$requiredPermission}";
+        // Check specific resource permissions
+        $permissions = $this->roleDataAccessRepository->getUserPermissionsForResource($userId, $resourceTypeId, $resourceId);
 
-        // Get user and their roles for cache scoping
-        $user = $this->userRepository->find($userId);
-        if (!$user) {
-            $this->auditLog($userId, $resourceType, $resourceId, $this->getActionName($requiredPermission), LookupService::PERMISSION_RESULTS_DENIED, $requiredPermission, 'User not found');
-            return false;
-        }
+        // Check if user has the required permission (bitwise AND)
+        $hasPermission = $permissions !== null && ($permissions & $requiredPermission) === $requiredPermission;
 
-        // Build cache with user and role entity scopes for proper invalidation
-        $cacheBuilder = $this->cache
-            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+        $this->auditLog(
+            $userId,
+            $resourceType,
+            $resourceId,
+            $this->getActionName($requiredPermission),
+            $hasPermission ? LookupService::PERMISSION_RESULTS_GRANTED : LookupService::PERMISSION_RESULTS_DENIED,
+            $requiredPermission,
+            $hasPermission ? 'Permission granted' : 'Insufficient permissions'
+        );
 
-        // Add entity scopes for each role the user has
-        foreach ($user->getUserRoles() as $role) {
-            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
-        }
-
-        return $cacheBuilder->getItem($cacheKey, function () use ($userId, $resourceTypeId, $resourceId, $requiredPermission, $resourceType) {
-            // Check specific resource permissions
-            $permissions = $this->roleDataAccessRepository->getUserPermissionsForResource($userId, $resourceTypeId, $resourceId);
-
-            // Check if user has the required permission (bitwise AND)
-            $hasPermission = $permissions !== null && ($permissions & $requiredPermission) === $requiredPermission;
-
-            $this->auditLog(
-                $userId,
-                $resourceType,
-                $resourceId,
-                $this->getActionName($requiredPermission),
-                $hasPermission ? LookupService::PERMISSION_RESULTS_GRANTED : LookupService::PERMISSION_RESULTS_DENIED,
-                $requiredPermission,
-                $hasPermission ? 'Permission granted' : 'Insufficient permissions'
-            );
-
-            return $hasPermission;
-        });
+        return $hasPermission;
     }
 
 

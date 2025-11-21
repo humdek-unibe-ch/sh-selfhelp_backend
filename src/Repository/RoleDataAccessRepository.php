@@ -703,26 +703,4 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             'crud' => $crudPermissions
         ];
     }
-
-    /**
-     * Get all users who have custom data access permissions
-     *
-     * Finds users who have roles with custom data access permissions defined.
-     * These users can access other users' data based on role-based rules.
-     * Used for cache invalidation when user-group relationships change.
-     *
-     * @return array Array of user IDs who have custom data access permissions
-     */
-    public function getUsersWithDataAccessPermissions(): array
-    {
-        $qb = $this->createQueryBuilder('rda')
-            ->select('DISTINCT u.id')
-            ->innerJoin('rda.role', 'r')
-            ->innerJoin('r.users', 'u')
-            ->orderBy('u.id', 'ASC');
-
-        $result = $qb->getQuery()->getScalarResult();
-
-        return array_column($result, 'id');
-    }
 }

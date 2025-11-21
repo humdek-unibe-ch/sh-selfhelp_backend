@@ -1199,12 +1199,11 @@ class AdminUserService extends BaseService
      */
     private function invalidateUserGroupCaches(int $userId, array $groupIds): void
     {
-        // Invalidate caches for the user whose group membership changed
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
-
+        
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->invalidateAllListsInCategory();
@@ -1213,14 +1212,6 @@ class AdminUserService extends BaseService
             $groupCache = $this->cache->withCategory(CacheService::CATEGORY_GROUPS);
             $groupCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $groupIds);
             $groupCache->invalidateAllListsInCategory();
-        }
-
-        // CRITICAL: When user-group relationships change, users with custom data access permissions
-        // might now have access to this user's data (or lose access). Invalidate their permission caches.
-        $usersWithDataAccess = $this->roleDataAccessRepository->getUsersWithDataAccessPermissions();
-        foreach ($usersWithDataAccess as $accessUserId) {
-            // Invalidate data access permission caches for users with custom permissions
-            $this->dataAccessSecurityService->invalidateUserPermissions($accessUserId);
         }
     }
 
