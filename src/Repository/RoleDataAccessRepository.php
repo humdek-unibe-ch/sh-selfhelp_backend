@@ -9,10 +9,9 @@ use App\Entity\Page;
 use App\Entity\Role;
 use App\Entity\RoleDataAccess;
 use App\Entity\User;
-use App\Entity\UserActivity;
 use App\Entity\UsersGroup;
-use App\Entity\ValidationCode;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -487,7 +486,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->from(User::class, 'u')
             ->leftJoin('u.usersGroups', 'ug')
             ->leftJoin('ug.group', 'g')
-            ->leftJoin('u.roles', 'r')
+            ->leftJoin('u.roles', 'ur')
             ->leftJoin('u.userActivities', 'ua')
             ->leftJoin('u.validationCodes', 'vc')
             ->leftJoin('u.status', 'us')
@@ -500,36 +499,29 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->groupBy('u.id');
 
         // Apply search filter
-        if ($search) {
-            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS string) LIKE :search OR vc.code LIKE :search OR r.name LIKE :search)')
-                ->setParameter('search', '%' . $search . '%');
-        }
+        $this->applyUserSearchFilter($qb, $search);
 
         // Apply sorting
-        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
-        if ($sort && in_array($sort, $validSortFields)) {
-            switch ($sort) {
-                case 'user_type':
-                    $qb->orderBy('ut.lookupValue', $sortDirection);
-                    break;
-                case 'last_login':
-                    $qb->orderBy('u.last_login', $sortDirection);
-                    break;
-                default:
-                    $qb->orderBy('u.' . $sort, $sortDirection);
-                    break;
-            }
-        } else {
-            $qb->orderBy('u.email', 'asc');
+        $this->applyUserSorting($qb, $sort, $sortDirection);
+
+        // Get total count - use a simple query to avoid complex join issues
+        $countSql = 'SELECT COUNT(DISTINCT u.id) FROM users u WHERE u.intern = 0 AND u.id_status > 0';
+        $params = [];
+
+        if ($search) {
+            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS CHAR) LIKE :search)';
+            $params['search'] = '%' . $search . '%';
         }
 
-        // Get total count
-        $countQb = clone $qb;
-        $countQb->select('COUNT(DISTINCT u.id)')
-                ->resetDQLPart('orderBy')
-                ->setFirstResult(null)
-                ->setMaxResults(null);
-        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
+        $conn = $this->getEntityManager()->getConnection();
+        $stmt = $conn->prepare($countSql);
+
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+
+        $result = $stmt->executeQuery();
+        $totalCount = (int) $result->fetchOne();
 
         // Apply pagination
         $offset = ($page - 1) * $pageSize;
@@ -537,53 +529,16 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         $users = $qb->getQuery()->getResult();
 
-        // Format users to match AdminUserService.formatUserForList output
-        $formattedUsers = [];
-        foreach ($users as $user) {
-            $lastLogin = $user->getLastLogin();
-            $lastLoginFormatted = 'never';
-            if ($lastLogin) {
-                $daysDiff = (new \DateTime())->diff($lastLogin)->days;
-                $lastLoginFormatted = $lastLogin->format('Y-m-d') . ' (' . $daysDiff . ' days ago)';
-            }
-
-            $groups = array_map(fn($group) => $group->getName(), $user->getGroups()->toArray());
-            $roles = array_map(fn($role) => $role->getName(), $user->getUserRoles()->toArray());
-
-            // Get validation code (simplified - you might need to implement this logic)
-            $validationCode = '';
-            $validationCodes = $user->getValidationCodes();
-            if (!$validationCodes->isEmpty()) {
-                $validationCode = $validationCodes->first()->getCode();
-            }
-
-            $formattedUsers[] = [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'name' => $user->getName(),
-                'user_name' => $user->getUserName(),
-                'last_login' => $lastLoginFormatted,
-                'status' => $user->getStatus()?->getLookupValue(),
-                'blocked' => $user->isBlocked(),
-                'code' => $validationCode,
-                'groups' => implode('; ', $groups),
-                'user_activity' => $user->getUserActivities()->count(),
-                'user_type_code' => $user->getUserType()?->getLookupCode(),
-                'user_type' => $user->getUserType()?->getLookupValue(),
-                'roles' => implode('; ', $roles),
-                'crud' => 15 // Full permissions since they're in accessible groups
-            ];
-        }
+        // Format users
+        $formattedUsers = array_map(
+            fn($user) => $this->formatUserForResponse($user, 15), // Full permissions for accessible groups
+            $users
+        );
 
         // Return paginated response with pagination info
         return [
             'users' => $formattedUsers,
-            'pagination' => [
-                'page' => $page,
-                'pageSize' => $pageSize,
-                'totalCount' => $totalCount,
-                'totalPages' => (int) ceil($totalCount / $pageSize)
-            ]
+            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount)
         ];
     }
 
@@ -612,36 +567,29 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->addSelect('ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us');
 
         // Apply search filter
-        if ($search) {
-            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS string) LIKE :search OR vc.code LIKE :search OR ur.name LIKE :search)')
-                ->setParameter('search', '%' . $search . '%');
-        }
+        $this->applyUserSearchFilter($qb, $search);
 
         // Apply sorting
-        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
-        if ($sort && in_array($sort, $validSortFields)) {
-            switch ($sort) {
-                case 'user_type':
-                    $qb->orderBy('ut.lookupValue', $sortDirection);
-                    break;
-                case 'last_login':
-                    $qb->orderBy('u.last_login', $sortDirection);
-                    break;
-                default:
-                    $qb->orderBy('u.' . $sort, $sortDirection);
-                    break;
-            }
-        } else {
-            $qb->orderBy('u.email', 'asc');
+        $this->applyUserSorting($qb, $sort, $sortDirection);
+
+        // Get total count - use a simple query to avoid complex join issues
+        $countSql = 'SELECT COUNT(DISTINCT u.id) FROM users u WHERE u.intern = 0 AND u.id_status > 0';
+        $params = [];
+
+        if ($search) {
+            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS CHAR) LIKE :search)';
+            $params['search'] = '%' . $search . '%';
         }
 
-        // Get total count
-        $countQb = clone $qb;
-        $countQb->select('COUNT(DISTINCT u.id)')
-                ->resetDQLPart('orderBy')
-                ->setFirstResult(null)
-                ->setMaxResults(null);
-        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
+        $conn = $this->getEntityManager()->getConnection();
+        $stmt = $conn->prepare($countSql);
+
+        foreach ($params as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+
+        $result = $stmt->executeQuery();
+        $totalCount = (int) $result->fetchOne();
 
         // Apply pagination
         $offset = ($page - 1) * $pageSize;
@@ -649,53 +597,16 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         $users = $qb->getQuery()->getResult();
 
-        // Format users to match AdminUserService.formatUserForList output
-        $formattedUsers = [];
-        foreach ($users as $user) {
-            $lastLogin = $user->getLastLogin();
-            $lastLoginFormatted = 'never';
-            if ($lastLogin) {
-                $daysDiff = (new \DateTime())->diff($lastLogin)->days;
-                $lastLoginFormatted = $lastLogin->format('Y-m-d') . ' (' . $daysDiff . ' days ago)';
-            }
-
-            $groups = array_map(fn($group) => $group->getName(), $user->getGroups()->toArray());
-            $roles = array_map(fn($role) => $role->getName(), $user->getUserRoles()->toArray());
-
-            // Get validation code
-            $validationCode = '';
-            $validationCodes = $user->getValidationCodes();
-            if (!$validationCodes->isEmpty()) {
-                $validationCode = $validationCodes->first()->getCode();
-            }
-
-            $formattedUsers[] = [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'name' => $user->getName(),
-                'user_name' => $user->getUserName(),
-                'last_login' => $lastLoginFormatted,
-                'status' => $user->getStatus()?->getLookupValue(),
-                'blocked' => $user->isBlocked(),
-                'code' => $validationCode,
-                'groups' => implode('; ', $groups),
-                'user_activity' => $user->getUserActivities()->count(),
-                'user_type_code' => $user->getUserType()?->getLookupCode(),
-                'user_type' => $user->getUserType()?->getLookupValue(),
-                'roles' => implode('; ', $roles),
-                'crud' => 15 // Full permissions for admin
-            ];
-        }
+        // Format users
+        $formattedUsers = array_map(
+            fn($user) => $this->formatUserForResponse($user, 15), // Full permissions for admin
+            $users
+        );
 
         // Return paginated response with pagination info
         return [
             'users' => $formattedUsers,
-            'pagination' => [
-                'page' => $page,
-                'pageSize' => $pageSize,
-                'totalCount' => $totalCount,
-                'totalPages' => (int) ceil($totalCount / $pageSize)
-            ]
+            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount)
         ];
     }
 
@@ -894,6 +805,91 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             'totalPages' => (int) ceil($totalCount / $pageSize),
             'hasNext' => $page < ceil($totalCount / $pageSize),
             'hasPrevious' => $page > 1
+        ];
+    }
+
+    /**
+     * Apply search filter to user query
+     *
+     * @param QueryBuilder $qb
+     * @param string|null $search
+     */
+    private function applyUserSearchFilter(QueryBuilder $qb, ?string $search): void
+    {
+        if ($search) {
+            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS string) LIKE :search OR vc.code LIKE :search OR ur.name LIKE :search)')
+                ->setParameter('search', '%' . $search . '%');
+        }
+    }
+
+    /**
+     * Apply sorting to user query
+     *
+     * @param QueryBuilder $qb
+     * @param string|null $sort
+     * @param string $sortDirection
+     */
+    private function applyUserSorting(QueryBuilder $qb, ?string $sort, string $sortDirection): void
+    {
+        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
+
+        if ($sort && in_array($sort, $validSortFields)) {
+            switch ($sort) {
+                case 'user_type':
+                    $qb->orderBy('ut.lookupValue', $sortDirection);
+                    break;
+                case 'last_login':
+                    $qb->orderBy('u.last_login', $sortDirection);
+                    break;
+                default:
+                    $qb->orderBy('u.' . $sort, $sortDirection);
+                    break;
+            }
+        } else {
+            $qb->orderBy('u.email', 'asc');
+        }
+    }
+
+    /**
+     * Format a user entity for API response
+     *
+     * @param User $user
+     * @param int $crudPermissions
+     * @return array
+     */
+    private function formatUserForResponse(User $user, int $crudPermissions = 15): array
+    {
+        $lastLogin = $user->getLastLogin();
+        $lastLoginFormatted = 'never';
+        if ($lastLogin) {
+            $daysDiff = (new \DateTime())->diff($lastLogin)->days;
+            $lastLoginFormatted = $lastLogin->format('Y-m-d') . ' (' . $daysDiff . ' days ago)';
+        }
+
+        $groups = array_map(fn($group) => $group->getName(), $user->getGroups()->toArray());
+        $roles = array_map(fn($role) => $role->getName(), $user->getUserRoles()->toArray());
+
+        $validationCode = '';
+        $validationCodes = $user->getValidationCodes();
+        if (!$validationCodes->isEmpty()) {
+            $validationCode = $validationCodes->first()->getCode();
+        }
+
+        return [
+            'id' => $user->getId(),
+            'email' => $user->getEmail(),
+            'name' => $user->getName(),
+            'user_name' => $user->getUserName(),
+            'last_login' => $lastLoginFormatted,
+            'status' => $user->getStatus()?->getLookupValue(),
+            'blocked' => $user->isBlocked(),
+            'code' => $validationCode,
+            'groups' => implode('; ', $groups),
+            'user_activity' => $user->getUserActivities()->count(),
+            'user_type_code' => $user->getUserType()?->getLookupCode(),
+            'user_type' => $user->getUserType()?->getLookupValue(),
+            'roles' => implode('; ', $roles),
+            'crud' => $crudPermissions
         ];
     }
 }
