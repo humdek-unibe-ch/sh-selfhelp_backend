@@ -53,7 +53,7 @@ class FormValidationService extends BaseService
         }
 
         // Check if user has access to the page (use 'insert' permission for form submission)
-       $this->userContextAwareService->checkAccess($page->getKeyword(), 'insert');
+       $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'insert');
 
         // Find the section
         $section = $this->sectionRepository->find($sectionId);
@@ -95,7 +95,7 @@ class FormValidationService extends BaseService
         }
 
         // Check delete permission on page
-       $this->userContextAwareService->checkAccess($page->getKeyword(), 'delete');
+       $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'delete');
 
         // Find the section
         $section = $this->sectionRepository->find($sectionId);

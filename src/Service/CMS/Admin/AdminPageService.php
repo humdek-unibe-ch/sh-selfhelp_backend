@@ -101,7 +101,7 @@ class AdminPageService extends BaseService
                     $this->throwNotFound('Page not found');
                 }
                 
-                $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+                $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
 
                 // Cache with entity scope for this specific page
                 $result = $this->cache
@@ -303,7 +303,7 @@ class AdminPageService extends BaseService
             }
 
             // Check if user has update access to the page
-            $this->userContextAwareService->checkAccess($page->getKeyword(), 'update');
+            $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
 
             // Store original page for transaction logging
             $originalPage = clone $page;
@@ -474,7 +474,7 @@ class AdminPageService extends BaseService
             }
 
             // Check if user has delete access to the page
-            $this->userContextAwareService->checkAccess($page->getKeyword(), 'delete');
+            $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'delete');
 
             // Check if the page has children
             $children = $this->pageRepository->findBy(['parentPage' => $page->getId()]);

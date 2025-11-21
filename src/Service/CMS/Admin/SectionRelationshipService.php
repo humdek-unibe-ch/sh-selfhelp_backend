@@ -8,6 +8,7 @@ use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\RelationshipManagerTrait;
 use App\Service\Core\BaseService;
+use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
@@ -57,7 +58,7 @@ class SectionRelationshipService extends BaseService
             }
             
             // Check if user has update access to the page
-           $this->userContextAwareService->checkAccessById($pageId, 'update');
+           $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
             
             // Find the section
             $childSection = $this->entityManager->getRepository(Section::class)->find($sectionId);
@@ -110,7 +111,7 @@ class SectionRelationshipService extends BaseService
     public function addSectionToSection(int $pageId, int $parentSectionId, int $childSectionId, ?int $position, ?int $oldParentPageId = null, ?int $oldParentSectionId = null): SectionsHierarchy
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $this->checkSectionInPage($pageId, $parentSectionId);
         
         $this->entityManager->beginTransaction();
@@ -178,7 +179,7 @@ class SectionRelationshipService extends BaseService
             }
 
             // Check if user has update access to the page
-           $this->userContextAwareService->checkAccessById($pageId, 'update');
+           $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
 
             // First, check if the section is directly associated with the page
             $pageSection = $this->entityManager->getRepository(PagesSection::class)->findOneBy(['page' => $page, 'section' => $sectionId]);
@@ -243,7 +244,7 @@ class SectionRelationshipService extends BaseService
     public function removeSectionFromSection(int $pageId, int $parentSectionId, int $childSectionId): void
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $this->checkSectionInPage($pageId, $parentSectionId);
         
         $this->entityManager->beginTransaction();
@@ -326,7 +327,7 @@ class SectionRelationshipService extends BaseService
         }
         
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         
         // Check if section belongs to page hierarchy
         $page = $this->pageRepository->find($pageId);
@@ -340,6 +341,16 @@ class SectionRelationshipService extends BaseService
         
         $this->entityManager->beginTransaction();
         try {
+            // Log the transaction BEFORE deletion (with full entity data)
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_DELETE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'sections',
+                $section->getId(),
+                $section, // Log full entity before deletion
+                'Section deleted: ' . $section->getName() . ' (ID: ' . $section->getId() . ')'
+            );
+
             // Remove all relationships and the section itself
             $this->removeAllSectionRelationships($section, $this->entityManager);
             $this->entityManager->remove($section);
@@ -379,7 +390,7 @@ class SectionRelationshipService extends BaseService
         }
         
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'delete');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'delete');
         
         // Check if section belongs to page hierarchy
         $page = $this->pageRepository->find($pageId);
@@ -403,8 +414,8 @@ class SectionRelationshipService extends BaseService
             
             // Log the transaction
             $this->transactionService->logTransaction(
-                \App\Service\Core\LookupService::TRANSACTION_TYPES_DELETE,
-                \App\Service\Core\LookupService::TRANSACTION_BY_BY_USER,
+                LookupService::TRANSACTION_TYPES_DELETE,
+                LookupService::TRANSACTION_BY_BY_USER,
                 'sections',
                 $section->getId(),
                 (object) ["deleted_section" => $originalSection, "page_id" => $pageId],

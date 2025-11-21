@@ -736,7 +736,7 @@ class AdminUserService extends BaseService
 
     public function updateUser(int $adminUserId, int $userId, array $updateData): User
     {
-        // Check update permission for specific user
+        // Check update permission for specific user using Data Access system
         if (!$this->dataAccessSecurityService->hasPermission(
             $adminUserId,
             LookupService::RESOURCE_TYPES_GROUP,
@@ -751,59 +751,96 @@ class AdminUserService extends BaseService
         // ... update logic
         return $user;
     }
+
+    // ALTERNATIVE: Using UserContextAwareService for page-based permissions
+    public function updatePage(string $pageKeyword, array $updateData): Page
+    {
+        // Use UserContextAwareService for admin page operations
+        $this->userContextAwareService->checkAdminAccess($pageKeyword, 'update');
+
+        // Proceed with page update...
+        $page = $this->pageRepository->findOneBy(['keyword' => $pageKeyword]);
+        // ... update logic
+        return $page;
+    }
 }
 ```
 
 ### Controller Integration Pattern
+
+#### Admin Page Controller (Using UserContextAwareService)
 ```php
 <?php
-class AdminUserController extends AbstractController
+class AdminPageController extends AbstractController
 {
-    public function listUsers(Request $request): JsonResponse
+    public function updatePage(Request $request, string $pageKeyword): JsonResponse
     {
         try {
-            $adminUserId = $this->userContextService->getCurrentUser()->getId();
+            $data = json_decode($request->getContent(), true);
 
-            // Extract pagination and filtering parameters
-            $page = (int) $request->query->get('page', 1);
-            $pageSize = (int) $request->query->get('pageSize', 20);
-            $search = $request->query->get('search');
-            $sort = $request->query->get('sort');
-            $sortDirection = $request->query->get('sortDirection', 'asc');
-
-            // Use the new filtered method with optimized performance
-            $users = $this->adminUserService->getFilteredUsers(
-                $adminUserId, $page, $pageSize, $search, $sort, $sortDirection
-            );
+            // UserContextAwareService handles both permission checking and user retrieval
+            $updatedPage = $this->adminPageService->updatePage($pageKeyword, $data);
 
             return $this->responseFormatter->formatSuccess(
-                $users,
-                'responses/admin/users/users_list'
+                $updatedPage,
+                'responses/admin/pages/page_detail'
             );
-        } catch (AccessDeniedException $e) {
+        } catch (ServiceException $e) {
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                Response::HTTP_FORBIDDEN
+                $e->getCode() ?: Response::HTTP_BAD_REQUEST
             );
         }
     }
 
-    public function updateUser(Request $request, int $userId): JsonResponse
+    public function deletePage(string $pageKeyword): JsonResponse
     {
         try {
-            $adminUserId = $this->userContextService->getCurrentUser()->getId();
-            $data = json_decode($request->getContent(), true);
-
-            $updatedUser = $this->adminUserService->updateUser($adminUserId, $userId, $data);
+            // UserContextAwareService handles permission checking internally
+            $result = $this->adminPageService->deletePage($pageKeyword);
 
             return $this->responseFormatter->formatSuccess(
-                $updatedUser,
-                'responses/admin/users/user_detail'
+                ['deleted' => $result],
+                null,
+                Response::HTTP_NO_CONTENT
             );
-        } catch (AccessDeniedException $e) {
+        } catch (ServiceException $e) {
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                Response::HTTP_FORBIDDEN
+                $e->getCode() ?: Response::HTTP_BAD_REQUEST
+            );
+        }
+    }
+}
+```
+
+#### Admin Section Controller (Resource-Level Permissions)
+```php
+<?php
+class AdminSectionController extends AbstractController
+{
+    public function updateSection(Request $request, int $pageId, int $sectionId): JsonResponse
+    {
+        try {
+            $data = json_decode($request->getContent(), true);
+
+            // UserContextAwareService.checkAdminAccessById() used in service layer
+            $updatedSection = $this->adminSectionService->updateSection(
+                $pageId, $sectionId,
+                $data['sectionName'] ?? null,
+                $data['contentFields'] ?? [],
+                $data['propertyFields'] ?? [],
+                $data['globalFields'] ?? null
+            );
+
+            return $this->responseFormatter->formatSuccess([
+                'section' => $updatedSection,
+                'message' => 'Section updated successfully'
+            ]);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $e->getCode() ?: Response::HTTP_BAD_REQUEST
             );
         }
     }

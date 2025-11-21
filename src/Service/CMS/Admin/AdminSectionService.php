@@ -108,7 +108,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $section_id);
 
         // Get fields using the dedicated service
@@ -153,7 +153,7 @@ class AdminSectionService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $parent_section_id);
         $hierarchies = $this->entityManager->getRepository(SectionsHierarchy::class)
             ->findBy(['parentSection' => $parent_section_id], ['position' => 'ASC']);
@@ -360,7 +360,7 @@ class AdminSectionService extends BaseService
             }
 
             // Check if user has update access to the page
-            $this->userContextAwareService->checkAccess($page->getKeyword(), 'update');
+            $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
             $this->sectionRelationshipService->checkSectionInPage($pageId, $sectionId);
 
             // Store original section for transaction logging
@@ -479,7 +479,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'update');
+        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
 
         // Start transaction
         $this->entityManager->beginTransaction();
@@ -527,7 +527,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'update');
+        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $parent_section_id);
 
         // Get the parent section
@@ -589,7 +589,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'update');
+        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
 
         // Start transaction
         $this->entityManager->beginTransaction();

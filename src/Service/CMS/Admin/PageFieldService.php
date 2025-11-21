@@ -71,7 +71,7 @@ class PageFieldService extends BaseService
         }
 
         // Check if user has access to the page
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
 
         // Get page type fields based on the page's type
         $qb = $this->entityManager->createQueryBuilder();

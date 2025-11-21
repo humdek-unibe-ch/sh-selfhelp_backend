@@ -11,6 +11,8 @@ use App\Service\Core\BaseService;
 use App\Service\ACL\ACLService;
 use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Core\TransactionService;
+use App\Service\Core\LookupService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
@@ -33,7 +35,8 @@ class SectionCreationService extends BaseService
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly TransactionService $transactionService
     ) {
     }
 
@@ -49,7 +52,7 @@ class SectionCreationService extends BaseService
     public function createPageSection(int $pageId, int $styleId, ?int $position): array
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $page = $this->pageRepository->find($pageId);
         if (!$page) {
             $this->throwNotFound('Page not found');
@@ -83,6 +86,16 @@ class SectionCreationService extends BaseService
             }
 
             $this->positionManagementService->normalizePageSectionPositions($page->getId(), true);
+
+            // Log the transaction
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_INSERT,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'sections',
+                $section->getId(),
+                $section,
+                'Section created: ' . $section->getName() . ' (ID: ' . $section->getId() . ') on page: ' . $page->getKeyword()
+            );
 
             // Invalidate page and section caches
             $this->cache
@@ -142,7 +155,7 @@ class SectionCreationService extends BaseService
         }
         
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $this->sectionRelationshipService->checkSectionInPage($pageId, $parentSectionId);
         
         $this->entityManager->beginTransaction();
@@ -173,7 +186,17 @@ class SectionCreationService extends BaseService
             $this->entityManager->persist($sectionHierarchy);
             $this->entityManager->flush();
             $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
-            
+
+            // Log the transaction
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_INSERT,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'sections',
+                $childSection->getId(),
+                $childSection,
+                'Child section created: ' . $childSection->getName() . ' (ID: ' . $childSection->getId() . ') under parent section: ' . $parentSection->getName()
+            );
+
             // Invalidate section caches
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)

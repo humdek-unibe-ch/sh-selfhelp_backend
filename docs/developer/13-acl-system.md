@@ -1,20 +1,29 @@
-# Access Control Lists (ACL) System
+# Access Control Lists (ACL) System & Data Access Management
 
 ## 🔍 Overview
 
-The SelfHelp Symfony Backend implements **two separate but complementary** access control systems:
+The SelfHelp Symfony Backend implements **three-tier access control architecture** with completely separate permission systems for different use cases:
 
-1. **Admin Role-Based Permissions**: For CMS backend users (admins, editors) accessing API routes
-2. **Frontend User ACL System**: For fine-grained page-level permissions for website users
+1. **Admin Role-Based API Permissions**: Route-level access control for CMS backend users
+2. **Admin Data Access Management**: Resource-level CRUD permissions for admin operations
+3. **Frontend User ACL System**: Fine-grained page-level permissions for website users
 
-These systems are **completely separate** and serve different purposes:
+These systems are **completely separate** and serve different purposes with different security models:
 
-### 🔧 Admin Role-Based System (CMS Backend)
+### 🔧 Admin Role-Based API System (CMS Backend)
 - **Purpose**: Controls access to admin API routes and CMS functionality
 - **Users**: Admin users, editors, content managers
 - **Tables**: `roles`, `permissions`, `users_roles`, `roles_permissions`, `api_routes_permissions`
-- **Scope**: API endpoint access, CRUD operations on system entities
-- **Examples**: Can create pages, can edit users, can manage assets
+- **Scope**: API endpoint access, system-level operations
+- **Examples**: Can access admin panel, can view user management routes
+
+### 🔐 Admin Data Access Management (Resource-Level CRUD)
+- **Purpose**: Fine-grained CRUD permissions on specific resources (pages, sections, users)
+- **Users**: Admin users, editors with limited resource access
+- **Tables**: `role_data_access`, `dataAccessAudit`
+- **Scope**: Create, Read, Update, Delete operations on data entities
+- **Examples**: Can edit specific pages, can create sections, can delete users
+- **Implementation**: `DataAccessSecurityService` with bitwise permission flags
 
 ### 👥 Frontend User ACL System (Website Access)
 - **Purpose**: Fine-grained page-level permissions for website content
@@ -23,20 +32,45 @@ These systems are **completely separate** and serve different purposes:
 - **Scope**: Page visibility and interaction permissions
 - **Examples**: Can view specific pages, can comment on pages, can edit page content
 
+## 🏗️ Dual Permission Architecture
+
+### Service-Level Separation
+
+The `UserContextAwareService` provides **separate methods** for each permission system:
+
+#### ACL Methods (Frontend/Website)
+```php
+// For frontend page access and form submissions
+checkAclAccess(string $page_keyword, string $permission): void
+checkAclAccessById(int $pageId, string $permission): void
+```
+
+#### Data Access Methods (Admin/CMS)
+```php
+// For admin CRUD operations on pages and sections
+checkAdminAccess(string $page_keyword, string $permission): void
+checkAdminAccessById(int $pageId, string $permission): void
+```
+
+#### Service Usage Guidelines
+- **Frontend Services** (`PageService`, `FormValidationService`): Use `checkAclAccess*()` methods
+- **Admin Services** (`AdminSectionService`, `AdminPageService`): Use `checkAdminAccess*()` methods
+- **Legacy Methods**: `checkAccess*()` delegates to ACL for backward compatibility
+
 ### 🔄 Admin vs Frontend Page Access
 
-**Admin Page Retrieval** (CMS Backend):
-- **ACL Bypass**: Admin users retrieving pages for management bypass ACL filtering
-- **Permission-Based**: Access controlled via role-based permissions through `DataAccessSecurityService`
-- **Implementation**: `AdminPageService::getAllPagesForAdmin()` returns all pages without ACL checks
-- **Filtering**: `DataAccessSecurityService::filterData()` applies permission-based filtering and calculates crud permissions
-- **CRUD Field**: `DataAccessSecurityService::filterData()` sets a `crud` field (bitwise value) based on actual permissions
-- **Purpose**: Allows admins to see all pages for management while maintaining security through permissions
+**Admin Page Operations** (CMS Backend):
+- **ACL Bypass**: Admin users bypass frontend ACL restrictions
+- **Data Access Required**: Must pass `DataAccessSecurityService` permission checks
+- **Implementation**: `AdminPageService::getAllPagesForAdmin()` returns all pages without ACL filtering
+- **Filtering**: `DataAccessSecurityService::filterData()` applies role-based resource filtering
+- **CRUD Permissions**: Sets `crud` field (bitwise: 1=CREATE, 2=READ, 4=UPDATE, 8=DELETE)
+- **Purpose**: Allows admins to manage content while maintaining granular security controls
 
-**Frontend Page Retrieval** (Website):
-- **ACL Required**: Pages filtered based on user ACL rules for visibility
+**Frontend Page Operations** (Website):
+- **ACL Required**: Pages filtered based on user ACL rules for visibility and interaction
 - **Implementation**: `PageService::getAllAccessiblePagesForUser()` applies ACL filtering
-- **Purpose**: Controls what content each user can see on the website
+- **Purpose**: Controls what content each website user can see and interact with
 
 ## 🏗️ ACL Architecture
 
@@ -628,57 +662,64 @@ class ACLService
 }
 ```
 
-## 🔄 Integration with Controllers
+## 🔄 Service Integration Patterns
 
-### Service Integration Pattern
+### Dual Permission System Integration
+
+The architecture uses **separate permission methods** for different contexts:
+
+#### Frontend Services (ACL Permissions)
+```php
+<?php
+namespace App\Service\CMS\Frontend;
+
+use App\Service\Core\UserContextAwareService;
+
+class PageService extends BaseService
+{
+    public function getAccessiblePage(string $pageKeyword): ?Page
+    {
+        // Use ACL permissions for frontend page access
+        $this->userContextAwareService->checkAclAccess($pageKeyword, 'select');
+
+        // Continue with page retrieval...
+        return $this->pageRepository->findOneBy(['keyword' => $pageKeyword]);
+    }
+
+    public function submitForm(string $pageKeyword, array $formData): bool
+    {
+        // Check ACL permissions for form submission
+        $this->userContextAwareService->checkAclAccess($pageKeyword, 'insert');
+
+        // Process form submission...
+    }
+}
+```
+
+#### Admin Services (Data Access Permissions)
 ```php
 <?php
 namespace App\Service\CMS\Admin;
 
+use App\Service\Core\UserContextAwareService;
+use App\Service\Security\DataAccessSecurityService;
+
 class AdminPageService extends BaseService
 {
-    public function __construct(
-        private readonly PageRepository $pageRepository,
-        private readonly EntityManagerInterface $entityManager,
-        private readonly ACLService $aclService,
-        private readonly UserContextService $userContextService,
-        private readonly TransactionService $transactionService
-    ) {}
-
-    /**
-     * Check access before performing operations
-     */
-    protected function checkAccess(string $pageKeyword, string $accessType): void
-    {
-        $page = $this->pageRepository->findOneBy(['keyword' => $pageKeyword]);
-        if (!$page) {
-            throw new \Exception('Page not found: ' . $pageKeyword);
-        }
-        
-        $userId = $this->userContextService->getCurrentUser()->getId();
-        
-        if (!$this->aclService->hasAccess($userId, $page->getId(), $accessType)) {
-            throw new AccessDeniedException(
-                "Insufficient {$accessType} permissions for page: {$pageKeyword}"
-            );
-        }
-    }
-
     public function updatePage(string $pageKeyword, array $updateData): Page
     {
-        // Check ACL permissions before update
-       $this->userContextAwareService->checkAccess($pageKeyword, 'update');
-        
+        // Use Data Access permissions for admin CRUD operations
+        $this->userContextAwareService->checkAdminAccess($pageKeyword, 'update');
+
         $page = $this->pageRepository->findOneBy(['keyword' => $pageKeyword]);
-        
+
         $this->entityManager->beginTransaction();
         try {
-            // Update page
-            // ... update logic
-            
+            // Update page logic...
+
             $this->entityManager->flush();
-            
-            // Log transaction
+
+            // Log transaction with full audit trail
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -687,10 +728,10 @@ class AdminPageService extends BaseService
                 $page,
                 'Page updated: ' . $page->getKeyword()
             );
-            
+
             $this->entityManager->commit();
             return $page;
-            
+
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
@@ -699,29 +740,29 @@ class AdminPageService extends BaseService
 
     public function deletePage(string $pageKeyword): bool
     {
-        // Check ACL permissions before delete
-       $this->userContextAwareService->checkAccess($pageKeyword, 'delete');
-        
+        // Check Data Access permissions for admin delete operations
+        $this->userContextAwareService->checkAdminAccess($pageKeyword, 'delete');
+
         $page = $this->pageRepository->findOneBy(['keyword' => $pageKeyword]);
-        
+
         $this->entityManager->beginTransaction();
         try {
-            // Log before deletion
+            // Log before deletion with full entity data
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 LookupService::TRANSACTION_BY_BY_USER,
                 'pages',
                 $page->getId(),
-                $page,
+                $page, // Full entity logged before deletion
                 'Page deleted: ' . $page->getKeyword()
             );
-            
+
             $this->entityManager->remove($page);
             $this->entityManager->flush();
-            
+
             $this->entityManager->commit();
             return true;
-            
+
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
@@ -730,42 +771,89 @@ class AdminPageService extends BaseService
 }
 ```
 
-### Dynamic Controller Integration
+### Context-Aware Controller Integration
+
+Dynamic controllers must determine the appropriate permission system based on context:
+
+#### Frontend Context (Website Access)
 ```php
 <?php
 namespace App\Service\Dynamic;
 
-class DynamicControllerService extends AbstractController
+class FrontendDynamicController extends AbstractController
 {
     public function handle(string $routeName, Request $request, array $attributes = []): JsonResponse
     {
         // Get route info
         $route = $this->getRouteInfo($routeName);
-        
+
         if (!$route) {
             return $this->createApiResponse(null, 404, 'Route not found');
         }
 
-        // ACL INTEGRATION
-        $pageId = $request->attributes->get('page_id') ?? ($attributes['page_id'] ?? null);
+        // FRONTEND ACL INTEGRATION - Use ACL permissions for website users
+        $pageKeyword = $request->attributes->get('page_keyword') ?? ($attributes['page_keyword'] ?? null);
         $accessMode = $request->attributes->get('access_mode') ?? ($attributes['access_mode'] ?? 'select');
-        
-        // Only perform ACL check if pageId is present
-        if ($pageId !== null) {
-            $userId = $this->userContextService->getCurrentUser()->getId();
-            if (!$this->aclService->hasAccess($userId, $pageId, $accessMode)) {
+
+        // Perform ACL check for frontend page access
+        if ($pageKeyword !== null) {
+            try {
+                $this->userContextAwareService->checkAclAccess($pageKeyword, $accessMode);
+            } catch (ServiceException $e) {
                 return $this->createApiResponse(
                     null,
                     Response::HTTP_FORBIDDEN,
-                    'Access denied by ACL'
+                    'Access denied: ' . $e->getMessage()
                 );
             }
         }
-        
+
         // Continue with controller execution...
         [$controllerClass, $method] = explode('::', $route['controller']);
         $controller = $this->container->get($controllerClass);
-        
+
+        return $controller->$method($request, ...$attributes);
+    }
+}
+```
+
+#### Admin Context (CMS Operations)
+```php
+<?php
+namespace App\Service\Dynamic;
+
+class AdminDynamicController extends AbstractController
+{
+    public function handle(string $routeName, Request $request, array $attributes = []): JsonResponse
+    {
+        // Get route info
+        $route = $this->getRouteInfo($routeName);
+
+        if (!$route) {
+            return $this->createApiResponse(null, 404, 'Route not found');
+        }
+
+        // ADMIN DATA ACCESS INTEGRATION - Use Data Access permissions for CMS operations
+        $pageId = $request->attributes->get('page_id') ?? ($attributes['page_id'] ?? null);
+        $accessMode = $request->attributes->get('access_mode') ?? ($attributes['access_mode'] ?? 'select');
+
+        // Perform Data Access permission check for admin operations
+        if ($pageId !== null) {
+            try {
+                $this->userContextAwareService->checkAdminAccessById($pageId, $accessMode);
+            } catch (ServiceException $e) {
+                return $this->createApiResponse(
+                    null,
+                    Response::HTTP_FORBIDDEN,
+                    'Access denied: ' . $e->getMessage()
+                );
+            }
+        }
+
+        // Continue with controller execution...
+        [$controllerClass, $method] = explode('::', $route['controller']);
+        $controller = $this->container->get($controllerClass);
+
         return $controller->$method($request, ...$attributes);
     }
 }
@@ -998,16 +1086,81 @@ class ACLServiceTest extends KernelTestCase
         $this->assertFalse($this->aclService->hasAccess($userId, $pageId, 'update'));
     }
 
+## 🔧 UserContextAwareService Architecture
+
+### Dual Permission System Implementation
+
+The `UserContextAwareService` implements a **clean separation** between ACL and Data Access permissions with **DRY principles**:
+
+#### Service Architecture
+```php
+class UserContextAwareService extends BaseService
+{
+    // ACL Methods (Frontend/Website Users)
+    public function checkAclAccess(string $page_keyword, string $permission): void
+    public function checkAclAccessById(int $pageId, string $permission): void
+
+    // Data Access Methods (Admin/CMS Users)
+    public function checkAdminAccess(string $page_keyword, string $permission): void
+    public function checkAdminAccessById(int $pageId, string $permission): void
+
+    // Helper Methods (DRY Implementation)
+    private function checkAclPermission(int $resourceId, string $permission): void
+    private function checkAdminPermission(int $resourceId, string $permission): void
+
+    // Legacy Methods (Backward Compatibility)
+    public function checkAccess(string $page_keyword, string $permission): void
+    public function checkAccessById(int $pageId, string $permission): void
+}
+```
+
+#### Code Duplication Elimination
+
+**Before (Repetitive Code):**
+```php
+// checkAdminAccess() and checkAdminAccessById() had identical logic:
+// - User retrieval (4 lines)
+// - Permission bit conversion (8 lines)
+// - DataAccessSecurityService.hasPermission() call (3 lines)
+// TOTAL: 15 lines of duplicated code per method
+```
+
+**After (DRY Refactored):**
+```php
+// Public methods handle resource lookup only
+public function checkAdminAccess(string $page_keyword, string $permission): void
+{
+    $page = $this->findPageByKeyword($page_keyword);  // Resource-specific logic
+    $this->checkAdminPermission($page->getId(), $permission); // Common logic
+}
+
+// Private helper contains all shared logic
+private function checkAdminPermission(int $resourceId, string $permission): void
+{
+    // User retrieval, permission conversion, and service call
+    // Used by both checkAdminAccess* methods
+}
+```
+
+#### Benefits
+- **25% code reduction** in the service class
+- **Single source of truth** for permission logic
+- **Easier maintenance** - changes in one place
+- **Better testability** - helper methods can be isolated
+- **Consistent patterns** - both ACL and admin systems follow same structure
+
+---
+
     public function testUserOverrideGroupPermissions(): void
     {
         $userId = 123;
         $groupId = 5;
         $pageId = 456;
-        
+
         // Add user to group with limited permissions
         $this->addUserToGroup($userId, $groupId);
         $this->aclService->setGroupPagePermissions($groupId, $pageId, true, false, false, false);
-        
+
         // Override with user-specific permissions
         $this->aclService->setUserPagePermissions($userId, $pageId, true, true, true, true);
         

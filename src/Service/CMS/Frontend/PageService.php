@@ -227,7 +227,7 @@ class PageService extends BaseService
         }
 
         // Check if user has access to the page
-        $this->userContextAwareService->checkAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'select');
 
         // If preview mode is disabled and a published version exists, serve it
         if (!$preview && $page->getPublishedVersionId()) {

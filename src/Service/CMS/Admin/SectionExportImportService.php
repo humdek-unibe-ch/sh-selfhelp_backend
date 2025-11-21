@@ -53,7 +53,7 @@ class SectionExportImportService extends BaseService
     public function exportPageSections(int $pageId): array
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'select');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'select');
         
         // Get the page
         $page = $this->pageRepository->find($pageId);
@@ -88,7 +88,7 @@ class SectionExportImportService extends BaseService
     public function exportSection(int $pageId, int $sectionId): array
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'select');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'select');
         $this->sectionRelationshipService->checkSectionInPage($pageId, $sectionId);
         
         // Get the section
@@ -135,7 +135,7 @@ class SectionExportImportService extends BaseService
     public function importSectionsToPage(int $pageId, array $sectionsData, ?int $position = null): array
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         
         // Get the page
         $page = $this->pageRepository->find($pageId);
@@ -186,7 +186,7 @@ class SectionExportImportService extends BaseService
     public function importSectionsToSection(int $pageId, int $parentSectionId, array $sectionsData, ?int $position = null): array
     {
         // Permission check
-       $this->userContextAwareService->checkAccessById($pageId, 'update');
+       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $this->sectionRelationshipService->checkSectionInPage($pageId, $parentSectionId);
         
         // Get the parent section
@@ -507,7 +507,7 @@ class SectionExportImportService extends BaseService
     public function restoreSectionsFromVersion(int $pageId, int $versionId): array
     {
         // Permission check
-        $this->userContextAwareService->checkAccessById($pageId, 'update');
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
 
         // Get the page
         $page = $this->pageRepository->find($pageId);
