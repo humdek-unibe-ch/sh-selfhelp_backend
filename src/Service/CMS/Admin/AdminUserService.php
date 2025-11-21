@@ -88,12 +88,14 @@ class AdminUserService extends BaseService
 
         // Check if user has permission to access ANY of the target user's groups
         foreach ($user->getUsersGroups() as $userGroup) {
-            if ($this->dataAccessSecurityService->hasPermission(
-                $userId,
-                LookupService::RESOURCE_TYPES_GROUP,
-                $userGroup->getGroup()->getId(),
-                $permission
-            )) {
+            if (
+                $this->dataAccessSecurityService->hasPermission(
+                    $userId,
+                    LookupService::RESOURCE_TYPES_GROUP,
+                    $userGroup->getGroup()->getId(),
+                    $permission
+                )
+            ) {
                 return true; // Access granted if permission exists for any group
             }
         }
@@ -227,7 +229,7 @@ class AdminUserService extends BaseService
 
             // Invalidate caches
             $this->invalidateUserCaches($userId);
-            
+
             // Only invalidate related caches if the relationships were actually updated
             if (isset($userData['group_ids']) && is_array($userData['group_ids']) && !empty($userData['group_ids'])) {
                 $groupCache = $this->cache->withCategory(CacheService::CATEGORY_GROUPS);
@@ -926,7 +928,7 @@ class AdminUserService extends BaseService
 
         // Get current group IDs
         $currentGroupIds = array_map(fn($ug) => $ug->getGroup()->getId(), $user->getUsersGroups()->toArray());
-        
+
         // Determine what needs to be added and removed
         $groupIdsToAdd = array_diff($groupIds, $currentGroupIds);
         $groupIdsToRemove = array_diff($currentGroupIds, $groupIds);
@@ -1080,7 +1082,7 @@ class AdminUserService extends BaseService
 
         // Get current role IDs
         $currentRoleIds = array_map(fn($role) => $role->getId(), $user->getUserRoles()->toArray());
-        
+
         // Determine what needs to be added and removed
         $roleIdsToAdd = array_diff($roleIds, $currentRoleIds);
         $roleIdsToRemove = array_diff($currentRoleIds, $roleIds);
@@ -1189,6 +1191,10 @@ class AdminUserService extends BaseService
             ->invalidateAllListsInCategory();
 
         $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->invalidateAllListsInCategory();
+
+        $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
@@ -1203,7 +1209,7 @@ class AdminUserService extends BaseService
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
-        
+
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->invalidateAllListsInCategory();

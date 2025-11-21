@@ -7,6 +7,7 @@ use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 use PDO;
 use App\Entity\DataTable;
+use App\Entity\User;
 
 class DataTableRepository extends ServiceEntityRepository
 {
@@ -67,9 +68,16 @@ class DataTableRepository extends ServiceEntityRepository
     public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1): array
     {
         $cache = $this->cache
-            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId)
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId)            
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $currentUserId);
+
+        $user = $this->getEntityManager()->getRepository(User::class)->find($currentUserId);
+        if ($user) {
+            foreach ($user->getUserRoles() as $role) {
+                $cache->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+            }
+        }
 
         // Sanitize the filter parameter for cache key usage
         $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);

@@ -825,7 +825,7 @@ class DataService extends BaseService
                     // Parse data_config as JSON string to array
                     $dataConfigArray = is_string($dataConfig)
                         ? json_decode($dataConfig, true)
-                        : $dataConfig;
+                        : [];
 
                     if (is_array($dataConfigArray)) {
                         foreach ($dataConfigArray as $config) {

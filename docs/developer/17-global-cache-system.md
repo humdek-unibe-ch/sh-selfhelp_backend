@@ -41,7 +41,7 @@ The system uses predefined cache categories with specific prefixes:
 - `genders` - Gender entities
 - `groups` - Group entities and memberships
 - `roles` - Role entities and permissions
-- `permissions` - Permission entities and ACLs
+- `permissions` - **CRITICAL**: Permission entities, ACLs, and all custom data access permissions (cache invalidation required on role/group/user changes)
 - `lookups` - Lookup data and constants
 - `assets` - Asset entities and metadata
 - `frontend_user` - User-specific frontend data
@@ -323,22 +323,46 @@ public function updateUserGroups(int $userId, array $groupIds): array
 When performing bulk operations affecting multiple entities:
 
 ```php
-public function bulkUpdateUsers(array $userIds, array $changes): array 
+public function bulkUpdateUsers(array $userIds, array $changes): array
 {
     // Update database
     $this->repository->bulkUpdate($userIds, $changes);
-    
+
     // Bulk invalidate all affected users
     $this->cache->invalidateEntityScopes(ReworkedCacheService::ENTITY_SCOPE_USER, $userIds);
-    
+
     // Invalidate user lists
     $this->cache
         ->withCategory(ReworkedCacheService::CATEGORY_USERS)
         ->invalidateAllListsInCategory();
-    
+
     return ['updated_count' => count($userIds)];
 }
 ```
+
+#### Strategy 4: Permissions Cache Invalidation (CRITICAL)
+**IMPORTANT**: When modifying roles, groups, or users, the `CATEGORY_PERMISSIONS` cache **MUST** be cleared as it contains all custom data access permissions:
+
+```php
+public function updateUserPermissions(int $userId, array $changes): void
+{
+    // Update user permissions/roles/groups in database
+    $this->updateUserPermissionsInDb($userId, $changes);
+
+    // CRITICAL: Clear permissions cache for security integrity
+    $this->cache
+        ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+        ->invalidateAllListsInCategory();
+
+    // Also invalidate user-specific caches
+    $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+    $this->cache
+        ->withCategory(CacheService::CATEGORY_USERS)
+        ->invalidateAllListsInCategory();
+}
+```
+
+**Why this is critical**: The permissions cache contains ACL permissions, data access controls, and role-based permissions used throughout the application. Outdated cached permissions could compromise security by allowing unauthorized access or blocking legitimate operations.
 
 ### Invalidation Strategy Patterns
 
@@ -888,6 +912,18 @@ if (isset($userData['group_ids']) && !empty($userData['group_ids'])) {
     // Only then invalidate group caches
 }
 ```
+
+#### 6. **Permissions Cache Invalidation Rule (SECURITY CRITICAL)**
+**MANDATORY**: Any changes to roles, groups, or users **MUST** clear the permissions cache:
+
+```php
+// 🔒 SECURITY REQUIREMENT: Always clear permissions cache on role/group/user changes
+$this->cache
+    ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+    ->invalidateAllListsInCategory();
+```
+
+This ensures that all custom data access permissions remain current and secure. Failure to clear permissions cache can result in security vulnerabilities where users retain outdated permissions or lose access to resources they should control.
 
 ### 🚀 **Cache Architecture Benefits**
 

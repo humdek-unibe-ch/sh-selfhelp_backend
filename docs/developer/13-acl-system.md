@@ -10,6 +10,100 @@ The SelfHelp Symfony Backend implements **three-tier access control architecture
 
 These systems are **completely separate** and serve different purposes with different security models:
 
+## 🗄️ Permissions Cache System (Data Access Caching)
+
+### Overview
+The `CATEGORY_PERMISSIONS` cache category is used for all custom data access permissions across the application. This centralized permissions cache ensures efficient access control while maintaining performance through strategic cache invalidation.
+
+### Cache Category Usage
+- **Central Permissions Cache**: `CacheService::CATEGORY_PERMISSIONS`
+- **TTL**: 30 minutes (1800 seconds)
+- **Scope**: All resource-level CRUD permissions, ACL permissions, and role-based access control
+- **Invalidation Trigger**: Any changes to roles, groups, or users require permissions cache clearing
+
+### Cache Invalidation Requirements
+When making changes to roles, groups, or users, the permissions cache list **MUST** be cleared:
+
+```php
+// Always clear permissions cache when roles/groups/users are modified
+$this->cache
+    ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+    ->invalidateAllListsInCategory();
+```
+
+### Critical Invalidation Scenarios
+
+#### User Updates (AdminUserService)
+When updating user roles, groups, or permissions:
+```php
+public function updateUser(int $userId, array $userData): array
+{
+    // ... update user logic ...
+
+    // CRITICAL: Clear permissions cache after user changes
+    $this->cache
+        ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+        ->invalidateAllListsInCategory();
+
+    // Also invalidate user-specific caches
+    $this->invalidateUserCaches($userId);
+}
+```
+
+#### Role Permission Changes
+When modifying role permissions:
+```php
+public function updateRolePermissions(int $roleId, array $permissions): void
+{
+    // Update role permissions in database
+    $this->updateRolePermissionsInDb($roleId, $permissions);
+
+    // CRITICAL: Clear permissions cache for all affected users
+    $this->cache
+        ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+        ->invalidateAllListsInCategory();
+}
+```
+
+#### Group Permission Changes
+When modifying group permissions or memberships:
+```php
+public function updateUserGroups(int $userId, array $groupIds): void
+{
+    // Update user-group relationships
+    $this->updateUserGroupRelationships($userId, $groupIds);
+
+    // CRITICAL: Clear permissions cache for permission changes
+    $this->cache
+        ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+        ->invalidateAllListsInCategory();
+}
+```
+
+### Why Permissions Cache Invalidation is Critical
+
+1. **Security Integrity**: Outdated cached permissions could allow unauthorized access or block legitimate access
+2. **Consistency**: All permission checks must reflect the current state of roles, groups, and user relationships
+3. **Performance**: While clearing cache has a performance cost, it's necessary to maintain security guarantees
+4. **Cross-System Impact**: Permissions cache affects ACL checks, data access controls, and admin panel permissions
+
+### Implementation Pattern
+All services that modify user roles, groups, or permissions **MUST** include:
+
+```php
+// Pattern for any service modifying permissions
+$this->cache
+    ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+    ->invalidateAllListsInCategory();
+```
+
+### Services Requiring Permissions Cache Clearing
+- `AdminUserService` - User role/group updates
+- `AdminRoleService` - Role permission modifications
+- `AdminGroupService` - Group permission changes
+- `UserPermissionService` - Direct permission assignments
+- `ACLService` - ACL rule modifications
+
 ### 🔧 Admin Role-Based API System (CMS Backend)
 - **Purpose**: Controls access to admin API routes and CMS functionality
 - **Users**: Admin users, editors, content managers
@@ -31,6 +125,13 @@ These systems are **completely separate** and serve different purposes with diff
 - **Tables**: `groups`, `users_groups`, `acl_users`, `acl_groups`
 - **Scope**: Page visibility and interaction permissions
 - **Examples**: Can view specific pages, can comment on pages, can edit page content
+
+### 🔐 Permissions Cache Management (Custom Data Access)
+- **Purpose**: Caching system for all custom data access permissions across the application
+- **Users**: Admin users, CMS backend users, frontend users with custom permissions
+- **Cache Category**: `CATEGORY_PERMISSIONS` - Central permissions cache for all data access operations
+- **Scope**: Resource-level CRUD permissions, ACL permissions, role-based access control
+- **Cache Invalidation**: Required whenever roles, groups, or users are modified
 
 ## 🏗️ Dual Permission Architecture
 
