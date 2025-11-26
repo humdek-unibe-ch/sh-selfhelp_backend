@@ -103,13 +103,16 @@ POST /cms-api/v1/admin/users
   "password": "securepassword",
   "user_type_id": 72,
   "blocked": false,
-  
+
   "id_languages": 1,
+  "id_timezones": 123,  // Timezone ID from lookups table
   "validation_code": "CODE123",
   "group_ids": [1, 2],
   "role_ids": [1]
 }
 ```
+
+**Note**: While the database schema supports timezone assignment (`id_timezones` field), this parameter is not currently implemented in the API endpoints. Timezone must be set through direct database updates or profile management endpoints.
 
 ### 4. Update User
 ```
@@ -121,9 +124,13 @@ PUT /cms-api/v1/admin/users/{userId}
 {
   "email": "updated@example.com",
   "name": "Updated Name",
-  "blocked": false
+  "blocked": false,
+  "id_languages": 2,
+  "id_timezones": 456  // Timezone ID from lookups table
 }
 ```
+
+**Note**: The `id_timezones` parameter is not currently implemented in the API endpoints despite being supported in the database schema.
 
 ### 5. Delete User
 ```
@@ -313,6 +320,32 @@ const blockUser = async (userId, blocked = true) => {
 6. **Implement real-time updates** for user status changes
 7. **Log important actions** for audit trails
 
+## User Profile Management
+
+The system provides dedicated endpoints for authenticated users to manage their own profile information:
+
+### Available Profile Endpoints
+
+1. **Update Name**: `PUT /cms-api/v1/auth/user/name`
+2. **Update Password**: `PUT /cms-api/v1/auth/user/password`
+3. **Update Timezone**: `PUT /cms-api/v1/auth/user/timezone` (planned)
+4. **Delete Account**: `DELETE /cms-api/v1/auth/user/account`
+
+### Timezone Management
+
+Users can set their timezone preference through profile management. The timezone is stored as a relationship to the `lookups` table and affects how dates and times are displayed for the user.
+
+**Current Implementation Status**:
+- ✅ Timezone stored in User entity
+- ✅ Timezone returned in user-data endpoint
+- ❌ Timezone update endpoint not yet implemented
+- ❌ Timezone not supported in user creation/update admin endpoints
+
+**Available Timezones**: The system includes comprehensive timezone data with:
+- IANA timezone identifiers (Europe/Zurich, America/New_York, etc.)
+- Display names (Central European Time, Eastern Time, etc.)
+- UTC offset information and DST support
+
 ## Future Enhancements
 
 - **Bulk operations**: Add endpoints for bulk user operations
@@ -320,4 +353,6 @@ const blockUser = async (userId, blocked = true) => {
 - **User import/export**: CSV import/export functionality
 - **User activity tracking**: Enhanced user activity monitoring
 - **Password reset**: Automated password reset functionality
-- **Email notifications**: Automated email notifications for user actions 
+- **Email notifications**: Automated email notifications for user actions
+- **Timezone Profile Endpoint**: Implement `PUT /auth/user/timezone` for profile timezone updates
+- **Timezone Admin Support**: Add timezone support to user creation and update admin endpoints 

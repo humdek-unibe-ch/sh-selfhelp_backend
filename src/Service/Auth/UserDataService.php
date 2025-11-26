@@ -66,6 +66,7 @@ class UserDataService
                 'user_name' => $user->getUserName(),
                 'blocked' => $user->isBlocked(),
                 'language' => $this->getUserLanguageInfo($user),
+                'timezone' => $this->getUserTimezoneInfo($user),
                 'roles' => $this->getUserRoles($user),
                 'permissions' => $this->getUserPermissions($user),
                 'groups' => $this->getUserGroups($user)
@@ -119,6 +120,23 @@ class UserDataService
             'id' => $userLanguageId,
             'locale' => $userLanguageLocale,
             'name' => $userLanguageName
+        ];
+    }
+
+    /**
+     * Get user timezone information
+     */
+    public function getUserTimezoneInfo(User $user): ?array
+    {
+        if (!$user->getTimezone()) {
+            return null;
+        }
+
+        return [
+            'id' => $user->getTimezone()->getId(),
+            'code' => $user->getTimezone()->getLookupCode(),
+            'name' => $user->getTimezone()->getLookupValue(),
+            'description' => $user->getTimezone()->getLookupDescription()
         ];
     }
 

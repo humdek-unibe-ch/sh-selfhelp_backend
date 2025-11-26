@@ -1,5 +1,5 @@
 delete from fields
-where id > 233;
+where id > 988;
 
 -- Create 'mantine' style group for Mantine-specific components
 INSERT IGNORE INTO `styleGroup` (`id`, `name`, `description`, `position`) VALUES (NULL, 'mantine', 'Mantine UI components for modern web interfaces', 10);
@@ -475,6 +475,9 @@ INSERT IGNORE INTO `fieldType` (`id`, `name`, `position`) VALUES (NULL, 'slider'
 
 -- Add new field type `select-icon`
 INSERT IGNORE INTO `fieldType` (`id`, `name`, `position`) VALUES (NULL, 'select-icon', '4');
+
+-- Add new field type `select-timezone`
+INSERT IGNORE INTO `fieldType` (`id`, `name`, `position`) VALUES (NULL, 'select-timezone', '4.1');
 
 -- Add new field type `segment`
 INSERT IGNORE INTO `fieldType` (`id`, `name`, `position`) VALUES (NULL, 'segment', '5');
@@ -4526,6 +4529,8 @@ INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUE
 INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUES (NULL, 'profile_label_name', get_field_type_id('text'), 1, '{"placeholder": "Full Name", "description": "Label for full name field display"}');
 INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUES (NULL, 'profile_label_created', get_field_type_id('text'), 1, '{"placeholder": "Account Created", "description": "Label for account creation date"}');
 INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUES (NULL, 'profile_label_last_login', get_field_type_id('text'), 1, '{"placeholder": "Last Login", "description": "Label for last login date"}');
+INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUES (NULL, 'profile_label_timezone', get_field_type_id('text'), 1, '{"placeholder": "Timezone", "description": "Label for timezone selection"}');
+INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUES (NULL, 'timezone', get_field_type_id('select-timezone'), 1, '{"creatable": false, "searchable": true, "clearable": false, "placeholder": "Select your timezone", "required": true}');
 
 -- Account Information Section Title
 INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUES (NULL, 'profile_account_info_title', get_field_type_id('text'), 1, '{"placeholder": "Account Information", "description": "Title for the account information section"}');
@@ -4645,6 +4650,7 @@ INSERT IGNORE INTO `styles_fields` (`id_styles`, `id_fields`, `default_value`, `
 (get_style_id('profile'), get_field_id('profile_label_name'), 'Full Name', 'Label for displaying full name', 0, 0, 'Name Label'),
 (get_style_id('profile'), get_field_id('profile_label_created'), 'Account Created', 'Label for account creation date', 0, 0, 'Created Label'),
 (get_style_id('profile'), get_field_id('profile_label_last_login'), 'Last Login', 'Label for last login date', 0, 0, 'Last Login Label'),
+(get_style_id('profile'), get_field_id('profile_label_timezone'), 'Timezone', 'Label for timezone selection', 0, 0, 'Timezone Label'),
 
 -- Name Change
 (get_style_id('profile'), get_field_id('profile_name_change_title'), 'Change Display Name', 'Section title for name change', 0, 0, 'Name Change Title'),
@@ -4735,6 +4741,7 @@ INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUE
 (NULL, 'label_name', get_field_type_id('text'), 1, '{"placeholder": "Name"}'),
 (NULL, 'label_pw', get_field_type_id('text'), 1, '{"placeholder": "Password"}'),
 (NULL, 'label_pw_confirm', get_field_type_id('text'), 1, '{"placeholder": "Confirm Password"}'),
+(NULL, 'label_timezone', get_field_type_id('text'), 1, '{"placeholder": "Timezone"}'),
 (NULL, 'title', get_field_type_id('text'), 1, '{"placeholder": "Account Validation"}'),
 (NULL, 'subtitle', get_field_type_id('textarea'), 1, '{"rows": 2, "placeholder": "Please complete your account setup"}'),
 
@@ -4775,6 +4782,7 @@ INSERT IGNORE INTO `styles_fields` (`id_styles`, `id_fields`, `default_value`, `
 (get_style_id('validate'), get_field_id('label_name'), 'Name', 'Label for the name input field', 0, 0, 'Name Field Label'),
 (get_style_id('validate'), get_field_id('label_pw'), 'Password', 'Label for the password input field', 0, 0, 'Password Field Label'),
 (get_style_id('validate'), get_field_id('label_pw_confirm'), 'Confirm Password', 'Label for the password confirmation field', 0, 0, 'Confirm Password Label'),
+(get_style_id('validate'), get_field_id('label_timezone'), 'Timezone', 'Label for the timezone selection field', 0, 0, 'Timezone Field Label'),
 
 -- Placeholders and descriptions
 (get_style_id('validate'), get_field_id('name_placeholder'), 'Enter your full name', 'Placeholder text for the name input field', 0, 0, 'Name Placeholder'),

@@ -151,6 +151,10 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\JoinColumn(name: 'id_languages', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Language $language = null;
 
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_timezones', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    private ?Lookup $timezone = null;
+
     #[ORM\Column(type: 'string', length: 100, nullable: true, unique: true)]
     private ?string $user_name = null;
 
@@ -560,6 +564,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setStatus(?Lookup $status): self
     {
         $this->status = $status;
+        return $this;
+    }
+
+    public function getTimezone(): ?Lookup
+    {
+        return $this->timezone;
+    }
+
+    public function setTimezone(?Lookup $timezone): self
+    {
+        $this->timezone = $timezone;
         return $this;
     }
 

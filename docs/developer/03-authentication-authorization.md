@@ -62,6 +62,100 @@ graph TD
 
 **Security Note**: JWT tokens contain only the minimal required user identifier (`id_users`) for security best practices. User roles, permissions, and other context are fetched from the database on each request rather than being embedded in the token.
 
+### User Data Endpoint
+
+Since JWT tokens contain minimal information for security, user context (roles, permissions, language, timezone) is provided through a dedicated API endpoint:
+
+```http
+GET /cms-api/v1/auth/user-data
+Authorization: Bearer {access_token}
+```
+
+**Response Format**:
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": true,
+  "meta": {
+    "version": "v1",
+    "timestamp": "2025-11-26T09:37:22+01:00"
+  },
+  "data": {
+    "id": 9,
+    "email": "user@example.com",
+    "name": "John Doe",
+    "user_name": "user@example.com",
+    "blocked": false,
+    "language": {
+      "id": 2,
+      "locale": "de-CH",
+      "name": "Deutsch (Schweiz)"
+    },
+    "timezone": {
+      "id": 123,
+      "code": "Europe/Zurich",
+      "name": "Central European Time (CET)",
+      "description": "Central European Time - UTC+1/+2"
+    },
+    "roles": [
+      {
+        "id": 1,
+        "name": "admin",
+        "description": "Administrator role with full access"
+      }
+    ],
+    "permissions": [
+      "admin.access",
+      "admin.user.read",
+      "admin.user.create"
+    ],
+    "groups": [
+      {
+        "id": 1,
+        "name": "admin",
+        "description": "full access"
+      }
+    ]
+  }
+}
+```
+
+**Fields**:
+- `id`: User ID
+- `email`: User email address
+- `name`: Display name (nullable)
+- `user_name`: Username (nullable, defaults to email)
+- `blocked`: Whether the user account is blocked
+- `language`: User's language preference (id, locale, name)
+- `timezone`: User's timezone preference (id, code, name, description) - nullable if not set
+- `roles`: Array of user roles with id, name, description
+- `permissions`: Array of permission strings the user has
+- `groups`: Array of user groups with id, name, description
+
+### User Timezone Management
+
+The User entity includes timezone support through a relationship with the `lookups` table (type_code = 'timezones'):
+
+```php
+// User entity timezone relationship
+#[ORM\ManyToOne(targetEntity: Lookup::class)]
+#[ORM\JoinColumn(name: 'id_timezones', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+private ?Lookup $timezone = null;
+```
+
+#### Timezone in Account Creation
+Currently, timezone can be set during account creation but is not exposed through the API endpoints. The database schema supports timezone assignment, but the user creation endpoints do not include timezone parameters.
+
+#### Timezone in Profile Management
+Users can update their timezone preference through profile endpoints. The ProfileController supports timezone updates alongside name and password changes.
+
+**Available Timezones**: The system includes comprehensive timezone data in the lookups table with over 400 timezone entries, including:
+- Major world timezones (UTC offsets, DST support)
+- IANA timezone identifiers (America/New_York, Europe/Zurich, etc.)
+- Display names and descriptions for user-friendly selection
+
 ### Authentication Flow
 ```mermaid
 sequenceDiagram

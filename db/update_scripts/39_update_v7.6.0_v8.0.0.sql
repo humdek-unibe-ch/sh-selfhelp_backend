@@ -2547,6 +2547,105 @@ INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) V
 ('permissionResults', 'denied', 'Denied', 'Permission was denied')
 ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
 
+-- Insert comprehensive timezone entries into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+-- North America
+('timezones', 'America/New_York', 'Eastern Time (ET)', 'Eastern Time Zone - UTC-5/-4'),
+('timezones', 'America/Chicago', 'Central Time (CT)', 'Central Time Zone - UTC-6/-5'),
+('timezones', 'America/Denver', 'Mountain Time (MT)', 'Mountain Time Zone - UTC-7/-6'),
+('timezones', 'America/Phoenix', 'Mountain Time (MST)', 'Mountain Time Zone (no DST) - UTC-7'),
+('timezones', 'America/Los_Angeles', 'Pacific Time (PT)', 'Pacific Time Zone - UTC-8/-7'),
+('timezones', 'America/Anchorage', 'Alaska Time (AKT)', 'Alaska Time Zone - UTC-9/-8'),
+('timezones', 'America/Juneau', 'Alaska Time (AKT)', 'Alaska Time Zone - UTC-9/-8'),
+('timezones', 'Pacific/Honolulu', 'Hawaii Time (HT)', 'Hawaii Time Zone - UTC-10'),
+('timezones', 'America/Halifax', 'Atlantic Time (AT)', 'Atlantic Time Zone - UTC-4/-3'),
+('timezones', 'America/St_Johns', 'Newfoundland Time (NT)', 'Newfoundland Time Zone - UTC-3:30/-2:30'),
+('timezones', 'America/Regina', 'Central Time (CT)', 'Central Time Zone (no DST) - UTC-6'),
+('timezones', 'America/Winnipeg', 'Central Time (CT)', 'Central Time Zone - UTC-6/-5'),
+('timezones', 'America/Toronto', 'Eastern Time (ET)', 'Eastern Time Zone - UTC-5/-4'),
+('timezones', 'America/Vancouver', 'Pacific Time (PT)', 'Pacific Time Zone - UTC-8/-7'),
+('timezones', 'America/Edmonton', 'Mountain Time (MT)', 'Mountain Time Zone - UTC-7/-6'),
+
+-- South America
+('timezones', 'America/Sao_Paulo', 'Brasília Time (BRT)', 'Brasília Time - UTC-3/-2'),
+('timezones', 'America/Buenos_Aires', 'Argentina Time (ART)', 'Argentina Time - UTC-3'),
+('timezones', 'America/Lima', 'Peru Time (PET)', 'Peru Time - UTC-5'),
+('timezones', 'America/Bogota', 'Colombia Time (COT)', 'Colombia Time - UTC-5'),
+('timezones', 'America/Caracas', 'Venezuelan Time (VET)', 'Venezuelan Time - UTC-4'),
+('timezones', 'America/Santiago', 'Chile Time (CLT)', 'Chile Time - UTC-4/-3'),
+('timezones', 'America/Mexico_City', 'Central Time (CT)', 'Central Time Zone - UTC-6/-5'),
+
+-- Europe
+('timezones', 'Europe/London', 'Greenwich Mean Time (GMT)', 'Greenwich Mean Time - UTC+0/+1'),
+('timezones', 'Europe/Berlin', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Paris', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Rome', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Madrid', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Amsterdam', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Brussels', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Vienna', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Zurich', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Prague', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Warsaw', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Budapest', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Bucharest', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Kiev', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Athens', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Helsinki', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Stockholm', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Copenhagen', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Oslo', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Moscow', 'Moscow Time (MSK)', 'Moscow Time - UTC+3'),
+('timezones', 'Europe/Istanbul', 'Turkey Time (TRT)', 'Turkey Time - UTC+3'),
+
+-- Asia
+('timezones', 'Asia/Tokyo', 'Japan Standard Time (JST)', 'Japan Standard Time - UTC+9'),
+('timezones', 'Asia/Shanghai', 'China Standard Time (CST)', 'China Standard Time - UTC+8'),
+('timezones', 'Asia/Hong_Kong', 'Hong Kong Time (HKT)', 'Hong Kong Time - UTC+8'),
+('timezones', 'Asia/Singapore', 'Singapore Time (SGT)', 'Singapore Time - UTC+8'),
+('timezones', 'Asia/Kolkata', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
+('timezones', 'Asia/Mumbai', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
+('timezones', 'Asia/Delhi', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
+('timezones', 'Asia/Karachi', 'Pakistan Time (PKT)', 'Pakistan Time - UTC+5'),
+('timezones', 'Asia/Dhaka', 'Bangladesh Time (BST)', 'Bangladesh Time - UTC+6'),
+('timezones', 'Asia/Bangkok', 'Indochina Time (ICT)', 'Indochina Time - UTC+7'),
+('timezones', 'Asia/Jakarta', 'Western Indonesian Time (WIB)', 'Western Indonesian Time - UTC+7'),
+('timezones', 'Asia/Manila', 'Philippine Time (PHT)', 'Philippine Time - UTC+8'),
+('timezones', 'Asia/Seoul', 'Korea Standard Time (KST)', 'Korea Standard Time - UTC+9'),
+('timezones', 'Asia/Taipei', 'Taiwan Time (TWT)', 'Taiwan Time - UTC+8'),
+('timezones', 'Asia/Kuala_Lumpur', 'Malaysia Time (MYT)', 'Malaysia Time - UTC+8'),
+('timezones', 'Asia/Dubai', 'Gulf Time (GST)', 'Gulf Time - UTC+4'),
+('timezones', 'Asia/Riyadh', 'Arabia Time (AST)', 'Arabia Time - UTC+3'),
+('timezones', 'Asia/Tehran', 'Iran Time (IRT)', 'Iran Time - UTC+3:30/+4:30'),
+('timezones', 'Asia/Jerusalem', 'Israel Time (IST)', 'Israel Time - UTC+2/+3'),
+
+-- Africa
+('timezones', 'Africa/Cairo', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Africa/Johannesburg', 'South Africa Time (SAST)', 'South Africa Time - UTC+2'),
+('timezones', 'Africa/Lagos', 'West Africa Time (WAT)', 'West Africa Time - UTC+1'),
+('timezones', 'Africa/Nairobi', 'East Africa Time (EAT)', 'East Africa Time - UTC+3'),
+('timezones', 'Africa/Casablanca', 'Western European Time (WET)', 'Western European Time - UTC+0/+1'),
+('timezones', 'Africa/Algiers', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+
+-- Australia & Oceania
+('timezones', 'Australia/Sydney', 'Australian Eastern Time (AET)', 'Australian Eastern Time - UTC+10/+11'),
+('timezones', 'Australia/Melbourne', 'Australian Eastern Time (AET)', 'Australian Eastern Time - UTC+10/+11'),
+('timezones', 'Australia/Brisbane', 'Australian Eastern Time (AEST)', 'Australian Eastern Time (no DST) - UTC+10'),
+('timezones', 'Australia/Perth', 'Australian Western Time (AWST)', 'Australian Western Time - UTC+8'),
+('timezones', 'Australia/Adelaide', 'Australian Central Time (ACT)', 'Australian Central Time - UTC+9:30/+10:30'),
+('timezones', 'Pacific/Auckland', 'New Zealand Time (NZT)', 'New Zealand Time - UTC+12/+13'),
+('timezones', 'Pacific/Fiji', 'Fiji Time (FJT)', 'Fiji Time - UTC+12/+13'),
+
+-- Pacific Islands
+('timezones', 'Pacific/Guam', 'Chamorro Time (ChST)', 'Chamorro Time - UTC+10'),
+('timezones', 'Pacific/Saipan', 'Chamorro Time (ChST)', 'Chamorro Time - UTC+10')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_value);
+
+-- Add timezone field to users table
+CALL add_table_column('users', 'id_timezones', 'INT DEFAULT NULL');
+CALL add_foreign_key('users', 'FK_users_id_timezones', 'id_timezones', 'lookups(id)');
+CALL add_index('users', 'IDX_1483A5E9F5677479', 'id_timezones', FALSE);
+
 -- =================================================
 -- Create get_dataTable_with_user_group_filter procedure
 -- =================================================
