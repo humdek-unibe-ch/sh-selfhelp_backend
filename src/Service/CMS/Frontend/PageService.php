@@ -2,7 +2,6 @@
 
 namespace App\Service\CMS\Frontend;
 
-use App\Entity\CmsPreference;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
@@ -13,6 +12,7 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
 use App\Service\CMS\Common\SectionUtilityService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\ConditionService;
 use App\Service\Core\InterpolationService;
@@ -39,7 +39,8 @@ class PageService extends BaseService
         private readonly DataService $dataService,
         private readonly InterpolationService $interpolationService,
         private readonly ConditionService $conditionService,
-        private readonly \App\Repository\PageVersionRepository $pageVersionRepository
+        private readonly \App\Repository\PageVersionRepository $pageVersionRepository,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -134,10 +135,7 @@ class PageService extends BaseService
                 // Get default language ID for fallback translations
                 $defaultLanguageId = null;
                 try {
-                    $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
-                    if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                        $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
-                    }
+                    $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
                 } catch (\Exception $e) {
                     // If there's an error getting the default language, continue without fallback
                 }
@@ -526,10 +524,7 @@ class PageService extends BaseService
             // Get default language ID for fallback translations
             $defaultLanguageId = null;
             try {
-                $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
-                if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                    $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
-                }
+                $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
             } catch (\Exception $e) {
                 // If there's an error getting the default language, continue without fallback
             }
@@ -584,7 +579,7 @@ class PageService extends BaseService
         try {
             return $this->cache
                 ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
-                ->getItem("cms_preferences_default_language_id", fn() => $this->entityManager->getRepository(CmsPreference::class)->findOneBy([])->getDefaultLanguage()->getId());
+                ->getItem("cms_preferences_default_language_id", fn() => $this->cmsPreferenceService->getDefaultLanguageId());
         } catch (\Exception $e) {
             // If there's an error getting the default language, use fallback
         }

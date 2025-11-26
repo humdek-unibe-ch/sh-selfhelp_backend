@@ -2,10 +2,10 @@
 
 namespace App\Service\CMS;
 
-use App\Entity\CmsPreference;
 use App\Entity\Language;
 use App\Repository\LanguageRepository;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -22,7 +22,8 @@ class LanguageService extends BaseService
         private readonly LanguageRepository $languageRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly TransactionService $transactionService,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -71,10 +72,10 @@ class LanguageService extends BaseService
                     $defaultLanguageId = null;
 
                     try {
-                        $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
-                        if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                            $defaultLanguage = $cmsPreference->getDefaultLanguage();
-                            $defaultLanguageId = $defaultLanguage->getId();
+                        $defaultLanguageIdFromPrefs = $this->cmsPreferenceService->getDefaultLanguageId();
+                        if ($defaultLanguageIdFromPrefs) {
+                            $defaultLanguage = $this->languageRepository->find($defaultLanguageIdFromPrefs);
+                            $defaultLanguageId = $defaultLanguageIdFromPrefs;
                         }
                     } catch (\Exception $e) {
                         // If there's an error getting the default language, continue without it

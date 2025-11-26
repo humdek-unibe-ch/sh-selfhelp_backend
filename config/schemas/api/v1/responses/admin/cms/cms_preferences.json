@@ -19,9 +19,10 @@
       "additionalProperties": false
     },
     "anonymous_users": { "type": "integer", "description": "Allow anonymous users" },
-    "firebase_config": { "type": ["string", "null"], "description": "Firebase configuration" }
+    "firebase_config": { "type": ["string", "null"], "description": "Firebase configuration" },
+    "default_timezone": { "type": "string", "description": "Default timezone code" }
   },
-  "required": ["id", "callback_api_key", "default_language_id", "default_language", "anonymous_users", "firebase_config"],
+  "required": ["id", "callback_api_key", "default_language_id", "default_language", "anonymous_users", "firebase_config", "default_timezone"],
   "additionalProperties": false
 }
 

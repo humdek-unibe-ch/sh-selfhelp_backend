@@ -24,6 +24,11 @@
       "type": ["string", "null"],
       "maxLength": 10000,
       "description": "Firebase configuration JSON"
+    },
+    "default_timezone": {
+      "type": "string",
+      "maxLength": 50,
+      "description": "Default timezone code (e.g., Europe/Zurich, UTC, America/New_York)"
     }
   },
   "additionalProperties": false

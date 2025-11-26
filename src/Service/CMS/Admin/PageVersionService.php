@@ -9,6 +9,7 @@ use App\Repository\PageRepository;
 use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\Frontend\PageService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
@@ -45,7 +46,8 @@ class PageVersionService extends BaseService
         private readonly UserContextService $userContextService,
         private readonly SectionRepository $sectionRepository,
         private readonly SectionsFieldsTranslationRepository $translationRepository,
-        private readonly SectionUtilityService $sectionUtilityService
+        private readonly SectionUtilityService $sectionUtilityService,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -724,10 +726,7 @@ class PageVersionService extends BaseService
         // Get default language ID for fallback translations
         $defaultLanguageId = null;
         try {
-            $cmsPreference = $this->entityManager->getRepository(\App\Entity\CmsPreference::class)->findOneBy([]);
-            if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                $defaultLanguageId = $cmsPreference->getDefaultLanguage()->getId();
-            }
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
         } catch (\Exception $e) {
             // If there's an error getting the default language, continue without fallback
         }

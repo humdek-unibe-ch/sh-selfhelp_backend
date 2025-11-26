@@ -2,7 +2,6 @@
 
 namespace App\Service\CMS\Admin;
 
-use App\Entity\CmsPreference;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\PagesSection;
@@ -21,6 +20,7 @@ use App\Service\CMS\Admin\PageFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\AdminSectionUtilityService;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
@@ -67,6 +67,7 @@ class AdminPageService extends BaseService
         private readonly CacheService $cache,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
+        private readonly CmsPreferenceService $cmsPreferenceService,
     ) {
     }
 
@@ -650,9 +651,9 @@ class AdminPageService extends BaseService
 
         // Get default language from CMS preferences
         try {
-            $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
-            if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                return $cmsPreference->getDefaultLanguage()->getId();
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+            if ($defaultLanguageId) {
+                return $defaultLanguageId;
             }
         } catch (\Exception $e) {
             // Continue with default

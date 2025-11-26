@@ -16,6 +16,7 @@ use App\Service\Core\LookupService;
 use App\Service\ACL\ACLService;
 use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
@@ -39,7 +40,8 @@ class SectionExportImportService extends BaseService
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -720,9 +722,12 @@ class SectionExportImportService extends BaseService
     private function getDefaultLocale(): ?string
     {
         try {
-            $cmsPreference = $this->entityManager->getRepository(\App\Entity\CmsPreference::class)->findOneBy([]);
-            if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                return $cmsPreference->getDefaultLanguage()->getLocale();
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+            if ($defaultLanguageId) {
+                $language = $this->entityManager->getRepository(Language::class)->find($defaultLanguageId);
+                if ($language) {
+                    return $language->getLocale();
+                }
             }
         } catch (\Exception $e) {
             // Ignore errors

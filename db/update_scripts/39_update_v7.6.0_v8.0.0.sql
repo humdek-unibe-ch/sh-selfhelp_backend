@@ -1436,6 +1436,7 @@ INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_lang
 INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_values, get_field_id('title'), '0000000003', 'Custom CSS');
 INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_values, get_field_id('description'), '0000000002', 'Geben Sie in diesem Feld Ihre eigenen CSS-Regeln ein, um das Erscheinungsbild Ihrer Seiten, Elemente oder Komponenten individuell anzupassen. Alle hier definierten CSS-Klassen oder -Stile werden automatisch auf Ihrer Website geladen. Anschließend können Sie die von Ihnen vergebenen Klassennamen in Ihren Inhalten, Layouts oder Widgets verwenden.');
 INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_values, get_field_id('description'), '0000000003', 'Enter your own CSS rules in this field to customize the appearance of your pages, elements, or components. Any CSS classes or styles you define here will be automatically loaded on your site. You can then use the class names you define in your content, layouts, or widgets.');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_values, get_field_id('custom_css'), '0000000001', '');
 
 -- add page type global_values
 INSERT IGNORE INTO `pageType` (`name`) VALUES ('global_values');
@@ -1807,9 +1808,50 @@ CALL rename_index('scheduledJobs_actions', 'idx_ae5b5d0b8030ba52', 'IDX_862DD4F8
 CALL rename_index('scheduledJobs_actions', 'idx_ae5b5d0bf3854f45',  'IDX_862DD4F8F3854F45');
 CALL rename_index('actions', 'fk_548f1efe2e6a7c3',  'IDX_548F1EFE2E6A7C3');
 
+--- add new field types for CMS preferences
+INSERT IGNORE INTO `fieldType` (`name`, `position`) VALUES ('checkbox', '16');
+INSERT IGNORE INTO `fieldType` (`name`, `position`) VALUES ('select-language', '8');
+INSERT IGNORE INTO `fieldType` (`name`, `position`) VALUES ('select-timezone', '8');
+
+--- add cms preferences page type
+INSERT IGNORE INTO `pageType` (`name`) VALUES ('cms_preferences');
+
+--- add cms preferences page
+INSERT IGNORE INTO `pages` (`keyword`, `url`, `parent`, `is_headless`, `nav_position`, `footer_position`, `id_type`, `id_pageAccessTypes`)
+VALUES ('sh-cms-preferences', NULL, NULL, 0, 0, NULL, (SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), (SELECT id FROM lookups WHERE lookup_code = 'web'));
+SET @id_page_cms_prefs = (SELECT id FROM pages WHERE keyword = 'sh-cms-preferences');
+INSERT IGNORE INTO `acl_groups` (`id_groups`, `id_pages`, `acl_select`, `acl_insert`, `acl_update`, `acl_delete`) VALUES ('0000000001', @id_page_cms_prefs, '1', '0', '1', '0');
+
+--- add cms preferences fields
+INSERT IGNORE INTO `fields` (`name`, `id_type`, `display`) VALUES ('default_language_id', get_field_type_id('select-language'), '1');
+INSERT IGNORE INTO `fields` (`name`, `id_type`, `display`) VALUES ('anonymous_users', get_field_type_id('checkbox'), '1');
+INSERT IGNORE INTO `fields` (`name`, `id_type`, `display`) VALUES ('firebase_config', get_field_type_id('json'), '1');
+INSERT IGNORE INTO `fields` (`name`, `id_type`, `display`) VALUES ('default_timezone', get_field_type_id('select-timezone'), '1');
+
+--- add page type fields for cms preferences
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('callback_api_key'), NULL, 'API key for callback services');
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('default_language_id'), NULL, 'Default language for the CMS system');
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('anonymous_users'), '0', 'Allow anonymous users to access the system');
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('firebase_config'), NULL, 'Firebase configuration in JSON format');
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('default_timezone'), 'Europe/Zurich', 'Default timezone for the CMS system');
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('title'), NULL, 'Page title');
+INSERT IGNORE INTO `pageType_fields` (`id_pageType`, `id_fields`, `default_value`, `help`) VALUES ((SELECT id FROM pageType WHERE `name` = 'cms_preferences' LIMIT 1), get_field_id('description'), NULL, 'Page description');
+
+-- add page translations for cms preferences
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('title'), '0000000002', 'CMS Preferences');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('title'), '0000000003', 'CMS Preferences');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('description'), '0000000002', 'Konfiguration der CMS-Einstellungen');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('description'), '0000000003', 'CMS configuration settings');
+
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('callback_api_key'), '0000000001', '');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('default_language_id'), '0000000001', 2);
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('anonymous_users'), '0000000001', '0');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('firebase_config'), '0000000001', '');
+INSERT IGNORE INTO `pages_fields_translation` (`id_pages`, `id_fields`, `id_languages`, `content`) VALUES (@id_page_cms_prefs, get_field_id('default_timezone'), '0000000001', (SELECT id FROM lookups WHERE type_code = 'timezones' AND lookup_code = 'Europe/Zurich'));
+
 UPDATE pages
 SET nav_position = null
-WHERE keyword IN ('sh-global-css', 'sh-global-values');
+WHERE keyword IN ('sh-global-css', 'sh-global-values', 'sh-cms-preferences');
 
 -- remove old styles
 DELETE FROM styles
@@ -2639,7 +2681,7 @@ INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) V
 -- Pacific Islands
 ('timezones', 'Pacific/Guam', 'Chamorro Time (ChST)', 'Chamorro Time - UTC+10'),
 ('timezones', 'Pacific/Saipan', 'Chamorro Time (ChST)', 'Chamorro Time - UTC+10')
-ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_value);
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
 
 -- Add timezone field to users table
 CALL add_table_column('users', 'id_timezones', 'INT DEFAULT NULL');
@@ -2781,34 +2823,17 @@ END$$
 
 DELIMITER ;
 
--- =================================================
--- Documentation: User Group Filtering System
--- =================================================
---
--- 1. Purpose:
---    - get_dataTable_with_user_group_filter is used for non-admin users
---    - Dynamically determines accessible users based on current user's group permissions
---    - Filters data to only show records from users in their accessible groups
---    - Maintains same functionality as get_dataTable_with_filter but with group-based user filtering
---
--- 2. Parameters:
---    - table_id_param: Data table ID
---    - current_user_id_param: User ID of the current user making the request
---    - filter_param: Additional SQL filter conditions
---    - exclude_deleted_param: Whether to exclude deleted records
---    - language_id_param: Language ID for translations
---
--- 3. Permission Logic:
---    - Finds all groups the current user can access via role_data_access
---    - Finds all users who belong to those groups via users_groups
---    - Filters data to only include records from those accessible users
---
--- 4. Usage Examples:
---    - CALL get_dataTable_with_user_group_filter(1, 123, '', TRUE, 1); -- User 123's accessible data
---    - CALL get_dataTable_with_user_group_filter(2, 456, 'AND triggerType = "finished"', TRUE, 2);
---
--- 5. Security:
---    - Permission logic is calculated server-side based on current user's roles
---    - Admin users should continue using the original get_dataTable_with_filter procedure
---    - If user has no group access, returns no results (secure by default)
---    - No risk of parameter size limits since only current user ID is passed
+CALL drop_foreign_key('cmsPreferences', 'FK_3F26A2DF5602A942');
+DROP TABLE IF EXISTS cmsPreferences;
+DROP VIEW IF EXISTS view_cmsPreferences;
+DROP PROCEDURE IF EXISTS update_formId_reminders;
+DROP PROCEDURE IF EXISTS get_group_acl;
+DROP PROCEDURE IF EXISTS get_navigation;
+
+DROP FUNCTION IF EXISTS get_form_fields_helper;
+DROP FUNCTION IF EXISTS get_page_fields_helper;
+DROP FUNCTION IF EXISTS get_sections_fields_helper;
+
+DROP VIEW IF EXISTS view_datatables_data;
+DROP VIEW IF EXISTS view_transactions;
+DROP VIEW IF EXISTS view_user_codes;

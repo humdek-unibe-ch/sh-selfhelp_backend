@@ -2,10 +2,11 @@
 
 namespace App\Service\Auth;
 
-use App\Entity\CmsPreference;
 use App\Entity\Language;
+use App\Entity\Lookup;
 use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\UserPermissionService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -24,7 +25,9 @@ class UserDataService
         private readonly UserPermissionService $userPermissionService,
         private readonly CacheService $cache,
         private readonly TransactionService $transactionService,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly LookupService $lookupService
     ) {
     }
 
@@ -91,12 +94,16 @@ class UserDataService
         } else {
             // User doesn't have language set, use CMS default
             try {
-                $cmsPreference = $this->entityManager->getRepository(CmsPreference::class)->findOneBy([]);
-                if ($cmsPreference && $cmsPreference->getDefaultLanguage()) {
-                    $userLanguageId = $cmsPreference->getDefaultLanguage()->getId();
-                    $userLanguageLocale = $cmsPreference->getDefaultLanguage()->getLocale();
-                    $userLanguageName = $cmsPreference->getDefaultLanguage()->getLanguage();
-                } else {
+                $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+                if ($defaultLanguageId) {
+                    $defaultLanguage = $this->entityManager->getRepository(Language::class)->find($defaultLanguageId);
+                    if ($defaultLanguage) {
+                        $userLanguageId = $defaultLanguage->getId();
+                        $userLanguageLocale = $defaultLanguage->getLocale();
+                        $userLanguageName = $defaultLanguage->getLanguage();
+                    }
+                }
+                if (!$defaultLanguageId) {
                     // No CMS default language set, use fallback
                     $userLanguageId = 2;
                     $fallbackLanguage = $this->entityManager->getRepository(Language::class)->find(2);
@@ -128,16 +135,48 @@ class UserDataService
      */
     public function getUserTimezoneInfo(User $user): ?array
     {
-        if (!$user->getTimezone()) {
-            return null;
+        if ($user->getTimezone()) {
+            return [
+                'id' => $user->getTimezone()->getId(),
+                'code' => $user->getTimezone()->getLookupCode(),
+                'name' => $user->getTimezone()->getLookupValue(),
+                'description' => $user->getTimezone()->getLookupDescription()
+            ];
         }
 
-        return [
-            'id' => $user->getTimezone()->getId(),
-            'code' => $user->getTimezone()->getLookupCode(),
-            'name' => $user->getTimezone()->getLookupValue(),
-            'description' => $user->getTimezone()->getLookupDescription()
-        ];
+        // User doesn't have timezone set, use CMS default
+        try {
+            $defaultTimezoneCode = $this->cmsPreferenceService->getDefaultTimezone();
+            if ($defaultTimezoneCode) {
+                $timezoneLookup = $this->lookupService->findById($defaultTimezoneCode);
+                return [
+                    'id' => $timezoneLookup->getId(),
+                    'code' => $timezoneLookup->getLookupCode(),
+                    'name' => $timezoneLookup->getLookupValue(),
+                    'description' => $timezoneLookup->getLookupDescription()
+                ];
+            }
+
+            // If CMS timezone not found or not set, try to find Europe/Zurich as fallback
+            $zurichTimezone = $this->entityManager->getRepository(Lookup::class)->findOneBy([
+                'typeCode' => 'timezones',
+                'lookupCode' => 'Europe/Zurich'
+            ]);
+
+            if ($zurichTimezone) {
+                return [
+                    'id' => $zurichTimezone->getId(),
+                    'code' => $zurichTimezone->getLookupCode(),
+                    'name' => $zurichTimezone->getLookupValue(),
+                    'description' => $zurichTimezone->getLookupDescription()
+                ];
+            }
+
+        } catch (\Exception $e) {
+            // If there's an error getting the default timezone, continue without it
+        }
+
+        return null;
     }
 
     /**
