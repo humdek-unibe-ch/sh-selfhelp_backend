@@ -5,6 +5,7 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\PagesSection;
+use App\Entity\PageTypeField;
 use App\Entity\User;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
@@ -388,7 +389,7 @@ class AdminPageService extends BaseService
                 $pageTypeId = $pageType->getId();
 
                 // Get all valid field IDs for this page type from pageType_fields
-                $validFieldIds = $this->entityManager->getRepository(\App\Entity\PageTypeField::class)
+                $validFieldIds = $this->entityManager->getRepository(PageTypeField::class)
                     ->createQueryBuilder('ptf')
                     ->select('f.id')
                     ->leftJoin('ptf.field', 'f')
@@ -443,6 +444,15 @@ class AdminPageService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateAllListsInCategory();
+
+            // Check if this is the CMS preferences page and perform additional cache invalidation
+            if ($page->getKeyword() == CmsPreferenceService::SH_CMS_PREFERENCES_KEYWORD) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
+                    ->invalidateAllListsInCategory();
+
+                $this->cmsPreferenceService->invalidateUserDataCaches();
+        }
 
             return $page;
         } catch (\Throwable $e) {

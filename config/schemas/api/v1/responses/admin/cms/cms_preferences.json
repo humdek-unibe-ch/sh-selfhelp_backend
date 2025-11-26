@@ -5,7 +5,6 @@
   "description": "Response schema for CMS preferences",
   "properties": {
     "id": { "type": "integer", "description": "CMS preferences ID" },
-    "callback_api_key": { "type": ["string", "null"], "description": "Callback API key" },
     "default_language_id": { "type": ["integer", "null"], "description": "Default language ID" },
     "default_language": {
       "type": ["object", "null"],
@@ -22,7 +21,7 @@
     "firebase_config": { "type": ["string", "null"], "description": "Firebase configuration" },
     "default_timezone": { "type": "string", "description": "Default timezone code" }
   },
-  "required": ["id", "callback_api_key", "default_language_id", "default_language", "anonymous_users", "firebase_config", "default_timezone"],
+  "required": ["id", "default_language_id", "default_language", "anonymous_users", "firebase_config", "default_timezone"],
   "additionalProperties": false
 }
 

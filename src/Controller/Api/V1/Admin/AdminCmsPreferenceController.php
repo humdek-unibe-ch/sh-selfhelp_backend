@@ -46,25 +46,4 @@ class AdminCmsPreferenceController extends AbstractController
         }
     }
 
-    /**
-     * Update CMS preferences
-     * 
-     * @route /admin/cms-preferences
-     * @method PUT
-     */
-    public function updateCmsPreferences(Request $request): JsonResponse
-    {
-        try {
-            $data = $this->validateRequest($request, 'requests/admin/update_cms_preferences', $this->jsonSchemaValidationService);
-            
-            $preferences = $this->adminCmsPreferenceService->updateCmsPreferences($data);
-            
-            return $this->responseFormatter->formatSuccess($preferences);
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
 } 

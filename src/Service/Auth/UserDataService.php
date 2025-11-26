@@ -47,8 +47,6 @@ class UserDataService
         // Build entity scopes for all roles and groups this user has
         $cacheBuilder = $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
-            ->withCategory(CacheService::CATEGORY_ROLES)
-            ->withCategory(CacheService::CATEGORY_GROUPS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
 
         // Add entity scopes for each role
@@ -61,7 +59,7 @@ class UserDataService
             $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, $group->getId());
         }
 
-        return $cacheBuilder->getItem($cacheKey, function () use ($user) {
+        return $cacheBuilder->getList($cacheKey, function () use ($user) {
             return [
                 'id' => $user->getId(),
                 'email' => $user->getEmail(),

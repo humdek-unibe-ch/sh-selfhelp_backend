@@ -849,18 +849,6 @@ WHERE ar.`route_name` IN (
 );
 
 
--- Admin CMS Preferences routes
-INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
-('admin_cms_preferences_get_v1', 'v1', '/admin/cms-preferences', 'App\\Controller\\Api\\V1\\Admin\\AdminCmsPreferenceController::getCmsPreferences', 'GET', NULL, NULL);
-
-INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
-('admin_cms_preferences_update_v1', 'v1', '/admin/cms-preferences', 'App\\Controller\\Api\\V1\\Admin\\AdminCmsPreferenceController::updateCmsPreferences', 'PUT', NULL, JSON_OBJECT(
-    'callback_api_key', JSON_OBJECT('in', 'body', 'required', false),
-    'default_language_id', JSON_OBJECT('in', 'body', 'required', false),
-    'anonymous_users', JSON_OBJECT('in', 'body', 'required', false),
-    'firebase_config', JSON_OBJECT('in', 'body', 'required', false)
-));
-
 -- Admin Asset routes
 INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
 ('admin_assets_get_all_v1', 'v1', '/admin/assets', 'App\\Controller\\Api\\V1\\Admin\\AdminAssetController::getAllAssets', 'GET', NULL, JSON_OBJECT(
@@ -930,27 +918,6 @@ WHERE r.name = 'admin' AND p.name IN (
 );
 
 -- Link new routes to permissions
-INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
-SELECT
-  ar.`id`      AS id_api_routes,
-  p.`id`       AS id_permissions
-FROM `api_routes`     AS ar
-JOIN `permissions`   AS p
-  ON p.`name` = 'admin.cms_preferences.read'
-WHERE ar.`route_name` IN (
-  'admin_cms_preferences_get_v1'
-);
-
-INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
-SELECT
-  ar.`id`      AS id_api_routes,
-  p.`id`       AS id_permissions
-FROM `api_routes`     AS ar
-JOIN `permissions`   AS p
-  ON p.`name` = 'admin.cms_preferences.update'
-WHERE ar.`route_name` IN (
-  'admin_cms_preferences_update_v1'
-);
 
 -- Actions management permissions
 INSERT IGNORE INTO `permissions` (`name`, `description`)

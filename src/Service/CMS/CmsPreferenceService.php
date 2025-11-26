@@ -16,8 +16,7 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 class CmsPreferenceService extends BaseService
 {
-    private const SH_CMS_PREFERENCES_KEYWORD = 'sh-cms-preferences';
-    private const PF_CALLBACK_API_KEY = 'callback_api_key';
+    public const SH_CMS_PREFERENCES_KEYWORD = 'sh-cms-preferences';
     private const PF_DEFAULT_LANGUAGE_ID = 'default_language_id';
     private const PF_ANONYMOUS_USERS = 'anonymous_users';
     private const PF_FIREBASE_CONFIG = 'firebase_config';
@@ -52,24 +51,12 @@ class CmsPreferenceService extends BaseService
 
                 return [
                     'id' => $preferencesPage->getId(),
-                    'callback_api_key' => $fieldValues[self::PF_CALLBACK_API_KEY] ?? null,
                     'default_language_id' => $fieldValues[self::PF_DEFAULT_LANGUAGE_ID] ?? null,
                     'anonymous_users' => (int) ($fieldValues[self::PF_ANONYMOUS_USERS] ?? 0),
                     'firebase_config' => $fieldValues[self::PF_FIREBASE_CONFIG] ?? null,
                     'default_timezone' => $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? 'Europe/Zurich'
                 ];
             });
-    }
-
-    /**
-     * Get callback API key
-     *
-     * @return string|null
-     */
-    public function getCallbackApiKey(): ?string
-    {
-        $preferences = $this->getCmsPreferences();
-        return $preferences['callback_api_key'];
     }
 
     /**
@@ -173,11 +160,24 @@ class CmsPreferenceService extends BaseService
     {
         return [
             'id' => null,
-            'callback_api_key' => null,
             'default_language_id' => null,
             'anonymous_users' => 0,
             'firebase_config' => null,
             'default_timezone' => 'Europe/Zurich'
         ];
+    }
+
+    /**
+     * Clear user data caches when CMS preferences change
+     *
+     * This method should be called when CMS preferences that affect user data
+     * (like default language or timezone) are updated to ensure user data
+     * caches are refreshed.
+     */
+    public function invalidateUserDataCaches(): void
+    {
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateAllListsInCategory();
     }
 }
