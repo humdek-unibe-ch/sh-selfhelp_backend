@@ -935,6 +935,56 @@ class SectionExportImportService extends BaseService
 }
 ```
 
+## ⚙️ CMS Preferences System
+
+### Overview
+The CMS includes a comprehensive preferences system that manages global application settings through a page-based configuration. This system handles default language, timezone settings, anonymous user access, and Firebase configuration.
+
+### Page-Based Configuration
+CMS preferences are stored using the existing page-based content management system with the reserved keyword `sh-cms-preferences`. This approach leverages the existing multi-language field system while providing a unified interface for global application settings.
+
+### Core Components
+- **CmsPreferenceService**: Centralized service for accessing CMS preferences with intelligent caching
+- **AdminCmsPreferenceService**: Admin-specific service with enhanced caching for the admin interface
+- **Timezone Management**: Comprehensive timezone support with IANA compliance and user preferences
+- **Multi-language Integration**: Preferences respect the system's multi-language architecture
+
+### Key Features
+- **Default Language**: System-wide default language setting with fallback support
+- **Timezone Configuration**: Global and user-specific timezone preferences
+- **Anonymous User Control**: Configurable anonymous user access levels
+- **Firebase Integration**: Centralized Firebase configuration management
+- **Advanced Caching**: Entity-scoped caching with automatic invalidation
+
+### API Endpoints
+- `GET /admin/cms-preferences` - Retrieve current CMS preferences
+- `PUT /auth/user/timezone` - Update user timezone preference
+
+### Services Integration
+Services throughout the application use `CmsPreferenceService` for accessing global settings:
+
+```php
+class SomeService extends BaseService
+{
+    public function __construct(
+        private readonly CmsPreferenceService $cmsPreferences
+    ) {}
+
+    public function doSomething(): void
+    {
+        $defaultLanguage = $this->cmsPreferences->getDefaultLanguageId();
+        $timezone = $this->cmsPreferences->getDefaultTimezone();
+        $anonymousAllowed = $this->cmsPreferences->getAnonymousUsers() > 0;
+        // Use preferences in business logic
+    }
+}
+```
+
+### Caching Strategy
+The preferences system uses advanced caching with entity scope dependencies to ensure high performance and consistency across the application.
+
+For detailed information about CMS preferences and timezone management, see: **[CMS Preferences and Timezone Management](./20-cms-preferences-timezones.md)**
+
 ## 🔒 Access Control Integration
 
 ### Page-Level ACL
@@ -948,7 +998,7 @@ protected function checkAccess(string $pageKeyword, string $accessType): void
 {
     $page = $this->pageRepository->findOneBy(['keyword' => $pageKeyword]);
     $userId = $this->userContextService->getCurrentUser()->getId();
-    
+
     if (!$this->aclService->hasAccess($userId, $page->getId(), $accessType)) {
         throw new AccessDeniedException('Insufficient permissions for page: ' . $pageKeyword);
     }

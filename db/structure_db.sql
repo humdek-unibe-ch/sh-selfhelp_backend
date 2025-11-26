@@ -1062,11 +1062,14 @@ CREATE TABLE `users` (
   `security_questions` varchar(1000) DEFAULT NULL,
   `user_name` varchar(100) DEFAULT NULL,
   `id_userTypes` int NOT NULL DEFAULT '72',
+  `id_timezones` int DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UNIQ_1483A5E9E7927C74` (`email`),
   UNIQUE KEY `UNIQ_1483A5E924A232CF` (`user_name`),
   KEY `IDX_1483A5E93F6026C1` (`id_userTypes`),
-  CONSTRAINT `FK_1483A5E93F6026C1` FOREIGN KEY (`id_userTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+  KEY `IDX_1483A5E9F5677479` (`id_timezones`),
+  CONSTRAINT `FK_1483A5E93F6026C1` FOREIGN KEY (`id_userTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_users_id_timezones` FOREIGN KEY (`id_timezones`) REFERENCES `lookups` (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
