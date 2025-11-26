@@ -1356,6 +1356,7 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 -- All endpoints require JWT authentication and return appropriate responses
 INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
 ('auth_user_name_update_v1', 'v1', '/auth/user/name', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::updateName', 'PUT', NULL, NULL),
+('auth_user_timezone_update_v1', 'v1', '/auth/user/timezone', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::updateTimezone', 'PUT', NULL, NULL),
 ('auth_user_password_update_v1', 'v1', '/auth/user/password', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::updatePassword', 'PUT', NULL, NULL),
 ('auth_user_account_delete_v1', 'v1', '/auth/user/account', 'App\\Controller\\Api\\V1\\Auth\\ProfileController::deleteAccount', 'DELETE', NULL, NULL),
 ('admin_actions_translations_get_all_v1', 'v1', '/admin/actions/{actionId}/translations', 'App\\Controller\\Api\\V1\\Admin\\AdminActionTranslationController::getTranslations', 'GET', JSON_OBJECT('actionId', '[0-9]+'), JSON_OBJECT(

@@ -2,6 +2,7 @@
 
 namespace App\Service\Auth;
 
+use App\Entity\Lookup;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\Core\BaseService;
@@ -56,6 +57,69 @@ class ProfileService extends BaseService
                     'action' => 'name_changed',
                     'old_name' => $oldName,
                     'new_name' => $newName,
+                    'user_email' => $managedUser->getEmail()
+                ])
+            );
+
+            // Invalidate user caches
+            $this->invalidateUserCaches($managedUser->getId());
+
+            return $managedUser;
+        });
+    }
+
+    /**
+     * Update user timezone
+     *
+     * @param User $user The user entity
+     * @param int $timezoneId The ID of the timezone lookup entry
+     * @return User The updated user entity
+     */
+    public function updateTimezone(User $user, int $timezoneId): User
+    {
+        return $this->executeInTransaction(function () use ($user, $timezoneId) {
+            // Fetch fresh managed entity to ensure proper change tracking
+            $managedUser = $this->entityManager->find(User::class, $user->getId());
+            if (!$managedUser) {
+                throw new \InvalidArgumentException('User not found');
+            }
+
+            // Validate that the timezone lookup exists
+            $timezone = $this->cache
+                ->withCategory(CacheService::CATEGORY_LOOKUPS)
+                ->getItem(
+                    "lookup_by_id_{$timezoneId}",
+                    function () use ($timezoneId) {
+                        return $this->entityManager->getRepository(Lookup::class)->find($timezoneId);
+                    }
+                );
+
+            if (!$timezone) {
+                throw new \InvalidArgumentException('Invalid timezone ID');
+            }
+
+            // Validate that it's actually a timezone lookup
+            if ($timezone->getTypeCode() !== 'timezones') {
+                throw new \InvalidArgumentException('The provided ID is not a valid timezone');
+            }
+
+            $oldTimezoneId = $managedUser->getTimezone()?->getId();
+            $managedUser->setTimezone($timezone);
+            $this->entityManager->flush();
+
+            // Log the transaction
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'users',
+                $managedUser->getId(),
+                false,
+                json_encode([
+                    'action' => 'timezone_changed',
+                    'old_timezone_id' => $oldTimezoneId,
+                    'new_timezone_id' => $timezoneId,
+                    'new_timezone_code' => $timezone->getLookupCode(),
+                    'new_timezone_value' => $timezone->getLookupValue(),
                     'user_email' => $managedUser->getEmail()
                 ])
             );

@@ -49,6 +49,29 @@
           "required": ["id", "locale", "name"],
           "additionalProperties": false
         },
+        "timezone": {
+          "type": ["object", "null"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "Timezone ID"
+            },
+            "code": {
+              "type": "string",
+              "description": "Timezone code (e.g., 'America/New_York')"
+            },
+            "name": {
+              "type": "string",
+              "description": "Timezone name (e.g., 'Eastern Time (ET)')"
+            },
+            "description": {
+              "type": ["string", "null"],
+              "description": "Timezone description"
+            }
+          },
+          "required": ["id", "code", "name", "description"],
+          "additionalProperties": false
+        },
         "roles": {
           "type": "array",
           "items": {
@@ -101,7 +124,7 @@
           }
         }
       },
-      "required": ["id", "email", "name", "user_name", "blocked", "language", "roles", "permissions", "groups"],
+      "required": ["id", "email", "name", "user_name", "blocked", "language", "timezone", "roles", "permissions", "groups"],
       "additionalProperties": false
     }
   },

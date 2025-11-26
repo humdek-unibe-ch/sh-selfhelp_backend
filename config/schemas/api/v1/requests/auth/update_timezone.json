@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Update Timezone Request",
+  "description": "Schema for updating a user's timezone",
+  "type": "object",
+  "properties": {
+    "timezone_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The ID of the timezone lookup entry"
+    }
+  },
+  "required": ["timezone_id"],
+  "additionalProperties": false
+}
