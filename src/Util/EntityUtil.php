@@ -38,8 +38,14 @@ class EntityUtil
             
             // Try to get the value
             try {
+                // Check if the property is initialized for typed properties
+                if (PHP_VERSION_ID >= 70400 && $property->hasType() && !$property->isInitialized($entity)) {
+                    // Skip uninitialized typed properties to avoid errors
+                    continue;
+                }
+
                 $value = $property->getValue($entity);
-                
+
                 // Handle nested objects
                 if (is_object($value)) {
                     // For DateTime objects, convert to string
