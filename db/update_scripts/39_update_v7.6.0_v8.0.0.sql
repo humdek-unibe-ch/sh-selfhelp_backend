@@ -207,12 +207,12 @@ BEGIN
             acl.acl_update,
             acl.acl_delete,
             p.keyword,
-            p.url,            
+            p.url,
             p.parent,
             p.is_headless,
             p.nav_position,
-            p.footer_position,       
-            id_type,     
+            p.footer_position,
+            id_type,
             p.id_pageAccessTypes,
             is_system
         FROM users_groups ug
@@ -220,30 +220,6 @@ BEGIN
         JOIN acl_groups acl      ON acl.id_groups = ug.id_groups
         JOIN pages p             ON p.id           = acl.id_pages
         WHERE ug.id_users = param_user_id
-          AND (param_page_id = -1 OR acl.id_pages = param_page_id)
-
-        UNION ALL
-
-        -- 2) User-specific ACL
-        SELECT
-            acl.id_users,
-            acl.id_pages,
-            acl.acl_select,
-            acl.acl_insert,
-            acl.acl_update,
-            acl.acl_delete,
-            p.keyword,
-            p.url,          
-            p.parent,
-            p.is_headless,
-            p.nav_position,
-            p.footer_position,     
-            id_type,       
-            p.id_pageAccessTypes,
-            is_system
-        FROM acl_users acl
-        JOIN pages p ON p.id = acl.id_pages
-        WHERE acl.id_users = param_user_id
           AND (param_page_id = -1 OR acl.id_pages = param_page_id)
 
         UNION ALL
@@ -2917,3 +2893,6 @@ INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) V
 ('scheduledJobsStatus', 'running', 'Running', 'Job is currently running'),
 ('scheduledJobsStatus', 'cancelled', 'Cancelled', 'Job was manually cancelled')
 ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- Drop acl_users table as it's no longer needed (ACLs now handle only frontend view for groups)
+DROP TABLE IF EXISTS `acl_users`;

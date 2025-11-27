@@ -16,7 +16,7 @@ use App\Service\Security\DataAccessSecurityService;
  * This service manages two separate but complementary permission systems:
  *
  * 1. **ACL System (Frontend/Website)**: For website user page access and form submissions
- *    - Uses: AclUser and AclGroup entities
+ *    - Uses: AclGroup entities
  *    - Purpose: Fine-grained page-level permissions for website users
  *    - Methods: checkAclAccess(), checkAclAccessById()
  *

@@ -3,7 +3,6 @@
 namespace App\Service\ACL;
 
 use App\Entity\AclGroup;
-use App\Entity\AclUser;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\User;
@@ -138,27 +137,4 @@ class ACLService
             ->invalidateAllListsInCategory();
     }
 
-    /**
-     * Add or update a user ACL for a page
-     */
-    public function addUserAcl(Page $page, User $user, bool $select, bool $insert, bool $update, bool $delete, EntityManagerInterface $em): void
-    {
-        $aclUser = new AclUser();
-        $aclUser->setUser($user)
-            ->setPage($page)
-            ->setAclSelect($select)
-            ->setAclInsert($insert)
-            ->setAclUpdate($update)
-            ->setAclDelete($delete);
-        $em->persist($aclUser);
-        
-        // Invalidate entity scopes for affected entities
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
-        
-        // Invalidate permission lists
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->invalidateAllListsInCategory();
-    }
 }

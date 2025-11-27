@@ -146,7 +146,6 @@ src/
 │       └── RequestValidatorTrait.php
 ├── Entity/                 # Doctrine ORM entities (52 entities)
 │   ├── AclGroup.php
-│   ├── AclUser.php
 │   ├── Action.php
 │   ├── ActionTranslation.php
 │   ├── ApiRequestLog.php
@@ -292,9 +291,7 @@ erDiagram
     Page ||--o{ PageVersion : has_versions
     PageVersion }o--|| User : created_by
 
-    Page ||--o{ AclUser : user_acl
     Page ||--o{ AclGroup : group_acl
-    AclUser }o--|| User : for_user
     AclGroup }o--|| Group : for_group
 
     Field ||--o{ FieldsTranslation : translations
@@ -309,7 +306,7 @@ erDiagram
 - **`users_groups`**: Group memberships (for page ACL)
 - **`pages`, `sections`, `fields`**: CMS content structure
 - **`page_versions`**: Page versioning and publishing system
-- **`acl_users`, `acl_groups`**: Fine-grained access control for pages
+- **`acl_groups`**: Fine-grained access control for pages
 - **`fields_translations`, `sections_fields_translations`**: Multi-language support
 - **`transactions`**: Comprehensive audit trail
 - **`scheduled_jobs`**: Background task scheduling system

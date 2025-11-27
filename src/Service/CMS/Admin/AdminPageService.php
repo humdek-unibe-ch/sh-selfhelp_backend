@@ -216,19 +216,6 @@ class AdminPageService extends BaseService
             // ACL for therapist group (select only)
             $this->aclService->addGroupAcl($page, $therapistGroup, true, false, false, false, $this->entityManager);
 
-            // ACL for creating user (full access)
-            $currentUser = $this->userContextAwareService->getCurrentUser();
-            if (!$currentUser) {
-                throw new ServiceException('Current user not found.', Response::HTTP_UNAUTHORIZED);
-            }
-            
-            // Ensure the user is managed by the current EntityManager
-            $managedUser = $this->entityManager->find(User::class, $currentUser->getId());
-            if (!$managedUser) {
-                throw new ServiceException('Current user not found in database.', Response::HTTP_UNAUTHORIZED);
-            }
-            
-            $this->aclService->addUserAcl($page, $managedUser, true, true, true, true, $this->entityManager);
 
             // Reorder page positions if needed
             if ($navPosition !== null) {

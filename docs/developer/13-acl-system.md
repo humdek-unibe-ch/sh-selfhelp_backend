@@ -122,7 +122,7 @@ $this->cache
 ### 👥 Frontend User ACL System (Website Access)
 - **Purpose**: Fine-grained page-level permissions for website content
 - **Users**: Frontend website users, regular users
-- **Tables**: `groups`, `users_groups`, `acl_users`, `acl_groups`
+- **Tables**: `groups`, `users_groups`, `acl_groups`
 - **Scope**: Page visibility and interaction permissions
 - **Examples**: Can view specific pages, can comment on pages, can edit page content
 
@@ -300,23 +300,6 @@ AND ar.route_name IN ('admin_pages_delete');
 
 ### ACL Tables Structure
 
-#### `acl_users` - User-Level Page Permissions
-```sql
-CREATE TABLE `acl_users` (
-  `id_users` int NOT NULL,
-  `id_pages` int NOT NULL,
-  `acl_select` tinyint(1) NOT NULL DEFAULT '1',
-  `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_update` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id_users`,`id_pages`),
-  KEY `IDX_901AE856FA06E4D9` (`id_users`),
-  KEY `IDX_901AE856CEF1A445` (`id_pages`),
-  CONSTRAINT `FK_901AE856CEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_901AE856FA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-```
-
 #### `acl_groups` - Group-Level Page Permissions
 ```sql
 CREATE TABLE `acl_groups` (
@@ -335,60 +318,6 @@ CREATE TABLE `acl_groups` (
 ```
 
 ### ACL Entities
-
-#### AclUser Entity
-```php
-<?php
-namespace App\Entity;
-
-#[ORM\Entity]
-#[ORM\Table(name: 'acl_users')]
-class AclUser
-{
-    #[ORM\Id]
-    #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?User $user = null;
-
-    #[ORM\Id]
-    #[ORM\ManyToOne(targetEntity: Page::class)]
-    #[ORM\JoinColumn(name: 'id_pages', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Page $page = null;
-
-    #[ORM\Column(name: 'acl_select', type: 'boolean', options: ['default' => 1])]
-    private bool $aclSelect = true;
-
-    #[ORM\Column(name: 'acl_insert', type: 'boolean', options: ['default' => 0])]
-    private bool $aclInsert = false;
-
-    #[ORM\Column(name: 'acl_update', type: 'boolean', options: ['default' => 0])]
-    private bool $aclUpdate = false;
-
-    #[ORM\Column(name: 'acl_delete', type: 'boolean', options: ['default' => 0])]
-    private bool $aclDelete = false;
-
-    // Getters and setters...
-    
-    public function getUser(): ?User { return $this->user; }
-    public function setUser(?User $user): self { $this->user = $user; return $this; }
-
-    public function getPage(): ?Page { return $this->page; }
-    public function setPage(?Page $page): self { $this->page = $page; return $this; }
-
-    public function getAclSelect(): bool { return $this->aclSelect; }
-    public function setAclSelect(bool $aclSelect): static { $this->aclSelect = $aclSelect; return $this; }
-
-    public function getAclInsert(): bool { return $this->aclInsert; }
-    public function setAclInsert(bool $aclInsert): static { $this->aclInsert = $aclInsert; return $this; }
-
-    public function getAclUpdate(): bool { return $this->aclUpdate; }
-    public function setAclUpdate(bool $aclUpdate): static { $this->aclUpdate = $aclUpdate; return $this; }
-
-    public function getAclDelete(): bool { return $this->aclDelete; }
-    public function setAclDelete(bool $aclDelete): static { $this->aclDelete = $aclDelete; return $this; }
-}
-// ENTITY RULE
-```
 
 #### AclGroup Entity
 ```php
@@ -421,7 +350,7 @@ class AclGroup
     #[ORM\Column(name: 'acl_delete', type: 'boolean', options: ['default' => 0])]
     private bool $aclDelete = false;
 
-    // Getters and setters similar to AclUser...
+    // Getters and setters...
 }
 // ENTITY RULE
 ```
@@ -434,13 +363,12 @@ DELIMITER //
 DROP PROCEDURE IF EXISTS get_user_acl //
 CREATE PROCEDURE get_user_acl(IN userId INT, IN pageId INT)
 BEGIN
-    SELECT 
-        COALESCE(MAX(au.acl_select), MAX(ag.acl_select), 0) as acl_select,
-        COALESCE(MAX(au.acl_insert), MAX(ag.acl_insert), 0) as acl_insert,
-        COALESCE(MAX(au.acl_update), MAX(ag.acl_update), 0) as acl_update,
-        COALESCE(MAX(au.acl_delete), MAX(ag.acl_delete), 0) as acl_delete
+    SELECT
+        MAX(ag.acl_select) as acl_select,
+        MAX(ag.acl_insert) as acl_insert,
+        MAX(ag.acl_update) as acl_update,
+        MAX(ag.acl_delete) as acl_delete
     FROM users u
-    LEFT JOIN acl_users au ON u.id = au.id_users AND au.id_pages = pageId
     LEFT JOIN users_groups ug ON u.id = ug.id_users
     LEFT JOIN acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
     WHERE u.id = userId;
@@ -449,10 +377,9 @@ DELIMITER ;
 ```
 
 ### Permission Logic Explanation
-1. **User-Specific Rules**: Direct user-to-page ACL rules take precedence
-2. **Group Rules**: User inherits permissions from all groups they belong to
-3. **Maximum Permission**: Uses MAX() to grant access if ANY rule allows it
-4. **Default Deny**: Returns 0 (deny) if no rules exist for the user/page combination
+1. **Group Rules**: User inherits permissions from all groups they belong to
+2. **Maximum Permission**: Uses MAX() to grant access if ANY group rule allows it
+3. **Default Deny**: Returns NULL (deny) if no rules exist for the user/page combination
 
 ## 🔧 ACLService Implementation
 
@@ -620,61 +547,6 @@ class ACLService
     }
 
     /**
-     * Set user-specific ACL permissions for a page
-     */
-    public function setUserPagePermissions(
-        int $userId, 
-        int $pageId, 
-        bool $select = true, 
-        bool $insert = false, 
-        bool $update = false, 
-        bool $delete = false
-    ): bool {
-        try {
-            $this->entityManager->beginTransaction();
-            
-            // Find existing ACL rule or create new one
-            $aclUser = $this->entityManager->getRepository(AclUser::class)
-                ->findOneBy(['user' => $userId, 'page' => $pageId]);
-            
-            if (!$aclUser) {
-                $aclUser = new AclUser();
-                $user = $this->entityManager->getReference(User::class, $userId);
-                $page = $this->entityManager->getReference(Page::class, $pageId);
-                $aclUser->setUser($user);
-                $aclUser->setPage($page);
-            }
-            
-            $aclUser->setAclSelect($select);
-            $aclUser->setAclInsert($insert);
-            $aclUser->setAclUpdate($update);
-            $aclUser->setAclDelete($delete);
-            
-            $this->entityManager->persist($aclUser);
-            $this->entityManager->flush();
-            $this->entityManager->commit();
-            
-            $this->logger->info('User ACL permissions updated', [
-                'userId' => $userId,
-                'pageId' => $pageId,
-                'permissions' => compact('select', 'insert', 'update', 'delete')
-            ]);
-            
-            return true;
-            
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            $this->logger->error('Failed to set user page permissions', [
-                'userId' => $userId,
-                'pageId' => $pageId,
-                'error' => $e->getMessage()
-            ]);
-            
-            return false;
-        }
-    }
-
-    /**
      * Set group-specific ACL permissions for a page
      */
     public function setGroupPagePermissions(
@@ -729,37 +601,6 @@ class ACLService
         }
     }
 
-    /**
-     * Remove all ACL permissions for a user on a specific page
-     */
-    public function removeUserPagePermissions(int $userId, int $pageId): bool
-    {
-        try {
-            $aclUser = $this->entityManager->getRepository(AclUser::class)
-                ->findOneBy(['user' => $userId, 'page' => $pageId]);
-            
-            if ($aclUser) {
-                $this->entityManager->remove($aclUser);
-                $this->entityManager->flush();
-                
-                $this->logger->info('User ACL permissions removed', [
-                    'userId' => $userId,
-                    'pageId' => $pageId
-                ]);
-            }
-            
-            return true;
-            
-        } catch (\Exception $e) {
-            $this->logger->error('Failed to remove user page permissions', [
-                'userId' => $userId,
-                'pageId' => $pageId,
-                'error' => $e->getMessage()
-            ]);
-            
-            return false;
-        }
-    }
 }
 ```
 
@@ -975,17 +816,17 @@ class AdminACLController extends AbstractController
     ) {}
 
     /**
-     * Get user permissions for a specific page
-     * @route /admin/acl/users/{userId}/pages/{pageId}
+     * Get group permissions for a specific page
+     * @route /admin/acl/groups/{groupId}/pages/{pageId}
      * @method GET
      */
-    public function getUserPagePermissions(int $userId, int $pageId): JsonResponse
+    public function getGroupPagePermissions(int $groupId, int $pageId): JsonResponse
     {
         try {
-            $permissions = $this->aclService->getUserPagePermissions($userId, $pageId);
-            
+            $permissions = $this->aclService->getGroupPagePermissions($groupId, $pageId);
+
             return $this->responseFormatter->formatSuccess([
-                'userId' => $userId,
+                'groupId' => $groupId,
                 'pageId' => $pageId,
                 'permissions' => $permissions
             ]);
@@ -998,59 +839,35 @@ class AdminACLController extends AbstractController
     }
 
     /**
-     * Set user permissions for a specific page
-     * @route /admin/acl/users/{userId}/pages/{pageId}
+     * Set group permissions for a specific page
+     * @route /admin/acl/groups/{groupId}/pages/{pageId}
      * @method PUT
      */
-    public function setUserPagePermissions(Request $request, int $userId, int $pageId): JsonResponse
+    public function setGroupPagePermissions(Request $request, int $groupId, int $pageId): JsonResponse
     {
         try {
             $data = json_decode($request->getContent(), true);
-            
-            $success = $this->aclService->setUserPagePermissions(
-                $userId,
+
+            $success = $this->aclService->setGroupPagePermissions(
+                $groupId,
                 $pageId,
                 $data['select'] ?? true,
                 $data['insert'] ?? false,
                 $data['update'] ?? false,
                 $data['delete'] ?? false
             );
-            
+
             if (!$success) {
                 return $this->responseFormatter->formatError(
                     'Failed to update permissions',
                     Response::HTTP_INTERNAL_SERVER_ERROR
                 );
             }
-            
+
             return $this->responseFormatter->formatSuccess([
                 'message' => 'Permissions updated successfully',
-                'userId' => $userId,
+                'groupId' => $groupId,
                 'pageId' => $pageId
-            ]);
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Get all pages accessible to a user
-     * @route /admin/acl/users/{userId}/pages
-     * @method GET
-     */
-    public function getUserAccessiblePages(Request $request, int $userId): JsonResponse
-    {
-        try {
-            $accessType = $request->query->get('access_type', 'select');
-            $pages = $this->aclService->getUserAccessiblePages($userId, $accessType);
-            
-            return $this->responseFormatter->formatSuccess([
-                'userId' => $userId,
-                'accessType' => $accessType,
-                'pages' => $pages
             ]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -1074,11 +891,9 @@ Page: welcome-page (ID: 10)
 
 Group ACL (editors -> welcome-page):
 - acl_select: 1
-- acl_insert: 0  
+- acl_insert: 0
 - acl_update: 1
 - acl_delete: 0
-
-User ACL (john_doe -> welcome-page): None
 
 Result: User inherits group permissions
 - SELECT: ✅ (from group)
@@ -1087,32 +902,7 @@ Result: User inherits group permissions
 - DELETE: ❌ (denied by group)
 ```
 
-#### Scenario 2: User Override of Group Permissions
-```
-User: jane_admin (ID: 456)
-Groups: editors (ID: 5)
-Page: admin-panel (ID: 20)
-
-Group ACL (editors -> admin-panel):
-- acl_select: 1
-- acl_insert: 0
-- acl_update: 0
-- acl_delete: 0
-
-User ACL (jane_admin -> admin-panel):
-- acl_select: 1
-- acl_insert: 1
-- acl_update: 1
-- acl_delete: 1
-
-Result: User-specific permissions override group
-- SELECT: ✅ (user override)
-- INSERT: ✅ (user override)
-- UPDATE: ✅ (user override)
-- DELETE: ✅ (user override)
-```
-
-#### Scenario 3: Multiple Group Memberships
+#### Scenario 2: Multiple Group Memberships
 ```
 User: super_editor (ID: 789)
 Groups: editors (ID: 5), moderators (ID: 6)
@@ -1136,9 +926,9 @@ Result: Maximum permissions from all groups
 ### Permission Design Principles
 1. **Principle of Least Privilege**: Grant minimum necessary permissions
 2. **Default Deny**: No access unless explicitly granted
-3. **User Override**: User-specific rules take precedence over group rules
+3. **Group-Based Access**: All permissions managed through group membership
 4. **Audit Trail**: All permission changes logged via TransactionService
-5. **Regular Review**: Periodic review of permission assignments
+5. **Regular Review**: Periodic review of group permission assignments
 
 ### ACL Security Considerations
 - **Performance**: Use stored procedures for efficient permission checks

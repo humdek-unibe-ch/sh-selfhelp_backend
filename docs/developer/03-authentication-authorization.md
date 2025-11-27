@@ -495,16 +495,6 @@ class ApiSecurityListener
 The ACL system provides page-level access control with CRUD operations:
 
 ```sql
-CREATE TABLE `acl_users` (
-  `id_users`    INT NOT NULL,
-  `id_pages`    INT NOT NULL,
-  `acl_select`  TINYINT(1) NOT NULL DEFAULT '1',
-  `acl_insert`  TINYINT(1) NOT NULL DEFAULT '0',
-  `acl_update`  TINYINT(1) NOT NULL DEFAULT '0',
-  `acl_delete`  TINYINT(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id_users`, `id_pages`)
-);
-
 CREATE TABLE `acl_groups` (
   `id_groups`   INT NOT NULL,
   `id_pages`    INT NOT NULL,

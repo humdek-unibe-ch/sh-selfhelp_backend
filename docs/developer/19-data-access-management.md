@@ -46,7 +46,7 @@ graph TD
 | **Users** | Frontend website users | Admin/CMS users |
 | **Granularity** | Page access (select/insert/update/delete) | Resource-specific permissions |
 | **Logic** | User > Group permissions | Role aggregation (BIT_OR) |
-| **Tables** | `acl_users`, `acl_groups` | `role_data_access`, `dataAccessAudit` |
+| **Tables** | `acl_groups` | `role_data_access`, `dataAccessAudit` |
 | **Caching** | Stored procedure based | Advanced CacheService integration |
 
 ## 🗄️ Database Schema

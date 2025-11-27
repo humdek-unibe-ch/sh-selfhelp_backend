@@ -264,7 +264,7 @@ All API responses follow a consistent JSON envelope structure:
 - **`api_routes`**: Dynamic route definitions
 - **`users`, `groups`, `permissions`**: Authentication/authorization
 - **`pages`, `sections`, `fields`**: CMS content structure
-- **`acl_users`, `acl_groups`**: Fine-grained access control
+- **`acl_groups`**: Fine-grained access control
 - **`transactions`**: Audit trail
 - **`version`**: Database version tracking
 
@@ -287,7 +287,7 @@ All API responses follow a consistent JSON envelope structure:
 #### 2. Frontend User ACL System (Website Access)
 - **Purpose**: Fine-grained page-level permissions for website content
 - **Users**: Frontend website users, regular users
-- **Tables**: `groups`, `users_groups`, `acl_users`, `acl_groups`
+- **Tables**: `groups`, `users_groups`, `acl_groups`
 - **Scope**: Page visibility and interaction permissions
 
 ### ACL Permission Logic

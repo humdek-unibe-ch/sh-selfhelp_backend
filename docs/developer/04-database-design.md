@@ -35,9 +35,7 @@ erDiagram
     Page ||--|| PageVersion : published_version
 
     %% Fine-grained Access Control (Frontend Users)
-    Page ||--o{ AclUser : user_acl
     Page ||--o{ AclGroup : group_acl
-    AclUser }o--|| User : for_user
     AclGroup }o--|| Group : for_group
 
     %% Multi-language Support
@@ -246,21 +244,6 @@ CREATE TABLE `fields` (
 - **`sections_navigation`**: Navigation-specific section relationships
 
 ### 4. Access Control Lists (ACL) Tables
-
-#### `acl_users` - User-Level Page Permissions
-```sql
-CREATE TABLE `acl_users` (
-  `id_users` int NOT NULL,
-  `id_pages` int NOT NULL,
-  `acl_select` tinyint(1) NOT NULL DEFAULT '1',
-  `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_update` tinyint(1) NOT NULL DEFAULT '0',
-  `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
-  PRIMARY KEY (`id_users`,`id_pages`),
-  FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-```
 
 #### `acl_groups` - Group-Level Page Permissions
 ```sql
@@ -696,13 +679,12 @@ $transactionType = $this->lookupService->findByTypeAndCode(
 DELIMITER //
 CREATE PROCEDURE get_user_acl(IN userId INT, IN pageId INT)
 BEGIN
-    SELECT 
-        COALESCE(MAX(au.acl_select), MAX(ag.acl_select), 0) as acl_select,
-        COALESCE(MAX(au.acl_insert), MAX(ag.acl_insert), 0) as acl_insert,
-        COALESCE(MAX(au.acl_update), MAX(ag.acl_update), 0) as acl_update,
-        COALESCE(MAX(au.acl_delete), MAX(ag.acl_delete), 0) as acl_delete
+    SELECT
+        MAX(ag.acl_select) as acl_select,
+        MAX(ag.acl_insert) as acl_insert,
+        MAX(ag.acl_update) as acl_update,
+        MAX(ag.acl_delete) as acl_delete
     FROM users u
-    LEFT JOIN acl_users au ON u.id = au.id_users AND au.id_pages = pageId
     LEFT JOIN users_groups ug ON u.id = ug.id_users
     LEFT JOIN acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
     WHERE u.id = userId;
@@ -759,8 +741,6 @@ graph TD
     J --> K[sections_fields]
     L[fields] --> K
     
-    A --> M[acl_users]
-    H --> M
     C --> N[acl_groups]
     H --> N
     
@@ -769,9 +749,9 @@ graph TD
 ```
 
 ### Cascade Delete Rules
-- **User deletion**: Cascades to `users_groups`, `acl_users`, sets NULL in `transactions`
+- **User deletion**: Cascades to `users_groups`, sets NULL in `transactions`
 - **Group deletion**: Cascades to `users_groups`, `user_groups_permissions`, `acl_groups`
-- **Page deletion**: Cascades to `pages_sections`, `acl_users`, `acl_groups`
+- **Page deletion**: Cascades to `pages_sections`, `acl_groups`
 - **Section deletion**: Cascades to `sections_fields`, child sections
 - **API route deletion**: Cascades to `api_routes_permissions`
 
@@ -788,8 +768,6 @@ CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 
 -- ACL performance
-CREATE INDEX idx_acl_users_user ON acl_users(id_users);
-CREATE INDEX idx_acl_users_page ON acl_users(id_pages);
 CREATE INDEX idx_acl_groups_group ON acl_groups(id_groups);
 CREATE INDEX idx_acl_groups_page ON acl_groups(id_pages);
 

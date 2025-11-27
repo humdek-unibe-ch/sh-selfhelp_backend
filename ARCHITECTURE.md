@@ -1608,14 +1608,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `acl_update`: bool
 - `acl_delete`: bool
 
-### AclUser
-- `id_users`: int (PK, FK to User)
-- `id_pages`: int (PK, FK to Page)
-- `acl_select`: bool
-- `acl_insert`: bool
-- `acl_update`: bool
-- `acl_delete`: bool
-
 ### Action
 - `id`: int (PK)
 - `name`: string (unique)
