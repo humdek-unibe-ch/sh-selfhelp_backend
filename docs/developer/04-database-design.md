@@ -58,8 +58,6 @@ erDiagram
     %% System Components
     User ||--o{ Transaction : performed_by
     User ||--o{ ApiRequestLog : made_requests
-    ScheduledJob ||--o{ ScheduledJobsUser : assigned_to
-    ScheduledJobsUser }o--|| User : for_user
     Asset }o--|| Lookup : asset_type
 ```
 

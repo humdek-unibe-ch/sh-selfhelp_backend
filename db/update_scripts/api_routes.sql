@@ -1089,6 +1089,7 @@ INSERT IGNORE INTO `permissions` (`name`, `description`)
 VALUES 
   ('admin.scheduled_job.read', 'Can read scheduled jobs'),
   ('admin.scheduled_job.execute', 'Can execute scheduled jobs'),
+  ('admin.scheduled_job.cancel', 'Can cancel scheduled jobs'),
   ('admin.scheduled_job.delete', 'Can delete scheduled jobs');
 
 -- Grant permission to admin role
@@ -1098,6 +1099,7 @@ WHERE r.name = 'admin' AND p.name IN (
   'admin.permission.read',
   'admin.scheduled_job.read',
   'admin.scheduled_job.execute',
+  'admin.scheduled_job.cancel',
   'admin.scheduled_job.delete'
 );
 
@@ -1110,6 +1112,7 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 ('admin_scheduled_jobs_get_all_v1', 'v1', '/admin/scheduled-jobs', 'App\\Controller\\Api\\V1\\Admin\\AdminScheduledJobController::getScheduledJobs', 'GET', NULL, NULL),
 ('admin_scheduled_jobs_get_one_v1', 'v1', '/admin/scheduled-jobs/{jobId}', 'App\\Controller\\Api\\V1\\Admin\\AdminScheduledJobController::getScheduledJobById', 'GET', '{"jobId": "[0-9]+"}', NULL),
 ('admin_scheduled_jobs_execute_v1', 'v1', '/admin/scheduled-jobs/{jobId}/execute', 'App\\Controller\\Api\\V1\\Admin\\AdminScheduledJobController::executeScheduledJob', 'POST', '{"jobId": "[0-9]+"}', NULL),
+('admin_scheduled_jobs_cancel_v1', 'v1', '/admin/scheduled-jobs/{jobId}/cancel', 'App\\Controller\\Api\\V1\\Admin\\AdminScheduledJobController::cancelScheduledJob', 'POST', '{"jobId": "[0-9]+"}', NULL),
 ('admin_scheduled_jobs_delete_v1', 'v1', '/admin/scheduled-jobs/{jobId}', 'App\\Controller\\Api\\V1\\Admin\\AdminScheduledJobController::deleteScheduledJob', 'DELETE', '{"jobId": "[0-9]+"}', NULL),
 ('admin_scheduled_jobs_transactions_v1', 'v1', '/admin/scheduled-jobs/{jobId}/transactions', 'App\\Controller\\Api\\V1\\Admin\\AdminScheduledJobController::getJobTransactions', 'GET', '{"jobId": "[0-9]+"}', NULL);
 
@@ -1149,6 +1152,17 @@ JOIN `permissions`   AS p
   ON p.`name` = 'admin.scheduled_job.execute'
 WHERE ar.`route_name` IN (
   'admin_scheduled_jobs_execute_v1'
+);
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT
+  ar.`id`      AS id_api_routes,
+  p.`id`       AS id_permissions
+FROM `api_routes`     AS ar
+JOIN `permissions`   AS p
+  ON p.`name` = 'admin.scheduled_job.cancel'
+WHERE ar.`route_name` IN (
+  'admin_scheduled_jobs_cancel_v1'
 );
 
 INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)

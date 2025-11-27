@@ -18,6 +18,7 @@ final class LookupService
     public const ACTION_SCHEDULE_TYPES = 'actionScheduleTypes';
     public const ACTION_TRIGGER_TYPES = 'actionTriggerTypes';
     public const TIME_PERIOD = 'timePeriod';
+    public const TIMEZONES = 'timezones';
     public const WEEKDAYS = 'weekdays';
     public const SCHEDULED_JOBS_STATUS = 'scheduledJobsStatus';
     public const SCHEDULED_JOBS_SEARCH_DATE_TYPES = 'scheduledJobsSearchDateTypes';
@@ -69,9 +70,11 @@ final class LookupService
 
     // scheduledJobsStatus
     public const SCHEDULED_JOBS_STATUS_QUEUED = 'queued';
-    public const SCHEDULED_JOBS_STATUS_DELETED = 'deleted';
+    public const SCHEDULED_JOBS_STATUS_RUNNING = 'running';
     public const SCHEDULED_JOBS_STATUS_DONE = 'done';
     public const SCHEDULED_JOBS_STATUS_FAILED = 'failed';
+    public const SCHEDULED_JOBS_STATUS_CANCELLED = 'cancelled';
+    public const SCHEDULED_JOBS_STATUS_DELETED = 'deleted';
 
     // scheduledJobsSearchDateTypes
     public const SCHEDULED_JOBS_SEARCH_DATE_TYPES_DATE_CREATE = 'date_create';

@@ -61,9 +61,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: RefreshToken::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $refreshTokens;
 
-    #[ORM\OneToMany(mappedBy: 'user', targetEntity: ScheduledJobsUser::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
-    private Collection $scheduledJobsUsers;
-
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: ValidationCode::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $validationCodes;
 
@@ -81,7 +78,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         $this->userActivities = new ArrayCollection();
         $this->transactions = new ArrayCollection();
         $this->refreshTokens = new ArrayCollection();
-        $this->scheduledJobsUsers = new ArrayCollection();
         $this->validationCodes = new ArrayCollection();
         $this->roles = new ArrayCollection();
 
@@ -440,31 +436,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-
-    /**
-     * @return Collection|ScheduledJobsUser[]
-     */
-    public function getScheduledJobsUsers(): Collection
-    {
-        return $this->scheduledJobsUsers;
-    }
-    public function addScheduledJobsUser(ScheduledJobsUser $scheduledJobsUser): self
-    {
-        if (!$this->scheduledJobsUsers->contains($scheduledJobsUser)) {
-            $this->scheduledJobsUsers[] = $scheduledJobsUser;
-            $scheduledJobsUser->setUser($this);
-        }
-        return $this;
-    }
-    public function removeScheduledJobsUser(ScheduledJobsUser $scheduledJobsUser): self
-    {
-        if ($this->scheduledJobsUsers->removeElement($scheduledJobsUser)) {
-            if ($scheduledJobsUser->getUser() === $this) {
-                $scheduledJobsUser->setUser(null);
-            }
-        }
-        return $this;
-    }
 
     /**
      * @return Collection|ValidationCode[]

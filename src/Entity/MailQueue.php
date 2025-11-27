@@ -41,12 +41,8 @@ class MailQueue
     #[ORM\Column(name: 'is_html', type: 'boolean')]
     private bool $isHtml = true;
 
-    #[ORM\OneToMany(targetEntity: ScheduledJobsMailQueue::class, mappedBy: 'mailQueue', cascade: ['persist', 'remove'])]
-    private \Doctrine\Common\Collections\Collection $scheduledJobsMailQueues;
-
     public function __construct()
     {
-        $this->scheduledJobsMailQueues = new \Doctrine\Common\Collections\ArrayCollection();
     }
 
     public function getId(): ?int
@@ -162,28 +158,5 @@ class MailQueue
         return $this;
     }
 
-    public function getScheduledJobsMailQueues(): \Doctrine\Common\Collections\Collection
-    {
-        return $this->scheduledJobsMailQueues;
-    }
-
-    public function addScheduledJobsMailQueue(ScheduledJobsMailQueue $scheduledJobsMailQueue): self
-    {
-        if (!$this->scheduledJobsMailQueues->contains($scheduledJobsMailQueue)) {
-            $this->scheduledJobsMailQueues->add($scheduledJobsMailQueue);
-            $scheduledJobsMailQueue->setMailQueue($this);
-        }
-        return $this;
-    }
-
-    public function removeScheduledJobsMailQueue(ScheduledJobsMailQueue $scheduledJobsMailQueue): self
-    {
-        if ($this->scheduledJobsMailQueues->removeElement($scheduledJobsMailQueue)) {
-            if ($scheduledJobsMailQueue->getMailQueue() === $this) {
-                $scheduledJobsMailQueue->setMailQueue(null);
-            }
-        }
-        return $this;
-    }
 }
 // ENTITY RULE

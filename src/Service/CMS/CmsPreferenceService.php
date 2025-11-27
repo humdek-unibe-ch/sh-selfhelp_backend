@@ -2,10 +2,12 @@
 
 namespace App\Service\CMS;
 
+use App\Entity\Lookup;
 use App\Entity\Page;
 use App\Repository\PageRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
+use App\Service\Core\LookupService;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -25,7 +27,8 @@ class CmsPreferenceService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly PageRepository $pageRepository,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly LookupService $lookupService
     ) {
     }
 
@@ -54,7 +57,8 @@ class CmsPreferenceService extends BaseService
                     'default_language_id' => $fieldValues[self::PF_DEFAULT_LANGUAGE_ID] ?? null,
                     'anonymous_users' => (int) ($fieldValues[self::PF_ANONYMOUS_USERS] ?? 0),
                     'firebase_config' => $fieldValues[self::PF_FIREBASE_CONFIG] ?? null,
-                    'default_timezone' => $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? 'Europe/Zurich'
+                    'default_timezone' => $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? 
+                    $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')->getId()
                 ];
             });
     }
@@ -96,12 +100,34 @@ class CmsPreferenceService extends BaseService
     /**
      * Get default timezone
      *
-     * @return string
+     * @return int|null
      */
-    public function getDefaultTimezone(): string
+    public function getDefaultTimezoneId(): ?int
     {
         $preferences = $this->getCmsPreferences();
-        return $preferences['default_timezone'] ?: 'Europe/Zurich';
+        return $preferences['default_timezone'];
+    }
+
+    /**
+     * Get default timezone
+     *
+     * @return Lookup|null
+     */
+    public function getDefaultTimezone(): ?Lookup
+    {
+        $preferences = $this->getCmsPreferences();
+        return $this->lookupService->findById($preferences['default_timezone']);
+    }
+
+    /**
+     * Get default timezone code
+     *
+     * @return string|null
+     */
+    public function getDefaultTimezoneCode(): ?string
+    {
+        $preferences = $this->getCmsPreferences();
+        return $this->lookupService->getLookupCodeById($preferences['default_timezone']) ? $this->lookupService->getLookupCodeById($preferences['default_timezone']) : 'Europe/Zurich';
     }
 
     /**

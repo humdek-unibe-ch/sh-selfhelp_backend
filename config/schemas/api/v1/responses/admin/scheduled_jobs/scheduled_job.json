@@ -28,9 +28,9 @@
               "required": ["id", "value"]
             },
             "description": { "type": "string", "description": "Job description" },
-            "date_create": { "type": "string", "description": "Date when job was created" },
-            "date_to_be_executed": { "type": "string", "description": "Date when job should be executed" },
-            "date_executed": { "type": ["string", "null"], "description": "Date when job was actually executed" },
+            "date_create": { "type": "string", "description": "Date when job was created (UTC)" },
+            "date_to_be_executed": { "type": "string", "description": "Date when job should be executed (UTC)" },
+            "date_executed": { "type": ["string", "null"], "description": "Date when job was actually executed (UTC)" },
             "config": { "type": ["string", "null"], "description": "Job configuration" },
             "users": {
               "type": "array",

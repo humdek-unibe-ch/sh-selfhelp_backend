@@ -2837,3 +2837,81 @@ DROP FUNCTION IF EXISTS get_sections_fields_helper;
 DROP VIEW IF EXISTS view_datatables_data;
 DROP VIEW IF EXISTS view_transactions;
 DROP VIEW IF EXISTS view_user_codes;
+
+-- =================================================
+-- Scheduled Jobs Refactoring
+-- =================================================
+-- Complete refactor of scheduled jobs system:
+-- - Drop old junction tables (scheduledJobs_actions, scheduledJobs_users, etc.)
+-- - Create new simplified scheduledJobs table with direct relationships
+-- - Add timezone-aware scheduling with dynamic adjustment
+-- - Support for system jobs (user validation, password reset) without action/datatable context
+-- =================================================
+
+-- Drop old junction tables
+DROP TABLE IF EXISTS `scheduledJobs_actions`;
+DROP TABLE IF EXISTS `scheduledJobs_users`;
+DROP TABLE IF EXISTS `scheduledJobs_mailQueue`;
+DROP TABLE IF EXISTS `scheduledJobs_notifications`;
+DROP TABLE IF EXISTS `scheduledJobs_reminders`;
+DROP TABLE IF EXISTS `scheduledJobs_tasks`;
+
+-- Drop tables no longer needed after removing scheduled jobs system
+DROP TABLE IF EXISTS `mailAttachments`;
+DROP TABLE IF EXISTS `tasks`;
+
+-- Drop and recreate the main scheduledJobs table with new structure
+DROP TABLE IF EXISTS `scheduledJobs`;
+
+CREATE TABLE `scheduledJobs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  -- Core relationships (nullable for system jobs)
+  `id_users` int DEFAULT NULL,
+  `id_actions` int DEFAULT NULL,
+  `id_dataTables` int DEFAULT NULL,
+  `id_dataRows` int DEFAULT NULL,
+
+  -- Job classification (lookup-based)
+  `id_jobTypes` int NOT NULL,
+  `id_jobStatus` int NOT NULL,
+
+  `date_create` datetime NOT NULL,
+  `date_to_be_executed` datetime NOT NULL,
+  `date_executed` datetime DEFAULT NULL,
+
+  -- Job details
+  `description` varchar(1000) DEFAULT NULL,
+  `config` json DEFAULT NULL,
+
+  PRIMARY KEY (`id`),
+
+  -- Foreign keys with Doctrine-compatible naming
+  KEY `IDX_3E186B37FA06E4D9` (`id_users`),
+  KEY `IDX_3E186B37DBD5589F` (`id_actions`),
+  KEY `IDX_3E186B37E2E6A7C3` (`id_dataTables`),
+  KEY `IDX_3E186B37F3854F45` (`id_dataRows`),
+  KEY `IDX_3E186B3777FD8DE1` (`id_jobStatus`),
+  KEY `IDX_3E186B3712C34CFB` (`id_jobTypes`),
+
+  CONSTRAINT `FK_3E186B37FA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B37DBD5589F` FOREIGN KEY (`id_actions`) REFERENCES `actions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B37E2E6A7C3` FOREIGN KEY (`id_dataTables`) REFERENCES `dataTables` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B37F3854F45` FOREIGN KEY (`id_dataRows`) REFERENCES `dataRows` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B3777FD8DE1` FOREIGN KEY (`id_jobStatus`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B3712C34CFB` FOREIGN KEY (`id_jobTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+
+-- Insert job type lookups using constants
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('jobTypes', 'email', 'Email', 'Email sending job'),
+('jobTypes', 'notification', 'Notification', 'Push notification job'),
+('jobTypes', 'task', 'Task', 'Custom task execution'),
+('jobTypes', 'reminder', 'Reminder', 'Scheduled reminder job')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- Insert additional job status lookups (existing ones are already in DB)
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('scheduledJobsStatus', 'running', 'Running', 'Job is currently running'),
+('scheduledJobsStatus', 'cancelled', 'Cancelled', 'Job was manually cancelled')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);

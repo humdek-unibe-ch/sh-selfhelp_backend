@@ -144,7 +144,7 @@ src/
 │   └── DefaultController.php
 │   └── Trait/
 │       └── RequestValidatorTrait.php
-├── Entity/                 # Doctrine ORM entities (59 entities)
+├── Entity/                 # Doctrine ORM entities (52 entities)
 │   ├── AclGroup.php
 │   ├── AclUser.php
 │   ├── Action.php
@@ -167,7 +167,6 @@ src/
 │   ├── Library.php
 │   ├── LogPerformance.php
 │   ├── Lookup.php
-│   ├── MailAttachment.php
 │   ├── MailQueue.php
 │   ├── Notification.php
 │   ├── Page.php
@@ -182,12 +181,6 @@ src/
 │   ├── RefreshToken.php
 │   ├── Role.php
 │   ├── ScheduledJob.php
-│   ├── ScheduledJobsAction.php
-│   ├── ScheduledJobsMailQueue.php
-│   ├── ScheduledJobsNotification.php
-│   ├── ScheduledJobsReminder.php
-│   ├── ScheduledJobsTask.php
-│   ├── ScheduledJobsUser.php
 │   ├── Section.php
 │   ├── SectionsFieldsTranslation.php
 │   ├── SectionsHierarchy.php
@@ -196,12 +189,10 @@ src/
 │   ├── StyleGroup.php
 │   ├── StylesAllowedRelationship.php
 │   ├── StylesField.php
-│   ├── Task.php
 │   ├── Transaction.php
 │   ├── User.php
 │   ├── UserActivity.php
 │   ├── Users2faCode.php
-│   ├── UsersGroup.php
 │   ├── ValidationCode.php
 │   └── Version.php
 ├── EventListener/         # Event subscribers
@@ -213,7 +204,7 @@ src/
 │   ├── RequestValidationException.php
 │   └── ServiceException.php
 ├── Kernel.php            # Symfony kernel
-├── Repository/           # Data access layer (27 repositories)
+├── Repository/           # Data access layer (26 repositories)
 ├── Routing/              # Custom route loading
 │   └── ApiRouteLoader.php
 ├── Security/             # Security components

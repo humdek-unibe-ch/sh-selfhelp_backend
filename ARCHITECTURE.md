@@ -1947,10 +1947,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_scheduledJobs`: int (PK, FK to ScheduledJob)
 - `id_tasks`: int (PK, FK to Task)
 
-### ScheduledJobsUser
-- `id_users`: int (PK, FK to User)
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-
 ### Section
 - `id`: int (PK)
 - `id_styles`: int (FK to Style)

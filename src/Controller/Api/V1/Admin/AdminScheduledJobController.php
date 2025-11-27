@@ -48,28 +48,34 @@ class AdminScheduledJobController extends AbstractController
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
 
-            // Parse dates if provided
-            $dateFromObj = $dateFrom ? new \DateTime($dateFrom) : null;
-            $dateToObj = $dateTo ? new \DateTime($dateTo) : null;
+            // Build filters array
+            $filters = [
+                'search' => $search,
+                'status' => $status,
+                'job_type' => $jobType,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'date_type' => $dateType
+            ];
 
             $result = $this->adminScheduledJobService->getScheduledJobs(
+                $filters,
                 $page,
                 $pageSize,
-                $search,
-                $status,
-                $jobType,
-                $dateFromObj,
-                $dateToObj,
-                $dateType,
-                $sort,
+                $sort ?: 'adjusted_execution_time',
                 $sortDirection
             );
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/scheduled_jobs/scheduled_jobs');
         } catch (\Exception $e) {
+            // Ensure we only use valid HTTP status codes
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
+                $statusCode
             );
         }
     }
@@ -90,9 +96,14 @@ class AdminScheduledJobController extends AbstractController
             
             return $this->responseFormatter->formatSuccess($job, 'responses/admin/scheduled_jobs/scheduled_job');
         } catch (\Exception $e) {
+            // Ensure we only use valid HTTP status codes
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
+                $statusCode
             );
         }
     }
@@ -114,16 +125,50 @@ class AdminScheduledJobController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/scheduled_jobs/scheduled_job');
         } catch (\Exception $e) {
+            // Ensure we only use valid HTTP status codes
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
+                $statusCode
+            );
+        }
+    }
+
+    /**
+     * Cancel a scheduled job
+     *
+     * @route /admin/scheduled-jobs/{jobId}/cancel
+     * @method POST
+     */
+    public function cancelScheduledJob(int $jobId): JsonResponse
+    {
+        try {
+            $result = $this->adminScheduledJobService->cancelScheduledJob($jobId);
+
+            if ($result) {
+                $result['transactions'] = $this->adminScheduledJobService->getJobTransactions($jobId);
+            }
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/scheduled_jobs/scheduled_job');
+        } catch (\Exception $e) {
+            // Ensure we only use valid HTTP status codes
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $statusCode
             );
         }
     }
 
     /**
      * Delete a scheduled job (change status to deleted)
-     * 
+     *
      * @route /admin/scheduled-jobs/{jobId}
      * @method DELETE
      */
@@ -133,9 +178,14 @@ class AdminScheduledJobController extends AbstractController
             $res = $this->adminScheduledJobService->deleteScheduledJob($jobId);
             return $this->responseFormatter->formatSuccess($res, null, $res ? Response::HTTP_OK : Response::HTTP_NOT_FOUND);
         } catch (\Exception $e) {
+            // Ensure we only use valid HTTP status codes
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
+                $statusCode
             );
         }
     }
@@ -153,9 +203,14 @@ class AdminScheduledJobController extends AbstractController
             
             return $this->responseFormatter->formatSuccess($transactions,  'responses/admin/scheduled_jobs/job_transactions');
         } catch (\Exception $e) {
+            // Ensure we only use valid HTTP status codes
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
             return $this->responseFormatter->formatError(
                 $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
+                $statusCode
             );
         }
     }

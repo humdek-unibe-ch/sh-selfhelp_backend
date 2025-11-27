@@ -5,7 +5,18 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'scheduledJobs')]
+#[ORM\Table(name: 'scheduledJobs',indexes: [
+    new ORM\Index(name: 'IDX_3E186B37FA06E4D9', columns: ['id_users']),
+    new ORM\Index(name: 'IDX_3E186B37DBD5589F', columns: ['id_actions']),
+    new ORM\Index(name: 'IDX_3E186B37E2E6A7C3', columns: ['id_dataTables']),
+    new ORM\Index(name: 'IDX_3E186B37F3854F45', columns: ['id_dataRows']),
+    new ORM\Index(name: 'IDX_3E186B3777FD8DE1', columns: ['id_jobStatus']),
+    new ORM\Index(name: 'IDX_3E186B3712C34CFB', columns: ['id_jobTypes']),
+    new ORM\Index(name: 'IDX_3E186B37B1E3B97B', columns: ['date_to_be_executed']),
+    new ORM\Index(name: 'index_id_users_date_to_be_executed', columns: ['id_users', 'date_to_be_executed']),
+    new ORM\Index(name: 'IDX_3E186B3712C34CFB77FD8DE1', columns: ['id_jobTypes', 'id_jobStatus']),
+    new ORM\Index(name: 'IDX_3E186B37E2E6A7C3A76ED395', columns: ['id_dataTables', 'id_users']),
+])]
 class ScheduledJob
 {
     #[ORM\Id]
@@ -13,43 +24,54 @@ class ScheduledJob
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'description', type: 'string', length: 1000, nullable: true)]
-    private ?string $description = null;
+    // Core relationships (nullable for system jobs)
+    #[ORM\ManyToOne(targetEntity: User::class)]
+    #[ORM\JoinColumn(name: 'id_users', nullable: true, onDelete: 'CASCADE')]
+    private ?User $user = null;
+
+    #[ORM\ManyToOne(targetEntity: Action::class)]
+    #[ORM\JoinColumn(name: 'id_actions', nullable: true, onDelete: 'CASCADE')]
+    private ?Action $action = null;
+
+    #[ORM\ManyToOne(targetEntity: DataTable::class)]
+    #[ORM\JoinColumn(name: 'id_dataTables', nullable: true, onDelete: 'CASCADE')]
+    private ?DataTable $dataTable = null;
+
+    #[ORM\ManyToOne(targetEntity: DataRow::class)]
+    #[ORM\JoinColumn(name: 'id_dataRows', nullable: true, onDelete: 'CASCADE')]
+    private ?DataRow $dataRow = null;
+
+    // Job classification (lookup-based)
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_jobTypes', nullable: false, onDelete: 'CASCADE')]
+    private Lookup $jobType;
+
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_jobStatus', nullable: false, onDelete: 'CASCADE')]
+    private Lookup $status;
+
 
     #[ORM\Column(name: 'date_create', type: 'datetime')]
     private \DateTimeInterface $dateCreate;
 
-    #[ORM\Column(name: 'date_to_be_executed', type: 'datetime', nullable: true)]
-    private ?\DateTimeInterface $dateToBeExecuted = null;
+    #[ORM\Column(name: 'date_to_be_executed', type: 'datetime')]
+    private \DateTimeInterface $dateToBeExecuted;
 
     #[ORM\Column(name: 'date_executed', type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $dateExecuted = null;
 
-    #[ORM\Column(name: 'config', type: 'string', length: 1000, nullable: true)]
-    private ?string $config = null;
 
-    #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_jobStatus', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Lookup $status = null;
 
-    #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_jobTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Lookup $jobType = null;
+    // Job details
+    #[ORM\Column(name: 'description', type: 'string', length: 1000, nullable: true)]
+    private ?string $description = null;
 
-    #[ORM\OneToMany(targetEntity: ScheduledJobsTask::class, mappedBy: 'scheduledJob', cascade: ['persist', 'remove'])]
-    private \Doctrine\Common\Collections\Collection $scheduledJobsTasks;
-
-    #[ORM\OneToMany(targetEntity: ScheduledJobsUser::class, mappedBy: 'scheduledJob', cascade: ['persist', 'remove'])]
-    private \Doctrine\Common\Collections\Collection $scheduledJobsUsers;
-
-    #[ORM\OneToMany(targetEntity: ScheduledJobsMailQueue::class, mappedBy: 'scheduledJob', cascade: ['persist', 'remove'])]
-    private \Doctrine\Common\Collections\Collection $scheduledJobsMailQueues;
+    #[ORM\Column(name: 'config', type: 'json', nullable: true)]
+    private ?array $config = null;
 
     public function __construct()
     {
-        $this->scheduledJobsTasks = new \Doctrine\Common\Collections\ArrayCollection();
-        $this->scheduledJobsUsers = new \Doctrine\Common\Collections\ArrayCollection();
-        $this->scheduledJobsMailQueues = new \Doctrine\Common\Collections\ArrayCollection();
+        $this->dateCreate = new \DateTime('now', new \DateTimeZone('UTC'));
     }
 
     public function getId(): ?int
@@ -57,157 +79,131 @@ class ScheduledJob
         return $this->id;
     }
 
-    public function getDescription(): ?string
+    // Core relationship getters/setters
+    public function getUser(): ?User
     {
-        return $this->description;
+        return $this->user;
     }
 
-    public function setDescription(?string $description): static
+    public function setUser(?User $user): self
     {
-        $this->description = $description;
-
+        $this->user = $user;
         return $this;
     }
 
-    public function getDateCreate(): ?\DateTime
+    public function getAction(): ?Action
     {
-        return $this->dateCreate;
+        return $this->action;
     }
 
-    public function setDateCreate(\DateTime $dateCreate): static
+    public function setAction(?Action $action): self
     {
-        $this->dateCreate = $dateCreate;
-
+        $this->action = $action;
         return $this;
     }
 
-    public function getDateToBeExecuted(): ?\DateTime
+    public function getDataTable(): ?DataTable
     {
-        return $this->dateToBeExecuted;
+        return $this->dataTable;
     }
 
-    public function setDateToBeExecuted(?\DateTime $dateToBeExecuted): static
+    public function setDataTable(?DataTable $dataTable): self
     {
-        $this->dateToBeExecuted = $dateToBeExecuted;
-
+        $this->dataTable = $dataTable;
         return $this;
     }
 
-    public function getDateExecuted(): ?\DateTime
+    public function getDataRow(): ?DataRow
     {
-        return $this->dateExecuted;
+        return $this->dataRow;
     }
 
-    public function setDateExecuted(?\DateTime $dateExecuted): static
+    public function setDataRow(?DataRow $dataRow): self
     {
-        $this->dateExecuted = $dateExecuted;
-
+        $this->dataRow = $dataRow;
         return $this;
     }
 
-    public function getConfig(): ?string
-    {
-        return $this->config;
-    }
-
-    public function setConfig(?string $config): static
-    {
-        $this->config = $config;
-
-        return $this;
-    }
-
-    public function getStatus(): ?Lookup
-    {
-        return $this->status;
-    }
-
-    public function setStatus(?Lookup $status): self
-    {
-        $this->status = $status;
-        return $this;
-    }
-
-    public function getJobType(): ?Lookup
+    // Job classification getters/setters
+    public function getJobType(): Lookup
     {
         return $this->jobType;
     }
 
-    public function setJobType(?Lookup $jobType): self
+    public function setJobType(Lookup $jobType): self
     {
         $this->jobType = $jobType;
         return $this;
     }
 
-    public function getScheduledJobsTasks(): \Doctrine\Common\Collections\Collection
+    public function getStatus(): Lookup
     {
-        return $this->scheduledJobsTasks;
+        return $this->status;
     }
 
-    public function addScheduledJobsTask(ScheduledJobsTask $scheduledJobsTask): self
+    public function setStatus(Lookup $status): self
     {
-        if (!$this->scheduledJobsTasks->contains($scheduledJobsTask)) {
-            $this->scheduledJobsTasks->add($scheduledJobsTask);
-            $scheduledJobsTask->setScheduledJob($this);
-        }
+        $this->status = $status;
         return $this;
     }
 
-    public function removeScheduledJobsTask(ScheduledJobsTask $scheduledJobsTask): self
+
+    // Date getters/setters
+    public function getDateCreate(): \DateTimeInterface
     {
-        if ($this->scheduledJobsTasks->removeElement($scheduledJobsTask)) {
-            if ($scheduledJobsTask->getScheduledJob() === $this) {
-                $scheduledJobsTask->setScheduledJob(null);
-            }
-        }
+        return $this->dateCreate;
+    }
+
+    public function setDateCreate(\DateTimeInterface $dateCreate): self
+    {
+        $this->dateCreate = $dateCreate;
         return $this;
     }
 
-    public function getScheduledJobsUsers(): \Doctrine\Common\Collections\Collection
+    public function getDateToBeExecuted(): \DateTimeInterface
     {
-        return $this->scheduledJobsUsers;
+        return $this->dateToBeExecuted;
     }
 
-    public function addScheduledJobsUser(ScheduledJobsUser $scheduledJobsUser): self
+    public function setDateToBeExecuted(\DateTimeInterface $dateToBeExecuted): self
     {
-        if (!$this->scheduledJobsUsers->contains($scheduledJobsUser)) {
-            $this->scheduledJobsUsers->add($scheduledJobsUser);
-            $scheduledJobsUser->setScheduledJob($this);
-        }
+        $this->dateToBeExecuted = $dateToBeExecuted;
         return $this;
     }
 
-    public function removeScheduledJobsUser(ScheduledJobsUser $scheduledJobsUser): self
+    public function getDateExecuted(): ?\DateTimeInterface
     {
-        if ($this->scheduledJobsUsers->removeElement($scheduledJobsUser)) {
-            if ($scheduledJobsUser->getScheduledJob() === $this) {
-                $scheduledJobsUser->setScheduledJob(null);
-            }
-        }
+        return $this->dateExecuted;
+    }
+
+    public function setDateExecuted(?\DateTimeInterface $dateExecuted): self
+    {
+        $this->dateExecuted = $dateExecuted;
         return $this;
     }
 
-    public function getScheduledJobsMailQueues(): \Doctrine\Common\Collections\Collection
+
+
+    // Job details getters/setters
+    public function getDescription(): ?string
     {
-        return $this->scheduledJobsMailQueues;
+        return $this->description;
     }
 
-    public function addScheduledJobsMailQueue(ScheduledJobsMailQueue $scheduledJobsMailQueue): self
+    public function setDescription(?string $description): self
     {
-        if (!$this->scheduledJobsMailQueues->contains($scheduledJobsMailQueue)) {
-            $this->scheduledJobsMailQueues->add($scheduledJobsMailQueue);
-            $scheduledJobsMailQueue->setScheduledJob($this);
-        }
+        $this->description = $description;
         return $this;
     }
 
-    public function removeScheduledJobsMailQueue(ScheduledJobsMailQueue $scheduledJobsMailQueue): self
+    public function getConfig(): ?array
     {
-        if ($this->scheduledJobsMailQueues->removeElement($scheduledJobsMailQueue)) {
-            if ($scheduledJobsMailQueue->getScheduledJob() === $this) {
-                $scheduledJobsMailQueue->setScheduledJob(null);
-            }
-        }
+        return $this->config;
+    }
+
+    public function setConfig(?array $config): self
+    {
+        $this->config = $config;
         return $this;
     }
 }
