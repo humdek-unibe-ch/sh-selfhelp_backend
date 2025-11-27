@@ -102,7 +102,7 @@ class AdminPageService extends BaseService
                 if (!$page) {
                     $this->throwNotFound('Page not found');
                 }
-                
+
                 $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
 
                 // Cache with entity scope for this specific page
@@ -110,10 +110,10 @@ class AdminPageService extends BaseService
                     ->withCategory(CacheService::CATEGORY_PAGES)
                     ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
                     ->getItem("page_sections_scoped_{$pageId}", function () use ($page) {
-                        // Call stored procedure for hierarchical sections
-                        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
-                        return $this->sectionUtilityService->buildNestedSections($flatSections, false);
-                    });
+                    // Call stored procedure for hierarchical sections
+                    $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
+                    return $this->sectionUtilityService->buildNestedSections($flatSections, false);
+                });
 
                 return $result;
             });
@@ -434,12 +434,13 @@ class AdminPageService extends BaseService
 
             // Check if this is the CMS preferences page and perform additional cache invalidation
             if ($page->getKeyword() == CmsPreferenceService::SH_CMS_PREFERENCES_KEYWORD) {
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
-                    ->invalidateAllListsInCategory();
-
-                $this->cmsPreferenceService->invalidateUserDataCaches();
-        }
+                // Clear ALL cache categories when CMS preferences are updated
+                foreach (CacheService::ALL_CATEGORIES as $category) {
+                    $this->cache
+                        ->withCategory($category)
+                        ->invalidateCategory();
+                }
+            }
 
             return $page;
         } catch (\Throwable $e) {
@@ -519,9 +520,9 @@ class AdminPageService extends BaseService
                 $deleted_page, // Pass the page object directly instead of a boolean
                 'Page deleted with keyword: ' . $pageKeywordForLog
             );
-            
+
             $this->entityManager->commit();
-            
+
             // Invalidate entity-scoped cache for this specific page
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageIdForLog);
             $this->cache
@@ -555,7 +556,7 @@ class AdminPageService extends BaseService
     public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
     {
         $result = $this->sectionRelationshipService->addSectionToPage($pageId, $sectionId, $position, $oldParentSectionId);
-        
+
         // Invalidate cache for this specific page
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
@@ -565,7 +566,7 @@ class AdminPageService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
-        
+
         return $result;
     }
 
@@ -581,7 +582,7 @@ class AdminPageService extends BaseService
     public function removeSectionFromPage(int $pageId, int $sectionId): void
     {
         $this->sectionRelationshipService->removeSectionFromPage($pageId, $sectionId);
-        
+
         // Invalidate cache for this specific page
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);

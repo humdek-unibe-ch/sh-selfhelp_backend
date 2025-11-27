@@ -15,8 +15,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminCmsPreferenceService extends BaseService
 {
-    private const SH_CMS_PREFERENCES_KEYWORD = 'sh-cms-preferences';
-
     public function __construct(
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly PageRepository $pageRepository,
