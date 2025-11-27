@@ -103,7 +103,7 @@ class AdminScheduledJobService extends BaseService
                 jt.lookup_value as job_types,
                 js.lookup_value as status,
                 sj.description,
-                COALESCE(user_tz.lookup_code, 'Europe/Zurich') as timezone,
+                COALESCE(user_tz.lookup_code, 'Europe/Zurich') as user_timezone,
                 CONVERT_TZ(
                     sj.date_to_be_executed,
                     '+00:00',
@@ -257,7 +257,7 @@ class AdminScheduledJobService extends BaseService
             'job_types' => $row['job_types'],
             'status' => $row['status'],
             'description' => $row['description'],
-            'timezone' => $row['timezone'],
+            'user_timezone' => $row['user_timezone'],
             'date_scheduled' => $row['date_scheduled'],
             'date_created' => $row['date_created'],
             'date_to_be_executed' => $row['date_to_be_executed'],

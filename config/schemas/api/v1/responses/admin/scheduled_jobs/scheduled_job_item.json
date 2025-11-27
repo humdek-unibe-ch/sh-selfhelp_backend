@@ -11,14 +11,14 @@
     "job_types": { "type": "string", "description": "Job type name" },
     "status": { "type": "string", "description": "Job status name" },
     "description": { "type": "string", "description": "Job description" },
-    "timezone": { "type": "string", "description": "Timezone code" },
+    "user_timezone": { "type": "string", "description": "User Timezone code" },
     "date_scheduled": { "type": ["string", "null"], "description": "Date when job should be executed (adjusted to CMS timezone)" },
     "date_created": { "type": "string", "description": "Date when job was created (adjusted to CMS timezone)" },
     "date_to_be_executed": { "type": ["string", "null"], "description": "Date when job should be executed (adjusted to CMS timezone)" },
     "date_executed": { "type": ["string", "null"], "description": "Date when job was actually executed (adjusted to CMS timezone)" },
     "config": { "type": "object", "description": "Job configuration" }
   },
-  "required": ["id", "id_users", "user_email", "action_name", "data_table_name", "data_row", "job_types", "status", "description", "timezone", "date_scheduled", "date_created", "date_to_be_executed", "date_executed", "config"]
+  "required": ["id", "id_users", "user_email", "action_name", "data_table_name", "data_row", "job_types", "status", "description", "user_timezone", "date_scheduled", "date_created", "date_to_be_executed", "date_executed", "config"]
 }
 
 
