@@ -167,8 +167,6 @@ src/
 │   ├── Library.php
 │   ├── LogPerformance.php
 │   ├── Lookup.php
-│   ├── MailQueue.php
-│   ├── Notification.php
 │   ├── Page.php
 │   ├── PagesField.php
 │   ├── PagesFieldsTranslation.php

@@ -6,8 +6,6 @@ use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
 use App\Entity\User;
 use App\Entity\Action;
-use App\Entity\MailQueue;
-use App\Entity\Notification;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Auth\UserDataService;
@@ -454,88 +452,7 @@ class JobSchedulerService extends BaseService
         $this->em->flush();
     }
 
-    /**
-     * Schedule an email job
-     */
-    private function scheduleEmailJob(ScheduledJob $job, array $jobData): bool
-    {
-        try {
-            $emailConfig = $jobData['email_config'];
 
-            $mailQueue = new MailQueue();
-            $mailQueue->setFromEmail($emailConfig['from_email']);
-            $mailQueue->setFromName($emailConfig['from_name']);
-            $mailQueue->setReplyTo($emailConfig['reply_to']);
-            $mailQueue->setRecipientEmails($emailConfig['recipient_emails'] ?? '');
-            $mailQueue->setSubject($emailConfig['subject']);
-            $mailQueue->setBody($emailConfig['body']);
-            $mailQueue->setIsHtml($emailConfig['is_html'] ?? true);
-
-            if (isset($emailConfig['cc_emails'])) {
-                $mailQueue->setCcEmails($emailConfig['cc_emails']);
-            }
-            if (isset($emailConfig['bcc_emails'])) {
-                $mailQueue->setBccEmails($emailConfig['bcc_emails']);
-            }
-
-            $this->em->persist($mailQueue);
-
-            $this->em->flush();
-
-            // Link scheduled job to mail queue
-            $scheduledJobMailQueue = new ScheduledJobsMailQueue();
-            $scheduledJobMailQueue->setScheduledJob($job);
-            $scheduledJobMailQueue->setMailQueue($mailQueue);
-
-            $this->em->persist($scheduledJobMailQueue);
-
-            $this->em->flush();
-
-            return true;
-
-        } catch (\Exception $e) {
-            $this->logger->error('Failed to schedule email job', ['error' => $e->getMessage()]);
-            return false;
-        }
-    }
-
-    /**
-     * Schedule a notification job
-     */
-    private function scheduleNotificationJob(int $jobId, array $jobData): bool
-    {
-        try {
-            $notificationConfig = $jobData['notification_config'];
-
-            $notification = new Notification();
-            $notification->setSubject($notificationConfig['subject']);
-            $notification->setBody($notificationConfig['body']);
-
-            if (isset($notificationConfig['url'])) {
-                $notification->setUrl($notificationConfig['url']);
-            }
-
-            $this->em->persist($notification);
-
-            $this->em->flush();
-
-            // Link scheduled job to notification
-            $scheduledJobNotification = new ScheduledJobsNotification();
-            $job = $this->em->getRepository(ScheduledJob::class)->find($jobId);
-            $scheduledJobNotification->setScheduledJob($job);
-            $scheduledJobNotification->setNotification($notification);
-
-            $this->em->persist($scheduledJobNotification);
-
-            $this->em->flush();
-
-            return true;
-
-        } catch (\Exception $e) {
-            $this->logger->error('Failed to schedule notification job', ['error' => $e->getMessage()]);
-            return false;
-        }
-    }
 
 
 

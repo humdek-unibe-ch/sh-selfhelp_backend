@@ -1925,13 +1925,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_formActions`: int (PK, FK to FormAction)
 - `id_dataRows`: int (nullable, FK to DataRow)
 
-### ScheduledJobsMailQueue
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-- `id_mailQueue`: int (PK, FK to MailQueue)
-
-### ScheduledJobsNotification
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-- `id_notifications`: int (PK, FK to Notification)
 
 ### ScheduledJobsQualtricsAction
 - `id_scheduledJobs`: int (PK, FK to ScheduledJob)
@@ -2176,23 +2169,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `attachment_url`: string (length 1000)
 - `template_path`: string (length 1000, default '')
 
-### MailQueue
-- `id`: int (PK)
-- `from_email`: string (length 100)
-- `from_name`: string (length 100)
-- `reply_to`: string (length 100)
-- `recipient_emails`: text
-- `cc_emails`: string (nullable, length 1000)
-- `bcc_emails`: string (nullable, length 1000)
-- `subject`: string (length 1000)
-- `body`: text
-- `is_html`: bool (default 1)
-
-### Notification
-- `id`: int (PK)
-- `subject`: string (length 1000)
-- `body`: text
-- `url`: string (nullable, length 100)
 
 ### Plugin
 - `id`: int (PK)
@@ -2245,13 +2221,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_formActions`: int (PK)
 - `id_dataRows`: int (nullable)
 
-### ScheduledJobsMailQueue
-- `id_scheduledJobs`: int (PK)
-- `id_mailQueue`: int (PK)
-
-### ScheduledJobsNotification
-- `id_scheduledJobs`: int (PK)
-- `id_notifications`: int (PK)
 
 ### ScheduledJobsQualtricsAction
 - `id_scheduledJobs`: int (PK)

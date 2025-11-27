@@ -2859,6 +2859,8 @@ DROP TABLE IF EXISTS `scheduledJobs_tasks`;
 -- Drop tables no longer needed after removing scheduled jobs system
 DROP TABLE IF EXISTS `mailAttachments`;
 DROP TABLE IF EXISTS `tasks`;
+DROP TABLE IF EXISTS `mailQueue`;
+DROP TABLE IF EXISTS `notifications`;
 
 -- Drop and recreate the main scheduledJobs table with new structure
 DROP TABLE IF EXISTS `scheduledJobs`;
