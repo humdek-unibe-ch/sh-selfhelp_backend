@@ -25,10 +25,8 @@ class ScheduledJobRepository extends ServiceEntityRepository
         return $this->createQueryBuilder('sj')
             ->leftJoin('sj.status', 'status')
             ->leftJoin('sj.jobType', 'jobType')
-            ->leftJoin('sj.scheduledJobsUsers', 'sju')
-            ->leftJoin('sju.user', 'user')
-            ->leftJoin('sj.scheduledJobsTasks', 'sjt')
-            ->leftJoin('sjt.task', 'task');
+            ->leftJoin('sj.user', 'user')
+            ->leftJoin('sj.action', 'action');
     }
 
     /**
@@ -50,7 +48,7 @@ class ScheduledJobRepository extends ServiceEntityRepository
 
         // Apply search filter
         if ($search) {
-            $qb->andWhere('(sj.description LIKE :search OR sj.id LIKE :search OR user.name LIKE :search OR task.config LIKE :search OR sj.config LIKE :search)')
+            $qb->andWhere('(sj.description LIKE :search OR sj.id LIKE :search OR user.name LIKE :search OR action.config LIKE :search OR sj.config LIKE :search)')
                 ->setParameter('search', '%' . $search . '%');
         }
 
