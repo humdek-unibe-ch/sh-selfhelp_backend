@@ -2622,8 +2622,6 @@ INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) V
 ('timezones', 'Asia/Hong_Kong', 'Hong Kong Time (HKT)', 'Hong Kong Time - UTC+8'),
 ('timezones', 'Asia/Singapore', 'Singapore Time (SGT)', 'Singapore Time - UTC+8'),
 ('timezones', 'Asia/Kolkata', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
-('timezones', 'Asia/Mumbai', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
-('timezones', 'Asia/Delhi', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
 ('timezones', 'Asia/Karachi', 'Pakistan Time (PKT)', 'Pakistan Time - UTC+5'),
 ('timezones', 'Asia/Dhaka', 'Bangladesh Time (BST)', 'Bangladesh Time - UTC+6'),
 ('timezones', 'Asia/Bangkok', 'Indochina Time (ICT)', 'Indochina Time - UTC+7'),
@@ -2896,3 +2894,416 @@ ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description 
 
 -- Drop acl_users table as it's no longer needed (ACLs now handle only frontend view for groups)
 DROP TABLE IF EXISTS `acl_users`;
+
+DELIMITER $$
+
+-- Modified stored procedure with optional comment parameter for future flexibility
+DROP PROCEDURE IF EXISTS `rename_table_column` $$
+
+CREATE PROCEDURE `rename_table_column`(
+    param_table VARCHAR(100),
+    param_old_column_name VARCHAR(100),
+    param_new_column_name VARCHAR(100),
+    param_comment TEXT
+)
+BEGIN
+
+	DECLARE columnExists INT;
+	DECLARE columnType VARCHAR(255);
+	DECLARE newColumnType VARCHAR(500);
+
+	SELECT COUNT(*), COLUMN_TYPE
+			INTO columnExists, columnType
+			FROM information_schema.COLUMNS
+			WHERE `table_schema` = DATABASE()
+			AND `table_name` = param_table
+			AND `COLUMN_NAME` = param_old_column_name;
+
+	-- Build new column type, optionally adding comment if provided
+	SET newColumnType = columnType;
+	IF param_comment IS NOT NULL AND param_comment != '' THEN
+		SET newColumnType = CONCAT(columnType, ' COMMENT \'', param_comment, '\'');
+	END IF;
+
+	SET @sqlstmt = (SELECT IF(
+		columnExists > 0,
+		CONCAT('ALTER TABLE ', param_table, ' CHANGE COLUMN ', param_old_column_name, ' ', param_new_column_name, ' ', newColumnType, ';'),
+		"SELECT 'Column does not exist in the table'"
+	));
+
+	PREPARE st FROM @sqlstmt;
+	EXECUTE st;
+	DEALLOCATE PREPARE st;
+
+END $$
+
+DELIMITER ;
+
+-- Execute datetime column migrations using the modified stored procedure
+CALL `rename_table_column`('apiRequestLogs', 'request_time', 'request_time', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('apiRequestLogs', 'response_time', 'response_time', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('callbackLogs', 'callback_date', 'callback_date', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('dataAccessAudit', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('dataRows', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('dataTables', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('page_versions', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('page_versions', 'published_at', 'published_at', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('role_data_access', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('role_data_access', 'updated_at', 'updated_at', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('transactions', 'transaction_time', 'transaction_time', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('user_activity', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('users_2fa_codes', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('users_2fa_codes', 'expires_at', 'expires_at', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('validation_codes', 'created', 'created', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('validation_codes', 'consumed', 'consumed', '(DC2Type:datetime_immutable)');
+
+-- =====================================================
+-- Update Data Table Stored Procedures with Timezone Conversion
+-- =====================================================
+
+-- Create helper function for building dynamic column selection (shared logic)
+DROP FUNCTION IF EXISTS `build_dynamic_columns`;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_dynamic_columns`(table_id_param INT) RETURNS TEXT
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN
+    DECLARE sql_columns TEXT;
+
+    SELECT
+        GROUP_CONCAT(DISTINCT
+            CONCAT(
+                'MAX(CASE WHEN col.`name` = "',
+                col.name,
+                '" THEN `value` END) AS `',
+                replace(col.name, ' ', ''), '`'
+            )
+        ) INTO sql_columns
+    FROM  dataTables t
+    INNER JOIN dataCols col on (t.id = col.id_dataTables)
+    WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
+
+    RETURN sql_columns;
+END ;;
+DELIMITER ;
+
+-- Create helper function for time period filtering (shared logic)
+DROP FUNCTION IF EXISTS `build_time_period_filter`;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_time_period_filter`(filter_param VARCHAR(1000)) RETURNS TEXT
+    DETERMINISTIC
+BEGIN
+    CASE
+        WHEN filter_param LIKE '%LAST_HOUR%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
+        WHEN filter_param LIKE '%LAST_DAY%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
+        WHEN filter_param LIKE '%LAST_WEEK%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
+        WHEN filter_param LIKE '%LAST_MONTH%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
+        WHEN filter_param LIKE '%LAST_YEAR%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
+        ELSE
+            RETURN '';
+    END CASE;
+END ;;
+DELIMITER ;
+
+-- Create helper function for exclude deleted filtering (shared logic)
+DROP FUNCTION IF EXISTS `build_exclude_deleted_filter`;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_exclude_deleted_filter`(exclude_deleted_param BOOLEAN) RETURNS TEXT
+    DETERMINISTIC
+BEGIN
+    IF exclude_deleted_param = TRUE THEN
+        RETURN CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
+    ELSE
+        RETURN '';
+    END IF;
+END ;;
+DELIMITER ;
+
+-- Create helper function for language filtering (shared logic)
+DROP FUNCTION IF EXISTS `build_language_filter`;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_language_filter`(language_id_param INT) RETURNS TEXT
+    DETERMINISTIC
+BEGIN
+    IF language_id_param IS NULL OR language_id_param = 1 THEN
+        -- Default: only internal language (language_id = 1)
+        RETURN ' AND cell.id_languages = 1';
+    ELSE
+        -- Include both internal language (1) and requested language
+        RETURN CONCAT(' AND cell.id_languages IN (1, ', language_id_param, ')');
+    END IF;
+END ;;
+DELIMITER ;
+
+-- Create helper function for timezone conversion (shared logic)
+DROP FUNCTION IF EXISTS `convert_entry_date_timezone`;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `convert_entry_date_timezone`(timestamp_value DATETIME, timezone_code VARCHAR(100)) RETURNS VARCHAR(19)
+    DETERMINISTIC
+BEGIN
+    -- Convert timestamp from UTC to specified timezone and format as Y-m-d H:i:s
+    RETURN DATE_FORMAT(CONVERT_TZ(timestamp_value, 'UTC', timezone_code), '%Y-%m-%d %H:%i:%s');
+END ;;
+DELIMITER ;
+
+-- Update get_dataTable_with_all_languages procedure
+/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_all_languages` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_all_languages`(
+    IN table_id_param INT,
+    IN user_id_param INT,
+    IN filter_param VARCHAR(1000),
+    IN exclude_deleted_param BOOLEAN,
+    IN timezone_code_param VARCHAR(100) -- New parameter for timezone conversion
+)
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN
+    SET @@group_concat_max_len = 32000000;
+    SET @sql = build_dynamic_columns(table_id_param);
+
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
+    ELSE
+        BEGIN
+            -- User filter
+            SET @user_filter = '';
+            IF user_id_param > 0 THEN
+                SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
+            END IF;
+
+            -- Build the main query - group by record and language to get separate rows for each language
+            SET @sql = CONCAT('SELECT r.id AS record_id, convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code,
+                    r.id_actionTriggerTypes, l.lookup_code AS triggerType, cell.id_languages, lang.locale AS language_locale, lang.language AS language_name,',
+                    @sql,
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN languages lang ON (lang.id = cell.id_languages)
+                    WHERE t.id = ', table_id_param, @user_filter, build_time_period_filter(filter_param), build_exclude_deleted_filter(exclude_deleted_param),
+                    ' GROUP BY r.id, cell.id_languages ORDER BY r.id, cell.id_languages');
+
+            -- Apply the additional filter
+            SET @sql = CONCAT('SELECT * FROM (', @sql, ') AS filtered_data WHERE 1=1 ', filter_param);
+
+            -- select @sql; -- Uncomment for debugging
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+        END;
+    END IF;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+-- Update get_dataTable_with_filter procedure
+/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_filter` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_filter`(
+    IN table_id_param INT,
+    IN user_id_param INT,
+    IN filter_param VARCHAR(1000),
+    IN exclude_deleted_param BOOLEAN,
+    IN language_id_param INT,
+    IN timezone_code_param VARCHAR(100) -- New parameter for timezone conversion
+)
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN
+    SET @@group_concat_max_len = 32000000;
+    SET @sql = build_dynamic_columns(table_id_param);
+
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
+    ELSE
+        BEGIN
+            -- User filter
+            SET @user_filter = '';
+            IF user_id_param > 0 THEN
+                SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
+            END IF;
+
+            -- Build the main query with language filtering
+            SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
+                    convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    WHERE t.id = ', table_id_param, @user_filter, build_time_period_filter(filter_param), build_exclude_deleted_filter(exclude_deleted_param), build_language_filter(language_id_param),
+                    ' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
+
+            -- select @sql; -- Uncomment for debugging
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+        END;
+    END IF;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+-- Update get_dataTable_with_user_group_filter procedure
+/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_user_group_filter` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_user_group_filter`(
+    IN table_id_param INT,
+    IN current_user_id_param INT,
+    IN filter_param VARCHAR(1000),
+    IN exclude_deleted_param BOOLEAN,
+    IN language_id_param INT,
+    IN timezone_code_param VARCHAR(100) -- New parameter for timezone conversion
+)
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN
+    SET @@group_concat_max_len = 32000000;
+    SET @sql = build_dynamic_columns(table_id_param);
+
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
+    ELSE
+        BEGIN
+            -- User group filter - find accessible users dynamically
+            -- Get resource type ID for groups
+            SET @group_resource_type_id = (SELECT id FROM lookups WHERE type_code = 'resourceTypes' AND lookup_code = 'group' LIMIT 1);
+
+            -- Find all users that the current user can access through group permissions
+            DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
+            CREATE TEMPORARY TABLE accessible_users_temp AS
+            SELECT DISTINCT ug.id_users
+            FROM users_groups ug
+            WHERE ug.id_groups IN (
+                -- Find groups the current user can access
+                SELECT rda.resource_id
+                FROM role_data_access rda
+                INNER JOIN roles r ON rda.id_roles = r.id
+                INNER JOIN users_roles ur ON r.id = ur.id_roles
+                WHERE ur.id_users = current_user_id_param
+                AND rda.id_resourceTypes = @group_resource_type_id
+                AND rda.crud_permissions > 0
+            );
+
+            -- Build user filter using the accessible users
+            SET @user_filter = '';
+            SET @accessible_user_count = (SELECT COUNT(*) FROM accessible_users_temp);
+            IF @accessible_user_count > 0 THEN
+                SET @user_filter = ' AND r.id_users IN (SELECT id_users FROM accessible_users_temp)';
+            ELSE
+                -- No accessible users - return no results
+                SET @user_filter = ' AND 1=0';
+            END IF;
+
+            -- Build the main query with user group filtering
+            SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
+                    convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    WHERE t.id = ', table_id_param, @user_filter, build_time_period_filter(filter_param), build_exclude_deleted_filter(exclude_deleted_param), build_language_filter(language_id_param),
+                    ' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
+
+            -- select @sql; -- Uncomment for debugging
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+
+            -- Clean up temporary table
+            DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
+        END;
+    END IF;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+-- =====================================================
+-- Create Data Access Audit Table
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS `dataAccessAudit` (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `id_users` int(11) NOT NULL,
+    `id_resourceTypes` int(11) NOT NULL,
+    `resource_id` int(11) NOT NULL,
+    `id_actions` int(11) NOT NULL,
+    `id_permissionResults` int(11) NOT NULL,
+    `crud_permission` smallint(5) unsigned DEFAULT NULL,
+    `http_method` varchar(10) DEFAULT NULL,
+    `request_body_hash` varchar(64) DEFAULT NULL,
+    `ip_address` varchar(45) DEFAULT NULL,
+    `user_agent` text,
+    `request_uri` text,
+    `notes` text,
+    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `IDX_dataAccessAudit_users` (`id_users`),
+    KEY `IDX_dataAccessAudit_resource_types` (`id_resourceTypes`),
+    KEY `IDX_dataAccessAudit_resource_id` (`resource_id`),
+    KEY `IDX_dataAccessAudit_created_at` (`created_at`),
+    KEY `IDX_dataAccessAudit_permission_results` (`id_permissionResults`),
+    KEY `IDX_dataAccessAudit_http_method` (`http_method`),
+    KEY `IDX_dataAccessAudit_request_body_hash` (`request_body_hash`),
+    CONSTRAINT `FK_dataAccessAudit_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`),
+    CONSTRAINT `FK_dataAccessAudit_resourceTypes` FOREIGN KEY (`id_resourceTypes`) REFERENCES `lookups` (`id`),
+    CONSTRAINT `FK_dataAccessAudit_actions` FOREIGN KEY (`id_actions`) REFERENCES `lookups` (`id`),
+    CONSTRAINT `FK_dataAccessAudit_permissionResults` FOREIGN KEY (`id_permissionResults`) REFERENCES `lookups` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -13,11 +13,11 @@ class ValidationCode
     #[ORM\Column(name: 'code', type: 'string', length: 16)]
     private string $code;
 
-    #[ORM\Column(name: 'created', type: 'datetime')]
-    private \DateTimeInterface $created;
+    #[ORM\Column(name: 'created', type: 'datetime_immutable')]
+    private \DateTimeImmutable $created;
 
-    #[ORM\Column(name: 'consumed', type: 'datetime', nullable: true)]
-    private ?\DateTimeInterface $consumed = null;
+    #[ORM\Column(name: 'consumed', type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $consumed = null;
 
     #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'validationCodes', cascade: ['persist', 'remove'])]
     #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')]
@@ -27,32 +27,55 @@ class ValidationCode
     #[ORM\JoinColumn(name: 'id_groups', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Group $group = null;
 
+    public function __construct()
+    {
+        $this->created = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
     public function getCode(): ?string
     {
         return $this->code;
     }
     public function setCode(string $code): self { $this->code = $code; return $this; }
 
-    public function getCreated(): ?\DateTime
+    public function getCreated(): \DateTimeImmutable
     {
         return $this->created;
     }
 
-    public function setCreated(\DateTime $created): static
+    public function setCreated(\DateTimeInterface $created): static
     {
-        $this->created = $created;
+        // Ensure UTC storage
+        $this->created = $created instanceof \DateTimeImmutable
+            ? ($created->getTimezone()->getName() === 'UTC' ? $created : $created->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $created->getTimezone()->getName() === 'UTC'
+                    ? $created
+                    : $created->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }
 
-    public function getConsumed(): ?\DateTime
+    public function getConsumed(): ?\DateTimeImmutable
     {
         return $this->consumed;
     }
 
-    public function setConsumed(?\DateTime $consumed): static
+    public function setConsumed(?\DateTimeInterface $consumed): static
     {
-        $this->consumed = $consumed;
+        if ($consumed === null) {
+            $this->consumed = null;
+        } else {
+            // Ensure UTC storage
+            $this->consumed = $consumed instanceof \DateTimeImmutable
+                ? ($consumed->getTimezone()->getName() === 'UTC' ? $consumed : $consumed->setTimezone(new \DateTimeZone('UTC')))
+                : \DateTimeImmutable::createFromMutable(
+                    $consumed->getTimezone()->getName() === 'UTC'
+                        ? $consumed
+                        : $consumed->setTimezone(new \DateTimeZone('UTC'))
+                );
+        }
 
         return $this;
     }

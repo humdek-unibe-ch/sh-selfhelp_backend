@@ -31,11 +31,11 @@ class ApiRequestLog
     #[ORM\Column(name: 'ip_address', type: 'string', length: 45, nullable: true)]
     private ?string $ipAddress = null;
 
-    #[ORM\Column(name: 'request_time', type: 'datetime')]
-    private \DateTimeInterface $requestTime;
+    #[ORM\Column(name: 'request_time', type: 'datetime_immutable')]
+    private \DateTimeImmutable $requestTime;
 
-    #[ORM\Column(name: 'response_time', type: 'datetime')]
-    private \DateTimeInterface $responseTime;
+    #[ORM\Column(name: 'response_time', type: 'datetime_immutable')]
+    private \DateTimeImmutable $responseTime;
 
     #[ORM\Column(name: 'duration_ms', type: 'integer')]
     private int $durationMs;
@@ -51,6 +51,12 @@ class ApiRequestLog
 
     #[ORM\Column(name: 'error_message', type: 'text', nullable: true)]
     private ?string $errorMessage = null;
+
+    public function __construct()
+    {
+        $this->requestTime = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $this->responseTime = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
 
     // Getters and setters
 
@@ -125,25 +131,39 @@ class ApiRequestLog
         return $this;
     }
 
-    public function getRequestTime(): \DateTimeInterface
+    public function getRequestTime(): \DateTimeImmutable
     {
         return $this->requestTime;
     }
 
     public function setRequestTime(\DateTimeInterface $requestTime): self
     {
-        $this->requestTime = $requestTime;
+        // Ensure UTC storage
+        $this->requestTime = $requestTime instanceof \DateTimeImmutable
+            ? ($requestTime->getTimezone()->getName() === 'UTC' ? $requestTime : $requestTime->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $requestTime->getTimezone()->getName() === 'UTC'
+                    ? $requestTime
+                    : $requestTime->setTimezone(new \DateTimeZone('UTC'))
+            );
         return $this;
     }
 
-    public function getResponseTime(): \DateTimeInterface
+    public function getResponseTime(): \DateTimeImmutable
     {
         return $this->responseTime;
     }
 
     public function setResponseTime(\DateTimeInterface $responseTime): self
     {
-        $this->responseTime = $responseTime;
+        // Ensure UTC storage
+        $this->responseTime = $responseTime instanceof \DateTimeImmutable
+            ? ($responseTime->getTimezone()->getName() === 'UTC' ? $responseTime : $responseTime->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $responseTime->getTimezone()->getName() === 'UTC'
+                    ? $responseTime
+                    : $responseTime->setTimezone(new \DateTimeZone('UTC'))
+            );
         return $this;
     }
 

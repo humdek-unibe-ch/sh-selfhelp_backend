@@ -5,7 +5,6 @@ namespace App\Repository;
 use App\Entity\DataAccessAudit;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
-use Doctrine\ORM\QueryBuilder;
 
 /**
  * Data Access Audit Repository
@@ -22,7 +21,7 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
     /**
      * Find audit logs with filtering and pagination
-     * Returns array results for memory efficiency
+     * Returns array results for memory efficiency with timezone conversion in PHP
      */
     public function findAuditLogs(
         ?int $userId = null,
@@ -33,7 +32,8 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         ?string $dateTo = null,
         ?string $httpMethod = null,
         int $page = 1,
-        int $pageSize = 20
+        int $pageSize = 20,
+        string $timezoneCode = 'UTC'
     ): array {
         $qb = $this->createQueryBuilder('a')
             ->select([
@@ -119,6 +119,14 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
         $results = $qb->getQuery()->getArrayResult();
 
+        // Convert timezone for each result
+        $timezone = new \DateTimeZone($timezoneCode);
+        foreach ($results as &$result) {
+            if (isset($result['createdAt']) && $result['createdAt']) {
+                $result['createdAt'] = $result['createdAt']->setTimezone($timezone);
+            }
+        }
+
         return [
             'data' => $results,
             'total' => $totalCount,
@@ -131,7 +139,7 @@ class DataAccessAuditRepository extends ServiceEntityRepository
     /**
      * Get audit statistics
      */
-    public function getAuditStatistics(?string $dateFrom = null, ?string $dateTo = null): array
+    public function getAuditStatistics(?string $dateFrom = null, ?string $dateTo = null, string $timezoneCode = 'UTC'): array
     {
         $qb = $this->createQueryBuilder('a')
             ->select([
@@ -140,9 +148,8 @@ class DataAccessAuditRepository extends ServiceEntityRepository
                 'COUNT(DISTINCT a.resourceId) as uniqueResources',
                 'COUNT(DISTINCT a.idUsers) as uniqueUsers'
             ])
-            ->leftJoin('a.permissionResult', 'pr');
-
-        $qb->setParameter('denied', 'denied');
+            ->leftJoin('a.permissionResult', 'pr')
+            ->setParameter('denied', 'denied');
 
         if ($dateFrom !== null) {
             $qb->andWhere('a.createdAt >= :dateFrom')
@@ -157,10 +164,10 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         $result = $qb->getQuery()->getSingleResult();
 
         // Get most accessed resources
-        $mostAccessedResources = $this->getMostAccessedResources($dateFrom, $dateTo);
+        $mostAccessedResources = $this->getMostAccessedResources($dateFrom, $dateTo, $timezoneCode);
 
         // Get recent denied attempts
-        $recentDeniedAttempts = $this->getRecentDeniedAttempts();
+        $recentDeniedAttempts = $this->getRecentDeniedAttempts($timezoneCode);
 
         return [
             'totalLogs' => (int) $result['totalLogs'],
@@ -175,13 +182,14 @@ class DataAccessAuditRepository extends ServiceEntityRepository
     /**
      * Get most accessed resources
      */
-    private function getMostAccessedResources(?string $dateFrom = null, ?string $dateTo = null): array
+    private function getMostAccessedResources(?string $dateFrom = null, ?string $dateTo = null, string $timezoneCode = 'UTC'): array
     {
         $qb = $this->createQueryBuilder('a')
             ->select([
                 'rt.lookupValue as resourceType',
                 'a.resourceId',
-                'COUNT(a.id) as accessCount'
+                'COUNT(a.id) as accessCount',
+                'MAX(a.createdAt) as lastAccessed'
             ])
             ->leftJoin('a.resourceType', 'rt')
             ->groupBy('rt.lookupValue, a.resourceId')
@@ -198,16 +206,26 @@ class DataAccessAuditRepository extends ServiceEntityRepository
                ->setParameter('dateTo', new \DateTime($dateTo . ' 23:59:59'));
         }
 
-        return $qb->getQuery()->getResult();
+        $results = $qb->getQuery()->getResult();
+
+        // Convert timezone for lastAccessed dates (Doctrine already returns DateTime objects)
+        $timezone = new \DateTimeZone($timezoneCode);
+        foreach ($results as &$result) {
+            if (isset($result['lastAccessed']) && $result['lastAccessed']) {
+                $result['lastAccessed'] = $result['lastAccessed']->setTimezone($timezone);
+            }
+        }
+
+        return $results;
     }
 
     /**
      * Get recent denied attempts
-     * Uses array results for memory efficiency
+     * Uses Doctrine with timezone conversion in PHP
      */
-    private function getRecentDeniedAttempts(): array
+    private function getRecentDeniedAttempts(string $timezoneCode = 'UTC'): array
     {
-        return $this->createQueryBuilder('a')
+        $results = $this->createQueryBuilder('a')
             ->select([
                 'a.id',
                 'a.idUsers',
@@ -233,13 +251,23 @@ class DataAccessAuditRepository extends ServiceEntityRepository
             ->setMaxResults(10)
             ->getQuery()
             ->getArrayResult();
+
+        // Convert timezone for createdAt dates
+        $timezone = new \DateTimeZone($timezoneCode);
+        foreach ($results as &$result) {
+            if (isset($result['createdAt']) && $result['createdAt']) {
+                $result['createdAt'] = $result['createdAt']->setTimezone($timezone);
+            }
+        }
+
+        return $results;
     }
 
     /**
      * Find audit log by ID with relationships
-     * Returns array result for memory efficiency
+     * Returns array result for memory efficiency with timezone conversion in PHP
      */
-    public function findAuditLogById(int $id): ?array
+    public function findAuditLogById(int $id, string $timezoneCode = 'UTC'): ?array
     {
         $result = $this->createQueryBuilder('a')
             ->select([
@@ -276,6 +304,18 @@ class DataAccessAuditRepository extends ServiceEntityRepository
             ->getQuery()
             ->getArrayResult();
 
-        return $result[0] ?? null;
+        if (empty($result)) {
+            return null;
+        }
+
+        $auditLog = $result[0];
+
+        // Convert timezone for createdAt
+        $timezone = new \DateTimeZone($timezoneCode);
+        if (isset($auditLog['createdAt']) && $auditLog['createdAt']) {
+            $auditLog['createdAt'] = $auditLog['createdAt']->setTimezone($timezone);
+        }
+
+        return $auditLog;
     }
 }

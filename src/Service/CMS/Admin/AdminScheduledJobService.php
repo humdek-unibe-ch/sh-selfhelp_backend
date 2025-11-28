@@ -356,11 +356,19 @@ class AdminScheduledJobService extends BaseService
                     ->getQuery()
                     ->getResult();
 
+                // Convert timezone for datetime fields
+                $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+
                 $formattedTransactions = [];
                 foreach ($transactions as $transaction) {
+                    $transactionTime = $transaction->getTransactionTime();
+                    if ($transactionTime) {
+                        $transactionTime = $transactionTime->setTimezone($cmsTimezone);
+                    }
+
                     $formattedTransactions[] = [
                         'transaction_id' => $transaction->getId(),
-                        'transaction_time' => $transaction->getTransactionTime()->format('Y-m-d H:i:s'),
+                        'transaction_time' => $transactionTime?->format('Y-m-d H:i:s'),
                         'transaction_type' => $transaction->getTransactionType()?->getLookupValue(),
                         'transaction_verbal_log' => $transaction->getTransactionLog(),
                         'user' => $transaction->getUser()?->getName()
@@ -376,13 +384,31 @@ class AdminScheduledJobService extends BaseService
      */
     private function formatScheduledJobForList(ScheduledJob $job): array
     {
+        // Convert timezone for datetime fields
+        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+
+        $dateCreate = $job->getDateCreate();
+        if ($dateCreate) {
+            $dateCreate = $dateCreate->setTimezone($cmsTimezone);
+        }
+
+        $dateToBeExecuted = $job->getDateToBeExecuted();
+        if ($dateToBeExecuted) {
+            $dateToBeExecuted = $dateToBeExecuted->setTimezone($cmsTimezone);
+        }
+
+        $dateExecuted = $job->getDateExecuted();
+        if ($dateExecuted) {
+            $dateExecuted = $dateExecuted->setTimezone($cmsTimezone);
+        }
+
         return [
             'id' => $job->getId(),
             'status' => $job->getStatus()?->getLookupValue(),
             'type' => $job->getJobType()?->getLookupValue(),
-            'entry_date' => $job->getDateCreate()->format('Y-m-d H:i:s'),
-            'date_to_be_executed' => $job->getDateToBeExecuted()?->format('Y-m-d H:i:s'),
-            'execution_date' => $job->getDateExecuted()?->format('Y-m-d H:i:s'),
+            'entry_date' => $dateCreate?->format('Y-m-d H:i:s'),
+            'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
+            'execution_date' => $dateExecuted?->format('Y-m-d H:i:s'),
             'description' => $job->getDescription(),
             'message' => $job->getConfig()
         ];
@@ -393,6 +419,24 @@ class AdminScheduledJobService extends BaseService
      */
     private function formatScheduledJobForDetail(ScheduledJob $job): array
     {
+        // Convert timezone for datetime fields
+        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+
+        $dateCreate = $job->getDateCreate();
+        if ($dateCreate) {
+            $dateCreate = $dateCreate->setTimezone($cmsTimezone);
+        }
+
+        $dateToBeExecuted = $job->getDateToBeExecuted();
+        if ($dateToBeExecuted) {
+            $dateToBeExecuted = $dateToBeExecuted->setTimezone($cmsTimezone);
+        }
+
+        $dateExecuted = $job->getDateExecuted();
+        if ($dateExecuted) {
+            $dateExecuted = $dateExecuted->setTimezone($cmsTimezone);
+        }
+
         return [
             'id' => $job->getId(),
             'status' => [
@@ -404,9 +448,9 @@ class AdminScheduledJobService extends BaseService
                 'value' => $job->getJobType()?->getLookupValue()
             ],
             'description' => $job->getDescription(),
-            'date_create' => $job->getDateCreate()->format('Y-m-d H:i:s'),
-            'date_to_be_executed' => $job->getDateToBeExecuted()?->format('Y-m-d H:i:s'),
-            'date_executed' => $job->getDateExecuted()?->format('Y-m-d H:i:s'),
+            'date_create' => $dateCreate?->format('Y-m-d H:i:s'),
+            'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
+            'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
             'config' => $job->getConfig()
         ];
     }

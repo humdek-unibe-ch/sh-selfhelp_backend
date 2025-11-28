@@ -32,7 +32,7 @@ class DataTableRepository extends ServiceEntityRepository
     /**
      * Calls the stored procedure get_dataTable_with_filter and returns the result.
      */
-    public function getDataTableWithFilter(int $tableId, int $userId, string $filter, bool $excludeDeleted, int $languageId = 1): array
+    public function getDataTableWithFilter(int $tableId, int $userId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
     {
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
@@ -43,17 +43,19 @@ class DataTableRepository extends ServiceEntityRepository
 
         // Sanitize the filter parameter for cache key usage
         $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
+        $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
 
         return $cache
-            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId) {
+            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId, $timezoneCode) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_dataTable_with_filter(:tableId, :userId, :filter, :excludeDeleted, :languageId)';
+                $sql = 'CALL get_dataTable_with_filter(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
                 $stmt->bindValue('userId', $userId, PDO::PARAM_INT);
                 $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
                 $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
                 $stmt->bindValue('languageId', $languageId, PDO::PARAM_INT);
+                $stmt->bindValue('timezoneCode', $timezoneCode, PDO::PARAM_STR);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();
@@ -65,7 +67,7 @@ class DataTableRepository extends ServiceEntityRepository
      * Used for non-admin users who should only see data from users in their accessible groups.
      * The stored procedure internally determines accessible users based on current user's permissions.
      */
-    public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1): array
+    public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
     {
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
@@ -81,17 +83,19 @@ class DataTableRepository extends ServiceEntityRepository
 
         // Sanitize the filter parameter for cache key usage
         $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
+        $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
 
         return $cache
-            ->getList("data_table_with_user_group_filter_{$tableId}_{$currentUserId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}", function () use ($tableId, $currentUserId, $filter, $excludeDeleted, $languageId) {
+            ->getList("data_table_with_user_group_filter_{$tableId}_{$currentUserId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}", function () use ($tableId, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_dataTable_with_user_group_filter(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId)';
+                $sql = 'CALL get_dataTable_with_user_group_filter(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
                 $stmt->bindValue('currentUserId', $currentUserId, PDO::PARAM_INT);
                 $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
                 $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
                 $stmt->bindValue('languageId', $languageId, PDO::PARAM_INT);
+                $stmt->bindValue('timezoneCode', $timezoneCode, PDO::PARAM_STR);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();
@@ -102,7 +106,7 @@ class DataTableRepository extends ServiceEntityRepository
      * Calls the stored procedure get_dataTable_with_all_languages and returns the result.
      * This procedure returns all languages for each record (no language filtering).
      */
-    public function getDataTableWithAllLanguages(int $tableId, int $userId, string $filter, bool $excludeDeleted): array
+    public function getDataTableWithAllLanguages(int $tableId, int $userId, string $filter, bool $excludeDeleted, string $timezoneCode = 'UTC'): array
     {
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
@@ -113,16 +117,18 @@ class DataTableRepository extends ServiceEntityRepository
 
         // Sanitize the filter parameter for cache key usage
         $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
+        $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
 
         return $cache
-            ->getList("data_table_with_all_languages_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}", function () use ($tableId, $userId, $filter, $excludeDeleted) {
+            ->getList("data_table_with_all_languages_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$sanitizedTimezone}", function () use ($tableId, $userId, $filter, $excludeDeleted, $timezoneCode) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_dataTable_with_all_languages(:tableId, :userId, :filter, :excludeDeleted)';
+                $sql = 'CALL get_dataTable_with_all_languages(:tableId, :userId, :filter, :excludeDeleted, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
                 $stmt->bindValue('userId', $userId, PDO::PARAM_INT);
                 $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
                 $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
+                $stmt->bindValue('timezoneCode', $timezoneCode, PDO::PARAM_STR);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();

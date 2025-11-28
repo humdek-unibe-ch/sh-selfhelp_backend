@@ -126,8 +126,8 @@ class PageVersion
      */
     // Timestamp when this version was created - auto-set in constructor
     // Stored as DATETIME in 'created_at' column, never null
-    #[ORM\Column(name: 'created_at', type: 'datetime', nullable: false)]
-    private \DateTimeInterface $createdAt;
+    #[ORM\Column(name: 'created_at', type: 'datetime_immutable', nullable: false)]
+    private \DateTimeImmutable $createdAt;
 
     /**
      * Timestamp when this version was published (made live)
@@ -138,8 +138,8 @@ class PageVersion
      */
     // Timestamp when this version was published - null means not published yet
     // Stored as nullable DATETIME in 'published_at' column
-    #[ORM\Column(name: 'published_at', type: 'datetime', nullable: true, options: ['comment' => 'When this version was published'])]
-    private ?\DateTimeInterface $publishedAt = null;
+    #[ORM\Column(name: 'published_at', type: 'datetime_immutable', nullable: true, options: ['comment' => 'When this version was published'])]
+    private ?\DateTimeImmutable $publishedAt = null;
 
     /**
      * Extensible metadata for version management
@@ -161,7 +161,7 @@ class PageVersion
 
     public function __construct()
     {
-        $this->createdAt = new \DateTime();
+        $this->createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $this->versionNumber = 1; // Default to first version
         $this->pageJson = []; // Initialize with empty array
     }
@@ -226,25 +226,43 @@ class PageVersion
         return $this;
     }
 
-    public function getCreatedAt(): \DateTimeInterface
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
 
     public function setCreatedAt(\DateTimeInterface $createdAt): static
     {
-        $this->createdAt = $createdAt;
+        // Ensure UTC storage
+        $this->createdAt = $createdAt instanceof \DateTimeImmutable
+            ? ($createdAt->getTimezone()->getName() === 'UTC' ? $createdAt : $createdAt->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $createdAt->getTimezone()->getName() === 'UTC'
+                    ? $createdAt
+                    : $createdAt->setTimezone(new \DateTimeZone('UTC'))
+            );
         return $this;
     }
 
-    public function getPublishedAt(): ?\DateTimeInterface
+    public function getPublishedAt(): ?\DateTimeImmutable
     {
         return $this->publishedAt;
     }
 
     public function setPublishedAt(?\DateTimeInterface $publishedAt): static
     {
-        $this->publishedAt = $publishedAt;
+        if ($publishedAt === null) {
+            $this->publishedAt = null;
+        } else {
+            // Ensure UTC storage
+            $this->publishedAt = $publishedAt instanceof \DateTimeImmutable
+                ? ($publishedAt->getTimezone()->getName() === 'UTC' ? $publishedAt : $publishedAt->setTimezone(new \DateTimeZone('UTC')))
+                : \DateTimeImmutable::createFromMutable(
+                    $publishedAt->getTimezone()->getName() === 'UTC'
+                        ? $publishedAt
+                        : $publishedAt->setTimezone(new \DateTimeZone('UTC'))
+                );
+        }
         return $this;
     }
 

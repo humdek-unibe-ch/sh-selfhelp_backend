@@ -319,14 +319,42 @@ class PageVersionService extends BaseService
      */
     public function getVersionHistory(int $pageId, int $limit = 10, int $offset = 0): array
     {
+        // Get entities normally with Doctrine - ensure we get objects, not arrays
         $versions = $this->pageVersionRepository->getVersionHistory($pageId, $limit, $offset);
         $totalCount = $this->pageVersionRepository->countVersionsByPage($pageId);
+
+        // Convert timezone for output WITHOUT modifying managed entities
+        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+        $formattedVersions = array_map(function ($version) use ($cmsTimezone) {
+            $createdAt = $version->getCreatedAt();
+            $publishedAt = $version->getPublishedAt();
+
+            // Convert to CMS timezone for display (don't modify the entity)
+            if ($createdAt) {
+                $createdAt = $createdAt->setTimezone($cmsTimezone);
+            }
+            if ($publishedAt) {
+                $publishedAt = $publishedAt->setTimezone($cmsTimezone);
+            }
+
+            return [
+                'id' => $version->getId(),
+                'page_id' => $version->getPage()?->getId(),
+                'version_number' => $version->getVersionNumber(),
+                'version_name' => $version->getVersionName(),
+                'created_at' => $createdAt?->format('Y-m-d H:i:s'),
+                'published_at' => $publishedAt?->format('Y-m-d H:i:s'),
+                'created_by' => $version->getCreatedBy()?->getId(),
+                'is_published' => $version->isPublished(),
+                'metadata' => $version->getMetadata(),
+            ];
+        }, $versions);
 
         // Fast check: Does the draft have unpublished changes?
         $hasUnpublishedChanges = $this->hasUnpublishedChanges($pageId);
 
         return [
-            'versions' => $versions,
+            'versions' => $formattedVersions,
             'total_count' => $totalCount,
             'limit' => $limit,
             'offset' => $offset,

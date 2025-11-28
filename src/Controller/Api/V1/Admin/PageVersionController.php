@@ -141,22 +141,8 @@ class PageVersionController extends AbstractController
             $publishedVersion = $this->pageVersionService->getPublishedVersion($page_id);
             $currentPublishedVersionId = $publishedVersion ? $publishedVersion->getId() : null;
 
-            // Format versions for response
-            $formattedVersions = array_map(function ($version) {
-                return [
-                    'id' => $version->getId(),
-                    'version_number' => $version->getVersionNumber(),
-                    'version_name' => $version->getVersionName(),
-                    'created_by' => $version->getCreatedBy() ? [
-                        'id' => $version->getCreatedBy()->getId(),
-                        'name' => $version->getCreatedBy()->getName() ?? $version->getCreatedBy()->getEmail()
-                    ] : null,
-                    'created_at' => $version->getCreatedAt(),
-                    'published_at' => $version->getPublishedAt(),
-                    'is_published' => $version->isPublished(),
-                    'metadata' => $version->getMetadata()
-                ];
-            }, $result['versions']);
+            // Versions are already formatted in the service, just use them directly
+            $formattedVersions = $result['versions'];
 
             return $this->responseFormatter->formatSuccess(
                 [

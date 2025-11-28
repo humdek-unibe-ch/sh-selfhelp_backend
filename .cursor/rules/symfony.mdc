@@ -12,7 +12,14 @@ Always check documentation in @docs\developer before implementing. After new  im
 Do this with one step without waiting for confirmation
 Wrap in transactions multiple sql executions for edit insert delete; Always log a transaction with our Transaction Service
 Any api route is added in @db\update_scripts\api_routes.sql
-Any sql is added om @db\update_scripts\39_update_v7.6.0_v8.0.0.sql and follow the Already designed patterns
+Any sql is added om @db\update_scripts/39_update_v7.6.0_v8.0.0.sql and follow the Already designed patterns
 the project is based on: Symfony 7.2; Php 8.3; doctrine/orm: 3.3/ PSR 4. Follow best Symfony practices.
 
 When adding test never mock data. Always execute on the API, it will be done on the test DB
+
+TIMEZONE HANDLING:
+- Always store datetime in UTC in database (entities use DateTimeImmutable with UTC timezone)
+- When returning data to API clients, convert datetime to CMS preference timezone
+- For paginated data (large datasets): convert timezone in PHP loops to avoid SQL overhead
+- For non-paginated data: use SQL CONVERT_TZ() function for better performance
+- Use CmsPreferenceService->getDefaultTimezoneCode() to get the CMS timezone for conversions

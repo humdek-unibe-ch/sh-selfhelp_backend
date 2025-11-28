@@ -10,6 +10,7 @@ use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Exception\ServiceException;
 use App\Repository\DataTableRepository;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -42,7 +43,8 @@ class DataService extends BaseService
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly FormFileUploadService $formFileUploadService
+        private readonly FormFileUploadService $formFileUploadService,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -277,7 +279,8 @@ class DataService extends BaseService
         if (!$dataTable) {
             $dataTable = new DataTable();
             $dataTable->setName($tableName);
-            $dataTable->setTimestamp(new \DateTime());
+            // DataTable constructor already sets UTC timestamp, but override if needed
+            $dataTable->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
 
             $this->entityManager->persist($dataTable);
             $this->entityManager->flush(); // Flush to get the ID
@@ -302,8 +305,8 @@ class DataService extends BaseService
             $this->throwNotFound('Record not found');
         }
 
-        // Update timestamp and trigger type
-        $dataRow->setTimestamp(new \DateTime());
+        // Update timestamp and trigger type (use UTC for consistency)
+        $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
         $dataRow->setIdUsers($data['id_users']);
 
         $triggerTypeId = $this->getTriggerTypeId($data);
@@ -392,7 +395,8 @@ class DataService extends BaseService
         // Create data row
         $dataRow = new DataRow();
         $dataRow->setDataTable($dataTable);
-        $dataRow->setTimestamp(new \DateTime());
+        // DataRow constructor already sets UTC timestamp, but override if needed
+        $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
         $dataRow->setIdUsers($data['id_users']);
 
         $triggerTypeId = $this->getTriggerTypeId($data);
@@ -622,7 +626,8 @@ class DataService extends BaseService
                 $resolvedUserId,
                 $filter,
                 $excludeDeleted,
-                $languageId
+                $languageId,
+                $this->cmsPreferenceService->getDefaultTimezoneCode()
             );
 
             if ($dbFirst) {
@@ -669,7 +674,8 @@ class DataService extends BaseService
                 $currentUserId,
                 $filter,
                 $excludeDeleted,
-                $languageId
+                $languageId,
+                $this->cmsPreferenceService->getDefaultTimezoneCode()
             );
 
             return $rows;
@@ -723,7 +729,8 @@ class DataService extends BaseService
                 $dataTableId,
                 $resolvedUserId,
                 $filter,
-                $excludeDeleted
+                $excludeDeleted,
+                $this->cmsPreferenceService->getDefaultTimezoneCode()
             );
 
             if ($dbFirst) {

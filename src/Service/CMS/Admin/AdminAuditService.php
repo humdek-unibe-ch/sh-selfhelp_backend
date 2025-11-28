@@ -3,6 +3,7 @@
 namespace App\Service\CMS\Admin;
 
 use App\Repository\DataAccessAuditRepository;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -13,7 +14,8 @@ use Symfony\Component\HttpFoundation\Request;
 class AdminAuditService extends BaseService
 {
     public function __construct(
-        private readonly DataAccessAuditRepository $auditRepository
+        private readonly DataAccessAuditRepository $auditRepository,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -42,7 +44,8 @@ class AdminAuditService extends BaseService
             $dateTo,
             $httpMethod,
             $page,
-            $pageSize
+            $pageSize,
+            $this->cmsPreferenceService->getDefaultTimezoneCode()
         );
 
         // Format the array results for API response
@@ -58,7 +61,7 @@ class AdminAuditService extends BaseService
      */
     public function getDataAccessLog(int $id): ?array
     {
-        $auditLog = $this->auditRepository->findAuditLogById($id);
+        $auditLog = $this->auditRepository->findAuditLogById($id, $this->cmsPreferenceService->getDefaultTimezoneCode());
 
         if (!$auditLog) {
             return null;
@@ -75,14 +78,27 @@ class AdminAuditService extends BaseService
         $dateFrom = $request->query->get('date_from');
         $dateTo = $request->query->get('date_to');
 
-        return $this->auditRepository->getAuditStatistics($dateFrom, $dateTo);
+        $stats = $this->auditRepository->getAuditStatistics(
+            $dateFrom,
+            $dateTo,
+            $this->cmsPreferenceService->getDefaultTimezoneCode()
+        );
+
+        return $stats;
     }
 
     /**
      * Format audit log array data for API response
+     * Timezone conversion is now handled in PHP loops
      */
     private function formatAuditLogForApi(array $auditLog): array
     {
+        // Format createdAt DateTime to ISO string if it's a DateTime object
+        $createdAt = $auditLog['createdAt'];
+        if ($createdAt instanceof \DateTimeInterface) {
+            $createdAt = $createdAt->format('c');
+        }
+
         return [
             // Raw database fields as required by schema
             'id' => $auditLog['id'],
@@ -98,7 +114,7 @@ class AdminAuditService extends BaseService
             'userAgent' => $auditLog['userAgent'],
             'requestUri' => $auditLog['requestUri'],
             'notes' => $auditLog['notes'],
-            'createdAt' => $auditLog['createdAt']?->format('c'),
+            'createdAt' => $createdAt,
 
             // Formatted nested objects as required by schema
             'user' => [

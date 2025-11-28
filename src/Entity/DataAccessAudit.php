@@ -63,8 +63,8 @@ class DataAccessAudit
     #[ORM\Column(name: 'notes', type: Types::TEXT, nullable: true)]
     private ?string $notes = null;
 
-    #[ORM\Column(name: 'created_at', type: Types::DATETIME_MUTABLE, options: ['default' => 'CURRENT_TIMESTAMP'])]
-    private \DateTimeInterface $createdAt;
+    #[ORM\Column(name: 'created_at', type: Types::DATETIME_IMMUTABLE, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    private \DateTimeImmutable $createdAt;
 
     // Relationships
     #[ORM\ManyToOne(targetEntity: User::class)]
@@ -85,7 +85,7 @@ class DataAccessAudit
 
     public function __construct()
     {
-        $this->createdAt = new \DateTime();
+        $this->createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
 
     public function getId(): ?int
@@ -202,14 +202,21 @@ class DataAccessAudit
         return $this;
     }
 
-    public function getCreatedAt(): \DateTimeInterface
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
 
     public function setCreatedAt(\DateTimeInterface $createdAt): self
     {
-        $this->createdAt = $createdAt;
+        // Ensure UTC storage
+        $this->createdAt = $createdAt instanceof \DateTimeImmutable
+            ? ($createdAt->getTimezone()->getName() === 'UTC' ? $createdAt : $createdAt->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $createdAt->getTimezone()->getName() === 'UTC'
+                    ? $createdAt
+                    : $createdAt->setTimezone(new \DateTimeZone('UTC'))
+            );
         return $this;
     }
 

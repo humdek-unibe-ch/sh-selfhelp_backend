@@ -129,8 +129,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'resource_id' => $result['resourceId'],
                 'crud_permissions' => $result['crudPermissions'],
                 'resource_type_name' => $result['resource_type_name'],
-                'created_at' => $result['createdAt']?->format('Y-m-d H:i:s'),
-                'updated_at' => $result['updatedAt']?->format('Y-m-d H:i:s'),
+                'created_at' => $result['createdAt'], // Return DateTime object for timezone conversion
+                'updated_at' => $result['updatedAt'], // Return DateTime object for timezone conversion
             ];
         }, $results);
     }

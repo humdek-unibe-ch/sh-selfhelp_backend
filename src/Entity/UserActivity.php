@@ -17,8 +17,8 @@ class UserActivity
     #[ORM\Column(name: 'url', type: 'string', length: 200)]
     private string $url;
 
-    #[ORM\Column(name: 'timestamp', type: 'datetime')]
-    private \DateTimeInterface $timestamp;
+    #[ORM\Column(name: 'timestamp', type: 'datetime_immutable')]
+    private \DateTimeImmutable $timestamp;
 
     #[ORM\Column(name: 'id_type', type: 'integer')]
     private int $idType;
@@ -46,6 +46,11 @@ class UserActivity
     #[ORM\OneToOne(mappedBy: 'userActivity', targetEntity: LogPerformance::class)]
     private ?LogPerformance $logPerformance = null;
 
+    public function __construct()
+    {
+        $this->timestamp = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
     public function getId(): ?int
     {
         return $this->id;
@@ -63,14 +68,21 @@ class UserActivity
         return $this;
     }
 
-    public function getTimestamp(): ?\DateTime
+    public function getTimestamp(): \DateTimeImmutable
     {
         return $this->timestamp;
     }
 
-    public function setTimestamp(\DateTime $timestamp): static
+    public function setTimestamp(\DateTimeInterface $timestamp): static
     {
-        $this->timestamp = $timestamp;
+        // Ensure UTC storage
+        $this->timestamp = $timestamp instanceof \DateTimeImmutable
+            ? ($timestamp->getTimezone()->getName() === 'UTC' ? $timestamp : $timestamp->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $timestamp->getTimezone()->getName() === 'UTC'
+                    ? $timestamp
+                    : $timestamp->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }

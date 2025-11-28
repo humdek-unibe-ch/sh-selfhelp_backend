@@ -24,6 +24,7 @@ class DataTable
     {
         $this->dataRows = new \Doctrine\Common\Collections\ArrayCollection();
         $this->dataCols = new \Doctrine\Common\Collections\ArrayCollection();
+        $this->timestamp = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
     #[ORM\Id]
     #[ORM\GeneratedValue]
@@ -33,8 +34,8 @@ class DataTable
     #[ORM\Column(name: 'name', type: 'string', length: 100)]
     private string $name;
 
-    #[ORM\Column(name: 'timestamp', type: 'datetime')]
-    private \DateTimeInterface $timestamp;
+    #[ORM\Column(name: 'timestamp', type: 'datetime_immutable')]
+    private \DateTimeImmutable $timestamp;
 
     #[ORM\Column(name: 'displayName', type: 'string', length: 1000, nullable: true)]
     private ?string $displayName = null;
@@ -106,14 +107,21 @@ class DataTable
         return $this;
     }
 
-    public function getTimestamp(): ?\DateTime
+    public function getTimestamp(): \DateTimeImmutable
     {
         return $this->timestamp;
     }
 
-    public function setTimestamp(\DateTime $timestamp): static
+    public function setTimestamp(\DateTimeInterface $timestamp): static
     {
-        $this->timestamp = $timestamp;
+        // Ensure UTC storage
+        $this->timestamp = $timestamp instanceof \DateTimeImmutable
+            ? ($timestamp->getTimezone()->getName() === 'UTC' ? $timestamp : $timestamp->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $timestamp->getTimezone()->getName() === 'UTC'
+                    ? $timestamp
+                    : $timestamp->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }

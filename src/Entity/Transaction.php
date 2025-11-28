@@ -14,8 +14,17 @@ class Transaction
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'transaction_time', type: 'datetime')]
-    private \DateTimeInterface $transactionTime;
+    #[ORM\Column(name: 'transaction_time', type: 'datetime_immutable', options: ['default' => 'CURRENT_TIMESTAMP'])]
+    private \DateTimeImmutable $transactionTime;
+
+    #[ORM\Column(name: 'id_transactionTypes', type: 'integer', nullable: true)]
+    private ?int $idTransactionTypes = null;
+
+    #[ORM\Column(name: 'id_transactionBy', type: 'integer', nullable: true)]
+    private ?int $idTransactionBy = null;
+
+    #[ORM\Column(name: 'id_users', type: 'integer', nullable: true)]
+    private ?int $idUsers = null;
 
     #[ORM\Column(name: 'table_name', type: 'string', length: 100, nullable: true)]
     private ?string $tableName = null;
@@ -38,19 +47,31 @@ class Transaction
     #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?User $user = null;
 
+    public function __construct()
+    {
+        $this->transactionTime = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getTransactionTime(): ?\DateTime
+    public function getTransactionTime(): \DateTimeImmutable
     {
         return $this->transactionTime;
     }
 
-    public function setTransactionTime(\DateTime $transactionTime): static
+    public function setTransactionTime(\DateTimeInterface $transactionTime): static
     {
-        $this->transactionTime = $transactionTime;
+        // Ensure UTC storage
+        $this->transactionTime = $transactionTime instanceof \DateTimeImmutable
+            ? ($transactionTime->getTimezone()->getName() === 'UTC' ? $transactionTime : $transactionTime->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $transactionTime->getTimezone()->getName() === 'UTC'
+                    ? $transactionTime
+                    : $transactionTime->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }
@@ -104,6 +125,11 @@ class Transaction
         return $this;
     }
 
+    public function getIdTransactionTypes(): ?int
+    {
+        return $this->idTransactionTypes;
+    }
+
     public function getTransactionBy(): ?Lookup
     {
         return $this->transactionBy;
@@ -115,6 +141,16 @@ class Transaction
         $this->idTransactionBy = $transactionBy?->getId();
 
         return $this;
+    }
+
+    public function getIdTransactionBy(): ?int
+    {
+        return $this->idTransactionBy;
+    }
+
+    public function getIdUsers(): ?int
+    {
+        return $this->idUsers;
     }
 
     public function getUser(): ?User

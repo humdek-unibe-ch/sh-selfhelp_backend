@@ -37,11 +37,11 @@ class RoleDataAccess
     #[ORM\Column(name: 'crud_permissions', type: Types::SMALLINT, options: ['unsigned' => true, 'default' => 2])]
     private int $crudPermissions = 2; // Default to read-only
 
-    #[ORM\Column(name: 'created_at', type: Types::DATETIME_MUTABLE, options: ['default' => 'CURRENT_TIMESTAMP'])]
-    private \DateTimeInterface $createdAt;
+    #[ORM\Column(name: 'created_at', type: Types::DATETIME_IMMUTABLE, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    private \DateTimeImmutable $createdAt;
 
-    #[ORM\Column(name: 'updated_at', type: Types::DATETIME_MUTABLE, options: ['default' => 'CURRENT_TIMESTAMP'])]
-    private \DateTimeInterface $updatedAt;
+    #[ORM\Column(name: 'updated_at', type: Types::DATETIME_IMMUTABLE, options: ['default' => 'CURRENT_TIMESTAMP'])]
+    private \DateTimeImmutable $updatedAt;
 
     // Relationships
     #[ORM\ManyToOne(targetEntity: Role::class)]
@@ -54,8 +54,14 @@ class RoleDataAccess
 
     public function __construct()
     {
-        $this->createdAt = new \DateTime();
-        $this->updatedAt = new \DateTime();
+        $this->createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $this->updatedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
+    #[ORM\PreUpdate]
+    public function updateTimestamp(): void
+    {
+        $this->updatedAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
 
     public function getId(): ?int
@@ -95,25 +101,39 @@ class RoleDataAccess
         return $this;
     }
 
-    public function getCreatedAt(): \DateTimeInterface
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
 
     public function setCreatedAt(\DateTimeInterface $createdAt): self
     {
-        $this->createdAt = $createdAt;
+        // Ensure UTC storage
+        $this->createdAt = $createdAt instanceof \DateTimeImmutable
+            ? ($createdAt->getTimezone()->getName() === 'UTC' ? $createdAt : $createdAt->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $createdAt->getTimezone()->getName() === 'UTC'
+                    ? $createdAt
+                    : $createdAt->setTimezone(new \DateTimeZone('UTC'))
+            );
         return $this;
     }
 
-    public function getUpdatedAt(): \DateTimeInterface
+    public function getUpdatedAt(): \DateTimeImmutable
     {
         return $this->updatedAt;
     }
 
     public function setUpdatedAt(\DateTimeInterface $updatedAt): self
     {
-        $this->updatedAt = $updatedAt;
+        // Ensure UTC storage
+        $this->updatedAt = $updatedAt instanceof \DateTimeImmutable
+            ? ($updatedAt->getTimezone()->getName() === 'UTC' ? $updatedAt : $updatedAt->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $updatedAt->getTimezone()->getName() === 'UTC'
+                    ? $updatedAt
+                    : $updatedAt->setTimezone(new \DateTimeZone('UTC'))
+            );
         return $this;
     }
 

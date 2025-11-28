@@ -17,11 +17,11 @@ class Users2faCode
     #[ORM\Column(name: 'code', type: 'string', length: 6)]
     private string $code;
 
-    #[ORM\Column(name: 'created_at', type: 'datetime')]
-    private \DateTimeInterface $createdAt;
+    #[ORM\Column(name: 'created_at', type: 'datetime_immutable')]
+    private \DateTimeImmutable $createdAt;
 
-    #[ORM\Column(name: 'expires_at', type: 'datetime')]
-    private \DateTimeInterface $expiresAt;
+    #[ORM\Column(name: 'expires_at', type: 'datetime_immutable')]
+    private \DateTimeImmutable $expiresAt;
 
     #[ORM\Column(name: 'is_used', type: 'boolean')]
     private bool $isUsed = false;
@@ -29,6 +29,12 @@ class Users2faCode
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?User $user = null;
+
+    public function __construct()
+    {
+        $this->createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $this->expiresAt = new \DateTimeImmutable('+10 minutes', new \DateTimeZone('UTC')); // Default 10 minute expiry
+    }
 
     public function getId(): ?int
     {
@@ -47,26 +53,40 @@ class Users2faCode
         return $this;
     }
 
-    public function getCreatedAt(): ?\DateTimeInterface
+    public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
     }
 
     public function setCreatedAt(\DateTimeInterface $createdAt): static
     {
-        $this->createdAt = $createdAt;
+        // Ensure UTC storage
+        $this->createdAt = $createdAt instanceof \DateTimeImmutable
+            ? ($createdAt->getTimezone()->getName() === 'UTC' ? $createdAt : $createdAt->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $createdAt->getTimezone()->getName() === 'UTC'
+                    ? $createdAt
+                    : $createdAt->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }
 
-    public function getExpiresAt(): ?\DateTimeInterface
+    public function getExpiresAt(): \DateTimeImmutable
     {
         return $this->expiresAt;
     }
 
     public function setExpiresAt(\DateTimeInterface $expiresAt): static
     {
-        $this->expiresAt = $expiresAt;
+        // Ensure UTC storage
+        $this->expiresAt = $expiresAt instanceof \DateTimeImmutable
+            ? ($expiresAt->getTimezone()->getName() === 'UTC' ? $expiresAt : $expiresAt->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $expiresAt->getTimezone()->getName() === 'UTC'
+                    ? $expiresAt
+                    : $expiresAt->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }

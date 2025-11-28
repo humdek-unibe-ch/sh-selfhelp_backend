@@ -81,12 +81,12 @@ class Transaction
     #[ORM\Column(name: 'transaction_log', type: 'text', nullable: true)]
     private ?string $transactionLog = null;
 
-    #[ORM\Column(name: 'transaction_time', type: 'datetime')]
-    private \DateTimeInterface $transactionTime;
+    #[ORM\Column(name: 'transaction_time', type: 'datetime_immutable')]
+    private \DateTimeImmutable $transactionTime;
 
     public function __construct()
     {
-        $this->transactionTime = new \DateTime();
+        $this->transactionTime = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
 
     // Getters and setters...

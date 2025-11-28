@@ -9,6 +9,7 @@ use App\Repository\ActionRepository;
 use App\Repository\ActionTranslationRepository;
 use App\Repository\LanguageRepository;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -25,6 +26,7 @@ class AdminActionTranslationService extends BaseService
         private readonly ActionTranslationRepository $actionTranslationRepository,
         private readonly LanguageRepository $languageRepository,
         private readonly CacheService $cache,
+        private readonly CmsPreferenceService $cmsPreferenceService,
     ) {
     }
 
@@ -220,12 +222,25 @@ class AdminActionTranslationService extends BaseService
      */
     private function formatTranslation(ActionTranslation $translation): array
     {
+        // Convert timezone for datetime fields
+        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+
+        $createdAt = $translation->getCreatedAt();
+        if ($createdAt) {
+            $createdAt = $createdAt->setTimezone($cmsTimezone);
+        }
+
+        $updatedAt = $translation->getUpdatedAt();
+        if ($updatedAt) {
+            $updatedAt = $updatedAt->setTimezone($cmsTimezone);
+        }
+
         return [
             'id' => $translation->getId(),
             'translation_key' => $translation->getTranslationKey(),
             'content' => $translation->getContent(),
-            'created_at' => $translation->getCreatedAt()->format('Y-m-d H:i:s'),
-            'updated_at' => $translation->getUpdatedAt()->format('Y-m-d H:i:s'),
+            'created_at' => $createdAt?->format('Y-m-d H:i:s'),
+            'updated_at' => $updatedAt?->format('Y-m-d H:i:s'),
             'language' => [
                 'id' => $translation->getLanguage()->getId(),
                 'locale' => $translation->getLanguage()->getLocale(),

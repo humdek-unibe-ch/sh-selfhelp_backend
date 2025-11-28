@@ -96,22 +96,22 @@ class ApiRequestLoggerService
             }
         }
         
-        // Create start and end DateTime objects
-        $requestDateTime = new DateTime();
-        $requestDateTime->setTimestamp((int)$startTime);
-        
-        $responseDateTime = new DateTime();
-        $responseDateTime->setTimestamp((int)$endTime);
-        
+        // Create start and end DateTime objects in UTC
+        $requestDateTime = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $requestDateTime = $requestDateTime->setTimestamp((int)$startTime);
+
+        $responseDateTime = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $responseDateTime = $responseDateTime->setTimestamp((int)$endTime);
+
         // Prepare request parameters (safely handling file uploads)
         $requestParams = $this->sanitizeRequestParams($request);
-        
+
         // Prepare response data (truncate if too large)
         $responseContent = $response->getContent();
         if (strlen($responseContent) > 10000) {
             $responseContent = substr($responseContent, 0, 10000) . '... [truncated]';
         }
-        
+
         // Create log entity
         $log = new ApiRequestLog();
         $log->setRouteName($request->attributes->get('_route'))

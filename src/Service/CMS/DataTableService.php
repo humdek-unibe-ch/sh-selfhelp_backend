@@ -8,6 +8,7 @@ use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Common\StyleNames;
+use App\Service\CMS\CmsPreferenceService;
 use App\Repository\DataTableRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Service\Core\LookupService;
@@ -39,7 +40,8 @@ class DataTableService extends BaseService
         private readonly CacheService $cache,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
-        private readonly LookupService $lookupService
+        private readonly LookupService $lookupService,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -467,13 +469,18 @@ class DataTableService extends BaseService
             });
         }
 
-        // Format the timestamp for consistency
-        $dataTables = array_map(function ($table) {
+        // Convert timezone and format the timestamp for consistency
+        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+        $dataTables = array_map(function ($table) use ($cmsTimezone) {
+            $created = $table['created'];
+            if ($created instanceof \DateTime) {
+                $created = $created->setTimezone($cmsTimezone)->format('Y-m-d H:i:s');
+            }
             return [
                 'id' => $table['id'],
                 'name' => $table['name'],
                 'displayName' => $table['displayName'] ?? $table['display_name'] ?? null,
-                'created' => $table['created'] instanceof \DateTime ? $table['created']->format('Y-m-d H:i:s') : $table['created'],
+                'created' => $created,
                 'crud' => $table['crud']
             ];
         }, $dataTables);

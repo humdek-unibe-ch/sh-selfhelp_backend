@@ -109,11 +109,11 @@ class TransactionService
             $user = $this->entityManager->getReference(User::class, $userId);
             $transaction->setUser($user);
         }
-        
+
         $transaction->setTableName($tableName);
         $transaction->setIdTableName($entryId);
         $transaction->setTransactionLog(json_encode($log));
-        $transaction->setTransactionTime(new \DateTime());
+        // Transaction time is now set automatically in the entity constructor
         
         // Persist the transaction
         $this->entityManager->persist($transaction);

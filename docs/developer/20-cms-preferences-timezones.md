@@ -485,6 +485,34 @@ Timezone preferences affect:
 - **Scheduling**: Background jobs respect timezone settings
 - **Internationalization**: Proper time formatting for different regions
 
+#### UTC Storage and Timezone Conversion
+
+The system follows these timezone handling principles:
+
+**Data Storage:**
+- All datetime values are stored in UTC in the database
+- Entities use `DateTimeImmutable` with explicit UTC timezone initialization
+- Database columns use `datetime_immutable` type for consistency
+
+**Data Retrieval:**
+- For **paginated data** (large datasets): Timezone conversion happens in PHP loops to avoid SQL overhead
+- For **non-paginated data**: Timezone conversion uses SQL `CONVERT_TZ()` function for better performance
+- All API responses convert UTC times to CMS preference timezone using `CmsPreferenceService->getDefaultTimezoneCode()`
+
+**Conversion Strategy:**
+```php
+// PHP loop conversion for paginated data
+$cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+foreach ($results as &$result) {
+    if (isset($result['createdAt']) && $result['createdAt']) {
+        $result['createdAt'] = $result['createdAt']->setTimezone($cmsTimezone);
+    }
+}
+
+// SQL conversion for non-paginated queries
+CONVERT_TZ(timestamp_value, 'UTC', '$timezone_code')
+```
+
 ### Anonymous User Management
 
 The anonymous users setting controls:

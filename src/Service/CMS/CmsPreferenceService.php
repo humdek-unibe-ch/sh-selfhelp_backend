@@ -39,26 +39,25 @@ class CmsPreferenceService extends BaseService
      */
     public function getCmsPreferences(): array
     {
-        $cacheKey = "cms_preferences_all";
         $preferencesPage = $this->getPreferencesPage();
-
         if (!$preferencesPage) {
             return $this->getDefaultPreferences();
         }
 
+        $cacheKey = "cms_preferences_all";
         return $this->cache
             ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $preferencesPage->getId())
             ->getItem($cacheKey, function () use ($preferencesPage) {
                 $fieldValues = $this->getAllPageFieldValues($preferencesPage);
+                $defaultTimezoneId = $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')->getId();
 
                 return [
                     'id' => $preferencesPage->getId(),
                     'default_language_id' => $fieldValues[self::PF_DEFAULT_LANGUAGE_ID] ?? null,
                     'anonymous_users' => (int) ($fieldValues[self::PF_ANONYMOUS_USERS] ?? 0),
                     'firebase_config' => $fieldValues[self::PF_FIREBASE_CONFIG] ?? null,
-                    'default_timezone' => $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? 
-                    $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')->getId()
+                    'default_timezone' => $defaultTimezoneId
                 ];
             });
     }
@@ -122,12 +121,12 @@ class CmsPreferenceService extends BaseService
     /**
      * Get default timezone code
      *
-     * @return string|null
+     * @return string
      */
-    public function getDefaultTimezoneCode(): ?string
+    public function getDefaultTimezoneCode():string
     {
-        $preferences = $this->getCmsPreferences();
-        return $this->lookupService->getLookupCodeById($preferences['default_timezone']) ? $this->lookupService->getLookupCodeById($preferences['default_timezone']) : 'Europe/Zurich';
+        $defaultTimezoneId = $this->getCmsPreferences()['default_timezone'];
+        return $this->lookupService->getLookupCodeById($defaultTimezoneId);
     }
 
     /**
@@ -169,11 +168,18 @@ class CmsPreferenceService extends BaseService
      */
     private function getPreferencesPage(): ?Page
     {
-        try {
-            return $this->pageRepository->findOneBy(['keyword' => self::SH_CMS_PREFERENCES_KEYWORD]);
-        } catch (\Exception $e) {
-            return null;
-        }
+        $pageIdCacheKey = "cms_preferences_page_id";
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
+            ->getItem($pageIdCacheKey, function () {
+                try {
+                    $page = $this->pageRepository->findOneBy(['keyword' => self::SH_CMS_PREFERENCES_KEYWORD]);
+                    return $page;
+                } catch (\Exception $e) {
+                    return null;
+                }
+            });
     }
 
 
@@ -189,7 +195,7 @@ class CmsPreferenceService extends BaseService
             'default_language_id' => null,
             'anonymous_users' => 0,
             'firebase_config' => null,
-            'default_timezone' => 'Europe/Zurich'
+            'default_timezone' => $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')->getId()
         ];
     }
 
@@ -204,6 +210,19 @@ class CmsPreferenceService extends BaseService
     {
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateAllListsInCategory();
+    }
+
+    /**
+     * Clear CMS preferences caches
+     *
+     * This method should be called when CMS preferences are updated
+     * to ensure cached preference values are refreshed.
+     */
+    public function invalidateCmsPreferencesCaches(): void
+    {
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
             ->invalidateAllListsInCategory();
     }
 }

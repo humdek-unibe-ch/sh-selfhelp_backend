@@ -14,8 +14,8 @@ class CallbackLog
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'callback_date', type: 'datetime', nullable: true, options: ['default' => 'CURRENT_TIMESTAMP'])]
-    private ?\DateTimeInterface $callbackDate = null;
+    #[ORM\Column(name: 'callback_date', type: 'datetime_immutable', options: ['default' => 'CURRENT_TIMESTAMP'])]
+    private \DateTimeImmutable $callbackDate;
 
     #[ORM\Column(name: 'remote_addr', type: 'string', length: 200, nullable: true)]
     private ?string $remoteAddr = null;
@@ -32,19 +32,31 @@ class CallbackLog
     #[ORM\Column(name: 'callback_output', type: 'text', nullable: true)]
     private ?string $callbackOutput = null;
 
+    public function __construct()
+    {
+        $this->callbackDate = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+    }
+
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getCallbackDate(): ?\DateTime
+    public function getCallbackDate(): \DateTimeImmutable
     {
         return $this->callbackDate;
     }
 
-    public function setCallbackDate(?\DateTime $callbackDate): static
+    public function setCallbackDate(\DateTimeInterface $callbackDate): static
     {
-        $this->callbackDate = $callbackDate;
+        // Ensure UTC storage
+        $this->callbackDate = $callbackDate instanceof \DateTimeImmutable
+            ? ($callbackDate->getTimezone()->getName() === 'UTC' ? $callbackDate : $callbackDate->setTimezone(new \DateTimeZone('UTC')))
+            : \DateTimeImmutable::createFromMutable(
+                $callbackDate->getTimezone()->getName() === 'UTC'
+                    ? $callbackDate
+                    : $callbackDate->setTimezone(new \DateTimeZone('UTC'))
+            );
 
         return $this;
     }

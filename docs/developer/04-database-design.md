@@ -819,6 +819,29 @@ public function setIdUsers(?int $idUsers): self { }
 - Generate complete getters and setters
 - Add "ENTITY RULE" comment when designing
 
+### DateTime Handling
+
+#### UTC Storage Standard
+- **All datetime values stored in UTC** in the database
+- **Entity constructors initialize with UTC timezone** using `new \DateTimeImmutable('now', new \DateTimeZone('UTC'))`
+- **Database columns use `datetime_immutable` type** for consistency and immutability
+
+#### Timezone Conversion
+- **API responses convert UTC to CMS preference timezone** using `CmsPreferenceService->getDefaultTimezoneCode()`
+- **Paginated data**: Timezone conversion in PHP loops to avoid SQL overhead
+- **Non-paginated data**: Timezone conversion using SQL `CONVERT_TZ()` for better performance
+
+#### Entity Examples
+```php
+#[ORM\Column(name: 'created_at', type: Types::DATETIME_IMMUTABLE)]
+private \DateTimeImmutable $createdAt;
+
+public function __construct()
+{
+    $this->createdAt = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+}
+```
+
 ## 📈 Performance Considerations
 
 ### Query Optimization
