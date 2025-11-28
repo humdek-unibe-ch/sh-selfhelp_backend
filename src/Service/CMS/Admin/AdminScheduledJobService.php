@@ -40,7 +40,7 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Get scheduled jobs with timezone adjustment using SQL
+     * Get scheduled jobs with timezone adjustment using Doctrine QueryBuilder
      */
     public function getScheduledJobs(
         array $filters = [],
@@ -56,19 +56,40 @@ class AdminScheduledJobService extends BaseService
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
             ->getList($cacheKey, function () use ($filters, $page, $perPage, $sort, $order) {
-                $sql = $this->buildTimezoneAwareQuery($filters, $sort, $order, $perPage, ($page - 1) * $perPage);
-                $conn = $this->entityManager->getConnection();
-                $result = $conn->executeQuery($sql, $this->buildCountParameters($filters));
+                $qb = $this->scheduledJobRepository->createQueryBuilder('sj');
 
+                // Add JOINs for filtering and selection
+                $qb->leftJoin('sj.user', 'u')
+                    ->innerJoin('sj.jobType', 'jt')
+                    ->innerJoin('sj.status', 'js')
+                    ->leftJoin('sj.action', 'a')
+                    ->leftJoin('sj.dataTable', 'dt')
+                    ->leftJoin('u.timezone', 'user_tz');
+
+                // Add WHERE conditions
+                $this->applyScheduledJobsFilters($qb, $filters);
+
+                // Add sorting
+                $this->applyScheduledJobsSorting($qb, $sort, $order);
+
+                // Get total count
+                $countQb = clone $qb;
+                $countQb->select('COUNT(sj.id)');
+                $totalItems = (int) $countQb->getQuery()->getSingleScalarResult();
+
+                // Add pagination
+                $qb->setFirstResult(($page - 1) * $perPage)
+                    ->setMaxResults($perPage);
+
+                // Select only the main entity (relationships will be loaded)
+                $qb->select('sj');
+
+                $jobsEntities = $qb->getQuery()->getResult();
                 $jobs = [];
-                while ($row = $result->fetchAssociative()) {
-                    $jobs[] = $this->hydrateJobFromRow($row);
-                }
 
-                // Get total count for pagination
-                $countSql = $this->buildCountQuery($filters);
-                $countResult = $conn->executeQuery($countSql, $this->buildCountParameters($filters));
-                $totalItems = (int) $countResult->fetchOne();
+                foreach ($jobsEntities as $job) {
+                    $jobs[] = $this->formatScheduledJobForList($job);
+                }
 
                 return [
                     'scheduledJobs' => $jobs,
@@ -80,191 +101,121 @@ class AdminScheduledJobService extends BaseService
             });
     }
 
-    private function buildTimezoneAwareQuery(array $filters, string $sort, string $order, int $limit, int $offset): string
+    /**
+     * Apply filters to the scheduled jobs query builder
+     */
+    private function applyScheduledJobsFilters(\Doctrine\ORM\QueryBuilder $qb, array $filters): void
     {
-        $orderBy = match($sort) {
-            'adjusted_execution_time' => 'sj.date_to_be_executed',
-            'date_create' => 'sj.date_create',
-            'description' => 'sj.description',
-            default => 'sj.date_to_be_executed'
-        };
-
-        // Get CMS default timezone value
-        $cmsTimezone = $this->cmsPreferenceService->getDefaultTimezoneCode();
-
-        return "
-            SELECT
-                sj.id,
-                sj.id_users,
-                u.email as user_email,
-                a.name as action_name,
-                dt.displayName as data_table_name,
-                sj.id_dataRows as data_row,
-                jt.lookup_value as job_types,
-                js.lookup_value as status,
-                sj.description,
-                COALESCE(user_tz.lookup_code, 'Europe/Zurich') as user_timezone,
-                CONVERT_TZ(
-                    sj.date_to_be_executed,
-                    '+00:00',
-                    '{$cmsTimezone}'
-                ) as date_scheduled,
-                CONVERT_TZ(
-                    sj.date_create,
-                    '+00:00',
-                    '{$cmsTimezone}'
-                ) as date_created,
-                CONVERT_TZ(
-                    sj.date_to_be_executed,
-                    '+00:00',
-                    '{$cmsTimezone}'
-                ) as date_to_be_executed,
-                CONVERT_TZ(
-                    sj.date_executed,
-                    '+00:00',
-                    '{$cmsTimezone}'
-                ) as date_executed,
-                sj.description as description,
-                sj.config
-
-            FROM scheduledJobs sj
-            LEFT JOIN users u ON u.id = sj.id_users
-            INNER JOIN lookups jt ON jt.id = sj.id_jobTypes
-            INNER JOIN lookups js ON js.id = sj.id_jobStatus
-
-            LEFT JOIN actions a ON a.id = sj.id_actions
-            LEFT JOIN dataTables dt ON dt.id = sj.id_dataTables
-
-            LEFT JOIN lookups user_tz ON user_tz.id = u.id_timezones
-                AND user_tz.type_code = 'timezones'
-
-            WHERE 1=1
-            " . $this->buildWhereClause($filters) . "
-
-            ORDER BY {$orderBy} {$order}
-            LIMIT {$limit} OFFSET {$offset}";
-    }
-
-    private function buildCountQuery(array $filters): string
-    {
-        return "
-            SELECT COUNT(*)
-            FROM scheduledJobs sj
-            INNER JOIN users u ON u.id = sj.id_users
-            INNER JOIN lookups jt ON jt.id = sj.id_jobTypes
-            INNER JOIN lookups js ON js.id = sj.id_jobStatus
-            WHERE 1=1
-            " . $this->buildWhereClause($filters);
-    }
-
-    private function buildWhereClause(array $filters): string
-    {
-        $clauses = [];
-
         if (!empty($filters['status'])) {
-            $clauses[] = "js.lookup_code = :status";
+            $qb->andWhere('js.lookupCode = :status')
+                ->setParameter('status', $filters['status']);
         }
 
         if (!empty($filters['job_type'])) {
-            $clauses[] = "jt.lookup_code = :job_type";
+            $qb->andWhere('jt.lookupCode = :job_type')
+                ->setParameter('job_type', $filters['job_type']);
         }
 
         if (!empty($filters['user_id'])) {
-            $clauses[] = "sj.id_users = :user_id";
+            $qb->andWhere('u.id = :user_id')
+                ->setParameter('user_id', $filters['user_id']);
         }
 
         if (!empty($filters['search'])) {
-            // Search across all relevant columns
-            $clauses[] = "(
-                sj.id LIKE :search OR
-                sj.id_users LIKE :search OR
-                u.email LIKE :search OR
-                a.name LIKE :search OR
-                dt.displayName LIKE :search OR
-                sj.id_dataRows LIKE :search OR
-                jt.lookup_value LIKE :search OR
-                js.lookup_value LIKE :search OR
-                sj.description LIKE :search OR
-                COALESCE(user_tz.lookup_code, 'Europe/Zurich') LIKE :search OR
-                sj.config LIKE :search
-            )";
+            $searchTerm = '%' . $filters['search'] . '%';
+            $qb->andWhere(
+                $qb->expr()->orX(
+                    $qb->expr()->like('sj.id', ':search'),
+                    $qb->expr()->like('u.id', ':search'),
+                    $qb->expr()->like('u.email', ':search'),
+                    $qb->expr()->like('a.name', ':search'),
+                    $qb->expr()->like('dt.displayName', ':search'),
+                    $qb->expr()->like('jt.lookupValue', ':search'),
+                    $qb->expr()->like('js.lookupValue', ':search'),
+                    $qb->expr()->like('sj.description', ':search'),
+                    $qb->expr()->like('sj.config', ':search')
+                )
+            )->setParameter('search', $searchTerm);
         }
 
         // Determine which date column to filter on
-        $dateColumn = match($filters['date_type'] ?? 'date_to_be_executed') {
-            'date_create' => 'sj.date_create',
-            'date_to_be_executed' => 'sj.date_to_be_executed',
-            'date_executed' => 'sj.date_executed',
-            default => 'sj.date_to_be_executed'
+        $dateField = match($filters['date_type'] ?? 'date_to_be_executed') {
+            'date_create' => 'sj.dateCreate',
+            'date_to_be_executed' => 'sj.dateToBeExecuted',
+            'date_executed' => 'sj.dateExecuted',
+            default => 'sj.dateToBeExecuted'
         };
 
         if (!empty($filters['date_from'])) {
-            $clauses[] = "{$dateColumn} >= :date_from_start";
-        }
-
-        if (!empty($filters['date_to'])) {
-            $clauses[] = "{$dateColumn} <= :date_to_end";
-        }
-
-        return $clauses ? ' AND ' . implode(' AND ', $clauses) : '';
-    }
-
-
-    private function buildCountParameters(array $filters): array
-    {
-        $params = [];
-
-        if (!empty($filters['status'])) {
-            $params['status'] = $filters['status'];
-        }
-
-        if (!empty($filters['job_type'])) {
-            $params['job_type'] = $filters['job_type'];
-        }
-
-        if (!empty($filters['user_id'])) {
-            $params['user_id'] = $filters['user_id'];
-        }
-
-        if (!empty($filters['search'])) {
-            $params['search'] = '%' . $filters['search'] . '%';
-        }
-
-        if (!empty($filters['date_from'])) {
-            // Convert date string to start of day
             $dateFromObj = new \DateTime($filters['date_from']);
-            $params['date_from_start'] = $dateFromObj->format('Y-m-d 00:00:00');
+            $qb->andWhere("{$dateField} >= :date_from_start")
+                ->setParameter('date_from_start', $dateFromObj->format('Y-m-d 00:00:00'));
         }
 
         if (!empty($filters['date_to'])) {
-            // Convert date string to end of day
             $dateToObj = new \DateTime($filters['date_to']);
-            $params['date_to_end'] = $dateToObj->format('Y-m-d 23:59:59');
+            $qb->andWhere("{$dateField} <= :date_to_end")
+                ->setParameter('date_to_end', $dateToObj->format('Y-m-d 23:59:59'));
         }
-
-        return $params;
     }
 
-    private function hydrateJobFromRow(array $row): array
+    /**
+     * Apply sorting to the scheduled jobs query builder
+     */
+    private function applyScheduledJobsSorting(\Doctrine\ORM\QueryBuilder $qb, string $sort, string $order): void
     {
+        $orderBy = match($sort) {
+            'adjusted_execution_time' => 'sj.dateToBeExecuted',
+            'date_create' => 'sj.dateCreate',
+            'description' => 'sj.description',
+            default => 'sj.dateToBeExecuted'
+        };
+
+        $qb->orderBy($orderBy, $order);
+    }
+
+    /**
+     * Format scheduled job for list view
+     */
+    private function formatScheduledJobForList(ScheduledJob $job): array
+    {
+        // Convert timezone for datetime fields
+        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+
+        $dateCreate = $job->getDateCreate();
+        if ($dateCreate) {
+            $dateCreate = \DateTime::createFromInterface($dateCreate)->setTimezone($cmsTimezone);
+        }
+
+        $dateToBeExecuted = $job->getDateToBeExecuted();
+        if ($dateToBeExecuted) {
+            $dateToBeExecuted = \DateTime::createFromInterface($dateToBeExecuted)->setTimezone($cmsTimezone);
+        }
+
+        $dateExecuted = $job->getDateExecuted();
+        if ($dateExecuted) {
+            $dateExecuted = \DateTime::createFromInterface($dateExecuted)->setTimezone($cmsTimezone);
+        }
+
         return [
-            'id' => $row['id'],
-            'id_users' => $row['id_users'],
-            'user_email' => $row['user_email'],
-            'action_name' => $row['action_name'],
-            'data_table_name' => $row['data_table_name'],
-            'data_row' => $row['data_row'],
-            'job_types' => $row['job_types'],
-            'status' => $row['status'],
-            'description' => $row['description'],
-            'user_timezone' => $row['user_timezone'],
-            'date_scheduled' => $row['date_scheduled'],
-            'date_created' => $row['date_created'],
-            'date_to_be_executed' => $row['date_to_be_executed'],
-            'date_executed' => $row['date_executed'],
-            'config' => json_decode($row['config'] ?? '{}', true)
+            'id' => $job->getId(),
+            'id_users' => $job->getUser()?->getId(),
+            'user_email' => $job->getUser()?->getEmail(),
+            'action_name' => $job->getAction()?->getName(),
+            'data_table_name' => $job->getDataTable()?->getDisplayName(),
+            'data_row' => $job->getDataRow()?->getId(),
+            'job_types' => $job->getJobType()->getLookupValue(),
+            'status' => $job->getStatus()->getLookupValue(),
+            'description' => $job->getDescription(),
+            'user_timezone' => $job->getUser()?->getTimezone()?->getLookupCode() ?? 'Europe/Zurich',
+            'date_scheduled' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
+            'date_created' => $dateCreate?->format('Y-m-d H:i:s'),
+            'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
+            'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
+            'config' => $job->getConfig()
         ];
     }
+
 
     /**
      * Cancel a scheduled job
@@ -379,40 +330,6 @@ class AdminScheduledJobService extends BaseService
             });
     }
 
-    /**
-     * Format scheduled job for list view
-     */
-    private function formatScheduledJobForList(ScheduledJob $job): array
-    {
-        // Convert timezone for datetime fields
-        $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
-
-        $dateCreate = $job->getDateCreate();
-        if ($dateCreate) {
-            $dateCreate = $dateCreate->setTimezone($cmsTimezone);
-        }
-
-        $dateToBeExecuted = $job->getDateToBeExecuted();
-        if ($dateToBeExecuted) {
-            $dateToBeExecuted = $dateToBeExecuted->setTimezone($cmsTimezone);
-        }
-
-        $dateExecuted = $job->getDateExecuted();
-        if ($dateExecuted) {
-            $dateExecuted = $dateExecuted->setTimezone($cmsTimezone);
-        }
-
-        return [
-            'id' => $job->getId(),
-            'status' => $job->getStatus()?->getLookupValue(),
-            'type' => $job->getJobType()?->getLookupValue(),
-            'entry_date' => $dateCreate?->format('Y-m-d H:i:s'),
-            'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
-            'execution_date' => $dateExecuted?->format('Y-m-d H:i:s'),
-            'description' => $job->getDescription(),
-            'message' => $job->getConfig()
-        ];
-    }
 
     /**
      * Format scheduled job for detail view
@@ -424,17 +341,17 @@ class AdminScheduledJobService extends BaseService
 
         $dateCreate = $job->getDateCreate();
         if ($dateCreate) {
-            $dateCreate = $dateCreate->setTimezone($cmsTimezone);
+            $dateCreate = \DateTime::createFromInterface($dateCreate)->setTimezone($cmsTimezone);
         }
 
         $dateToBeExecuted = $job->getDateToBeExecuted();
         if ($dateToBeExecuted) {
-            $dateToBeExecuted = $dateToBeExecuted->setTimezone($cmsTimezone);
+            $dateToBeExecuted = \DateTime::createFromInterface($dateToBeExecuted)->setTimezone($cmsTimezone);
         }
 
         $dateExecuted = $job->getDateExecuted();
         if ($dateExecuted) {
-            $dateExecuted = $dateExecuted->setTimezone($cmsTimezone);
+            $dateExecuted = \DateTime::createFromInterface($dateExecuted)->setTimezone($cmsTimezone);
         }
 
         return [
