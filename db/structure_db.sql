@@ -1,8 +1,8 @@
--- MySQL dump 10.13  Distrib 8.0.41, for Win64 (x86_64)
+-- MySQL dump 10.13  Distrib 8.0.43, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: sym_test
 -- ------------------------------------------------------
--- Server version	9.1.0
+-- Server version	8.4.7
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -23,40 +23,39 @@ DROP TABLE IF EXISTS `acl_groups`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `acl_groups` (
-  `id_groups` int NOT NULL,
-  `id_pages` int NOT NULL,
+  `id_groups` int(10) unsigned zerofill NOT NULL,
+  `id_pages` int(10) unsigned zerofill NOT NULL,
   `acl_select` tinyint(1) NOT NULL DEFAULT '1',
   `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
   `acl_update` tinyint(1) NOT NULL DEFAULT '0',
   `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`,`id_pages`),
-  KEY `IDX_AB370E20D65A8C9D` (`id_groups`),
-  KEY `IDX_AB370E20CEF1A445` (`id_pages`),
-  CONSTRAINT `FK_AB370E20CEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_AB370E20D65A8C9D` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
+  KEY `id_pages` (`id_pages`) USING BTREE,
+  KEY `id_groups` (`id_groups`) USING BTREE,
+  CONSTRAINT `fk_acl_groups_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_acl_groups_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `action_translations`
+-- Table structure for table `acl_users`
 --
 
-DROP TABLE IF EXISTS `action_translations`;
+DROP TABLE IF EXISTS `acl_users`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `action_translations` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_actions` int NOT NULL,
-  `translation_key` varchar(255) NOT NULL,
-  `id_languages` int NOT NULL,
-  `content` longtext NOT NULL,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '(DC2Type:datetime_immutable)',
-  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '(DC2Type:datetime_immutable)',
-  PRIMARY KEY (`id`),
-  KEY `IDX_5AC50EA7DBD5589F` (`id_actions`),
-  KEY `IDX_5AC50EA720E4EF5E` (`id_languages`),
-  CONSTRAINT `IDX_5AC50EA720E4EF5E` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `IDX_5AC50EA7DBD5589F` FOREIGN KEY (`id_actions`) REFERENCES `actions` (`id`) ON DELETE CASCADE
+CREATE TABLE `acl_users` (
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_pages` int(10) unsigned zerofill NOT NULL,
+  `acl_select` tinyint(1) NOT NULL DEFAULT '1',
+  `acl_insert` tinyint(1) NOT NULL DEFAULT '0',
+  `acl_update` tinyint(1) NOT NULL DEFAULT '0',
+  `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id_users`,`id_pages`),
+  KEY `id_users` (`id_users`),
+  KEY `id_pages` (`id_pages`),
+  CONSTRAINT `acl_fk_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `acl_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -68,83 +67,24 @@ DROP TABLE IF EXISTS `actions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `actions` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(200) NOT NULL,
-  `id_actionTriggerTypes` int NOT NULL,
-  `config` longtext,
-  `id_dataTables` int NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `IDX_548F1EF4AC2316F` (`id_actionTriggerTypes`),
-  KEY `IDX_548F1EFE2E6A7C3` (`id_dataTables`),
-  CONSTRAINT `FK_548F1EF4AC2316F` FOREIGN KEY (`id_actionTriggerTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_548F1EFE2E6A7C3` FOREIGN KEY (`id_dataTables`) REFERENCES `dataTables` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `api_routes`
---
-
-DROP TABLE IF EXISTS `api_routes`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `api_routes` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `route_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `version` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'v1',
-  `path` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `controller` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `methods` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `requirements` json DEFAULT NULL,
-  `params` json DEFAULT NULL COMMENT 'Expected parameters: name → {in: body|query, required: bool}',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_route_name_version` (`route_name`,`version`),
-  UNIQUE KEY `uniq_version_path_methods` (`version`,`path`,`methods`)
-) ENGINE=InnoDB AUTO_INCREMENT=136 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `api_routes_permissions`
---
-
-DROP TABLE IF EXISTS `api_routes_permissions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `api_routes_permissions` (
-  `id_api_routes` int NOT NULL,
-  `id_permissions` int NOT NULL,
-  PRIMARY KEY (`id_api_routes`,`id_permissions`),
-  KEY `IDX_487141C411A805E4` (`id_api_routes`),
-  KEY `IDX_487141C435FF0198` (`id_permissions`),
-  CONSTRAINT `FK_arp_api_routes` FOREIGN KEY (`id_api_routes`) REFERENCES `api_routes` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_arp_permissions` FOREIGN KEY (`id_permissions`) REFERENCES `permissions` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `apiRequestLogs`
---
-
-DROP TABLE IF EXISTS `apiRequestLogs`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `apiRequestLogs` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `route_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `path` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `method` varchar(10) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `status_code` int NOT NULL,
-  `user_id` int DEFAULT NULL,
-  `ip_address` varchar(45) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `request_time` datetime NOT NULL,
-  `response_time` datetime NOT NULL,
-  `duration_ms` int NOT NULL,
-  `request_params` longtext COLLATE utf8mb4_unicode_ci,
-  `request_headers` longtext COLLATE utf8mb4_unicode_ci,
-  `response_data` longtext COLLATE utf8mb4_unicode_ci,
-  `error_message` longtext COLLATE utf8mb4_unicode_ci,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=61116 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `activitytype`
+--
+
+DROP TABLE IF EXISTS `activitytype`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `activitytype` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -155,26 +95,26 @@ DROP TABLE IF EXISTS `assets`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `assets` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_assetTypes` int NOT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_assetTypes` int(10) unsigned zerofill NOT NULL,
   `folder` varchar(100) DEFAULT NULL,
   `file_name` varchar(100) DEFAULT NULL,
   `file_path` varchar(1000) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_79D17D8ED7DF1668` (`file_name`),
-  KEY `IDX_79D17D8E843A9330` (`id_assetTypes`),
-  CONSTRAINT `FK_79D17D8E843A9330` FOREIGN KEY (`id_assetTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=33 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `file_name` (`file_name`),
+  KEY `assets_fk_id_assetTypes` (`id_assetTypes`),
+  CONSTRAINT `assets_fk_id_assetTypes` FOREIGN KEY (`id_assetTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `callbackLogs`
+-- Table structure for table `callbacklogs`
 --
 
-DROP TABLE IF EXISTS `callbackLogs`;
+DROP TABLE IF EXISTS `callbacklogs`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `callbackLogs` (
+CREATE TABLE `callbacklogs` (
   `id` int NOT NULL AUTO_INCREMENT,
   `callback_date` datetime DEFAULT CURRENT_TIMESTAMP,
   `remote_addr` varchar(200) DEFAULT NULL,
@@ -187,6 +127,71 @@ CREATE TABLE `callbackLogs` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
+-- Table structure for table `chat`
+--
+
+DROP TABLE IF EXISTS `chat`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `chat` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_snd` int(10) unsigned zerofill NOT NULL,
+  `id_rcv` int(10) unsigned zerofill DEFAULT NULL,
+  `content` longtext NOT NULL,
+  `timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `id_rcv_group` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `id_snd` (`id_snd`) USING BTREE,
+  KEY `id_rcv` (`id_rcv`) USING BTREE,
+  KEY `fk_chat_id_rcv_group` (`id_rcv_group`),
+  CONSTRAINT `fk_chat_id_rcv_group` FOREIGN KEY (`id_rcv_group`) REFERENCES `groups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_chat_id_rcv_user` FOREIGN KEY (`id_rcv`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_chat_id_send` FOREIGN KEY (`id_snd`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `chatrecipiants`
+--
+
+DROP TABLE IF EXISTS `chatrecipiants`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `chatrecipiants` (
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_chat` int(10) unsigned zerofill NOT NULL,
+  `id_room_users` int(10) unsigned zerofill DEFAULT NULL,
+  `is_new` tinyint NOT NULL DEFAULT '1',
+  PRIMARY KEY (`id_users`,`id_chat`),
+  KEY `id_users` (`id_users`),
+  KEY `id_chat` (`id_chat`),
+  KEY `id_room_users` (`id_room_users`),
+  CONSTRAINT `chatRecipiants_fk_id_chat` FOREIGN KEY (`id_chat`) REFERENCES `chat` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `chatRecipiants_fk_id_room_users` FOREIGN KEY (`id_room_users`) REFERENCES `chatroom_users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `chatRecipiants_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `cmspreferences`
+--
+
+DROP TABLE IF EXISTS `cmspreferences`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `cmspreferences` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `callback_api_key` varchar(500) DEFAULT NULL,
+  `default_language_id` int(10) unsigned zerofill DEFAULT NULL,
+  `anonymous_users` int DEFAULT '0',
+  `firebase_config` varchar(10000) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_cmsPreferences_language` (`default_language_id`),
+  CONSTRAINT `fk_cmsPreferences_language` FOREIGN KEY (`default_language_id`) REFERENCES `languages` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
 -- Table structure for table `codes_groups`
 --
 
@@ -195,136 +200,168 @@ DROP TABLE IF EXISTS `codes_groups`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `codes_groups` (
   `code` varchar(16) NOT NULL,
-  `id_groups` int NOT NULL,
+  `id_groups` int(10) unsigned zerofill NOT NULL,
   PRIMARY KEY (`code`,`id_groups`),
-  KEY `IDX_9F20ED76D65A8C9D` (`id_groups`),
-  KEY `IDX_9F20ED7677153098` (`code`),
-  CONSTRAINT `FK_9F20ED7677153098` FOREIGN KEY (`code`) REFERENCES `validation_codes` (`code`) ON DELETE CASCADE,
-  CONSTRAINT `FK_9F20ED76D65A8C9D` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
+  KEY `fk_id_groups` (`id_groups`),
+  CONSTRAINT `fk_codes` FOREIGN KEY (`code`) REFERENCES `validation_codes` (`code`) ON DELETE CASCADE,
+  CONSTRAINT `fk_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `dataAccessAudit`
+-- Table structure for table `datacells`
 --
 
-DROP TABLE IF EXISTS `dataAccessAudit`;
+DROP TABLE IF EXISTS `datacells`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `dataAccessAudit` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_users` int NOT NULL,
-  `id_resourceTypes` int NOT NULL,
-  `resource_id` int NOT NULL,
-  `id_actions` int NOT NULL,
-  `id_permissionResults` int NOT NULL,
-  `crud_permission` smallint unsigned DEFAULT NULL,
-  `http_method` varchar(10) DEFAULT NULL,
-  `request_body_hash` varchar(64) DEFAULT NULL,
-  `ip_address` varchar(45) DEFAULT NULL,
-  `user_agent` longtext,
-  `request_uri` longtext,
-  `notes` longtext,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `IDX_D2C78316DBD5589F` (`id_actions`),
-  KEY `IDX_dataAccessAudit_users` (`id_users`),
-  KEY `IDX_dataAccessAudit_resource_types` (`id_resourceTypes`),
-  KEY `IDX_dataAccessAudit_resource_id` (`resource_id`),
-  KEY `IDX_dataAccessAudit_created_at` (`created_at`),
-  KEY `IDX_dataAccessAudit_permission_results` (`id_permissionResults`),
-  KEY `IDX_dataAccessAudit_http_method` (`http_method`),
-  KEY `IDX_dataAccessAudit_request_body_hash` (`request_body_hash`)
-) ENGINE=MyISAM AUTO_INCREMENT=108 DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `dataCells`
---
-
-DROP TABLE IF EXISTS `dataCells`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `dataCells` (
-  `id_dataRows` int NOT NULL,
-  `id_dataCols` int NOT NULL,
+CREATE TABLE `datacells` (
+  `id_dataRows` int(10) unsigned zerofill NOT NULL,
+  `id_dataCols` int(10) unsigned zerofill NOT NULL,
   `value` longtext NOT NULL,
-  `id_languages` int NOT NULL DEFAULT '1',
-  PRIMARY KEY (`id_dataRows`,`id_dataCols`,`id_languages`),
-  KEY `IDX_726A5F25F3854F45` (`id_dataRows`),
-  KEY `IDX_726A5F25B216B425` (`id_dataCols`),
-  KEY `IDX_726A5F2520E4EF5E` (`id_languages`),
-  CONSTRAINT `FK_726A5F25B216B425` FOREIGN KEY (`id_dataCols`) REFERENCES `dataCols` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_726A5F25F3854F45` FOREIGN KEY (`id_dataRows`) REFERENCES `dataRows` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_dataCells_languages` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE
+  PRIMARY KEY (`id_dataRows`,`id_dataCols`),
+  KEY `id_uploadRows` (`id_dataRows`),
+  KEY `id_uploadCols` (`id_dataCols`),
+  KEY `idx_uploadCells_value` (`value`(255)),
+  CONSTRAINT `uploadCells_fk_id_uploadCols` FOREIGN KEY (`id_dataCols`) REFERENCES `datacols` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `uploadCells_fk_id_uploadRows` FOREIGN KEY (`id_dataRows`) REFERENCES `datarows` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `dataCols`
+-- Table structure for table `datacols`
 --
 
-DROP TABLE IF EXISTS `dataCols`;
+DROP TABLE IF EXISTS `datacols`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `dataCols` (
-  `id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `datacols` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(255) DEFAULT NULL,
-  `id_dataTables` int DEFAULT NULL,
+  `id_dataTables` int(10) unsigned zerofill DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `IDX_E2CD58B0E2E6A7C3` (`id_dataTables`),
-  CONSTRAINT `FK_E2CD58B0E2E6A7C3` FOREIGN KEY (`id_dataTables`) REFERENCES `dataTables` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `unique_name_id_dataTables` (`name`,`id_dataTables`),
+  KEY `id_uploadTables` (`id_dataTables`),
+  CONSTRAINT `uploadCols_fk_id_uploadTables` FOREIGN KEY (`id_dataTables`) REFERENCES `datatables` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `dataRows`
+-- Table structure for table `datarows`
 --
 
-DROP TABLE IF EXISTS `dataRows`;
+DROP TABLE IF EXISTS `datarows`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `dataRows` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_dataTables` int DEFAULT NULL,
-  `timestamp` datetime NOT NULL,
-  `id_users` int DEFAULT NULL,
-  `id_actionTriggerTypes` int DEFAULT NULL,
+CREATE TABLE `datarows` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_dataTables` int(10) unsigned zerofill DEFAULT NULL,
+  `timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id_users` int(10) unsigned zerofill DEFAULT NULL,
+  `id_actionTriggerTypes` int(10) unsigned zerofill DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `IDX_A35EA3D0E2E6A7C3` (`id_dataTables`),
-  CONSTRAINT `FK_A35EA3D0E2E6A7C3` FOREIGN KEY (`id_dataTables`) REFERENCES `dataTables` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=90 DEFAULT CHARSET=utf8mb3;
+  KEY `id_uploadTables` (`id_dataTables`),
+  KEY `uploadRows_fk_id_users` (`id_users`),
+  KEY `idx_uploadRows_timestamp` (`timestamp`),
+  KEY `uploadRows_fk_id_actionTriggerTypes` (`id_actionTriggerTypes`),
+  CONSTRAINT `uploadRows_fk_id_actionTriggerTypes` FOREIGN KEY (`id_actionTriggerTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `uploadRows_fk_id_uploadTables` FOREIGN KEY (`id_dataTables`) REFERENCES `datatables` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `uploadRows_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `dataTables`
+-- Table structure for table `datatables`
 --
 
-DROP TABLE IF EXISTS `dataTables`;
+DROP TABLE IF EXISTS `datatables`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `dataTables` (
-  `id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `datatables` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
-  `timestamp` datetime NOT NULL,
+  `timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `displayName` varchar(1000) DEFAULT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb3;
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uploadTables_name` (`name`),
+  KEY `idx_uploadTables_name_timestamp` (`name`,`timestamp`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `doctrine_migration_versions`
+-- Table structure for table `deprecated_formactions_external`
 --
 
-DROP TABLE IF EXISTS `doctrine_migration_versions`;
+DROP TABLE IF EXISTS `deprecated_formactions_external`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `doctrine_migration_versions` (
-  `version` varchar(191) COLLATE utf8mb3_unicode_ci NOT NULL,
-  `executed_at` datetime DEFAULT NULL,
-  `execution_time` int DEFAULT NULL,
-  PRIMARY KEY (`version`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_unicode_ci;
+CREATE TABLE `deprecated_formactions_external` (
+  `id_forms` int(10) unsigned zerofill NOT NULL,
+  `id_formActions` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_forms`,`id_formActions`),
+  KEY `fk_formActions_EXTERNAL_id_formActions` (`id_formActions`),
+  CONSTRAINT `fk_formActions_EXTERNAL_id_formActions` FOREIGN KEY (`id_formActions`) REFERENCES `formactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_formActions_EXTERNAL_id_forms` FOREIGN KEY (`id_forms`) REFERENCES `datatables` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `deprecated_formactions_internal`
+--
+
+DROP TABLE IF EXISTS `deprecated_formactions_internal`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `deprecated_formactions_internal` (
+  `id_forms` int(10) unsigned zerofill NOT NULL,
+  `id_formActions` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_forms`,`id_formActions`),
+  KEY `fk_formActions_INTERNAL_id_formActions` (`id_formActions`),
+  CONSTRAINT `fk_formActions_INTERNAL_id_formActions` FOREIGN KEY (`id_formActions`) REFERENCES `formactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_formActions_INTERNAL_id_forms` FOREIGN KEY (`id_forms`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `deprecated_user_input`
+--
+
+DROP TABLE IF EXISTS `deprecated_user_input`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `deprecated_user_input` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_sections` int(10) unsigned zerofill NOT NULL,
+  `id_user_input_record` int(10) unsigned zerofill DEFAULT NULL,
+  `value` longtext NOT NULL,
+  `edit_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `removed` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `id_users` (`id_users`),
+  KEY `id_sections` (`id_sections`),
+  KEY `id_user_input_record` (`id_user_input_record`),
+  CONSTRAINT `user_input_fk_id_sections` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `user_input_fk_id_user_input_record` FOREIGN KEY (`id_user_input_record`) REFERENCES `deprecated_user_input_record` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `user_input_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `deprecated_user_input_record`
+--
+
+DROP TABLE IF EXISTS `deprecated_user_input_record`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `deprecated_user_input_record` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id_sections` int(10) unsigned zerofill DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `user_input_record_fk_id_sections` (`id_sections`),
+  CONSTRAINT `user_input_record_fk_id_sections` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -335,32 +372,64 @@ DROP TABLE IF EXISTS `fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `fields` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
-  `id_type` int NOT NULL,
-  `display` tinyint(1) NOT NULL,
-  `config` json DEFAULT NULL,
+  `id_type` int(10) unsigned zerofill NOT NULL DEFAULT '0000000002',
+  `display` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_7EE5E3885E237E06` (`name`),
-  KEY `IDX_7EE5E3887FE4B2B` (`id_type`),
-  CONSTRAINT `FK_7EE5E388FF2309B7` FOREIGN KEY (`id_type`) REFERENCES `fieldType` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2867 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `fields_name` (`name`),
+  KEY `id_type` (`id_type`),
+  CONSTRAINT `fields_fk_id_type` FOREIGN KEY (`id_type`) REFERENCES `fieldtype` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=237 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `fieldType`
+-- Table structure for table `fieldtype`
 --
 
-DROP TABLE IF EXISTS `fieldType`;
+DROP TABLE IF EXISTS `fieldtype`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `fieldType` (
-  `id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `fieldtype` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `position` int NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_C1760DF55E237E06` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=224 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `fieldType_name` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `formactions`
+--
+
+DROP TABLE IF EXISTS `formactions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `formactions` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(200) NOT NULL,
+  `id_formProjectActionTriggerTypes` int(10) unsigned zerofill NOT NULL,
+  `config` json DEFAULT NULL,
+  `id_dataTables` int(10) unsigned zerofill DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `formActions_id_dataTables` (`id_dataTables`),
+  CONSTRAINT `formActions_id_dataTables` FOREIGN KEY (`id_dataTables`) REFERENCES `datatables` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `genders`
+--
+
+DROP TABLE IF EXISTS `genders`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `genders` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(20) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -371,13 +440,16 @@ DROP TABLE IF EXISTS `groups`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `groups` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `description` varchar(250) NOT NULL,
-  `id_group_types` int DEFAULT NULL,
-  `requires_2fa` tinyint(1) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=160 DEFAULT CHARSET=utf8mb3;
+  `id_group_types` int(10) unsigned zerofill DEFAULT NULL,
+  `requires_2fa` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`),
+  KEY `groups_fk_id_group_types` (`id_group_types`),
+  CONSTRAINT `groups_fk_id_group_types` FOREIGN KEY (`id_group_types`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -388,16 +460,19 @@ DROP TABLE IF EXISTS `hooks`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `hooks` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_hookTypes` int NOT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_hookTypes` int(10) unsigned zerofill NOT NULL,
   `name` varchar(100) DEFAULT NULL,
   `description` varchar(1000) DEFAULT NULL,
   `class` varchar(100) NOT NULL,
   `function` varchar(100) NOT NULL,
   `exec_class` varchar(100) NOT NULL,
   `exec_function` varchar(100) NOT NULL,
-  `priority` int NOT NULL DEFAULT '10',
-  PRIMARY KEY (`id`)
+  `priority` int DEFAULT '10',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`),
+  KEY `hooks_fk_id_hookTypes` (`id_hookTypes`),
+  CONSTRAINT `hooks_fk_id_hookTypes` FOREIGN KEY (`id_hookTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -409,13 +484,14 @@ DROP TABLE IF EXISTS `languages`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `languages` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `locale` varchar(5) NOT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `locale` varchar(5) NOT NULL COMMENT '"e.g en-GB, de-CH"',
   `language` varchar(100) NOT NULL,
-  `csv_separator` varchar(1) NOT NULL,
+  `csv_separator` varchar(1) NOT NULL DEFAULT ',',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_A0D153794180C698` (`locale`)
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `locale` (`locale`),
+  UNIQUE KEY `language` (`language`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -426,28 +502,14 @@ DROP TABLE IF EXISTS `libraries`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `libraries` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(250) DEFAULT NULL,
   `version` varchar(500) DEFAULT NULL,
   `license` varchar(1000) DEFAULT NULL,
   `comments` varchar(1000) DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB AUTO_INCREMENT=24 DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `logPerformance`
---
-
-DROP TABLE IF EXISTS `logPerformance`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `logPerformance` (
-  `id_user_activity` int NOT NULL,
-  `log` longtext,
-  PRIMARY KEY (`id_user_activity`),
-  CONSTRAINT `FK_6D164595F2D13C3F` FOREIGN KEY (`id_user_activity`) REFERENCES `user_activity` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -458,42 +520,72 @@ DROP TABLE IF EXISTS `lookups`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `lookups` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `type_code` varchar(100) NOT NULL,
   `lookup_code` varchar(100) DEFAULT NULL,
   `lookup_value` varchar(200) DEFAULT NULL,
   `lookup_description` varchar(500) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_type_lookup` (`type_code`,`lookup_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=1264 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `idx_lookups_type_code_lookup_code` (`type_code`,`lookup_code`)
+) ENGINE=InnoDB AUTO_INCREMENT=75 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `page_versions`
+-- Table structure for table `mailattachments`
 --
 
-DROP TABLE IF EXISTS `page_versions`;
+DROP TABLE IF EXISTS `mailattachments`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `page_versions` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_pages` int NOT NULL,
-  `version_number` int NOT NULL COMMENT 'Incremental version number per page',
-  `version_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Optional user-defined name for the version',
-  `page_json` json NOT NULL COMMENT 'Complete JSON structure from getPage() including all languages, conditions, data table configs',
-  `created_by` int DEFAULT NULL,
-  `created_at` datetime NOT NULL,
-  `published_at` datetime DEFAULT NULL COMMENT 'When this version was published',
-  `metadata` json DEFAULT NULL COMMENT 'Additional info like change summary, tags, etc.',
+CREATE TABLE `mailattachments` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_mailQueue` int(10) unsigned zerofill NOT NULL,
+  `attachment_name` varchar(1000) DEFAULT NULL,
+  `attachment_path` varchar(1000) NOT NULL,
+  `attachment_url` varchar(1000) NOT NULL,
+  `template_path` varchar(1000) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_page_version_number` (`id_pages`,`version_number`),
-  KEY `idx_id_pages` (`id_pages`),
-  KEY `idx_created_by` (`created_by`),
-  KEY `idx_created_at` (`created_at`),
-  KEY `idx_published_at` (`published_at`),
-  CONSTRAINT `FK_page_versions_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `FK_page_versions_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=212 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores published page versions with complete JSON structures';
+  KEY `mailAttachments_fk_id_mailQueue` (`id_mailQueue`),
+  CONSTRAINT `mailAttachments_fk_id_mailQueue` FOREIGN KEY (`id_mailQueue`) REFERENCES `mailqueue` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `mailqueue`
+--
+
+DROP TABLE IF EXISTS `mailqueue`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `mailqueue` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `from_email` varchar(100) NOT NULL,
+  `from_name` varchar(100) NOT NULL,
+  `reply_to` varchar(100) NOT NULL,
+  `recipient_emails` text NOT NULL,
+  `cc_emails` varchar(1000) DEFAULT NULL,
+  `bcc_emails` varchar(1000) DEFAULT NULL,
+  `subject` varchar(1000) NOT NULL,
+  `body` longtext NOT NULL,
+  `is_html` int DEFAULT '1',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notifications`
+--
+
+DROP TABLE IF EXISTS `notifications`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `notifications` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `subject` varchar(1000) NOT NULL,
+  `body` longtext NOT NULL,
+  `url` varchar(100) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -504,29 +596,31 @@ DROP TABLE IF EXISTS `pages`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `pages` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `keyword` varchar(100) NOT NULL,
   `url` varchar(255) DEFAULT NULL,
-  `parent` int DEFAULT NULL,
+  `protocol` varchar(100) DEFAULT NULL COMMENT 'pipe seperated list of HTTP Methods (GET|POST)',
+  `id_actions` int(10) unsigned zerofill DEFAULT NULL,
+  `id_navigation_section` int(10) unsigned zerofill DEFAULT NULL,
+  `parent` int(10) unsigned zerofill DEFAULT NULL,
   `is_headless` tinyint(1) NOT NULL DEFAULT '0',
   `nav_position` int DEFAULT NULL,
   `footer_position` int DEFAULT NULL,
-  `id_type` int NOT NULL,
-  `id_pageAccessTypes` int DEFAULT NULL,
-  `is_open_access` tinyint DEFAULT '0',
-  `is_system` tinyint DEFAULT '0',
-  `published_version_id` int DEFAULT NULL,
+  `id_type` int(10) unsigned zerofill NOT NULL,
+  `id_pageAccessTypes` int(10) unsigned zerofill DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_2074E5755A93713B` (`keyword`),
-  KEY `IDX_2074E5753D8E604F` (`parent`),
-  KEY `IDX_2074E5757FE4B2B` (`id_type`),
-  KEY `IDX_2074E57534643D90` (`id_pageAccessTypes`),
-  KEY `IDX_pages_published_version_id` (`published_version_id`),
-  CONSTRAINT `FK_2074E57534643D90` FOREIGN KEY (`id_pageAccessTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_2074E5753D8E604F` FOREIGN KEY (`parent`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_2074E5757FE4B2B` FOREIGN KEY (`id_type`) REFERENCES `pageType` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_2074E575B5D68A8D` FOREIGN KEY (`published_version_id`) REFERENCES `page_versions` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=121 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `keyword` (`keyword`),
+  KEY `parent` (`parent`),
+  KEY `id_actions` (`id_actions`),
+  KEY `id_navigation_section` (`id_navigation_section`),
+  KEY `id_type` (`id_type`),
+  KEY `pages_fk_id_pacgeAccessTypes` (`id_pageAccessTypes`),
+  CONSTRAINT `pages_fk_id_actions` FOREIGN KEY (`id_actions`) REFERENCES `actions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `pages_fk_id_navigation_section` FOREIGN KEY (`id_navigation_section`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `pages_fk_id_pacgeAccessTypes` FOREIGN KEY (`id_pageAccessTypes`) REFERENCES `lookups` (`id`),
+  CONSTRAINT `pages_fk_id_type` FOREIGN KEY (`id_type`) REFERENCES `pagetype` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `pages_fk_parent` FOREIGN KEY (`parent`) REFERENCES `pages` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=86 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -537,15 +631,15 @@ DROP TABLE IF EXISTS `pages_fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `pages_fields` (
-  `id_pages` int NOT NULL,
-  `id_fields` int NOT NULL,
+  `id_pages` int(10) unsigned zerofill NOT NULL,
+  `id_fields` int(10) unsigned zerofill NOT NULL,
   `default_value` varchar(100) DEFAULT NULL,
   `help` longtext,
   PRIMARY KEY (`id_pages`,`id_fields`),
-  KEY `IDX_D36F9887CEF1A445` (`id_pages`),
-  KEY `IDX_D36F988758D25665` (`id_fields`),
-  CONSTRAINT `FK_D36F988758D25665` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_D36F9887CEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE
+  KEY `id_pages` (`id_pages`),
+  KEY `id_fields` (`id_fields`),
+  CONSTRAINT `fk_page_fields_id_fields` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_page_fields_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -557,17 +651,17 @@ DROP TABLE IF EXISTS `pages_fields_translation`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `pages_fields_translation` (
-  `id_pages` int NOT NULL,
-  `id_fields` int NOT NULL,
-  `id_languages` int NOT NULL,
+  `id_pages` int(10) unsigned zerofill NOT NULL,
+  `id_fields` int(10) unsigned zerofill NOT NULL,
+  `id_languages` int(10) unsigned zerofill NOT NULL DEFAULT '0000000001',
   `content` longtext NOT NULL,
   PRIMARY KEY (`id_pages`,`id_fields`,`id_languages`),
-  KEY `IDX_903943EECEF1A445` (`id_pages`),
-  KEY `IDX_903943EE58D25665` (`id_fields`),
-  KEY `IDX_903943EE20E4EF5E` (`id_languages`),
-  CONSTRAINT `FK_903943EE20E4EF5E` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_903943EE58D25665` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_903943EECEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE
+  KEY `id_pages` (`id_pages`),
+  KEY `id_fields` (`id_fields`),
+  KEY `id_languages` (`id_languages`),
+  CONSTRAINT `pages_fields_translation_fk_id_fields` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `pages_fields_translation_fk_id_languages` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `pages_fields_translation_fk_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -579,66 +673,49 @@ DROP TABLE IF EXISTS `pages_sections`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `pages_sections` (
-  `id_pages` int NOT NULL,
-  `id_sections` int NOT NULL,
+  `id_pages` int(10) unsigned zerofill NOT NULL,
+  `id_sections` int(10) unsigned zerofill NOT NULL,
   `position` int DEFAULT NULL,
   PRIMARY KEY (`id_pages`,`id_sections`),
-  KEY `IDX_6BD95A69CEF1A445` (`id_pages`),
-  KEY `IDX_6BD95A697B4DAF0D` (`id_sections`),
-  CONSTRAINT `FK_6BD95A697B4DAF0D` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_6BD95A69CEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE
+  KEY `id_pages` (`id_pages`),
+  KEY `id_sections` (`id_sections`),
+  CONSTRAINT `pages_sections_fk_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `pages_sections_fk_id_sections` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `pageType`
+-- Table structure for table `pagetype`
 --
 
-DROP TABLE IF EXISTS `pageType`;
+DROP TABLE IF EXISTS `pagetype`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `pageType` (
-  `id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `pagetype` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_AD38E97C5E237E06` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=34 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `pageType_name` (`name`)
+) ENGINE=InnoDB AUTO_INCREMENT=10 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `pageType_fields`
+-- Table structure for table `pagetype_fields`
 --
 
-DROP TABLE IF EXISTS `pageType_fields`;
+DROP TABLE IF EXISTS `pagetype_fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `pageType_fields` (
-  `id_pageType` int NOT NULL,
-  `id_fields` int NOT NULL,
+CREATE TABLE `pagetype_fields` (
+  `id_pageType` int(10) unsigned zerofill NOT NULL,
+  `id_fields` int(10) unsigned zerofill NOT NULL,
   `default_value` varchar(100) DEFAULT NULL,
   `help` longtext,
-  `title` varchar(100) NOT NULL,
   PRIMARY KEY (`id_pageType`,`id_fields`),
-  KEY `IDX_B305C68158D25665` (`id_fields`),
-  CONSTRAINT `FK_B305C68158D25665` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_B305C681FDE305E9` FOREIGN KEY (`id_pageType`) REFERENCES `pageType` (`id`) ON DELETE CASCADE
+  KEY `fk_pageType_fields_id_fields` (`id_fields`),
+  CONSTRAINT `fk_pageType_fields_id_fields` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_pageType_fields_id_pageType` FOREIGN KEY (`id_pageType`) REFERENCES `pagetype` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `permissions`
---
-
-DROP TABLE IF EXISTS `permissions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `permissions` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_2DEDCC6F5E237E06` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=59 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -649,122 +726,357 @@ DROP TABLE IF EXISTS `plugins`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `plugins` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) DEFAULT NULL,
   `version` varchar(500) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `plugins_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `qualtricsactions`
+--
+
+DROP TABLE IF EXISTS `qualtricsactions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `qualtricsactions` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_qualtricsProjects` int(10) unsigned zerofill NOT NULL,
+  `id_qualtricsSurveys` int(10) unsigned zerofill NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `id_qualtricsProjectActionTriggerTypes` int(10) unsigned zerofill NOT NULL,
+  `id_qualtricsActionScheduleTypes` int(10) unsigned zerofill NOT NULL,
+  `id_qualtricsSurveys_reminder` int(10) unsigned zerofill DEFAULT NULL,
+  `schedule_info` text,
+  `id_qualtricsActions` int(10) unsigned zerofill DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `qualtricsActions_fk_id_qualtricsProjects` (`id_qualtricsProjects`),
+  KEY `qualtricsActions_fk_id_qualtricsSurveys` (`id_qualtricsSurveys`),
+  KEY `qualtricsActions_fk_id_qualtricsSurveys_reminder` (`id_qualtricsSurveys_reminder`),
+  KEY `qualtricsActions_fk_id_qualtricsActionScheduleTypes` (`id_qualtricsActionScheduleTypes`),
+  KEY `qualtricsActions_fk_id_lookups_qualtricsProjectActionTriggerType` (`id_qualtricsProjectActionTriggerTypes`),
+  CONSTRAINT `qualtricsActions_fk_id_lookups_qualtricsProjectActionTriggerType` FOREIGN KEY (`id_qualtricsProjectActionTriggerTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsActions_fk_id_qualtricsActionScheduleTypes` FOREIGN KEY (`id_qualtricsActionScheduleTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsActions_fk_id_qualtricsProjects` FOREIGN KEY (`id_qualtricsProjects`) REFERENCES `qualtricsprojects` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsActions_fk_id_qualtricsSurveys` FOREIGN KEY (`id_qualtricsSurveys`) REFERENCES `qualtricssurveys` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsActions_fk_id_qualtricsSurveys_reminder` FOREIGN KEY (`id_qualtricsSurveys_reminder`) REFERENCES `qualtricssurveys` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `qualtricsactions_functions`
+--
+
+DROP TABLE IF EXISTS `qualtricsactions_functions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `qualtricsactions_functions` (
+  `id_qualtricsActions` int(10) unsigned zerofill NOT NULL,
+  `id_lookups` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_qualtricsActions`,`id_lookups`),
+  KEY `id_qualtricsActions` (`id_qualtricsActions`),
+  KEY `id_lookups` (`id_lookups`),
+  CONSTRAINT `qualtricsActions_functions_fk_id_lookups` FOREIGN KEY (`id_lookups`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsActions_functions_fk_id_qualtricsActions` FOREIGN KEY (`id_qualtricsActions`) REFERENCES `qualtricsactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `qualtricsactions_groups`
+--
+
+DROP TABLE IF EXISTS `qualtricsactions_groups`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `qualtricsactions_groups` (
+  `id_qualtricsActions` int(10) unsigned zerofill NOT NULL,
+  `id_groups` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_qualtricsActions`,`id_groups`),
+  KEY `id_qualtricsActions` (`id_qualtricsActions`),
+  KEY `id_groups` (`id_groups`),
+  CONSTRAINT `qualtricsActions_groups_fk_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsActions_groups_fk_id_qualtricsActions` FOREIGN KEY (`id_qualtricsActions`) REFERENCES `qualtricsactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `qualtricsprojects`
+--
+
+DROP TABLE IF EXISTS `qualtricsprojects`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `qualtricsprojects` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(200) NOT NULL,
+  `description` varchar(1000) DEFAULT NULL,
+  `qualtrics_api` varchar(100) DEFAULT NULL,
+  `api_library_id` varchar(100) DEFAULT NULL,
+  `api_mailing_group_id` varchar(100) DEFAULT NULL,
+  `created_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `edited_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `refreshTokens`
+-- Table structure for table `qualtricsreminders`
 --
 
-DROP TABLE IF EXISTS `refreshTokens`;
+DROP TABLE IF EXISTS `qualtricsreminders`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `refreshTokens` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `id_users` int NOT NULL,
-  `token_hash` varchar(255) NOT NULL,
-  `expires_at` timestamp NOT NULL,
+CREATE TABLE `qualtricsreminders` (
+  `id_qualtricsSurveys` int(10) unsigned zerofill NOT NULL,
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_qualtricsSurveys`,`id_users`,`id_scheduledJobs`),
+  KEY `qualtricsReminders_fk_id_users` (`id_users`),
+  KEY `qualtricsReminders_fk_id_scheduledJobs` (`id_scheduledJobs`),
+  CONSTRAINT `qualtricsReminders_fk_id_qualtricsSurveys` FOREIGN KEY (`id_qualtricsSurveys`) REFERENCES `qualtricssurveys` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsReminders_fk_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qualtricsReminders_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `qualtricssurveys`
+--
+
+DROP TABLE IF EXISTS `qualtricssurveys`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `qualtricssurveys` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(200) NOT NULL,
+  `description` varchar(1000) DEFAULT NULL,
+  `qualtrics_survey_id` varchar(100) DEFAULT NULL,
+  `id_qualtricsSurveyTypes` int(10) unsigned zerofill NOT NULL,
+  `participant_variable` varchar(100) DEFAULT NULL,
+  `group_variable` int DEFAULT '0',
+  `created_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `edited_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `config` longtext,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `qualtrics_survey_id` (`qualtrics_survey_id`),
+  KEY `qualtricsSurveys_fk_id_qualtricsSurveyTypes` (`id_qualtricsSurveyTypes`),
+  CONSTRAINT `qualtricsSurveys_fk_id_qualtricsSurveyTypes` FOREIGN KEY (`id_qualtricsSurveyTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `qualtricssurveysresponses`
+--
+
+DROP TABLE IF EXISTS `qualtricssurveysresponses`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `qualtricssurveysresponses` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_surveys` int(10) unsigned zerofill NOT NULL,
+  `id_qualtricsProjectActionTriggerTypes` int(10) unsigned zerofill NOT NULL,
+  `survey_response_id` varchar(100) DEFAULT NULL,
+  `started_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `edited_on` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `survey_response_id` (`survey_response_id`),
+  KEY `qSurveysResponses_fk_id_users` (`id_users`),
+  KEY `qSurveysResponses_fk_id_surveys` (`id_surveys`),
+  KEY `qSurveysResponses_fk_id_qualtricsProjectActionTriggerTypes` (`id_qualtricsProjectActionTriggerTypes`),
+  CONSTRAINT `qSurveysResponses_fk_id_qualtricsProjectActionTriggerTypes` FOREIGN KEY (`id_qualtricsProjectActionTriggerTypes`) REFERENCES `lookups` (`id`),
+  CONSTRAINT `qSurveysResponses_fk_id_surveys` FOREIGN KEY (`id_surveys`) REFERENCES `qualtricssurveys` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `qSurveysResponses_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `refresh_events`
+--
+
+DROP TABLE IF EXISTS `refresh_events`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `refresh_events` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `event_type` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'background_task_completed',
+  `event_data` text COLLATE utf8mb4_unicode_ci,
+  `consumed` tinyint(1) DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `IDX_BFB6788AFA06E4D9` (`id_users`)
-) ENGINE=MyISAM AUTO_INCREMENT=2698 DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `role_data_access`
---
-
-DROP TABLE IF EXISTS `role_data_access`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `role_data_access` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_roles` int NOT NULL,
-  `id_resourceTypes` int NOT NULL,
-  `resource_id` int NOT NULL,
-  `crud_permissions` smallint unsigned NOT NULL DEFAULT '2',
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `unique_role_resource` (`id_roles`,`id_resourceTypes`,`resource_id`),
-  KEY `IDX_role_data_access_roles` (`id_roles`),
-  KEY `IDX_role_data_access_resource_types` (`id_resourceTypes`),
-  KEY `IDX_role_data_access_resource_id` (`resource_id`),
-  KEY `IDX_role_data_access_permissions` (`crud_permissions`)
-) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `roles`
---
-
-DROP TABLE IF EXISTS `roles`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `roles` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_B63E2EC75E237E06` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `roles_permissions`
---
-
-DROP TABLE IF EXISTS `roles_permissions`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `roles_permissions` (
-  `id_permissions` int NOT NULL,
-  `id_roles` int NOT NULL,
-  PRIMARY KEY (`id_permissions`,`id_roles`),
-  KEY `IDX_CEC2E04358BB6FF7` (`id_roles`),
-  CONSTRAINT `FK_CEC2E04335FF0198` FOREIGN KEY (`id_permissions`) REFERENCES `permissions` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_CEC2E04358BB6FF7` FOREIGN KEY (`id_roles`) REFERENCES `roles` (`id`) ON DELETE CASCADE
+  KEY `idx_user_consumed` (`id_users`,`consumed`),
+  CONSTRAINT `fk_refresh_events_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `scheduledJobs`
+-- Table structure for table `refresh_events_sections`
 --
 
-DROP TABLE IF EXISTS `scheduledJobs`;
+DROP TABLE IF EXISTS `refresh_events_sections`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `scheduledJobs` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_users` int DEFAULT NULL,
-  `id_actions` int DEFAULT NULL,
-  `id_dataTables` int DEFAULT NULL,
-  `id_dataRows` int DEFAULT NULL,
-  `id_jobTypes` int NOT NULL,
-  `id_jobStatus` int NOT NULL,
-  `date_create` datetime NOT NULL,
-  `date_to_be_executed` datetime NOT NULL,
-  `date_executed` datetime DEFAULT NULL,
-  `description` varchar(1000) DEFAULT NULL,
-  `config` json DEFAULT NULL,
+CREATE TABLE `refresh_events_sections` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id_refresh_events` int unsigned NOT NULL,
+  `id_sections` int(10) unsigned zerofill NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `IDX_3E186B37FA06E4D9` (`id_users`),
-  KEY `IDX_3E186B37DBD5589F` (`id_actions`),
-  KEY `IDX_3E186B37E2E6A7C3` (`id_dataTables`),
-  KEY `IDX_3E186B37F3854F45` (`id_dataRows`),
-  KEY `IDX_3E186B3777FD8DE1` (`id_jobStatus`),
-  KEY `IDX_3E186B3712C34CFB` (`id_jobTypes`),
-  CONSTRAINT `FK_3E186B3712C34CFB` FOREIGN KEY (`id_jobTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_3E186B3777FD8DE1` FOREIGN KEY (`id_jobStatus`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_3E186B37DBD5589F` FOREIGN KEY (`id_actions`) REFERENCES `actions` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_3E186B37E2E6A7C3` FOREIGN KEY (`id_dataTables`) REFERENCES `dataTables` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_3E186B37F3854F45` FOREIGN KEY (`id_dataRows`) REFERENCES `dataRows` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_3E186B37FA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb3;
+  KEY `fk_refresh_sections_events` (`id_refresh_events`),
+  KEY `fk_refresh_sections_sections` (`id_sections`),
+  CONSTRAINT `fk_refresh_sections_events` FOREIGN KEY (`id_refresh_events`) REFERENCES `refresh_events` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_refresh_sections_sections` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_jobTypes` int(10) unsigned zerofill NOT NULL,
+  `id_jobStatus` int(10) unsigned zerofill NOT NULL,
+  `description` varchar(1000) DEFAULT NULL,
+  `date_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `date_to_be_executed` datetime DEFAULT NULL,
+  `date_executed` datetime DEFAULT NULL,
+  `config` varchar(1000) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `scheduledJobs_fk_id_jobTypes` (`id_jobTypes`),
+  KEY `scheduledJobs_fk_id_jobStatus` (`id_jobStatus`),
+  CONSTRAINT `scheduledJobs_fk_id_jobStatus` FOREIGN KEY (`id_jobStatus`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_fk_id_jobTypes` FOREIGN KEY (`id_jobTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_formactions`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_formactions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_formactions` (
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  `id_formActions` int(10) unsigned zerofill NOT NULL,
+  `id_dataRows` int(10) unsigned zerofill DEFAULT NULL,
+  PRIMARY KEY (`id_scheduledJobs`,`id_formActions`),
+  KEY `scheduledJobs_formActions_fk_iid_formActions` (`id_formActions`),
+  KEY `scheduledJobs_formActions_id_dataRows` (`id_dataRows`),
+  CONSTRAINT `scheduledJobs_formActions_fk_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_formActions_fk_iid_formActions` FOREIGN KEY (`id_formActions`) REFERENCES `formactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_formActions_id_dataRows` FOREIGN KEY (`id_dataRows`) REFERENCES `datarows` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_mailqueue`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_mailqueue`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_mailqueue` (
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  `id_mailQueue` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_scheduledJobs`,`id_mailQueue`),
+  KEY `scheduledJobs_mailQueue_fk_id_mailQueue` (`id_mailQueue`),
+  CONSTRAINT `scheduledJobs_mailQueue_fk_id_mailQueue` FOREIGN KEY (`id_mailQueue`) REFERENCES `mailqueue` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_mailQueue_fk_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_notifications`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_notifications`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_notifications` (
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  `id_notifications` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_scheduledJobs`,`id_notifications`),
+  KEY `scheduledJobs_notifications_fk_id_notifications` (`id_notifications`),
+  CONSTRAINT `scheduledJobs_notifications_fk_id_notifications` FOREIGN KEY (`id_notifications`) REFERENCES `notifications` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_notifications_fk_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_qualtricsactions`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_qualtricsactions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_qualtricsactions` (
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  `id_qualtricsActions` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_scheduledJobs`,`id_qualtricsActions`),
+  KEY `scheduledJobs_qualtricsActions_fk_iid_qualtricsActions` (`id_qualtricsActions`),
+  CONSTRAINT `scheduledJobs_qualtricsActions_fk_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_qualtricsActions_fk_iid_qualtricsActions` FOREIGN KEY (`id_qualtricsActions`) REFERENCES `qualtricsactions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_reminders`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_reminders`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_reminders` (
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  `id_dataTables` int(10) unsigned zerofill DEFAULT NULL,
+  `session_start_date` datetime DEFAULT NULL,
+  `session_end_date` datetime DEFAULT NULL,
+  KEY `scheduledJobs_reminders_id_scheduledJobs` (`id_scheduledJobs`),
+  KEY `scheduledJobs_reminders_id_dataTables` (`id_dataTables`),
+  CONSTRAINT `scheduledJobs_reminders_id_dataTables` FOREIGN KEY (`id_dataTables`) REFERENCES `datatables` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_reminders_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_tasks`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_tasks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_tasks` (
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  `id_tasks` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_scheduledJobs`,`id_tasks`),
+  KEY `scheduledJobs_tasks_fk_id_tasks` (`id_tasks`),
+  CONSTRAINT `scheduledJobs_tasks_fk_id_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_tasks_fk_id_tasks` FOREIGN KEY (`id_tasks`) REFERENCES `tasks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `scheduledjobs_users`
+--
+
+DROP TABLE IF EXISTS `scheduledjobs_users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `scheduledjobs_users` (
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_scheduledJobs` int(10) unsigned zerofill NOT NULL,
+  PRIMARY KEY (`id_users`,`id_scheduledJobs`),
+  KEY `scheduledJobs_users_fk_scheduledJobs` (`id_scheduledJobs`),
+  CONSTRAINT `scheduledJobs_users_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `scheduledJobs_users_fk_scheduledJobs` FOREIGN KEY (`id_scheduledJobs`) REFERENCES `scheduledjobs` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -775,18 +1087,17 @@ DROP TABLE IF EXISTS `sections`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sections` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_styles` int NOT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_styles` int(10) unsigned zerofill NOT NULL,
   `name` varchar(100) NOT NULL,
-  `debug` tinyint DEFAULT '0',
-  `condition` longtext,
-  `data_config` longtext,
-  `css` longtext,
-  `css_mobile` longtext,
+  `owner` int(10) unsigned zerofill DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `IDX_2B964398906D4F18` (`id_styles`),
-  CONSTRAINT `FK_2B964398906D4F18` FOREIGN KEY (`id_styles`) REFERENCES `styles` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=262 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `name` (`name`),
+  KEY `id_styles` (`id_styles`),
+  KEY `owner` (`owner`),
+  CONSTRAINT `sections_fk_id_styles` FOREIGN KEY (`id_styles`) REFERENCES `styles` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_fk_owner` FOREIGN KEY (`owner`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=71 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -797,18 +1108,21 @@ DROP TABLE IF EXISTS `sections_fields_translation`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sections_fields_translation` (
-  `id_sections` int NOT NULL,
-  `id_fields` int NOT NULL,
-  `id_languages` int NOT NULL,
+  `id_sections` int(10) unsigned zerofill NOT NULL,
+  `id_fields` int(10) unsigned zerofill NOT NULL,
+  `id_languages` int(10) unsigned zerofill NOT NULL DEFAULT '0000000001',
+  `id_genders` int(10) unsigned zerofill NOT NULL DEFAULT '0000000001',
   `content` longtext NOT NULL,
   `meta` varchar(10000) DEFAULT NULL,
-  PRIMARY KEY (`id_sections`,`id_fields`,`id_languages`),
-  KEY `IDX_EC5054157B4DAF0D` (`id_sections`),
-  KEY `IDX_EC50541558D25665` (`id_fields`),
-  KEY `IDX_EC50541520E4EF5E` (`id_languages`),
-  CONSTRAINT `FK_EC50541520E4EF5E` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_EC50541558D25665` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_EC5054157B4DAF0D` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE
+  PRIMARY KEY (`id_sections`,`id_fields`,`id_languages`,`id_genders`),
+  KEY `id_sections` (`id_sections`),
+  KEY `id_fields` (`id_fields`),
+  KEY `id_languages` (`id_languages`),
+  KEY `id_genders` (`id_genders`),
+  CONSTRAINT `sections_fields_translation_fk_id_fields` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_fields_translation_fk_id_genders` FOREIGN KEY (`id_genders`) REFERENCES `genders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_fields_translation_fk_id_languages` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_fields_translation_fk_id_sections` FOREIGN KEY (`id_sections`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -820,14 +1134,14 @@ DROP TABLE IF EXISTS `sections_hierarchy`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sections_hierarchy` (
-  `parent` int NOT NULL,
-  `child` int NOT NULL,
+  `parent` int(10) unsigned zerofill NOT NULL,
+  `child` int(10) unsigned zerofill NOT NULL,
   `position` int DEFAULT NULL,
   PRIMARY KEY (`parent`,`child`),
-  KEY `IDX_A6D0AE7C3D8E604F` (`parent`),
-  KEY `IDX_A6D0AE7C22B35429` (`child`),
-  CONSTRAINT `FK_A6D0AE7C22B35429` FOREIGN KEY (`child`) REFERENCES `sections` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_A6D0AE7C3D8E604F` FOREIGN KEY (`parent`) REFERENCES `sections` (`id`) ON DELETE CASCADE
+  KEY `parent` (`parent`),
+  KEY `child` (`child`),
+  CONSTRAINT `sections_hierarchy_fk_child` FOREIGN KEY (`child`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_hierarchy_fk_parent` FOREIGN KEY (`parent`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -839,35 +1153,35 @@ DROP TABLE IF EXISTS `sections_navigation`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `sections_navigation` (
-  `parent` int NOT NULL,
-  `child` int NOT NULL,
-  `id_pages` int NOT NULL,
+  `parent` int(10) unsigned zerofill NOT NULL,
+  `child` int(10) unsigned zerofill NOT NULL,
+  `id_pages` int(10) unsigned zerofill NOT NULL,
   `position` int NOT NULL,
   PRIMARY KEY (`parent`,`child`),
-  KEY `IDX_21BBDC413D8E604F` (`parent`),
-  KEY `IDX_21BBDC4122B35429` (`child`),
-  KEY `IDX_21BBDC41CEF1A445` (`id_pages`),
-  CONSTRAINT `FK_21BBDC4122B35429` FOREIGN KEY (`child`) REFERENCES `sections` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_21BBDC413D8E604F` FOREIGN KEY (`parent`) REFERENCES `sections` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_21BBDC41CEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE
+  KEY `child` (`child`),
+  KEY `parent` (`parent`),
+  KEY `id_pages` (`id_pages`),
+  CONSTRAINT `sections_navigation_fk_child` FOREIGN KEY (`child`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_navigation_fk_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `sections_navigation_fk_parent` FOREIGN KEY (`parent`) REFERENCES `sections` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `styleGroup`
+-- Table structure for table `stylegroup`
 --
 
-DROP TABLE IF EXISTS `styleGroup`;
+DROP TABLE IF EXISTS `stylegroup`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `styleGroup` (
-  `id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `stylegroup` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `description` longtext,
   `position` int DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `styleGroup_name` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb3;
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -878,34 +1192,18 @@ DROP TABLE IF EXISTS `styles`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `styles` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
-  `id_group` int NOT NULL,
+  `id_type` int(10) unsigned zerofill NOT NULL DEFAULT '0000000001',
+  `id_group` int(10) unsigned zerofill NOT NULL DEFAULT '0000000001',
   `description` longtext,
-  `can_have_children` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_B65AFAF55E237E06` (`name`),
-  KEY `IDX_B65AFAF5834505F5` (`id_group`),
-  CONSTRAINT `FK_B65AFAF5834505F5` FOREIGN KEY (`id_group`) REFERENCES `styleGroup` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=607 DEFAULT CHARSET=utf8mb3;
-/*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Table structure for table `styles_allowed_relationships`
---
-
-DROP TABLE IF EXISTS `styles_allowed_relationships`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `styles_allowed_relationships` (
-  `id_parent_style` int NOT NULL,
-  `id_child_style` int NOT NULL,
-  PRIMARY KEY (`id_parent_style`,`id_child_style`),
-  KEY `IDX_757F0414DC4D59BB` (`id_parent_style`),
-  KEY `IDX_757F041478A9D70E` (`id_child_style`),
-  CONSTRAINT `FK_styles_relationships_child` FOREIGN KEY (`id_child_style`) REFERENCES `styles` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_styles_relationships_parent` FOREIGN KEY (`id_parent_style`) REFERENCES `styles` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Defines allowed parent-child relationships between styles';
+  UNIQUE KEY `styles_name` (`name`),
+  KEY `id_type` (`id_type`),
+  KEY `id_group` (`id_group`),
+  CONSTRAINT `styles_fk_id_group` FOREIGN KEY (`id_group`) REFERENCES `stylegroup` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `styles_fk_id_type` FOREIGN KEY (`id_type`) REFERENCES `styletype` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=83 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -916,18 +1214,45 @@ DROP TABLE IF EXISTS `styles_fields`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `styles_fields` (
-  `id_styles` int NOT NULL,
-  `id_fields` int NOT NULL,
-  `default_value` varchar(1000) DEFAULT NULL,
+  `id_styles` int(10) unsigned zerofill NOT NULL,
+  `id_fields` int(10) unsigned zerofill NOT NULL,
+  `default_value` text,
   `help` longtext,
-  `disabled` tinyint(1) NOT NULL,
-  `hidden` int DEFAULT NULL,
-  `title` varchar(100) NOT NULL,
+  `disabled` tinyint(1) NOT NULL DEFAULT '0',
+  `hidden` int DEFAULT '0',
   PRIMARY KEY (`id_styles`,`id_fields`),
-  KEY `IDX_4F23ED26906D4F18` (`id_styles`),
-  KEY `IDX_4F23ED2658D25665` (`id_fields`),
-  CONSTRAINT `FK_4F23ED261DF44B12` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_4F23ED26D54B526F` FOREIGN KEY (`id_styles`) REFERENCES `styles` (`id`) ON DELETE CASCADE
+  KEY `id_styles` (`id_styles`),
+  KEY `id_fields` (`id_fields`),
+  CONSTRAINT `styles_fields_fk_id_fields` FOREIGN KEY (`id_fields`) REFERENCES `fields` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `styles_fields_fk_id_styles` FOREIGN KEY (`id_styles`) REFERENCES `styles` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `styletype`
+--
+
+DROP TABLE IF EXISTS `styletype`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `styletype` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `tasks`
+--
+
+DROP TABLE IF EXISTS `tasks`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `tasks` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `config` longtext,
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -939,22 +1264,23 @@ DROP TABLE IF EXISTS `transactions`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `transactions` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `transaction_time` datetime NOT NULL,
-  `id_transactionTypes` int DEFAULT NULL,
-  `id_transactionBy` int DEFAULT NULL,
-  `id_users` int DEFAULT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `transaction_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `id_transactionTypes` int unsigned DEFAULT NULL,
+  `id_transactionBy` int unsigned DEFAULT NULL,
+  `id_users` int unsigned DEFAULT NULL,
   `table_name` varchar(100) DEFAULT NULL,
-  `id_table_name` int DEFAULT NULL,
-  `transaction_log` longtext,
+  `id_table_name` int unsigned DEFAULT NULL,
+  `transaction_log` mediumtext,
   PRIMARY KEY (`id`),
-  KEY `IDX_EAA81A4CC41DBD5F` (`id_transactionTypes`),
-  KEY `IDX_EAA81A4CFC2E5563` (`id_transactionBy`),
-  KEY `IDX_EAA81A4CFA06E4D9` (`id_users`),
-  CONSTRAINT `FK_EAA81A4CC41DBD5F` FOREIGN KEY (`id_transactionTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_EAA81A4CFA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_EAA81A4CFC2E5563` FOREIGN KEY (`id_transactionBy`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=2596 DEFAULT CHARSET=utf8mb3;
+  KEY `transactions_fk_id_transactionTypes` (`id_transactionTypes`),
+  KEY `transactions_fk_id_transactionBy` (`id_transactionBy`),
+  KEY `transactions_fk_id_users` (`id_users`),
+  KEY `idx_transactions_table_name` (`table_name`),
+  CONSTRAINT `transactions_fk_id_transactionBy` FOREIGN KEY (`id_transactionBy`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `transactions_fk_id_transactionTypes` FOREIGN KEY (`id_transactionTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `transactions_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=75 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -965,20 +1291,20 @@ DROP TABLE IF EXISTS `user_activity`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_activity` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_users` int NOT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_users` int(10) unsigned zerofill NOT NULL,
   `url` varchar(200) NOT NULL,
-  `timestamp` datetime NOT NULL,
-  `id_type` int NOT NULL,
+  `timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `id_type` int(10) unsigned zerofill NOT NULL DEFAULT '0000000001',
   `exec_time` decimal(10,8) DEFAULT NULL,
   `keyword` varchar(100) DEFAULT NULL,
   `params` varchar(1000) DEFAULT NULL,
   `mobile` tinyint(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `IDX_4CF9ED5AFA06E4D9` (`id_users`),
-  KEY `IDX_4CF9ED5A7FE4B2B` (`id_type`),
-  CONSTRAINT `FK_4CF9ED5A7FE4B2B` FOREIGN KEY (`id_type`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_4CF9ED5AFA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
+  KEY `id_users` (`id_users`),
+  KEY `id_type` (`id_type`),
+  CONSTRAINT `fk_user_activity_fk_id_type` FOREIGN KEY (`id_type`) REFERENCES `activitytype` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_user_activity_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -990,36 +1316,35 @@ DROP TABLE IF EXISTS `users`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `users` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `email` varchar(100) NOT NULL,
   `name` varchar(100) DEFAULT NULL,
   `password` varchar(255) DEFAULT NULL,
+  `id_genders` int(10) unsigned zerofill DEFAULT NULL,
   `blocked` tinyint(1) NOT NULL DEFAULT '0',
-  `id_status` int DEFAULT '1',
+  `id_status` int(10) unsigned zerofill DEFAULT '0000000001',
   `intern` tinyint(1) NOT NULL DEFAULT '0',
   `token` varchar(32) DEFAULT NULL,
-  `id_languages` int DEFAULT NULL,
+  `id_languages` int(10) unsigned zerofill DEFAULT NULL,
   `is_reminded` tinyint(1) NOT NULL DEFAULT '1',
   `last_login` date DEFAULT NULL,
   `last_url` varchar(100) DEFAULT NULL,
+  `second_last_url` varchar(100) DEFAULT NULL,
   `device_id` varchar(100) DEFAULT NULL,
   `device_token` varchar(200) DEFAULT NULL,
   `security_questions` varchar(1000) DEFAULT NULL,
   `user_name` varchar(100) DEFAULT NULL,
-  `id_userTypes` int NOT NULL DEFAULT '72',
-  `id_timezones` int DEFAULT NULL,
+  `id_userTypes` int(10) unsigned zerofill NOT NULL DEFAULT '0000000072',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_1483A5E9E7927C74` (`email`),
-  UNIQUE KEY `UNIQ_1483A5E924A232CF` (`user_name`),
-  KEY `IDX_1483A5E93F6026C1` (`id_userTypes`),
-  KEY `IDX_1483A5E95D37D0F1` (`id_status`),
-  KEY `IDX_1483A5E920E4EF5E` (`id_languages`),
-  KEY `IDX_1483A5E9F5677479` (`id_timezones`),
-  CONSTRAINT `FK_1483A5E920E4EF5E` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_1483A5E93F6026C1` FOREIGN KEY (`id_userTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_1483A5E95D37D0F1` FOREIGN KEY (`id_status`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_users_id_timezones` FOREIGN KEY (`id_timezones`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=146 DEFAULT CHARSET=utf8mb3;
+  UNIQUE KEY `email` (`email`),
+  UNIQUE KEY `user_name` (`user_name`),
+  KEY `id_genders` (`id_genders`),
+  KEY `id_languages` (`id_languages`),
+  KEY `id_status` (`id_status`),
+  CONSTRAINT `fk_users_id_genders` FOREIGN KEY (`id_genders`) REFERENCES `genders` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_users_id_languages` FOREIGN KEY (`id_languages`) REFERENCES `languages` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_users_id_status` FOREIGN KEY (`id_status`) REFERENCES `userstatus` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1030,14 +1355,14 @@ DROP TABLE IF EXISTS `users_2fa_codes`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `users_2fa_codes` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `id_users` int NOT NULL,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `id_users` int(10) unsigned zerofill NOT NULL,
   `code` varchar(6) NOT NULL,
-  `created_at` datetime NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `expires_at` datetime NOT NULL,
-  `is_used` tinyint(1) NOT NULL,
+  `is_used` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
-  KEY `IDX_65A1E404FA06E4D9` (`id_users`)
+  KEY `id_users` (`id_users`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1049,32 +1374,29 @@ DROP TABLE IF EXISTS `users_groups`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `users_groups` (
-  `id_users` int NOT NULL,
-  `id_groups` int NOT NULL,
+  `id_users` int(10) unsigned zerofill NOT NULL,
+  `id_groups` int(10) unsigned zerofill NOT NULL,
   PRIMARY KEY (`id_users`,`id_groups`),
-  KEY `IDX_FF8AB7E0FA06E4D9` (`id_users`),
-  KEY `IDX_FF8AB7E0D65A8C9D` (`id_groups`),
-  CONSTRAINT `FK_FF8AB7E0D65A8C9D` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_FF8AB7E0FA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
+  KEY `id_users` (`id_users`),
+  KEY `id_groups` (`id_groups`),
+  CONSTRAINT `fk_users_groups_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_users_groups_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Table structure for table `users_roles`
+-- Table structure for table `userstatus`
 --
 
-DROP TABLE IF EXISTS `users_roles`;
+DROP TABLE IF EXISTS `userstatus`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `users_roles` (
-  `id_users` int NOT NULL,
-  `id_roles` int NOT NULL,
-  PRIMARY KEY (`id_users`,`id_roles`),
-  KEY `IDX_51498A8EFA06E4D9` (`id_users`),
-  KEY `IDX_51498A8E58BB6FF7` (`id_roles`),
-  CONSTRAINT `FK_51498A8E58BB6FF7` FOREIGN KEY (`id_roles`) REFERENCES `roles` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_51498A8EFA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `userstatus` (
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `description` varchar(500) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -1086,15 +1408,12 @@ DROP TABLE IF EXISTS `validation_codes`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `validation_codes` (
   `code` varchar(16) NOT NULL,
-  `id_users` int DEFAULT NULL,
-  `created` datetime NOT NULL,
+  `id_users` int(10) unsigned zerofill DEFAULT NULL,
+  `created` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `consumed` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-  `id_groups` int DEFAULT NULL,
   PRIMARY KEY (`code`),
-  KEY `IDX_DBEC45EFA06E4D9` (`id_users`),
-  KEY `IDX_DBEC45ED65A8C9D` (`id_groups`),
-  CONSTRAINT `FK_DBEC45ED65A8C9D` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_DBEC45EFA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
+  KEY `id_users` (`id_users`),
+  CONSTRAINT `validation_codes_fk_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -1106,11 +1425,136 @@ DROP TABLE IF EXISTS `version`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `version` (
-  `id` int NOT NULL AUTO_INCREMENT,
+  `id` int(10) unsigned zerofill NOT NULL AUTO_INCREMENT,
   `version` varchar(100) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb3;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Temporary view structure for view `view_acl_groups_pages`
+--
+
+DROP TABLE IF EXISTS `view_acl_groups_pages`;
+/*!50001 DROP VIEW IF EXISTS `view_acl_groups_pages`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_acl_groups_pages` AS SELECT 
+ 1 AS `id_groups`,
+ 1 AS `id_pages`,
+ 1 AS `acl_select`,
+ 1 AS `acl_insert`,
+ 1 AS `acl_update`,
+ 1 AS `acl_delete`,
+ 1 AS `keyword`,
+ 1 AS `url`,
+ 1 AS `protocol`,
+ 1 AS `id_actions`,
+ 1 AS `id_navigation_section`,
+ 1 AS `parent`,
+ 1 AS `is_headless`,
+ 1 AS `nav_position`,
+ 1 AS `footer_position`,
+ 1 AS `id_type`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_acl_users_in_groups_pages`
+--
+
+DROP TABLE IF EXISTS `view_acl_users_in_groups_pages`;
+/*!50001 DROP VIEW IF EXISTS `view_acl_users_in_groups_pages`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_acl_users_in_groups_pages` AS SELECT 
+ 1 AS `id_users`,
+ 1 AS `id_pages`,
+ 1 AS `acl_select`,
+ 1 AS `acl_insert`,
+ 1 AS `acl_update`,
+ 1 AS `acl_delete`,
+ 1 AS `keyword`,
+ 1 AS `url`,
+ 1 AS `protocol`,
+ 1 AS `id_actions`,
+ 1 AS `id_navigation_section`,
+ 1 AS `parent`,
+ 1 AS `is_headless`,
+ 1 AS `nav_position`,
+ 1 AS `footer_position`,
+ 1 AS `id_type`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_acl_users_pages`
+--
+
+DROP TABLE IF EXISTS `view_acl_users_pages`;
+/*!50001 DROP VIEW IF EXISTS `view_acl_users_pages`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_acl_users_pages` AS SELECT 
+ 1 AS `id_users`,
+ 1 AS `id_pages`,
+ 1 AS `acl_select`,
+ 1 AS `acl_insert`,
+ 1 AS `acl_update`,
+ 1 AS `acl_delete`,
+ 1 AS `keyword`,
+ 1 AS `url`,
+ 1 AS `protocol`,
+ 1 AS `id_actions`,
+ 1 AS `id_navigation_section`,
+ 1 AS `parent`,
+ 1 AS `is_headless`,
+ 1 AS `nav_position`,
+ 1 AS `footer_position`,
+ 1 AS `id_type`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_acl_users_union`
+--
+
+DROP TABLE IF EXISTS `view_acl_users_union`;
+/*!50001 DROP VIEW IF EXISTS `view_acl_users_union`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_acl_users_union` AS SELECT 
+ 1 AS `id_users`,
+ 1 AS `id_pages`,
+ 1 AS `acl_select`,
+ 1 AS `acl_insert`,
+ 1 AS `acl_update`,
+ 1 AS `acl_delete`,
+ 1 AS `keyword`,
+ 1 AS `url`,
+ 1 AS `protocol`,
+ 1 AS `id_actions`,
+ 1 AS `id_navigation_section`,
+ 1 AS `parent`,
+ 1 AS `is_headless`,
+ 1 AS `nav_position`,
+ 1 AS `footer_position`,
+ 1 AS `id_type`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_cmspreferences`
+--
+
+DROP TABLE IF EXISTS `view_cmspreferences`;
+/*!50001 DROP VIEW IF EXISTS `view_cmspreferences`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_cmspreferences` AS SELECT 
+ 1 AS `callback_api_key`,
+ 1 AS `default_language_id`,
+ 1 AS `default_language`,
+ 1 AS `locale`,
+ 1 AS `firebase_config`,
+ 1 AS `anonymous_users`*/;
+SET character_set_client = @saved_cs_client;
 
 --
 -- Temporary view structure for view `view_datatables`
@@ -1130,6 +1574,27 @@ SET @saved_cs_client     = @@character_set_client;
 SET character_set_client = @saved_cs_client;
 
 --
+-- Temporary view structure for view `view_datatables_data`
+--
+
+DROP TABLE IF EXISTS `view_datatables_data`;
+/*!50001 DROP VIEW IF EXISTS `view_datatables_data`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_datatables_data` AS SELECT 
+ 1 AS `table_id`,
+ 1 AS `row_id`,
+ 1 AS `entry_date`,
+ 1 AS `col_id`,
+ 1 AS `table_name`,
+ 1 AS `col_name`,
+ 1 AS `value`,
+ 1 AS `timestamp`,
+ 1 AS `id_users`,
+ 1 AS `displayName`*/;
+SET character_set_client = @saved_cs_client;
+
+--
 -- Temporary view structure for view `view_fields`
 --
 
@@ -1143,8 +1608,266 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `display`,
  1 AS `field_type_id`,
  1 AS `field_type`,
- 1 AS `position`,
- 1 AS `config`*/;
+ 1 AS `position`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_formactions`
+--
+
+DROP TABLE IF EXISTS `view_formactions`;
+/*!50001 DROP VIEW IF EXISTS `view_formactions`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_formactions` AS SELECT 
+ 1 AS `id`,
+ 1 AS `action_name`,
+ 1 AS `dataTable_name`,
+ 1 AS `id_formProjectActionTriggerTypes`,
+ 1 AS `trigger_type`,
+ 1 AS `trigger_type_code`,
+ 1 AS `config`,
+ 1 AS `id_dataTables`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_mailqueue`
+--
+
+DROP TABLE IF EXISTS `view_mailqueue`;
+/*!50001 DROP VIEW IF EXISTS `view_mailqueue`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_mailqueue` AS SELECT 
+ 1 AS `id`,
+ 1 AS `from_email`,
+ 1 AS `from_name`,
+ 1 AS `status_code`,
+ 1 AS `status`,
+ 1 AS `type_code`,
+ 1 AS `type`,
+ 1 AS `date_create`,
+ 1 AS `date_to_be_executed`,
+ 1 AS `date_executed`,
+ 1 AS `reply_to`,
+ 1 AS `recipient_emails`,
+ 1 AS `cc_emails`,
+ 1 AS `bcc_emails`,
+ 1 AS `subject`,
+ 1 AS `body`,
+ 1 AS `is_html`,
+ 1 AS `id_mailQueue`,
+ 1 AS `id_jobTypes`,
+ 1 AS `id_jobStatus`,
+ 1 AS `config`,
+ 1 AS `id_dataRows`,
+ 1 AS `dataTables_name`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_notifications`
+--
+
+DROP TABLE IF EXISTS `view_notifications`;
+/*!50001 DROP VIEW IF EXISTS `view_notifications`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_notifications` AS SELECT 
+ 1 AS `id`,
+ 1 AS `status_code`,
+ 1 AS `status`,
+ 1 AS `type_code`,
+ 1 AS `type`,
+ 1 AS `date_create`,
+ 1 AS `date_to_be_executed`,
+ 1 AS `date_executed`,
+ 1 AS `recipient`,
+ 1 AS `subject`,
+ 1 AS `body`,
+ 1 AS `url`,
+ 1 AS `id_notifications`,
+ 1 AS `id_jobTypes`,
+ 1 AS `id_jobStatus`,
+ 1 AS `config`,
+ 1 AS `id_dataRows`,
+ 1 AS `dataTables_name`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_qualtricsactions`
+--
+
+DROP TABLE IF EXISTS `view_qualtricsactions`;
+/*!50001 DROP VIEW IF EXISTS `view_qualtricsactions`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_qualtricsactions` AS SELECT 
+ 1 AS `id`,
+ 1 AS `action_name`,
+ 1 AS `project_id`,
+ 1 AS `project_name`,
+ 1 AS `qualtrics_api`,
+ 1 AS `participant_variable`,
+ 1 AS `api_mailing_group_id`,
+ 1 AS `survey_id`,
+ 1 AS `qualtrics_survey_id`,
+ 1 AS `survey_name`,
+ 1 AS `id_qualtricsSurveyTypes`,
+ 1 AS `group_variable`,
+ 1 AS `survey_type`,
+ 1 AS `survey_type_code`,
+ 1 AS `id_qualtricsProjectActionTriggerTypes`,
+ 1 AS `trigger_type`,
+ 1 AS `trigger_type_code`,
+ 1 AS `groups`,
+ 1 AS `id_groups`,
+ 1 AS `functions`,
+ 1 AS `functions_code`,
+ 1 AS `id_functions`,
+ 1 AS `schedule_info`,
+ 1 AS `id_qualtricsActionScheduleTypes`,
+ 1 AS `action_schedule_type_code`,
+ 1 AS `action_schedule_type`,
+ 1 AS `id_qualtricsSurveys_reminder`,
+ 1 AS `survey_reminder_name`,
+ 1 AS `id_qualtricsActions`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_qualtricsreminders`
+--
+
+DROP TABLE IF EXISTS `view_qualtricsreminders`;
+/*!50001 DROP VIEW IF EXISTS `view_qualtricsreminders`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_qualtricsreminders` AS SELECT 
+ 1 AS `user_id`,
+ 1 AS `email`,
+ 1 AS `user_name`,
+ 1 AS `code`,
+ 1 AS `id_scheduledJobs`,
+ 1 AS `status_code`,
+ 1 AS `status`,
+ 1 AS `id_qualtricsSurveys`,
+ 1 AS `qualtrics_survey_id`,
+ 1 AS `id_qualtricsActions`,
+ 1 AS `session_start_date`,
+ 1 AS `valid`,
+ 1 AS `valid_till`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_qualtricssurveys`
+--
+
+DROP TABLE IF EXISTS `view_qualtricssurveys`;
+/*!50001 DROP VIEW IF EXISTS `view_qualtricssurveys`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_qualtricssurveys` AS SELECT 
+ 1 AS `id`,
+ 1 AS `name`,
+ 1 AS `description`,
+ 1 AS `qualtrics_survey_id`,
+ 1 AS `id_qualtricsSurveyTypes`,
+ 1 AS `participant_variable`,
+ 1 AS `group_variable`,
+ 1 AS `created_on`,
+ 1 AS `edited_on`,
+ 1 AS `config`,
+ 1 AS `survey_type`,
+ 1 AS `survey_type_code`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_scheduledjobs`
+--
+
+DROP TABLE IF EXISTS `view_scheduledjobs`;
+/*!50001 DROP VIEW IF EXISTS `view_scheduledjobs`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_scheduledjobs` AS SELECT 
+ 1 AS `id`,
+ 1 AS `status_code`,
+ 1 AS `status`,
+ 1 AS `type_code`,
+ 1 AS `type`,
+ 1 AS `config`,
+ 1 AS `date_create`,
+ 1 AS `date_to_be_executed`,
+ 1 AS `date_executed`,
+ 1 AS `description`,
+ 1 AS `recipient`,
+ 1 AS `title`,
+ 1 AS `message`,
+ 1 AS `id_mailQueue`,
+ 1 AS `id_jobTypes`,
+ 1 AS `id_jobStatus`,
+ 1 AS `id_formActions`,
+ 1 AS `id_dataRows`,
+ 1 AS `dataTables_name`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_scheduledjobs_reminders`
+--
+
+DROP TABLE IF EXISTS `view_scheduledjobs_reminders`;
+/*!50001 DROP VIEW IF EXISTS `view_scheduledjobs_reminders`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_scheduledjobs_reminders` AS SELECT 
+ 1 AS `id_scheduledJobs`,
+ 1 AS `id_dataTables`,
+ 1 AS `session_start_date`,
+ 1 AS `session_end_date`,
+ 1 AS `id_users`,
+ 1 AS `job_status_code`,
+ 1 AS `job_status`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_scheduledjobs_transactions`
+--
+
+DROP TABLE IF EXISTS `view_scheduledjobs_transactions`;
+/*!50001 DROP VIEW IF EXISTS `view_scheduledjobs_transactions`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_scheduledjobs_transactions` AS SELECT 
+ 1 AS `id`,
+ 1 AS `date_create`,
+ 1 AS `date_to_be_executed`,
+ 1 AS `date_executed`,
+ 1 AS `transaction_id`,
+ 1 AS `transaction_time`,
+ 1 AS `transaction_type`,
+ 1 AS `transaction_by`,
+ 1 AS `user_name`,
+ 1 AS `transaction_verbal_log`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_sections_fields`
+--
+
+DROP TABLE IF EXISTS `view_sections_fields`;
+/*!50001 DROP VIEW IF EXISTS `view_sections_fields`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_sections_fields` AS SELECT 
+ 1 AS `id_sections`,
+ 1 AS `section_name`,
+ 1 AS `content`,
+ 1 AS `meta`,
+ 1 AS `id_styles`,
+ 1 AS `style_name`,
+ 1 AS `id_fields`,
+ 1 AS `field_name`,
+ 1 AS `locale`,
+ 1 AS `gender`*/;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -1158,11 +1881,11 @@ SET @saved_cs_client     = @@character_set_client;
 /*!50001 CREATE VIEW `view_style_fields` AS SELECT 
  1 AS `style_id`,
  1 AS `style_name`,
+ 1 AS `style_type`,
  1 AS `style_group`,
  1 AS `field_id`,
  1 AS `field_name`,
  1 AS `field_type`,
- 1 AS `config`,
  1 AS `display`,
  1 AS `position`,
  1 AS `default_value`,
@@ -1183,10 +1906,78 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `style_id`,
  1 AS `style_name`,
  1 AS `style_description`,
+ 1 AS `style_type_id`,
+ 1 AS `style_type`,
  1 AS `style_group_id`,
  1 AS `style_group`,
  1 AS `style_group_description`,
  1 AS `style_group_position`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_tasks`
+--
+
+DROP TABLE IF EXISTS `view_tasks`;
+/*!50001 DROP VIEW IF EXISTS `view_tasks`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_tasks` AS SELECT 
+ 1 AS `id`,
+ 1 AS `status_code`,
+ 1 AS `status`,
+ 1 AS `type_code`,
+ 1 AS `type`,
+ 1 AS `date_create`,
+ 1 AS `date_to_be_executed`,
+ 1 AS `date_executed`,
+ 1 AS `recipient`,
+ 1 AS `config`,
+ 1 AS `id_tasks`,
+ 1 AS `id_jobTypes`,
+ 1 AS `id_jobStatus`,
+ 1 AS `description`,
+ 1 AS `id_dataRows`,
+ 1 AS `dataTables_name`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_transactions`
+--
+
+DROP TABLE IF EXISTS `view_transactions`;
+/*!50001 DROP VIEW IF EXISTS `view_transactions`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_transactions` AS SELECT 
+ 1 AS `id`,
+ 1 AS `transaction_time`,
+ 1 AS `id_transactionTypes`,
+ 1 AS `transaction_type`,
+ 1 AS `id_transactionBy`,
+ 1 AS `transaction_by`,
+ 1 AS `id_users`,
+ 1 AS `user_name`,
+ 1 AS `table_name`,
+ 1 AS `id_table_name`,
+ 1 AS `transaction_verbal_log`*/;
+SET character_set_client = @saved_cs_client;
+
+--
+-- Temporary view structure for view `view_user_codes`
+--
+
+DROP TABLE IF EXISTS `view_user_codes`;
+/*!50001 DROP VIEW IF EXISTS `view_user_codes`*/;
+SET @saved_cs_client     = @@character_set_client;
+/*!50503 SET character_set_client = utf8mb4 */;
+/*!50001 CREATE VIEW `view_user_codes` AS SELECT 
+ 1 AS `id`,
+ 1 AS `email`,
+ 1 AS `name`,
+ 1 AS `blocked`,
+ 1 AS `code`,
+ 1 AS `intern`*/;
 SET character_set_client = @saved_cs_client;
 
 --
@@ -1214,10 +2005,6 @@ SET @saved_cs_client     = @@character_set_client;
  1 AS `user_type_code`,
  1 AS `user_type`*/;
 SET character_set_client = @saved_cs_client;
-
---
--- Dumping events for database 'sym_test'
---
 
 --
 -- Dumping routines for database 'sym_test'
@@ -1262,6 +2049,122 @@ BEGIN
 	FROM fieldType
 	WHERE name = field_type COLLATE utf8_unicode_ci;
     RETURN field_type_id;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP FUNCTION IF EXISTS `get_form_fields_helper` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `get_form_fields_helper`(form_id_param INT) RETURNS text CHARSET utf8mb3
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN 
+	SET @@group_concat_max_len = 32000000;
+	SET @sql = NULL;
+	SELECT
+	  GROUP_CONCAT(DISTINCT
+		CONCAT(
+		  'max(case when sft_in.content = "',
+		  sft_in.content,
+		  '" then value end) as `',
+		  replace(sft_in.content, ' ', ''), '`'
+		)
+	  ) INTO @sql
+	from user_input ui
+	left join users u on (ui.id_users = u.id)
+	left join validation_codes vc on (ui.id_users = vc.id_users)
+	left join sections field on (ui.id_sections = field.id)	
+	left join user_input_record record  on (ui.id_user_input_record = record.id)
+    LEFT JOIN sections form ON (record.id_sections = form.id)
+	LEFT JOIN sections_fields_translation AS sft_in ON sft_in.id_sections = ui.id_sections AND sft_in.id_fields = 57
+	LEFT JOIN sections_fields_translation AS sft_if ON sft_if.id_sections = record.id_sections AND sft_if.id_fields = 57
+    WHERE form.id = form_id_param;
+	
+    RETURN @sql;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP FUNCTION IF EXISTS `get_page_fields_helper` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `get_page_fields_helper`(page_id INT, language_id INT, default_language_id INT) RETURNS text CHARSET utf8mb3
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN 
+    SET @@group_concat_max_len = 32000000;
+    SET @sql = NULL;
+    SELECT
+      GROUP_CONCAT(DISTINCT
+        CONCAT(
+          'MAX(CASE WHEN f.`name` = "',
+          f.`name`,
+          '" THEN COALESCE((SELECT content FROM pages_fields_translation AS pft WHERE pft.id_pages = p.id AND pft.id_fields = f.id AND pft.id_languages = ',language_id,' AND content <> "" LIMIT 1), COALESCE((SELECT content FROM pages_fields_translation AS pft WHERE pft.id_pages = p.id AND pft.id_fields = f.id AND pft.id_languages = (CASE WHEN f.display = 0 THEN 1 ELSE ',default_language_id,' END) LIMIT 1), "")) END) AS `',
+          REPLACE(f.`name`, ' ', ''), '`'
+        )
+      ) INTO @sql
+    FROM  pages AS p
+    LEFT JOIN pageType_fields AS ptf ON ptf.id_pageType = p.id_type 
+    LEFT JOIN fields AS f ON f.id = ptf.id_fields
+    WHERE p.id = page_id OR page_id = -1;
+    
+    RETURN @sql;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP FUNCTION IF EXISTS `get_sections_fields_helper` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` FUNCTION `get_sections_fields_helper`(section_id INT, language_id INT, gender_id INT) RETURNS text CHARSET utf8mb3
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN 
+	SET @@group_concat_max_len = 32000000;
+	SET @sql = NULL;
+	SELECT
+	  GROUP_CONCAT(DISTINCT
+		CONCAT(
+		  'max(case when f.`name` = "',
+		  f.`name`,
+		  '" then sft.content end) as `',
+		  replace(f.`name`, ' ', ''), '`'
+		)
+	  ) INTO @sql
+	from  sections AS s
+	LEFT JOIN sections_fields_translation AS sft ON sft.id_sections = s.id AND (language_id = sft.id_languages OR sft.id_languages = 1) AND (sft.id_genders = gender_id)
+	LEFT JOIN fields AS f ON f.id = sft.id_fields
+    WHERE s.id = section_id OR section_id = -1;
+	
+    RETURN @sql;
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1322,7 +2225,7 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `add_foreign_key`(param_table VARCHAR(100), fk_name VARCHAR(100), fk_column VARCHAR(100), fk_references VARCHAR(200))
 BEGIN	
@@ -1335,7 +2238,7 @@ BEGIN
             AND `constraint_name` = fk_name
 		) > 0,
         "SELECT 'The foreign key already exists in the table'",
-        CONCAT('ALTER TABLE ', param_table, ' ADD CONSTRAINT ', fk_name, ' FOREIGN KEY (', fk_column, ') REFERENCES ', fk_references, ' ON DELETE CASCADE;')
+        CONCAT('ALTER TABLE ', param_table, ' ADD CONSTRAINT ', fk_name, ' FOREIGN KEY (', fk_column, ') REFERENCES ', fk_references, ' ON DELETE CASCADE ON UPDATE CASCADE;')
     ));
 	PREPARE st FROM @sqlstmt;
 	EXECUTE st;
@@ -1354,111 +2257,24 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `add_index`(
-    param_table VARCHAR(100),
-    param_index_name VARCHAR(100),
-    param_index_columns VARCHAR(1000),
-    param_is_unique BOOLEAN
-)
-BEGIN
-    DECLARE column_list TEXT DEFAULT '';
-    DECLARE remaining_columns TEXT DEFAULT param_index_columns;
-    DECLARE current_column VARCHAR(100);
-    DECLARE comma_pos INT;
-
-    -- Check if index already exists
-    IF (
-        SELECT COUNT(*)
-        FROM information_schema.STATISTICS
-        WHERE `table_schema` = DATABASE()
-        AND `table_name` = param_table
-        AND `index_name` = param_index_name
-    ) > 0 THEN
-        SELECT CONCAT('Index ', param_index_name, ' already exists on table ', param_table) AS message;
-    ELSE
-        -- Build column list with proper backticks
-        WHILE LENGTH(remaining_columns) > 0 DO
-            SET comma_pos = LOCATE(',', remaining_columns);
-            IF comma_pos > 0 THEN
-                SET current_column = TRIM(SUBSTRING(remaining_columns, 1, comma_pos - 1));
-                SET remaining_columns = SUBSTRING(remaining_columns, comma_pos + 1);
-            ELSE
-                SET current_column = TRIM(remaining_columns);
-                SET remaining_columns = '';
-            END IF;
-
-            IF LENGTH(column_list) > 0 THEN
-                SET column_list = CONCAT(column_list, ', `', current_column, '`');
-            ELSE
-                SET column_list = CONCAT('`', current_column, '`');
-            END IF;
-        END WHILE;
-
-        -- Create the index
-        SET @sqlstmt = CONCAT(
-            'CREATE ',
-            IF(param_is_unique, 'UNIQUE ', ''),
-            'INDEX ',
-            param_index_name,
-            ' ON `',
-            param_table,
-            '` (',
-            column_list,
-            ');'
-        );
-
-        PREPARE st FROM @sqlstmt;
-        EXECUTE st;
-        DEALLOCATE PREPARE st;
-
-        SELECT CONCAT('Index ', param_index_name, ' created on table ', param_table) AS message;
-    END IF;
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 DROP PROCEDURE IF EXISTS `add_primary_key` */;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8mb4 */ ;
-/*!50003 SET character_set_results = utf8mb4 */ ;
-/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `add_primary_key`(
-  IN `param_table`   VARCHAR(100),
-  IN `param_columns` VARCHAR(500)  -- e.g. 'col1, col2'
-)
-BEGIN
-  DECLARE cnt INT DEFAULT 0;
-
-  -- Check if a PRIMARY KEY already exists on the table
-  SELECT COUNT(*) INTO cnt
-    FROM information_schema.TABLE_CONSTRAINTS
-   WHERE table_schema    = DATABASE()
-     AND table_name      = param_table
-     AND constraint_type = 'PRIMARY KEY';
-
-  -- Build the appropriate statement
-  IF cnt = 0 THEN
-    SET @sqlstmt = CONCAT(
-      'ALTER TABLE `', param_table,
-      '` ADD PRIMARY KEY (', param_columns, ');'
-    );
-  ELSE
-    SET @sqlstmt = "SELECT 'Primary key already exists on table.'";
-  END IF;
-
-  -- Execute it
-  PREPARE st FROM @sqlstmt;
-  EXECUTE st;
-  DEALLOCATE PREPARE st;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `add_index`(param_table VARCHAR(100), param_index_name VARCHAR(100), param_index_column VARCHAR(1000))
+BEGIN	
+    SET @sqlstmt = (SELECT IF(
+		(
+			SELECT COUNT(*)
+            FROM information_schema.STATISTICS 
+			WHERE `table_schema` = DATABASE()
+			AND `table_name` = param_table
+            AND `index_name` = param_index_name
+		) > 0,
+        "SELECT 'The index already exists in the table'",
+        CONCAT('CREATE INDEX ', param_index_name, ' ON ', param_table, ' (', param_index_column, ');')
+    ));
+	PREPARE st FROM @sqlstmt;
+	EXECUTE st;
+	DEALLOCATE PREPARE st;	
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -1543,7 +2359,7 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `drop_foreign_key`(param_table VARCHAR(100), fk_name VARCHAR(100))
 BEGIN	
@@ -1556,7 +2372,7 @@ BEGIN
             AND `constraint_name` = fk_name
 		) = 0,
         "SELECT 'Foreign key does not exist'",
-        CONCAT('ALTER TABLE `', param_table, '` DROP FOREIGN KEY ', fk_name, ' ;')
+        CONCAT('ALTER TABLE ', param_table, ' DROP FOREIGN KEY ', fk_name, ' ;')
     ));
 	PREPARE st FROM @sqlstmt;
 	EXECUTE st;
@@ -1575,21 +2391,21 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
 CREATE DEFINER=`root`@`localhost` PROCEDURE `drop_index`(param_table VARCHAR(100), param_index_name VARCHAR(100))
 BEGIN	
-    SET @sqlstmt = (SELECT IF(
+	SET @sqlstmt = (SELECT IF(
 		(
 			SELECT COUNT(*)
-            FROM information_schema.STATISTICS 
+			FROM information_schema.STATISTICS 
 			WHERE `table_schema` = DATABASE()
 			AND `table_name` = param_table
-            AND `index_name` = param_index_name
+			AND `index_name` = param_index_name
 		) > 0,        
-        CONCAT('ALTER TABLE `', param_table, '` DROP INDEX ', param_index_name),
-        "SELECT 'The index does not exists in the table'"
-    ));
+		CONCAT('ALTER TABLE ', param_table, ' DROP INDEX ', param_index_name),
+		"SELECT 'The index does not exists in the table'"
+	));
 	PREPARE st FROM @sqlstmt;
 	EXECUTE st;
 	DEALLOCATE PREPARE st;	
@@ -1631,108 +2447,6 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_all_languages` */;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8mb4 */ ;
-/*!50003 SET character_set_results = utf8mb4 */ ;
-/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_all_languages`(
-	IN table_id_param INT,
-	IN user_id_param INT,
-	IN filter_param VARCHAR(1000),
-	IN exclude_deleted_param BOOLEAN -- If true it will exclude the deleted records and it will not return them
-)
-    READS SQL DATA
-    DETERMINISTIC
-BEGIN
-	SET @@group_concat_max_len = 32000000;
-	SET @sql = NULL;
-
-	-- Build the dynamic column selection
-	SELECT
-	GROUP_CONCAT(DISTINCT
-		CONCAT(
-			'MAX(CASE WHEN col.`name` = "',
-				col.name,
-				'" THEN cell.`value` END) AS `',
-			replace(col.name, ' ', ''), '`'
-		)
-	) INTO @sql
-	FROM  dataTables t
-	INNER JOIN dataCols col on (t.id = col.id_dataTables)
-	WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
-
-	IF (@sql is null) THEN
-		SELECT `name` from view_dataTables where 1=2;
-	ELSE
-		BEGIN
-			-- User filter
-			SET @user_filter = '';
-			IF user_id_param > 0 THEN
-				SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
-			END IF;
-
-			-- Time period filter
-			SET @time_period_filter = '';
-			CASE
-				WHEN filter_param LIKE '%LAST_HOUR%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
-				WHEN filter_param LIKE '%LAST_DAY%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
-				WHEN filter_param LIKE '%LAST_WEEK%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
-				WHEN filter_param LIKE '%LAST_MONTH%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
-				WHEN filter_param LIKE '%LAST_YEAR%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
-				ELSE
-					SET @time_period_filter = '';
-			END CASE;
-
-			-- Exclude deleted filter
-			SET @exclude_deleted_filter = '';
-			CASE
-				WHEN exclude_deleted_param = TRUE THEN
-					SET @exclude_deleted_filter = CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
-				ELSE
-					SET @exclude_deleted_filter = '';
-			END CASE;
-
-			-- Build the main query - group by record and language to get separate rows for each language
-			SET @sql = CONCAT('SELECT r.id AS record_id, r.`timestamp` AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code,
-					r.id_actionTriggerTypes, l.lookup_code AS triggerType, cell.id_languages, lang.locale AS language_locale, lang.language AS language_name,',
-					@sql,
-					' FROM dataTables t
-					INNER JOIN dataRows r ON (t.id = r.id_dataTables)
-					LEFT JOIN users u ON (r.id_users = u.id)
-					LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
-					LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
-					INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
-					INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
-					LEFT JOIN languages lang ON (lang.id = cell.id_languages)
-					WHERE t.id = ', table_id_param, @user_filter, @time_period_filter, @exclude_deleted_filter,
-					' GROUP BY r.id, cell.id_languages ORDER BY r.id, cell.id_languages');
-
-			-- Apply the additional filter
-			SET @sql = CONCAT('SELECT * FROM (', @sql, ') AS filtered_data WHERE 1=1 ', filter_param);
-
-			-- select @sql; -- Uncomment for debugging
-			PREPARE stmt FROM @sql;
-			EXECUTE stmt;
-			DEALLOCATE PREPARE stmt;
-		END;
-	END IF;
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_filter` */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
@@ -1741,109 +2455,94 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_filter`(
-	IN table_id_param INT,
-	IN user_id_param INT,
-	IN filter_param VARCHAR(1000),
-	IN exclude_deleted_param BOOLEAN, -- If true it will exclude the deleted records and it will not return them
-	IN language_id_param INT -- Language ID for translations (default 1 = internal language only)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_filter`( 
+    IN table_id_param INT, 
+    IN user_id_param INT, 
+    IN filter_param VARCHAR(1000),
+    IN exclude_deleted_param BOOLEAN, -- If true it will exclude the deleted records and it will not return them
+    IN selected_columns_param VARCHAR(4000) -- Comma separated list of data column names to be loaded
 )
     READS SQL DATA
     DETERMINISTIC
 BEGIN
-	SET @@group_concat_max_len = 32000000;
-	SET @sql = NULL;
+    SET @@group_concat_max_len = 32000000;
+    SET @sql = NULL;
+    SELECT
+    GROUP_CONCAT(DISTINCT
+        CONCAT(
+            'MAX(CASE WHEN col.`name` = "',
+                col.name,
+                '" THEN `value` END) AS `',
+            replace(col.name, ' ', ''), '`'
+        )
+    ) INTO @sql
+    FROM  dataTables t
+    INNER JOIN dataCols col on (t.id = col.id_dataTables)
+    WHERE t.id = table_id_param
+        AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code')
+        AND (
+            IFNULL(TRIM(selected_columns_param), '') = ''
+            OR FIND_IN_SET(col.`name`, selected_columns_param) > 0
+        );
 
-	-- Build the dynamic column selection (same as before)
-	SELECT
-	GROUP_CONCAT(DISTINCT
-		CONCAT(
-			'MAX(CASE WHEN col.`name` = "',
-				col.name,
-				'" THEN `value` END) AS `',
-			replace(col.name, ' ', ''), '`'
-		)
-	) INTO @sql
-	FROM  dataTables t
-	INNER JOIN dataCols col on (t.id = col.id_dataTables)
-	WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
-
-	IF (@sql is null) THEN
-		SELECT `name` from view_dataTables where 1=2;
-	ELSE
-		BEGIN
-			-- User filter (same as before)
-			SET @user_filter = '';
-			IF user_id_param > 0 THEN
-				SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
-			END IF;
-
-			-- Time period filter (same as before)
-			SET @time_period_filter = '';
-			CASE
-				WHEN filter_param LIKE '%LAST_HOUR%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
-				WHEN filter_param LIKE '%LAST_DAY%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
-				WHEN filter_param LIKE '%LAST_WEEK%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
-				WHEN filter_param LIKE '%LAST_MONTH%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
-				WHEN filter_param LIKE '%LAST_YEAR%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
-				ELSE
-					SET @time_period_filter = '';
-			END CASE;
-
-			-- Exclude deleted filter (same as before)
-			SET @exclude_deleted_filter = '';
-			CASE
-				WHEN exclude_deleted_param = TRUE THEN
-					SET @exclude_deleted_filter = CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
-				ELSE
-					SET @exclude_deleted_filter = '';
-			END CASE;
-
-			-- Language filter for translations
-			-- Always include language 1 (internal), and also include the requested language if different
-			SET @language_filter = '';
-			IF language_id_param IS NULL OR language_id_param = 1 THEN
-				-- Default: only internal language (language_id = 1)
-				SET @language_filter = ' AND cell.id_languages = 1';
-			ELSE
-				-- Include both internal language (1) and requested language
-				-- This ensures we always have fallback to language 1, and translations where available
-				SET @language_filter = CONCAT(' AND cell.id_languages IN (1, ', language_id_param, ')');
-			END IF;
-
-			-- Build the main query with language filtering
-			SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
-					r.`timestamp` AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
-					' FROM dataTables t
-					INNER JOIN dataRows r ON (t.id = r.id_dataTables)
-					INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
-					INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
-					LEFT JOIN users u ON (r.id_users = u.id)
-					LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
-					LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
-					WHERE t.id = ', table_id_param, @user_filter, @time_period_filter, @exclude_deleted_filter, @language_filter,
-					' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
-
-			-- select @sql; -- Uncomment for debugging
-			PREPARE stmt FROM @sql;
-			EXECUTE stmt;
-			DEALLOCATE PREPARE stmt;
-		END;
-	END IF;
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
+    ELSE
+        BEGIN
+            SET @user_filter = '';
+            IF user_id_param > 0 THEN
+                SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
+            END IF;	
+            
+            SET @time_period_filter = '';
+            CASE 
+                WHEN filter_param LIKE '%LAST_HOUR%' THEN
+                    SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
+                WHEN filter_param LIKE '%LAST_DAY%' THEN
+                    SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
+                WHEN filter_param LIKE '%LAST_WEEK%' THEN
+                    SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
+                WHEN filter_param LIKE '%LAST_MONTH%' THEN
+                    SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
+                WHEN filter_param LIKE '%LAST_YEAR%' THEN
+                    SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
+                ELSE
+                    SET @time_period_filter = '';					
+            END CASE;
+            
+            SET @exclude_deleted_filter = '';
+            CASE 
+                WHEN exclude_deleted_param = TRUE THEN
+                    SET @exclude_deleted_filter = CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));				
+                ELSE
+                    SET @exclude_deleted_filter = '';					
+            END CASE;
+            
+            SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id, 
+                    r.`timestamp` AS entry_date, r.id_users, u.`name` AS user_name, MAX(vc.code) AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql, 
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    WHERE t.id = ', table_id_param, @user_filter, @time_period_filter, @exclude_deleted_filter, 
+                    ' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
+            PREPARE stmt FROM @sql;
+            EXECUTE stmt;
+            DEALLOCATE PREPARE stmt;
+        END;
+    END IF;
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_user_group_filter` */;
+/*!50003 DROP PROCEDURE IF EXISTS `get_group_acl` */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
 /*!50003 SET @saved_col_connection = @@collation_connection */ ;
@@ -1851,129 +2550,85 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_user_group_filter`(
-	IN table_id_param INT,
-	IN current_user_id_param INT, -- Current user making the request
-	IN filter_param VARCHAR(1000),
-	IN exclude_deleted_param BOOLEAN, -- If true it will exclude the deleted records and it will not return them
-	IN language_id_param INT -- Language ID for translations (default 1 = internal language only)
-)
-    READS SQL DATA
-    DETERMINISTIC
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_group_acl`( param_group_id INT, param_page_id INT )
 BEGIN
-	SET @@group_concat_max_len = 32000000;
-	SET @sql = NULL;
 
-	-- Build the dynamic column selection (same as before)
-	SELECT
-	GROUP_CONCAT(DISTINCT
-		CONCAT(
-			'MAX(CASE WHEN col.`name` = "',
-				col.name,
-				'" THEN `value` END) AS `',
-			replace(col.name, ' ', ''), '`'
-		)
-	) INTO @sql
-	FROM  dataTables t
-	INNER JOIN dataCols col on (t.id = col.id_dataTables)
-	WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
+    SELECT acl.id_groups, acl.id_pages, 
+	CASE
+		WHEN p.id_type = 4 then 1 -- the page is open all grousp should has access for select
+		ELSE acl.acl_select
+	END AS acl_select, 
+	acl.acl_insert, acl.acl_update, acl.acl_delete, p.keyword,
+	p.url, p.protocol, p.id_actions, p.id_navigation_section, p.parent, p.is_headless, p.nav_position,p.footer_position,
+	p.id_type
+	FROM acl_groups acl
+	INNER JOIN pages p ON (acl.id_pages = p.id or (p.id_type = 4 and acl.id_pages = null)) -- add all open pages although that there is no specific ACL
+    WHERE acl.id_groups = param_group_id AND acl.id_pages = (CASE WHEN param_page_id = -1 THEN acl.id_pages ELSE param_page_id END)
+	GROUP BY acl.id_groups, acl.id_pages, acl.acl_select, acl.acl_insert, acl.acl_update, acl.acl_delete, p.keyword, p.url, 
+	p.protocol, p.id_actions, p.id_navigation_section, p.parent, p.is_headless, p.nav_position,p.footer_position, p.id_type;
+    
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `get_navigation` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_navigation`( param_locale VARCHAR(10) )
+BEGIN
 
-	IF (@sql is null) THEN
-		SELECT `name` from view_dataTables where 1=2;
-	ELSE
-		BEGIN
-			-- User group filter - find accessible users dynamically
-			-- Get resource type ID for groups
-			SET @group_resource_type_id = (SELECT id FROM lookups WHERE type_code = 'resourceTypes' AND lookup_code = 'group' LIMIT 1);
-
-			-- Find all users that the current user can access through group permissions
-			DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
-			CREATE TEMPORARY TABLE accessible_users_temp AS
-			SELECT DISTINCT ug.id_users
-			FROM users_groups ug
-			WHERE ug.id_groups IN (
-				-- Find groups the current user can access
-				SELECT rda.resource_id
-				FROM role_data_access rda
-				INNER JOIN roles r ON rda.id_roles = r.id
-				INNER JOIN users_roles ur ON r.id = ur.id_roles
-				WHERE ur.id_users = current_user_id_param
-				AND rda.id_resourceTypes = @group_resource_type_id
-				AND rda.crud_permissions > 0
-			);
-
-			-- Build user filter using the accessible users
-			SET @user_filter = '';
-			SET @accessible_user_count = (SELECT COUNT(*) FROM accessible_users_temp);
-			IF @accessible_user_count > 0 THEN
-				SET @user_filter = ' AND r.id_users IN (SELECT id_users FROM accessible_users_temp)';
-			ELSE
-				-- No accessible users - return no results
-				SET @user_filter = ' AND 1=0';
-			END IF;
-
-			-- Time period filter (same as before)
-			SET @time_period_filter = '';
-			CASE
-				WHEN filter_param LIKE '%LAST_HOUR%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
-				WHEN filter_param LIKE '%LAST_DAY%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
-				WHEN filter_param LIKE '%LAST_WEEK%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
-				WHEN filter_param LIKE '%LAST_MONTH%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
-				WHEN filter_param LIKE '%LAST_YEAR%' THEN
-					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
-				ELSE
-					SET @time_period_filter = '';
-			END CASE;
-
-			-- Exclude deleted filter (same as before)
-			SET @exclude_deleted_filter = '';
-			CASE
-				WHEN exclude_deleted_param = TRUE THEN
-					SET @exclude_deleted_filter = CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
-				ELSE
-					SET @exclude_deleted_filter = '';
-			END CASE;
-
-			-- Language filter for translations
-			-- Always include language 1 (internal), and also include the requested language if different
-			SET @language_filter = '';
-			IF language_id_param IS NULL OR language_id_param = 1 THEN
-				-- Default: only internal language (language_id = 1)
-				SET @language_filter = ' AND cell.id_languages = 1';
-			ELSE
-				-- Include both internal language (1) and requested language
-				-- This ensures we always have fallback to language 1, and translations where available
-				SET @language_filter = CONCAT(' AND cell.id_languages IN (1, ', language_id_param, ')');
-			END IF;
-
-			-- Build the main query with user group filtering
-			SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
-					r.`timestamp` AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
-					' FROM dataTables t
-					INNER JOIN dataRows r ON (t.id = r.id_dataTables)
-					INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
-					INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
-					LEFT JOIN users u ON (r.id_users = u.id)
-					LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
-					LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
-					WHERE t.id = ', table_id_param, @user_filter, @time_period_filter, @exclude_deleted_filter, @language_filter,
-					' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
-
-			-- select @sql; -- Uncomment for debugging
-			PREPARE stmt FROM @sql;
-			EXECUTE stmt;
-			DEALLOCATE PREPARE stmt;
-
-			-- Clean up temporary table
-			DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
-		END;
-	END IF;
+    SELECT Json_arrayagg(Json_object(keyword, (SELECT 
+						 Json_object('id_navigation_section' 
+						 , 
+						 p.id_navigation_section, 'title', 
+						 pft.content, 'children', (SELECT 
+						 Json_arrayagg( 
+						 Json_object(keyword, (SELECT 
+												 Json_object('id_navigation_section' 
+												 , 
+												 p2.id_navigation_section, 'title', 
+												 pft2.content, 'children', NULL)))) 
+						 AS items 
+												 FROM   pages AS p2 
+												 LEFT JOIN pages_fields_translation 
+														   AS pft2 
+												 ON pft2.id_pages = p2.id 
+												 LEFT JOIN languages AS l2 
+												 ON l2.id = pft2.id_languages 
+												 LEFT JOIN fields AS f2 
+												 ON f2.id = pft2.id_fields 
+												 WHERE  p2.parent = p.id 
+												 AND ( l.locale = param_locale 
+												 OR l.locale = 'all' ) 
+												 AND f2.`name` = 'label' 
+												 AND p2.nav_position IS NOT NULL 
+												 ORDER  BY p2.nav_position ASC))))) AS 
+		   pages 
+	FROM   pages AS p 
+		   LEFT JOIN pages_fields_translation AS pft 
+				  ON pft.id_pages = p.id 
+		   LEFT JOIN languages AS l 
+				  ON l.id = pft.id_languages 
+		   LEFT JOIN fields AS f 
+				  ON f.id = pft.id_fields 
+	WHERE  p.nav_position IS NOT NULL 
+		   AND ( l.locale = param_locale 
+				  OR l.locale = 'all' ) 
+		   AND f.`name` = 'label' 
+		   AND p.parent IS NULL 
+ORDER  BY p.nav_position DESC;
+    
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2026,101 +2681,6 @@ BEGIN
 		DEALLOCATE PREPARE stmt;
         end;
     END IF;
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 DROP PROCEDURE IF EXISTS `get_page_sections_hierarchical` */;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8mb4 */ ;
-/*!50003 SET character_set_results = utf8mb4 */ ;
-/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `get_page_sections_hierarchical`(IN page_id INT)
-BEGIN
-    WITH RECURSIVE section_hierarchy AS (
-        -- Base case: get top-level sections for the page, position starts from 10
-        SELECT
-            s.id,
-            s.`name`,
-            s.id_styles,
-            st.`name` AS style_name,
-            CASE
-                WHEN st.can_have_children = 1 THEN 1
-                WHEN EXISTS (
-                    SELECT 1 FROM styles_allowed_relationships sar
-                    WHERE sar.id_parent_style = st.id
-                ) THEN 1
-                ELSE 0
-            END AS can_have_children,
-            s.`condition`,
-            s.css,
-            s.css_mobile,
-            s.debug,
-            s.data_config,
-            ps.`position` AS position,      -- Start at 10
-            0 AS `level`,
-            CAST(s.id AS CHAR(200)) AS `path`
-        FROM pages_sections ps
-        JOIN sections s ON ps.id_sections = s.id
-        JOIN styles st ON s.id_styles = st.id
-        LEFT JOIN sections_hierarchy sh ON s.id = sh.child
-        WHERE ps.id_pages = page_id
-        AND sh.parent IS NULL
-
-        UNION ALL
-
-        -- Recursive case: get children of sections
-        SELECT
-            s.id,
-            s.`name`,
-            s.id_styles,
-            st.`name` AS style_name,
-            CASE
-                WHEN st.can_have_children = 1 THEN 1
-                WHEN EXISTS (
-                    SELECT 1 FROM styles_allowed_relationships sar
-                    WHERE sar.id_parent_style = st.id
-                ) THEN 1
-                ELSE 0
-            END AS can_have_children,
-            s.`condition`,
-            s.css,
-            s.css_mobile,
-            s.debug,
-            s.data_config,
-            sh.position AS position,        -- Add 10 to each level
-            h.`level` + 1,
-            CONCAT(h.`path`, ',', s.id) AS `path`
-        FROM section_hierarchy h
-        JOIN sections_hierarchy sh ON h.id = sh.parent
-        JOIN sections s ON sh.child = s.id
-        JOIN styles st ON s.id_styles = st.id
-    )
-
-    -- Select the result
-    SELECT
-        id,
-        `name` AS section_name,
-        id_styles,
-        style_name,
-        can_have_children,
-        `condition`,
-		css,
-		css_mobile,
-		debug,
-		data_config,
-        position,
-        `level`,
-        `path`
-    FROM section_hierarchy
-    ORDER BY `path`, `position`;
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2187,142 +2747,39 @@ DELIMITER ;
 /*!50003 SET character_set_results = utf8mb4 */ ;
 /*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `get_user_acl`(
-    IN param_user_id INT,
-    IN param_page_id INT  -- -1 means "all pages"
-)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_user_acl`( param_user_id INT, param_page_id INT )
 BEGIN
 
-    SELECT
-        param_user_id  AS id_users,
-        id_pages,
-        MAX(acl_select) AS acl_select,
-        MAX(acl_insert) AS acl_insert,
-        MAX(acl_update) AS acl_update,
-        MAX(acl_delete) AS acl_delete,
-        keyword,
-        url,                
-        parent,
-        is_headless,
-        nav_position,
-        footer_position,        
-        id_type,
-        id_pageAccessTypes,
-        is_system
-    FROM
-    (
-        -- 1) Group-based ACL
-        SELECT
-            ug.id_users,
-            acl.id_pages,
-            acl.acl_select,
-            acl.acl_insert,
-            acl.acl_update,
-            acl.acl_delete,
-            p.keyword,
-            p.url,
-            p.parent,
-            p.is_headless,
-            p.nav_position,
-            p.footer_position,
-            id_type,
-            p.id_pageAccessTypes,
-            is_system
-        FROM users_groups ug
-        JOIN users u             ON ug.id_users   = u.id
-        JOIN acl_groups acl      ON acl.id_groups = ug.id_groups
-        JOIN pages p             ON p.id           = acl.id_pages
-        WHERE ug.id_users = param_user_id
-          AND (param_page_id = -1 OR acl.id_pages = param_page_id)
-
-        UNION ALL
-
-        -- 3) Open-access pages (only all if param_page_id = -1, or just that page if it's open)
-        SELECT
-            param_user_id       AS id_users,
-            p.id                AS id_pages,
-            1                   AS acl_select,
-            0                   AS acl_insert,
-            0                   AS acl_update,
-            0                   AS acl_delete,
-            p.keyword,
-            p.url,           
-            p.parent,
-            p.is_headless,
-            p.nav_position,
-            p.footer_position,  
-            id_type,          
-            p.id_pageAccessTypes,
-            is_system
-        FROM pages p
-        WHERE p.is_open_access = 1
-          AND (param_page_id = -1 OR p.id = param_page_id)
-
-    ) AS combined_acl
-    GROUP BY
-        id_pages,
-        keyword,
-        url,      
-        parent,
-        is_headless,
-        nav_position,
-        footer_position,     
-        id_type,   
-        is_system,
-        id_pageAccessTypes;
-
-END ;;
-DELIMITER ;
-/*!50003 SET sql_mode              = @saved_sql_mode */ ;
-/*!50003 SET character_set_client  = @saved_cs_client */ ;
-/*!50003 SET character_set_results = @saved_cs_results */ ;
-/*!50003 SET collation_connection  = @saved_col_connection */ ;
-/*!50003 DROP PROCEDURE IF EXISTS `rename_index` */;
-/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
-/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
-/*!50003 SET @saved_col_connection = @@collation_connection */ ;
-/*!50003 SET character_set_client  = utf8mb4 */ ;
-/*!50003 SET character_set_results = utf8mb4 */ ;
-/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
-/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
-/*!50003 SET sql_mode              = '' */ ;
-DELIMITER ;;
-CREATE DEFINER=`root`@`localhost` PROCEDURE `rename_index`(
-  IN param_table VARCHAR(100),
-  IN old_index_name VARCHAR(100),
-  IN new_index_name VARCHAR(100)
-)
-BEGIN
-  DECLARE old_exists INT DEFAULT 0;
-  DECLARE new_exists INT DEFAULT 0;
-
-  -- does old index exist?
-  SELECT COUNT(*) INTO old_exists
-  FROM information_schema.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME   = param_table
-    AND INDEX_NAME   = old_index_name;
-
-  -- does new index already exist?
-  SELECT COUNT(*) INTO new_exists
-  FROM information_schema.STATISTICS
-  WHERE TABLE_SCHEMA = DATABASE()
-    AND TABLE_NAME   = param_table
-    AND INDEX_NAME   = new_index_name;
-
-  IF new_exists > 0 THEN
-    SELECT CONCAT('Index ', new_index_name, ' already exists on ', param_table) AS msg;
-  ELSEIF old_exists = 0 THEN
-    SELECT CONCAT('Index ', old_index_name, ' not found on ', param_table) AS msg;
-  ELSE
-    SET @sql := CONCAT('ALTER TABLE `', param_table, '` RENAME INDEX `', old_index_name, '` TO `', new_index_name, '`;');
-    PREPARE st FROM @sql;
-    EXECUTE st;
-    DEALLOCATE PREPARE st;
-    SELECT CONCAT('Renamed `', param_table, '`.`', old_index_name, '` -> `', new_index_name, '`') AS msg;
-  END IF;
+    SELECT ug.id_users, acl.id_pages, MAX(IFNULL(acl.acl_select, 0)) as acl_select, MAX(IFNULL(acl.acl_insert, 0)) as acl_insert,
+	MAX(IFNULL(acl.acl_update, 0)) as acl_update, MAX(IFNULL(acl.acl_delete, 0)) as acl_delete, p.keyword,
+	p.url, p.protocol, p.id_actions, p.id_navigation_section, p.parent, p.is_headless, p.nav_position,p.footer_position,
+	p.id_type
+	FROM users u
+	INNER JOIN users_groups AS ug ON (ug.id_users = u.id)
+	INNER  JOIN acl_groups acl ON (acl.id_groups = ug.id_groups)
+	INNER JOIN pages p ON (acl.id_pages = p.id)
+	WHERE ug.id_users = param_user_id AND acl.id_pages = (CASE WHEN param_page_id = -1 THEN acl.id_pages ELSE param_page_id END)
+	GROUP BY ug.id_users, acl.id_pages, p.keyword, p.url, 
+	p.protocol, p.id_actions, p.id_navigation_section, p.parent, p.is_headless, p.nav_position,p.footer_position, p.id_type
+    
+    UNION 
+    
+    SELECT acl.id_users, acl.id_pages, 
+	CASE
+		WHEN p.id_type = 4 then 1 -- the page is open all grousp should has access for select
+		ELSE acl.acl_select
+	END AS acl_select, 
+	acl.acl_insert, acl.acl_update, acl.acl_delete, p.keyword,
+	p.url, p.protocol, p.id_actions, p.id_navigation_section, p.parent, p.is_headless, p.nav_position,p.footer_position,
+	p.id_type
+	FROM acl_users acl
+	INNER JOIN pages p ON (acl.id_pages = p.id)
+    WHERE acl.id_users = param_user_id AND acl.id_pages = (CASE WHEN param_page_id = -1 THEN acl.id_pages ELSE param_page_id END)
+	GROUP BY acl.id_users, acl.id_pages, acl.acl_select, acl.acl_insert, acl.acl_update, acl.acl_delete, p.keyword, p.url, 
+	p.protocol, p.id_actions, p.id_navigation_section, p.parent, p.is_headless, p.nav_position,p.footer_position, p.id_type;
+    
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;
@@ -2395,6 +2852,170 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `update_formId_reminders` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `update_formId_reminders`()
+BEGIN
+	DECLARE done INT DEFAULT 0;
+	DECLARE record_id INT;
+	DECLARE json_data JSON;
+	DECLARE block_index INT DEFAULT 0;
+	DECLARE job_index INT DEFAULT 0;
+	DECLARE reminder_form_id VARCHAR(255);
+	DECLARE new_id INT;
+
+	-- Declare cursor for iterating over records
+	DECLARE cur CURSOR FOR
+		SELECT id, config FROM formActions FOR UPDATE;
+
+	-- Declare handler to handle end of data
+	DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+	-- Open the cursor
+	OPEN cur;
+
+	-- Loop through the records
+	read_loop: LOOP
+		FETCH cur INTO record_id, json_data;
+		IF done THEN
+			LEAVE read_loop;
+		END IF;
+
+		-- Loop through the blocks and jobs to update the reminder_form_id
+		SET block_index = 0;
+		WHILE JSON_LENGTH(json_data, '$.blocks') > block_index DO
+			SET job_index = 0;
+			WHILE JSON_LENGTH(json_data, CONCAT('$.blocks[', block_index, '].jobs')) > job_index DO
+				SET reminder_form_id = JSON_UNQUOTE(JSON_EXTRACT(json_data, CONCAT('$.blocks[', block_index, '].jobs[', job_index, '].reminder_form_id')));
+				
+				IF reminder_form_id LIKE '%-INTERNAL' THEN
+					-- Handle -INTERNAL case
+					SET reminder_form_id = SUBSTRING_INDEX(reminder_form_id, '-', 1);
+					SELECT LPAD(id, 10, '0') INTO new_id FROM dataTables WHERE CAST(name AS UNSIGNED) = CAST(reminder_form_id AS UNSIGNED) LIMIT 1;
+					SET json_data = JSON_SET(json_data, CONCAT('$.blocks[', block_index, '].jobs[', job_index, '].reminder_form_id'), CAST(new_id AS CHAR));
+					
+				ELSEIF reminder_form_id LIKE '%-EXTERNAL' THEN
+					-- Handle -EXTERNAL case
+					SET reminder_form_id = SUBSTRING_INDEX(reminder_form_id, '-', 1);
+					SET new_id = LPAD(reminder_form_id, 10, '0');
+					SET json_data = JSON_SET(json_data, CONCAT('$.blocks[', block_index, '].jobs[', job_index, '].reminder_form_id'), new_id);
+				END IF;
+				
+				SET job_index = job_index + 1;
+			END WHILE;
+			SET block_index = block_index + 1;
+		END WHILE;
+
+		-- Update the JSON back to the table
+		UPDATE formActions SET config = json_data WHERE id = record_id;
+	END LOOP;
+
+	-- Close the cursor
+	CLOSE cur;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+
+--
+-- Final view structure for view `view_acl_groups_pages`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_acl_groups_pages`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_acl_groups_pages` AS select `acl`.`id_groups` AS `id_groups`,`acl`.`id_pages` AS `id_pages`,(case when (`p`.`id_type` = 4) then 1 else `acl`.`acl_select` end) AS `acl_select`,`acl`.`acl_insert` AS `acl_insert`,`acl`.`acl_update` AS `acl_update`,`acl`.`acl_delete` AS `acl_delete`,`p`.`keyword` AS `keyword`,`p`.`url` AS `url`,`p`.`protocol` AS `protocol`,`p`.`id_actions` AS `id_actions`,`p`.`id_navigation_section` AS `id_navigation_section`,`p`.`parent` AS `parent`,`p`.`is_headless` AS `is_headless`,`p`.`nav_position` AS `nav_position`,`p`.`footer_position` AS `footer_position`,`p`.`id_type` AS `id_type` from (`acl_groups` `acl` join `pages` `p` on(((`acl`.`id_pages` = `p`.`id`) or ((`p`.`id_type` = 4) and (`acl`.`id_pages` = NULL))))) group by `acl`.`id_groups`,`acl`.`id_pages`,`acl`.`acl_select`,`acl`.`acl_insert`,`acl`.`acl_update`,`acl`.`acl_delete`,`p`.`keyword`,`p`.`url`,`p`.`protocol`,`p`.`id_actions`,`p`.`id_navigation_section`,`p`.`parent`,`p`.`is_headless`,`p`.`nav_position`,`p`.`footer_position`,`p`.`id_type` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_acl_users_in_groups_pages`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_acl_users_in_groups_pages`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_acl_users_in_groups_pages` AS select `ug`.`id_users` AS `id_users`,`acl`.`id_pages` AS `id_pages`,max(ifnull(`acl`.`acl_select`,0)) AS `acl_select`,max(ifnull(`acl`.`acl_insert`,0)) AS `acl_insert`,max(ifnull(`acl`.`acl_update`,0)) AS `acl_update`,max(ifnull(`acl`.`acl_delete`,0)) AS `acl_delete`,`p`.`keyword` AS `keyword`,`p`.`url` AS `url`,`p`.`protocol` AS `protocol`,`p`.`id_actions` AS `id_actions`,`p`.`id_navigation_section` AS `id_navigation_section`,`p`.`parent` AS `parent`,`p`.`is_headless` AS `is_headless`,`p`.`nav_position` AS `nav_position`,`p`.`footer_position` AS `footer_position`,`p`.`id_type` AS `id_type` from (((`users` `u` join `users_groups` `ug` on((`ug`.`id_users` = `u`.`id`))) join `acl_groups` `acl` on((`acl`.`id_groups` = `ug`.`id_groups`))) join `pages` `p` on((`acl`.`id_pages` = `p`.`id`))) group by `ug`.`id_users`,`acl`.`id_pages`,`p`.`keyword`,`p`.`url`,`p`.`protocol`,`p`.`id_actions`,`p`.`id_navigation_section`,`p`.`parent`,`p`.`is_headless`,`p`.`nav_position`,`p`.`footer_position`,`p`.`id_type` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_acl_users_pages`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_acl_users_pages`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_acl_users_pages` AS select `acl`.`id_users` AS `id_users`,`acl`.`id_pages` AS `id_pages`,(case when (`p`.`id_type` = 4) then 1 else `acl`.`acl_select` end) AS `acl_select`,`acl`.`acl_insert` AS `acl_insert`,`acl`.`acl_update` AS `acl_update`,`acl`.`acl_delete` AS `acl_delete`,`p`.`keyword` AS `keyword`,`p`.`url` AS `url`,`p`.`protocol` AS `protocol`,`p`.`id_actions` AS `id_actions`,`p`.`id_navigation_section` AS `id_navigation_section`,`p`.`parent` AS `parent`,`p`.`is_headless` AS `is_headless`,`p`.`nav_position` AS `nav_position`,`p`.`footer_position` AS `footer_position`,`p`.`id_type` AS `id_type` from (`acl_users` `acl` join `pages` `p` on((`acl`.`id_pages` = `p`.`id`))) group by `acl`.`id_users`,`acl`.`id_pages`,`acl`.`acl_select`,`acl`.`acl_insert`,`acl`.`acl_update`,`acl`.`acl_delete`,`p`.`keyword`,`p`.`url`,`p`.`protocol`,`p`.`id_actions`,`p`.`id_navigation_section`,`p`.`parent`,`p`.`is_headless`,`p`.`nav_position`,`p`.`footer_position`,`p`.`id_type` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_acl_users_union`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_acl_users_union`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_acl_users_union` AS select `view_acl_users_in_groups_pages`.`id_users` AS `id_users`,`view_acl_users_in_groups_pages`.`id_pages` AS `id_pages`,`view_acl_users_in_groups_pages`.`acl_select` AS `acl_select`,`view_acl_users_in_groups_pages`.`acl_insert` AS `acl_insert`,`view_acl_users_in_groups_pages`.`acl_update` AS `acl_update`,`view_acl_users_in_groups_pages`.`acl_delete` AS `acl_delete`,`view_acl_users_in_groups_pages`.`keyword` AS `keyword`,`view_acl_users_in_groups_pages`.`url` AS `url`,`view_acl_users_in_groups_pages`.`protocol` AS `protocol`,`view_acl_users_in_groups_pages`.`id_actions` AS `id_actions`,`view_acl_users_in_groups_pages`.`id_navigation_section` AS `id_navigation_section`,`view_acl_users_in_groups_pages`.`parent` AS `parent`,`view_acl_users_in_groups_pages`.`is_headless` AS `is_headless`,`view_acl_users_in_groups_pages`.`nav_position` AS `nav_position`,`view_acl_users_in_groups_pages`.`footer_position` AS `footer_position`,`view_acl_users_in_groups_pages`.`id_type` AS `id_type` from `view_acl_users_in_groups_pages` union select `view_acl_users_pages`.`id_users` AS `id_users`,`view_acl_users_pages`.`id_pages` AS `id_pages`,`view_acl_users_pages`.`acl_select` AS `acl_select`,`view_acl_users_pages`.`acl_insert` AS `acl_insert`,`view_acl_users_pages`.`acl_update` AS `acl_update`,`view_acl_users_pages`.`acl_delete` AS `acl_delete`,`view_acl_users_pages`.`keyword` AS `keyword`,`view_acl_users_pages`.`url` AS `url`,`view_acl_users_pages`.`protocol` AS `protocol`,`view_acl_users_pages`.`id_actions` AS `id_actions`,`view_acl_users_pages`.`id_navigation_section` AS `id_navigation_section`,`view_acl_users_pages`.`parent` AS `parent`,`view_acl_users_pages`.`is_headless` AS `is_headless`,`view_acl_users_pages`.`nav_position` AS `nav_position`,`view_acl_users_pages`.`footer_position` AS `footer_position`,`view_acl_users_pages`.`id_type` AS `id_type` from `view_acl_users_pages` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_cmspreferences`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_cmspreferences`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_cmspreferences` AS select `p`.`callback_api_key` AS `callback_api_key`,`p`.`default_language_id` AS `default_language_id`,`l`.`language` AS `default_language`,`l`.`locale` AS `locale`,`p`.`firebase_config` AS `firebase_config`,`p`.`anonymous_users` AS `anonymous_users` from (`cmspreferences` `p` left join `languages` `l` on((`l`.`id` = `p`.`default_language_id`))) where (`p`.`id` = 1) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
 
 --
 -- Final view structure for view `view_datatables`
@@ -2415,6 +3036,24 @@ DELIMITER ;
 /*!50001 SET collation_connection      = @saved_col_connection */;
 
 --
+-- Final view structure for view `view_datatables_data`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_datatables_data`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_datatables_data` AS select `t`.`id` AS `table_id`,`r`.`id` AS `row_id`,`r`.`timestamp` AS `entry_date`,`col`.`id` AS `col_id`,`t`.`name` AS `table_name`,`col`.`name` AS `col_name`,`cell`.`value` AS `value`,`t`.`timestamp` AS `timestamp`,`r`.`id_users` AS `id_users`,`t`.`displayName` AS `displayName` from (((`datatables` `t` left join `datarows` `r` on((`t`.`id` = `r`.`id_dataTables`))) left join `datacells` `cell` on((`cell`.`id_dataRows` = `r`.`id`))) left join `datacols` `col` on((`col`.`id` = `cell`.`id_dataCols`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
 -- Final view structure for view `view_fields`
 --
 
@@ -2427,7 +3066,187 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `view_fields` AS select `f`.`id` AS `field_id`,`f`.`name` AS `field_name`,`f`.`display` AS `display`,`ft`.`id` AS `field_type_id`,`ft`.`name` AS `field_type`,`ft`.`position` AS `position`,`f`.`config` AS `config` from (`fields` `f` left join `fieldtype` `ft` on((`f`.`id_type` = `ft`.`id`))) */;
+/*!50001 VIEW `view_fields` AS select cast(`f`.`id` as unsigned) AS `field_id`,`f`.`name` AS `field_name`,`f`.`display` AS `display`,cast(`ft`.`id` as unsigned) AS `field_type_id`,`ft`.`name` AS `field_type`,`ft`.`position` AS `position` from (`fields` `f` left join `fieldtype` `ft` on((`f`.`id_type` = `ft`.`id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_formactions`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_formactions`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_formactions` AS select `fa`.`id` AS `id`,`fa`.`name` AS `action_name`,`dt`.`name` AS `dataTable_name`,`fa`.`id_formProjectActionTriggerTypes` AS `id_formProjectActionTriggerTypes`,`trig`.`lookup_value` AS `trigger_type`,`trig`.`lookup_code` AS `trigger_type_code`,`fa`.`config` AS `config`,`dt`.`id` AS `id_dataTables` from ((`formactions` `fa` join `lookups` `trig` on((`trig`.`id` = `fa`.`id_formProjectActionTriggerTypes`))) left join `view_datatables` `dt` on((`dt`.`id` = `fa`.`id_dataTables`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_mailqueue`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_mailqueue`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_mailqueue` AS select `sj`.`id` AS `id`,`mq`.`from_email` AS `from_email`,`mq`.`from_name` AS `from_name`,`sj`.`status_code` AS `status_code`,`sj`.`status` AS `status`,`sj`.`type_code` AS `type_code`,`sj`.`type` AS `type`,`sj`.`date_create` AS `date_create`,`sj`.`date_to_be_executed` AS `date_to_be_executed`,`sj`.`date_executed` AS `date_executed`,`mq`.`reply_to` AS `reply_to`,`mq`.`recipient_emails` AS `recipient_emails`,`mq`.`cc_emails` AS `cc_emails`,`mq`.`bcc_emails` AS `bcc_emails`,`mq`.`subject` AS `subject`,`mq`.`body` AS `body`,`mq`.`is_html` AS `is_html`,`mq`.`id` AS `id_mailQueue`,`sj`.`id_jobTypes` AS `id_jobTypes`,`sj`.`id_jobStatus` AS `id_jobStatus`,`sj`.`config` AS `config`,`sj`.`id_dataRows` AS `id_dataRows`,`sj`.`dataTables_name` AS `dataTables_name` from ((`mailqueue` `mq` join `scheduledjobs_mailqueue` `sj_mq` on((`sj_mq`.`id_mailQueue` = `mq`.`id`))) join `view_scheduledjobs` `sj` on((`sj`.`id` = `sj_mq`.`id_scheduledJobs`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_notifications`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_notifications`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_notifications` AS select `sj`.`id` AS `id`,`sj`.`status_code` AS `status_code`,`sj`.`status` AS `status`,`sj`.`type_code` AS `type_code`,`sj`.`type` AS `type`,`sj`.`date_create` AS `date_create`,`sj`.`date_to_be_executed` AS `date_to_be_executed`,`sj`.`date_executed` AS `date_executed`,`sj`.`recipient` AS `recipient`,`n`.`subject` AS `subject`,`n`.`body` AS `body`,`n`.`url` AS `url`,`sj_n`.`id_notifications` AS `id_notifications`,`sj`.`id_jobTypes` AS `id_jobTypes`,`sj`.`id_jobStatus` AS `id_jobStatus`,`sj`.`config` AS `config`,`sj`.`id_dataRows` AS `id_dataRows`,`sj`.`dataTables_name` AS `dataTables_name` from ((`notifications` `n` join `scheduledjobs_notifications` `sj_n` on((`sj_n`.`id_notifications` = `n`.`id`))) join `view_scheduledjobs` `sj` on((`sj`.`id` = `sj_n`.`id_scheduledJobs`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_qualtricsactions`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_qualtricsactions`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_qualtricsactions` AS select `st`.`id` AS `id`,`st`.`name` AS `action_name`,`st`.`id_qualtricsProjects` AS `project_id`,`p`.`name` AS `project_name`,`p`.`qualtrics_api` AS `qualtrics_api`,`s`.`participant_variable` AS `participant_variable`,`p`.`api_mailing_group_id` AS `api_mailing_group_id`,`st`.`id_qualtricsSurveys` AS `survey_id`,`s`.`qualtrics_survey_id` AS `qualtrics_survey_id`,`s`.`name` AS `survey_name`,`s`.`id_qualtricsSurveyTypes` AS `id_qualtricsSurveyTypes`,`s`.`group_variable` AS `group_variable`,`typ`.`lookup_value` AS `survey_type`,`typ`.`lookup_code` AS `survey_type_code`,`st`.`id_qualtricsProjectActionTriggerTypes` AS `id_qualtricsProjectActionTriggerTypes`,`trig`.`lookup_value` AS `trigger_type`,`trig`.`lookup_code` AS `trigger_type_code`,group_concat(distinct `g`.`name` separator '; ') AS `groups`,group_concat(distinct (`g`.`id` * 1) separator ', ') AS `id_groups`,group_concat(distinct `l`.`lookup_value` separator '; ') AS `functions`,group_concat(distinct `l`.`lookup_code` separator ';') AS `functions_code`,group_concat(distinct `l`.`id` separator '; ') AS `id_functions`,`st`.`schedule_info` AS `schedule_info`,`st`.`id_qualtricsActionScheduleTypes` AS `id_qualtricsActionScheduleTypes`,`action_type`.`lookup_code` AS `action_schedule_type_code`,`action_type`.`lookup_value` AS `action_schedule_type`,`st`.`id_qualtricsSurveys_reminder` AS `id_qualtricsSurveys_reminder`,(case when (`action_type`.`lookup_value` = 'Reminder') then `s_reminder`.`name` else NULL end) AS `survey_reminder_name`,`st`.`id_qualtricsActions` AS `id_qualtricsActions` from ((((((((((`qualtricsactions` `st` join `qualtricsprojects` `p` on((`st`.`id_qualtricsProjects` = `p`.`id`))) join `qualtricssurveys` `s` on((`st`.`id_qualtricsSurveys` = `s`.`id`))) join `lookups` `typ` on((`typ`.`id` = `s`.`id_qualtricsSurveyTypes`))) join `lookups` `trig` on((`trig`.`id` = `st`.`id_qualtricsProjectActionTriggerTypes`))) join `lookups` `action_type` on((`action_type`.`id` = `st`.`id_qualtricsActionScheduleTypes`))) left join `qualtricssurveys` `s_reminder` on((`st`.`id_qualtricsSurveys_reminder` = `s_reminder`.`id`))) left join `qualtricsactions_groups` `sg` on((`sg`.`id_qualtricsActions` = `st`.`id`))) left join `groups` `g` on((`sg`.`id_groups` = `g`.`id`))) left join `qualtricsactions_functions` `f` on((`f`.`id_qualtricsActions` = `st`.`id`))) left join `lookups` `l` on((`f`.`id_lookups` = `l`.`id`))) group by `st`.`id`,`st`.`name`,`st`.`id_qualtricsProjects`,`p`.`name`,`st`.`id_qualtricsSurveys`,`s`.`name`,`s`.`id_qualtricsSurveyTypes`,`typ`.`lookup_value`,`st`.`id_qualtricsProjectActionTriggerTypes`,`trig`.`lookup_value` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_qualtricsreminders`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_qualtricsreminders`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_qualtricsreminders` AS select `u`.`id` AS `user_id`,`u`.`email` AS `email`,`u`.`name` AS `user_name`,`u`.`code` AS `code`,`sj`.`id` AS `id_scheduledJobs`,`sj`.`status_code` AS `status_code`,`sj`.`status` AS `status`,`r`.`id_qualtricsSurveys` AS `id_qualtricsSurveys`,`s`.`qualtrics_survey_id` AS `qualtrics_survey_id`,`qa`.`id_qualtricsActions` AS `id_qualtricsActions`,(select `sess`.`date_to_be_executed` from ((`scheduledjobs` `sess` join `scheduledjobs_qualtricsactions` `sj_qa2` on((`sj_qa2`.`id_scheduledJobs` = `sess`.`id`))) join `qualtricsactions` `qa2` on((`qa2`.`id` = `sj_qa2`.`id_qualtricsActions`))) where (`qa2`.`id` = `qa`.`id_qualtricsActions`) order by `sess`.`date_to_be_executed` desc limit 0,1) AS `session_start_date`,(select cast(json_extract(`qa2`.`schedule_info`,'$.valid') as unsigned) from `qualtricsactions` `qa2` where (`qa2`.`id` = `qa`.`id_qualtricsActions`)) AS `valid`,((select `sess`.`date_to_be_executed` from ((`scheduledjobs` `sess` join `scheduledjobs_qualtricsactions` `sj_qa2` on((`sj_qa2`.`id_scheduledJobs` = `sess`.`id`))) join `qualtricsactions` `qa2` on((`qa2`.`id` = `sj_qa2`.`id_qualtricsActions`))) where (`qa2`.`id` = `qa`.`id_qualtricsActions`) order by `sess`.`date_to_be_executed` desc limit 0,1) + interval (select cast(json_extract(`qa2`.`schedule_info`,'$.valid') as unsigned) from `qualtricsactions` `qa2` where (`qa2`.`id` = `qa`.`id_qualtricsActions`)) minute) AS `valid_till` from (((((`qualtricsreminders` `r` join `view_users` `u` on((`u`.`id` = `r`.`id_users`))) join `qualtricssurveys` `s` on((`s`.`id` = `r`.`id_qualtricsSurveys`))) left join `view_scheduledjobs` `sj` on((`sj`.`id` = `r`.`id_scheduledJobs`))) left join `scheduledjobs_qualtricsactions` `sj_qa` on((`sj_qa`.`id_scheduledJobs` = `sj`.`id`))) left join `qualtricsactions` `qa` on((`qa`.`id` = `sj_qa`.`id_qualtricsActions`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_qualtricssurveys`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_qualtricssurveys`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_qualtricssurveys` AS select `s`.`id` AS `id`,`s`.`name` AS `name`,`s`.`description` AS `description`,`s`.`qualtrics_survey_id` AS `qualtrics_survey_id`,`s`.`id_qualtricsSurveyTypes` AS `id_qualtricsSurveyTypes`,`s`.`participant_variable` AS `participant_variable`,`s`.`group_variable` AS `group_variable`,`s`.`created_on` AS `created_on`,`s`.`edited_on` AS `edited_on`,`s`.`config` AS `config`,`typ`.`lookup_value` AS `survey_type`,`typ`.`lookup_code` AS `survey_type_code` from (`qualtricssurveys` `s` join `lookups` `typ` on((`typ`.`id` = `s`.`id_qualtricsSurveyTypes`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_scheduledjobs`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_scheduledjobs`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_scheduledjobs` AS select `sj`.`id` AS `id`,`l_status`.`lookup_code` AS `status_code`,`l_status`.`lookup_value` AS `status`,`l_types`.`lookup_code` AS `type_code`,`l_types`.`lookup_value` AS `type`,`sj`.`config` AS `config`,`sj`.`date_create` AS `date_create`,`sj`.`date_to_be_executed` AS `date_to_be_executed`,`sj`.`date_executed` AS `date_executed`,`sj`.`description` AS `description`,(case when (`l_types`.`lookup_code` = 'email') then `mq`.`recipient_emails` when (`l_types`.`lookup_code` = 'notification') then '' when (`l_types`.`lookup_code` = 'task') then '' else '' end) AS `recipient`,(case when (`l_types`.`lookup_code` = 'email') then `mq`.`subject` when (`l_types`.`lookup_code` = 'notification') then `n`.`subject` else '' end) AS `title`,(case when (`l_types`.`lookup_code` = 'email') then `mq`.`body` when (`l_types`.`lookup_code` = 'notification') then `n`.`body` else '' end) AS `message`,`sj_mq`.`id_mailQueue` AS `id_mailQueue`,`sj`.`id_jobTypes` AS `id_jobTypes`,`sj`.`id_jobStatus` AS `id_jobStatus`,`a`.`id_formActions` AS `id_formActions`,`a`.`id_dataRows` AS `id_dataRows`,`dt`.`name` AS `dataTables_name` from (((((((((`scheduledjobs` `sj` join `lookups` `l_status` on((`l_status`.`id` = `sj`.`id_jobStatus`))) join `lookups` `l_types` on((`l_types`.`id` = `sj`.`id_jobTypes`))) left join `scheduledjobs_mailqueue` `sj_mq` on((`sj_mq`.`id_scheduledJobs` = `sj`.`id`))) left join `mailqueue` `mq` on((`mq`.`id` = `sj_mq`.`id_mailQueue`))) left join `scheduledjobs_notifications` `sj_n` on((`sj_n`.`id_scheduledJobs` = `sj`.`id`))) left join `notifications` `n` on((`n`.`id` = `sj_n`.`id_notifications`))) left join `scheduledjobs_formactions` `a` on((`a`.`id_scheduledJobs` = `sj`.`id`))) left join `datarows` `r` on((`r`.`id` = `a`.`id_dataRows`))) left join `view_datatables` `dt` on((`r`.`id_dataTables` = `dt`.`id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_scheduledjobs_reminders`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_scheduledjobs_reminders`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_scheduledjobs_reminders` AS select `r`.`id_scheduledJobs` AS `id_scheduledJobs`,`r`.`id_dataTables` AS `id_dataTables`,`r`.`session_start_date` AS `session_start_date`,`r`.`session_end_date` AS `session_end_date`,`sju`.`id_users` AS `id_users`,`l_status`.`lookup_code` AS `job_status_code`,`l_status`.`lookup_value` AS `job_status` from (((`scheduledjobs_reminders` `r` join `scheduledjobs` `sj` on((`sj`.`id` = `r`.`id_scheduledJobs`))) join `scheduledjobs_users` `sju` on((`sj`.`id` = `sju`.`id_scheduledJobs`))) join `lookups` `l_status` on((`l_status`.`id` = `sj`.`id_jobStatus`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_scheduledjobs_transactions`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_scheduledjobs_transactions`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_scheduledjobs_transactions` AS select `sj`.`id` AS `id`,`sj`.`date_create` AS `date_create`,`sj`.`date_to_be_executed` AS `date_to_be_executed`,`sj`.`date_executed` AS `date_executed`,`t`.`id` AS `transaction_id`,`t`.`transaction_time` AS `transaction_time`,`t`.`transaction_type` AS `transaction_type`,`t`.`transaction_by` AS `transaction_by`,`t`.`user_name` AS `user_name`,`t`.`transaction_verbal_log` AS `transaction_verbal_log` from (`scheduledjobs` `sj` join `view_transactions` `t` on(((`t`.`table_name` = 'scheduledJobs') and (`t`.`id_table_name` = `sj`.`id`)))) order by `sj`.`id`,`t`.`id` */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_sections_fields`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_sections_fields`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_sections_fields` AS select `s`.`id` AS `id_sections`,`s`.`name` AS `section_name`,ifnull(`sft`.`content`,'') AS `content`,ifnull(`sft`.`meta`,'') AS `meta`,`s`.`id_styles` AS `id_styles`,`fields`.`style_name` AS `style_name`,`fields`.`field_id` AS `id_fields`,`fields`.`field_name` AS `field_name`,ifnull(`l`.`locale`,'') AS `locale`,ifnull(`g`.`name`,'') AS `gender` from ((((`sections` `s` left join `view_style_fields` `fields` on((`fields`.`style_id` = `s`.`id_styles`))) left join `sections_fields_translation` `sft` on(((`sft`.`id_sections` = `s`.`id`) and (`sft`.`id_fields` = `fields`.`field_id`)))) left join `languages` `l` on((`sft`.`id_languages` = `l`.`id`))) left join `genders` `g` on((`sft`.`id_genders` = `g`.`id`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2445,7 +3264,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `view_style_fields` AS select `s`.`style_id` AS `style_id`,`s`.`style_name` AS `style_name`,`s`.`style_group` AS `style_group`,`f`.`field_id` AS `field_id`,`f`.`field_name` AS `field_name`,`f`.`field_type` AS `field_type`,`f`.`config` AS `config`,`f`.`display` AS `display`,`f`.`position` AS `position`,`sf`.`default_value` AS `default_value`,`sf`.`help` AS `help`,`sf`.`disabled` AS `disabled`,`sf`.`hidden` AS `hidden` from ((`view_styles` `s` left join `styles_fields` `sf` on((`s`.`style_id` = `sf`.`id_styles`))) left join `view_fields` `f` on((`f`.`field_id` = `sf`.`id_fields`))) */;
+/*!50001 VIEW `view_style_fields` AS select `s`.`style_id` AS `style_id`,`s`.`style_name` AS `style_name`,`s`.`style_type` AS `style_type`,`s`.`style_group` AS `style_group`,`f`.`field_id` AS `field_id`,`f`.`field_name` AS `field_name`,`f`.`field_type` AS `field_type`,`f`.`display` AS `display`,`f`.`position` AS `position`,`sf`.`default_value` AS `default_value`,`sf`.`help` AS `help`,`sf`.`disabled` AS `disabled`,`sf`.`hidden` AS `hidden` from ((`view_styles` `s` left join `styles_fields` `sf` on((`s`.`style_id` = `sf`.`id_styles`))) left join `view_fields` `f` on((`f`.`field_id` = `sf`.`id_fields`))) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2463,7 +3282,61 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `view_styles` AS select cast(`s`.`id` as unsigned) AS `style_id`,`s`.`name` AS `style_name`,`s`.`description` AS `style_description`,cast(`sg`.`id` as unsigned) AS `style_group_id`,`sg`.`name` AS `style_group`,`sg`.`description` AS `style_group_description`,`sg`.`position` AS `style_group_position` from (`styles` `s` left join `stylegroup` `sg` on((`s`.`id_group` = `sg`.`id`))) */;
+/*!50001 VIEW `view_styles` AS select cast(`s`.`id` as unsigned) AS `style_id`,`s`.`name` AS `style_name`,`s`.`description` AS `style_description`,cast(`st`.`id` as unsigned) AS `style_type_id`,`st`.`name` AS `style_type`,cast(`sg`.`id` as unsigned) AS `style_group_id`,`sg`.`name` AS `style_group`,`sg`.`description` AS `style_group_description`,`sg`.`position` AS `style_group_position` from ((`styles` `s` left join `styletype` `st` on((`s`.`id_type` = `st`.`id`))) left join `stylegroup` `sg` on((`s`.`id_group` = `sg`.`id`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_tasks`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_tasks`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_tasks` AS select `sj`.`id` AS `id`,`sj`.`status_code` AS `status_code`,`sj`.`status` AS `status`,`sj`.`type_code` AS `type_code`,`sj`.`type` AS `type`,`sj`.`date_create` AS `date_create`,`sj`.`date_to_be_executed` AS `date_to_be_executed`,`sj`.`date_executed` AS `date_executed`,`sj`.`recipient` AS `recipient`,`t`.`config` AS `config`,`sj_t`.`id_tasks` AS `id_tasks`,`sj`.`id_jobTypes` AS `id_jobTypes`,`sj`.`id_jobStatus` AS `id_jobStatus`,`sj`.`description` AS `description`,`sj`.`id_dataRows` AS `id_dataRows`,`sj`.`dataTables_name` AS `dataTables_name` from ((`tasks` `t` join `scheduledjobs_tasks` `sj_t` on((`sj_t`.`id_tasks` = `t`.`id`))) join `view_scheduledjobs` `sj` on((`sj`.`id` = `sj_t`.`id_scheduledJobs`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_transactions`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_transactions`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_transactions` AS select `t`.`id` AS `id`,`t`.`transaction_time` AS `transaction_time`,`t`.`id_transactionTypes` AS `id_transactionTypes`,`tran_type`.`lookup_value` AS `transaction_type`,`t`.`id_transactionBy` AS `id_transactionBy`,`tran_by`.`lookup_value` AS `transaction_by`,`t`.`id_users` AS `id_users`,`u`.`name` AS `user_name`,`t`.`table_name` AS `table_name`,`t`.`id_table_name` AS `id_table_name`,replace(json_extract(`t`.`transaction_log`,'$.verbal_log'),'"','') AS `transaction_verbal_log` from (((`transactions` `t` join `lookups` `tran_type` on((`tran_type`.`id` = `t`.`id_transactionTypes`))) join `lookups` `tran_by` on((`tran_by`.`id` = `t`.`id_transactionBy`))) left join `users` `u` on((`u`.`id` = `t`.`id_users`))) */;
+/*!50001 SET character_set_client      = @saved_cs_client */;
+/*!50001 SET character_set_results     = @saved_cs_results */;
+/*!50001 SET collation_connection      = @saved_col_connection */;
+
+--
+-- Final view structure for view `view_user_codes`
+--
+
+/*!50001 DROP VIEW IF EXISTS `view_user_codes`*/;
+/*!50001 SET @saved_cs_client          = @@character_set_client */;
+/*!50001 SET @saved_cs_results         = @@character_set_results */;
+/*!50001 SET @saved_col_connection     = @@collation_connection */;
+/*!50001 SET character_set_client      = utf8mb4 */;
+/*!50001 SET character_set_results     = utf8mb4 */;
+/*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
+/*!50001 CREATE ALGORITHM=UNDEFINED */
+/*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
+/*!50001 VIEW `view_user_codes` AS select `u`.`id` AS `id`,`u`.`email` AS `email`,`u`.`name` AS `name`,`u`.`blocked` AS `blocked`,(case when (`u`.`name` = 'admin') then 'admin' when (`u`.`name` = 'tpf') then 'tpf' else ifnull(`vc`.`code`,'-') end) AS `code`,`u`.`intern` AS `intern` from (`users` `u` left join `validation_codes` `vc` on((`u`.`id` = `vc`.`id_users`))) where ((`u`.`intern` <> 1) and (`u`.`id_status` > 0)) */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2481,7 +3354,7 @@ DELIMITER ;
 /*!50001 SET collation_connection      = utf8mb4_0900_ai_ci */;
 /*!50001 CREATE ALGORITHM=UNDEFINED */
 /*!50013 DEFINER=`root`@`localhost` SQL SECURITY DEFINER */
-/*!50001 VIEW `view_users` AS select `u`.`id` AS `id`,`u`.`email` AS `email`,`u`.`name` AS `name`,ifnull(concat(`u`.`last_login`,' (',(to_days(now()) - to_days(`u`.`last_login`)),' days ago)'),'never') AS `last_login`,`usl`.`lookup_value` AS `status`,`usl`.`lookup_description` AS `description`,`u`.`blocked` AS `blocked`,(case when (`u`.`name` = 'admin') then 'admin' when (`u`.`name` = 'tpf') then 'tpf' else ifnull(`vc`.`code`,'-') end) AS `code`,group_concat(distinct `g`.`name` separator '; ') AS `groups`,`ua`.`activity_count` AS `user_activity`,`ua`.`distinct_url_count` AS `ac`,`u`.`intern` AS `intern`,`u`.`id_userTypes` AS `id_userTypes`,`lut`.`lookup_code` AS `user_type_code`,`lut`.`lookup_value` AS `user_type` from ((((((`users` `u` left join `lookups` `usl` on(((`usl`.`id` = `u`.`id_status`) and (`usl`.`type_code` = 'userStatus')))) left join `users_groups` `ug` on((`ug`.`id_users` = `u`.`id`))) left join `groups` `g` on((`g`.`id` = `ug`.`id_groups`))) left join `validation_codes` `vc` on((`u`.`id` = `vc`.`id_users`))) join `lookups` `lut` on((`lut`.`id` = `u`.`id_userTypes`))) left join (select `ua`.`id_users` AS `id_users`,count(0) AS `activity_count`,count(distinct (case when (`ua`.`id_type` = 1) then `ua`.`url` end)) AS `distinct_url_count` from `user_activity` `ua` group by `ua`.`id_users`) `ua` on((`ua`.`id_users` = `u`.`id`))) where ((`u`.`intern` <> 1) and (`u`.`id_status` > 0)) group by `u`.`id`,`u`.`email`,`u`.`name`,`u`.`last_login`,`usl`.`lookup_value`,`usl`.`lookup_description`,`u`.`blocked`,`vc`.`code`,`ua`.`activity_count`,`ua`.`distinct_url_count`,`u`.`intern`,`u`.`id_userTypes`,`lut`.`lookup_code`,`lut`.`lookup_value` order by `u`.`email` */;
+/*!50001 VIEW `view_users` AS select `u`.`id` AS `id`,`u`.`email` AS `email`,`u`.`name` AS `name`,ifnull(concat(`u`.`last_login`,' (',(to_days(now()) - to_days(`u`.`last_login`)),' days ago)'),'never') AS `last_login`,`us`.`name` AS `status`,`us`.`description` AS `description`,`u`.`blocked` AS `blocked`,(case when (`u`.`name` = 'admin') then 'admin' when (`u`.`name` = 'tpf') then 'tpf' else ifnull(`vc`.`code`,'-') end) AS `code`,group_concat(distinct `g`.`name` separator '; ') AS `groups`,`user_activity`.`activity_count` AS `user_activity`,`user_activity`.`distinct_url_count` AS `ac`,`u`.`intern` AS `intern`,`u`.`id_userTypes` AS `id_userTypes`,`l_user_type`.`lookup_code` AS `user_type_code`,`l_user_type`.`lookup_value` AS `user_type` from ((((((`users` `u` left join `userstatus` `us` on((`us`.`id` = `u`.`id_status`))) left join `users_groups` `ug` on((`ug`.`id_users` = `u`.`id`))) left join `groups` `g` on((`g`.`id` = `ug`.`id_groups`))) left join `validation_codes` `vc` on((`u`.`id` = `vc`.`id_users`))) join `lookups` `l_user_type` on((`u`.`id_userTypes` = `l_user_type`.`id`))) left join (select `user_activity`.`id_users` AS `id_users`,count(0) AS `activity_count`,count(distinct (case when (`user_activity`.`id_type` = 1) then `user_activity`.`url` else NULL end)) AS `distinct_url_count` from `user_activity` group by `user_activity`.`id_users`) `user_activity` on((`u`.`id` = `user_activity`.`id_users`))) where ((`u`.`intern` <> 1) and (`u`.`id_status` > 0)) group by `u`.`id`,`u`.`email`,`u`.`name`,`u`.`last_login`,`us`.`name`,`us`.`description`,`u`.`blocked`,`vc`.`code`,`user_activity`.`activity_count`,`user_activity`.`distinct_url_count`,`u`.`intern`,`u`.`id_userTypes`,`l_user_type`.`lookup_code`,`l_user_type`.`lookup_value` order by `u`.`email` */;
 /*!50001 SET character_set_client      = @saved_cs_client */;
 /*!50001 SET character_set_results     = @saved_cs_results */;
 /*!50001 SET collation_connection      = @saved_col_connection */;
@@ -2495,4 +3368,4 @@ DELIMITER ;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-27 13:39:39
+-- Dump completed on 2026-04-02  9:37:43
