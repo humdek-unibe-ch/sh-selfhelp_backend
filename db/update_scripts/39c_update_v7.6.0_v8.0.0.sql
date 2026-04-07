@@ -303,10 +303,86 @@ DROP VIEW IF EXISTS `view_qualtricsSurveys`;
 
 
 -- ============================================================================
--- 13. DROP OBSOLETE PROCEDURES
+-- 13. RECREATE get_user_acl (used by AclRepository.php)
+--     Rebuilt without protocol/id_actions/id_navigation_section (dropped in 39b)
 -- ============================================================================
 
 DROP PROCEDURE IF EXISTS `get_user_acl`;
+DELIMITER //
+CREATE PROCEDURE `get_user_acl`(
+    IN param_user_id INT,
+    IN param_page_id INT
+)
+BEGIN
+    SELECT
+        param_user_id  AS id_users,
+        id_pages,
+        MAX(acl_select) AS acl_select,
+        MAX(acl_insert) AS acl_insert,
+        MAX(acl_update) AS acl_update,
+        MAX(acl_delete) AS acl_delete,
+        keyword,
+        url,
+        parent,
+        is_headless,
+        nav_position,
+        footer_position,
+        id_type,
+        id_pageAccessTypes,
+        is_system
+    FROM
+    (
+        SELECT
+            ug.id_users,
+            acl.id_pages,
+            acl.acl_select,
+            acl.acl_insert,
+            acl.acl_update,
+            acl.acl_delete,
+            p.keyword,
+            p.url,
+            p.parent,
+            p.is_headless,
+            p.nav_position,
+            p.footer_position,
+            id_type,
+            p.id_pageAccessTypes,
+            is_system
+        FROM users_groups ug
+        JOIN users u             ON ug.id_users   = u.id
+        JOIN acl_groups acl      ON acl.id_groups = ug.id_groups
+        JOIN pages p             ON p.id           = acl.id_pages
+        WHERE ug.id_users = param_user_id
+          AND (param_page_id = -1 OR acl.id_pages = param_page_id)
+
+        UNION ALL
+
+        SELECT
+            param_user_id       AS id_users,
+            p.id                AS id_pages,
+            1                   AS acl_select,
+            0                   AS acl_insert,
+            0                   AS acl_update,
+            0                   AS acl_delete,
+            p.keyword,
+            p.url,
+            p.parent,
+            p.is_headless,
+            p.nav_position,
+            p.footer_position,
+            id_type,
+            p.id_pageAccessTypes,
+            is_system
+        FROM pages p
+        WHERE p.is_open_access = 1
+          AND (param_page_id = -1 OR p.id = param_page_id)
+
+    ) AS combined_acl
+    GROUP BY
+        id_pages, keyword, url, parent, is_headless,
+        nav_position, footer_position, id_type, is_system, id_pageAccessTypes;
+END //
+DELIMITER ;
 
 
 -- ============================================================================
