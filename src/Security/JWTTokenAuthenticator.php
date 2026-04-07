@@ -31,6 +31,7 @@ class JWTTokenAuthenticator extends AbstractAuthenticator
     {
         $pathInfo = $request->getPathInfo();
         $isApiRoute = str_starts_with($pathInfo, '/cms-api/v1/');
+        $isPublicAuthRoute = str_starts_with($pathInfo, '/cms-api/v1/auth/');
 
         if (!$isApiRoute) {
             return false;
@@ -43,8 +44,9 @@ class JWTTokenAuthenticator extends AbstractAuthenticator
 
         $hasToken = $hasAuth || $hasHttpAuth || $hasRedirectAuth;
 
-        // Only log when there are authentication issues or in debug mode
-        if (!$hasToken && $isApiRoute) {
+        // Public auth endpoints intentionally do not require a JWT.
+        // Only log missing tokens for API routes that should be authenticated.
+        if (!$hasToken && $isApiRoute && !$isPublicAuthRoute) {
             error_log(sprintf(
                 '[JWTTokenAuthenticator] Missing token for API route: %s, HasAuth: %s, HasHttpAuth: %s, HasRedirectAuth: %s',
                 $pathInfo,

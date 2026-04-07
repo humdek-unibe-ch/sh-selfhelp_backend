@@ -104,7 +104,13 @@ class CmsPreferenceService extends BaseService
     public function getDefaultTimezoneId(): ?int
     {
         $preferences = $this->getCmsPreferences();
-        return $preferences['default_timezone'];
+        $timezoneId = $preferences['default_timezone'] ?? null;
+
+        if ($timezoneId === null || $timezoneId === '') {
+            return null;
+        }
+
+        return (int) $timezoneId;
     }
 
     /**
@@ -114,8 +120,12 @@ class CmsPreferenceService extends BaseService
      */
     public function getDefaultTimezone(): ?Lookup
     {
-        $preferences = $this->getCmsPreferences();
-        return $this->lookupService->findById($preferences['default_timezone']);
+        $timezoneId = $this->getDefaultTimezoneId();
+        if ($timezoneId === null) {
+            return null;
+        }
+
+        return $this->lookupService->findById($timezoneId);
     }
 
     /**
@@ -125,7 +135,11 @@ class CmsPreferenceService extends BaseService
      */
     public function getDefaultTimezoneCode():string
     {
-        $defaultTimezoneId = $this->getCmsPreferences()['default_timezone'];
+        $defaultTimezoneId = $this->getDefaultTimezoneId();
+        if ($defaultTimezoneId === null) {
+            return 'Europe/Zurich';
+        }
+
         return $this->lookupService->getLookupCodeById($defaultTimezoneId);
     }
 

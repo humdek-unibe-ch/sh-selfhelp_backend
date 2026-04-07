@@ -43,7 +43,7 @@ class User2faCodeRepository extends ServiceEntityRepository
         $user2faCode = new Users2faCode();
         $user2faCode->setUser($user); // Set the User entity        
         $user2faCode->setCode($code);
-        $user2faCode->setCreatedAt(new DateTime());
+        $user2faCode->setCreatedAt(new DateTimeImmutable('now', new \DateTimeZone('UTC')));
         $user2faCode->setExpiresAt($expiresAt);
         $user2faCode->setIsUsed(false);
 
@@ -63,7 +63,7 @@ class User2faCodeRepository extends ServiceEntityRepository
             ->andWhere('u2c.isUsed = :isUsed')
             ->setParameter('user', $user)
             ->setParameter('code', $code)
-            ->setParameter('now', new DateTimeImmutable())
+            ->setParameter('now', new DateTimeImmutable('now', new \DateTimeZone('UTC')), 'datetime_immutable')
             ->setParameter('isUsed', false)
             ->getQuery()
             ->getOneOrNullResult();

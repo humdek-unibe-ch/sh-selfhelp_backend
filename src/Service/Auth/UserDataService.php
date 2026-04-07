@@ -144,15 +144,17 @@ class UserDataService
 
         // User doesn't have timezone set, use CMS default
         try {
-            $defaultTimezoneCode = $this->cmsPreferenceService->getDefaultTimezone();
-            if ($defaultTimezoneCode) {
-                $timezoneLookup = $this->lookupService->findById($defaultTimezoneCode);
-                return [
-                    'id' => $timezoneLookup->getId(),
-                    'code' => $timezoneLookup->getLookupCode(),
-                    'name' => $timezoneLookup->getLookupValue(),
-                    'description' => $timezoneLookup->getLookupDescription()
-                ];
+            $defaultTimezoneId = $this->cmsPreferenceService->getDefaultTimezoneId();
+            if ($defaultTimezoneId) {
+                $timezoneLookup = $this->lookupService->findById($defaultTimezoneId);
+                if ($timezoneLookup) {
+                    return [
+                        'id' => $timezoneLookup->getId(),
+                        'code' => $timezoneLookup->getLookupCode(),
+                        'name' => $timezoneLookup->getLookupValue(),
+                        'description' => $timezoneLookup->getLookupDescription()
+                    ];
+                }
             }
 
             // If CMS timezone not found or not set, try to find Europe/Zurich as fallback

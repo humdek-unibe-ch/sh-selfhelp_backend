@@ -28,6 +28,7 @@ use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInt
 class AuthController extends AbstractController
 {
     use RequestValidatorTrait;
+
     /**
      * Constructor
      */
@@ -42,6 +43,23 @@ class AuthController extends AbstractController
         private readonly UserDataService $userDataService,
         private readonly LoggerInterface $logger
     ) {
+    }
+
+    private function logDebugException(string $context, \Throwable $exception): void
+    {
+        if (!filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOL)) {
+            return;
+        }
+
+        error_log(sprintf(
+            '[AuthController][%s] %s in %s:%d%s%s',
+            $context,
+            $exception->getMessage(),
+            $exception->getFile(),
+            $exception->getLine(),
+            PHP_EOL,
+            $exception->getTraceAsString()
+        ));
     }
 
 
@@ -103,6 +121,7 @@ class AuthController extends AbstractController
             // Let the ApiExceptionListener handle this too
             throw $e;
         } catch (\Exception $e) {
+            $this->logDebugException('login', $e);
             $this->logger->error('Login error', [
                 'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -160,8 +179,8 @@ class AuthController extends AbstractController
                     'id' => $user->getId(),
                     'email' => $user->getEmail(),
                     'name' => $user->getName(),
-                    'language_id' => $userLanguageInfo['language_id'],
-                    'language_locale' => $userLanguageInfo['language_locale']
+                    'language_id' => $userLanguageInfo['id'],
+                    'language_locale' => $userLanguageInfo['locale']
                 ]
             ], 'responses/auth/2fa_verify', Response::HTTP_OK, true);
         } catch (RequestValidationException $e) {
@@ -171,6 +190,7 @@ class AuthController extends AbstractController
             // Let the ApiExceptionListener handle this too
             throw $e;
         } catch (\Exception $e) {
+            $this->logDebugException('twoFactorVerify', $e);
             $this->logger->error('Two-factor verification error', [
                 'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -216,6 +236,7 @@ class AuthController extends AbstractController
                 Response::HTTP_BAD_REQUEST
             );
         } catch (\Exception $e) {
+            $this->logDebugException('refreshToken', $e);
             $this->logger->error('Token refresh error', [
                 'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -298,6 +319,7 @@ class AuthController extends AbstractController
                 Response::HTTP_BAD_REQUEST
             );
         } catch (\Exception $e) {
+            $this->logDebugException('logout', $e);
             $this->logger->error('Logout error', [
                 'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -358,6 +380,7 @@ class AuthController extends AbstractController
             // Let the ApiExceptionListener handle this too
             throw $e;
         } catch (\Exception $e) {
+            $this->logDebugException('setUserLanguage', $e);
             $this->logger->error('Set user language error', [
                 'exception' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
