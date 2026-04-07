@@ -272,7 +272,7 @@ CREATE TABLE IF NOT EXISTS `logPerformance` (
 
 CREATE TABLE IF NOT EXISTS refreshTokens (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    id_users BIGINT NOT NULL,
+    id_users INT(10) UNSIGNED NOT NULL,
     token_hash VARCHAR(255) NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -991,7 +991,7 @@ CALL drop_index('pages_fields_translation', 'id_pages');
 CALL drop_index('pages_sections', 'id_pages');
 CALL drop_index('pages_sections', 'id_sections');
 CALL drop_index('pageType', 'pageType_name');
-CALL drop_index('refreshtokens', 'idx_user_id');
+CALL drop_index('refreshTokens', 'idx_user_id');
 CALL drop_index('scheduledJobs_tasks', 'scheduledJobs_tasks_fk_id_tasks');
 CALL drop_index('scheduledJobs_users', 'scheduledJobs_users_fk_scheduledJobs');
 CALL drop_index('sections', 'id_styles');
