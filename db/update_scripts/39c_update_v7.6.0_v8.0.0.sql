@@ -1,23 +1,4 @@
--- ============================================================================
--- 39c: Views, Stored Procedures, Helper Functions, Final Cleanup
--- ============================================================================
--- Run this script THIRD (after 39a and 39b). Idempotent and re-runnable.
---
--- 39b dropped ALL old views and many stored procedures because underlying
--- tables changed (formActions->actions, scheduledJobs simplified, pages
--- columns dropped, acl_users dropped, genders dropped, styles.id_type dropped).
--- This script recreates every view and procedure needed for v8.0.0.
--- ============================================================================
-
-SET FOREIGN_KEY_CHECKS = 0;
-SET @OLD_SQL_MODE = @@SQL_MODE;
-SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';
-
-
--- ============================================================================
--- 1. RECREATE view_styles (styles.id_type was dropped in 39b)
---    The version from 39a referenced styles.id_type which no longer exists.
--- ============================================================================
+CALL add_table_column('fields', 'config', 'JSON DEFAULT NULL');
 
 DROP VIEW IF EXISTS `view_styles`;
 CREATE VIEW `view_styles` AS
@@ -30,572 +11,689 @@ SELECT
   sg.description AS style_group_description,
   sg.position AS style_group_position
 FROM styles s
-LEFT JOIN styleGroup sg ON s.id_group = sg.id;
+LEFT JOIN styleGroup sg
+  ON s.id_group = sg.id;
 
+DROP VIEW IF EXISTS view_fields;
+CREATE VIEW view_fields
+AS
+SELECT f.id AS field_id, f.`name` AS field_name, f.display, ft.id AS field_type_id, ft.`name` AS field_type, ft.position, f.config
+FROM `fields` f
+LEFT JOIN fieldType ft ON (f.id_type = ft.id);
 
--- ============================================================================
--- 2. RECREATE view_fields (add config column from 39b)
--- ============================================================================
-
-DROP VIEW IF EXISTS `view_fields`;
-CREATE VIEW `view_fields` AS
-SELECT
-  CAST(f.id AS UNSIGNED) AS field_id,
-  f.name AS field_name,
-  f.display AS display,
-  CAST(ft.id AS UNSIGNED) AS field_type_id,
-  ft.name AS field_type,
-  ft.position AS position,
-  f.config AS config
-FROM fields f
-LEFT JOIN fieldType ft ON f.id_type = ft.id;
-
-
--- ============================================================================
--- 3. RECREATE view_style_fields (depends on view_styles, view_fields)
--- ============================================================================
-
-DROP VIEW IF EXISTS `view_style_fields`;
-CREATE VIEW `view_style_fields` AS
-SELECT
-  s.style_id, s.style_name, s.style_group,
-  f.field_id, f.field_name, f.field_type, f.config, f.display, f.position,
-  sf.default_value, sf.help, sf.disabled, sf.hidden
+DROP VIEW IF EXISTS view_style_fields;
+CREATE VIEW view_style_fields
+AS
+SELECT s.style_id, s.style_name, s.style_group, f.field_id, f.field_name, f.field_type, f.config, f.display, f.position,
+sf.default_value, sf.help, sf.disabled, sf.hidden
 FROM view_styles s
-LEFT JOIN styles_fields sf ON s.style_id = sf.id_styles
-LEFT JOIN view_fields f ON f.field_id = sf.id_fields;
-
-
--- ============================================================================
--- 4. RECREATE view_datatables_data (dropped in 39b)
--- ============================================================================
-
-DROP VIEW IF EXISTS `view_datatables_data`;
-CREATE VIEW `view_datatables_data` AS
-SELECT
-  t.id AS table_id,
-  r.id AS row_id,
-  r.`timestamp` AS entry_date,
-  col.id AS col_id,
-  t.name AS table_name,
-  col.name AS col_name,
-  cell.value AS value,
-  t.`timestamp` AS `timestamp`,
-  r.id_users AS id_users,
-  t.displayName AS displayName
-FROM dataTables t
-LEFT JOIN dataRows r ON t.id = r.id_dataTables
-LEFT JOIN dataCells cell ON cell.id_dataRows = r.id
-LEFT JOIN dataCols col ON col.id = cell.id_dataCols;
-
+LEFT JOIN styles_fields sf ON (s.style_id = sf.id_styles)
+LEFT JOIN view_fields f ON (f.field_id = sf.id_fields);
 
 -- ============================================================================
--- 5. RECREATE view_transactions (dropped in 39b)
+-- Page Versioning & Publishing System
 -- ============================================================================
+-- Add page versioning and publishing capabilities to allow storing complete
+-- published page JSON structures as versions. This hybrid approach stores
+-- page structure while re-running dynamic elements (data retrieval, conditions)
+-- when serving to ensure freshness.
 
-DROP VIEW IF EXISTS `view_transactions`;
-CREATE VIEW `view_transactions` AS
-SELECT
-  t.id AS id,
-  t.transaction_time AS transaction_time,
-  t.id_transactionTypes AS id_transactionTypes,
-  tran_type.lookup_value AS transaction_type,
-  t.id_transactionBy AS id_transactionBy,
-  tran_by.lookup_value AS transaction_by,
-  t.id_users AS id_users,
-  u.name AS user_name,
-  t.table_name AS table_name,
-  t.id_table_name AS id_table_name,
-  REPLACE(JSON_EXTRACT(t.transaction_log, '$.verbal_log'), '"', '') AS transaction_verbal_log
-FROM transactions t
-JOIN lookups tran_type ON tran_type.id = t.id_transactionTypes
-JOIN lookups tran_by ON tran_by.id = t.id_transactionBy
-LEFT JOIN users u ON u.id = t.id_users;
+-- 1. Create page_versions table
+-- This table stores complete published page JSON structures as versions
+DROP TABLE IF EXISTS `page_versions`;
+CREATE TABLE `page_versions` (
+  `id` INT AUTO_INCREMENT NOT NULL,
+  `id_pages` INT NOT NULL,
+  `version_number` INT NOT NULL COMMENT 'Incremental version number per page',
+  `version_name` VARCHAR(255) DEFAULT NULL COMMENT 'Optional user-defined name for the version',
+  `page_json` JSON NOT NULL COMMENT 'Complete JSON structure from getPage() including all languages, conditions, data table configs',
+  `created_by` INT DEFAULT NULL COMMENT 'User who created the version',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `published_at` DATETIME DEFAULT NULL COMMENT 'When this version was published',
+  `metadata` JSON DEFAULT NULL COMMENT 'Additional info like change summary, tags, etc.',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_page_version_number` (`id_pages`, `version_number`),
+  KEY `idx_id_pages` (`id_pages`),
+  KEY `idx_created_by` (`created_by`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_published_at` (`published_at`),
+  CONSTRAINT `FK_page_versions_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_page_versions_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Stores published page versions with complete JSON structures';
 
+-- 2. Update pages table to add published_version_id
+-- This column points to the currently published version in page_versions table
+CALL add_table_column('pages', 'published_version_id', 'INT DEFAULT NULL');
+CALL add_index('pages', 'IDX_2074E575B5D68A8D', 'published_version_id', FALSE);
+CALL add_foreign_key('pages', 'FK_2074E575B5D68A8D', 'published_version_id', 'page_versions (id)');
 
--- ============================================================================
--- 6. RECREATE view_user_codes (dropped in 39b)
--- ============================================================================
+ALTER TABLE pages DROP FOREIGN KEY FK_2074E575B5D68A8D;
+DROP INDEX IDX_2074E575B5D68A8D ON pages;
+ALTER TABLE pages ADD CONSTRAINT FK_2074E575B5D68A8D FOREIGN KEY (published_version_id) REFERENCES page_versions (id);
+CALL rename_index('pages', 'FK_2074E575B5D68A8D', 'IDX_pages_published_version_id');
+CALL rename_index('pages', 'fk_2074e575b5d68a8d', 'IDX_pages_published_version_id');
+ALTER TABLE page_versions CHANGE created_by created_by INT DEFAULT NULL, CHANGE created_at created_at DATETIME NOT NULL;
 
-DROP VIEW IF EXISTS `view_user_codes`;
-CREATE VIEW `view_user_codes` AS
-SELECT
-  u.id AS id,
-  u.email AS email,
-  u.name AS name,
-  u.blocked AS blocked,
-  CASE
-    WHEN u.name = 'admin' THEN 'admin'
-    WHEN u.name = 'tpf'   THEN 'tpf'
-    ELSE IFNULL(vc.code, '-')
-  END AS code,
-  u.intern AS intern
-FROM users u
-LEFT JOIN validation_codes vc ON u.id = vc.id_users
-WHERE u.intern <> 1 AND u.id_status > 0;
+-- Insert resource types into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('resourceTypes', 'group', 'Group', 'User groups for data access control'),
+('resourceTypes', 'data_table', 'Data Table', 'Custom data tables'),
+('resourceTypes', 'pages', 'Pages', 'Admin pages access control')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
 
+-- Insert audit actions into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('auditActions', 'filter', 'Filter', 'Data filtering applied to READ operations'),
+('auditActions', 'create', 'Create', 'Permission check for CREATE operations'),
+('auditActions', 'read', 'Read', 'Permission check for specific READ operations'),
+('auditActions', 'update', 'Update', 'Permission check for UPDATE operations'),
+('auditActions', 'delete', 'Delete', 'Permission check for DELETE operations')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
 
--- ============================================================================
--- 7. ACL VIEWS (pages.protocol, id_actions, id_navigation_section dropped;
---              acl_users table dropped)
--- ============================================================================
+-- Insert permission results into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('permissionResults', 'granted', 'Granted', 'Permission was granted'),
+('permissionResults', 'denied', 'Denied', 'Permission was denied')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
 
-DROP VIEW IF EXISTS `view_acl_groups_pages`;
-CREATE VIEW `view_acl_groups_pages` AS
-SELECT
-  acl.id_groups AS id_groups,
-  acl.id_pages AS id_pages,
-  CASE WHEN p.is_open_access = 1 THEN 1 ELSE acl.acl_select END AS acl_select,
-  acl.acl_insert AS acl_insert,
-  acl.acl_update AS acl_update,
-  acl.acl_delete AS acl_delete,
-  p.keyword AS keyword,
-  p.url AS url,
-  p.parent AS parent,
-  p.is_headless AS is_headless,
-  p.nav_position AS nav_position,
-  p.footer_position AS footer_position,
-  p.id_type AS id_type,
-  p.is_open_access AS is_open_access,
-  p.is_system AS is_system
-FROM acl_groups acl
-JOIN pages p ON acl.id_pages = p.id
-GROUP BY acl.id_groups, acl.id_pages, acl.acl_select, acl.acl_insert,
-  acl.acl_update, acl.acl_delete, p.keyword, p.url, p.parent,
-  p.is_headless, p.nav_position, p.footer_position, p.id_type,
-  p.is_open_access, p.is_system;
+-- Insert comprehensive timezone entries into lookups table
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+-- North America
+('timezones', 'America/New_York', 'Eastern Time (ET)', 'Eastern Time Zone - UTC-5/-4'),
+('timezones', 'America/Chicago', 'Central Time (CT)', 'Central Time Zone - UTC-6/-5'),
+('timezones', 'America/Denver', 'Mountain Time (MT)', 'Mountain Time Zone - UTC-7/-6'),
+('timezones', 'America/Phoenix', 'Mountain Time (MST)', 'Mountain Time Zone (no DST) - UTC-7'),
+('timezones', 'America/Los_Angeles', 'Pacific Time (PT)', 'Pacific Time Zone - UTC-8/-7'),
+('timezones', 'America/Anchorage', 'Alaska Time (AKT)', 'Alaska Time Zone - UTC-9/-8'),
+('timezones', 'America/Juneau', 'Alaska Time (AKT)', 'Alaska Time Zone - UTC-9/-8'),
+('timezones', 'Pacific/Honolulu', 'Hawaii Time (HT)', 'Hawaii Time Zone - UTC-10'),
+('timezones', 'America/Halifax', 'Atlantic Time (AT)', 'Atlantic Time Zone - UTC-4/-3'),
+('timezones', 'America/St_Johns', 'Newfoundland Time (NT)', 'Newfoundland Time Zone - UTC-3:30/-2:30'),
+('timezones', 'America/Regina', 'Central Time (CT)', 'Central Time Zone (no DST) - UTC-6'),
+('timezones', 'America/Winnipeg', 'Central Time (CT)', 'Central Time Zone - UTC-6/-5'),
+('timezones', 'America/Toronto', 'Eastern Time (ET)', 'Eastern Time Zone - UTC-5/-4'),
+('timezones', 'America/Vancouver', 'Pacific Time (PT)', 'Pacific Time Zone - UTC-8/-7'),
+('timezones', 'America/Edmonton', 'Mountain Time (MT)', 'Mountain Time Zone - UTC-7/-6'),
 
-DROP VIEW IF EXISTS `view_acl_users_in_groups_pages`;
-CREATE VIEW `view_acl_users_in_groups_pages` AS
-SELECT
-  ug.id_users AS id_users,
-  acl.id_pages AS id_pages,
-  MAX(IFNULL(acl.acl_select, 0)) AS acl_select,
-  MAX(IFNULL(acl.acl_insert, 0)) AS acl_insert,
-  MAX(IFNULL(acl.acl_update, 0)) AS acl_update,
-  MAX(IFNULL(acl.acl_delete, 0)) AS acl_delete,
-  p.keyword AS keyword,
-  p.url AS url,
-  p.parent AS parent,
-  p.is_headless AS is_headless,
-  p.nav_position AS nav_position,
-  p.footer_position AS footer_position,
-  p.id_type AS id_type,
-  p.is_open_access AS is_open_access,
-  p.is_system AS is_system
-FROM users u
-JOIN users_groups ug ON ug.id_users = u.id
-JOIN acl_groups acl ON acl.id_groups = ug.id_groups
-JOIN pages p ON acl.id_pages = p.id
-GROUP BY ug.id_users, acl.id_pages, p.keyword, p.url, p.parent,
-  p.is_headless, p.nav_position, p.footer_position, p.id_type,
-  p.is_open_access, p.is_system;
+-- South America
+('timezones', 'America/Sao_Paulo', 'Brasília Time (BRT)', 'Brasília Time - UTC-3/-2'),
+('timezones', 'America/Buenos_Aires', 'Argentina Time (ART)', 'Argentina Time - UTC-3'),
+('timezones', 'America/Lima', 'Peru Time (PET)', 'Peru Time - UTC-5'),
+('timezones', 'America/Bogota', 'Colombia Time (COT)', 'Colombia Time - UTC-5'),
+('timezones', 'America/Caracas', 'Venezuelan Time (VET)', 'Venezuelan Time - UTC-4'),
+('timezones', 'America/Santiago', 'Chile Time (CLT)', 'Chile Time - UTC-4/-3'),
+('timezones', 'America/Mexico_City', 'Central Time (CT)', 'Central Time Zone - UTC-6/-5'),
 
-DROP VIEW IF EXISTS `view_acl_users_union`;
-CREATE VIEW `view_acl_users_union` AS
-SELECT * FROM view_acl_users_in_groups_pages;
+-- Europe
+('timezones', 'Europe/London', 'Greenwich Mean Time (GMT)', 'Greenwich Mean Time - UTC+0/+1'),
+('timezones', 'Europe/Berlin', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Paris', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Rome', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Madrid', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Amsterdam', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Brussels', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Vienna', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Zurich', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Prague', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Warsaw', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Budapest', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Bucharest', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Kiev', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Athens', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Helsinki', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Europe/Stockholm', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Copenhagen', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Oslo', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
+('timezones', 'Europe/Moscow', 'Moscow Time (MSK)', 'Moscow Time - UTC+3'),
+('timezones', 'Europe/Istanbul', 'Turkey Time (TRT)', 'Turkey Time - UTC+3'),
 
+-- Asia
+('timezones', 'Asia/Tokyo', 'Japan Standard Time (JST)', 'Japan Standard Time - UTC+9'),
+('timezones', 'Asia/Shanghai', 'China Standard Time (CST)', 'China Standard Time - UTC+8'),
+('timezones', 'Asia/Hong_Kong', 'Hong Kong Time (HKT)', 'Hong Kong Time - UTC+8'),
+('timezones', 'Asia/Singapore', 'Singapore Time (SGT)', 'Singapore Time - UTC+8'),
+('timezones', 'Asia/Kolkata', 'India Standard Time (IST)', 'India Standard Time - UTC+5:30'),
+('timezones', 'Asia/Karachi', 'Pakistan Time (PKT)', 'Pakistan Time - UTC+5'),
+('timezones', 'Asia/Dhaka', 'Bangladesh Time (BST)', 'Bangladesh Time - UTC+6'),
+('timezones', 'Asia/Bangkok', 'Indochina Time (ICT)', 'Indochina Time - UTC+7'),
+('timezones', 'Asia/Jakarta', 'Western Indonesian Time (WIB)', 'Western Indonesian Time - UTC+7'),
+('timezones', 'Asia/Manila', 'Philippine Time (PHT)', 'Philippine Time - UTC+8'),
+('timezones', 'Asia/Seoul', 'Korea Standard Time (KST)', 'Korea Standard Time - UTC+9'),
+('timezones', 'Asia/Taipei', 'Taiwan Time (TWT)', 'Taiwan Time - UTC+8'),
+('timezones', 'Asia/Kuala_Lumpur', 'Malaysia Time (MYT)', 'Malaysia Time - UTC+8'),
+('timezones', 'Asia/Dubai', 'Gulf Time (GST)', 'Gulf Time - UTC+4'),
+('timezones', 'Asia/Riyadh', 'Arabia Time (AST)', 'Arabia Time - UTC+3'),
+('timezones', 'Asia/Tehran', 'Iran Time (IRT)', 'Iran Time - UTC+3:30/+4:30'),
+('timezones', 'Asia/Jerusalem', 'Israel Time (IST)', 'Israel Time - UTC+2/+3'),
 
--- ============================================================================
--- 8. view_actions (was view_formactions; references `actions` table)
--- ============================================================================
+-- Africa
+('timezones', 'Africa/Cairo', 'Eastern European Time (EET)', 'Eastern European Time - UTC+2/+3'),
+('timezones', 'Africa/Johannesburg', 'South Africa Time (SAST)', 'South Africa Time - UTC+2'),
+('timezones', 'Africa/Lagos', 'West Africa Time (WAT)', 'West Africa Time - UTC+1'),
+('timezones', 'Africa/Nairobi', 'East Africa Time (EAT)', 'East Africa Time - UTC+3'),
+('timezones', 'Africa/Casablanca', 'Western European Time (WET)', 'Western European Time - UTC+0/+1'),
+('timezones', 'Africa/Algiers', 'Central European Time (CET)', 'Central European Time - UTC+1/+2'),
 
-DROP VIEW IF EXISTS `view_actions`;
-CREATE VIEW `view_actions` AS
-SELECT
-  a.id AS id,
-  a.name AS action_name,
-  dt.name AS dataTable_name,
-  a.id_actionTriggerTypes AS id_actionTriggerTypes,
-  trig.lookup_value AS trigger_type,
-  trig.lookup_code AS trigger_type_code,
-  a.config AS config,
-  dt.id AS id_dataTables
-FROM actions a
-JOIN lookups trig ON trig.id = a.id_actionTriggerTypes
-LEFT JOIN view_dataTables dt ON dt.id = a.id_dataTables;
+-- Australia & Oceania
+('timezones', 'Australia/Sydney', 'Australian Eastern Time (AET)', 'Australian Eastern Time - UTC+10/+11'),
+('timezones', 'Australia/Melbourne', 'Australian Eastern Time (AET)', 'Australian Eastern Time - UTC+10/+11'),
+('timezones', 'Australia/Brisbane', 'Australian Eastern Time (AEST)', 'Australian Eastern Time (no DST) - UTC+10'),
+('timezones', 'Australia/Perth', 'Australian Western Time (AWST)', 'Australian Western Time - UTC+8'),
+('timezones', 'Australia/Adelaide', 'Australian Central Time (ACT)', 'Australian Central Time - UTC+9:30/+10:30'),
+('timezones', 'Pacific/Auckland', 'New Zealand Time (NZT)', 'New Zealand Time - UTC+12/+13'),
+('timezones', 'Pacific/Fiji', 'Fiji Time (FJT)', 'Fiji Time - UTC+12/+13'),
 
+-- Pacific Islands
+('timezones', 'Pacific/Guam', 'Chamorro Time (ChST)', 'Chamorro Time - UTC+10'),
+('timezones', 'Pacific/Saipan', 'Chamorro Time (ChST)', 'Chamorro Time - UTC+10')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
 
--- ============================================================================
--- 9. view_scheduledjobs (simplified: no junction tables, all columns inline)
--- ============================================================================
+-- Add timezone field to users table
+CALL add_table_column('users', 'id_timezones', 'INT DEFAULT NULL');
+CALL add_foreign_key('users', 'FK_users_id_timezones', 'id_timezones', 'lookups(id)');
+CALL add_index('users', 'IDX_1483A5E9F5677479', 'id_timezones', FALSE);
 
-DROP VIEW IF EXISTS `view_scheduledjobs`;
-CREATE VIEW `view_scheduledjobs` AS
-SELECT
-  sj.id AS id,
-  l_status.lookup_code AS status_code,
-  l_status.lookup_value AS status,
-  l_types.lookup_code AS type_code,
-  l_types.lookup_value AS type,
-  sj.config AS config,
-  sj.date_create AS date_create,
-  sj.date_to_be_executed AS date_to_be_executed,
-  sj.date_executed AS date_executed,
-  sj.description AS description,
-  sj.id_users AS id_users,
-  sj.id_actions AS id_actions,
-  sj.id_dataTables AS id_dataTables,
-  sj.id_dataRows AS id_dataRows,
-  sj.id_jobTypes AS id_jobTypes,
-  sj.id_jobStatus AS id_jobStatus,
-  dt.name AS dataTables_name
-FROM scheduledJobs sj
-JOIN lookups l_status ON l_status.id = sj.id_jobStatus
-JOIN lookups l_types ON l_types.id = sj.id_jobTypes
-LEFT JOIN view_dataTables dt ON dt.id = sj.id_dataTables;
+-- =================================================
+-- Create get_dataTable_with_user_group_filter procedure
+-- =================================================
+-- This procedure filters data by user groups instead of individual users
+-- Used for non-admin users who should only see data from users in their accessible groups
 
+DELIMITER $$
 
--- ============================================================================
--- 10. view_scheduledjobs_transactions (simplified)
--- ============================================================================
+DROP PROCEDURE IF EXISTS `get_dataTable_with_user_group_filter`$$
 
-DROP VIEW IF EXISTS `view_scheduledjobs_transactions`;
-CREATE VIEW `view_scheduledjobs_transactions` AS
-SELECT
-  sj.id AS id,
-  sj.date_create AS date_create,
-  sj.date_to_be_executed AS date_to_be_executed,
-  sj.date_executed AS date_executed,
-  t.id AS transaction_id,
-  t.transaction_time AS transaction_time,
-  t.transaction_type AS transaction_type,
-  t.transaction_by AS transaction_by,
-  t.user_name AS user_name,
-  t.transaction_verbal_log AS transaction_verbal_log
-FROM scheduledJobs sj
-JOIN view_transactions t
-  ON t.table_name = 'scheduledJobs' AND t.id_table_name = sj.id
-ORDER BY sj.id, t.id;
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_user_group_filter`(
+	IN table_id_param INT,
+	IN current_user_id_param INT, -- Current user making the request
+	IN filter_param VARCHAR(1000),
+	IN exclude_deleted_param BOOLEAN, -- If true it will exclude the deleted records and it will not return them
+	IN language_id_param INT -- Language ID for translations (default 1 = internal language only)
+)
+    READS SQL DATA
+    DETERMINISTIC
+BEGIN
+	SET @@group_concat_max_len = 32000000;
+	SET @sql = NULL;
 
+	-- Build the dynamic column selection (same as before)
+	SELECT
+	GROUP_CONCAT(DISTINCT
+		CONCAT(
+			'MAX(CASE WHEN col.`name` = "',
+				col.name,
+				'" THEN `value` END) AS `',
+			replace(col.name, ' ', ''), '`'
+		)
+	) INTO @sql
+	FROM  dataTables t
+	INNER JOIN dataCols col on (t.id = col.id_dataTables)
+	WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
 
--- ============================================================================
--- 11. view_sections_fields (genders table dropped, remove gender join)
--- ============================================================================
+	IF (@sql is null) THEN
+		SELECT `name` from view_dataTables where 1=2;
+	ELSE
+		BEGIN
+			-- User group filter - find accessible users dynamically
+			-- Get resource type ID for groups
+			SET @group_resource_type_id = (SELECT id FROM lookups WHERE type_code = 'resourceTypes' AND lookup_code = 'group' LIMIT 1);
 
-DROP VIEW IF EXISTS `view_sections_fields`;
-CREATE VIEW `view_sections_fields` AS
-SELECT
-  s.id AS id_sections,
-  s.name AS section_name,
-  IFNULL(sft.content, '') AS content,
-  IFNULL(sft.meta, '') AS meta,
-  s.id_styles AS id_styles,
-  fields.style_name AS style_name,
-  fields.field_id AS id_fields,
-  fields.field_name AS field_name,
-  IFNULL(l.locale, '') AS locale
-FROM sections s
-LEFT JOIN view_style_fields fields ON fields.style_id = s.id_styles
-LEFT JOIN sections_fields_translation sft
-  ON sft.id_sections = s.id AND sft.id_fields = fields.field_id
-LEFT JOIN languages l ON sft.id_languages = l.id;
+			-- Find all users that the current user can access through group permissions
+			DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
+			CREATE TEMPORARY TABLE accessible_users_temp AS
+			SELECT DISTINCT ug.id_users
+			FROM users_groups ug
+			WHERE ug.id_groups IN (
+				-- Find groups the current user can access
+				SELECT rda.resource_id
+				FROM role_data_access rda
+				INNER JOIN roles r ON rda.id_roles = r.id
+				INNER JOIN users_roles ur ON r.id = ur.id_roles
+				WHERE ur.id_users = current_user_id_param
+				AND rda.id_resourceTypes = @group_resource_type_id
+				AND rda.crud_permissions > 0
+			);
 
+			-- Build user filter using the accessible users
+			SET @user_filter = '';
+			SET @accessible_user_count = (SELECT COUNT(*) FROM accessible_users_temp);
+			IF @accessible_user_count > 0 THEN
+				SET @user_filter = ' AND r.id_users IN (SELECT id_users FROM accessible_users_temp)';
+			ELSE
+				-- No accessible users - return no results
+				SET @user_filter = ' AND 1=0';
+			END IF;
 
--- ============================================================================
--- 12. DROP QUALTRICS JUNCTION/VIEWS (old scheduledJobs structure is gone)
--- ============================================================================
+			-- Time period filter (same as before)
+			SET @time_period_filter = '';
+			CASE
+				WHEN filter_param LIKE '%LAST_HOUR%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
+				WHEN filter_param LIKE '%LAST_DAY%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
+				WHEN filter_param LIKE '%LAST_WEEK%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
+				WHEN filter_param LIKE '%LAST_MONTH%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
+				WHEN filter_param LIKE '%LAST_YEAR%' THEN
+					SET @time_period_filter = ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
+				ELSE
+					SET @time_period_filter = '';
+			END CASE;
 
-DROP TABLE IF EXISTS `scheduledJobs_qualtricsActions`;
-DROP VIEW IF EXISTS `view_qualtricsActions`;
-DROP VIEW IF EXISTS `view_qualtricsReminders`;
-DROP VIEW IF EXISTS `view_qualtricsSurveys`;
+			-- Exclude deleted filter (same as before)
+			SET @exclude_deleted_filter = '';
+			CASE
+				WHEN exclude_deleted_param = TRUE THEN
+					SET @exclude_deleted_filter = CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
+				ELSE
+					SET @exclude_deleted_filter = '';
+			END CASE;
 
+			-- Language filter for translations
+			-- Always include language 1 (internal), and also include the requested language if different
+			SET @language_filter = '';
+			IF language_id_param IS NULL OR language_id_param = 1 THEN
+				-- Default: only internal language (language_id = 1)
+				SET @language_filter = ' AND cell.id_languages = 1';
+			ELSE
+				-- Include both internal language (1) and requested language
+				-- This ensures we always have fallback to language 1, and translations where available
+				SET @language_filter = CONCAT(' AND cell.id_languages IN (1, ', language_id_param, ')');
+			END IF;
 
--- ============================================================================
--- 13. RECREATE get_user_acl (used by AclRepository.php)
---     Rebuilt without protocol/id_actions/id_navigation_section (dropped in 39b)
--- ============================================================================
+			-- Build the main query with user group filtering
+			SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
+					r.`timestamp` AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
+					' FROM dataTables t
+					INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+					INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+					INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+					LEFT JOIN users u ON (r.id_users = u.id)
+					LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+					LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+					WHERE t.id = ', table_id_param, @user_filter, @time_period_filter, @exclude_deleted_filter, @language_filter,
+					' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
 
-DROP PROCEDURE IF EXISTS `get_user_acl`;
-DELIMITER //
-CREATE PROCEDURE `get_user_acl`(
-    IN param_user_id INT,
-    IN param_page_id INT
+			-- select @sql; -- Uncomment for debugging
+			PREPARE stmt FROM @sql;
+			EXECUTE stmt;
+			DEALLOCATE PREPARE stmt;
+
+			-- Clean up temporary table
+			DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
+		END;
+	END IF;
+END$$
+
+DELIMITER ;
+
+CALL drop_foreign_key('cmsPreferences', 'FK_3F26A2DF5602A942');
+DROP TABLE IF EXISTS cmsPreferences;
+DROP VIEW IF EXISTS view_cmsPreferences;
+DROP PROCEDURE IF EXISTS update_formId_reminders;
+DROP PROCEDURE IF EXISTS get_group_acl;
+DROP PROCEDURE IF EXISTS get_navigation;
+
+DROP FUNCTION IF EXISTS get_form_fields_helper;
+DROP FUNCTION IF EXISTS get_page_fields_helper;
+DROP FUNCTION IF EXISTS get_sections_fields_helper;
+
+DROP VIEW IF EXISTS view_datatables_data;
+DROP VIEW IF EXISTS view_transactions;
+DROP VIEW IF EXISTS view_user_codes;
+
+-- =================================================
+-- Scheduled Jobs Refactoring
+-- =================================================
+-- Complete refactor of scheduled jobs system:
+-- - Drop old junction tables (scheduledJobs_actions, scheduledJobs_users, etc.)
+-- - Create new simplified scheduledJobs table with direct relationships
+-- - Add timezone-aware scheduling with dynamic adjustment
+-- - Support for system jobs (user validation, password reset) without action/datatable context
+-- =================================================
+
+-- Drop old junction tables
+DROP TABLE IF EXISTS `scheduledJobs_actions`;
+DROP TABLE IF EXISTS `scheduledJobs_users`;
+DROP TABLE IF EXISTS `scheduledJobs_mailQueue`;
+DROP TABLE IF EXISTS `scheduledJobs_notifications`;
+DROP TABLE IF EXISTS `scheduledJobs_reminders`;
+DROP TABLE IF EXISTS `scheduledJobs_tasks`;
+
+-- Drop tables no longer needed after removing scheduled jobs system
+DROP TABLE IF EXISTS `mailAttachments`;
+DROP TABLE IF EXISTS `tasks`;
+DROP TABLE IF EXISTS `mailQueue`;
+DROP TABLE IF EXISTS `notifications`;
+
+-- Drop and recreate the main scheduledJobs table with new structure
+DROP TABLE IF EXISTS `scheduledJobs`;
+
+CREATE TABLE `scheduledJobs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+
+  -- Core relationships (nullable for system jobs)
+  `id_users` int DEFAULT NULL,
+  `id_actions` int DEFAULT NULL,
+  `id_dataTables` int DEFAULT NULL,
+  `id_dataRows` int DEFAULT NULL,
+
+  -- Job classification (lookup-based)
+  `id_jobTypes` int NOT NULL,
+  `id_jobStatus` int NOT NULL,
+
+  `date_create` datetime NOT NULL,
+  `date_to_be_executed` datetime NOT NULL,
+  `date_executed` datetime DEFAULT NULL,
+
+  -- Job details
+  `description` varchar(1000) DEFAULT NULL,
+  `config` json DEFAULT NULL,
+
+  PRIMARY KEY (`id`),
+
+  -- Foreign keys with Doctrine-compatible naming
+  KEY `IDX_3E186B37FA06E4D9` (`id_users`),
+  KEY `IDX_3E186B37DBD5589F` (`id_actions`),
+  KEY `IDX_3E186B37E2E6A7C3` (`id_dataTables`),
+  KEY `IDX_3E186B37F3854F45` (`id_dataRows`),
+  KEY `IDX_3E186B3777FD8DE1` (`id_jobStatus`),
+  KEY `IDX_3E186B3712C34CFB` (`id_jobTypes`),
+
+  CONSTRAINT `FK_3E186B37FA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B37DBD5589F` FOREIGN KEY (`id_actions`) REFERENCES `actions` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B37E2E6A7C3` FOREIGN KEY (`id_dataTables`) REFERENCES `dataTables` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B37F3854F45` FOREIGN KEY (`id_dataRows`) REFERENCES `dataRows` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B3777FD8DE1` FOREIGN KEY (`id_jobStatus`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_3E186B3712C34CFB` FOREIGN KEY (`id_jobTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+
+-- Insert job type lookups using constants
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('jobTypes', 'email', 'Email', 'Email sending job'),
+('jobTypes', 'notification', 'Notification', 'Push notification job'),
+('jobTypes', 'task', 'Task', 'Custom task execution'),
+('jobTypes', 'reminder', 'Reminder', 'Scheduled reminder job')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- Insert additional job status lookups (existing ones are already in DB)
+INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
+('scheduledJobsStatus', 'running', 'Running', 'Job is currently running'),
+('scheduledJobsStatus', 'cancelled', 'Cancelled', 'Job was manually cancelled')
+ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+
+-- Drop acl_users table as it's no longer needed (ACLs now handle only frontend view for groups)
+DROP TABLE IF EXISTS `acl_users`;
+
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS `rename_table_column` $$
+
+CREATE PROCEDURE `rename_table_column`(
+    param_table VARCHAR(100),
+    param_old_column_name VARCHAR(100),
+    param_new_column_name VARCHAR(100),
+    param_comment TEXT
 )
 BEGIN
-    SELECT
-        param_user_id  AS id_users,
-        id_pages,
-        MAX(acl_select) AS acl_select,
-        MAX(acl_insert) AS acl_insert,
-        MAX(acl_update) AS acl_update,
-        MAX(acl_delete) AS acl_delete,
-        keyword,
-        url,
-        parent,
-        is_headless,
-        nav_position,
-        footer_position,
-        id_type,
-        id_pageAccessTypes,
-        is_system
-    FROM
-    (
-        SELECT
-            ug.id_users,
-            acl.id_pages,
-            acl.acl_select,
-            acl.acl_insert,
-            acl.acl_update,
-            acl.acl_delete,
-            p.keyword,
-            p.url,
-            p.parent,
-            p.is_headless,
-            p.nav_position,
-            p.footer_position,
-            id_type,
-            p.id_pageAccessTypes,
-            is_system
-        FROM users_groups ug
-        JOIN users u             ON ug.id_users   = u.id
-        JOIN acl_groups acl      ON acl.id_groups = ug.id_groups
-        JOIN pages p             ON p.id           = acl.id_pages
-        WHERE ug.id_users = param_user_id
-          AND (param_page_id = -1 OR acl.id_pages = param_page_id)
 
-        UNION ALL
+    DECLARE columnExists INT;
+    DECLARE columnType VARCHAR(255);
+    DECLARE dataType VARCHAR(100);
+    DECLARE isNullable VARCHAR(3);
+    DECLARE columnDefault TEXT;
+    DECLARE extraValue VARCHAR(255);
+    DECLARE columnComment TEXT;
+    DECLARE newColumnType TEXT;
+    DECLARE defaultClause TEXT DEFAULT '';
+    DECLARE nullClause TEXT DEFAULT '';
+    DECLARE extraClause TEXT DEFAULT '';
+    DECLARE finalComment TEXT DEFAULT '';
+    DECLARE commentClause TEXT DEFAULT '';
 
-        SELECT
-            param_user_id       AS id_users,
-            p.id                AS id_pages,
-            1                   AS acl_select,
-            0                   AS acl_insert,
-            0                   AS acl_update,
-            0                   AS acl_delete,
-            p.keyword,
-            p.url,
-            p.parent,
-            p.is_headless,
-            p.nav_position,
-            p.footer_position,
-            id_type,
-            p.id_pageAccessTypes,
-            is_system
-        FROM pages p
-        WHERE p.is_open_access = 1
-          AND (param_page_id = -1 OR p.id = param_page_id)
+    SELECT COUNT(*)
+        INTO columnExists
+        FROM information_schema.COLUMNS
+        WHERE `table_schema` = DATABASE()
+        AND `table_name` = param_table
+        AND `COLUMN_NAME` = param_old_column_name;
 
-    ) AS combined_acl
-    GROUP BY
-        id_pages, keyword, url, parent, is_headless,
-        nav_position, footer_position, id_type, is_system, id_pageAccessTypes;
-END //
+    IF columnExists > 0 THEN
+        SELECT COLUMN_TYPE, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT
+            INTO columnType, dataType, isNullable, columnDefault, extraValue, columnComment
+            FROM information_schema.COLUMNS
+            WHERE `table_schema` = DATABASE()
+            AND `table_name` = param_table
+            AND `COLUMN_NAME` = param_old_column_name
+            LIMIT 1;
+
+        SET nullClause = IF(isNullable = 'YES', ' NULL', ' NOT NULL');
+
+        IF columnDefault IS NULL THEN
+            IF isNullable = 'YES' THEN
+                SET defaultClause = ' DEFAULT NULL';
+            END IF;
+        ELSEIF UPPER(columnDefault) LIKE 'CURRENT_TIMESTAMP%' THEN
+            SET defaultClause = CONCAT(' DEFAULT ', columnDefault);
+        ELSEIF LOWER(dataType) IN ('tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint', 'decimal', 'numeric', 'float', 'double', 'real', 'bit', 'boolean') THEN
+            SET defaultClause = CONCAT(' DEFAULT ', columnDefault);
+        ELSE
+            SET defaultClause = CONCAT(' DEFAULT ', QUOTE(columnDefault));
+        END IF;
+
+        IF LOWER(extraValue) LIKE '%on update current_timestamp%' THEN
+            SET extraClause = ' ON UPDATE CURRENT_TIMESTAMP';
+        ELSEIF LOWER(extraValue) LIKE '%auto_increment%' THEN
+            SET extraClause = ' AUTO_INCREMENT';
+        END IF;
+
+        SET finalComment = IFNULL(columnComment, '');
+        IF param_comment IS NOT NULL AND param_comment != '' THEN
+            IF finalComment = '' THEN
+                SET finalComment = param_comment;
+            ELSEIF INSTR(finalComment, param_comment) = 0 THEN
+                SET finalComment = CONCAT(finalComment, param_comment);
+            END IF;
+        END IF;
+
+        IF finalComment != '' THEN
+            SET commentClause = CONCAT(' COMMENT ', QUOTE(finalComment));
+        END IF;
+
+        SET newColumnType = CONCAT(columnType, nullClause, defaultClause, extraClause, commentClause);
+    END IF;
+
+    SET @sqlstmt = (SELECT IF(
+        columnExists > 0,
+        CONCAT('ALTER TABLE `', param_table, '` CHANGE COLUMN `', param_old_column_name, '` `', param_new_column_name, '` ', newColumnType, ';'),
+        "SELECT 'Column does not exist in the table'"
+    ));
+
+    PREPARE st FROM @sqlstmt;
+    EXECUTE st;
+    DEALLOCATE PREPARE st;
+
+END $$
+
 DELIMITER ;
 
 
--- ============================================================================
--- 14. CLEANUP: drop orphaned id_genders column (genders table dropped in 39b)
--- ============================================================================
+-- Execute datetime column migrations using the modified stored procedure
+CALL `rename_table_column`('apiRequestLogs', 'request_time', 'request_time', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('apiRequestLogs', 'response_time', 'response_time', '(DC2Type:datetime_immutable)');
 
-CALL drop_table_column('sections_fields_translation', 'id_genders');
+ALTER TABLE callbackLogs CHANGE callback_date callback_date DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)';
 
+CALL `rename_table_column`('dataAccessAudit', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
 
--- ============================================================================
--- 15. HELPER FUNCTIONS
--- ============================================================================
+CALL `rename_table_column`('dataRows', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
 
+CALL `rename_table_column`('dataTables', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('page_versions', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('page_versions', 'published_at', 'published_at', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('role_data_access', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('role_data_access', 'updated_at', 'updated_at', '(DC2Type:datetime_immutable)');
+
+ALTER TABLE transactions CHANGE transaction_time transaction_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)';
+
+CALL `rename_table_column`('user_activity', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('users_2fa_codes', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('users_2fa_codes', 'expires_at', 'expires_at', '(DC2Type:datetime_immutable)');
+
+CALL `rename_table_column`('validation_codes', 'created', 'created', '(DC2Type:datetime_immutable)');
+CALL `rename_table_column`('validation_codes', 'consumed', 'consumed', '(DC2Type:datetime_immutable)');
+
+-- =====================================================
+-- Update Data Table Stored Procedures with Timezone Conversion
+-- =====================================================
+
+-- Create helper function for building dynamic column selection (shared logic)
 DROP FUNCTION IF EXISTS `build_dynamic_columns`;
 DELIMITER ;;
-CREATE FUNCTION `build_dynamic_columns`(table_id_param INT) RETURNS TEXT
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_dynamic_columns`(table_id_param INT) RETURNS TEXT
     READS SQL DATA
     DETERMINISTIC
 BEGIN
     DECLARE sql_columns TEXT;
-    SELECT GROUP_CONCAT(DISTINCT
-        CONCAT('MAX(CASE WHEN col.`name` = "', col.name,
-               '" THEN `value` END) AS `', REPLACE(col.name, ' ', ''), '`')
-    ) INTO sql_columns
-    FROM dataTables t
-    INNER JOIN dataCols col ON t.id = col.id_dataTables
-    WHERE t.id = table_id_param
-      AND col.`name` NOT IN ('id_users','record_id','user_name',
-          'id_actionTriggerTypes','triggerType','entry_date','user_code');
+
+    SELECT
+        GROUP_CONCAT(DISTINCT
+            CONCAT(
+                'MAX(CASE WHEN col.`name` = "',
+                col.name,
+                '" THEN `value` END) AS `',
+                replace(col.name, ' ', ''), '`'
+            )
+        ) INTO sql_columns
+    FROM  dataTables t
+    INNER JOIN dataCols col on (t.id = col.id_dataTables)
+    WHERE t.id = table_id_param AND col.`name` NOT IN ('id_users','record_id','user_name','id_actionTriggerTypes','triggerType', 'entry_date', 'user_code');
+
     RETURN sql_columns;
 END ;;
 DELIMITER ;
 
+-- Create helper function for time period filtering (shared logic)
 DROP FUNCTION IF EXISTS `build_time_period_filter`;
 DELIMITER ;;
-CREATE FUNCTION `build_time_period_filter`(filter_param VARCHAR(1000)) RETURNS TEXT
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_time_period_filter`(filter_param VARCHAR(1000)) RETURNS TEXT
     DETERMINISTIC
 BEGIN
     CASE
-        WHEN filter_param LIKE '%LAST_HOUR%'  THEN RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
-        WHEN filter_param LIKE '%LAST_DAY%'   THEN RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
-        WHEN filter_param LIKE '%LAST_WEEK%'  THEN RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
-        WHEN filter_param LIKE '%LAST_MONTH%' THEN RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
-        WHEN filter_param LIKE '%LAST_YEAR%'  THEN RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
-        ELSE RETURN '';
+        WHEN filter_param LIKE '%LAST_HOUR%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 HOUR';
+        WHEN filter_param LIKE '%LAST_DAY%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 DAY';
+        WHEN filter_param LIKE '%LAST_WEEK%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 WEEK';
+        WHEN filter_param LIKE '%LAST_MONTH%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 MONTH';
+        WHEN filter_param LIKE '%LAST_YEAR%' THEN
+            RETURN ' AND r.`timestamp` >= NOW() - INTERVAL 1 YEAR';
+        ELSE
+            RETURN '';
     END CASE;
 END ;;
 DELIMITER ;
 
+-- Create helper function for exclude deleted filtering (shared logic)
 DROP FUNCTION IF EXISTS `build_exclude_deleted_filter`;
 DELIMITER ;;
-CREATE FUNCTION `build_exclude_deleted_filter`(exclude_deleted_param BOOLEAN) RETURNS TEXT
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_exclude_deleted_filter`(exclude_deleted_param BOOLEAN) RETURNS TEXT
     DETERMINISTIC
 BEGIN
     IF exclude_deleted_param = TRUE THEN
-        RETURN CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ',
-            (SELECT id FROM lookups
-             WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted'
-             LIMIT 1));
+        RETURN CONCAT(' AND IFNULL(r.id_actionTriggerTypes, 0) <> ', (SELECT id FROM lookups WHERE type_code = 'actionTriggerTypes' AND lookup_code = 'deleted' LIMIT 0,1));
     ELSE
         RETURN '';
     END IF;
 END ;;
 DELIMITER ;
 
+-- Create helper function for language filtering (shared logic)
 DROP FUNCTION IF EXISTS `build_language_filter`;
 DELIMITER ;;
-CREATE FUNCTION `build_language_filter`(language_id_param INT) RETURNS TEXT
+CREATE DEFINER=`root`@`localhost` FUNCTION `build_language_filter`(language_id_param INT) RETURNS TEXT
     DETERMINISTIC
 BEGIN
     IF language_id_param IS NULL OR language_id_param = 1 THEN
+        -- Default: only internal language (language_id = 1)
         RETURN ' AND cell.id_languages = 1';
     ELSE
+        -- Include both internal language (1) and requested language
         RETURN CONCAT(' AND cell.id_languages IN (1, ', language_id_param, ')');
     END IF;
 END ;;
 DELIMITER ;
 
+-- Create helper function for timezone conversion (shared logic)
 DROP FUNCTION IF EXISTS `convert_entry_date_timezone`;
 DELIMITER ;;
-CREATE FUNCTION `convert_entry_date_timezone`(
-    timestamp_value DATETIME,
-    timezone_code VARCHAR(100)
-) RETURNS VARCHAR(19)
+CREATE DEFINER=`root`@`localhost` FUNCTION `convert_entry_date_timezone`(timestamp_value DATETIME, timezone_code VARCHAR(100)) RETURNS VARCHAR(19)
     DETERMINISTIC
 BEGIN
-    RETURN DATE_FORMAT(
-        CONVERT_TZ(timestamp_value, 'UTC', timezone_code),
-        '%Y-%m-%d %H:%i:%s'
-    );
+    -- Convert timestamp from UTC to specified timezone and format as Y-m-d H:i:s
+    RETURN DATE_FORMAT(CONVERT_TZ(timestamp_value, 'UTC', timezone_code), '%Y-%m-%d %H:%i:%s');
 END ;;
 DELIMITER ;
 
-
--- ============================================================================
--- 16. RECREATE get_page_fields_helper (dropped in 39b; pages columns changed)
--- ============================================================================
-
-DROP FUNCTION IF EXISTS `get_page_fields_helper`;
+-- Update get_dataTable_with_all_languages procedure
+/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_all_languages` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE FUNCTION `get_page_fields_helper`(
-    page_id INT,
-    language_id INT,
-    default_language_id INT
-) RETURNS TEXT CHARSET utf8mb3
-    READS SQL DATA
-    DETERMINISTIC
-BEGIN
-    SET @@group_concat_max_len = 32000000;
-    SET @sql = NULL;
-    SELECT
-      GROUP_CONCAT(DISTINCT
-        CONCAT(
-          'MAX(CASE WHEN f.`name` = "', f.`name`,
-          '" THEN COALESCE(',
-            '(SELECT content FROM pages_fields_translation AS pft ',
-             'WHERE pft.id_pages = p.id AND pft.id_fields = f.id ',
-             'AND pft.id_languages = ', language_id,
-             ' AND content <> "" LIMIT 1), ',
-            'COALESCE((SELECT content FROM pages_fields_translation AS pft ',
-             'WHERE pft.id_pages = p.id AND pft.id_fields = f.id ',
-             'AND pft.id_languages = (CASE WHEN f.display = 0 THEN 1 ELSE ',
-             default_language_id, ' END) LIMIT 1), "")) ',
-          'END) AS `', REPLACE(f.`name`, ' ', ''), '`'
-        )
-      ) INTO @sql
-    FROM pages AS p
-    LEFT JOIN pageType_fields AS ptf ON ptf.id_pageType = p.id_type
-    LEFT JOIN fields AS f ON f.id = ptf.id_fields
-    WHERE p.id = page_id OR page_id = -1;
-    RETURN @sql;
-END ;;
-DELIMITER ;
-
-
--- ============================================================================
--- 17. RECREATE get_sections_fields_helper (dropped in 39b; genders removed)
--- ============================================================================
-
-DROP FUNCTION IF EXISTS `get_sections_fields_helper`;
-DELIMITER ;;
-CREATE FUNCTION `get_sections_fields_helper`(
-    section_id INT,
-    language_id INT
-) RETURNS TEXT CHARSET utf8mb3
-    READS SQL DATA
-    DETERMINISTIC
-BEGIN
-    SET @@group_concat_max_len = 32000000;
-    SET @sql = NULL;
-    SELECT
-      GROUP_CONCAT(DISTINCT
-        CONCAT(
-          'MAX(CASE WHEN f.`name` = "', f.`name`,
-          '" THEN sft.content END) AS `',
-          REPLACE(f.`name`, ' ', ''), '`'
-        )
-      ) INTO @sql
-    FROM sections AS s
-    LEFT JOIN sections_fields_translation AS sft
-      ON sft.id_sections = s.id
-      AND (language_id = sft.id_languages OR sft.id_languages = 1)
-    LEFT JOIN fields AS f ON f.id = sft.id_fields
-    WHERE s.id = section_id OR section_id = -1;
-    RETURN @sql;
-END ;;
-DELIMITER ;
-
-
--- ============================================================================
--- 18. STORED PROCEDURES: page/section fields
--- ============================================================================
-
-DROP PROCEDURE IF EXISTS `get_page_fields`;
-DELIMITER ;;
-CREATE PROCEDURE `get_page_fields`(
-    page_id INT,
-    language_id INT,
-    default_language_id INT,
-    filter_param VARCHAR(1000),
-    order_param VARCHAR(1000)
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_all_languages`(
+    IN table_id_param INT,
+    IN user_id_param INT,
+    IN filter_param VARCHAR(1000),
+    IN exclude_deleted_param BOOLEAN,
+    IN timezone_code_param VARCHAR(100) -- New parameter for timezone conversion
 )
     READS SQL DATA
     DETERMINISTIC
 BEGIN
     SET @@group_concat_max_len = 32000000;
-    SELECT get_page_fields_helper(page_id, language_id, default_language_id) INTO @sql;
+    SET @sql = build_dynamic_columns(table_id_param);
 
-    IF (@sql IS NULL) THEN
-        SELECT * FROM pages WHERE 1=2;
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
     ELSE
         BEGIN
-            SET @sql = CONCAT(
-                'SELECT p.id, p.keyword, p.url, "select" AS access_level, ',
-                'p.parent, p.is_headless, p.nav_position, p.footer_position, ',
-                'p.id_type, p.id_pageAccessTypes, p.is_open_access, p.is_system, ',
-                @sql,
-                ' FROM pages p ',
-                'LEFT JOIN pageType_fields AS ptf ON ptf.id_pageType = p.id_type ',
-                'LEFT JOIN fields AS f ON f.id = ptf.id_fields ',
-                'WHERE (p.id = ', page_id, ' OR -1 = ', page_id, ') ',
-                'GROUP BY p.id, p.keyword, p.url, p.parent, p.is_headless, ',
-                'p.nav_position, p.footer_position, p.id_type, ',
-                'p.id_pageAccessTypes, p.is_open_access, p.is_system ',
-                'HAVING 1 ', filter_param
-            );
-
-            IF (order_param <> '') THEN
-                SET @sql = CONCAT(
-                    'SELECT * FROM (', @sql, ') AS t ', order_param
-                );
+            -- User filter
+            SET @user_filter = '';
+            IF user_id_param > 0 THEN
+                SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
             END IF;
 
+            -- Build the main query - group by record and language to get separate rows for each language
+            SET @sql = CONCAT('SELECT r.id AS record_id, convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code,
+                    r.id_actionTriggerTypes, l.lookup_code AS triggerType, cell.id_languages, lang.locale AS language_locale, lang.language AS language_name,',
+                    @sql,
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN languages lang ON (lang.id = cell.id_languages)
+                    WHERE t.id = ', table_id_param, @user_filter, build_time_period_filter(filter_param), build_exclude_deleted_filter(exclude_deleted_param),
+                    ' GROUP BY r.id, cell.id_languages ORDER BY r.id, cell.id_languages');
+
+            -- Apply the additional filter
+            SET @sql = CONCAT('SELECT * FROM (', @sql, ') AS filtered_data WHERE 1=1 ', filter_param);
+
+            -- select @sql; -- Uncomment for debugging
             PREPARE stmt FROM @sql;
             EXECUTE stmt;
             DEALLOCATE PREPARE stmt;
@@ -603,113 +701,29 @@ BEGIN
     END IF;
 END ;;
 DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 
-
-DROP PROCEDURE IF EXISTS `get_sections_fields`;
+-- Update get_dataTable_with_filter procedure
+/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_filter` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `get_sections_fields`(
-    section_id INT,
-    language_id INT,
-    filter_param VARCHAR(1000),
-    order_param VARCHAR(1000)
-)
-    READS SQL DATA
-    DETERMINISTIC
-BEGIN
-    SET @@group_concat_max_len = 32000000;
-    SELECT get_sections_fields_helper(section_id, language_id) INTO @sql;
-
-    IF (@sql IS NULL) THEN
-        SELECT * FROM sections WHERE 1=2;
-    ELSE
-        BEGIN
-            SET @sql = CONCAT(
-                'SELECT s.id AS section_id, s.name AS section_name, ',
-                'st.id AS style_id, st.name AS style_name, ',
-                @sql,
-                ' FROM sections s ',
-                'INNER JOIN styles st ON s.id_styles = st.id ',
-                'LEFT JOIN sections_fields_translation AS sft ON sft.id_sections = s.id ',
-                'LEFT JOIN fields AS f ON sft.id_fields = f.id ',
-                'WHERE (s.id = ', section_id, ' OR -1 = ', section_id, ') ',
-                'AND (IFNULL(sft.id_languages, 1) = 1 OR sft.id_languages = ', language_id, ') ',
-                'GROUP BY s.id, s.name, st.id, st.name ',
-                'HAVING 1 ', filter_param
-            );
-
-            IF (order_param <> '') THEN
-                SET @sql = CONCAT(
-                    'SELECT * FROM (', @sql, ') AS t ', order_param
-                );
-            END IF;
-
-            PREPARE stmt FROM @sql;
-            EXECUTE stmt;
-            DEALLOCATE PREPARE stmt;
-        END;
-    END IF;
-END ;;
-DELIMITER ;
-
-
--- ============================================================================
--- 19. STORED PROCEDURE: hierarchical page sections (NEW for v8)
--- ============================================================================
-
-DROP PROCEDURE IF EXISTS `get_page_sections_hierarchical`;
-DELIMITER //
-CREATE PROCEDURE `get_page_sections_hierarchical`(IN page_id INT)
-BEGIN
-    WITH RECURSIVE section_hierarchy AS (
-        SELECT
-            s.id, s.name, s.id_styles,
-            st.name AS style_name,
-            s.`condition`, s.css, s.css_mobile, s.debug, s.data_config,
-            ps.position AS position,
-            0 AS `level`,
-            CAST(s.id AS CHAR(200)) AS `path`
-        FROM pages_sections ps
-        JOIN sections s ON ps.id_sections = s.id
-        JOIN styles st ON s.id_styles = st.id
-        LEFT JOIN sections_hierarchy sh ON s.id = sh.child
-        WHERE ps.id_pages = page_id AND sh.parent IS NULL
-
-        UNION ALL
-
-        SELECT
-            s.id, s.name, s.id_styles,
-            st.name AS style_name,
-            s.`condition`, s.css, s.css_mobile, s.debug, s.data_config,
-            sh.position AS position,
-            h.`level` + 1,
-            CONCAT(h.`path`, ',', s.id) AS `path`
-        FROM section_hierarchy h
-        JOIN sections_hierarchy sh ON h.id = sh.parent
-        JOIN sections s ON sh.child = s.id
-        JOIN styles st ON s.id_styles = st.id
-    )
-    SELECT id, name AS section_name, id_styles, style_name,
-        `condition`, css, css_mobile, debug, data_config,
-        position, `level`, `path`
-    FROM section_hierarchy
-    ORDER BY `path`, position;
-END //
-DELIMITER ;
-
-
--- ============================================================================
--- 20. DATA TABLE PROCEDURES (with timezone + language support for v8)
--- ============================================================================
-
-DROP PROCEDURE IF EXISTS `get_dataTable_with_filter`;
-DELIMITER ;;
-CREATE PROCEDURE `get_dataTable_with_filter`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_filter`(
     IN table_id_param INT,
     IN user_id_param INT,
     IN filter_param VARCHAR(1000),
     IN exclude_deleted_param BOOLEAN,
     IN language_id_param INT,
-    IN timezone_code_param VARCHAR(100)
+    IN timezone_code_param VARCHAR(100) -- New parameter for timezone conversion
 )
     READS SQL DATA
     DETERMINISTIC
@@ -717,36 +731,30 @@ BEGIN
     SET @@group_concat_max_len = 32000000;
     SET @sql = build_dynamic_columns(table_id_param);
 
-    IF (@sql IS NULL) THEN
-        SELECT `name` FROM view_dataTables WHERE 1=2;
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
     ELSE
         BEGIN
+            -- User filter
             SET @user_filter = '';
             IF user_id_param > 0 THEN
                 SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
             END IF;
 
-            SET @sql = CONCAT(
-                'SELECT * FROM (SELECT r.id AS record_id, ',
-                'convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, ',
-                'r.id_users, u.`name` AS user_name, MAX(vc.code) AS user_code, ',
-                'r.id_actionTriggerTypes, l.lookup_code AS triggerType, ',
-                @sql,
-                ' FROM dataTables t ',
-                'INNER JOIN dataRows r ON t.id = r.id_dataTables ',
-                'INNER JOIN dataCells cell ON cell.id_dataRows = r.id ',
-                'INNER JOIN dataCols col ON col.id = cell.id_dataCols ',
-                'LEFT JOIN users u ON r.id_users = u.id ',
-                'LEFT JOIN validation_codes vc ON u.id = vc.id_users ',
-                'LEFT JOIN lookups l ON l.id = r.id_actionTriggerTypes ',
-                'WHERE t.id = ', table_id_param,
-                @user_filter,
-                build_time_period_filter(filter_param),
-                build_exclude_deleted_filter(exclude_deleted_param),
-                build_language_filter(language_id_param),
-                ' GROUP BY r.id) AS r WHERE 1=1 ', filter_param
-            );
+            -- Build the main query with language filtering
+            SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
+                    convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    WHERE t.id = ', table_id_param, @user_filter, build_time_period_filter(filter_param), build_exclude_deleted_filter(exclude_deleted_param), build_language_filter(language_id_param),
+                    ' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
 
+            -- select @sql; -- Uncomment for debugging
             PREPARE stmt FROM @sql;
             EXECUTE stmt;
             DEALLOCATE PREPARE stmt;
@@ -754,77 +762,29 @@ BEGIN
     END IF;
 END ;;
 DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 
-
-DROP PROCEDURE IF EXISTS `get_dataTable_with_all_languages`;
+-- Update get_dataTable_with_user_group_filter procedure
+/*!50003 DROP PROCEDURE IF EXISTS `get_dataTable_with_user_group_filter` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'NO_AUTO_VALUE_ON_ZERO' */ ;
 DELIMITER ;;
-CREATE PROCEDURE `get_dataTable_with_all_languages`(
-    IN table_id_param INT,
-    IN user_id_param INT,
-    IN filter_param VARCHAR(1000),
-    IN exclude_deleted_param BOOLEAN,
-    IN timezone_code_param VARCHAR(100)
-)
-    READS SQL DATA
-    DETERMINISTIC
-BEGIN
-    SET @@group_concat_max_len = 32000000;
-    SET @sql = build_dynamic_columns(table_id_param);
-
-    IF (@sql IS NULL) THEN
-        SELECT `name` FROM view_dataTables WHERE 1=2;
-    ELSE
-        BEGIN
-            SET @user_filter = '';
-            IF user_id_param > 0 THEN
-                SET @user_filter = CONCAT(' AND r.id_users = ', user_id_param);
-            END IF;
-
-            SET @sql = CONCAT(
-                'SELECT r.id AS record_id, ',
-                'convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, ',
-                'r.id_users, u.`name` AS user_name, MAX(vc.code) AS user_code, ',
-                'r.id_actionTriggerTypes, l.lookup_code AS triggerType, ',
-                'cell.id_languages, lang.locale AS language_locale, ',
-                'lang.language AS language_name, ',
-                @sql,
-                ' FROM dataTables t ',
-                'INNER JOIN dataRows r ON t.id = r.id_dataTables ',
-                'LEFT JOIN users u ON r.id_users = u.id ',
-                'LEFT JOIN validation_codes vc ON u.id = vc.id_users ',
-                'LEFT JOIN lookups l ON l.id = r.id_actionTriggerTypes ',
-                'INNER JOIN dataCells cell ON cell.id_dataRows = r.id ',
-                'INNER JOIN dataCols col ON col.id = cell.id_dataCols ',
-                'LEFT JOIN languages lang ON lang.id = cell.id_languages ',
-                'WHERE t.id = ', table_id_param,
-                @user_filter,
-                build_time_period_filter(filter_param),
-                build_exclude_deleted_filter(exclude_deleted_param),
-                ' GROUP BY r.id, cell.id_languages ORDER BY r.id, cell.id_languages'
-            );
-
-            SET @sql = CONCAT(
-                'SELECT * FROM (', @sql, ') AS filtered_data WHERE 1=1 ', filter_param
-            );
-
-            PREPARE stmt FROM @sql;
-            EXECUTE stmt;
-            DEALLOCATE PREPARE stmt;
-        END;
-    END IF;
-END ;;
-DELIMITER ;
-
-
-DROP PROCEDURE IF EXISTS `get_dataTable_with_user_group_filter`;
-DELIMITER ;;
-CREATE PROCEDURE `get_dataTable_with_user_group_filter`(
+CREATE DEFINER=`root`@`localhost` PROCEDURE `get_dataTable_with_user_group_filter`(
     IN table_id_param INT,
     IN current_user_id_param INT,
     IN filter_param VARCHAR(1000),
     IN exclude_deleted_param BOOLEAN,
     IN language_id_param INT,
-    IN timezone_code_param VARCHAR(100)
+    IN timezone_code_param VARCHAR(100) -- New parameter for timezone conversion
 )
     READS SQL DATA
     DETERMINISTIC
@@ -832,75 +792,109 @@ BEGIN
     SET @@group_concat_max_len = 32000000;
     SET @sql = build_dynamic_columns(table_id_param);
 
-    IF (@sql IS NULL) THEN
-        SELECT `name` FROM view_dataTables WHERE 1=2;
+    IF (@sql is null) THEN
+        SELECT `name` from view_dataTables where 1=2;
     ELSE
         BEGIN
-            SET @group_resource_type_id = (
-                SELECT id FROM lookups
-                WHERE type_code = 'resourceTypes' AND lookup_code = 'group'
-                LIMIT 1
-            );
+            -- User group filter - find accessible users dynamically
+            -- Get resource type ID for groups
+            SET @group_resource_type_id = (SELECT id FROM lookups WHERE type_code = 'resourceTypes' AND lookup_code = 'group' LIMIT 1);
 
+            -- Find all users that the current user can access through group permissions
             DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
             CREATE TEMPORARY TABLE accessible_users_temp AS
             SELECT DISTINCT ug.id_users
             FROM users_groups ug
             WHERE ug.id_groups IN (
+                -- Find groups the current user can access
                 SELECT rda.resource_id
                 FROM role_data_access rda
                 INNER JOIN roles r ON rda.id_roles = r.id
                 INNER JOIN users_roles ur ON r.id = ur.id_roles
                 WHERE ur.id_users = current_user_id_param
-                  AND rda.id_resourceTypes = @group_resource_type_id
-                  AND rda.crud_permissions > 0
+                AND rda.id_resourceTypes = @group_resource_type_id
+                AND rda.crud_permissions > 0
             );
 
+            -- Build user filter using the accessible users
             SET @user_filter = '';
             SET @accessible_user_count = (SELECT COUNT(*) FROM accessible_users_temp);
             IF @accessible_user_count > 0 THEN
                 SET @user_filter = ' AND r.id_users IN (SELECT id_users FROM accessible_users_temp)';
             ELSE
+                -- No accessible users - return no results
                 SET @user_filter = ' AND 1=0';
             END IF;
 
-            SET @sql = CONCAT(
-                'SELECT * FROM (SELECT r.id AS record_id, ',
-                'convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, ',
-                'r.id_users, u.`name` AS user_name, MAX(vc.code) AS user_code, ',
-                'r.id_actionTriggerTypes, l.lookup_code AS triggerType, ',
-                @sql,
-                ' FROM dataTables t ',
-                'INNER JOIN dataRows r ON t.id = r.id_dataTables ',
-                'INNER JOIN dataCells cell ON cell.id_dataRows = r.id ',
-                'INNER JOIN dataCols col ON col.id = cell.id_dataCols ',
-                'LEFT JOIN users u ON r.id_users = u.id ',
-                'LEFT JOIN validation_codes vc ON u.id = vc.id_users ',
-                'LEFT JOIN lookups l ON l.id = r.id_actionTriggerTypes ',
-                'WHERE t.id = ', table_id_param,
-                @user_filter,
-                build_time_period_filter(filter_param),
-                build_exclude_deleted_filter(exclude_deleted_param),
-                build_language_filter(language_id_param),
-                ' GROUP BY r.id) AS r WHERE 1=1 ', filter_param
-            );
+            -- Build the main query with user group filtering
+            SET @sql = CONCAT('SELECT * FROM (SELECT r.id AS record_id,
+                    convert_entry_date_timezone(r.`timestamp`, "', timezone_code_param, '") AS entry_date, r.id_users, u.`name` AS user_name, vc.code AS user_code, r.id_actionTriggerTypes, l.lookup_code AS triggerType,', @sql,
+                    ' FROM dataTables t
+                    INNER JOIN dataRows r ON (t.id = r.id_dataTables)
+                    INNER JOIN dataCells cell ON (cell.id_dataRows = r.id)
+                    INNER JOIN dataCols col ON (col.id = cell.id_dataCols)
+                    LEFT JOIN users u ON (r.id_users = u.id)
+                    LEFT JOIN validation_codes vc ON (u.id = vc.id_users)
+                    LEFT JOIN lookups l ON (l.id = r.id_actionTriggerTypes)
+                    WHERE t.id = ', table_id_param, @user_filter, build_time_period_filter(filter_param), build_exclude_deleted_filter(exclude_deleted_param), build_language_filter(language_id_param),
+                    ' GROUP BY r.id ) AS r WHERE 1=1  ', filter_param);
 
+            -- select @sql; -- Uncomment for debugging
             PREPARE stmt FROM @sql;
             EXECUTE stmt;
             DEALLOCATE PREPARE stmt;
 
+            -- Clean up temporary table
             DROP TEMPORARY TABLE IF EXISTS accessible_users_temp;
         END;
     END IF;
 END ;;
 DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 
+-- =====================================================
+-- Create Data Access Audit Table
+-- =====================================================
 
--- ============================================================================
--- 21. FINAL CHECKS
--- ============================================================================
+CREATE TABLE IF NOT EXISTS `dataAccessAudit` (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `id_users` int(11) NOT NULL,
+    `id_resourceTypes` int(11) NOT NULL,
+    `resource_id` int(11) NOT NULL,
+    `id_actions` int(11) NOT NULL,
+    `id_permissionResults` int(11) NOT NULL,
+    `crud_permission` smallint(5) unsigned DEFAULT NULL,
+    `http_method` varchar(10) DEFAULT NULL,
+    `request_body_hash` varchar(64) DEFAULT NULL,
+    `ip_address` varchar(45) DEFAULT NULL,
+    `user_agent` text,
+    `request_uri` text,
+    `notes` text,
+    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `IDX_dataAccessAudit_users` (`id_users`),
+    KEY `IDX_dataAccessAudit_resource_types` (`id_resourceTypes`),
+    KEY `IDX_dataAccessAudit_resource_id` (`resource_id`),
+    KEY `IDX_dataAccessAudit_created_at` (`created_at`),
+    KEY `IDX_dataAccessAudit_permission_results` (`id_permissionResults`),
+    KEY `IDX_dataAccessAudit_http_method` (`http_method`),
+    KEY `IDX_dataAccessAudit_request_body_hash` (`request_body_hash`),
+    CONSTRAINT `FK_dataAccessAudit_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`),
+    CONSTRAINT `FK_dataAccessAudit_resourceTypes` FOREIGN KEY (`id_resourceTypes`) REFERENCES `lookups` (`id`),
+    CONSTRAINT `FK_dataAccessAudit_actions` FOREIGN KEY (`id_actions`) REFERENCES `lookups` (`id`),
+    CONSTRAINT `FK_dataAccessAudit_permissionResults` FOREIGN KEY (`id_permissionResults`) REFERENCES `lookups` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-SET SQL_MODE = @OLD_SQL_MODE;
-SET FOREIGN_KEY_CHECKS = 1;
+UPDATE `groups`
+SET requires_2fa = 0;
 
-SELECT '39c completed successfully - v8.0.0 migration complete' AS status;
+UPDATE users
+SET email = 'admin@unibe.ch'
+WHERE email = 'admin';
+
+UPDATE users
+SET email = 'tpf@unibe.ch'
+WHERE email = 'tpf';
