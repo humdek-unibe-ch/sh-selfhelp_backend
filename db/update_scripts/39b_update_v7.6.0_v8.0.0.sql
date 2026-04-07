@@ -108,8 +108,9 @@ CALL drop_table_column('sections_fields_translation', 'id_genders');
 -- 3. FIELD MANAGEMENT
 -- ============================================================================
 
--- FIX: Add config column to fields table BEFORE trying to insert with it
-CALL add_table_column('fields', 'config', 'LONGTEXT DEFAULT NULL');
+-- Add config column to fields table BEFORE trying to insert with it
+CALL add_table_column('fields', 'config', 'JSON DEFAULT NULL');
+ALTER TABLE `fields` MODIFY `config` JSON DEFAULT NULL;
 
 DELETE FROM `fields` WHERE `name` = 'children';
 
@@ -353,7 +354,12 @@ CALL drop_foreign_key('sections_fields_translation', 'FK_EC5054155D8601CD');
 CALL drop_foreign_key('users', 'FK_1483A5E95D8601CD');
 CALL drop_table_column('sections_fields_translation', 'id_genders');
 CALL drop_table_column('users', 'id_genders');
+CALL drop_table_column('users', 'second_last_url');
 DROP TABLE IF EXISTS genders;
+
+-- refresh_events tables: no Doctrine entity, no code usage — drop them
+DROP TABLE IF EXISTS refresh_events_sections;
+DROP TABLE IF EXISTS refresh_events;
 
 -- dataCells language support
 CALL add_table_column('dataCells', 'id_languages', 'int NOT NULL DEFAULT 1');
@@ -436,7 +442,7 @@ CREATE TABLE IF NOT EXISTS `dataAccessAudit` (
     `user_agent` text,
     `request_uri` text,
     `notes` text,
-    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '(DC2Type:datetime_immutable)',
     PRIMARY KEY (`id`),
     KEY `IDX_dataAccessAudit_users` (`id_users`),
     KEY `IDX_dataAccessAudit_resource_types` (`id_resourceTypes`),
@@ -456,13 +462,13 @@ DROP TABLE IF EXISTS `page_versions`;
 CREATE TABLE `page_versions` (
   `id` INT AUTO_INCREMENT NOT NULL,
   `id_pages` INT NOT NULL,
-  `version_number` INT NOT NULL,
-  `version_name` VARCHAR(255) DEFAULT NULL,
-  `page_json` JSON NOT NULL,
+  `version_number` INT NOT NULL COMMENT 'Incremental version number per page',
+  `version_name` VARCHAR(255) DEFAULT NULL COMMENT 'Optional user-defined name for the version',
+  `page_json` JSON NOT NULL COMMENT 'Complete JSON structure from getPage() including all languages, conditions, data table configs',
   `created_by` INT DEFAULT NULL,
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `published_at` DATETIME DEFAULT NULL,
-  `metadata` JSON DEFAULT NULL,
+  `created_at` DATETIME NOT NULL COMMENT '(DC2Type:datetime_immutable)',
+  `published_at` DATETIME DEFAULT NULL COMMENT 'When this version was published(DC2Type:datetime_immutable)',
+  `metadata` JSON DEFAULT NULL COMMENT 'Additional info like change summary, tags, etc.',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_page_version_number` (`id_pages`, `version_number`),
   KEY `idx_id_pages` (`id_pages`),
@@ -474,8 +480,15 @@ CREATE TABLE `page_versions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CALL add_table_column('pages', 'published_version_id', 'INT DEFAULT NULL');
-CALL add_index('pages', 'IDX_2074E575B5D68A8D', 'published_version_id', FALSE);
-CALL add_foreign_key('pages', 'FK_2074E575B5D68A8D', 'published_version_id', 'page_versions (id)');
+CALL add_index('pages', 'IDX_pages_published_version_id', 'published_version_id', FALSE);
+
+SET @sqlstmt = (SELECT IF(
+    (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+     WHERE table_schema = DATABASE() AND table_name = 'pages' AND constraint_name = 'FK_2074E575B5D68A8D') > 0,
+    "SELECT 'FK already exists'",
+    'ALTER TABLE `pages` ADD CONSTRAINT `FK_2074E575B5D68A8D` FOREIGN KEY (`published_version_id`) REFERENCES `page_versions` (`id`)'
+));
+PREPARE stmt FROM @sqlstmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 
 -- ============================================================================
@@ -697,12 +710,11 @@ CALL drop_table_column('styles', 'id_type');
 
 CALL `rename_table_column`('apiRequestLogs', 'request_time', 'request_time', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('apiRequestLogs', 'response_time', 'response_time', '(DC2Type:datetime_immutable)');
-CALL `rename_table_column`('callbackLogs', 'callback_date', 'callback_date', '(DC2Type:datetime_immutable)');
+ALTER TABLE callbackLogs MODIFY callback_date DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)';
 CALL `rename_table_column`('dataAccessAudit', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('dataRows', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('dataTables', 'timestamp', 'timestamp', '(DC2Type:datetime_immutable)');
-CALL `rename_table_column`('page_versions', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
-CALL `rename_table_column`('page_versions', 'published_at', 'published_at', '(DC2Type:datetime_immutable)');
+-- page_versions datetime comments already set in CREATE TABLE above
 CALL `rename_table_column`('role_data_access', 'created_at', 'created_at', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('role_data_access', 'updated_at', 'updated_at', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('transactions', 'transaction_time', 'transaction_time', '(DC2Type:datetime_immutable)');
@@ -711,7 +723,6 @@ CALL `rename_table_column`('users_2fa_codes', 'created_at', 'created_at', '(DC2T
 CALL `rename_table_column`('users_2fa_codes', 'expires_at', 'expires_at', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('validation_codes', 'created', 'created', '(DC2Type:datetime_immutable)');
 CALL `rename_table_column`('validation_codes', 'consumed', 'consumed', '(DC2Type:datetime_immutable)');
-
 
 SET SQL_MODE = @OLD_SQL_MODE;
 SET FOREIGN_KEY_CHECKS = 1;

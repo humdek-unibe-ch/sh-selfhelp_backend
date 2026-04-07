@@ -244,6 +244,7 @@ DELIMITER ;
 
 
 -- rename_table_column: rename a column (idempotent, 4-param with optional comment)
+-- Preserves full column definition: type, NOT NULL, DEFAULT, AUTO_INCREMENT, existing COMMENT
 DELIMITER $$
 DROP PROCEDURE IF EXISTS `rename_table_column` $$
 CREATE PROCEDURE `rename_table_column`(
@@ -253,31 +254,59 @@ CREATE PROCEDURE `rename_table_column`(
     param_comment TEXT
 )
 BEGIN
-    DECLARE columnExists INT DEFAULT 0;
-    DECLARE columnType VARCHAR(255) DEFAULT '';
-    DECLARE newColumnType VARCHAR(500);
+    DECLARE v_exists INT DEFAULT 0;
+    DECLARE v_col_type VARCHAR(255) DEFAULT '';
+    DECLARE v_is_nullable VARCHAR(3) DEFAULT '';
+    DECLARE v_col_default TEXT DEFAULT NULL;
+    DECLARE v_extra VARCHAR(100) DEFAULT '';
+    DECLARE v_col_comment VARCHAR(1024) DEFAULT '';
+    DECLARE v_def TEXT DEFAULT '';
 
-    SELECT COUNT(*), COLUMN_TYPE
-    INTO columnExists, columnType
+    SELECT COUNT(*), COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT
+    INTO v_exists, v_col_type, v_is_nullable, v_col_default, v_extra, v_col_comment
     FROM information_schema.COLUMNS
-    WHERE `table_schema` = DATABASE()
-      AND `table_name` = param_table
-      AND `COLUMN_NAME` = param_old_column_name;
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = param_table
+      AND COLUMN_NAME = param_old_column_name;
 
-    SET newColumnType = columnType;
-    IF param_comment IS NOT NULL AND param_comment != '' THEN
-        SET newColumnType = CONCAT(columnType, ' COMMENT \'', param_comment, '\'');
+    IF v_exists = 0 THEN
+        SELECT CONCAT('Column `', param_old_column_name, '` does not exist in `', param_table, '`') AS msg;
+    ELSE
+        SET v_def = v_col_type;
+
+        IF v_col_default IS NOT NULL THEN
+            SET v_def = CONCAT(v_def, ' DEFAULT ',
+                CASE
+                    WHEN v_col_default = 'CURRENT_TIMESTAMP' THEN 'CURRENT_TIMESTAMP'
+                    ELSE CONCAT('''', v_col_default, '''')
+                END);
+        ELSEIF v_is_nullable = 'YES' THEN
+            SET v_def = CONCAT(v_def, ' DEFAULT NULL');
+        END IF;
+
+        IF v_is_nullable = 'NO' THEN
+            SET v_def = CONCAT(v_def, ' NOT NULL');
+        END IF;
+
+        IF v_extra LIKE '%auto_increment%' THEN
+            SET v_def = CONCAT(v_def, ' AUTO_INCREMENT');
+        END IF;
+        IF v_extra LIKE '%on update CURRENT_TIMESTAMP%' THEN
+            SET v_def = CONCAT(v_def, ' ON UPDATE CURRENT_TIMESTAMP');
+        END IF;
+
+        IF param_comment IS NOT NULL AND param_comment != '' THEN
+            SET v_def = CONCAT(v_def, ' COMMENT ''', param_comment, '''');
+        ELSEIF v_col_comment IS NOT NULL AND v_col_comment != '' THEN
+            SET v_def = CONCAT(v_def, ' COMMENT ''', v_col_comment, '''');
+        END IF;
+
+        SET @sqlstmt = CONCAT('ALTER TABLE `', param_table, '` CHANGE COLUMN `',
+            param_old_column_name, '` `', param_new_column_name, '` ', v_def, ';');
+        PREPARE st FROM @sqlstmt;
+        EXECUTE st;
+        DEALLOCATE PREPARE st;
     END IF;
-
-    SET @sqlstmt = (SELECT IF(
-        columnExists > 0,
-        CONCAT('ALTER TABLE `', param_table, '` CHANGE COLUMN `', param_old_column_name, '` `', param_new_column_name, '` ', newColumnType, ';'),
-        "SELECT 'Column does not exist in the table'"
-    ));
-
-    PREPARE st FROM @sqlstmt;
-    EXECUTE st;
-    DEALLOCATE PREPARE st;
 END $$
 DELIMITER ;
 
@@ -936,8 +965,7 @@ ALTER TABLE mailAttachments CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_
 ALTER TABLE mailQueue CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE recipient_emails recipient_emails LONGTEXT NOT NULL, CHANGE is_html is_html TINYINT(1) NOT NULL;
 ALTER TABLE notifications CHANGE id id INT AUTO_INCREMENT NOT NULL;
 ALTER TABLE pages CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_actions id_actions INT DEFAULT NULL, CHANGE id_navigation_section id_navigation_section INT DEFAULT NULL, CHANGE parent parent INT DEFAULT NULL, CHANGE id_type id_type INT NOT NULL, CHANGE protocol protocol VARCHAR(100) DEFAULT NULL COMMENT 'pipe separated list of HTTP Methods (GET|POST)', CHANGE id_pageAccessTypes id_pageAccessTypes INT DEFAULT NULL;
-ALTER TABLE refresh_events CHANGE id id INT NOT NULL AUTO_INCREMENT, CHANGE id_users id_users INT NOT NULL;
-ALTER TABLE refresh_events_sections CHANGE id id INT NOT NULL AUTO_INCREMENT, CHANGE id_refresh_events id_refresh_events INT NOT NULL, CHANGE id_sections id_sections INT NOT NULL;
+-- refresh_events tables will be dropped in 39b (no Doctrine entity, no code usage)
 ALTER TABLE pages_fields CHANGE id_pages id_pages INT NOT NULL, CHANGE id_fields id_fields INT NOT NULL;
 ALTER TABLE pages_fields_translation CHANGE id_pages id_pages INT NOT NULL, CHANGE id_fields id_fields INT NOT NULL, CHANGE id_languages id_languages INT NOT NULL;
 ALTER TABLE pages_sections CHANGE id_pages id_pages INT NOT NULL, CHANGE id_sections id_sections INT NOT NULL;
@@ -963,7 +991,7 @@ ALTER TABLE styles CHANGE id_type id_type INT NOT NULL, CHANGE id_group id_group
 ALTER TABLE styles_fields CHANGE id_styles id_styles INT NOT NULL;
 ALTER TABLE styles_fields CHANGE id_fields id_fields INT NOT NULL, CHANGE disabled disabled TINYINT(1) NOT NULL, CHANGE hidden hidden INT DEFAULT NULL;
 ALTER TABLE tasks CHANGE id id INT AUTO_INCREMENT NOT NULL;
-ALTER TABLE transactions CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_users id_users INT DEFAULT NULL, CHANGE transaction_time transaction_time DATETIME NOT NULL, CHANGE id_transactionTypes id_transactionTypes INT DEFAULT NULL, CHANGE id_transactionBy id_transactionBy INT DEFAULT NULL, CHANGE id_table_name id_table_name INT DEFAULT NULL, CHANGE transaction_log transaction_log LONGTEXT DEFAULT NULL;
+ALTER TABLE transactions CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_users id_users INT DEFAULT NULL, CHANGE transaction_time transaction_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL, CHANGE id_transactionTypes id_transactionTypes INT DEFAULT NULL, CHANGE id_transactionBy id_transactionBy INT DEFAULT NULL, CHANGE id_table_name id_table_name INT DEFAULT NULL, CHANGE transaction_log transaction_log LONGTEXT DEFAULT NULL;
 ALTER TABLE users CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_genders id_genders INT DEFAULT NULL, CHANGE id_status id_status INT DEFAULT 1, CHANGE id_languages id_languages INT DEFAULT NULL, CHANGE id_userTypes id_userTypes INT NOT NULL;
 ALTER TABLE user_activity CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_users id_users INT NOT NULL, CHANGE id_type id_type INT NOT NULL, CHANGE timestamp timestamp DATETIME NOT NULL;
 ALTER TABLE users_2fa_codes CHANGE id id INT AUTO_INCREMENT NOT NULL, CHANGE id_users id_users INT NOT NULL, CHANGE created_at created_at DATETIME NOT NULL, CHANGE is_used is_used TINYINT(1) NOT NULL;
@@ -1026,9 +1054,7 @@ CALL add_foreign_key('user_activity', 'FK_4CF9ED5A7FE4B2B', 'id_type', 'lookups(
 CALL add_foreign_key('users_groups', 'FK_FF8AB7E0FA06E4D9', 'id_users', 'users(id)');
 CALL add_foreign_key('users_groups', 'FK_FF8AB7E0D65A8C9D', 'id_groups', '`groups`(id)');
 CALL add_foreign_key('validation_codes', 'FK_DBEC45EFA06E4D9', 'id_users', 'users(id)');
-CALL add_foreign_key('refresh_events', 'FK_refresh_events_users', 'id_users', 'users(id)');
-CALL add_foreign_key('refresh_events_sections', 'FK_refresh_sections_events', 'id_refresh_events', 'refresh_events(id)');
-CALL add_foreign_key('refresh_events_sections', 'FK_refresh_sections_sections', 'id_sections', 'sections(id)');
+-- refresh_events FK re-adds removed: tables will be dropped in 39b
 CALL add_foreign_key('refreshTokens', 'FK_BFB6788AFA06E4D9', 'id_users', 'users(id)');
 
 -- Add new Doctrine indexes
@@ -1058,6 +1084,7 @@ CALL add_index('pages_fields_translation', 'IDX_903943EE20E4EF5E', 'id_languages
 CALL add_index('pages_sections', 'IDX_6BD95A69CEF1A445', 'id_pages', FALSE);
 CALL add_index('pages_sections', 'IDX_6BD95A697B4DAF0D', 'id_sections', FALSE);
 CALL add_index('pageType', 'UNIQ_AD38E97C5E237E06', 'name', TRUE);
+CALL add_index('pageType_fields', 'IDX_B305C681FDE305E9', 'id_pageType', FALSE);
 CALL add_index('pageType_fields', 'IDX_B305C68158D25665', 'id_fields', FALSE);
 CALL add_index('refreshTokens', 'IDX_BFB6788AFA06E4D9', 'id_users', FALSE);
 CALL add_index('scheduledJobs_reminders', 'IDX_23156A60E2E6A7C3', 'id_dataTables', FALSE);

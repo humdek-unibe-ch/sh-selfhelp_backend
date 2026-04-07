@@ -1688,8 +1688,8 @@ CREATE TABLE role_data_access (
     id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
     resource_id INT NOT NULL,
     crud_permissions SMALLINT UNSIGNED NOT NULL DEFAULT 2, -- 2 = Read only
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)',
 
     FOREIGN KEY (id_roles) REFERENCES role(id) ON DELETE CASCADE,
     FOREIGN KEY (id_resourceTypes) REFERENCES lookups(id) ON DELETE CASCADE,
@@ -1715,7 +1715,7 @@ CREATE TABLE dataAccessAudit (
     user_agent LONGTEXT DEFAULT NULL,        -- Browser/client info
     request_uri LONGTEXT DEFAULT NULL,       -- API endpoint accessed
     notes LONGTEXT DEFAULT NULL,             -- Additional notes about the action
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL COMMENT '(DC2Type:datetime_immutable)',
 
     FOREIGN KEY (id_users) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (id_resourceTypes) REFERENCES lookups(id) ON DELETE CASCADE,
