@@ -209,6 +209,9 @@ class SectionRelationshipService extends BaseService
                     $this->throwNotFound('Section is not associated with this page.');
                 }
                 
+                // Store the section ID before removal for cache invalidation
+                $sectionIdToInvalid = $section->getId();
+
                 // This is a child section that belongs to the page hierarchy - delete it completely
                 $this->removeAllSectionRelationships($section, $this->entityManager);
                 $this->entityManager->remove($section);
@@ -220,7 +223,7 @@ class SectionRelationshipService extends BaseService
                     ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId());
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionIdToInvalid);
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
                     ->invalidateAllListsInCategory();
