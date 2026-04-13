@@ -2,101 +2,244 @@
 
 ## Overview
 
-The Admin Actions APIs provide functionality for managing automated actions and triggers within the SelfHelp CMS. Actions allow administrators to set up automated responses to various events and conditions.
+Actions define what should happen after user input changes.
 
-## Core Concepts
+They are attached to:
 
-### Actions
-- **Automated Tasks**: Event-driven or scheduled automated operations
-- **Triggers**: Conditions that initiate action execution
-- **Configurations**: Customizable action parameters and settings
-- **Action Types**: Different categories of automated actions
+- one data table
+- one trigger type
+- one JSON config payload
 
-## Action Management
+When matching input is saved or deleted, the action runtime expands that config into scheduled jobs.
 
-### Get Actions
+## Trigger Types
 
-Retrieve a list of all configured actions.
+Supported trigger types:
 
-**Endpoint:** `GET /cms-api/v1/admin/actions`
+- `started`
+- `finished`
+- `updated`
+- `deleted`
 
-**Authentication:** Required (JWT Bearer token)
+### When they fire
 
-**Query Parameters:**
-- `page`: Page number
-- `pageSize`: Items per page
-- `search`: Search term
-- `sort`: Sort field
-- `sortDirection`: Sort direction
+- `finished`: default create/submit save
+- `updated`: update save when `saveData()` updates an existing row
+- `deleted`: record deletion through `DataService::deleteData()`
 
-**Response:** Paginated list of actions
-
-**Permissions:** `admin.action.read`
-
-### Create Action
-
-Create a new automated action.
+## Create Action
 
 **Endpoint:** `POST /cms-api/v1/admin/actions`
 
-**Authentication:** Required (JWT Bearer token)
-
-**Request Body:**
-```json
-{
-  "name": "user_welcome_email",
-  "id_actionTriggerTypes": 1,
-  "config": {
-    "template_id": 5,
-    "delay_hours": 24
-  }
-}
-```
-
-**Response:** Created action details
-
-**Permissions:** `admin.action.update`
-
-### Update Action
-
-Modify an existing action's configuration.
+## Update Action
 
 **Endpoint:** `PUT /cms-api/v1/admin/actions/{actionId}`
 
-**Authentication:** Required (JWT Bearer token)
-
-**Request Body:** Updated action configuration
-
-**Response:** Updated action details
-
-**Permissions:** `admin.action.update`
-
-### Delete Action
-
-Remove an action from the system.
+## Delete Action
 
 **Endpoint:** `DELETE /cms-api/v1/admin/actions/{actionId}`
 
-**Authentication:** Required (JWT Bearer token)
+## Action Config Concepts
 
-**Response:** Deletion confirmation
+The action config schema is backward compatible with the legacy admin editor.
 
-**Permissions:** `admin.action.delete`
+Important top-level flags:
 
-### Get Action Translations
+- `randomize`
+- `repeat`
+- `repeat_until_date`
+- `target_groups`
+- `overwrite_variables`
+- `clear_existing_jobs_for_action`
+- `clear_existing_jobs_for_record_and_action`
 
-Retrieve translations for action-related content.
+## Blocks and Jobs
 
-**Endpoint:** `GET /cms-api/v1/admin/actions/{actionId}/translations`
+An action contains blocks.
 
-**Authentication:** Required (JWT Bearer token)
+Each block contains jobs.
 
-**Query Parameters:**
-- `language_id`: Specific language filter
+Conditions can exist on:
 
-**Response:** Action translations by language
+- action
+- block
+- job
+- reminder
 
-**Permissions:** `admin.action_translation.read`
+If a condition fails, that level is skipped.
+
+## Supported Job Types
+
+### `add_group`
+
+Schedules a task job that adds the target user to one or more groups.
+
+### `remove_group`
+
+Schedules a task job that removes the target user from one or more groups.
+
+### `notification`
+
+Schedules either:
+
+- an email job when `notification.notification_types = email`
+- a push notification job when `notification.notification_types = push_notification`
+
+### `notification_with_reminder`
+
+Creates the main notification plus reminder child jobs.
+
+### `notification_with_reminder_for_diary`
+
+Same as above, plus reminder validity window metadata used to clean reminders once the target form is completed.
+
+## Scheduling Options
+
+Each job supports:
+
+- `immediately`
+- `on_fixed_datetime`
+- `after_period`
+- `after_period_on_day_at_time`
+
+## Repetition
+
+### Repeat
+
+Use:
+
+- `repeat: true`
+- `repeater.occurrences`
+- `repeater.frequency`
+- optional `daysOfWeek`
+- optional `daysOfMonth`
+
+### Repeat Until Date
+
+Use:
+
+- `repeat_until_date: true`
+- `repeater_until_date.deadline`
+- `repeater_until_date.repeat_every`
+- `repeater_until_date.frequency`
+- optional `schedule_at`
+- optional weekday/monthday restrictions
+
+## Target Groups
+
+If `target_groups` is enabled, the runtime resolves all users in `selected_target_groups` and schedules jobs for each user.
+
+If it is disabled, the runtime targets the user who triggered the input save.
+
+## Overwrite Variables
+
+If `overwrite_variables` is enabled, selected form values can override scheduling inputs at runtime.
+
+Supported overwrite variables:
+
+- `send_after`
+- `send_after_type`
+- `send_on_day_at`
+- `custom_time`
+- `impersonate_user_code`
+
+### `impersonate_user_code`
+
+If present and valid, the runtime replaces the target recipient with the user owning that active validation code.
+
+## Cleanup Flags
+
+### `clear_existing_jobs_for_action`
+
+Before new jobs are created, queued jobs for the same action and user are soft-deleted.
+
+### `clear_existing_jobs_for_record_and_action`
+
+Before new jobs are created, queued jobs for the same action and same data row are soft-deleted.
+
+Useful for resubmits and edits where older queued jobs should not still fire.
+
+## Example Config
+
+```json
+{
+  "target_groups": false,
+  "overwrite_variables": true,
+  "selected_overwrite_variables": ["impersonate_user_code"],
+  "clear_existing_jobs_for_record_and_action": true,
+  "blocks": [
+    {
+      "block_name": "Welcome",
+      "jobs": [
+        {
+          "job_name": "Send welcome mail",
+          "job_type": "notification",
+          "schedule_time": {
+            "job_schedule_types": "immediately"
+          },
+          "notification": {
+            "notification_types": "email",
+            "from_email": "noreply@example.com",
+            "from_name": "SelfHelp",
+            "reply_to": "support@example.com",
+            "recipient": "@user",
+            "subject": "Welcome",
+            "body": "<p>Hello @user_name</p>",
+            "attachments": []
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## End-User / Admin Usage Notes
+
+When configuring actions:
+
+1. choose the right trigger first
+2. use conditions to narrow execution
+3. use target groups carefully, because one save can schedule many jobs
+4. use cleanup flags when an update should replace old queued jobs
+5. use reminders only when the target form really exists and will be completed later
+
+## How to Verify Your Action Worked
+
+After saving input:
+
+1. open scheduled jobs admin list
+2. filter by action, user, or source row
+3. inspect the created job config
+4. manually execute a queued job if needed
+5. inspect job transactions
+
+## Troubleshooting
+
+### Nothing happens after save
+
+Check:
+
+- action is attached to the correct data table
+- trigger type matches the save path
+- conditions are not failing
+- recipients resolve to real users
+- overwrite variables are present when required
+
+### Jobs are created for the wrong user
+
+Check:
+
+- target groups
+- `impersonate_user_code`
+- the `id_users` stored in the saved form row
+
+### Reminder jobs stay queued even after form completion
+
+Check:
+
+- reminder target form id matches the completed form data table
+- reminder job is still in the valid window
 
 ---
 

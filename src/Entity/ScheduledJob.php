@@ -4,6 +4,12 @@ namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
+/**
+ * Core scheduled-job entity used for emails, notifications, tasks, and reminders.
+ *
+ * Reminder-specific lineage and validity metadata lives in the associated
+ * `ScheduledJobReminder` entity so the base job table stays focused on common fields.
+ */
 #[ORM\Entity]
 #[ORM\Table(name: 'scheduledJobs',indexes: [
     new ORM\Index(name: 'IDX_3E186B37FA06E4D9', columns: ['id_users']),
@@ -24,28 +30,52 @@ class ScheduledJob
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    // Core relationships (nullable for system jobs)
+    /**
+     * The user who receives or owns the scheduled job.
+     *
+     * Nullable for system-scoped jobs that are not tied to one user.
+     */
     #[ORM\ManyToOne(targetEntity: User::class)]
     #[ORM\JoinColumn(name: 'id_users', nullable: true, onDelete: 'CASCADE')]
     private ?User $user = null;
 
+    /**
+     * The source action that generated the scheduled job, when applicable.
+     */
     #[ORM\ManyToOne(targetEntity: Action::class)]
     #[ORM\JoinColumn(name: 'id_actions', nullable: true, onDelete: 'CASCADE')]
     private ?Action $action = null;
 
+    /**
+     * The source data table associated with the job trigger.
+     */
     #[ORM\ManyToOne(targetEntity: DataTable::class)]
     #[ORM\JoinColumn(name: 'id_dataTables', nullable: true, onDelete: 'CASCADE')]
     private ?DataTable $dataTable = null;
 
+    /**
+     * The source data row associated with the job trigger.
+     */
     #[ORM\ManyToOne(targetEntity: DataRow::class)]
     #[ORM\JoinColumn(name: 'id_dataRows', nullable: true, onDelete: 'CASCADE')]
     private ?DataRow $dataRow = null;
 
-    // Job classification (lookup-based)
+    /**
+     * Reminder-specific metadata stored separately from the base scheduled-job table.
+     */
+    #[ORM\OneToOne(mappedBy: 'scheduledJob', targetEntity: ScheduledJobReminder::class, cascade: ['persist', 'remove'], orphanRemoval: true)]
+    private ?ScheduledJobReminder $reminderMetadata = null;
+
+    /**
+     * Lookup describing the persisted job type.
+     */
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
     #[ORM\JoinColumn(name: 'id_jobTypes', nullable: false, onDelete: 'CASCADE')]
     private Lookup $jobType;
 
+    /**
+     * Lookup describing the current execution status.
+     */
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
     #[ORM\JoinColumn(name: 'id_jobStatus', nullable: false, onDelete: 'CASCADE')]
     private Lookup $status;
@@ -61,11 +91,15 @@ class ScheduledJob
     private ?\DateTimeInterface $dateExecuted = null;
 
 
-
-    // Job details
+    /**
+     * Human-readable description shown in admin tooling and transactions.
+     */
     #[ORM\Column(name: 'description', type: 'string', length: 1000, nullable: true)]
     private ?string $description = null;
 
+    /**
+     * Structured job payload used during execution and admin display.
+     */
     #[ORM\Column(name: 'config', type: 'json', nullable: true)]
     private ?array $config = null;
 
@@ -121,6 +155,20 @@ class ScheduledJob
     public function setDataRow(?DataRow $dataRow): self
     {
         $this->dataRow = $dataRow;
+        return $this;
+    }
+
+    public function getReminderMetadata(): ?ScheduledJobReminder
+    {
+        return $this->reminderMetadata;
+    }
+
+    public function setReminderMetadata(?ScheduledJobReminder $reminderMetadata): self
+    {
+        $this->reminderMetadata = $reminderMetadata;
+        if ($reminderMetadata && $reminderMetadata->getScheduledJob() !== $this) {
+            $reminderMetadata->setScheduledJob($this);
+        }
         return $this;
     }
 
@@ -181,8 +229,6 @@ class ScheduledJob
         $this->dateExecuted = $dateExecuted;
         return $this;
     }
-
-
 
     // Job details getters/setters
     public function getDescription(): ?string

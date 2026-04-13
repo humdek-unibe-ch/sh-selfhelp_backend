@@ -10,6 +10,8 @@ use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Exception\ServiceException;
 use App\Repository\DataTableRepository;
+use App\Service\Action\ActionContextBuilderService;
+use App\Service\Action\ActionOrchestratorService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
@@ -22,6 +24,7 @@ use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Service\CMS\FormFileUploadService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -44,7 +47,10 @@ class DataService extends BaseService
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly FormFileUploadService $formFileUploadService,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly ActionContextBuilderService $actionContextBuilderService,
+        private readonly ActionOrchestratorService $actionOrchestratorService,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -58,6 +64,9 @@ class DataService extends BaseService
      * @param bool $ownEntriesOnly Whether to restrict updates to user's own entries
      * @return int|false The record ID on success or false on failure
      * @throws ServiceException
+     *
+     * After the database transaction commits successfully, this method triggers the
+     * Symfony action runtime so jobs are scheduled from a stable post-commit state.
      */
     public function saveData(
         string $tableName,
@@ -67,16 +76,23 @@ class DataService extends BaseService
         bool $ownEntriesOnly = true
     ): int|false {
         $this->entityManager->beginTransaction();
+        $currentUser = $this->userContextAwareService->getCurrentUser();
 
         try {
             // Ensure user ID is set
             if (!isset($data['id_users'])) {
-                $currentUser = $this->userContextAwareService->getCurrentUser();
                 $data['id_users'] = $currentUser ? $currentUser->getId() : 1; // Guest user fallback
             }
 
             // Get or create data table
             $dataTable = $this->getOrCreateDataTable($tableName);
+
+            if ($updateBasedOn !== null && !isset($data['trigger_type'])) {
+                $data['trigger_type'] = LookupService::ACTION_TRIGGER_TYPES_UPDATED;
+            }
+
+            $actionPayload = $data;
+            $actionTriggerType = $data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED;
 
             // Check for existing record to update
             if ($updateBasedOn !== null) {
@@ -101,6 +117,15 @@ class DataService extends BaseService
                         // Invalidate data table cache after updating record
                         $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
 
+                        $this->runActionOrchestration(
+                            $dataTable,
+                            $updatedRecordId,
+                            $actionPayload,
+                            $actionTriggerType,
+                            $currentUser ? $currentUser->getId() : ($actionPayload['id_users'] ?? null),
+                            $transactionBy
+                        );
+
                         return $updatedRecordId;
                     } else {
                         // Record not found
@@ -114,7 +139,7 @@ class DataService extends BaseService
                         $filter = $filter . ' AND ' . $key . ' = "' . $value . '"';
                     }
 
-                    $existingRecord = $this->getData($dataTable->getId(), $filter, $ownEntriesOnly, $currentUser->getId(), true);
+                    $existingRecord = $this->getData($dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
 
                     if ($existingRecord) {
                         $recordId = $this->updateExistingRecord($existingRecord['record_id'], $data, $transactionBy);
@@ -122,6 +147,15 @@ class DataService extends BaseService
 
                         // Invalidate data table cache after updating record
                         $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+
+                        $this->runActionOrchestration(
+                            $dataTable,
+                            $recordId,
+                            $actionPayload,
+                            $actionTriggerType,
+                            $currentUser ? $currentUser->getId() : ($actionPayload['id_users'] ?? null),
+                            $transactionBy
+                        );
 
                         return $recordId;
                     } elseif (count($updateBasedOn) > 0) {
@@ -139,6 +173,15 @@ class DataService extends BaseService
 
             // Invalidate data table cache after creating new record
             $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
+
+            $this->runActionOrchestration(
+                $dataTable,
+                $recordId,
+                $actionPayload,
+                $actionTriggerType,
+                $currentUser ? $currentUser->getId() : ($actionPayload['id_users'] ?? null),
+                $transactionBy
+            );
 
             return $recordId;
 
@@ -159,10 +202,14 @@ class DataService extends BaseService
      * @param bool $ownEntriesOnly Whether to restrict to user's own entries
      * @return bool Success status
      * @throws ServiceException
+     *
+     * Queued action jobs linked to the deleted record are cleaned up after commit
+     * through the same action orchestration pipeline used for save/update events.
      */
     public function deleteData(int $recordId, bool $ownEntriesOnly = true): bool
     {
         $this->entityManager->beginTransaction();
+        $currentUser = $this->userContextService->getCurrentUser();
 
         try {
             $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
@@ -172,7 +219,6 @@ class DataService extends BaseService
 
             // Check ownership if required
             if ($ownEntriesOnly) {
-                $currentUser = $this->userContextService->getCurrentUser();
                 if (!$currentUser || $dataRow->getIdUsers() !== $currentUser->getId()) {
                     $this->throwForbidden('Access denied to this record');
                 }
@@ -184,6 +230,7 @@ class DataService extends BaseService
             // Mark as deleted instead of physical deletion
             $deletedTriggerType = $this->lookupService->getLookupIdByValue('actionTriggerTypes', LookupService::ACTION_TRIGGER_TYPES_DELETED);
             $dataRow->setIdActionTriggerTypes($deletedTriggerType);
+            $deletedValues = $this->extractRecordValues($dataRow);
 
             // Log transaction
             $this->transactionService->logTransaction(
@@ -208,6 +255,15 @@ class DataService extends BaseService
 
             // Invalidate data table cache after deleting record
             $this->invalidateDataTableCache($dataRow->getDataTable(), $currentUser ? $currentUser->getId() : null);
+
+            $this->runActionOrchestration(
+                $dataRow->getDataTable(),
+                $dataRow->getId(),
+                $deletedValues,
+                LookupService::ACTION_TRIGGER_TYPES_DELETED,
+                $currentUser ? $currentUser->getId() : $dataRow->getIdUsers(),
+                LookupService::TRANSACTION_BY_BY_USER
+            );
 
             return true;
 
@@ -264,6 +320,82 @@ class DataService extends BaseService
         }
 
         return $fileData;
+    }
+
+    /**
+     * @return array<string, mixed>
+     *   Flattened record values used to build a delete-trigger action context.
+     */
+    private function extractRecordValues(DataRow $dataRow): array
+    {
+        $values = [
+            'record_id' => $dataRow->getId(),
+            'id_users' => $dataRow->getIdUsers(),
+        ];
+
+        $dataCells = $this->entityManager->getRepository(DataCell::class)->findBy([
+            'dataRow' => $dataRow,
+        ]);
+
+        foreach ($dataCells as $dataCell) {
+            $fieldName = $dataCell->getDataCol()->getName();
+            $language = $dataCell->getLanguage()?->getId();
+
+            if ($language && $language !== 1) {
+                if (!isset($values[$fieldName]) || !is_array($values[$fieldName])) {
+                    $values[$fieldName] = [];
+                }
+                $values[$fieldName][] = [
+                    'language_id' => $language,
+                    'value' => $dataCell->getValue(),
+                ];
+                continue;
+            }
+
+            $values[$fieldName] = $dataCell->getValue();
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param array<string, mixed> $submittedValues
+     *   The values that should be exposed to the action runtime.
+     *
+     * Runs after the data transaction commits so scheduled jobs are created from
+     * persisted rows and cannot roll back the original user data save.
+     */
+    private function runActionOrchestration(
+        DataTable $dataTable,
+        int $recordId,
+        array $submittedValues,
+        string $triggerType,
+        ?int $userId,
+        string $transactionBy
+    ): void {
+        try {
+            $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
+            if (!$dataRow) {
+                return;
+            }
+
+            $context = $this->actionContextBuilderService->build(
+                $dataTable,
+                $dataRow,
+                $submittedValues,
+                $triggerType,
+                $userId ? (int) $userId : null,
+                $transactionBy
+            );
+            $this->actionOrchestratorService->handle($context);
+        } catch (\Throwable $e) {
+            $this->logger->error('Post-commit action orchestration failed', [
+                'dataTableId' => $dataTable->getId(),
+                'recordId' => $recordId,
+                'triggerType' => $triggerType,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

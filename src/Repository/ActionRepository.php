@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\Action;
+use App\Entity\DataTable;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -19,7 +20,19 @@ class ActionRepository extends ServiceEntityRepository
     /**
      * Find actions with pagination and optional search/sort
      *
+     * @param int $page
+     *   The requested page number.
+     * @param int $pageSize
+     *   The requested page size.
+     * @param string|null $search
+     *   Optional search term applied to action name and trigger labels.
+     * @param string|null $sort
+     *   Optional sort key.
+     * @param string $sortDirection
+     *   Requested sort direction.
+     *
      * @return array{actions: array<int, array<string, mixed>>, pagination: array<string, mixed>}
+     *   Formatted action rows plus pagination metadata for admin listing.
      */
     public function findActionsWithPagination(
         int $page = 1,
@@ -93,6 +106,33 @@ class ActionRepository extends ServiceEntityRepository
                 'hasPrevious' => $page > 1,
             ],
         ];
+    }
+
+    /**
+     * Find actions attached to a specific data table and trigger type.
+     *
+     * @param DataTable $dataTable
+     *   The data table whose actions should be loaded.
+     * @param string $triggerTypeCode
+     *   The action-trigger lookup code.
+     *
+     * @return Action[]
+     *   Matching actions ordered by id.
+     */
+    public function findByDataTableAndTrigger(DataTable $dataTable, string $triggerTypeCode): array
+    {
+        return $this->createQueryBuilder('a')
+            ->leftJoin('a.actionTriggerType', 'att')
+            ->addSelect('att')
+            ->leftJoin('a.dataTable', 'dt')
+            ->addSelect('dt')
+            ->andWhere('a.dataTable = :dataTable')
+            ->andWhere('att.lookupCode = :triggerTypeCode')
+            ->setParameter('dataTable', $dataTable)
+            ->setParameter('triggerTypeCode', $triggerTypeCode)
+            ->orderBy('a.id', 'ASC')
+            ->getQuery()
+            ->getResult();
     }
 }
 

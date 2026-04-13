@@ -1,931 +1,349 @@
-# Scheduled Jobs System
+# Scheduled Jobs and Action Runtime
 
-## ⚡ Overview
+## Overview
 
-The SelfHelp Symfony Backend includes a streamlined scheduled jobs system for managing background tasks using JSON-based configuration. The system provides UTC-based job scheduling, execution tracking, and comprehensive audit trails.
+The Symfony backend now owns the full action scheduling flow that used to live in legacy `UserInput` code.
 
-## 🏗️ Simplified Job Architecture
+Whenever user input is saved or deleted through `DataService`, we now:
 
-```mermaid
-graph TD
-    A[Job Creation] --> B[JobSchedulerService]
-    B --> C[ScheduledJob Entity]
-    C --> D[UTC Job Queue]
-    D --> E[Job Execution]
-    E --> F[Status Update]
-    F --> G[Transaction Logging]
+1. commit the data change
+2. build an action trigger context
+3. resolve matching actions by `dataTable + trigger_type`
+4. expand action config into concrete scheduled jobs
+5. execute immediate jobs right away
 
-    subgraph "Job Types"
-        H[Email Jobs]
-        I[Notification Jobs]
-        J[Task Jobs]
-        K[Reminder Jobs]
-    end
+This gives us one native pipeline for:
 
-    subgraph "Job Status"
-        L[Queued]
-        M[Running]
-        N[Done]
-        O[Failed]
-        P[Cancelled]
-    end
+- frontend form submits
+- frontend form updates
+- frontend form deletes
+- user validation form input saves
 
-    B --> H
-    B --> I
-    B --> J
-    B --> K
+## What Replaced Legacy
 
-    E --> L
-    E --> M
-    E --> N
-    E --> O
-    E --> P
+Legacy behavior was previously handled in the old `sh-selfhelp` project by `UserInput::queue_job_from_actions()`.
+
+That logic is now replaced by Symfony services:
+
+- `ActionContextBuilderService`
+- `ActionResolverService`
+- `ActionConfigRuntimeService`
+- `ActionRecipientResolverService`
+- `ActionConditionEvaluatorService`
+- `ActionCleanupService`
+- `ActionScheduleCalculatorService`
+- `ActionSchedulerService`
+- `ActionImmediateExecutorService`
+- `ActionOrchestratorService`
+
+The validation endpoint no longer loads `legacy/UserInput.php`.
+
+## Runtime Flow
+
+### Save / update
+
+`DataService::saveData()` now:
+
+1. saves the record
+2. commits the Doctrine transaction
+3. calls `runActionOrchestration()`
+
+Update saves default to trigger type `updated` when no explicit `trigger_type` is provided.
+
+Create saves default to `finished`.
+
+### Delete
+
+`DataService::deleteData()` now:
+
+1. marks the row as deleted
+2. commits
+3. runs delete-trigger actions
+4. removes queued jobs linked to the deleted row
+
+### User validation
+
+`UserValidationController::saveUserFormInputs()` now persists into `user_validation_inputs` via `DataService`.
+
+That means validation form inputs also use the same action pipeline as normal forms.
+
+## Supported Legacy Behaviors
+
+The action runtime preserves the legacy admin config contract:
+
+- action conditions
+- block conditions
+- job conditions
+- reminder conditions
+- overwrite variables
+- `impersonate_user_code`
+- target groups
+- action-level randomization
+- even-presentation randomization counters
+- `repeat`
+- `repeat_until_date`
+- reminders
+- diary-style reminder validity windows
+- `clear_existing_jobs_for_action`
+- `clear_existing_jobs_for_record_and_action`
+- delete cleanup for queued jobs linked to a deleted record
+- immediate execution after scheduling
+
+## Core Services
+
+### `ActionConfigRuntimeService`
+
+Responsibilities:
+
+- decode stored JSON config
+- apply overwrite variables into job schedule blocks
+- interpolate `{{variables}}` with submitted form values
+- persist randomization counters back onto the `actions.config`
+
+### `ActionCleanupService`
+
+Responsibilities:
+
+- soft-delete queued jobs for one action and user
+- soft-delete queued jobs for one action and one record
+- soft-delete queued jobs for one deleted record
+- soft-delete queued reminder jobs when the reminder target form is completed
+
+### `ActionSchedulerService`
+
+Responsibilities:
+
+- expand blocks/jobs/reminders into concrete `ScheduledJob` rows
+- map action job types to scheduled job types:
+  - `add_group` / `remove_group` -> `task`
+  - notification email -> `email`
+  - notification push -> `notification`
+- attach action lineage:
+  - `action`
+  - `dataTable`
+  - `dataRow`
+  - `parentJob`
+  - `reminderDataTable`
+  - reminder validity window
+
+### `JobSchedulerService`
+
+Responsibilities:
+
+- low-level `scheduleJob()` persistence
+- job config storage
+- manual execution
+- due-job execution
+- actual execution for:
+  - email jobs
+  - push notification jobs
+  - task jobs
+
+### `TaskJobExecutorService`
+
+Responsibilities:
+
+- add groups to users
+- remove groups from users
+- log task execution transactions
+
+## Scheduled Job Persistence
+
+Core job state remains on `ScheduledJob`.
+
+Reminder-only metadata now lives in the dedicated `scheduledJobs_reminders` table and `ScheduledJobReminder` entity.
+
+That reminder metadata stores:
+
+- owning scheduled job
+- parent scheduled job
+- reminder target data table
+- reminder session start
+- reminder session end
+
+This keeps reminder-specific state out of the main `scheduledJobs` table while still supporting cleanup and lineage queries.
+
+## Database Migration
+
+The reminder metadata refactor is applied through Symfony/Doctrine migrations.
+
+### Upgrade the database
+
+Run the pending migrations:
+
+```bash
+php bin/console doctrine:migrations:migrate
 ```
 
-## 🗄️ Database Schema
+This will:
 
-### Simplified ScheduledJob Entity
-```php
-<?php
-namespace App\Entity;
+- create `scheduledJobs_reminders`
+- add the reminder foreign keys and indexes
+- remove obsolete reminder columns from `scheduledJobs` when they exist
 
-#[ORM\Entity]
-#[ORM\Table(name: 'scheduledJobs', indexes: [
-    new ORM\Index(name: 'IDX_3E186B37FA06E4D9', columns: ['id_users']),
-    new ORM\Index(name: 'IDX_3E186B37DBD5589F', columns: ['id_actions']),
-    new ORM\Index(name: 'IDX_3E186B37E2E6A7C3', columns: ['id_dataTables']),
-    new ORM\Index(name: 'IDX_3E186B37F3854F45', columns: ['id_dataRows']),
-    new ORM\Index(name: 'IDX_3E186B3777FD8DE1', columns: ['id_jobStatus']),
-    new ORM\Index(name: 'IDX_3E186B3712C34CFB', columns: ['id_jobTypes']),
-    new ORM\Index(name: 'IDX_3E186B37B1E3B97B', columns: ['date_to_be_executed']),
-    new ORM\Index(name: 'index_id_users_date_to_be_executed', columns: ['id_users', 'date_to_be_executed']),
-    new ORM\Index(name: 'IDX_3E186B3712C34CFB77FD8DE1', columns: ['id_jobTypes', 'id_jobStatus']),
-    new ORM\Index(name: 'IDX_3E186B37E2E6A7C3A76ED395', columns: ['id_dataTables', 'id_users']),
-])]
-class ScheduledJob
-{
-    #[ORM\Id]
-    #[ORM\GeneratedValue]
-    #[ORM\Column(name: 'id', type: 'integer')]
-    private ?int $id = null;
+### Preview the upgrade SQL
 
-    // Core relationships (nullable for system jobs)
-    #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'id_users', nullable: true, onDelete: 'CASCADE')]
-    private ?User $user = null;
-
-    #[ORM\ManyToOne(targetEntity: Action::class)]
-    #[ORM\JoinColumn(name: 'id_actions', nullable: true, onDelete: 'CASCADE')]
-    private ?Action $action = null;
-
-    #[ORM\ManyToOne(targetEntity: DataTable::class)]
-    #[ORM\JoinColumn(name: 'id_dataTables', nullable: true, onDelete: 'CASCADE')]
-    private ?DataTable $dataTable = null;
-
-    #[ORM\ManyToOne(targetEntity: DataRow::class)]
-    #[ORM\JoinColumn(name: 'id_dataRows', nullable: true, onDelete: 'CASCADE')]
-    private ?DataRow $dataRow = null;
-
-    // Job classification (lookup-based)
-    #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_jobTypes', nullable: false, onDelete: 'CASCADE')]
-    private Lookup $jobType;
-
-    #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_jobStatus', nullable: false, onDelete: 'CASCADE')]
-    private Lookup $status;
-
-    #[ORM\Column(name: 'date_create', type: 'datetime')]
-    private \DateTimeInterface $dateCreate;
-
-    #[ORM\Column(name: 'date_to_be_executed', type: 'datetime')]
-    private \DateTimeInterface $dateToBeExecuted;
-
-    #[ORM\Column(name: 'date_executed', type: 'datetime', nullable: true)]
-    private ?\DateTimeInterface $dateExecuted = null;
-
-    // Job details
-    #[ORM\Column(name: 'description', type: 'string', length: 1000, nullable: true)]
-    private ?string $description = null;
-
-    #[ORM\Column(name: 'config', type: 'json', nullable: true)]
-    private ?array $config = null;
-
-    public function __construct()
-    {
-        $this->dateCreate = new \DateTime('now', new \DateTimeZone('UTC'));
-    }
-
-    // Getters and setters...
-}
-// ENTITY RULE
+```bash
+php bin/console doctrine:migrations:migrate --dry-run
 ```
 
-### Job Types and Statuses (Lookup System)
-```sql
--- Job Types (simplified)
-INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
-('jobTypes', 'email', 'Email', 'Email sending job'),
-('jobTypes', 'notification', 'Notification', 'Push notification job'),
-('jobTypes', 'task', 'Task', 'Custom task execution'),
-('jobTypes', 'reminder', 'Reminder', 'Scheduled reminder job')
-ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+If you want to compare Doctrine mapping vs current database state:
 
--- Job Statuses (simplified)
-INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) VALUES
-('scheduledJobsStatus', 'queued', 'Queued', 'Job is queued for execution'),
-('scheduledJobsStatus', 'running', 'Running', 'Job is currently running'),
-('scheduledJobsStatus', 'done', 'Done', 'Job completed successfully'),
-('scheduledJobsStatus', 'failed', 'Failed', 'Job execution failed'),
-('scheduledJobsStatus', 'cancelled', 'Cancelled', 'Job was manually cancelled')
-ON DUPLICATE KEY UPDATE lookup_value = VALUES(lookup_value), lookup_description = VALUES(lookup_description);
+```bash
+php bin/console doctrine:schema:update --dump-sql
 ```
 
-## 🔧 JobSchedulerService
+### Downgrade the database
 
-### Simplified JSON-Based Implementation
-```php
-<?php
-namespace App\Service\Core;
+To roll back the last migration:
 
-use App\Entity\ScheduledJob;
-use App\Entity\User;
-use App\Entity\Action;
-use App\Service\Cache\Core\CacheService;
-use App\Service\CMS\CmsPreferenceService;
-use App\Service\Auth\UserDataService;
-use App\Service\Core\TransactionService;
-use App\Service\Core\LookupService;
-use Doctrine\ORM\EntityManagerInterface;
-use Psr\Log\LoggerInterface;
-
-/**
- * Service responsible for scheduling and executing jobs with timezone awareness
- */
-class JobSchedulerService extends BaseService
-{
-    public function __construct(
-        private readonly EntityManagerInterface $em,
-        private readonly TransactionService $transactionService,
-        private readonly LookupService $lookupService,
-        private readonly UserDataService $userDataService,
-        private readonly CmsPreferenceService $cmsPreferences,
-        private readonly LoggerInterface $logger,
-        private readonly CacheService $cache
-    ) {}
-
-    /**
-     * Schedule a job for a user
-     */
-    public function scheduleJob(array $jobData, string $transactionBy): ScheduledJob|false
-    {
-        try {
-            // Determine the user for this job
-            $user = $this->getUserForJob($jobData);
-
-            $job = $this->createScheduledJob($jobData, $user);
-            if (!$job) {
-                throw new \Exception('Failed to create scheduled job');
-            }
-
-            // Store job-specific configuration
-            $this->storeJobConfig($job, $jobData);
-
-            // Log the transaction
-            $this->transactionService->logTransaction(
-                $this->lookupService::TRANSACTION_TYPES_INSERT,
-                $transactionBy,
-                'scheduledJobs',
-                $job->getId(),
-                $job,
-                'Job scheduled: ' . ($jobData['description'] ?? $jobData['type'])
-            );
-
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
-                ->invalidateAllListsInCategory();
-
-            return $job;
-
-        } catch (\Exception $e) {
-            $this->logger->error('Failed to schedule job', [
-                'error' => $e->getMessage(),
-                'jobData' => $jobData
-            ]);
-            return false;
-        }
-    }
-
-    /**
-     * Execute a scheduled job
-     */
-    public function executeJob(int $jobId, string $transactionBy): ScheduledJob|false
-    {
-        try {
-            $this->em->beginTransaction();
-
-            $job = $this->em->getRepository(ScheduledJob::class)->find($jobId);
-            if (!$job) {
-                throw new \Exception('Job not found: ' . $jobId);
-            }
-
-            // Set job status to running to prevent double execution
-            $runningStatus = $this->em->getRepository(Lookup::class)->findOneBy([
-                'typeCode' => $this->lookupService::SCHEDULED_JOBS_STATUS,
-                'lookupCode' => $this->lookupService::SCHEDULED_JOBS_STATUS_RUNNING
-            ]);
-            $job->setStatus($runningStatus);
-            $this->em->flush();
-
-            // Determine job type and execute accordingly
-            $jobTypeName = $job->getJobType()->getLookupCode();
-
-            $success = match ($jobTypeName) {
-                $this->lookupService::JOB_TYPES_EMAIL => $this->executeEmailJob($job, $transactionBy),
-                $this->lookupService::JOB_TYPES_NOTIFICATION => $this->executeNotificationJob($job, $transactionBy),
-                default => throw new \Exception('Unknown job type: ' . $jobTypeName)
-            };
-
-            // Update job status to final result
-            $finalStatus = $this->em->getRepository(Lookup::class)->findOneBy([
-                'typeCode' => $this->lookupService::SCHEDULED_JOBS_STATUS,
-                'lookupCode' => $success ? $this->lookupService::SCHEDULED_JOBS_STATUS_DONE : $this->lookupService::SCHEDULED_JOBS_STATUS_FAILED
-            ]);
-
-            $job->setStatus($finalStatus);
-            $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
-            $this->em->flush();
-
-            // Log the execution
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_UPDATE,
-                $transactionBy,
-                'scheduledJobs',
-                $jobId,
-                false,
-                'Job executed: ' . ($success ? 'executed' : 'failed')
-            );
-
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
-                ->invalidateItemAndLists("scheduledJob_{$jobId}");
-
-            $this->em->commit();
-            return $job;
-
-        } catch (\Exception $e) {
-            $this->em->rollback();
-            $this->logger->error('Failed to execute job', [
-                'jobId' => $jobId,
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
-    }
-
-    /**
-     * Create a scheduled job entity
-     */
-    private function createScheduledJob(array $jobData, ?User $user): ScheduledJob|false
-    {
-        try {
-            // Get job type using constants
-            $jobType = $this->em->getRepository(Lookup::class)->findOneBy([
-                'typeCode' => $this->lookupService::JOB_TYPES,
-                'lookupCode' => $jobData['type']
-            ]);
-
-            if (!$jobType) {
-                throw new \Exception('Invalid job type: ' . $jobData['type']);
-            }
-
-            // Get status using constants
-            $status = $this->em->getRepository(Lookup::class)->findOneBy([
-                'typeCode' => $this->lookupService::SCHEDULED_JOBS_STATUS,
-                'lookupCode' => $this->lookupService::SCHEDULED_JOBS_STATUS_QUEUED
-            ]);
-
-            $scheduledJob = new ScheduledJob();
-            $scheduledJob->setUser($user);
-            $scheduledJob->setJobType($jobType);
-            $scheduledJob->setStatus($status);
-            $scheduledJob->setDescription($jobData['description'] ?? '');
-            $scheduledJob->setDateToBeExecuted($jobData['date_to_be_executed'] ?? new \DateTime('now', new \DateTimeZone('UTC')));
-
-            // Set relationships if provided (nullable for system jobs)
-            if (isset($jobData['action']) && $jobData['action'] instanceof Action) {
-                $action = $jobData['action'];
-                $scheduledJob->setAction($action);
-                $scheduledJob->setDataTable($action->getDataTable());
-                $scheduledJob->setDataRow($jobData['dataRow'] ?? null);
-            }
-
-            $this->em->persist($scheduledJob);
-            $this->em->flush();
-
-            return $scheduledJob;
-
-        } catch (\Exception $e) {
-            $this->logger->error('Failed to create scheduled job', ['error' => $e->getMessage()]);
-            return false;
-        }
-    }
-
-    /**
-     * Store job-specific configuration in JSON format
-     */
-    private function storeJobConfig(ScheduledJob $job, array $jobData): void
-    {
-        $config = [];
-
-        // Store job-specific configuration based on type
-        switch ($job->getJobType()->getLookupCode()) {
-            case $this->lookupService::JOB_TYPES_EMAIL:
-                $config['email'] = $jobData['email_config'] ?? [];
-                break;
-            case $this->lookupService::JOB_TYPES_NOTIFICATION:
-                $config['notification'] = $jobData['notification_config'] ?? [];
-                break;
-        }
-
-        $job->setConfig($config);
-        $this->em->flush();
-    }
-
-    /**
-     * Execute an email job using JSON config
-     */
-    private function executeEmailJob(ScheduledJob $job, string $transactionBy): bool
-    {
-        try {
-            $config = $job->getConfig()['email'] ?? [];
-
-            // Execute email sending logic here
-            $this->logger->info('Email job executed', [
-                'jobId' => $job->getId(),
-                'config' => $config
-            ]);
-
-            return true;
-
-        } catch (\Exception $e) {
-            $this->logger->error('Email job execution failed', [
-                'jobId' => $job->getId(),
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
-    }
-
-    /**
-     * Execute a notification job using JSON config
-     */
-    private function executeNotificationJob(ScheduledJob $job, string $transactionBy): bool
-    {
-        try {
-            $config = $job->getConfig()['notification'] ?? [];
-
-            // Execute notification logic here
-            $this->logger->info('Notification job executed', [
-                'jobId' => $job->getId(),
-                'config' => $config
-            ]);
-
-            return true;
-
-        } catch (\Exception $e) {
-            $this->logger->error('Notification job execution failed', [
-                'jobId' => $job->getId(),
-                'error' => $e->getMessage()
-            ]);
-            return false;
-        }
-    }
-}
+```bash
+php bin/console doctrine:migrations:migrate prev
 ```
 
-## 🎮 AdminScheduledJobController
+Or migrate to a specific version:
 
-### Controller Implementation
-```php
-<?php
-namespace App\Controller\Api\V1\Admin;
-
-class AdminScheduledJobController extends AbstractController
-{
-    use RequestValidatorTrait;
-
-    public function __construct(
-        private readonly AdminScheduledJobService $adminScheduledJobService,
-        private readonly JobSchedulerService $jobSchedulerService,
-        private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
-    ) {}
-
-    /**
-     * Get scheduled jobs with filtering and pagination
-     * @route /admin/scheduled-jobs
-     * @method GET
-     */
-    public function getScheduledJobs(Request $request): JsonResponse
-    {
-        try {
-            $filters = [
-                'status' => $request->query->get('status'),
-                'job_type' => $request->query->get('job_type'),
-                'date_type' => $request->query->get('date_type', 'create'),
-                'date_from' => $request->query->get('date_from'),
-                'date_to' => $request->query->get('date_to'),
-                'search' => $request->query->get('search')
-            ];
-
-            $page = (int)$request->query->get('page', 1);
-            $perPage = min((int)$request->query->get('per_page', 20), 100);
-            $sort = $request->query->get('sort', 'dateCreate');
-            $order = $request->query->get('order', 'desc');
-
-            $result = $this->adminScheduledJobService->getScheduledJobs(
-                $filters, 
-                $page, 
-                $perPage, 
-                $sort, 
-                $order
-            );
-
-            return $this->responseFormatter->formatSuccess(
-                $result['data'],
-                'responses/admin/scheduled_jobs/scheduled_jobs'
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Get specific scheduled job details
-     * @route /admin/scheduled-jobs/{jobId}
-     * @method GET
-     */
-    public function getScheduledJob(int $jobId): JsonResponse
-    {
-        try {
-            $job = $this->adminScheduledJobService->getScheduledJobById($jobId);
-            return $this->responseFormatter->formatSuccess(
-                $job,
-                'responses/admin/scheduled_jobs/scheduled_job'
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Execute a scheduled job
-     * @route /admin/scheduled-jobs/{jobId}/execute
-     * @method POST
-     */
-    public function executeScheduledJob(int $jobId): JsonResponse
-    {
-        try {
-            $job = $this->jobSchedulerService->executeJob(
-                $jobId, 
-                LookupService::TRANSACTION_BY_BY_USER
-            );
-
-            if (!$job) {
-                return $this->responseFormatter->formatError(
-                    'Failed to execute job',
-                    Response::HTTP_INTERNAL_SERVER_ERROR
-                );
-            }
-
-            return $this->responseFormatter->formatSuccess(
-                $this->adminScheduledJobService->formatJobForResponse($job),
-                'responses/admin/scheduled_jobs/scheduled_job'
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Delete (soft delete) a scheduled job
-     * @route /admin/scheduled-jobs/{jobId}
-     * @method DELETE
-     */
-    public function deleteScheduledJob(int $jobId): JsonResponse
-    {
-        try {
-            $this->adminScheduledJobService->deleteScheduledJob($jobId);
-            return $this->responseFormatter->formatSuccess(
-                null,
-                null,
-                Response::HTTP_NO_CONTENT
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Get job statuses for filtering
-     * @route /admin/scheduled-jobs/statuses
-     * @method GET
-     */
-    public function getJobStatuses(): JsonResponse
-    {
-        try {
-            $statuses = $this->adminScheduledJobService->getJobStatuses();
-            return $this->responseFormatter->formatSuccess(
-                $statuses,
-                'responses/admin/lookups'
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    /**
-     * Get job types for filtering
-     * @route /admin/scheduled-jobs/types
-     * @method GET
-     */
-    public function getJobTypes(): JsonResponse
-    {
-        try {
-            $types = $this->adminScheduledJobService->getJobTypes();
-            return $this->responseFormatter->formatSuccess(
-                $types,
-                'responses/admin/lookups'
-            );
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-}
+```bash
+php bin/console doctrine:migrations:migrate 20260413130000
 ```
 
-## 📊 Job Management Features
+To roll back this specific migration after it has been applied, migrate to the previous version before `20260413130000`.
 
-### Timezone-Aware SQL Query Implementation
-```php
-public function getScheduledJobs(
-    array $filters = [],
-    int $page = 1,
-    int $perPage = 20,
-    string $sort = 'adjusted_execution_time',
-    string $order = 'asc'
-): array {
-    $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
-        json_encode($filters) . $sort . $order
-    );
+### Migration file
 
-    return $this->cache
-        ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
-        ->getList($cacheKey, function () use ($filters, $page, $perPage, $sort, $order) {
-            $sql = $this->buildTimezoneAwareQuery($filters, $sort, $order, $perPage, ($page - 1) * $perPage);
-            $conn = $this->entityManager->getConnection();
-            $result = $conn->executeQuery($sql, $this->buildCountParameters($filters));
+The reminder metadata migration is:
 
-            $jobs = [];
-            while ($row = $result->fetchAssociative()) {
-                $jobs[] = $this->hydrateJobFromRow($row);
-            }
+- `migrations/Version20260413130000.php`
 
-            // Get total count
-            $countSql = $this->buildCountQuery($filters);
-            $countResult = $conn->executeQuery($countSql, $this->buildCountParameters($filters));
-            $totalItems = (int) $countResult->fetchOne();
+## Execution Surfaces
 
-            return [
-                'scheduledJobs' => $jobs,
-                'totalCount' => $totalItems,
-                'page' => $page,
-                'pageSize' => $perPage,
-                'totalPages' => (int) ceil($totalItems / $perPage)
-            ];
-        });
-}
+### Admin API
 
-private function buildTimezoneAwareQuery(array $filters, string $sort, string $order, int $limit, int $offset): string
-{
-    $orderBy = match($sort) {
-        'adjusted_execution_time' => 'sj.date_to_be_executed',
-        'date_create' => 'sj.date_create',
-        'description' => 'sj.description',
-        default => 'sj.date_to_be_executed'
-    };
+Existing endpoint is still available:
 
-    // Get CMS default timezone
-    $cmsTimezone = $this->cmsPreferenceService->getDefaultTimezoneCode();
+- `POST /cms-api/v1/admin/scheduled-jobs/{jobId}/execute`
 
-    return "
-        SELECT
-            sj.id,
-            sj.id_users,
-            u.email as user_email,
-            a.name as action_name,
-            dt.displayName as data_table_name,
-            sj.id_dataRows as data_row,
-            jt.lookup_value as job_types,
-            js.lookup_value as status,
-            sj.description,
-            CONVERT_TZ(
-                sj.date_to_be_executed,
-                '+00:00',
-                '{$cmsTimezone}'
-            ) as date_scheduled,
-            CONVERT_TZ(
-                sj.date_create,
-                '+00:00',
-                '{$cmsTimezone}'
-            ) as date_created,
-            CONVERT_TZ(
-                sj.date_to_be_executed,
-                '+00:00',
-                '{$cmsTimezone}'
-            ) as date_to_be_executed,
-            CONVERT_TZ(
-                sj.date_executed,
-                '+00:00',
-                '{$cmsTimezone}'
-            ) as date_executed,
-            sj.description as description,
-            sj.config
+### Console
 
-        FROM scheduledJobs sj
-        INNER JOIN users u ON u.id = sj.id_users
-        INNER JOIN lookups jt ON jt.id = sj.id_jobTypes
-        INNER JOIN lookups js ON js.id = sj.id_jobStatus
+Execute all due queued jobs:
 
-        LEFT JOIN actions a ON a.id = sj.id_actions
-        LEFT JOIN dataTables dt ON dt.id = sj.id_dataTables
-
-        WHERE 1=1
-        " . $this->buildWhereClause($filters) . "
-
-        ORDER BY {$orderBy} {$order}
-        LIMIT {$limit} OFFSET {$offset}";
-}
-
-private function hydrateJobFromRow(array $row): array
-{
-    return [
-        'id' => $row['id'],
-        'id_users' => $row['id_users'],
-        'user_email' => $row['user_email'],
-        'action_name' => $row['action_name'],
-        'data_table_name' => $row['data_table_name'],
-        'data_row' => $row['data_row'],
-        'job_types' => $row['job_types'],
-        'status' => $row['status'],
-        'description' => $row['description'],
-        'date_scheduled' => $row['date_scheduled'],
-        'date_created' => $row['date_created'],
-        'date_to_be_executed' => $row['date_to_be_executed'],
-        'date_executed' => $row['date_executed'],
-        'config' => json_decode($row['config'] ?? '{}', true)
-    ];
-}
+```bash
+php bin/console app:scheduled-jobs:execute-due
 ```
 
-## 🔄 Job Execution Process
+Optional limit:
 
-### Job Execution Flow
-```mermaid
-sequenceDiagram
-    participant Admin
-    participant Controller
-    participant JobScheduler
-    participant Database
-    participant EmailService
-    participant TransactionService
-    
-    Admin->>Controller: POST /admin/scheduled-jobs/{id}/execute
-    Controller->>JobScheduler: executeJob(jobId)
-    JobScheduler->>Database: Load job details
-    JobScheduler->>JobScheduler: Determine job type
-    
-    alt Email Job
-        JobScheduler->>EmailService: Send email
-        EmailService-->>JobScheduler: Success/Failure
-    else Notification Job
-        JobScheduler->>JobScheduler: Send notification
-    else Task Job
-        JobScheduler->>JobScheduler: Execute custom task
-    end
-    
-    JobScheduler->>Database: Update job status
-    JobScheduler->>TransactionService: Log execution
-    JobScheduler-->>Controller: Execution result
-    Controller-->>Admin: JSON response
+```bash
+php bin/console app:scheduled-jobs:execute-due --limit=50
 ```
 
-## 📋 JSON Schema Examples
+Execute one job manually:
 
-### Scheduled Job Item Schema (Admin API Response)
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "id": { "type": "integer", "description": "Job ID" },
-    "id_users": { "type": "integer", "description": "User ID" },
-    "user_email": { "type": "string", "description": "User email" },
-    "action_name": { "type": ["string", "null"], "description": "Action name" },
-    "data_table_name": { "type": ["string", "null"], "description": "Data table display name" },
-    "data_row": { "type": ["integer", "null"], "description": "Data row ID" },
-    "job_types": { "type": "string", "description": "Job type name" },
-    "status": { "type": "string", "description": "Job status name" },
-    "description": { "type": "string", "description": "Job description" },
-    "date_scheduled": { "type": ["string", "null"], "description": "Date when job should be executed (adjusted to CMS timezone)" },
-    "date_created": { "type": "string", "description": "Date when job was created (adjusted to CMS timezone)" },
-    "date_to_be_executed": { "type": ["string", "null"], "description": "Date when job should be executed (adjusted to CMS timezone)" },
-    "date_executed": { "type": ["string", "null"], "description": "Date when job was actually executed (adjusted to CMS timezone)" },
-    "config": { "type": "object", "description": "Job configuration" }
-  },
-  "required": ["id", "id_users", "user_email", "action_name", "data_table_name", "data_row", "job_types", "status", "description", "date_scheduled", "date_created", "date_to_be_executed", "date_executed", "config"]
-}
+```bash
+php bin/console app:scheduled-jobs:execute-one 123
 ```
 
-### Scheduled Jobs List Response Schema
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Scheduled Jobs List Response",
-  "type": "object",
-  "properties": {
-    "scheduledJobs": {
-      "type": "array",
-      "items": { "$ref": "#/definitions/scheduledJobItem" }
-    },
-    "totalCount": { "type": "integer" },
-    "page": { "type": "integer" },
-    "pageSize": { "type": "integer" },
-    "totalPages": { "type": "integer" }
-  },
-  "definitions": {
-    "scheduledJobItem": {
-      "type": "object",
-      "properties": {
-        "id": { "type": "integer" },
-        "id_users": { "type": "integer" },
-        "user_email": { "type": "string" },
-        "action_name": { "type": ["string", "null"] },
-        "data_table_name": { "type": ["string", "null"] },
-        "data_row": { "type": ["integer", "null"] },
-        "job_types": { "type": "string" },
-        "status": { "type": "string" },
-        "description": { "type": "string" },
-        "date_scheduled": { "type": ["string", "null"] },
-        "date_created": { "type": "string" },
-        "date_to_be_executed": { "type": ["string", "null"] },
-        "date_executed": { "type": ["string", "null"] },
-        "config": { "type": "object" }
-      },
-      "required": ["id", "id_users", "user_email", "action_name", "data_table_name", "data_row", "job_types", "status", "description", "date_scheduled", "date_created", "date_to_be_executed", "date_executed", "config"]
-    }
-  }
-}
+### Cron example
+
+Run every minute:
+
+```cron
+* * * * * cd /path/to/sh-selfhelp_backend && php bin/console app:scheduled-jobs:execute-due --env=prod >> var/log/scheduled-jobs.log 2>&1
 ```
 
-## 🚀 Job Scheduling Examples
+## Email Execution
 
-### Email Job Scheduling
-```php
-$jobData = [
-    'type' => 'email',
-    'description' => 'Welcome email for new user',
-    'date_to_be_executed' => new \DateTime('+1 hour', new \DateTimeZone('UTC')),
-    'email_config' => [
-        'to_email' => 'user@example.com',
-        'from_email' => 'welcome@selfhelp.com',
-        'subject' => 'Welcome to SelfHelp!',
-        'body' => '<h1>Welcome!</h1><p>Thank you for joining us.</p>',
-        'is_html' => true
-    ]
-];
+Email jobs are executed directly from `JobSchedulerService`.
 
-$job = $this->jobSchedulerService->scheduleJob($jobData, LookupService::TRANSACTION_BY_BY_USER);
-```
+Stored config includes:
 
-### Notification Job Scheduling
-```php
-$jobData = [
-    'type' => 'notification',
-    'description' => 'System maintenance notification',
-    'date_to_be_executed' => new \DateTime('+30 minutes', new \DateTimeZone('UTC')),
-    'notification_config' => [
-        'title' => 'Scheduled Maintenance',
-        'message' => 'System will be undergoing maintenance in 30 minutes.',
-        'type' => 'warning'
-    ]
-];
+- sender
+- reply-to
+- recipients
+- subject
+- body
+- attachments
 
-$job = $this->jobSchedulerService->scheduleJob($jobData, LookupService::TRANSACTION_BY_SYSTEM);
-```
+Attachments are included when local files exist.
 
-### Reminder Job Scheduling
-```php
-$jobData = [
-    'type' => 'reminder',
-    'description' => 'Appointment reminder',
-    'date_to_be_executed' => new \DateTime('2024-02-01 14:00:00', new \DateTimeZone('UTC')),
-    'action' => $actionEntity, // Optional: related Action entity
-    'dataRow' => $dataRowEntity // Optional: related DataRow entity
-];
+## Push Notification Execution
 
-$job = $this->jobSchedulerService->scheduleJob($jobData, LookupService::TRANSACTION_BY_BY_USER);
-```
+Push notifications are sent through Firebase HTTP v1.
 
-## 🔒 Security and Permissions
+Requirements:
 
-### Job Access Control
-- Only admin users can view and manage scheduled jobs
-- Job execution requires appropriate permissions
-- All job operations are logged via TransactionService
-- Sensitive job configurations are properly handled
+- CMS preference `firebase_config` must contain a valid Firebase service account JSON string or path
+- target user must have `device_token`
 
-### Job Validation
-- Job types must be valid lookup values
-- Execution dates must be in the future (for new jobs)
-- Job configurations are validated based on job type
-- User assignments are validated against existing users
+If either is missing, the job fails cleanly and is logged.
 
-## 🧪 Testing Scheduled Jobs
+## End-to-End Example
 
-### Unit Tests
-```php
-<?php
-namespace App\Tests\Service\Core;
+### Example action config concept
 
-class JobSchedulerServiceTest extends KernelTestCase
-{
-    public function testScheduleEmailJob(): void
-    {
-        $jobData = [
-            'type' => 'email',
-            'description' => 'Test email job',
-            'date_to_be_executed' => new \DateTime('+1 hour', new \DateTimeZone('UTC')),
-            'email_config' => [
-                'to_email' => 'test@example.com',
-                'subject' => 'Test Subject',
-                'body' => 'Test Body'
-            ]
-        ];
+Form submit on `sleep_diary` with trigger `finished`:
 
-        $job = $this->jobSchedulerService->scheduleJob($jobData, 'test');
+- action condition: none
+- block 1:
+  - job 1: email immediately
+  - job 2: add user to group after 1 day
+  - reminder 1: push reminder after 2 hours
 
-        $this->assertInstanceOf(ScheduledJob::class, $job);
-        $this->assertEquals('Test email job', $job->getDescription());
-        $this->assertEquals('email', $job->getJobType()->getLookupCode());
-        $this->assertArrayHasKey('email', $job->getConfig());
-    }
+### Runtime sequence
 
-    public function testExecuteJob(): void
-    {
-        $job = $this->createTestJob();
-        $executedJob = $this->jobSchedulerService->executeJob($job->getId(), 'test');
+1. frontend posts form data
+2. `DataService::saveData()` inserts row in `sleep_diary`
+3. transaction commits
+4. `ActionOrchestratorService` resolves `sleep_diary + finished`
+5. runtime config is interpolated with submitted values
+6. recipients are resolved from source user, groups, or impersonation
+7. `ActionSchedulerService` creates:
+   - email scheduled job
+   - task scheduled job
+   - child reminder scheduled job
+8. immediate email job executes immediately
+9. delayed jobs stay queued until admin/manual execution or cron execution
 
-        $this->assertNotNull($executedJob->getDateExecuted());
-        $this->assertEquals('done', $executedJob->getStatus()->getLookupCode());
-    }
-}
-```
+## Extending Safely
 
-### Integration Tests
-```php
-public function testScheduledJobsEndpoint(): void
-{
-    $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs', [], [
-        'Authorization' => 'Bearer ' . $this->getAuthToken()
-    ]);
+To add a new action-driven job type:
 
-    $this->assertResponseIsSuccessful();
-    $data = json_decode($this->client->getResponse()->getContent(), true);
-    $this->assertArrayHasKey('data', $data);
-    $this->assertArrayHasKey('pagination', $data['meta']);
-}
-```
+1. extend `ActionSchedulerService::resolveScheduledJobType()`
+2. persist its config in `JobSchedulerService::storeJobConfig()`
+3. execute it in `JobSchedulerService::executeByType()`
+4. document it in admin docs
+5. add tests
 
----
+## Troubleshooting
 
-**Next**: [Transaction Logging](./12-transaction-logging.md)
+### Job not scheduled
+
+Check:
+
+- was the form saved through `DataService`?
+- does the action trigger type match the save event?
+- did action condition or block/job condition evaluate to false?
+- did recipient resolution return no users?
+- did `clear_existing_jobs_*` remove an older queued entry and no new one get created because of conditions?
+
+### Job queued but not executed
+
+Check:
+
+- is `date_to_be_executed` in the past?
+- was it an immediate job that failed during execution?
+- did the on-execute condition fail?
+- does the email job have valid recipients?
+- does the notification job have `device_token` and valid Firebase config?
+- is cron running `app:scheduled-jobs:execute-due`?
+
+## Files to Know
+
+- `src/Service/CMS/DataService.php`
+- `src/Controller/Api/V1/Auth/UserValidationController.php`
+- `src/Service/Action/ActionOrchestratorService.php`
+- `src/Service/Action/ActionSchedulerService.php`
+- `src/Service/Core/JobSchedulerService.php`
+- `src/Service/Core/TaskJobExecutorService.php`
+- `src/Entity/ScheduledJob.php`
+- `migrations/Version20260413130000.php`

@@ -6,11 +6,11 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Entity\User;
 use App\Exception\RequestValidationException;
 use App\Service\Auth\UserValidationService;
+use App\Service\CMS\DataService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\JSON\JsonSchemaValidationService;
-use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -36,7 +36,7 @@ class UserValidationController extends AbstractController
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly TransactionService $transactionService,
         private readonly LookupService $lookupService,
-        private readonly Connection $connection,
+        private readonly DataService $dataService,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -108,6 +108,9 @@ class UserValidationController extends AbstractController
      *
      * @route /validate/{user_id}/{token}/complete
      * @method POST
+     *
+     * Additional validation-form inputs are saved through `DataService` so they
+     * participate in the same Symfony action scheduling pipeline as normal forms.
      */
     public function completeValidation(Request $request): JsonResponse
     {
@@ -151,29 +154,19 @@ class UserValidationController extends AbstractController
                 );
             }
 
-            // Update user information
             $this->entityManager->beginTransaction();
 
             try {
-                // Update password if provided
                 if ($password) {
                     $hashedPassword = $this->passwordHasher->hashPassword($user, $password);
                     $user->setPassword($hashedPassword);
                 }
 
-                // Update name if provided
                 if ($name) {
                     $user->setName($name);
                 }
 
                 $this->entityManager->flush();
-
-                // Save user input data if provided
-                if (!empty($formInputs) && $sectionId) {
-                    $this->saveUserFormInputs($userId, $formInputs, $sectionId, 'user_validation');
-                }
-
-                // Log the transaction
                 $this->transactionService->logTransaction(
                     'update',
                     LookupService::TRANSACTION_BY_BY_USER,
@@ -191,6 +184,10 @@ class UserValidationController extends AbstractController
                 );
 
                 $this->entityManager->commit();
+
+                if (!empty($formInputs) && $sectionId) {
+                    $this->saveUserFormInputs($userId, $formInputs, $sectionId, 'user_validation');
+                }
 
                 return $this->responseFormatter->formatSuccess([
                     'message' => 'Account validation completed successfully',
@@ -234,40 +231,30 @@ class UserValidationController extends AbstractController
      * @param array $formInputs Form input data
      * @param int $sectionId Section ID
      * @param string $formName Form name
+     *
+     * Uses `DataService` rather than legacy save helpers so configured actions are
+     * evaluated and scheduled consistently for validation-form submissions.
      */
     private function saveUserFormInputs(int $userId, array $formInputs, int $sectionId, string $formName): void
     {
-        // Prepare data for saving
         $dataToSave = [
+            'id_users' => $userId,
             'user_id' => $userId,
             'section_id' => $sectionId,
             'form_name' => $formName,
-            'created_at' => date('Y-m-d H:i:s')
+            'created_at' => gmdate('Y-m-d H:i:s'),
         ];
 
-        // Add form inputs
         foreach ($formInputs as $key => $value) {
             $dataToSave[$key] = $value;
         }
 
-        // Use the legacy UserInput service to save data
-        // Create a simple transaction wrapper for the legacy UserInput class
-        $legacyTransactionService = new class($this->transactionService) {
-            private $transactionService;
-
-            public function __construct($transactionService) {
-                $this->transactionService = $transactionService;
-            }
-
-            public function add_transaction($type, $by, $userId, $table, $recordId, $isInsert, $data) {
-                $this->transactionService->logTransaction($type, $by, $table, $recordId, $isInsert, json_encode($data));
-            }
-        };
-
-        // Include the legacy UserInput class
-        require_once __DIR__ . '/../../../../legacy/UserInput.php';
-
-        $userInput = new \UserInput($this->connection, $legacyTransactionService);
-        $userInput->save_data('by_system', 'user_validation_inputs', $dataToSave);
+        $this->dataService->saveData(
+            'user_validation_inputs',
+            $dataToSave,
+            LookupService::TRANSACTION_BY_BY_SYSTEM,
+            null,
+            false
+        );
     }
 }

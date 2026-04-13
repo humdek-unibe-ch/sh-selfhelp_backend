@@ -219,4 +219,55 @@ class UserRepository extends ServiceEntityRepository
 
         return array_column($results, 'name');
     }
+
+    /**
+     * @return int[]
+     *   Active, non-intern user ids that belong to one of the given group names.
+     */
+    public function findIdsByGroupNames(array $groupNames): array
+    {
+        if ($groupNames === []) {
+            return [];
+        }
+
+        $results = $this->createQueryBuilder('u')
+            ->select('DISTINCT u.id AS id')
+            ->innerJoin('u.usersGroups', 'ug')
+            ->innerJoin('ug.group', 'g')
+            ->andWhere('g.name IN (:groupNames)')
+            ->andWhere('u.blocked = :blocked')
+            ->andWhere('u.intern = :intern')
+            ->setParameter('groupNames', $groupNames)
+            ->setParameter('blocked', false)
+            ->setParameter('intern', false)
+            ->orderBy('u.id', 'ASC')
+            ->getQuery()
+            ->getScalarResult();
+
+        return array_map(static fn(array $row): int => (int) $row['id'], $results);
+    }
+
+    /**
+     * Resolve a user id from an active validation code.
+     *
+     * @param string $code
+     *   The validation code submitted through overwrite variables.
+     *
+     * @return int|null
+     *   The matching user id, or `null` when no active code exists.
+     */
+    public function findIdByValidationCode(string $code): ?int
+    {
+        $result = $this->createQueryBuilder('u')
+            ->select('u.id AS id')
+            ->innerJoin('u.validationCodes', 'vc')
+            ->andWhere('vc.code = :code')
+            ->andWhere('vc.consumed IS NULL')
+            ->setParameter('code', $code)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        return $result ? (int) $result['id'] : null;
+    }
 }
