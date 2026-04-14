@@ -132,6 +132,11 @@ class AdminScheduledJobService extends BaseService
                 ->setParameter('job_type', $filters['job_type']);
         }
 
+        if (!empty($filters['actionId'])) {
+        $qb->andWhere('a.id = :actionId')
+            ->setParameter('actionId', $filters['actionId']);
+        }
+
         if (!empty($filters['userId'])) {
             $qb->andWhere('u.id = :user_id')
                 ->setParameter('user_id', $filters['userId']);
