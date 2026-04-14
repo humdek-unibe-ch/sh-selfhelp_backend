@@ -40,14 +40,31 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Get scheduled jobs with timezone adjustment using Doctrine QueryBuilder
+     * Get paginated scheduled jobs formatted for the admin list view.
+     *
+     * @param array<string, mixed> $filters
+     *   Search, status, type, and date filters from the admin UI.
+     * @param int $page
+     *   The requested page number.
+     * @param int $perPage
+     *   The requested page size.
+     * @param string $sort
+     *   The requested sort key.
+     * @param string $order
+     *   The sort direction.
+     * @param string $order
+     *   The sort direction.
+     *
+     * @return array<string, mixed>
+     *   Paginated scheduled-job data for the admin table.
      */
     public function getScheduledJobs(
         array $filters = [],
         int $page = 1,
         int $perPage = 20,
         string $sort = 'adjusted_execution_time',
-        string $order = 'asc'
+        string $order = 'asc',
+
     ): array {
         $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
             json_encode($filters) . $sort . $order
@@ -116,9 +133,9 @@ class AdminScheduledJobService extends BaseService
                 ->setParameter('job_type', $filters['job_type']);
         }
 
-        if (!empty($filters['user_id'])) {
+        if (!empty($filters['userId'])) {
             $qb->andWhere('u.id = :user_id')
-                ->setParameter('user_id', $filters['user_id']);
+                ->setParameter('user_id', $filters['userId']);
         }
 
         if (!empty($filters['search'])) {

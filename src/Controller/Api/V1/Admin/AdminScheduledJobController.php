@@ -47,6 +47,7 @@ class AdminScheduledJobController extends AbstractController
             $dateType = $request->query->get('dateType', 'date_to_be_executed');
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
+            $userId = $request->query->get('userId');
 
             // Build filters array
             $filters = [
@@ -55,7 +56,8 @@ class AdminScheduledJobController extends AbstractController
                 'job_type' => $jobType,
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
-                'date_type' => $dateType
+                'date_type' => $dateType,
+                'userId' => $userId
             ];
 
             $result = $this->adminScheduledJobService->getScheduledJobs(
