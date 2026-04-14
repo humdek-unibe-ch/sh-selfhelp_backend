@@ -64,7 +64,6 @@ class AdminScheduledJobService extends BaseService
         int $perPage = 20,
         string $sort = 'adjusted_execution_time',
         string $order = 'asc',
-
     ): array {
         $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
             json_encode($filters) . $sort . $order
