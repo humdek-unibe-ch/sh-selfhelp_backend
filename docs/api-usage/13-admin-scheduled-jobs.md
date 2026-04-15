@@ -2,150 +2,213 @@
 
 ## Overview
 
-The Admin Scheduled Jobs APIs provide functionality for managing and monitoring background jobs and automated tasks in the SelfHelp CMS. These endpoints allow administrators to view job status, execute jobs manually, and monitor job execution history.
+Scheduled jobs are concrete queue entries created by actions or by direct system scheduling.
 
-## Core Concepts
+Admins can:
 
-### Scheduled Jobs
-- **Background Tasks**: Automated maintenance and processing tasks
-- **Job Execution**: Manual or scheduled job triggering
-- **Job Monitoring**: Real-time status tracking and logging
-- **Job History**: Complete execution history and transaction logs
+- inspect queued jobs
+- inspect execution history
+- execute a job manually
+- cancel a queued job
+- mark a job as deleted
 
-## Job Management
+## Common Concepts
 
-### Get Scheduled Jobs
+### Status values
 
-Retrieve a list of all scheduled jobs with their current status.
+- `Queued`
+- `Running`
+- `Done`
+- `Failed`
+- `Cancelled`
+- `Deleted`
+
+### Job types
+
+- `Email`
+- `Notification`
+- `Task`
+
+### Action-linked jobs
+
+Jobs created from action execution keep links to:
+
+- action
+- source data table
+- source data row
+- parent scheduled job for reminders
+
+## Get Scheduled Jobs
 
 **Endpoint:** `GET /cms-api/v1/admin/scheduled-jobs`
 
-**Authentication:** Required (JWT Bearer token)
+### Query parameters
 
-**Response:**
-```json
-{
-  "status": 200,
-  "message": "OK",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
-  },
-  "data": {
-    "jobs": [
-      {
-        "id": 1,
-        "name": "cache_cleanup",
-        "description": "Clean up expired cache entries",
-        "status": "idle",
-        "last_execution": "2025-01-22T02:00:00Z",
-        "next_execution": "2025-01-23T02:00:00Z",
-        "execution_count": 45,
-        "success_count": 44,
-        "failure_count": 1,
-        "average_runtime": 125000
-      }
-    ]
-  }
-}
+- `page`
+- `pageSize`
+- `search`
+- `status`
+- `jobType`
+- `dateFrom`
+- `dateTo`
+- `dateType`
+- `sort`
+- `sortDirection`
+
+### Example
+
+```http
+GET /cms-api/v1/admin/scheduled-jobs?page=1&pageSize=20&status=queued&jobType=email
+Authorization: Bearer <token>
 ```
 
-**Permissions:** `admin.scheduled_job.read`
+### Response shape
 
-### Get Job Details
+Returns:
 
-Retrieve detailed information about a specific scheduled job.
+- `scheduledJobs`
+- `totalCount`
+- `page`
+- `pageSize`
+- `totalPages`
+
+Each job includes:
+
+- `id`
+- `id_users`
+- `user_email`
+- `action_name`
+- `data_table_name`
+- `data_row`
+- `job_types`
+- `status`
+- `description`
+- `date_scheduled`
+- `date_created`
+- `date_to_be_executed`
+- `date_executed`
+- `config`
+
+## Get One Scheduled Job
 
 **Endpoint:** `GET /cms-api/v1/admin/scheduled-jobs/{jobId}`
 
-**Authentication:** Required (JWT Bearer token)
+Use this to inspect the full job payload and transaction history.
 
-**Path Parameters:**
-- `jobId`: Job ID
-
-**Response:** Detailed job information including configuration and history
-
-**Permissions:** `admin.scheduled_job.read`
-
-### Execute Job Manually
-
-Trigger immediate execution of a scheduled job.
+## Execute a Scheduled Job
 
 **Endpoint:** `POST /cms-api/v1/admin/scheduled-jobs/{jobId}/execute`
 
-**Authentication:** Required (JWT Bearer token)
+This runs the selected job immediately through `JobSchedulerService`.
 
-**Path Parameters:**
-- `jobId`: Job ID
+Supported execution types:
 
-**Response:**
+- email jobs
+- push notification jobs
+- task jobs
+
+### Example
+
+```http
+POST /cms-api/v1/admin/scheduled-jobs/123/execute
+Authorization: Bearer <token>
+```
+
+## Cancel a Scheduled Job
+
+**Endpoint:** `POST /cms-api/v1/admin/scheduled-jobs/{jobId}/cancel`
+
+Use this for queued jobs that should no longer run.
+
+Jobs that are already `running`, `done`, or `failed` cannot be cancelled.
+
+## Delete a Scheduled Job
+
+**Endpoint:** `DELETE /cms-api/v1/admin/scheduled-jobs/{jobId}`
+
+This is a soft delete. The row is kept for audit purposes and the status changes to `deleted`.
+
+## Get Job Transactions
+
+**Endpoint:** `GET /cms-api/v1/admin/scheduled-jobs/{jobId}/transactions`
+
+This shows the audit log for:
+
+- creation
+- cancellation
+- deletion
+- execution result
+- mail send result
+- notification send result
+- task execution result
+
+## Manual Execution Outside the API
+
+The same scheduler can also be driven from console commands:
+
+```bash
+php bin/console app:scheduled-jobs:execute-due
+php bin/console app:scheduled-jobs:execute-one 123
+```
+
+## How to Read Job Config
+
+The `config` payload usually contains some combination of:
+
+- `email`
+- `notification`
+- `task`
+- `condition`
+- `schedule`
+- `action_job_type`
+
+### Examples
+
+Email job:
+
 ```json
 {
-  "status": 200,
-  "message": "OK",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2025-01-23T10:30:00Z"
+  "email": {
+    "recipient_emails": "user@example.com",
+    "subject": "Welcome",
+    "body": "<p>Hello</p>"
   },
-  "data": {
-    "job_id": 1,
-    "execution_id": "exec_12345",
-    "status": "running",
-    "started_at": "2025-01-23T10:30:00Z"
+  "schedule": {
+    "job_schedule_types": "immediately"
   }
 }
 ```
 
-**Permissions:** `admin.scheduled_job.execute`
+Task job:
 
-### Cancel Running Job
+```json
+{
+  "task": {
+    "task_type": "add_group",
+    "groups": ["subject"]
+  }
+}
+```
 
-Cancel execution of a currently running job.
+## Troubleshooting
 
-**Endpoint:** `POST /cms-api/v1/admin/scheduled-jobs/{jobId}/cancel`
+### Job executes and fails
 
-**Authentication:** Required (JWT Bearer token)
+Check:
 
-**Path Parameters:**
-- `jobId`: Job ID
+- email recipients exist
+- notification target user has `device_token`
+- Firebase config exists in CMS preferences
+- task groups exist
+- on-execute condition still evaluates to true
 
-**Response:** Job cancellation confirmation
+### Job never executes automatically
 
-**Permissions:** `admin.scheduled_job.cancel`
+Check:
 
-### Delete Job
-
-Remove a scheduled job from the system.
-
-**Endpoint:** `DELETE /cms-api/v1/admin/scheduled-jobs/{jobId}`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Path Parameters:**
-- `jobId`: Job ID
-
-**Response:** Job deletion confirmation
-
-**Permissions:** `admin.scheduled_job.delete`
-
-### Get Job Transactions
-
-Retrieve execution history and transaction logs for a job.
-
-**Endpoint:** `GET /cms-api/v1/admin/scheduled-jobs/{jobId}/transactions`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Path Parameters:**
-- `jobId`: Job ID
-
-**Response:** Array of job execution records with details
-
-**Permissions:** `admin.scheduled_job.read`
+- `date_to_be_executed`
+- cron for `app:scheduled-jobs:execute-due`
+- job status is still `queued`
 
 ---
 

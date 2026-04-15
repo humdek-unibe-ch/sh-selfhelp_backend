@@ -17,6 +17,12 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 use App\Exception\ServiceException;
 
+/**
+ * Manages action translations and resolves translation keys for admin/runtime display.
+ *
+ * In the scheduled-jobs flow this service is used to replace stored translation
+ * keys with CMS default-language content without mutating the persisted job config.
+ */
 class AdminActionTranslationService extends BaseService
 {
     public function __construct(
@@ -31,7 +37,15 @@ class AdminActionTranslationService extends BaseService
     }
 
     /**
-     * Get all translations for an action
+     * Get all translations for an action.
+     *
+     * @param int $actionId
+     *   The action id whose translations should be loaded.
+     * @param int|null $languageId
+     *   Optional language id filter; when omitted, all languages are returned.
+     *
+     * @return array<int, array<string, mixed>>
+     *   Formatted translation rows for the requested action.
      */
     public function getTranslations(int $actionId, ?int $languageId = null): array
     {
@@ -59,7 +73,15 @@ class AdminActionTranslationService extends BaseService
 
 
     /**
-     * Bulk create/update translations
+     * Bulk create or update translations for an action.
+     *
+     * @param int $actionId
+     *   The action id whose translations are being changed.
+     * @param array<int, array<string, mixed>> $translations
+     *   Translation payloads keyed by language id and translation key.
+     *
+     * @return array<string, array<int, array<string, mixed>>>
+     *   Created and updated translation entries grouped by operation.
      */
     public function bulkCreateTranslations(int $actionId, array $translations): array
     {
@@ -140,7 +162,17 @@ class AdminActionTranslationService extends BaseService
 
 
     /**
-     * Resolve translation for execution
+     * Resolve a translation key for a preferred language with CMS default-language fallback.
+     *
+     * @param int $actionId
+     *   The action that owns the translation key.
+     * @param string $translationKey
+     *   The translation key to resolve.
+     * @param int $userLanguageId
+     *   The preferred language id to try first.
+     *
+     * @return string
+     *   The translated content, or the original key when no translation exists.
      */
     public function resolveTranslation(int $actionId, string $translationKey, int $userLanguageId): string
     {
@@ -155,15 +187,17 @@ class AdminActionTranslationService extends BaseService
             return $translation->getContent();
         }
 
-        // Try default language (assuming id=1 is the default)
-        $translation = $this->actionTranslationRepository->findByActionKeyAndLanguage(
-            $actionId,
-            $translationKey,
-            1 // Default language ID
-        );
+        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        if ($defaultLanguageId !== $userLanguageId) {
+            $translation = $this->actionTranslationRepository->findByActionKeyAndLanguage(
+                $actionId,
+                $translationKey,
+                $defaultLanguageId
+            );
 
-        if ($translation) {
-            return $translation->getContent();
+            if ($translation) {
+                return $translation->getContent();
+            }
         }
 
         // Return the key itself as fallback
@@ -171,7 +205,30 @@ class AdminActionTranslationService extends BaseService
     }
 
     /**
-     * Extract translation keys from action config
+     * Resolve a translation key using the CMS default language.
+     *
+     * @param int $actionId
+     *   The action that owns the translation key.
+     * @param string $translationKey
+     *   The translation key to resolve.
+     *
+     * @return string
+     *   The CMS default-language translation, or the original key when missing.
+     */
+    public function resolveTranslationForDefaultLanguage(int $actionId, string $translationKey): string
+    {
+        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        return $this->resolveTranslation($actionId, $translationKey, $defaultLanguageId);
+    }
+
+    /**
+     * Extract translation keys from a decoded action config.
+     *
+     * @param array<string, mixed> $config
+     *   The decoded action configuration.
+     *
+     * @return string[]
+     *   Translation keys referenced by the action config.
      */
     private function extractTranslationKeysFromConfig(array $config): array
     {
@@ -201,7 +258,17 @@ class AdminActionTranslationService extends BaseService
     }
 
     /**
-     * Extract notification translation keys
+     * Extract translation keys from a job notification definition.
+     *
+     * @param array<string, mixed> $notification
+     *   The notification subsection of a job config.
+     * @param int $blockIndex
+     *   The zero-based index of the parent block.
+     * @param int $jobIndex
+     *   The zero-based index of the job within the block.
+     *
+     * @return string[]
+     *   Translation keys generated from notification fields.
      */
     private function extractNotificationKeys(array $notification, int $blockIndex, int $jobIndex): array
     {
@@ -218,7 +285,13 @@ class AdminActionTranslationService extends BaseService
     }
 
     /**
-     * Format translation for API response
+     * Format a translation entity for the admin API.
+     *
+     * @param ActionTranslation $translation
+     *   The translation entity to format.
+     *
+     * @return array<string, mixed>
+     *   A normalized translation payload with CMS-timezone datetimes.
      */
     private function formatTranslation(ActionTranslation $translation): array
     {
@@ -250,7 +323,10 @@ class AdminActionTranslationService extends BaseService
     }
 
     /**
-     * Invalidate translation cache
+     * Invalidate cached translation lists after a write operation.
+     *
+     * @param int $actionId
+     *   The action id whose translation views should be refreshed.
      */
     private function invalidateTranslationCache(int $actionId): void
     {

@@ -10,6 +10,7 @@ use App\Repository\UserRepository;
 use App\Repository\TransactionRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
@@ -21,6 +22,12 @@ use Symfony\Component\HttpFoundation\Response;
 use App\Service\Core\JobSchedulerService;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Provides admin-facing scheduled-job list, detail, execution, and audit operations.
+ *
+ * Display formatting in this service resolves action translation keys using the
+ * CMS default language so list and detail views show human-readable content.
+ */
 class AdminScheduledJobService extends BaseService
 {
 
@@ -35,6 +42,7 @@ class AdminScheduledJobService extends BaseService
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly CacheService $cache,
         private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly AdminActionTranslationService $adminActionTranslationService,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -118,7 +126,12 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Apply filters to the scheduled jobs query builder
+     * Apply admin list filters to the scheduled-jobs query.
+     *
+     * @param \Doctrine\ORM\QueryBuilder $qb
+     *   The query builder being prepared for execution.
+     * @param array<string, mixed> $filters
+     *   Raw filter values from the admin UI.
      */
     private function applyScheduledJobsFilters(\Doctrine\ORM\QueryBuilder $qb, array $filters): void
     {
@@ -181,7 +194,14 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Apply sorting to the scheduled jobs query builder
+     * Apply admin list sorting to the scheduled-jobs query.
+     *
+     * @param \Doctrine\ORM\QueryBuilder $qb
+     *   The query builder being prepared for execution.
+     * @param string $sort
+     *   The requested sort key.
+     * @param string $order
+     *   The sort direction.
      */
     private function applyScheduledJobsSorting(\Doctrine\ORM\QueryBuilder $qb, string $sort, string $order): void
     {
@@ -196,12 +216,19 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Format scheduled job for list view
+     * Format a scheduled job for the admin list view.
+     *
+     * @param ScheduledJob $job
+     *   The scheduled job entity to format.
+     *
+     * @return array<string, mixed>
+     *   The lightweight scheduled-job payload returned to the list endpoint.
      */
     private function formatScheduledJobForList(ScheduledJob $job): array
     {
         // Convert timezone for datetime fields
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+        $displayConfig = $this->resolveConfigForDisplay($job);
 
         $dateCreate = $job->getDateCreate();
         if ($dateCreate) {
@@ -233,7 +260,8 @@ class AdminScheduledJobService extends BaseService
             'date_created' => $dateCreate?->format('Y-m-d H:i:s'),
             'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
-            'config' => $job->getConfig()
+            'email_subject' => $this->extractEmailSubjectForList($displayConfig),
+            'config' => $displayConfig
         ];
     }
 
@@ -267,7 +295,13 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Get scheduled job by ID with all related data and entity scope caching
+     * Get a scheduled job by id, including display-ready config and metadata.
+     *
+     * @param int $jobId
+     *   The scheduled job id.
+     *
+     * @return array<string, mixed>
+     *   The formatted scheduled-job detail payload.
      */
     public function getScheduledJobById(int $jobId): array
     {
@@ -287,7 +321,13 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Execute a scheduled job
+     * Execute a scheduled job immediately from the admin UI.
+     *
+     * @param int $jobId
+     *   The scheduled job id to execute.
+     *
+     * @return array<string, mixed>|false
+     *   The refreshed job detail payload after execution, or `false` on failure.
      */
     public function executeScheduledJob(int $jobId): array|false
     {
@@ -296,7 +336,13 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Delete a scheduled job (change status to deleted)
+     * Mark a scheduled job as deleted.
+     *
+     * @param int $jobId
+     *   The scheduled job id to mark deleted.
+     *
+     * @return bool
+     *   `true` when the operation succeeded, otherwise `false`.
      */
     public function deleteScheduledJob(int $jobId): bool
     {
@@ -304,7 +350,13 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
-     * Get transactions related to a scheduled job with entity scope caching
+     * Get transactions related to a scheduled job.
+     *
+     * @param int $jobId
+     *   The scheduled job id whose transaction log should be returned.
+     *
+     * @return array<int, array<string, mixed>>
+     *   Formatted transaction entries for the job.
      */
     public function getJobTransactions(int $jobId): array
     {
@@ -353,7 +405,13 @@ class AdminScheduledJobService extends BaseService
 
 
     /**
-     * Format scheduled job for detail view
+     * Format a scheduled job for the admin detail view.
+     *
+     * @param ScheduledJob $job
+     *   The scheduled job entity to format.
+     *
+     * @return array<string, mixed>
+     *   The full scheduled-job detail payload.
      */
     private function formatScheduledJobForDetail(ScheduledJob $job): array
     {
@@ -377,6 +435,23 @@ class AdminScheduledJobService extends BaseService
 
         return [
             'id' => $job->getId(),
+            'user' => [
+                'id' => $job->getUser()?->getId(),
+                'email' => $job->getUser()?->getEmail(),
+            ],
+            'action' => [
+                'id' => $job->getAction()?->getId(),
+                'name' => $job->getAction()?->getName(),
+            ],
+            'source' => [
+                'data_table_id' => $job->getDataTable()?->getId(),
+                'data_table_name' => $job->getDataTable()?->getName(),
+                'data_row_id' => $job->getDataRow()?->getId(),
+            ],
+            'parent_job_id' => $job->getReminderMetadata()?->getParentJob()?->getId(),
+            'reminder_data_table_id' => $job->getReminderMetadata()?->getReminderDataTable()?->getId(),
+            'reminder_session_start_date' => $job->getReminderMetadata()?->getSessionStartDate()?->format('Y-m-d H:i:s'),
+            'reminder_session_end_date' => $job->getReminderMetadata()?->getSessionEndDate()?->format('Y-m-d H:i:s'),
             'status' => [
                 'id' => $job->getStatus()?->getId(),
                 'value' => $job->getStatus()?->getLookupValue()
@@ -389,8 +464,106 @@ class AdminScheduledJobService extends BaseService
             'date_create' => $dateCreate?->format('Y-m-d H:i:s'),
             'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
-            'config' => $job->getConfig()
+            'config' => $this->resolveConfigForDisplay($job)
         ];
+    }
+
+    /**
+     * Build a display-only scheduled-job config with translated content.
+     *
+     * The persisted config stored on the job remains unchanged; this method returns
+     * a translated copy for admin list/detail rendering.
+     *
+     * @param ScheduledJob $job
+     *   The scheduled job whose config should be resolved for display.
+     *
+     * @return array<string, mixed>|null
+     *   The translated display config, or the original non-array payload.
+     */
+    private function resolveConfigForDisplay(ScheduledJob $job): ?array
+    {
+        $config = $job->getConfig();
+        if (!is_array($config)) {
+            return $config;
+        }
+
+        $actionId = $job->getAction()?->getId();
+        if (!$actionId) {
+            return $config;
+        }
+
+        if (isset($config['email']) && is_array($config['email'])) {
+            $config['email'] = $this->resolveTranslatedConfigFields(
+                $actionId,
+                $config['email'],
+                ['subject', 'body', 'from_name', 'from_email']
+            );
+        }
+
+        if (isset($config['notification']) && is_array($config['notification'])) {
+            $config['notification'] = $this->resolveTranslatedConfigFields(
+                $actionId,
+                $config['notification'],
+                ['subject', 'body']
+            );
+        }
+
+        return $config;
+    }
+
+    /**
+     * Resolve configured translation keys for the specified config fields.
+     *
+     * @param array<string, mixed> $config
+     *   The config subsection containing translatable fields.
+     * @param string[] $fields
+     *   The field names that should be translated when present.
+     *
+     * @return array<string, mixed>
+     *   The config subsection with translated field values.
+     */
+    private function resolveTranslatedConfigFields(int $actionId, array $config, array $fields): array
+    {
+        foreach ($fields as $field) {
+            if (!isset($config[$field]) || !is_string($config[$field]) || trim($config[$field]) === '') {
+                continue;
+            }
+
+            $config[$field] = $this->adminActionTranslationService->resolveTranslationForDefaultLanguage(
+                $actionId,
+                $config[$field]
+            );
+        }
+
+        return $config;
+    }
+
+    /**
+     * Extract the translated subject used by the scheduled-jobs list view.
+     *
+     * @param array<string, mixed>|null $config
+     *   The display-ready scheduled-job config.
+     *
+     * @return string|null
+     *   The translated email or notification subject, or `null` when unavailable.
+     */
+    private function extractEmailSubjectForList(?array $config): ?string
+    {
+        if (!is_array($config)) {
+            return null;
+        }
+
+        $emailSubject = $config['email']['subject'] ?? null;
+        if (is_string($emailSubject) && trim($emailSubject) !== '') {
+            return $emailSubject;
+        }
+
+        $notificationSubject = $config['notification']['subject'] ?? null;
+        if (is_string($notificationSubject) && trim($notificationSubject) !== '') {
+            return $notificationSubject;
+        }
+
+        return null;
     }
 
 }
