@@ -60,6 +60,8 @@ class AdminScheduledJobService extends BaseService
      *   The requested sort key.
      * @param string $order
      *   The sort direction.
+     * @param string $order
+     *   The sort direction.
      *
      * @return array<string, mixed>
      *   Paginated scheduled-job data for the admin table.
@@ -69,7 +71,7 @@ class AdminScheduledJobService extends BaseService
         int $page = 1,
         int $perPage = 20,
         string $sort = 'adjusted_execution_time',
-        string $order = 'asc'
+        string $order = 'asc',
     ): array {
         $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
             json_encode($filters) . $sort . $order
@@ -143,9 +145,14 @@ class AdminScheduledJobService extends BaseService
                 ->setParameter('job_type', $filters['job_type']);
         }
 
-        if (!empty($filters['user_id'])) {
+        if (!empty($filters['actionId'])) {
+        $qb->andWhere('a.id = :actionId')
+            ->setParameter('actionId', $filters['actionId']);
+        }
+
+        if (!empty($filters['userId'])) {
             $qb->andWhere('u.id = :user_id')
-                ->setParameter('user_id', $filters['user_id']);
+                ->setParameter('user_id', $filters['userId']);
         }
 
         if (!empty($filters['search'])) {
