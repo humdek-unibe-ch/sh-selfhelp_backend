@@ -37,7 +37,8 @@ class AdminScheduledJobController extends AbstractController
     public function getScheduledJobs(Request $request): JsonResponse
     {
         try {
-            $page = (int)$request->query->get('page', 1);
+
+            $page = $request->query->get('page');
             $pageSize = (int)$request->query->get('pageSize', 20);
             $search = $request->query->get('search');
             $status = $request->query->get('status');
@@ -62,13 +63,19 @@ class AdminScheduledJobController extends AbstractController
                 'actionId' => $actionId
             ];
 
-            $result = $this->adminScheduledJobService->getScheduledJobs(
-                $filters,
-                $page,
-                $pageSize,
-                $sort ?: 'adjusted_execution_time',
-                $sortDirection
-            );
+            // No page is provided (or page=0), return ALL jobs without pagination for calendar
+            if ($page === null || $page === '' || (int)$page <= 0) {
+                $result = $this->adminScheduledJobService->getAllScheduledJobs($filters, $sort ?: 'adjusted_execution_time', $sortDirection);
+            } else {
+                $page = (int)$page;
+                $result = $this->adminScheduledJobService->getScheduledJobs(
+                    $filters,
+                    $page,
+                    $pageSize,
+                    $sort ?: 'adjusted_execution_time',
+                    $sortDirection
+                );
+            }
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/scheduled_jobs/scheduled_jobs');
         } catch (\Exception $e) {
