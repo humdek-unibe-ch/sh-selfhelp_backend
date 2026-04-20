@@ -48,6 +48,55 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
+     * Get ALL scheduled jobs without pagination (used for calendar view, export, etc.)
+     * 
+     * Returns the same formatted structure as the list view for consistency.
+     */
+    public function getAllScheduledJobs(
+        array $filters = [],
+        string $sort = 'adjusted_execution_time',
+        string $sortDirection = 'asc'
+    ): array {
+        $cacheKey = "scheduled_jobs_all_" . md5(
+            json_encode($filters) . $sort . $sortDirection
+        );
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
+            ->getList($cacheKey, function () use ($filters, $sort, $sortDirection) {
+                $qb = $this->scheduledJobRepository->createQueryBuilder('sj');
+
+                $qb->leftJoin('sj.user', 'u')
+                    ->innerJoin('sj.jobType', 'jt')
+                    ->innerJoin('sj.status', 'js')
+                    ->leftJoin('sj.action', 'a')
+                    ->leftJoin('sj.dataTable', 'dt')
+                    ->leftJoin('u.timezone', 'user_tz');
+
+                // Filter and sorting logic
+                $this->applyScheduledJobsFilters($qb, $filters);
+                $this->applyScheduledJobsSorting($qb, $sort, $sortDirection);
+
+                // Safety limit to prevent memory / performance issues
+                $qb->setMaxResults(5000);   // Expected max TODO: @Stefan check here
+
+                $qb->select('sj');
+
+                $jobsEntities = $qb->getQuery()->getResult();
+
+                $jobs = [];
+                foreach ($jobsEntities as $job) {
+                    $jobs[] = $this->formatScheduledJobForList($job);
+                }
+
+                return [
+                    'scheduledJobs' => $jobs,
+                    'totalCount' => count($jobs),
+                ];
+            });
+    }
+
+    /**
      * Get paginated scheduled jobs formatted for the admin list view.
      *
      * @param array<string, mixed> $filters
@@ -68,8 +117,8 @@ class AdminScheduledJobService extends BaseService
      */
     public function getScheduledJobs(
         array $filters = [],
-        int $page = 1,
-        int $perPage = 20,
+        ?int $page = 1,
+        ?int $perPage = 20,
         string $sort = 'adjusted_execution_time',
         string $order = 'asc',
     ): array {
