@@ -48,6 +48,55 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
+     * Get ALL scheduled jobs without pagination (used for calendar view, export, etc.)
+     * 
+     * Returns the same formatted structure as the list view for consistency.
+     */
+    public function getAllScheduledJobs(
+        array $filters = [],
+        string $sort = 'adjusted_execution_time',
+        string $sortDirection = 'asc',
+    ): array {
+        $cacheKey = "scheduled_jobs_all_" . md5(
+            json_encode($filters) . $sort . $sortDirection
+        );
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
+            ->getList($cacheKey, function () use ($filters, $sort, $sortDirection) {
+                $qb = $this->scheduledJobRepository->createQueryBuilder('sj');
+
+                $qb->leftJoin('sj.user', 'u')
+                    ->innerJoin('sj.jobType', 'jt')
+                    ->innerJoin('sj.status', 'js')
+                    ->leftJoin('sj.action', 'a')
+                    ->leftJoin('sj.dataTable', 'dt')
+                    ->leftJoin('u.timezone', 'user_tz');
+
+                // Filter and sorting logic
+                $this->applyScheduledJobsFilters($qb, $filters);
+                $this->applyScheduledJobsSorting($qb, $sort, $sortDirection);
+
+                // Safety limit to prevent memory / performance issues
+                $qb->setMaxResults(5000);   // Expected max TODO: @Stefan check here
+
+                $qb->select('sj');
+
+                $jobsEntities = $qb->getQuery()->getResult();
+
+                $jobs = [];
+                foreach ($jobsEntities as $job) {
+                    $jobs[] = $this->formatScheduledJobForList($job);
+                }
+
+                return [
+                    'scheduledJobs' => $jobs,
+                    'totalCount' => count($jobs),
+                ];
+            });
+    }
+
+    /**
      * Get paginated scheduled jobs formatted for the admin list view.
      *
      * @param array<string, mixed> $filters
@@ -72,14 +121,15 @@ class AdminScheduledJobService extends BaseService
         int $perPage = 20,
         string $sort = 'adjusted_execution_time',
         string $order = 'asc',
+        bool $includeTransactions = false,
     ): array {
         $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
-            json_encode($filters) . $sort . $order
+            json_encode($filters) . $sort . $order . 10232
         );
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
-            ->getList($cacheKey, function () use ($filters, $page, $perPage, $sort, $order) {
+            ->getList($cacheKey, function () use ($filters, $page, $perPage, $sort, $order, $includeTransactions) {
                 $qb = $this->scheduledJobRepository->createQueryBuilder('sj');
 
                 // Add JOINs for filtering and selection
@@ -112,7 +162,7 @@ class AdminScheduledJobService extends BaseService
                 $jobs = [];
 
                 foreach ($jobsEntities as $job) {
-                    $jobs[] = $this->formatScheduledJobForList($job);
+                    $jobs[] = $this->formatScheduledJobForList($job, $includeTransactions);
                 }
 
                 return [
@@ -224,7 +274,7 @@ class AdminScheduledJobService extends BaseService
      * @return array<string, mixed>
      *   The lightweight scheduled-job payload returned to the list endpoint.
      */
-    private function formatScheduledJobForList(ScheduledJob $job): array
+    private function formatScheduledJobForList(ScheduledJob $job, bool $includeTransactions = false): array
     {
         // Convert timezone for datetime fields
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
@@ -245,6 +295,8 @@ class AdminScheduledJobService extends BaseService
             $dateExecuted = \DateTime::createFromInterface($dateExecuted)->setTimezone($cmsTimezone);
         }
 
+        $jobTransactions = $includeTransactions ? $this->getJobTransactions($job->getId()) : [];
+        
         return [
             'id' => $job->getId(),
             'id_users' => $job->getUser()?->getId(),
@@ -261,7 +313,8 @@ class AdminScheduledJobService extends BaseService
             'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
             'email_subject' => $this->extractEmailSubjectForList($displayConfig),
-            'config' => $displayConfig
+            'config' => $displayConfig,
+            'transactions' => $jobTransactions
         ];
     }
 
