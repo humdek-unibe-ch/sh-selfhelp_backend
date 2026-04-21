@@ -1182,10 +1182,14 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Invalidate user-related caches
+     * Invalidate user-related caches and bump the user's acl_version so the
+     * frontend BFF can detect ACL/permission changes and surgically invalidate
+     * its navigation cache.
      */
     private function invalidateUserCaches(int $userId): void
     {
+        $this->bumpAclVersion($userId);
+
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
             ->invalidateAllListsInCategory();
@@ -1198,6 +1202,19 @@ class AdminUserService extends BaseService
             ->withCategory(CacheService::CATEGORY_USERS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+    }
+
+    /**
+     * Rotate the user's acl_version column. Safe to call without an active
+     * transaction: the caller's higher-level transaction covers persistence.
+     */
+    private function bumpAclVersion(int $userId): void
+    {
+        $user = $this->entityManager->getRepository(\App\Entity\User::class)->find($userId);
+        if ($user !== null) {
+            $user->bumpAclVersion();
+            $this->entityManager->flush();
+        }
     }
 
     /**

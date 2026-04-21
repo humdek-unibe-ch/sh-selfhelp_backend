@@ -1,5 +1,29 @@
 # v8.0.0 (Not released yet)
 
+### Documentation
+ - **Token TTL configuration documented.** `.env.default`, `ARCHITECTURE.md`,
+   `docs/developer/03-authentication-authorization.md`, and
+   `docs/api-usage/01-authentication.md` now explicitly state that the access
+   token defaults to **3600 s / 1 hour** (`JWT_TOKEN_TTL`) and the refresh
+   token to **2 592 000 s / 30 days** (`JWT_REFRESH_TOKEN_TTL`), explain where
+   each is wired (`lexik_jwt_authentication.yaml` for access,
+   `services.yaml` + `JWTService::createRefreshToken()` for refresh), and
+   include a step-by-step recipe for shortening the TTLs in `.env.local` /
+   `.env.dev.local` to exercise the Next.js BFF's silent-refresh flow. Also
+   documents the client storage split — the Next.js frontend keeps both
+   tokens in `sh_auth` / `sh_refresh` **httpOnly cookies** through its
+   Backend-for-Frontend proxy, while third-party / mobile clients use the
+   standard Bearer flow.
+ - Fixed an inconsistency in `ARCHITECTURE.md` that listed the refresh-token
+   lifetime as *"typically 2 weeks"* — the real default is 30 days.
+ - Clarified that `/cms-api/v1/auth/refresh-token` **rotates** the refresh
+   token on every successful call (the old `refreshTokens` row is removed
+   and a new one issued), so active sessions keep extending their expiry.
+ - Testing recipe in the auth doc now documents both silent-refresh paths
+   used by the Next.js frontend: the `/api/*` BFF catch-all (client XHRs)
+   **and** the preemptive SSR refresh in `src/proxy.ts` (page navigations),
+   plus the dev-only log lines that make the flow observable.
+
 ### Framework Upgrade
  - **Symfony 7.3 Upgrade**: Updated from Symfony 7.2.* to 7.3.* for latest features and security improvements
  - **Dependency Updates**: Updated all Symfony components, Doctrine ORM, and related packages to compatible versions

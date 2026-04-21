@@ -449,8 +449,11 @@ The SH-Self-help backend uses JSON Web Tokens (JWT) for stateless API authentica
 1. **Login Process**
    - User submits credentials to `/cms-api/v1/auth/login`
    - Upon successful validation, system generates and returns:
-     - JWT token (short-lived, typically 1 hour)
-     - Refresh token (long-lived, typically 2 weeks)
+     - JWT access token — lifetime configured by `JWT_TOKEN_TTL` (default **3600 s / 1 hour**)
+     - Refresh token — lifetime configured by `JWT_REFRESH_TOKEN_TTL` (default **2 592 000 s / 30 days**)
+   - See *Token TTL configuration* in `docs/developer/03-authentication-authorization.md`
+     for how to override these per-environment (useful for exercising the
+     silent-refresh path in dev).
 
 2. **Request Authentication**
    - Client includes JWT in `Authorization: Bearer {token}` header
@@ -459,13 +462,27 @@ The SH-Self-help backend uses JSON Web Tokens (JWT) for stateless API authentica
 
 3. **Token Refresh**
    - When JWT expires, client can send refresh token to `/cms-api/v1/auth/refresh-token`
-   - System validates refresh token and issues a new JWT if valid
-   - Refresh tokens are stored in the database and can be invalidated
+   - System validates refresh token and issues a new JWT **and** rotates the refresh
+     token (`processRefreshToken()` removes the old `refreshTokens` row and inserts
+     a new one before responding), so every refresh advances the refresh-token
+     expiry by another full `JWT_REFRESH_TOKEN_TTL` window.
+   - Refresh tokens are stored in the database and can be invalidated.
 
 4. **Logout Process**
    - Client calls `/cms-api/v1/auth/logout` endpoint
    - Current token is added to blacklist to prevent reuse
    - Refresh tokens are invalidated in the database
+
+### Client-side token storage models
+
+The backend is agnostic to how clients store the two tokens — it only requires
+them on the `Authorization` header and the refresh-token body respectively.
+Two client patterns are in active use:
+
+| Client                                                | Access token                  | Refresh token                | Notes                                                                              |
+|-------------------------------------------------------|-------------------------------|------------------------------|------------------------------------------------------------------------------------|
+| **Next.js frontend** (`sh-selfhelp_frontend`)         | `sh_auth` httpOnly cookie     | `sh_refresh` httpOnly cookie | Full Backend-for-Frontend proxy: browser JS never sees the JWT. All `/api/*` calls are server-side forwarded, and 401s from Symfony trigger a silent refresh and retry, transparent to the UI. |
+| **Third-party API consumers / mobile / Postman**      | In-memory / secure storage    | Secure storage               | Standard Bearer flow as described above.                                          |
 
 The system will automatically load and map the routes to the correct controllers.
 

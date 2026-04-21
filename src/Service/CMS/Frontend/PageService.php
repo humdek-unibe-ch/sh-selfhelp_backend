@@ -223,6 +223,31 @@ class PageService extends BaseService
         if (!$page) {
             $this->throwNotFound('Page not found');
         }
+        return $this->resolvePageResponse($page, $page_id, $languageId, $preview);
+    }
+
+    /**
+     * Resolve a page by its unique keyword. Used by the BFF to eliminate the
+     * keyword -> id waterfall on page loads. Returns the same payload as
+     * getPage(). Throws 404 if no page with this keyword exists.
+     */
+    public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false): array
+    {
+        $languageId = $this->determineLanguageId($language_id);
+
+        $page = $this->pageRepository->findOneBy(['keyword' => $keyword]);
+        if (!$page) {
+            $this->throwNotFound('Page not found');
+        }
+
+        return $this->resolvePageResponse($page, $page->getId(), $languageId, $preview);
+    }
+
+    /**
+     * Shared resolution path used by getPage() and getPageByKeyword().
+     */
+    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview): array
+    {
 
         // Check if user has access to the page
         $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'select');
