@@ -30,17 +30,38 @@ class AdminActionService extends BaseService
     /**
      * Get actions with pagination
      */
-    public function getActions(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    public function getActions(
+        int $page = 1,
+        int $pageSize = 20,
+        ?string $search = null,
+        ?string $sort = null,
+        string $sortDirection = 'asc',
+        ?int $triggerTypeId = null,
+        ?int $dataTableId = null
+    ): array
     {
         // Create cache key based on parameters
-        $cacheKey = "actions_list_{$page}_{$pageSize}_" . md5(($search ?? '') . ($sort ?? '') . $sortDirection);
-
+        $cacheKey = "actions_list_{$page}_{$pageSize}_" .
+            md5(
+                ($search ?? '') .
+                    ($sort ?? '') .
+                    $sortDirection .
+                    ($triggerTypeId ?? '') .
+                    ($dataTableId ?? '')
+            );
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ACTIONS)
             ->getList(
                 $cacheKey,
-                fn() =>
-                $this->actionRepository->findActionsWithPagination($page, $pageSize, $search, $sort, $sortDirection)
+                fn() => $this->actionRepository->findActionsWithPagination(
+                    $page,
+                    $pageSize,
+                    $search,
+                    $sort,
+                    $sortDirection,
+                    $triggerTypeId,
+                    $dataTableId
+                )
             );
     }
 

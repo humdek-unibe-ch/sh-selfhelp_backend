@@ -60,8 +60,10 @@ class AdminActionController extends AbstractController
             $search = $request->query->get('search');
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
+            $triggerTypeId = $request->query->get('triggerTypeId');
+            $dataTableId = $request->query->get('dataTableId');
 
-            $result = $this->adminActionService->getActions($page, $pageSize, $search, $sort, $sortDirection);
+            $result = $this->adminActionService->getActions($page, $pageSize, $search, $sort, $sortDirection, $triggerTypeId ,$dataTableId);
 
             return $this->responseFormatter->formatSuccess(
                 $result,
@@ -133,6 +135,7 @@ class AdminActionController extends AbstractController
             return $this->responseFormatter->formatError($message, $status);
         }
     }
+
 }
 
 
