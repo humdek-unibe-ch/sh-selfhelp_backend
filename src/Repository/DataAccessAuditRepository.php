@@ -212,7 +212,8 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         $timezone = new \DateTimeZone($timezoneCode);
         foreach ($results as &$result) {
             if (isset($result['lastAccessed']) && $result['lastAccessed']) {
-                $result['lastAccessed'] = $result['lastAccessed']->setTimezone($timezone);
+                $result['lastAccessed'] = (new \DateTime($result['lastAccessed']))
+                    ->setTimezone($timezone);
             }
         }
 
