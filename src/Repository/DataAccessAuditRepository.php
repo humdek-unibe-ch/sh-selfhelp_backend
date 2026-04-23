@@ -211,9 +211,14 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         // Convert timezone for lastAccessed dates (Doctrine already returns DateTime objects)
         $timezone = new \DateTimeZone($timezoneCode);
         foreach ($results as &$result) {
-            if (isset($result['lastAccessed']) && $result['lastAccessed']) {
-                $result['lastAccessed'] = (new \DateTime($result['lastAccessed']))
-                    ->setTimezone($timezone);
+            if (!empty($result['lastAccessed'])) {
+                if ($result['lastAccessed'] instanceof \DateTimeInterface) {
+                    $date = $result['lastAccessed'];
+                } else {
+                    $date = new \DateTime($result['lastAccessed']);
+                }
+        
+                $result['lastAccessed'] = $date->setTimezone($timezone);
             }
         }
 
