@@ -98,6 +98,7 @@
  - Admin Groups/Roles: Permission management system
 
 ### Database Changes
+ - Retyped `mantine_text_gradient` field from `textarea` to `json` (seed script + `Version20260423120000` migration)
  - Removed `genders` table and all related functionality
  - Added `roles`, `permissions`, `roles_permissions`, `users_roles` tables
  - Added `api_routes` and `api_routes_permissions` tables
