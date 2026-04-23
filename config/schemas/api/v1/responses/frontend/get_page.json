@@ -40,6 +40,14 @@
                             "type": ["integer", "null"],
                             "description": "Position in footer"
                         },
+                        "title": {
+                            "type": ["string", "null"],
+                            "description": "Translated page title for the requested language (used for <title> / OpenGraph)"
+                        },
+                        "description": {
+                            "type": ["string", "null"],
+                            "description": "Translated page description for the requested language (used for <meta name=\"description\"> / OpenGraph)"
+                        },
                         "sections": {
                             "type": "array",
                             "description": "Array of sections that make up the page content",
@@ -49,7 +57,7 @@
                         }
                     },
                     "required": [
-                        "id", "keyword", "url", "is_headless", "sections"
+                        "id", "keyword", "url", "is_headless", "title", "description", "sections"
                     ]
                 }
             },

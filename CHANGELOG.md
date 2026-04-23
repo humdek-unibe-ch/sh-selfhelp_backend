@@ -1,5 +1,28 @@
 # v8.0.0 (Not released yet)
 
+### Frontend SEO payload
+ - **`title` + `description` now returned on frontend page endpoints.**
+   Both `GET /cms-api/v1/pages/{language_id}` (nav list) and
+   `GET /cms-api/v1/pages/by-keyword/{keyword}` /
+   `GET /cms-api/v1/pages/{page_id}` (single page) now include the
+   translated `title` and `description` fields (page fields `22` / `106`,
+   `display=1`) resolved for the requested language with default-language
+   fallback. Previously the list endpoint only returned `title` and the
+   single-page endpoint returned neither, which forced the Next.js BFF to
+   chase the nav list just to build `<title>` / `<meta name="description">`
+   and fell back to a hardcoded default when no translation existed.
+ - Internal: `PageService::resolvePageSeoFields(int $pageId, int $languageId): array`
+   centralises the single-page resolution and is reused by both the
+   draft-version path (`serveDraftVersion`) and the published-version
+   path (`servePublishedVersion`). SEO fields are injected *after*
+   `hydratePublishedPage` so they always reflect the current translation,
+   not whatever was frozen at publish time.
+ - Response schemas updated so validation passes:
+   `config/schemas/api/v1/responses/common/_acl_page_definition.json`
+   (adds required nullable `description`) and
+   `config/schemas/api/v1/responses/frontend/get_page.json`
+   (adds required nullable `title` + `description`).
+
 ### Documentation
  - **Token TTL configuration documented.** `.env.default`, `ARCHITECTURE.md`,
    `docs/developer/03-authentication-authorization.md`, and

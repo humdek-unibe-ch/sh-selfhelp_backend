@@ -157,18 +157,25 @@ class PageService extends BaseService
                 $pagesMap = [];
                 foreach ($filteredPages as &$page) {
 
-                    // Add title translations to page
+                    // Attach translated SEO fields (title + description) from the
+                    // pages_fields_translation store. Both fields are display=1
+                    // (user-visible, translatable) and are needed by the frontend
+                    // for <title> / <meta name="description"> generation without a
+                    // second round-trip per page.
                     $pageId = $page['id_pages'];
-                    $page['title'] = null; // Default title
-                    if (isset($pageTitleTranslations[$pageId])) {
-                        // Look for a 'title' field first, otherwise take the first available field
-                        if (isset($pageTitleTranslations[$pageId]['title'])) {
-                            $page['title'] = $pageTitleTranslations[$pageId]['title'];
-                        } else {
-                            // Take the first available translation field as title
-                            $page['title'] = reset($pageTitleTranslations[$pageId]) ?: null;
-                        }
+                    $translations = $pageTitleTranslations[$pageId] ?? [];
+
+                    $page['title'] = null;
+                    if (isset($translations['title'])) {
+                        $page['title'] = $translations['title'];
+                    } elseif (!empty($translations)) {
+                        // Fallback: first translated display=1 field (legacy behaviour)
+                        $page['title'] = reset($translations) ?: null;
                     }
+
+                    $page['description'] = isset($translations['description'])
+                        ? $translations['description']
+                        : null;
 
                     $page['children'] = []; // Initialize children array
                     $pagesMap[$page['id_pages']] = &$page;
@@ -289,7 +296,18 @@ class PageService extends BaseService
         $storedPageData = $publishedVersion->getPageJson();
 
         // Hydrate the published page with fresh dynamic elements
-        return $this->hydratePublishedPage($storedPageData, $languageId);
+        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId);
+
+        // Inject translated SEO fields (title/description) — these live in
+        // pages_fields_translation, not in the versioned JSON, so they must
+        // be resolved fresh per request/language.
+        if (isset($hydrated['page']) && is_array($hydrated['page'])) {
+            $seo = $this->resolvePageSeoFields($page_id, $languageId);
+            $hydrated['page']['title'] = $seo['title'];
+            $hydrated['page']['description'] = $seo['description'];
+        }
+
+        return $hydrated;
     }
 
     /**
@@ -414,6 +432,12 @@ class PageService extends BaseService
         }
 
         return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
+            // Resolve the translated SEO fields (title + description) for this
+            // single page. Keeps the payload self-contained so the frontend
+            // doesn't have to cross-reference the nav list to render <title>
+            // / <meta name="description">.
+            $seo = $this->resolvePageSeoFields($page->getId(), $languageId);
+
             $pageData = [
                 'page' => [
                     'id' => $page->getId(),
@@ -423,12 +447,45 @@ class PageService extends BaseService
                     'is_headless' => $page->isHeadless(),
                     'nav_position' => $page->getNavPosition(),
                     'footer_position' => $page->getFooterPosition(),
+                    'title' => $seo['title'],
+                    'description' => $seo['description'],
                     'sections' => $this->getPageSections($page->getId(), $languageId)
                 ]
             ];
 
             return $pageData;
         });
+    }
+
+    /**
+     * Resolve translated `title` + `description` (both display=1 page fields)
+     * for a single page, falling back to the CMS default language if the
+     * requested language has no translation. Used by the single-page endpoints
+     * so the frontend can build <title> / <meta description> without a second
+     * lookup against the nav list.
+     *
+     * @return array{title: ?string, description: ?string}
+     */
+    private function resolvePageSeoFields(int $pageId, int $languageId): array
+    {
+        $defaultLanguageId = null;
+        try {
+            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+        } catch (\Exception $e) {
+            // Fallback handled below.
+        }
+
+        $translations = $this->pagesFieldsTranslationRepository->fetchTitleTranslationsWithFallback(
+            [$pageId],
+            $languageId,
+            $defaultLanguageId
+        );
+
+        $entry = $translations[$pageId] ?? [];
+        return [
+            'title'       => isset($entry['title']) ? $entry['title'] : null,
+            'description' => isset($entry['description']) ? $entry['description'] : null,
+        ];
     }
 
     /**
