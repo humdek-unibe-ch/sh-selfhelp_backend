@@ -295,12 +295,20 @@ class ProfileService extends BaseService
     }
 
     /**
-     * Invalidate user-related caches
+     * Invalidate user-related caches and bump the user's acl_version so the
+     * frontend BFF can detect ACL/permission changes and surgically invalidate
+     * its navigation cache.
      *
      * @param int $userId The user ID
      */
     private function invalidateUserCaches(int $userId): void
     {
+        $user = $this->entityManager->getRepository(User::class)->find($userId);
+        if ($user !== null) {
+            $user->bumpAclVersion();
+            $this->entityManager->flush();
+        }
+
         // Invalidate all user lists
         $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)

@@ -27,6 +27,7 @@
                 "id_pageAccessTypes": { "type": "integer" },
                 "is_system": { "type": "integer", "enum": [0, 1] },
                 "title": { "type": ["string", "null"] },
+                "description": { "type": ["string", "null"] },
                 "children": {
                     "type": "array",
                     "items": { "$ref": "#/definitions/page" }
@@ -35,7 +36,7 @@
             "required": [
                 "id_users", "id_pages", "acl_select", "acl_insert", "acl_update", "acl_delete",
                 "keyword", "url", "parent", "is_headless", "nav_position", "footer_position",
-                "id_type", "id_pageAccessTypes", "is_system", "title", "children"
+                "id_type", "id_pageAccessTypes", "is_system", "title", "description", "children"
             ]
         }
     },

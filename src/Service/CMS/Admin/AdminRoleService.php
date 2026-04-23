@@ -218,22 +218,43 @@ class AdminRoleService extends BaseService
     }
 
     /**
-     * Invalidate cache for all users who have a specific role
+     * Invalidate cache for all users who have a specific role.
      *
-     * When role permissions change, all users with that role need their cached
-     * permissions, data access, and other role-dependent data refreshed.
+     * When role permissions change, every user with that role needs their
+     * cached permissions and data-access rules refreshed. We also bump each
+     * user's acl_version so the frontend BFF can detect the change via
+     * /auth/user-data and surgically invalidate its navigation cache.
      *
      * @param int $roleId The role ID whose users need cache invalidation
      */
     private function invalidateUsersWithRole(int $roleId): void
     {
-        // Find all users who have this role
         $usersWithRole = $this->userRepository->findByRole($roleId);
-
-        // Invalidate each user's cache to ensure they get fresh permissions/data
-        foreach ($usersWithRole as $user) {
-            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+        if (empty($usersWithRole)) {
+            return;
         }
+
+        $userIds = [];
+        foreach ($usersWithRole as $user) {
+            $userIds[] = $user->getId();
+            $user->bumpAclVersion();
+        }
+
+        // Persist the new acl_version values before invalidating caches so
+        // readers observe the rotated version on their next request.
+        $this->entityManager->flush();
+
+        // Bumping the user entity scope invalidates every cache entry scoped
+        // to that user across all categories (ACL, profile, lists-by-user).
+        $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $userIds);
+
+        // Lists in the users/permissions categories may also be stale.
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateAllListsInCategory();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->invalidateAllListsInCategory();
     }
 
     /**
@@ -269,15 +290,13 @@ class AdminRoleService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate entity-scoped cache for this specific role
+            // Invalidate entity-scoped cache for this specific role.
+            // Deletion is only allowed when no users are assigned (guard
+            // above), so per-user invalidation is unnecessary here.
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
-
-            // CRITICAL: Also invalidate ALL users who HAD this role
-            // When a role is deleted, all users who had that role lose those permissions
-            $this->invalidateUsersWithRole($roleId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
             throw $e;
@@ -336,6 +355,10 @@ class AdminRoleService extends BaseService
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
 
+            // Permissions on the role changed; every user carrying the role
+            // needs a fresh permission/ACL cache and a rotated acl_version.
+            $this->invalidateUsersWithRole($roleId);
+
             return $this->getRolePermissions($roleId);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
@@ -386,6 +409,10 @@ class AdminRoleService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_ROLES)
                 ->invalidateAllListsInCategory();
+
+            // Permissions on the role changed; every user carrying the role
+            // needs a fresh permission/ACL cache and a rotated acl_version.
+            $this->invalidateUsersWithRole($roleId);
 
             return $this->getRolePermissions($roleId);
         } catch (\Exception $e) {

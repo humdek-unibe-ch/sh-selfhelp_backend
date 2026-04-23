@@ -4,6 +4,33 @@
 
 The SelfHelp API provides comprehensive authentication and user management functionality. This includes JWT-based authentication with refresh tokens, two-factor authentication support, and user profile management.
 
+## Token lifetimes
+
+| Token                    | Default TTL             | Env variable              | Behaviour on expiry                                                       |
+|--------------------------|-------------------------|---------------------------|---------------------------------------------------------------------------|
+| Access (JWT)             | **3600 s / 1 hour**     | `JWT_TOKEN_TTL`           | Symfony answers `401 Unauthorized`. Client calls `/auth/refresh-token`.   |
+| Refresh                  | **2 592 000 s / 30 days** | `JWT_REFRESH_TOKEN_TTL` | Symfony answers `401` from `/auth/refresh-token`. Client must log in again. |
+
+The refresh endpoint **rotates** the refresh token: each successful call
+deletes the old `refreshTokens` row and returns a fresh pair. Holding a
+long-lived session therefore advances the refresh expiry by another full
+window every hour (or every access-token lifetime you configure).
+
+To change these values for a particular environment, see
+*Token TTL configuration* in
+[`docs/developer/03-authentication-authorization.md`](../developer/03-authentication-authorization.md#token-ttl-configuration).
+
+## Client-side token storage
+
+How a client stores the two tokens is outside the API's scope, but the official
+Next.js frontend (`sh-selfhelp_frontend`) runs a **Backend-for-Frontend proxy**:
+all `/cms-api/v1/*` calls are proxied through Next.js `/api/*`, and the JWTs
+live in `sh_auth` / `sh_refresh` **httpOnly cookies** that browser JavaScript
+cannot read. 401s from the backend trigger a transparent server-side silent
+refresh, so UIs never have to handle token expiry themselves. External API
+consumers (mobile apps, Postman, third-party integrations) use the standard
+Bearer flow as documented below.
+
 ## Authentication Flow
 
 ```mermaid

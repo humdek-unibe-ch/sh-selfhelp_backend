@@ -154,6 +154,15 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'string', length: 100, nullable: true, unique: true)]
     private ?string $user_name = null;
 
+    /**
+     * Monotonically-bumped token used by the frontend BFF to detect ACL/permission
+     * changes so that the navigation cache can be surgically invalidated instead of
+     * refetched on every navigation. Bumped inside the same transaction that calls
+     * invalidateUserCaches() in AdminUserService and ProfileService.
+     */
+    #[ORM\Column(name: 'acl_version', type: 'string', length: 36, nullable: true)]
+    private ?string $acl_version = null;
+
     // Not persisted: for 2FA runtime state
     // This property is used for 2FA runtime state and is not stored in the database
     private bool $twoFactorRequired = false;
@@ -493,6 +502,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      * @param bool $required Whether 2FA is required
      * @return self
      */
+    public function getAclVersion(): ?string
+    {
+        return $this->acl_version;
+    }
+
+    public function setAclVersion(?string $aclVersion): self
+    {
+        $this->acl_version = $aclVersion;
+        return $this;
+    }
+
+    /**
+     * Generate and assign a new acl_version value. Called by services that
+     * invalidate user ACL-related caches so the frontend BFF can detect the
+     * change by comparing the acl_version field returned by /auth/user-data.
+     */
+    public function bumpAclVersion(): self
+    {
+        $this->acl_version = bin2hex(random_bytes(16));
+        return $this;
+    }
+
     public function setTwoFactorRequired(bool $required): self
     {
         $this->twoFactorRequired = $required;

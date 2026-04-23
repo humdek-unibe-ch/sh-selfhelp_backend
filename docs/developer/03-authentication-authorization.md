@@ -341,6 +341,103 @@ lexik_jwt_authentication:
     token_ttl: '%env(int:JWT_TOKEN_TTL)%'
 ```
 
+### Token TTL configuration
+
+Both token lifetimes are driven from environment variables (in seconds).
+**Access tokens** are signed JWTs and their TTL is enforced client-side by
+LexikJWTBundle (the `exp` claim). **Refresh tokens** are opaque strings backed
+by the `refreshTokens` DB table (entity `App\Entity\RefreshToken`); their TTL
+is written into the `expires_at` column when the row is created.
+
+| Variable                | Default              | Meaning                                                            | Wired in                                                                                           |
+|-------------------------|----------------------|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| `JWT_TOKEN_TTL`         | `3600` (1 hour)      | Lifetime of a newly minted access JWT.                             | `config/packages/lexik_jwt_authentication.yaml` → `token_ttl` + `config/services.yaml` → `jwt_token_ttl`. |
+| `JWT_REFRESH_TOKEN_TTL` | `2592000` (30 days)  | Lifetime of a newly minted refresh token row.                      | `config/services.yaml` → `jwt_refresh_token_ttl`, consumed by `JWTService::createRefreshToken()`.  |
+
+Defaults live in `.env` / `.env.dev`. To override for your local machine
+without committing changes, set them in **`.env.local`** (not tracked by git):
+
+```bash
+# .env.local  (gitignored)
+JWT_TOKEN_TTL=60         # 1-minute access token — exposes the refresh flow fast
+JWT_REFRESH_TOKEN_TTL=600 # 10-minute refresh token — shortens the logout cycle too
+```
+
+Symfony loads env files in the order `.env → .env.local → .env.<env> → .env.<env>.local`,
+so `.env.local` wins over `.env` but `.env.dev` wins over `.env.local` for
+dev-only settings. If you are on `APP_ENV=dev` and want the override to stick,
+use **`.env.dev.local`** instead.
+
+After changing the values you **must clear the Symfony container cache**,
+because `lexik_jwt_authentication.token_ttl` is compiled into the container:
+
+```bash
+php bin/console cache:clear
+```
+
+Existing JWTs keep whatever `exp` they were minted with; only tokens created
+**after** the change pick up the new TTL. If you want to guarantee the next
+login uses the new TTL, also drop the `refreshTokens` table rows you no
+longer need (otherwise old refresh tokens remain valid for their original
+window):
+
+```sql
+DELETE FROM refreshTokens;  -- forces every client to log in again
+```
+
+#### Testing the access-token expiry / silent-refresh flow
+
+The Next.js frontend refreshes transparently on **two** independent paths so
+users never see a login flicker while the refresh token is still valid:
+
+1. **Client-side XHRs** go through the BFF catch-all
+   `src/app/api/[...path]/route.ts`. On a 401 from Symfony it calls
+   `/cms-api/v1/auth/refresh-token` via `refreshInternal()` and replays the
+   buffered original request with the new Bearer.
+2. **SSR page navigations** go through `src/proxy.ts` — the Next.js
+   middleware. It decodes the `sh_auth` JWT's `exp` claim preemptively
+   *before* Server Components run and refreshes when the access token is
+   past or within a 10 s safety window. The new tokens are written both
+   to the outgoing response (for the browser) *and* back onto
+   `req.cookies` (so the RSC read via `server-fetch.ts::authHeaders()`
+   picks up the fresh Bearer within the same request).
+
+Without (2), a user navigating to a new slug after the access-token TTL had
+elapsed would land on a 404 — the direct Symfony call from the RSC would 401,
+`fetchJson()` would return `null`, and `[[...slug]]/page.tsx` would trigger
+`notFound()`. (2) makes every navigation feel seamless as long as the
+refresh token itself is still valid.
+
+To exercise both paths locally:
+
+1. Set `JWT_TOKEN_TTL=10` in `.env.local` (or `.env.dev.local`), leave
+   `JWT_REFRESH_TOKEN_TTL` at its default.
+2. `php bin/console cache:clear`.
+3. Log in via the frontend (`POST /cms-api/v1/auth/login` via the BFF).
+4. **Test path (2) — SSR navigation.** Wait > 10 seconds, then click a
+   navigation link. The Next.js proxy detects the expired `sh_auth`,
+   calls `/cms-api/v1/auth/refresh-token`, rotates both cookies, and
+   renders the page normally. You'll see `[proxy] silent refresh
+   succeeded` in the Next.js dev log.
+5. **Test path (1) — client XHR.** On the same page, trigger any form
+   submit / admin mutation after the 10 s window. The `/api/*` catch-all
+   rotates tokens, replays the buffered body, and the action succeeds.
+6. **Test the logged-out branch.** Additionally set
+   `JWT_REFRESH_TOKEN_TTL=60` and wait out both windows. The refresh
+   call returns 401, the proxy (and/or BFF catch-all) clears both
+   cookies, and the frontend redirects to `/auth/login` — but *only*
+   when the user was on an `/admin/*` path or made a mutation; public
+   pages render as anonymous instead of bouncing to login.
+
+Dev-only log lines you'll see in the Next.js terminal:
+
+```
+[proxy] silent refresh succeeded { pathname: '/some/slug' }
+[proxy] silent refresh failed — clearing session { pathname: '/admin/...' }
+```
+
+Never logged in production (gated by `process.env.NODE_ENV !== 'production'`).
+
 ### Troubleshooting
 
 **Common Issues:**

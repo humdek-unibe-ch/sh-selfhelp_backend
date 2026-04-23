@@ -5,6 +5,7 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Group;
 use App\Entity\AclGroup;
 use App\Entity\Page;
+use App\Entity\UsersGroup;
 use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Core\LookupService;
@@ -167,6 +168,13 @@ class AdminGroupService extends BaseService
                 ->withCategory(CacheService::CATEGORY_GROUPS)
                 ->invalidateAllListsInCategory();
 
+            // If initial ACLs were assigned, invalidate per-user ACL caches for
+            // any users in this group (usually none on create, but covered for
+            // safety in case the group was pre-populated).
+            if (isset($groupData['acls']) && is_array($groupData['acls'])) {
+                $this->invalidateGroupAclCaches($group);
+            }
+
             return $this->formatGroupForDetail($group);
         } catch (\Exception $e) {
             $this->entityManager->rollback();
@@ -230,6 +238,13 @@ class AdminGroupService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateAllListsInCategory();
+
+            // If ACLs were updated, also invalidate the per-user ACL caches
+            // for every user in this group so page permissions reflect the
+            // new rules immediately.
+            if (isset($groupData['acls']) && is_array($groupData['acls'])) {
+                $this->invalidateGroupAclCaches($group);
+            }
 
             return $this->formatGroupForDetail($group);
         } catch (\Exception $e) {
@@ -353,6 +368,11 @@ class AdminGroupService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateAllListsInCategory();
+
+            // Invalidate per-user ACL caches for every member of this group.
+            // ACLService::hasAccess caches under ENTITY_SCOPE_USER, so bumping
+            // only the group scope is not enough to refresh member permissions.
+            $this->invalidateGroupAclCaches($group);
 
             return $this->getGroupAcls($groupId);
         } catch (\Exception $e) {
@@ -493,5 +513,56 @@ class AdminGroupService extends BaseService
 
         // Flush the insertions
         $this->entityManager->flush();
+    }
+
+    /**
+     * Invalidate per-user ACL caches for every member of the given group and
+     * bump each member's acl_version so downstream clients (frontend BFF) can
+     * detect the change.
+     *
+     * ACLService::hasAccess caches results under ENTITY_SCOPE_USER in the
+     * PERMISSIONS category. Only invalidating the group scope is not enough
+     * to refresh member permissions; we must touch each member's user scope
+     * explicitly and rotate their acl_version.
+     */
+    private function invalidateGroupAclCaches(Group $group): void
+    {
+        $memberUserIds = [];
+        foreach ($group->getUsersGroups() as $membership) {
+            /** @var UsersGroup $membership */
+            $user = $membership->getUser();
+            if ($user === null) {
+                continue;
+            }
+            $userId = $user->getId();
+            if ($userId === null) {
+                continue;
+            }
+
+            $memberUserIds[$userId] = true;
+            $user->bumpAclVersion();
+        }
+
+        if (empty($memberUserIds)) {
+            return;
+        }
+
+        // Persist the new acl_version values for all affected users.
+        $this->entityManager->flush();
+
+        $userIds = array_keys($memberUserIds);
+
+        // Bumping the user entity scope invalidates every cache entry scoped
+        // to that user across all categories (ACLService::hasAccess keys its
+        // results under ENTITY_SCOPE_USER, so this is the key step).
+        $this->cache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_USER, $userIds);
+
+        // Lists in the users/permissions categories may also be stale.
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateAllListsInCategory();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->invalidateAllListsInCategory();
     }
 }

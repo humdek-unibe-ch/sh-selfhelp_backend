@@ -1,5 +1,52 @@
 # v8.0.0 (Not released yet)
 
+### Frontend SEO payload
+ - **`title` + `description` now returned on frontend page endpoints.**
+   Both `GET /cms-api/v1/pages/{language_id}` (nav list) and
+   `GET /cms-api/v1/pages/by-keyword/{keyword}` /
+   `GET /cms-api/v1/pages/{page_id}` (single page) now include the
+   translated `title` and `description` fields (page fields `22` / `106`,
+   `display=1`) resolved for the requested language with default-language
+   fallback. Previously the list endpoint only returned `title` and the
+   single-page endpoint returned neither, which forced the Next.js BFF to
+   chase the nav list just to build `<title>` / `<meta name="description">`
+   and fell back to a hardcoded default when no translation existed.
+ - Internal: `PageService::resolvePageSeoFields(int $pageId, int $languageId): array`
+   centralises the single-page resolution and is reused by both the
+   draft-version path (`serveDraftVersion`) and the published-version
+   path (`servePublishedVersion`). SEO fields are injected *after*
+   `hydratePublishedPage` so they always reflect the current translation,
+   not whatever was frozen at publish time.
+ - Response schemas updated so validation passes:
+   `config/schemas/api/v1/responses/common/_acl_page_definition.json`
+   (adds required nullable `description`) and
+   `config/schemas/api/v1/responses/frontend/get_page.json`
+   (adds required nullable `title` + `description`).
+
+### Documentation
+ - **Token TTL configuration documented.** `.env.default`, `ARCHITECTURE.md`,
+   `docs/developer/03-authentication-authorization.md`, and
+   `docs/api-usage/01-authentication.md` now explicitly state that the access
+   token defaults to **3600 s / 1 hour** (`JWT_TOKEN_TTL`) and the refresh
+   token to **2 592 000 s / 30 days** (`JWT_REFRESH_TOKEN_TTL`), explain where
+   each is wired (`lexik_jwt_authentication.yaml` for access,
+   `services.yaml` + `JWTService::createRefreshToken()` for refresh), and
+   include a step-by-step recipe for shortening the TTLs in `.env.local` /
+   `.env.dev.local` to exercise the Next.js BFF's silent-refresh flow. Also
+   documents the client storage split — the Next.js frontend keeps both
+   tokens in `sh_auth` / `sh_refresh` **httpOnly cookies** through its
+   Backend-for-Frontend proxy, while third-party / mobile clients use the
+   standard Bearer flow.
+ - Fixed an inconsistency in `ARCHITECTURE.md` that listed the refresh-token
+   lifetime as *"typically 2 weeks"* — the real default is 30 days.
+ - Clarified that `/cms-api/v1/auth/refresh-token` **rotates** the refresh
+   token on every successful call (the old `refreshTokens` row is removed
+   and a new one issued), so active sessions keep extending their expiry.
+ - Testing recipe in the auth doc now documents both silent-refresh paths
+   used by the Next.js frontend: the `/api/*` BFF catch-all (client XHRs)
+   **and** the preemptive SSR refresh in `src/proxy.ts` (page navigations),
+   plus the dev-only log lines that make the flow observable.
+
 ### Framework Upgrade
  - **Symfony 7.3 Upgrade**: Updated from Symfony 7.2.* to 7.3.* for latest features and security improvements
  - **Dependency Updates**: Updated all Symfony components, Doctrine ORM, and related packages to compatible versions
