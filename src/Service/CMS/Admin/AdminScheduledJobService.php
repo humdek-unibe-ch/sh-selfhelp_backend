@@ -121,6 +121,7 @@ class AdminScheduledJobService extends BaseService
         ?int $perPage = 20,
         string $sort = 'adjusted_execution_time',
         string $order = 'asc',
+        bool $includeTransactions = false,
     ): array {
         $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
             json_encode($filters) . $sort . $order
@@ -128,7 +129,7 @@ class AdminScheduledJobService extends BaseService
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SCHEDULED_JOBS)
-            ->getList($cacheKey, function () use ($filters, $page, $perPage, $sort, $order) {
+            ->getList($cacheKey, function () use ($filters, $page, $perPage, $sort, $order, $includeTransactions) {
                 $qb = $this->scheduledJobRepository->createQueryBuilder('sj');
 
                 // Add JOINs for filtering and selection
@@ -161,7 +162,7 @@ class AdminScheduledJobService extends BaseService
                 $jobs = [];
 
                 foreach ($jobsEntities as $job) {
-                    $jobs[] = $this->formatScheduledJobForList($job);
+                    $jobs[] = $this->formatScheduledJobForList($job, $includeTransactions);
                 }
 
                 return [
@@ -273,7 +274,7 @@ class AdminScheduledJobService extends BaseService
      * @return array<string, mixed>
      *   The lightweight scheduled-job payload returned to the list endpoint.
      */
-    private function formatScheduledJobForList(ScheduledJob $job): array
+    private function formatScheduledJobForList(ScheduledJob $job, bool $includeTransactions = false): array
     {
         // Convert timezone for datetime fields
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
@@ -294,6 +295,8 @@ class AdminScheduledJobService extends BaseService
             $dateExecuted = \DateTime::createFromInterface($dateExecuted)->setTimezone($cmsTimezone);
         }
 
+        $jobTransactions = $includeTransactions ? $this->getJobTransactions($job->getId()) : [];
+        
         return [
             'id' => $job->getId(),
             'id_users' => $job->getUser()?->getId(),
@@ -310,7 +313,8 @@ class AdminScheduledJobService extends BaseService
             'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
             'email_subject' => $this->extractEmailSubjectForList($displayConfig),
-            'config' => $displayConfig
+            'config' => $displayConfig,
+            'transactions' => $jobTransactions
         ];
     }
 

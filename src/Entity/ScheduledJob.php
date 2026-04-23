@@ -252,5 +252,6 @@ class ScheduledJob
         $this->config = $config;
         return $this;
     }
+
 }
 // ENTITY RULE
