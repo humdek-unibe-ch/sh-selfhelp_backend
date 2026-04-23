@@ -39,7 +39,9 @@ class ActionRepository extends ServiceEntityRepository
         int $pageSize = 20,
         ?string $search = null,
         ?string $sort = null,
-        string $sortDirection = 'asc'
+        string $sortDirection = 'asc',
+        ?int $triggerTypeId = null,
+        ?int $dataTableId = null
     ): array {
         $qb = $this->createQueryBuilder('a')
             ->leftJoin('a.actionTriggerType', 'att')
@@ -50,6 +52,18 @@ class ActionRepository extends ServiceEntityRepository
         if ($search) {
             $qb->andWhere('a.name LIKE :search OR att.lookupValue LIKE :search OR att.lookupCode LIKE :search')
                ->setParameter('search', '%' . $search . '%');
+        }
+
+        // Add data table filter  
+        if ($dataTableId) {
+            $qb->andWhere('dt.id = :dataTableId')
+                ->setParameter('dataTableId', $dataTableId);
+        }
+
+        // Add trigger type filter  
+        if ($triggerTypeId) {
+            $qb->andWhere('att.id = :triggerTypeId')
+                ->setParameter('triggerTypeId', $triggerTypeId);
         }
 
         // Sorting whitelist
