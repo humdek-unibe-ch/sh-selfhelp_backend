@@ -10,7 +10,20 @@ doctrine:
         profiling: true
         use_savepoints: true
     orm:
-        auto_generate_proxy_classes: true
+        # Windows-safe proxy strategy.
+        #
+        # `true` (== ALWAYS) regenerates and `rename()`s the proxy file on
+        # every request. On Windows that races under concurrent requests
+        # (e.g. parallel /pages/by-keyword calls during a language switch)
+        # because the OS keeps the old file handle open, causing:
+        #   Warning: rename(...__CG__AppEntity*.php.<tmp>, ...__CG__...php):
+        #   Access is denied (code: 5)
+        #
+        # `file_not_exists` still auto-generates proxies on first access in
+        # dev (no manual warmup required), but never re-writes an existing
+        # proxy — eliminating the rename race entirely. If you change an
+        # entity's mapping, run `bin/console cache:clear` once.
+        auto_generate_proxy_classes: file_not_exists
         enable_lazy_ghost_objects: true
         report_fields_where_declared: true
         validate_xml_mapping: true
