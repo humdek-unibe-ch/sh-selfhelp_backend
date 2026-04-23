@@ -124,7 +124,7 @@ class AdminScheduledJobService extends BaseService
         bool $includeTransactions = false,
     ): array {
         $cacheKey = "scheduled_jobs_timezone_aware_{$page}_{$perPage}_" . md5(
-            json_encode($filters) . $sort . $order . 10232
+            json_encode($filters) . $sort . $order
         );
 
         return $this->cache
