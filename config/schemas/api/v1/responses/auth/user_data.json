@@ -30,6 +30,10 @@
           "type": "boolean",
           "description": "Whether the user is blocked"
         },
+        "acl_version": {
+          "type": ["string", "null"],
+          "description": "Opaque version token that changes whenever the user's ACL/permissions are invalidated. The frontend compares it across requests to decide when to invalidate its navigation cache."
+        },
         "language": {
           "type": "object",
           "properties": {
@@ -124,7 +128,7 @@
           }
         }
       },
-      "required": ["id", "email", "name", "user_name", "blocked", "language", "timezone", "roles", "permissions", "groups"],
+      "required": ["id", "email", "name", "user_name", "blocked", "acl_version", "language", "timezone", "roles", "permissions", "groups"],
       "additionalProperties": false
     }
   },

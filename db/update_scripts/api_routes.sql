@@ -286,6 +286,13 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 ('pages_get_one', 'v1', '/pages/{page_id}', 'App\\Controller\\Api\\V1\\Frontend\\PageController::getPage', 'GET', JSON_OBJECT(
     'page_id', '[0-9]+'
 ), NULL),
+('pages_get_by_keyword', 'v1', '/pages/by-keyword/{keyword}', 'App\\Controller\\Api\\V1\\Frontend\\PageController::getPageByKeyword', 'GET', JSON_OBJECT(
+    'keyword', '[a-zA-Z0-9_\\-]+'
+), JSON_OBJECT(
+    'keyword', JSON_OBJECT('in', 'path', 'required', true),
+    'language_id', JSON_OBJECT('in', 'query', 'required', false),
+    'preview', JSON_OBJECT('in', 'query', 'required', false)
+)),
 ('languages_get_all', 'v1', '/languages', 'App\\Controller\\Api\\V1\\Frontend\\LanguageController::getAllLanguages', 'GET', NULL, NULL),
 
 -- Form submission routes (public access) - supports both JSON and multipart/form-data for file uploads

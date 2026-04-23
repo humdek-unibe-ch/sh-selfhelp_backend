@@ -3802,7 +3802,7 @@ INSERT IGNORE INTO `fields` (`id`, `name`, `id_type`, `display`, `config`) VALUE
 (NULL, 'mantine_text_text_transform', get_field_type_id('segment'), 0, '{"options": [{"value": "none", "text": "None"}, {"value": "uppercase", "text": "Uppercase"}, {"value": "capitalize", "text": "Capitalize"}, {"value": "lowercase", "text": "Lowercase"}]}'),
 (NULL, 'mantine_text_align', get_field_type_id('segment'), 0, '{"options": [{"value": "left", "text": "Left"}, {"value": "center", "text": "Center"}, {"value": "right", "text": "Right"}, {"value": "justify", "text": "Justify"}]}'),
 (NULL, 'mantine_text_variant', get_field_type_id('segment'), 0, '{"options": [{"value": "default", "text": "Default"}, {"value": "gradient", "text": "Gradient"}]}'),
-(NULL, 'mantine_text_gradient', get_field_type_id('textarea'), 0, NULL),
+(NULL, 'mantine_text_gradient', get_field_type_id('json'), 0, NULL),
 (NULL, 'mantine_text_truncate', get_field_type_id('segment'), 0, '{"options": [{"value": "none", "text": "None"}, {"value": "end", "text": "End"}, {"value": "start", "text": "Start"}]}'),
 (NULL, 'mantine_text_line_clamp', get_field_type_id('select'), 0, '{"creatable": true, "searchable": false, "clearable": true, "placeholder": "3", "options": [{"value": "2", "text": "2 lines"}, {"value": "3", "text": "3 lines"}, {"value": "4", "text": "4 lines"}, {"value": "5", "text": "5 lines"}]}'),
 (NULL, 'mantine_text_inherit', get_field_type_id('checkbox'), 0, null),

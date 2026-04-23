@@ -45,6 +45,7 @@ class TaskJobExecutorService extends BaseService
         }
 
         $success = true;
+        $affectedGroupIds = [];
 
         foreach ($groupSpecs as $groupSpec) {
             $group = $this->resolveGroup($groupSpec);
@@ -62,20 +63,27 @@ class TaskJobExecutorService extends BaseService
             }
 
             $currentMembership = $this->findMembership($user->getId(), $group->getId());
+            $membershipChanged = false;
             if ($taskType === 'add_group') {
                 if ($currentMembership === null) {
                     $membership = new UsersGroup();
                     $membership->setUser($user);
                     $membership->setGroup($group);
                     $this->entityManager->persist($membership);
+                    $membershipChanged = true;
                 }
             } elseif ($taskType === 'remove_group') {
                 if ($currentMembership !== null) {
                     $this->entityManager->remove($currentMembership);
+                    $membershipChanged = true;
                 }
             } else {
                 $success = false;
                 continue;
+            }
+
+            if ($membershipChanged) {
+                $affectedGroupIds[] = $group->getId();
             }
 
             $this->transactionService->logTransaction(
@@ -88,10 +96,49 @@ class TaskJobExecutorService extends BaseService
             );
         }
 
+        // Bump the user's acl_version so downstream clients (frontend BFF) can
+        // detect permission/group changes and invalidate their caches. Done
+        // before flush so the new value is persisted in the same transaction.
+        if (!empty($affectedGroupIds)) {
+            $user->bumpAclVersion();
+        }
+
         $this->entityManager->flush();
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+
+        if (!empty($affectedGroupIds)) {
+            $this->invalidateUserGroupCaches($user->getId(), array_values(array_unique($affectedGroupIds)));
+        }
 
         return $success;
+    }
+
+    /**
+     * Invalidate user, permission and group caches after a group membership
+     * change performed by a scheduled task job. Mirrors the behaviour of
+     * AdminUserService::invalidateUserGroupCaches so the ACL cache does not
+     * go stale when memberships are modified by jobs.
+     */
+    private function invalidateUserGroupCaches(int $userId, array $groupIds): void
+    {
+        // Bumping the user entity scope invalidates every cache entry scoped
+        // to that user across all categories (ACLService::hasAccess keys its
+        // results under ENTITY_SCOPE_USER, so this is the key step).
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+
+        // Lists in the users/permissions categories may also be stale.
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateAllListsInCategory();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->invalidateAllListsInCategory();
+
+        // Groups category: the touched groups' member lists changed.
+        if (!empty($groupIds)) {
+            $groupCache = $this->cache->withCategory(CacheService::CATEGORY_GROUPS);
+            $groupCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $groupIds);
+            $groupCache->invalidateAllListsInCategory();
+        }
     }
 
     /**

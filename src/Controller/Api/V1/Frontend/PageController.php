@@ -51,7 +51,46 @@ class PageController extends AbstractController
     }
 
     /**
-     * @Route("/cms-api/v1/pages/{page_id}", name="get_page", methods={"GET"})
+     * @Route("/cms-api/v1/pages/by-keyword/{keyword}", name="get_page_by_keyword", methods={"GET"}, requirements={"keyword"="[a-zA-Z0-9_\-]+"})
+     *
+     * Get a page by its unique keyword. Used by the frontend BFF to resolve a
+     * slug directly to full page content without the nav->id waterfall.
+     *
+     * Accepts the same query params as getPage: language_id, preview.
+     */
+    public function getPageByKeyword(Request $request, string $keyword): JsonResponse
+    {
+        try {
+            $language_id = $request->query->get('language_id') ? (int) $request->query->get('language_id') : null;
+            $preview = $request->query->getBoolean('preview', false);
+
+            $page = $this->pageService->getPageByKeyword($keyword, $language_id, $preview);
+
+            $response = $this->responseFormatter->formatSuccess(
+                $page,
+                'responses/frontend/get_page',
+                Response::HTTP_OK
+            );
+
+            if ($preview) {
+                $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $response->headers->set('Pragma', 'no-cache');
+                $response->headers->set('Expires', '0');
+                $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+            }
+
+            return $response;
+        } catch (\Throwable $e) {
+            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $statusCode
+            );
+        }
+    }
+
+    /**
+     * @Route("/cms-api/v1/pages/{page_id}", name="get_page", methods={"GET"}, requirements={"page_id"="\d+"})
      * 
      * Get a page by ID. 
      * 

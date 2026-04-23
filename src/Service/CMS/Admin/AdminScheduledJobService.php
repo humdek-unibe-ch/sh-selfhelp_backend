@@ -55,7 +55,7 @@ class AdminScheduledJobService extends BaseService
     public function getAllScheduledJobs(
         array $filters = [],
         string $sort = 'adjusted_execution_time',
-        string $sortDirection = 'asc',
+        string $sortDirection = 'asc'
     ): array {
         $cacheKey = "scheduled_jobs_all_" . md5(
             json_encode($filters) . $sort . $sortDirection
@@ -117,8 +117,8 @@ class AdminScheduledJobService extends BaseService
      */
     public function getScheduledJobs(
         array $filters = [],
-        int $page = 1,
-        int $perPage = 20,
+        ?int $page = 1,
+        ?int $perPage = 20,
         string $sort = 'adjusted_execution_time',
         string $order = 'asc',
         bool $includeTransactions = false,
