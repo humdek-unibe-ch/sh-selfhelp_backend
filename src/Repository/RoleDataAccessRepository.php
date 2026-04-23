@@ -503,9 +503,12 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 ->setParameter('search', '%' . $search . '%');
         }
 
-        // Apply sorting
-        $allowedSortFields = ['name', 'description', 'requires_2fa'];
-        if ($sort && in_array($sort, $allowedSortFields)) {
+        // Sorting
+        $allowedSortFields = ['id', 'name', 'description', 'requires_2fa'];
+
+        if ($sort === 'users_count') {
+            $qb->orderBy('users_count', $sortDirection);
+        } elseif ($sort && in_array($sort, $allowedSortFields)) {
             $qb->orderBy('g.' . $sort, $sortDirection);
         } else {
             $qb->orderBy('g.name', 'asc');
