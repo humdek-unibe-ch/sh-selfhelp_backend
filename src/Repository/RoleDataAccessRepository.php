@@ -642,12 +642,15 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     private function applyUserSorting(QueryBuilder $qb, ?string $sort, string $sortDirection): void
     {
-        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
+        $validSortFields = ['email', 'name', 'last_login', 'blocked', 'status', 'user_type', 'code', 'id'];
 
         if ($sort && in_array($sort, $validSortFields)) {
             switch ($sort) {
                 case 'user_type':
                     $qb->orderBy('ut.lookupValue', $sortDirection);
+                    break;
+                case 'status':
+                    $qb->orderBy('us.lookupValue', $sortDirection);
                     break;
                 case 'last_login':
                     $qb->orderBy('u.last_login', $sortDirection);
