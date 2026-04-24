@@ -708,8 +708,11 @@ class PageService extends BaseService
             // Now we have both parent data and newly retrieved data available
             $this->applyOptimizedInterpolationPass($section, $sectionData);
 
-            // Step 6: Evaluate condition using fully interpolated data
-            $conditionResult = $this->evaluateSectionCondition($section, $userId);
+            // Step 6: Evaluate condition using fully interpolated data.
+            // $languageId is propagated so conditions that reference the `language`
+            // system variable match the current render language instead of a
+            // hard-coded default of 1 (seen as "English never unlocks for de_CH").
+            $conditionResult = $this->evaluateSectionCondition($section, $userId, $languageId);
 
             // Step 7: Handle condition results with debug support
             if ($conditionResult['passes']) {
@@ -1003,9 +1006,11 @@ class PageService extends BaseService
      *
      * @param array $section The section to evaluate
      * @param int|null $userId User ID for condition evaluation
+     * @param int $languageId Language of the current render; forwarded to ConditionService
+     *                        so the `language` system variable matches the request language.
      * @return array Result with 'passes' boolean and optional 'debug' info
      */
-    private function evaluateSectionCondition(array $section, ?int $userId): array
+    private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1): array
     {
         // Check if section has a condition
         if (!isset($section['condition']) || empty($section['condition'])) {
@@ -1015,7 +1020,8 @@ class PageService extends BaseService
         $conditionResult = $this->conditionService->evaluateCondition(
             $section['condition'],
             $userId,
-            $section['keyword'] ?? 'unknown'
+            $section['keyword'] ?? 'unknown',
+            $languageId
         );
 
         // Include the original condition as an object for easier frontend handling
@@ -1029,10 +1035,15 @@ class PageService extends BaseService
             }
         }
 
+        // ConditionService::evaluateCondition() omits the 'debug' key on short-circuit
+        // paths (no user context, invalid JSON, boolean primitive, exception).
+        // Without the null-coalesce below, anonymous visitors hitting any open-access page
+        // that contains sections with conditions would crash with
+        // "Undefined array key 'debug'" under APP_DEBUG=1.
         $debugInfo = [
             "result" => $conditionResult['result'],
-            "error" => $conditionResult['fields'],
-            "variables" => $conditionResult['debug']['variables'],
+            "error" => $conditionResult['fields'] ?? [],
+            "variables" => $conditionResult['debug']['variables'] ?? [],
             "condition_object" => $conditionObject
         ];
 

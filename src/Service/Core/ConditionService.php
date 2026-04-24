@@ -43,24 +43,29 @@ class ConditionService
      * @param array|string|null $condition JSON Logic condition array or JSON string
      * @param int|null $userId User ID (optional, defaults to current user)
      * @param string $section Section name for error reporting
+     * @param int $languageId Language ID of the current request — used so conditions
+     *                        like `{"==": [{"var":"language"}, 3]}` match the page
+     *                        render language, not a hard-coded default. Anonymous
+     *                        users have `language` resolved from this value.
      * @return array Result with 'result' (bool) and optional 'fields' for errors
      */
-    public function evaluateCondition(array|string|null $condition, ?int $userId = null, string $section = 'system'): array
+    public function evaluateCondition(array|string|null $condition, ?int $userId = null, string $section = 'system', int $languageId = 1): array
     {
         // No condition means it passes
         if (!$condition) {
             return ['result' => true];
         }
 
-        // Get current user if not specified
+        // Get current user if not specified. Anonymous visitors are allowed —
+        // open-access pages must still be able to evaluate conditions that use
+        // system variables such as `language`, `current_date`, `platform`, etc.
+        // When $userId stays null, VariableResolverService falls back to safe
+        // defaults (empty user_group, languageId from request, empty user_name/email),
+        // so the condition simply evaluates with an anonymous-user variable set
+        // instead of crashing the whole page.
         if ($userId === null) {
             $user = $this->userContextAwareService->getCurrentUser();
             $userId = $user ? $user->getId() : null;
-
-            // If no user ID available, condition cannot be evaluated
-            if ($userId === null) {
-                return ['result' => false, 'fields' => 'No user context available for condition evaluation'];
-            }
         }
 
         $result = ['result' => false, 'fields' => []];
@@ -115,7 +120,7 @@ class ConditionService
             $fixedCondition = $this->fixOperatorParameters($condition);
 
             // Get only the variables that are actually needed
-            $variables = $this->getConditionVariables($userId, $requiredVariables);
+            $variables = $this->getConditionVariables($userId, $requiredVariables, $languageId);
 
             // Apply JsonLogic with the fixed condition and loaded variables
             $logicResult = \JWadhams\JsonLogic::apply($fixedCondition, $variables);
@@ -307,14 +312,18 @@ class ConditionService
     /**
      * Get condition variables for a user and current context
      *
-     * @param int $userId User ID
+     * @param int|null $userId User ID (null for anonymous visitors on open-access pages)
      * @param array $requiredVariables Array of variable names that are needed (for backward compatibility)
+     * @param int $languageId Language of the current request; used for the `language` system variable.
      * @return array Associative array of variable names to values
      */
-    private function getConditionVariables(int $userId, array $requiredVariables = []): array
+    private function getConditionVariables(?int $userId, array $requiredVariables = [], int $languageId = 1): array
     {
-        // Get all variables from the unified service
-        $allVariables = $this->variableResolverService->getAllVariables($userId, 1, false); // Don't include global vars for conditions
+        // Get all variables from the unified service. VariableResolverService
+        // handles userId === null by returning anonymous-safe defaults.
+        // Pass $languageId so conditions that compare against `language` evaluate
+        // against the page-render language, not a hard-coded default of 1.
+        $allVariables = $this->variableResolverService->getAllVariables($userId, $languageId, false); // Don't include global vars for conditions
 
         // If specific variables are required, filter the results for backward compatibility
         if (!empty($requiredVariables)) {
@@ -379,11 +388,14 @@ class ConditionService
                         $conditionObject = json_decode($conditionObject, true);
                     }
                 }
+                // evaluateCondition() may return early without a 'debug' key
+                // (anonymous user, invalid JSON, boolean primitive, thrown exception).
+                // Guard against missing keys so open-access pages don't 500 on anonymous hits.
                 $section['condition_debug'] =
                  [
                     "result" => $conditionResult['result'],
-                    "error" => $conditionResult['fields'],
-                    "variables" => $conditionResult['debug']['variables'],
+                    "error" => $conditionResult['fields'] ?? [],
+                    "variables" => $conditionResult['debug']['variables'] ?? [],
                     "condition_object" => $conditionObject
                 ];
 
