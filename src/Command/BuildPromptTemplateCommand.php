@@ -148,14 +148,16 @@ class BuildPromptTemplateCommand extends Command
                 $lines[] = 'Fields:';
                 foreach ($meta['fields'] as $fieldName => $fieldMeta) {
                     $type = $fieldMeta['type'] ?? '?';
-                    $display = ((int) ($fieldMeta['display'] ?? 0)) === 1 ? 'translatable' : 'property';
+                    $isTranslatable = ((int) ($fieldMeta['display'] ?? 0)) === 1;
+                    $display = $isTranslatable ? 'translatable' : 'property';
+                    $locale = $isTranslatable ? 'en-GB|de-CH|...' : 'all';
                     $default = $fieldMeta['default_value'];
                     $defaultRepr = $default === null ? 'null' : '"' . addslashes((string) $default) . '"';
                     $hidden = ((int) ($fieldMeta['hidden'] ?? 0)) > 0;
                     $disabled = !empty($fieldMeta['disabled']);
 
                     $tags = [];
-                    $tags[] = $display;
+                    $tags[] = $display . ', locale=' . $locale;
                     if ($hidden) {
                         $tags[] = 'hidden';
                     }
@@ -163,13 +165,31 @@ class BuildPromptTemplateCommand extends Command
                         $tags[] = 'disabled';
                     }
 
-                    $lines[] = sprintf(
+                    $line = sprintf(
                         '- %s (%s, default=%s, %s)',
                         $fieldName,
                         $type,
                         $defaultRepr,
                         implode(', ', $tags)
                     );
+
+                    // Append enum options for select/segment/slider/color-picker fields.
+                    if (!empty($fieldMeta['options']) && is_array($fieldMeta['options'])) {
+                        $values = array_values(array_unique(array_map(
+                            static fn (array $opt): string => (string) ($opt['value'] ?? ''),
+                            $fieldMeta['options']
+                        )));
+                        $values = array_values(array_filter($values, static fn (string $v): bool => $v !== ''));
+                        if (!empty($values)) {
+                            $display = array_map(
+                                static fn (string $v): string => '"' . $v . '"',
+                                $values
+                            );
+                            $line .= ' — options: ' . implode(' | ', $display);
+                        }
+                    }
+
+                    $lines[] = $line;
                 }
             }
 

@@ -152,12 +152,14 @@ class StyleRepository extends ServiceEntityRepository
      *       'fields' => [
      *         'fieldName' => [
      *           'type' => string,
-     *           'display' => int,          // 0 = internal/property, 1 = translatable/content
+     *           'display' => int,          // 0 = internal/property (locale "all"), 1 = translatable/content (real locale)
      *           'default_value' => string|null,
      *           'help' => string|null,
      *           'title' => string|null,
      *           'disabled' => bool,
      *           'hidden' => int,
+     *           'options' => array<int, array{value:string, text:string}>, // empty when field has no enum choices
+     *           'placeholder' => string|null,
      *         ],
      *         ...
      *       ],
@@ -183,6 +185,7 @@ class StyleRepository extends ServiceEntityRepository
                 f.id               AS field_id,
                 f.name             AS field_name,
                 f.display          AS field_display,
+                f.config           AS field_config,
                 ft.name            AS field_type,
                 sf.default_value   AS default_value,
                 sf.help            AS help,
@@ -214,6 +217,7 @@ class StyleRepository extends ServiceEntityRepository
             }
 
             if ($row['field_name'] !== null) {
+                [$options, $placeholder] = $this->parseFieldConfig($row['field_config']);
                 $schema[$styleName]['fields'][$row['field_name']] = [
                     'type' => $row['field_type'],
                     'display' => (int) $row['field_display'],
@@ -222,6 +226,8 @@ class StyleRepository extends ServiceEntityRepository
                     'title' => $row['title'],
                     'disabled' => (bool) $row['disabled'],
                     'hidden' => (int) ($row['hidden'] ?? 0),
+                    'options' => $options,
+                    'placeholder' => $placeholder,
                 ];
             }
         }
@@ -265,4 +271,40 @@ class StyleRepository extends ServiceEntityRepository
         return $schema;
     }
 
+    /**
+     * Decode the `fields.config` JSON column and extract the enum options plus
+     * an optional placeholder hint. The column is stored as JSON in the DB
+     * (or sometimes as a raw JSON string) so we tolerate both shapes.
+     *
+     * @return array{0: array<int, array{value:string,text:string}>, 1: ?string}
+     *               Tuple of [options, placeholder].
+     */
+    private function parseFieldConfig(mixed $rawConfig): array
+    {
+        if ($rawConfig === null || $rawConfig === '' || $rawConfig === 'null') {
+            return [[], null];
+        }
+
+        $config = is_string($rawConfig) ? json_decode($rawConfig, true) : $rawConfig;
+        if (!is_array($config)) {
+            return [[], null];
+        }
+
+        $options = [];
+        if (isset($config['options']) && is_array($config['options'])) {
+            foreach ($config['options'] as $opt) {
+                if (!is_array($opt) || !array_key_exists('value', $opt)) {
+                    continue;
+                }
+                $options[] = [
+                    'value' => (string) $opt['value'],
+                    'text' => isset($opt['text']) ? (string) $opt['text'] : (string) $opt['value'],
+                ];
+            }
+        }
+
+        $placeholder = isset($config['placeholder']) ? (string) $config['placeholder'] : null;
+
+        return [$options, $placeholder];
+    }
 }

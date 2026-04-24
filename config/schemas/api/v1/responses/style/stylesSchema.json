@@ -32,9 +32,22 @@
                                         "help": { "type": ["string", "null"] },
                                         "title": { "type": ["string", "null"] },
                                         "disabled": { "type": "boolean" },
-                                        "hidden": { "type": "integer" }
+                                        "hidden": { "type": "integer" },
+                                        "placeholder": { "type": ["string", "null"] },
+                                        "options": {
+                                            "type": "array",
+                                            "description": "Valid enum choices (empty for free-form fields). Use each item's `value` when writing JSON.",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "value": { "type": "string" },
+                                                    "text": { "type": "string" }
+                                                },
+                                                "required": ["value", "text"]
+                                            }
+                                        }
                                     },
-                                    "required": ["type", "display", "default_value"]
+                                    "required": ["type", "display", "default_value", "options"]
                                 }
                             },
                             "allowed_children": {
