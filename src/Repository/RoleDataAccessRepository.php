@@ -332,7 +332,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         $params = [];
 
         if ($search) {
-            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS CHAR) LIKE :search)';
+            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search)';
             $params['search'] = '%' . $search . '%';
         }
 
@@ -400,7 +400,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         $params = [];
 
         if ($search) {
-            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS CHAR) LIKE :search)';
+            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search)';
             $params['search'] = '%' . $search . '%';
         }
 
@@ -628,7 +628,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
     private function applyUserSearchFilter(QueryBuilder $qb, ?string $search): void
     {
         if ($search) {
-            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR CAST(u.id AS string) LIKE :search OR vc.code LIKE :search OR ur.name LIKE :search)')
+            $qb->andWhere('(u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search OR vc.code LIKE :search OR ur.name LIKE :search)')
                 ->setParameter('search', '%' . $search . '%');
         }
     }
