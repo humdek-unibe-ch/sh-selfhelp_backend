@@ -504,7 +504,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         }
 
         // Sorting
-        $allowedEntityFields = ['id', 'name', 'description'];
+        $allowedEntityFields = ['id', 'name', 'description', 'requires2fa'];
         $allowedAliasFields = ['permissions_count'];
 
         if ($sort && in_array($sort, $allowedEntityFields)) {
