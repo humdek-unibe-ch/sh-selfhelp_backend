@@ -136,4 +136,133 @@ class StyleRepository extends ServiceEntityRepository
         return $stylesAllowedRelationshipRepository->findAllowedParents($childStyle);
     }
 
+    /**
+     * Fetch the full style/field schema for every style, keyed by style name.
+     *
+     * Single-query join over styles → styles_fields → fields → fieldType, then
+     * a second query for allowed parent/child relationships (resolved by name).
+     *
+     * Shape:
+     *   [
+     *     'styleName' => [
+     *       'id' => int,
+     *       'group' => string,
+     *       'can_have_children' => bool,
+     *       'description' => string|null,
+     *       'fields' => [
+     *         'fieldName' => [
+     *           'type' => string,
+     *           'display' => int,          // 0 = internal/property, 1 = translatable/content
+     *           'default_value' => string|null,
+     *           'help' => string|null,
+     *           'title' => string|null,
+     *           'disabled' => bool,
+     *           'hidden' => int,
+     *         ],
+     *         ...
+     *       ],
+     *       'allowed_children' => ['styleName', ...],  // [] when `can_have_children` is true (allows everything)
+     *       'allowed_parents'  => ['styleName', ...],
+     *     ],
+     *     ...
+     *   ]
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function findAllStylesWithFields(): array
+    {
+        $conn = $this->getEntityManager()->getConnection();
+
+        $rows = $conn->executeQuery('
+            SELECT
+                s.id               AS style_id,
+                s.name             AS style_name,
+                s.description      AS style_description,
+                s.can_have_children AS can_have_children,
+                sg.name            AS style_group,
+                f.id               AS field_id,
+                f.name             AS field_name,
+                f.display          AS field_display,
+                ft.name            AS field_type,
+                sf.default_value   AS default_value,
+                sf.help            AS help,
+                sf.title           AS title,
+                sf.disabled        AS disabled,
+                sf.hidden          AS hidden
+            FROM styles s
+            INNER JOIN styleGroup sg ON sg.id = s.id_group
+            LEFT JOIN styles_fields sf ON sf.id_styles = s.id
+            LEFT JOIN fields f ON f.id = sf.id_fields
+            LEFT JOIN fieldType ft ON ft.id = f.id_type
+            ORDER BY s.name ASC, f.name ASC
+        ')->fetchAllAssociative();
+
+        // Group into styleName => { ...meta, fields: { fieldName => fieldMeta } }
+        $schema = [];
+        foreach ($rows as $row) {
+            $styleName = $row['style_name'];
+            if (!isset($schema[$styleName])) {
+                $schema[$styleName] = [
+                    'id' => (int) $row['style_id'],
+                    'group' => $row['style_group'],
+                    'can_have_children' => (bool) $row['can_have_children'],
+                    'description' => $row['style_description'],
+                    'fields' => [],
+                    'allowed_children' => [],
+                    'allowed_parents' => [],
+                ];
+            }
+
+            if ($row['field_name'] !== null) {
+                $schema[$styleName]['fields'][$row['field_name']] = [
+                    'type' => $row['field_type'],
+                    'display' => (int) $row['field_display'],
+                    'default_value' => $row['default_value'],
+                    'help' => $row['help'],
+                    'title' => $row['title'],
+                    'disabled' => (bool) $row['disabled'],
+                    'hidden' => (int) ($row['hidden'] ?? 0),
+                ];
+            }
+        }
+
+        // Relationship lookup — resolve style ids to names so the schema is self-contained.
+        $relRows = $conn->executeQuery('
+            SELECT
+                parent.name AS parent_name,
+                child.name  AS child_name
+            FROM styles_allowed_relationships sar
+            INNER JOIN styles parent ON parent.id = sar.id_parent_style
+            INNER JOIN styles child  ON child.id  = sar.id_child_style
+        ')->fetchAllAssociative();
+
+        foreach ($relRows as $rel) {
+            $parentName = $rel['parent_name'];
+            $childName = $rel['child_name'];
+
+            if (isset($schema[$parentName])) {
+                $schema[$parentName]['allowed_children'][] = $childName;
+            }
+            if (isset($schema[$childName])) {
+                $schema[$childName]['allowed_parents'][] = $parentName;
+            }
+        }
+
+        // Styles with can_have_children=true accept any child; keep `allowed_children` empty to signal "any".
+        // For styles where can_have_children=false and no explicit relationship exists we leave [] (leaf).
+        foreach ($schema as $styleName => &$styleMeta) {
+            if ($styleMeta['can_have_children']) {
+                $styleMeta['allowed_children'] = []; // empty = unrestricted
+            } else {
+                // De-duplicate in case of duplicate rows
+                $styleMeta['allowed_children'] = array_values(array_unique($styleMeta['allowed_children']));
+            }
+            $styleMeta['allowed_parents'] = array_values(array_unique($styleMeta['allowed_parents']));
+        }
+        unset($styleMeta);
+
+        ksort($schema);
+        return $schema;
+    }
+
 }

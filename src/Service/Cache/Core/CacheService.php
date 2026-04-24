@@ -62,6 +62,9 @@ class CacheService
     /** @var string Cache category for action entities and configurations */
     public const CATEGORY_ACTIONS = 'actions';
 
+    /** @var string Cache category for style entities and their field schemas */
+    public const CATEGORY_STYLES = 'styles';
+
     /** @var string Cache category for API routes */
     public const CATEGORY_API_ROUTES = 'api_routes';
 
@@ -88,6 +91,7 @@ class CacheService
         self::CATEGORY_CMS_PREFERENCES,
         self::CATEGORY_SCHEDULED_JOBS,
         self::CATEGORY_ACTIONS,
+        self::CATEGORY_STYLES,
         self::CATEGORY_API_ROUTES,
         self::CATEGORY_DATA_TABLES,
         self::CATEGORY_CONDITIONS,
@@ -772,6 +776,7 @@ class CacheService
             self::CATEGORY_ROLES => 1800, // 30m
             self::CATEGORY_GROUPS => 1800, // 30m
             self::CATEGORY_DATA_TABLES => 1800, // 30m
+            self::CATEGORY_STYLES => 14400, // 4h (styles/fields rarely change at runtime)
             default => 3600, // 1h
         };
     }

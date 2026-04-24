@@ -41,7 +41,8 @@ class SectionExportImportService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly StyleSchemaService $styleSchemaService
     ) {
     }
 
@@ -144,7 +145,10 @@ class SectionExportImportService extends BaseService
         if (!$page) {
             $this->throwNotFound('Page not found');
         }
-        
+
+        // Phase 1: Dry-run validation — collect ALL issues, abort the request if any were found.
+        $this->assertImportPayloadIsValid($sectionsData);
+
         // Start transaction
         $this->entityManager->beginTransaction();
         
@@ -196,7 +200,10 @@ class SectionExportImportService extends BaseService
         if (!$parentSection) {
             $this->throwNotFound('Parent section not found');
         }
-        
+
+        // Phase 1: Dry-run validation — collect ALL issues, abort the request if any were found.
+        $this->assertImportPayloadIsValid($sectionsData);
+
         // Start transaction
         $this->entityManager->beginTransaction();
         
@@ -257,38 +264,40 @@ class SectionExportImportService extends BaseService
     }
     
     /**
-     * Add field translations to sections recursively (modular method)
-     * Only exports field names with their values - minimal data needed for import
-     * 
-     * @param array &$sections Hierarchical sections array (passed by reference)
+     * Add field translations to sections recursively and build the minimized export shape.
+     *
+     * Rules (see `docs/section-export-import.md`):
+     * - A field entry is emitted only when `content !== styles_fields.default_value` OR `meta !== null`.
+     * - `meta` is omitted from the entry when null.
+     * - `global_fields` keys are omitted when null; `debug` is omitted when false.
+     *   The entire `global_fields` object is omitted when all keys would be omitted.
+     * - `children` is omitted when empty.
+     * - `fields` is omitted when empty (NOT emitted as `(object)[]` anymore).
+     *
+     * @param array<int, array<string, mixed>> $sections Hierarchical sections (by reference; rewritten)
      */
     private function addFieldTranslationsToSections(array &$sections): void
     {
+        $defaultsByStyle = $this->styleSchemaService->getDefaultValuesByStyleName();
+
         foreach ($sections as &$section) {
             $sectionId = $section['id'] ?? null;
             if (!$sectionId) {
                 continue;
             }
 
-            // Fetch the Section entity to get global fields
             $sectionEntity = $this->sectionRepository->find($sectionId);
+            $styleName = $section['style_name'] ?? null;
+            $styleDefaults = $styleName && isset($defaultsByStyle[$styleName])
+                ? $defaultsByStyle[$styleName]
+                : [];
 
-            // Clean up section structure - keep only essential fields
             $cleanSection = [
                 'section_name' => $section['section_name'] ?? '',
-                'style_name' => $section['style_name'] ?? null,
-                'children' => [],
-                'fields' => (object)[],
-                'global_fields' => [
-                    'condition' => $sectionEntity ? $sectionEntity->getCondition() : null,
-                    'data_config' => $sectionEntity ? $sectionEntity->getDataConfig() : null,
-                    'css' => $sectionEntity ? $sectionEntity->getCss() : null,
-                    'css_mobile' => $sectionEntity ? $sectionEntity->getCssMobile() : null,
-                    'debug' => $sectionEntity ? $sectionEntity->isDebug() : false,
-                ]
+                'style_name' => $styleName,
             ];
-            
-            // Get all translations for this section
+
+            // --- fields (translations) ---
             $translations = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
                 ->createQueryBuilder('t')
                 ->leftJoin('t.field', 'f')
@@ -297,43 +306,97 @@ class SectionExportImportService extends BaseService
                 ->setParameter('sectionId', $sectionId)
                 ->getQuery()
                 ->getResult();
-            
+
             $fields = [];
             foreach ($translations as $translation) {
                 $field = $translation->getField();
                 $language = $translation->getLanguage();
-                
                 if (!$field || !$language) {
                     continue;
                 }
-                
+
                 $fieldName = $field->getName();
                 $locale = $language->getLocale();
-                
-                // Initialize field if not exists
+                $content = $translation->getContent();
+                $meta = $translation->getMeta();
+                $default = $styleDefaults[$fieldName] ?? null;
+
+                // Minimize: skip the entry when it matches the DB default AND has no meta.
+                if ($this->isSameAsDefault($content, $default) && ($meta === null || $meta === '')) {
+                    continue;
+                }
+
+                $entry = ['content' => $content];
+                if ($meta !== null && $meta !== '') {
+                    $entry['meta'] = $meta;
+                }
+
                 if (!isset($fields[$fieldName])) {
                     $fields[$fieldName] = [];
                 }
-                
-                // Store translation by locale only
-                $fields[$fieldName][$locale] = [
-                    'content' => $translation->getContent(),
-                    'meta' => $translation->getMeta()
-                ];
+                $fields[$fieldName][$locale] = $entry;
             }
-            
-            // Add fields to clean section - use object if empty to match JSON schema
-            $cleanSection['fields'] = empty($fields) ? (object)[] : $fields;
-            
-            // Process children recursively
+
+            if (!empty($fields)) {
+                $cleanSection['fields'] = $fields;
+            }
+
+            // --- global_fields ---
+            if ($sectionEntity) {
+                $globalFields = [];
+                $condition = $sectionEntity->getCondition();
+                if ($condition !== null && $condition !== '') {
+                    $globalFields['condition'] = $condition;
+                }
+                $dataConfig = $sectionEntity->getDataConfig();
+                if ($dataConfig !== null && $dataConfig !== '') {
+                    $globalFields['data_config'] = $dataConfig;
+                }
+                $css = $sectionEntity->getCss();
+                if ($css !== null && $css !== '') {
+                    $globalFields['css'] = $css;
+                }
+                $cssMobile = $sectionEntity->getCssMobile();
+                if ($cssMobile !== null && $cssMobile !== '') {
+                    $globalFields['css_mobile'] = $cssMobile;
+                }
+                if ($sectionEntity->isDebug()) {
+                    $globalFields['debug'] = true;
+                }
+
+                if (!empty($globalFields)) {
+                    $cleanSection['global_fields'] = $globalFields;
+                }
+            }
+
+            // --- children ---
             if (!empty($section['children'])) {
                 $this->addFieldTranslationsToSections($section['children']);
-                $cleanSection['children'] = $section['children'];
+                if (!empty($section['children'])) {
+                    $cleanSection['children'] = $section['children'];
+                }
             }
-            
-            // Replace the section with clean version
+
             $section = $cleanSection;
         }
+    }
+
+    /**
+     * Strict-as-possible "same as DB default" comparison with tolerance for common storage quirks:
+     *  - null ↔ "" ↔ default_value unset
+     *  - booleans stored as "0" / "1"
+     *  - numbers stored as strings
+     */
+    private function isSameAsDefault(?string $content, ?string $default): bool
+    {
+        $normalize = static function (?string $v): string {
+            if ($v === null) {
+                return '';
+            }
+            return trim($v);
+        };
+
+        return $normalize($content) === $normalize($default);
     }
     
     /**
@@ -355,15 +418,13 @@ class SectionExportImportService extends BaseService
             // Create new section
             $section = new Section();
 
-            // Set section name - preserve original for restoration, add timestamp for import
-            $baseName = $sectionData['section_name'] ?? 'Imported Section';
-            $sectionName = $baseName; // Default to original name
+            // Auto-name when `section_name` is omitted — falls back to style name (or `section`) + timestamp.
+            $baseName = $sectionData['section_name']
+                ?? ($sectionData['style_name'] ?? 'section');
 
             if ($preserveNames) {
-                // For restoration: we'll try original name first, but prepare fallback
                 $sectionName = $baseName;
             } else {
-                // For import: add timestamp suffix to ensure uniqueness
                 $timestamp = time();
                 $sectionName = $baseName . '-' . $timestamp;
             }
@@ -800,24 +861,29 @@ class SectionExportImportService extends BaseService
     private function importSectionFieldsSimplified(Section $section, array $fieldsData): void
     {
         foreach ($fieldsData as $fieldName => $localeData) {
-            // Find field by name
+            // Find field by name. Pre-validation guarantees the field exists and is valid for this style.
             $field = $this->entityManager->getRepository(Field::class)
                 ->findOneBy(['name' => $fieldName]);
 
             if (!$field) {
-                // Skip fields that don't exist in the system
-                continue;
+                // Should be unreachable thanks to assertImportPayloadIsValid(); guard anyway.
+                throw new ServiceException(
+                    "Unknown field '{$fieldName}' encountered during import (post-validation).",
+                    Response::HTTP_UNPROCESSABLE_ENTITY
+                );
             }
 
             // Process each locale
             foreach ($localeData as $locale => $translationData) {
-                // Find language by locale
+                // Find language by locale. Pre-validation guarantees the locale exists.
                 $language = $this->entityManager->getRepository(Language::class)
                     ->findOneBy(['locale' => $locale]);
 
                 if (!$language) {
-                    // Skip translations for languages that don't exist
-                    continue;
+                    throw new ServiceException(
+                        "Unknown locale '{$locale}' encountered during import (post-validation).",
+                        Response::HTTP_UNPROCESSABLE_ENTITY
+                    );
                 }
 
                 $content = $translationData['content'] ?? '';
@@ -1381,5 +1447,183 @@ class SectionExportImportService extends BaseService
             ->setParameter('section', $section)
             ->getQuery()
             ->execute();
+    }
+
+    /**
+     * Two-phase pre-validation entry point.
+     *
+     * Walks the entire import payload, collects EVERY issue into an
+     * array, and throws a single ServiceException (HTTP 422) when any
+     * issue is found — so the FE can display all errors at once.
+     *
+     * Detected issues:
+     *  - unknown style_name
+     *  - field that doesn't exist in the `fields` table
+     *  - field that isn't part of the `styles_fields` mapping for the section's style
+     *  - unknown locale (no row in `languages.locale`)
+     *  - missing `style_name` (required)
+     *
+     * @param array<int, array<string, mixed>> $sectionsData Import tree as received by the controller
+     * @throws ServiceException HTTP 422 with `errors` array in ServiceException::getData()
+     */
+    private function assertImportPayloadIsValid(array $sectionsData): void
+    {
+        $schema = $this->styleSchemaService->getSchema();
+        $allFieldNames = $this->getAllFieldNamesMap();
+        $allLocales = $this->getAllLocalesMap();
+
+        $errors = [];
+        $this->validateSectionsRecursive($sectionsData, '$', $schema, $allFieldNames, $allLocales, $errors);
+
+        if (!empty($errors)) {
+            throw new ServiceException(
+                'Import validation failed. See `data.errors[]` for per-node details.',
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+                ['errors' => $errors]
+            );
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $sections
+     * @param string $path JSONPath-like prefix used to describe error locations
+     * @param array<string, array<string, mixed>> $schema styleName => schema
+     * @param array<string, bool> $allFieldNames fast fieldName existence map
+     * @param array<string, bool> $allLocales fast locale existence map
+     * @param array<int, array<string, string>> &$errors collected errors
+     */
+    private function validateSectionsRecursive(
+        array $sections,
+        string $path,
+        array $schema,
+        array $allFieldNames,
+        array $allLocales,
+        array &$errors
+    ): void {
+        foreach ($sections as $index => $sectionData) {
+            $sectionPath = $path . '.sections[' . $index . ']';
+
+            $styleName = $sectionData['style_name'] ?? null;
+            if ($styleName === null || $styleName === '') {
+                $errors[] = [
+                    'path' => $sectionPath,
+                    'type' => 'missing_style',
+                    'detail' => "'style_name' is required for every section entry.",
+                ];
+                // Without a style we can't validate fields/children — skip the rest of this node.
+                continue;
+            }
+
+            if (!isset($schema[$styleName])) {
+                $errors[] = [
+                    'path' => $sectionPath . '.style_name',
+                    'type' => 'unknown_style',
+                    'detail' => "Style '{$styleName}' is not registered in the CMS.",
+                ];
+                // Keep scanning children & fields: their own errors are still useful to surface.
+            }
+
+            $styleFieldNames = isset($schema[$styleName])
+                ? array_flip(array_keys($schema[$styleName]['fields']))
+                : [];
+
+            // Validate fields
+            $fields = $sectionData['fields'] ?? [];
+            if (is_array($fields)) {
+                foreach ($fields as $fieldName => $localeData) {
+                    $fieldPath = $sectionPath . '.fields.' . $fieldName;
+
+                    if (!isset($allFieldNames[$fieldName])) {
+                        $errors[] = [
+                            'path' => $fieldPath,
+                            'type' => 'unknown_field',
+                            'detail' => "Field '{$fieldName}' does not exist.",
+                        ];
+                        continue;
+                    }
+
+                    if (isset($schema[$styleName]) && !isset($styleFieldNames[$fieldName])) {
+                        $errors[] = [
+                            'path' => $fieldPath,
+                            'type' => 'invalid_field_for_style',
+                            'detail' => "Field '{$fieldName}' is not valid for style '{$styleName}'.",
+                        ];
+                        continue;
+                    }
+
+                    if (!is_array($localeData)) {
+                        $errors[] = [
+                            'path' => $fieldPath,
+                            'type' => 'invalid_field_shape',
+                            'detail' => "Field '{$fieldName}' must be an object keyed by locale.",
+                        ];
+                        continue;
+                    }
+
+                    foreach ($localeData as $locale => $translation) {
+                        if (!is_string($locale) || $locale === '' || !isset($allLocales[$locale])) {
+                            $errors[] = [
+                                'path' => $fieldPath . '.' . (is_string($locale) ? $locale : '?'),
+                                'type' => 'unknown_locale',
+                                'detail' => "Locale '" . (is_string($locale) ? $locale : '?') . "' is not registered.",
+                            ];
+                            continue;
+                        }
+
+                        if (!is_array($translation) || !array_key_exists('content', $translation)) {
+                            $errors[] = [
+                                'path' => $fieldPath . '.' . $locale,
+                                'type' => 'missing_content',
+                                'detail' => "Translation entry must include a 'content' key.",
+                            ];
+                        }
+                    }
+                }
+            }
+
+            // Recurse into children
+            if (!empty($sectionData['children']) && is_array($sectionData['children'])) {
+                $this->validateSectionsRecursive(
+                    $sectionData['children'],
+                    $sectionPath,
+                    $schema,
+                    $allFieldNames,
+                    $allLocales,
+                    $errors
+                );
+            }
+        }
+    }
+
+    /**
+     * Fast existence map for every registered field name (loaded once per request).
+     *
+     * @return array<string, bool>
+     */
+    private function getAllFieldNamesMap(): array
+    {
+        $conn = $this->entityManager->getConnection();
+        $rows = $conn->executeQuery('SELECT name FROM fields')->fetchAllAssociative();
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row['name']] = true;
+        }
+        return $map;
+    }
+
+    /**
+     * Fast existence map for every registered locale (loaded once per request).
+     *
+     * @return array<string, bool>
+     */
+    private function getAllLocalesMap(): array
+    {
+        $conn = $this->entityManager->getConnection();
+        $rows = $conn->executeQuery('SELECT locale FROM languages')->fetchAllAssociative();
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row['locale']] = true;
+        }
+        return $map;
     }
 } 
