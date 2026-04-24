@@ -59,6 +59,13 @@ class AdminRoleService extends BaseService
                 function () use ($page, $pageSize, $search, $sort, $sortDirection) {
                     $qb = $this->entityManager->getRepository(Role::class)->createQueryBuilder('r');
 
+                    // Join for counts & sorting
+                    $qb->leftJoin('r.permissions', 'p')
+                    ->leftJoin('r.users', 'u')
+                    ->addSelect('COUNT(DISTINCT p.id) AS HIDDEN permissions_count')
+                    ->addSelect('COUNT(DISTINCT u.id) AS HIDDEN users_count')
+                    ->groupBy('r.id');
+
                     // Apply search filter
                     if ($search) {
                         $qb->andWhere('(r.name LIKE :search OR r.description LIKE :search)')
@@ -66,15 +73,23 @@ class AdminRoleService extends BaseService
                     }
 
                     // Apply sorting
-                    $allowedSortFields = ['name', 'description'];
-                    if ($sort && in_array($sort, $allowedSortFields)) {
+                    $allowedEntityFields = ['id', 'name', 'description'];
+                    $allowedAliasFields = ['permissions_count', 'users_count'];
+
+                    if ($sort && in_array($sort, $allowedEntityFields)) {
                         $qb->orderBy('r.' . $sort, $sortDirection);
+                    } elseif ($sort && in_array($sort, $allowedAliasFields)) {
+                        $qb->orderBy($sort, $sortDirection);
                     } else {
                         $qb->orderBy('r.name', 'asc');
                     }
 
                     // Get total count for pagination
-                    $countQb = clone $qb;
+                    $countQb = $this->entityManager->getRepository(Role::class)->createQueryBuilder('r');
+                    if ($search) {
+                        $countQb->andWhere('(r.name LIKE :search OR r.description LIKE :search)')
+                            ->setParameter('search', '%' . $search . '%');
+                    }
                     $totalCount = $countQb->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
 
                     // Apply pagination

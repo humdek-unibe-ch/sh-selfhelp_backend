@@ -504,12 +504,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         }
 
         // Sorting
-        $allowedSortFields = ['id', 'name', 'description', 'requires_2fa'];
+        $allowedEntityFields = ['id', 'name', 'description'];
+        $allowedAliasFields = ['permissions_count'];
 
-        if ($sort === 'users_count') {
-            $qb->orderBy('users_count', $sortDirection);
-        } elseif ($sort && in_array($sort, $allowedSortFields)) {
+        if ($sort && in_array($sort, $allowedEntityFields)) {
             $qb->orderBy('g.' . $sort, $sortDirection);
+        } elseif ($sort && in_array($sort, $allowedAliasFields)) {
+            $qb->orderBy($sort, $sortDirection);
         } else {
             $qb->orderBy('g.name', 'asc');
         }
