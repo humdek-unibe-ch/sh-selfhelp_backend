@@ -1,0 +1,51 @@
+services:
+  # Mercure Hub — Caddy build with the Mercure module.
+  #
+  # The hub holds long-lived SSE connections on behalf of every subscriber
+  # (one connection per browser tab, multiplied by every browser tab in the
+  # building) so PHP-FPM never has to. Symfony only ever talks to it with a
+  # short publishing POST.
+  #
+  # Wire contract (must match Symfony's MERCURE_* env in .env / .env.dev):
+  #   - Publisher JWT secret == MERCURE_PUBLISHER_JWT_KEY
+  #   - Subscriber JWT secret == MERCURE_SUBSCRIBER_JWT_KEY
+  #   - Public URL exposed at http://localhost:3001/.well-known/mercure
+  #
+  # See README.md "Real-time push (Mercure)" for the full operational guide.
+  mercure:
+    image: dunglas/mercure:v0.16
+    container_name: selfhelp_mercure
+    restart: unless-stopped
+    environment:
+      # Caddyfile entry point.
+      SERVER_NAME: ":80"
+      # Same secret on both sides == single shared HMAC. The Symfony env var
+      # MERCURE_JWT_SECRET feeds *both* publisher and subscriber tokens.
+      MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_JWT_SECRET:-!ChangeThisMercureHubJWTSecretKey!}
+      MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_JWT_SECRET:-!ChangeThisMercureHubJWTSecretKey!}
+      # Allow the BFF (Next.js dev server) to subscribe with credentials.
+      # Tighten this list for production to the exact origin(s) of the BFF.
+      MERCURE_EXTRA_DIRECTIVES: |
+        cors_origins http://localhost:3000 http://127.0.0.1:3000
+        anonymous false
+        publish_origins http://localhost http://127.0.0.1
+        subscriptions
+    ports:
+      # External port 3001 → container port 80. Matches MERCURE_PUBLIC_URL
+      # in .env.dev (`http://127.0.0.1:3001/.well-known/mercure`).
+      - "3001:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      # Persist the in-memory ring buffer of recent updates so a hub
+      # restart does not lose history for clients that reconnect with a
+      # `Last-Event-ID:` header.
+      - mercure_data:/data
+      - mercure_config:/config
+
+volumes:
+  mercure_data:
+  mercure_config:

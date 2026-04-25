@@ -1774,6 +1774,24 @@ FROM `api_routes` ar
 JOIN `permissions` p ON p.`name` = 'admin.page.export'
 WHERE ar.`route_name` = 'admin_ai_section_prompt_template_get';
 
+-- =====================================================================
+-- Real-time ACL push (Server-Sent Events) — mirrors
+-- migrations/Version20260425000000.php. Kept here so a fresh install
+-- bootstrapped from update_scripts/* registers the SSE route too.
+--
+-- The endpoint lives under `/auth/*` (PUBLIC_ACCESS) and authenticates
+-- manually via `UserContextService` inside the controller, matching
+-- how `/auth/user-data` works. No `api_routes_permissions` row is
+-- needed: the controller 401s anonymous callers itself.
+-- =====================================================================
+
+INSERT IGNORE INTO `api_routes`
+    (`route_name`, `version`, `methods`, `path`, `controller`, `requirements`, `params`)
+VALUES
+('auth_events_stream_v1', 'v1', 'GET', '/auth/events',
+ 'App\\Controller\\Api\\V1\\Auth\\AuthEventsController::events',
+ NULL, NULL);
+
 -- Grant all permissions to the admin role ALWAYS LAST
 INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
 SELECT (SELECT id FROM roles WHERE `name` = 'admin'), id FROM permissions;

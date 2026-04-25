@@ -188,6 +188,65 @@ php bin/console doctrine:fixtures:load --no-interaction
 # Create initial admin user
 php bin/console app:create-admin-user your.email@example.com "Admin Name"
 ```
+
+## Real-time push (Mercure)
+
+The backend uses [Mercure](https://mercure.rocks) (Caddy + the Mercure module) to push live `acl-changed` events to the frontend the moment a user's effective permission set changes — no polling, no PHP-FPM workers held open. The flow is:
+
+1. `User::bumpAclVersion()` is called somewhere in a service (group/role mutation, async job grant, profile edit, etc.).
+2. `App\EventListener\AclVersionMercurePublisher` fires on Doctrine `postFlush`, sees `acl_version` in the changeset, and publishes an `acl-changed` update to the user's private topic on the hub.
+3. The Next.js BFF (`/api/auth/events`) holds a single upstream Mercure subscription per browser tab and pipes the events back to the browser as same-origin SSE.
+
+### Setup (Docker)
+
+A ready-to-use Caddy/Mercure container is provided in `docker-compose.mercure.yml`. The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`).
+
+```bash
+# 1. Generate (or pick) a strong secret and write it to .env.local — the
+#    same value MUST be present when you start the hub container.
+echo "MERCURE_JWT_SECRET=\"$(openssl rand -base64 48)\"" >> .env.local
+
+# 2. Start the hub. The compose file reads MERCURE_JWT_SECRET from the
+#    environment (or .env in your shell) so both Symfony and the hub end
+#    up with the same shared HMAC key.
+docker compose -f docker-compose.mercure.yml up -d
+
+# 3. Verify the hub is running and reachable.
+curl -sS http://127.0.0.1:3001/healthz   # → "ok"
+docker compose -f docker-compose.mercure.yml ps
+
+# 4. Tail the hub logs while you exercise the app (helpful when debugging
+#    "no events received" issues — every publish/subscribe is logged).
+docker compose -f docker-compose.mercure.yml logs -f mercure
+
+# 5. Stop / clean up when done. Add `--volumes` to also drop the in-memory
+#    history ring buffer.
+docker compose -f docker-compose.mercure.yml down
+```
+
+### One-shot `docker run` alternative
+
+If you do not want to use compose:
+
+```bash
+docker run -d --name selfhelp_mercure --rm \
+  -p 3001:80 \
+  -e SERVER_NAME=":80" \
+  -e MERCURE_PUBLISHER_JWT_KEY="$MERCURE_JWT_SECRET" \
+  -e MERCURE_SUBSCRIBER_JWT_KEY="$MERCURE_JWT_SECRET" \
+  -e MERCURE_EXTRA_DIRECTIVES=$'cors_origins http://localhost:3000 http://127.0.0.1:3000\nanonymous false\npublish_origins http://localhost http://127.0.0.1\nsubscriptions' \
+  dunglas/mercure:v0.16
+```
+
+### Production notes
+
+- Put the hub behind your reverse proxy on the **same domain** as the application (e.g. `https://app.example.com/.well-known/mercure`) so the browser can subscribe directly without cross-origin cookie issues. Update `MERCURE_PUBLIC_URL` accordingly; `MERCURE_URL` (used by Symfony) can stay on the internal network.
+- Replace `cors_origins` and `publish_origins` in `MERCURE_EXTRA_DIRECTIVES` with your real frontend / backend hostnames.
+- Issue the publisher and subscriber JWT secrets separately (do **not** reuse `MERCURE_JWT_SECRET` for both) for stronger isolation. Update `config/packages/mercure.yaml` accordingly.
+- For HA, point the hub at a Redis backend instead of the default in-memory transport — see [the Mercure docs](https://mercure.rocks/docs/hub/cluster).
+
+For the algorithm and on-the-wire payload details, see `docs/developer/13-acl-system.md` ("Real-time ACL push").
+
 ## Web Server Configuration
 
 ### Apache Configuration

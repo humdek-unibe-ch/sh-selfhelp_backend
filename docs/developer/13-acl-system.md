@@ -104,6 +104,123 @@ $this->cache
 - `UserPermissionService` - Direct permission assignments
 - `ACLService` - ACL rule modifications
 
+## 📡 Real-time ACL Push to the Frontend
+
+Cache invalidation is necessary but not sufficient: invalidating
+`CATEGORY_PERMISSIONS` makes the *next* API call serve a fresh
+permission set, but if the user is just sitting on a page their menu
+will still show the stale state until they click something. To close
+that gap we use a per-user version token plus a Server-Sent Events
+push channel.
+
+### `users.acl_version`
+
+The `users` table carries an `acl_version` column (`VARCHAR(36)
+NULL`). Whenever an ACL-relevant mutation happens, the affected
+`User` entity is mutated through `User::bumpAclVersion()`, which
+generates a fresh random hex token and persists it on `flush()`.
+
+```php
+// src/Entity/User.php
+public function bumpAclVersion(): self
+{
+    $this->acl_version = bin2hex(random_bytes(16));
+    return $this;
+}
+```
+
+Call sites today:
+
+- `AdminUserService::bumpAclVersion(int $userId)` — single-user updates.
+- `AdminGroupService` — when group membership changes.
+- `AdminRoleService` — when role assignments change.
+- `ProfileService` — on self-service profile mutations that affect ACL.
+- `TaskJobExecutorService` — when an async job grants/revokes access.
+
+**Rule of thumb:** any code path that already calls
+`invalidateAllListsInCategory()` for `CATEGORY_PERMISSIONS` should also
+bump `acl_version` on every affected user. Forgetting this means the
+backend is correct but the frontend menu / sidebar will not refresh
+until the next focus event or 30 s stale window.
+
+### Real-time ACL push (Mercure)
+
+The transport from "version bumped" to "browser sees the change" is a
+[Mercure](https://mercure.rocks) hub (Caddy + the Mercure module). PHP
+never holds a long-lived connection — it only does cheap fire-and-forget
+POSTs to the hub when ACL state actually changes. The hub then pushes
+SSE updates to every subscribed client.
+
+#### Publisher: `AclVersionMercurePublisher`
+
+`App\EventListener\AclVersionMercurePublisher` is a Doctrine listener
+on `onFlush` + `postFlush`:
+
+1. **`onFlush`** — scans the unit-of-work for `User` entities whose
+   changeset includes `acl_version`, captures the new value into an
+   in-process buffer keyed by user id.
+2. **`postFlush`** — once the SQL has actually committed, publishes one
+   `acl-changed` Mercure update per buffered user and clears the buffer.
+
+Buffering across `onFlush` → `postFlush` (rather than publishing inside
+`onFlush`) prevents leaking a notification for a transaction that
+ultimately rolls back.
+
+The published `Update` carries:
+
+| Field   | Value                                                               |
+|---------|---------------------------------------------------------------------|
+| topic   | `https://selfhelp.app/users/{userId}/acl` (per-user, private)        |
+| type    | `acl-changed`                                                       |
+| data    | `{"aclVersion":"<new hex>"}`                                        |
+| private | `true` (only subscribers JWT-scoped to the topic receive the update) |
+
+Topic format is centralised in
+`App\Service\Mercure\MercureTopicResolver` (driven by
+`MERCURE_TOPIC_PREFIX`) so emitter and subscribers stay in lock-step.
+
+#### Subscriber bootstrap: `GET /cms-api/v1/auth/events`
+
+`AuthEventsController::events` mints a short-lived HMAC-SHA256 JWT
+(via `Symfony\Component\Mercure\Jwt\LcobucciFactory`) scoped to the
+caller's per-user topic and returns the discovery payload:
+
+```json
+{
+  "hubUrl": "https://app.example.com/.well-known/mercure",
+  "topic": "https://selfhelp.app/users/123/acl",
+  "token": "<signed JWT>",
+  "expiresIn": 3600
+}
+```
+
+The Next.js BFF (`/api/auth/events/route.ts`) calls this endpoint, opens
+an upstream request to `${hubUrl}?topic=${encodeURIComponent(topic)}`
+with `Authorization: Bearer ${token}`, and pipes the byte stream straight
+back to the browser as same-origin SSE. The browser-side
+`useAclEventStream` hook listens for `acl-changed` events and invalidates
+its `['user-data']` React Query cache, which cascades into navigation,
+admin sidebar, and page-content invalidations through
+`useAclVersionWatcher`. Net result: an admin can grant a permission in
+one tab and the affected user's menu reveals the new page within ~1 RTT
+in another browser, without any user interaction.
+
+Subscriber JWT lifetime is intentionally short (1 h default,
+`MERCURE_SUBSCRIBER_TTL`); the BFF re-mints on every Mercure reconnect
+so leaked tokens age out quickly.
+
+#### Setup
+
+The hub runs as a separate container — see README "Real-time push
+(Mercure)" for the dockerised setup (`docker-compose.mercure.yml`,
+publisher/subscriber JWT secret coordination, CORS configuration). The
+shared HMAC key is `MERCURE_JWT_SECRET`; it must match the
+`MERCURE_PUBLISHER_JWT_KEY` / `MERCURE_SUBSCRIBER_JWT_KEY` baked into
+the hub container.
+
+Detailed wire contract: see
+[`docs/api-usage/01-authentication.md`](../api-usage/01-authentication.md#real-time-acl-events-stream-sse).
+
 ### 🔧 Admin Role-Based API System (CMS Backend)
 - **Purpose**: Controls access to admin API routes and CMS functionality
 - **Users**: Admin users, editors, content managers

@@ -322,6 +322,95 @@ Authorization: Bearer your_jwt_token
 
 **Permissions:** None (requires valid JWT token)
 
+### Real-time ACL Events Stream (Mercure subscriber bootstrap)
+
+Real-time `acl-changed` events are delivered through a [Mercure](https://mercure.rocks)
+hub (Caddy + Mercure module) running alongside the API. PHP-FPM never holds an
+SSE connection — it only POSTs publishes to the hub when ACL state actually
+changes. The `/auth/events` endpoint described below returns the *discovery
+payload* the frontend BFF needs to subscribe to the hub on the user's behalf.
+
+**Endpoint:** `GET /cms-api/v1/auth/events`
+
+**Headers:**
+```
+Authorization: Bearer your_jwt_token
+```
+
+**Success response (`200 OK`, `application/json`):**
+
+The payload is wrapped in the standard `ApiResponseFormatter` envelope
+(matches every other auth endpoint such as `/auth/login`,
+`/auth/refresh-token`, `/auth/user-data`) and is validated against
+`config/schemas/api/v1/responses/auth/events.json` when
+`VALIDATE_RESPONSE_SCHEMA=1`.
+
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": true,
+  "meta": { "version": "v1", "timestamp": "2026-04-25T02:14:00+00:00" },
+  "data": {
+    "hubUrl": "https://app.example.com/.well-known/mercure",
+    "topic": "https://selfhelp.app/users/123/acl",
+    "token": "eyJhbGciOiJIUzI1NiJ9.eyJtZXJjdXJlIjp7InN1YnNjcmliZSI6Wy4uLl19fQ.…",
+    "expiresIn": 3600
+  }
+}
+```
+
+| `data` field | Type    | Meaning                                                                                                                       |
+|--------------|---------|-------------------------------------------------------------------------------------------------------------------------------|
+| `hubUrl`     | string  | Public URL of the Mercure hub (`MERCURE_PUBLIC_URL`).                                                                         |
+| `topic`      | string  | Per-user, private topic IRI. Issued JWT only authorises *this exact* topic.                                                   |
+| `token`      | string  | HMAC-SHA256 JWT to send as `Authorization: Bearer …` when subscribing to the hub.                                             |
+| `expiresIn`  | integer | Lifetime of `token` in seconds. The frontend should treat this as an upper bound and re-call `/auth/events` on every reconnect. |
+
+**Subscribing:** open a `text/event-stream` request to
+`${hubUrl}?topic=${encodeURIComponent(topic)}` with the `Authorization`
+header set to `Bearer ${token}`. The reference implementation
+(`sh-selfhelp_frontend/src/app/api/auth/events/route.ts`) is the BFF
+proxy: it calls this endpoint, opens the upstream subscription, and
+pipes the bytes back to the browser as same-origin SSE so
+`useAclEventStream` can use a plain `EventSource('/api/auth/events')`.
+
+**Hub events:**
+
+| Event           | Payload                                   | Meaning                                                                                                                                                                |
+|-----------------|--------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `acl-changed`   | `{ "aclVersion": "<hex string>" }`         | The user's `users.acl_version` changed. The client should re-fetch `/auth/user-data` and any nav/permission-gated data caches.                                          |
+
+The Mercure hub also injects synthetic events of its own (`ping` keep-alives,
+`Last-Event-ID` cursor) — they are protocol-level bookkeeping the
+browser's `EventSource` handles transparently.
+
+**Lifecycle:**
+
+- The hub holds the long-lived SSE connection — PHP only ever does
+  short publish POSTs. Subscribers can stay connected indefinitely
+  (no 5-minute self-termination, no PHP-FPM worker held open).
+- If the user is unauthenticated, the endpoint returns `401
+  Unauthorized` with the standard error envelope (no token is issued).
+- If `MERCURE_JWT_SECRET` is not configured, the endpoint returns
+  `500 Internal Server Error` so the misconfiguration is obvious.
+
+**What triggers `acl-changed`:** any code path that calls
+`User::bumpAclVersion()` and flushes — Doctrine listener
+`App\EventListener\AclVersionMercurePublisher` publishes the Mercure
+update on `postFlush`. As of v8.0.0 those code paths are
+`AdminGroupService`, `AdminRoleService`, `AdminUserService`,
+`ProfileService`, and `TaskJobExecutorService` (async job grants).
+New ACL-mutating code only needs to bump `acl_version` and flush the
+entity — no Mercure wiring required.
+
+**Permissions:** None (requires valid JWT token).
+
+**Configuration / setup:** see the README "Real-time push (Mercure)"
+section for the hub Docker Compose setup, JWT secret coordination,
+and production-deployment notes.
+
 ### Update User Name
 
 Update the current user's display name.
