@@ -14,9 +14,7 @@ use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\LookupService;
 use App\Service\ACL\ACLService;
-use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
-use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
@@ -41,7 +39,6 @@ class SectionExportImportService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly StyleSchemaService $styleSchemaService
     ) {
     }
@@ -154,15 +151,9 @@ class SectionExportImportService extends BaseService
         
         try {
             $importedSections = $this->importSections($sectionsData, $page, null, $position);
-            
-            // Invalidate page and sections cache after import
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateAllListsInCategory();
-            
+
+            $this->invalidateImportCaches($page->getId());
+
             // Commit transaction
             $this->entityManager->commit();
             
@@ -209,18 +200,9 @@ class SectionExportImportService extends BaseService
         
         try {
             $importedSections = $this->importSections($sectionsData, null, $parentSection, $position);
-            
-            // Invalidate sections cache after import
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateAllListsInCategory();
-            
+
+            $this->invalidateImportCaches($pageId);
+
             // Commit transaction
             $this->entityManager->commit();
             
@@ -235,6 +217,32 @@ class SectionExportImportService extends BaseService
                 ['previous_exception' => $e->getMessage()]
             );
         }
+    }
+
+    /**
+     * Invalidate the cache categories that import / restore can affect.
+     *
+     * - PAGES: scoped to the affected page (its sections list / page payload).
+     * - SECTIONS: every list — imported / restored sections can land anywhere in
+     *   the hierarchy and we don't track per-list keys.
+     * - CONDITIONS: imported sections can carry `global_fields.condition`, so
+     *   condition-cache entries for the page must be dropped too.
+     *
+     * Kept centralized so the three import paths
+     * ({@see importSectionsToPage()}, {@see importSectionsToSection()},
+     * {@see restoreSectionsFromVersion()}) stay in sync as cache categories evolve.
+     */
+    private function invalidateImportCaches(int $pageId): void
+    {
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->invalidateAllListsInCategory();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_CONDITIONS)
+            ->invalidateAllListsInCategory();
     }
 
     /**
@@ -400,34 +408,30 @@ class SectionExportImportService extends BaseService
     }
     
     /**
-     * Import sections from JSON data
+     * Import sections from JSON data.
+     *
+     * Always appends a `-{timestamp}` suffix to the section name so concurrent
+     * imports can never collide. The `restoreSectionsFromVersion` flow does NOT
+     * go through this method — it preserves IDs via `performSmartSectionRestoration`.
      *
      * @param array $sectionsData The sections data to import
      * @param Page|null $page The target page (if importing to page)
      * @param Section|null $parentSection The parent section (if importing to section)
      * @param int|null $globalPosition The global position for the first level of imported sections
-     * @param bool $preserveNames Whether to preserve original section names (for restoration) or add timestamps (for import)
      * @return array Result of the import operation
      */
-    private function importSections(array $sectionsData, ?Page $page = null, ?Section $parentSection = null, ?int $globalPosition = null, bool $preserveNames = false): array
+    private function importSections(array $sectionsData, ?Page $page = null, ?Section $parentSection = null, ?int $globalPosition = null): array
     {
         $importedSections = [];
         $currentPosition = $globalPosition;
-        
+
         foreach ($sectionsData as $index => $sectionData) {
-            // Create new section
             $section = new Section();
 
             // Auto-name when `section_name` is omitted — falls back to style name (or `section`) + timestamp.
             $baseName = $sectionData['section_name']
                 ?? ($sectionData['style_name'] ?? 'section');
-
-            if ($preserveNames) {
-                $sectionName = $baseName;
-            } else {
-                $timestamp = time();
-                $sectionName = $baseName . '-' . $timestamp;
-            }
+            $sectionName = $baseName . '-' . time();
 
             $section->setName($sectionName);
             
@@ -547,11 +551,11 @@ class SectionExportImportService extends BaseService
             
             // Import child sections recursively if present
             if (isset($sectionData['children']) && is_array($sectionData['children'])) {
-                $childResults = $this->importSections($sectionData['children'], null, $section, null, $preserveNames);
+                $childResults = $this->importSections($sectionData['children'], null, $section, null);
                 $importedSections = array_merge($importedSections, $childResults);
             }
         }
-        
+
         return $importedSections;
     }
 
@@ -612,13 +616,8 @@ class SectionExportImportService extends BaseService
             // Step 2: Force flush to ensure all operations are committed to database
             $this->entityManager->flush();
 
-            // Step 3: Invalidate caches
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateAllListsInCategory();
+            // Step 3: Invalidate caches (same set as a regular import).
+            $this->invalidateImportCaches($page->getId());
 
             // Step 4: Log the transaction
             $this->transactionService->logTransaction(
@@ -669,189 +668,6 @@ class SectionExportImportService extends BaseService
     }
 
     /**
-     * Convert published version sections to export format
-     *
-     * Transforms the complex published version structure with translations
-     * into the simpler export format that the import logic expects.
-     *
-     * @param array $publishedSections The sections from published version JSON
-     * @return array Sections in export format
-     */
-    private function convertPublishedSectionsToExportFormat(array $publishedSections): array
-    {
-        $exportSections = [];
-
-        foreach ($publishedSections as $section) {
-            $exportSection = [
-                'section_name' => $section['section_name'] ?? '',
-                'style_name' => $section['style_name'] ?? null,
-                'children' => [],
-                'fields' => (object)[],
-                'global_fields' => [
-                    'condition' => $section['condition'] ?? null,
-                    'data_config' => $section['data_config'] ?? null,
-                    'css' => $section['css'] ?? null,
-                    'css_mobile' => $section['css_mobile'] ?? null,
-                    'debug' => isset($section['debug']) ? (bool)$section['debug'] : false,
-                ]
-            ];
-
-            $fields = [];
-
-            // Process translations from the translations object first
-            // These contain the raw multilingual data
-            if (isset($section['translations']) && is_array($section['translations'])) {
-                foreach ($section['translations'] as $languageId => $languageTranslations) {
-                    // Get locale for this language ID
-                    $locale = $this->getLocaleForLanguageId((int)$languageId);
-                    if (!$locale) continue;
-
-                    foreach ($languageTranslations as $fieldName => $fieldData) {
-                        if (!isset($fields[$fieldName])) {
-                            $fields[$fieldName] = [];
-                        }
-                        $fields[$fieldName][$locale] = [
-                            'content' => $fieldData['content'] ?? '',
-                            'meta' => $fieldData['meta'] ?? null
-                        ];
-                    }
-                }
-            }
-
-            // Process fields that are also at the root level of the section
-            // These are fallback values, only use if not already in translations
-            foreach ($section as $key => $value) {
-                // Skip known non-field keys
-                if (in_array($key, [
-                    'id', 'css', 'path', 'debug', 'level', 'children', 'position',
-                    'condition', 'id_styles', 'css_mobile', 'style_name', 'data_config',
-                    'section_name', 'translations', 'can_have_children', 'use_mantine_style',
-                    'mantine_spacing_margin_padding'
-                ])) {
-                    continue;
-                }
-
-                // If it's a field (has content/meta structure) and not already processed from translations
-                if (is_array($value) && isset($value['content']) && !isset($fields[$key])) {
-                    // Get default locale for root-level fields
-                    $defaultLocale = $this->getDefaultLocale();
-                    if ($defaultLocale) {
-                        $fields[$key] = [];
-                        $fields[$key][$defaultLocale] = [
-                            'content' => $value['content'] ?? '',
-                            'meta' => $value['meta'] ?? null
-                        ];
-                    }
-                }
-            }
-
-            // Convert fields to object if empty, otherwise keep as array
-            $exportSection['fields'] = empty($fields) ? (object)[] : $fields;
-
-            // Process children recursively
-            if (isset($section['children']) && is_array($section['children'])) {
-                $exportSection['children'] = $this->convertPublishedSectionsToExportFormat($section['children']);
-            }
-
-            $exportSections[] = $exportSection;
-        }
-
-        return $exportSections;
-    }
-
-    /**
-     * Get locale for a language ID
-     *
-     * @param int $languageId
-     * @return string|null
-     */
-    private function getLocaleForLanguageId(int $languageId): ?string
-    {
-        try {
-            $language = $this->entityManager->getRepository(\App\Entity\Language::class)->find($languageId);
-            return $language ? $language->getLocale() : null;
-        } catch (\Exception $e) {
-            return null;
-        }
-    }
-
-    /**
-     * Get the default locale
-     *
-     * @return string|null
-     */
-    private function getDefaultLocale(): ?string
-    {
-        try {
-            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
-            if ($defaultLanguageId) {
-                $language = $this->entityManager->getRepository(Language::class)->find($defaultLanguageId);
-                if ($language) {
-                    return $language->getLocale();
-                }
-            }
-        } catch (\Exception $e) {
-            // Ignore errors
-        }
-        return 'en-GB'; // Fallback
-    }
-
-    /**
-     * Clear all sections for a given page
-     *
-     * This removes all sections and their hierarchical relationships from the page,
-     * preparing it for restoration from a published version.
-     *
-     * @param Page $page The page to clear sections from
-     */
-    private function clearPageSections(Page $page): void
-    {
-        $pageId = $page->getId();
-
-        // Get all section IDs currently associated with this page
-        $sectionIds = $this->sectionRepository->getSectionIdsForPage($pageId);
-
-        if (empty($sectionIds)) {
-            return; // No sections to clear
-        }
-
-        // Delete section relationships (PagesSection)
-        $this->entityManager->createQueryBuilder()
-            ->delete(PagesSection::class, 'ps')
-            ->where('ps.page = :page')
-            ->setParameter('page', $page)
-            ->getQuery()
-            ->execute();
-
-        // Delete hierarchical relationships (SectionsHierarchy) for these sections
-        $this->entityManager->createQueryBuilder()
-            ->delete(SectionsHierarchy::class, 'sh')
-            ->where('sh.parentSection IN (:sectionIds) OR sh.childSection IN (:sectionIds)')
-            ->setParameter('sectionIds', $sectionIds)
-            ->getQuery()
-            ->execute();
-
-        // Delete field translations for these sections
-        $this->entityManager->createQueryBuilder()
-            ->delete(SectionsFieldsTranslation::class, 'sft')
-            ->where('sft.section IN (:sectionIds)')
-            ->setParameter('sectionIds', $sectionIds)
-            ->getQuery()
-            ->execute();
-
-        // Finally, delete the sections themselves
-        $this->entityManager->createQueryBuilder()
-            ->delete(Section::class, 's')
-            ->where('s.id IN (:sectionIds)')
-            ->setParameter('sectionIds', $sectionIds)
-            ->getQuery()
-            ->execute();
-
-        // Flush to ensure all deletions are committed
-        $this->entityManager->flush();
-    }
-
-    /**
      * Import section fields using simplified format (modular method)
      * Only processes field names with their values - minimal data needed
      *
@@ -886,6 +702,16 @@ class SectionExportImportService extends BaseService
                     );
                 }
 
+                // `content` is intentionally coerced to '' when `null`. Reasons:
+                //   - The DB column `sections_fields_translation.content` is
+                //     `TEXT NOT NULL`, and the entity setter takes `string`.
+                //   - The export filter (`isSameAsDefault`) already drops
+                //     entries that match defaults, so a hand-edited payload
+                //     with `content: null` was likely meant as "blank". We
+                //     normalize once here instead of forcing every consumer
+                //     to handle null specially.
+                //   - The JSON schema still allows `["string","null"]` to
+                //     stay tolerant of payloads emitted by older exporters.
                 $content = $translationData['content'] ?? '';
                 $meta = $translationData['meta'] ?? null;
 

@@ -64,6 +64,15 @@ Emission rules:
 - `section_name` is optional on import — backend auto-generates `"-{timestamp}"`.
 - Booleans are stored as `"0"` / `"1"` strings in translation entries;
   `global_fields.debug` is the only real JSON boolean.
+- `content: null` is **accepted** by the schema for forward-compat with
+  older exporters, but the import path normalizes it to `""` before
+  persisting. The underlying column
+  `sections_fields_translation.content` is `TEXT NOT NULL` and the entity
+  setter takes a non-nullable `string`. So a round-trip
+  `export → import` will turn any latent `null` content into `""`.
+  This is intentional: it means consumers never have to handle a `null`
+  translation, and it kills a class of bugs where stale `null` values
+  would resurface after a restore.
 
 The frontend helper `readJsonFile` now only enforces that the top-level is
 an array and that each entry has a `style_name`. Every other integrity check
@@ -106,15 +115,24 @@ happens server-side in the pre-validation pass.
 
 ### Import success response
 
+The backend returns a flat list of imported sections (root + every nested
+child). Field names match the actual `SectionExportImportService::importSections`
+output:
+
 ```json
 {
-  "data": {
-    "importedSections": [
-      { "id": 123, "name": "hero-1719834000", "style_name": "container" }
-    ]
-  }
+  "data": [
+    { "id": 123, "section_name": "hero-1719834000", "style_name": "container", "position": 0 },
+    { "id": 124, "section_name": "card-1719834000", "style_name": "card",      "position": null }
+  ]
 }
 ```
+
+Notes:
+- `section_name` is the auto-suffixed name actually persisted (`-{timestamp}`).
+- `position` is `null` for descendants (they're attached via `sections_hierarchy`,
+  not `pages_sections`); only first-level entries inserted with a `position`
+  argument carry a numeric value.
 
 ### Import validation failure (HTTP 422)
 
@@ -122,27 +140,42 @@ When the two-phase pre-validation pass detects any problem (unknown style,
 unknown field for that style, unknown locale, structural error), the entire
 payload is rejected **before** `beginTransaction` — no partial writes.
 
+The error travels through `ServiceException` → `ApiResponseFormatter::formatException()`
+→ `formatError()`, so it lands in the **standard error envelope**: `errors[]`
+sits under `data`, not at the top level, and `status` is the numeric HTTP
+code (not the string `"error"`):
+
 ```json
 {
-  "status": "error",
-  "message": "Import validation failed",
-  "errors": [
-    { "path": "[0]",                    "type": "unknown_style",  "detail": "Style \"herro\" is not registered." },
-    { "path": "[0].fields.title",       "type": "unknown_field",  "detail": "Field \"title\" is not valid for style \"container\"." },
-    { "path": "[0].fields.title.de-XX", "type": "unknown_locale", "detail": "Locale \"de-XX\" is not registered." }
-  ]
+  "status": 422,
+  "message": "Unprocessable Entity",
+  "error": "Import validation failed. See `data.errors[]` for per-node details.",
+  "logged_in": true,
+  "meta": {
+    "version": "v1",
+    "timestamp": "2026-04-25T10:12:34+00:00"
+  },
+  "data": {
+    "errors": [
+      { "path": "$.sections[0]",                    "type": "unknown_style",  "detail": "Style 'herro' is not registered in the CMS." },
+      { "path": "$.sections[0].fields.title",       "type": "unknown_field",  "detail": "Field 'title' is not valid for style 'container'." },
+      { "path": "$.sections[0].fields.title.de-XX", "type": "unknown_locale", "detail": "Locale 'de-XX' is not registered." }
+    ]
+  }
 }
 ```
 
-The admin UI (`AddSectionModal`) surfaces this `errors[]` array as a Mantine
-alert list so users can fix the JSON before retrying.
+The admin UI (`AddSectionModal`) reads `response.data.errors[]` and surfaces
+it as a Mantine alert list so users can fix the JSON before retrying.
 
 ## Transactions & caching
 
 - Import is wrapped in a DB transaction; pre-validation happens outside of
   it so we never pay the cost of opening one if the payload is invalid.
-- On `commit`, the relevant cache categories (pages, sections, styles) are
-  invalidated.
+- On `commit`, the relevant cache categories (`pages`, `sections`,
+  `conditions`) are invalidated. `styles` is intentionally **not** touched
+  — imports never mutate the style schema, only section instances and
+  their `global_fields.condition` blobs.
 - Pre-validation + persistence share the same `StyleSchemaService` cached
   view of the style schema — no extra queries per request.
 
@@ -168,20 +201,33 @@ route. The prompt template instructs LLMs to use
 `/assets/image-holder.png` (relative path) for every `img_src` value so the
 FE resolves it locally regardless of the deployment host.
 
-## Regenerating the prompt template
+## Editing the prompt template
 
-After any change to the `styles` / `fields` / `styles_fields` tables, or to
-`docs/AI Prompts/prompt_template_base.md`, regenerate the committed prompt
-file:
+The runtime endpoint `GET /admin/ai/section-prompt-template` renders the
+prompt **on demand** from
+`<ai_prompt_template_dir>/prompt_template_base.md` plus the live
+`StyleSchemaService::getSchema()` catalog. There is no build step on the
+hot path — edit the base markdown, save, and the next call to the endpoint
+returns the new content (the schema cache picks up DB changes
+automatically; force a refresh with
+`CacheService::CATEGORY_STYLES → invalidateAllListsInCategory()` if needed).
+
+The optional console command:
 
 ```bash
 bin/console app:prompt-template:build
 ```
 
-This writes `sh-selfhelp_frontend/docs/AI Prompts/ai_section_generation_prompt.md`
-(and is the file served by the `section-prompt-template` endpoint). A
-corresponding FE helper (`npm run gen:styles`) regenerates
-`src/types/common/styles.types.generated.ts`.
+writes a snapshot to `<ai_prompt_template_dir>/ai_section_generation_prompt.md`
+**only for offline review / diffing**. That file is gitignored, never
+served, and goes stale the moment any style or field changes — do not
+rely on it. The path is still controlled by the `AI_PROMPT_TEMPLATE_DIR`
+env var; see `docs/developer/style-schema-endpoint.md` for the full
+path-resolution rules.
+
+The frontend codegen (`npm run gen:styles`) regenerates
+`src/types/common/styles.types.generated.ts` from the same schema endpoint
+that feeds the prompt — keep them refreshed together.
 
 ## Permissions summary
 

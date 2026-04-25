@@ -29,7 +29,7 @@
                                 "properties": {
                                     "content": {
                                         "type": ["string", "null"],
-                                        "description": "Field content. Omit the entire entry when equal to the style default."
+                                        "description": "Field content. Omit the entire entry when equal to the style default. NOTE: `null` is accepted by the schema for forward-compat with older exporters, but the backend normalizes it to an empty string before persisting (the underlying column is NOT NULL)."
                                     },
                                     "meta": {
                                         "type": ["string", "null"],
