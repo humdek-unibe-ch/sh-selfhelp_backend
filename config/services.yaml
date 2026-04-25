@@ -7,6 +7,9 @@ parameters:
     # JWT token TTL settings from environment variables
     jwt_token_ttl: '%env(int:JWT_TOKEN_TTL)%'
     jwt_refresh_token_ttl: '%env(int:JWT_REFRESH_TOKEN_TTL)%'
+    # Response-schema validation (expensive). Opt in via env; defaults to false.
+    # See docs/developer/05-api-patterns.md.
+    validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'
 
 services:
     # default configuration for services in *this* file
@@ -59,3 +62,8 @@ services:
         autowire: false
         autoconfigure: false
         arguments: []
+
+    # Response-schema validation toggle wired from the `validate_response_schema` param.
+    App\Service\Core\ApiResponseFormatter:
+        arguments:
+            $validateResponseSchema: '%validate_response_schema%'
