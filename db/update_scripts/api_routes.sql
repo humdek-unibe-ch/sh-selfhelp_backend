@@ -1746,6 +1746,34 @@ FROM `api_routes` ar
 JOIN `permissions` p ON p.`name` = 'admin.cache.clear'
 WHERE ar.`route_name` IN ('admin_cache_clear_api_routes_v1');
 
+-- =====================================================================
+-- Style schema + AI section-prompt-template endpoints (mirrors
+-- migrations/Version20260424120000.php). Kept here so a fresh install
+-- bootstrapped from update_scripts/* doesn't lose these routes.
+-- =====================================================================
+
+INSERT IGNORE INTO `api_routes`
+    (`route_name`, `version`, `methods`, `path`, `controller`, `requirements`, `params`)
+VALUES
+('admin_styles_schema_get', 'v1', 'GET', '/admin/styles/schema',
+ 'App\\Controller\\Api\\V1\\Admin\\AdminStyleController::getStylesSchema',
+ NULL, NULL),
+('admin_ai_section_prompt_template_get', 'v1', 'GET', '/admin/ai/section-prompt-template',
+ 'App\\Controller\\Api\\V1\\Admin\\AdminStyleController::getSectionPromptTemplate',
+ NULL, NULL);
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.access'
+WHERE ar.`route_name` = 'admin_styles_schema_get';
+
+INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+SELECT ar.`id`, p.`id`
+FROM `api_routes` ar
+JOIN `permissions` p ON p.`name` = 'admin.page.export'
+WHERE ar.`route_name` = 'admin_ai_section_prompt_template_get';
+
 -- Grant all permissions to the admin role ALWAYS LAST
 INSERT IGNORE INTO `roles_permissions` (`id_roles`, `id_permissions`)
 SELECT (SELECT id FROM roles WHERE `name` = 'admin'), id FROM permissions;

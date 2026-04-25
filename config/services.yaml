@@ -11,6 +11,14 @@ parameters:
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'
 
+    # Directory that hosts the AI section-generation prompt templates
+    # (base + generated). Relative paths are resolved against
+    # `%kernel.project_dir%` inside BuildPromptTemplateCommand and
+    # AdminStyleController::getSectionPromptTemplate. Default: `docs/ai`.
+    # See docs/developer/style-schema-endpoint.md.
+    ai_prompt_template_dir: '%env(default:default_ai_prompt_template_dir:AI_PROMPT_TEMPLATE_DIR)%'
+    default_ai_prompt_template_dir: 'docs/ai'
+
 services:
     # default configuration for services in *this* file
     _defaults:

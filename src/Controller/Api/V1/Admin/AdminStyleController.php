@@ -4,12 +4,11 @@ namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Repository\StyleRepository;
+use App\Service\CMS\Admin\PromptTemplateService;
 use App\Service\CMS\Admin\StyleSchemaService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -23,10 +22,9 @@ class AdminStyleController extends AbstractController
     public function __construct(
         private readonly StyleRepository $styleRepository,
         private readonly StyleSchemaService $styleSchemaService,
+        private readonly PromptTemplateService $promptTemplateService,
         private readonly ApiResponseFormatter $apiResponseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        #[Autowire('%kernel.project_dir%')]
-        private readonly string $projectDir,
     ) {
     }
 
@@ -63,8 +61,12 @@ class AdminStyleController extends AbstractController
     }
 
     /**
-     * Static file-serve of the generated AI section-generation prompt template markdown.
-     * The file is produced by `bin/console app:prompt-template:build`.
+     * Render the AI section-generation prompt template markdown on demand.
+     *
+     * The base markdown lives in this repo (`docs/ai/prompt_template_base.md`)
+     * and is combined with the live style/field catalog from
+     * {@see StyleSchemaService}. No disk artefact / build step is required —
+     * the prompt is always in sync with the database.
      *
      * GET /cms-api/v1/admin/ai/section-prompt-template
      *
@@ -72,21 +74,16 @@ class AdminStyleController extends AbstractController
      */
     public function getSectionPromptTemplate(): Response
     {
-        $path = $this->projectDir . '/../sh-selfhelp_frontend/docs/AI Prompts/ai_section_generation_prompt.md';
-
-        // Fallback to the repo-local path (if the frontend sibling dir isn't available).
-        if (!is_file($path)) {
-            $path = $this->projectDir . '/docs/ai/ai_section_generation_prompt.md';
-        }
-
-        if (!is_file($path)) {
+        try {
+            $markdown = $this->promptTemplateService->render();
+        } catch (\RuntimeException $e) {
             return $this->apiResponseFormatter->formatError(
-                'AI section prompt template has not been generated yet. Run `bin/console app:prompt-template:build`.',
-                Response::HTTP_NOT_FOUND
+                $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
 
-        $response = new BinaryFileResponse($path);
+        $response = new Response($markdown);
         $response->headers->set('Content-Type', 'text/markdown; charset=utf-8');
         $response->headers->set('Cache-Control', 'private, max-age=60');
         return $response;

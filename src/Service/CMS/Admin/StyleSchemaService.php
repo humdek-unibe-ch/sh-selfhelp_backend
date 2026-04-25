@@ -13,9 +13,14 @@ use App\Service\Cache\Core\CacheService;
  * - getDefaultValuesByStyleName(): a per-style [fieldName => default_value] map used by
  *   SectionExportImportService to minimize exports and reason about defaults during imports.
  *
- * Backed by CacheService (CATEGORY_STYLES). Re-query by clearing the `styles` cache category
- * after any change to the `styles`, `fields`, `styles_fields`, or `styles_allowed_relationships`
- * tables (e.g. after running a DB migration).
+ * Backed by CacheService (CATEGORY_STYLES). After any DB change that touches the
+ * `styles`, `fields`, `styles_fields`, or `styles_allowed_relationships` tables,
+ * invalidate this category directly via:
+ *
+ *   $cacheService->withCategory(CacheService::CATEGORY_STYLES)->invalidateAllListsInCategory();
+ *
+ * No bespoke wrapper is provided so cache responsibility stays with the central
+ * CacheService API and we don't grow a parallel invalidation surface.
  */
 class StyleSchemaService
 {
@@ -66,29 +71,5 @@ class StyleSchemaService
                     return $defaults;
                 }
             );
-    }
-
-    /**
-     * Return only the valid field names for a given style. Empty list means unknown style.
-     *
-     * @return string[]
-     */
-    public function getFieldNamesForStyle(string $styleName): array
-    {
-        $schema = $this->getSchema();
-        if (!isset($schema[$styleName])) {
-            return [];
-        }
-        return array_keys($schema[$styleName]['fields']);
-    }
-
-    /**
-     * Invalidate cached style schemas. Call this after any DB change that affects styles or fields.
-     */
-    public function invalidateCache(): void
-    {
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_STYLES)
-            ->invalidateAllListsInCategory();
     }
 }

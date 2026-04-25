@@ -16,9 +16,11 @@ use Doctrine\Migrations\AbstractMigration;
  *     one source of truth.
  *
  * - GET /cms-api/v1/admin/ai/section-prompt-template (admin.page.export)
- *     Static file-serve of the generated AI prompt template markdown
- *     (`docs/AI Prompts/ai_section_generation_prompt.md`). Used by the
- *     `Copy AI prompt` button in the admin UI.
+ *     Renders the AI prompt template markdown on demand by combining
+ *     `<ai_prompt_template_dir>/prompt_template_base.md` (committed, hand-
+ *     authored) with the live style/field catalog from StyleSchemaService.
+ *     No disk artefact is served — the prompt is always in sync with the DB.
+ *     Used by the `Copy AI prompt` button in the admin UI.
  */
 final class Version20260424120000 extends AbstractMigration
 {

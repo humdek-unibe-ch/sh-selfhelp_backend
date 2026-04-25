@@ -48,41 +48,77 @@ allowed parent / child relationships.
 
 The schema is loaded once per request through `StyleSchemaService`, which
 wraps a single join query (`StyleRepository::findAllStylesWithFields()`)
-with `CacheService::CATEGORY_STYLES` (TTL: 4 h). Any style / field
-migration should call `StyleSchemaService::invalidateCache()` or add the
-category to a cache-invalidation job — see `CacheService::invalidateAllListsInCategory`.
+with `CacheService::CATEGORY_STYLES` (TTL: 4 h). After any DB change to
+`styles`, `fields`, `styles_fields`, or `styles_allowed_relationships`,
+invalidate the category directly:
 
-## Prompt-template generator
-
-```bash
-bin/console app:prompt-template:build \
-  [--base=<path/to/prompt_template_base.md>] \
-  [--output=<path/to/ai_section_generation_prompt.md>]
+```php
+$cacheService->withCategory(CacheService::CATEGORY_STYLES)->invalidateAllListsInCategory();
 ```
 
-The command:
+There is intentionally no `StyleSchemaService::invalidateCache()` wrapper —
+keeping invalidation surface centralized in `CacheService` avoids two
+parallel APIs that drift apart.
 
-1. Reads the hand-maintained base markdown (defaults to
-   `../sh-selfhelp_frontend/docs/AI Prompts/prompt_template_base.md`).
-2. Renders the auto-generated catalog appendix from the style schema
-   service.
-3. Writes the concatenated final markdown to
-   `../sh-selfhelp_frontend/docs/AI Prompts/ai_section_generation_prompt.md`
-   (the file served by `GET /admin/ai/section-prompt-template`).
+## Prompt template — rendered on demand
 
-Re-run it whenever styles/fields change or the base prompt is edited.
-The generated file is meant to be committed so that the clipboard-copy
-flow in the admin UI always returns a reproducible, version-controlled
-prompt.
+The AI prompt is **never served from a static file**. Every request to
+`GET /admin/ai/section-prompt-template` calls
+`PromptTemplateService::render()`, which:
+
+1. Reads the hand-authored base markdown
+   (`<ai_prompt_template_dir>/prompt_template_base.md`).
+2. Renders the auto-generated style/field catalog from
+   `StyleSchemaService::getSchema()` (cached for 4 h via
+   `CacheService::CATEGORY_STYLES`).
+3. Injects the catalog between `<!-- CATALOG:BEGIN -->` and
+   `<!-- CATALOG:END -->` in the base markdown (or appends it at the end
+   if the markers are missing) and returns the result as a string.
+
+Because the catalog is pulled live from the cached schema, the prompt is
+always in sync with the database — there is no "stale snapshot" failure
+mode for the runtime endpoint.
+
+### Path resolution
+
+The directory is controlled by the `ai_prompt_template_dir` container
+parameter (backed by the `AI_PROMPT_TEMPLATE_DIR` env var, default
+`docs/ai`). Relative values are anchored to `%kernel.project_dir%`;
+absolute paths pass through.
+
+The directory MUST contain:
+
+| File                                | Role                                                                                                                                                                   |
+|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `prompt_template_base.md`           | **Committed, hand-authored.** Loaded on every request. Should include `<!-- CATALOG:BEGIN -->` / `<!-- CATALOG:END -->` markers; if missing, the catalog is appended.  |
+| `ai_section_generation_prompt.md`   | **Optional, gitignored, never read at runtime.** Only written by `bin/console app:prompt-template:build` for offline review / diffing. Goes stale the moment the schema changes. |
+
+If `prompt_template_base.md` is missing, the endpoint returns HTTP 500 with
+the path it expected — make sure it ships in every deploy.
+
+## `bin/console app:prompt-template:build` (optional snapshot dump)
+
+```bash
+bin/console app:prompt-template:build [--output=<path>]
+```
+
+This is **not** part of the runtime path. It exists only so an editor can
+dump the currently-rendered prompt to disk for offline review or to diff
+two snapshots after a schema change. The default output is
+`<ai_prompt_template_dir>/ai_section_generation_prompt.md`, which is
+gitignored on purpose. Do **not** commit the output and do **not** rely on
+it for the API contract.
 
 ## `GET /cms-api/v1/admin/ai/section-prompt-template`
 
 **Permission:** `admin.page.export` (same as export/import, since it's
 authored content).
 
-Returns the contents of `ai_section_generation_prompt.md` with
-`Content-Type: text/markdown; charset=utf-8`. No per-request composition —
-regenerate the file offline with the console command above.
+Returns the rendered prompt with `Content-Type: text/markdown; charset=utf-8`
+and `Cache-Control: private, max-age=60`. The body is composed per request
+from `prompt_template_base.md` + live `StyleSchemaService::getSchema()` —
+edit the base markdown and the change is visible on the next call without
+running any console command.
 
 Used by the admin UI's *Copy AI prompt* button in `AddSectionModal`.
 
@@ -90,12 +126,13 @@ Used by the admin UI's *Copy AI prompt* button in `AddSectionModal`.
 
 | File                                                                   | Purpose                                                |
 |------------------------------------------------------------------------|--------------------------------------------------------|
-| `src/Repository/StyleRepository.php`                                   | `findAllStylesWithFields()` — single-query fetch       |
-| `src/Service/CMS/Admin/StyleSchemaService.php`                         | Cached accessor + default-values helpers               |
-| `src/Controller/Api/V1/Admin/AdminStyleController.php`                 | Hosts the two endpoints                                |
-| `src/Command/BuildPromptTemplateCommand.php`                           | The generator console command                          |
-| `config/schemas/api/v1/responses/style/stylesSchema.json`              | Response JSON schema                                   |
-| `migrations/Version20260424120000.php`                                 | Registers the two new `api_routes` rows                |
-| `../sh-selfhelp_frontend/docs/AI Prompts/prompt_template_base.md`      | Hand-maintained base                                   |
-| `../sh-selfhelp_frontend/docs/AI Prompts/ai_section_generation_prompt.md` | Generated, committed template                       |
-| `../sh-selfhelp_frontend/scripts/gen-styles-types.mjs`                 | FE codegen script (consumes the schema endpoint)       |
+| `src/Repository/StyleRepository.php`                                   | `findAllStylesWithFields()` — single-query fetch                 |
+| `src/Service/CMS/Admin/StyleSchemaService.php`                         | Cached accessor + default-values helpers                         |
+| `src/Service/CMS/Admin/PromptTemplateService.php`                      | On-demand renderer (base markdown + live catalog)                |
+| `src/Controller/Api/V1/Admin/AdminStyleController.php`                 | Hosts the two endpoints                                          |
+| `src/Command/BuildPromptTemplateCommand.php`                           | Optional offline snapshot dumper (NOT used at runtime)           |
+| `config/schemas/api/v1/responses/style/stylesSchema.json`              | Response JSON schema                                             |
+| `migrations/Version20260424120000.php`                                 | Registers the two new `api_routes` rows                          |
+| `<ai_prompt_template_dir>/prompt_template_base.md`                     | **Committed, hand-authored, loaded per request** (default `docs/ai/...`) |
+| `<ai_prompt_template_dir>/ai_section_generation_prompt.md`             | Gitignored offline snapshot — never read at runtime              |
+| `../sh-selfhelp_frontend/scripts/gen-styles-types.mjs`                 | FE codegen script (consumes the schema endpoint)                 |
