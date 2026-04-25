@@ -2,6 +2,7 @@
 
 namespace App\Service\Core;
 
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\VariableResolverService;
 use App\Service\Core\UserContextAwareService;
 
@@ -30,7 +31,8 @@ class ConditionService
 {
     public function __construct(
         private readonly VariableResolverService $variableResolverService,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly CmsPreferenceService $cmsPreferenceService
     ) {
     }
 
@@ -43,14 +45,23 @@ class ConditionService
      * @param array|string|null $condition JSON Logic condition array or JSON string
      * @param int|null $userId User ID (optional, defaults to current user)
      * @param string $section Section name for error reporting
-     * @param int $languageId Language ID of the current request — used so conditions
+     * @param int|null $languageId Language ID of the current request — used so conditions
      *                        like `{"==": [{"var":"language"}, 3]}` match the page
      *                        render language, not a hard-coded default. Anonymous
      *                        users have `language` resolved from this value.
+     *                        Pass `null` (or omit) when there is no request-scoped
+     *                        language (action runtime, scheduled jobs, CLI commands)
+     *                        and the CMS-default language should be used instead.
      * @return array Result with 'result' (bool) and optional 'fields' for errors
      */
-    public function evaluateCondition(array|string|null $condition, ?int $userId = null, string $section = 'system', int $languageId = 1): array
+    public function evaluateCondition(array|string|null $condition, ?int $userId = null, string $section = 'system', ?int $languageId = null): array
     {
+        // Non-page contexts (actions, scheduled jobs, CLI) don't carry a
+        // request language — fall back to the CMS preference, then to 1
+        // (the seeded "English" id) if no preference exists yet.
+        if ($languageId === null) {
+            $languageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        }
         // No condition means it passes
         if (!$condition) {
             return ['result' => true];
@@ -113,14 +124,15 @@ class ConditionService
                 $condition = (array) $condition;
             }
 
-            // Extract variables needed for this condition (lazy loading)
+            // Extract variables referenced by the condition. Used for debug output;
+            // we always load the full anonymous-safe variable set so JsonLogic
+            // can resolve nested expressions reliably.
             $requiredVariables = $this->extractVariablesFromCondition($condition);
 
             // Fix operator parameter order for React Query Builder compatibility
             $fixedCondition = $this->fixOperatorParameters($condition);
 
-            // Get only the variables that are actually needed
-            $variables = $this->getConditionVariables($userId, $requiredVariables, $languageId);
+            $variables = $this->getConditionVariables($userId, $languageId);
 
             // Apply JsonLogic with the fixed condition and loaded variables
             $logicResult = \JWadhams\JsonLogic::apply($fixedCondition, $variables);
@@ -310,130 +322,52 @@ class ConditionService
     }
 
     /**
-     * Get condition variables for a user and current context
+     * Get condition variables for a user and current context.
      *
      * @param int|null $userId User ID (null for anonymous visitors on open-access pages)
-     * @param array $requiredVariables Array of variable names that are needed (for backward compatibility)
      * @param int $languageId Language of the current request; used for the `language` system variable.
      * @return array Associative array of variable names to values
      */
-    private function getConditionVariables(?int $userId, array $requiredVariables = [], int $languageId = 1): array
+    private function getConditionVariables(?int $userId, int $languageId = 1): array
     {
-        // Get all variables from the unified service. VariableResolverService
-        // handles userId === null by returning anonymous-safe defaults.
+        // VariableResolverService handles userId === null by returning anonymous-safe defaults.
         // Pass $languageId so conditions that compare against `language` evaluate
         // against the page-render language, not a hard-coded default of 1.
-        $allVariables = $this->variableResolverService->getAllVariables($userId, $languageId, false); // Don't include global vars for conditions
-
-        // If specific variables are required, filter the results for backward compatibility
-        if (!empty($requiredVariables)) {
-            $filteredVariables = [];
-            foreach ($requiredVariables as $requiredVar) {
-                if (isset($allVariables[$requiredVar])) {
-                    $filteredVariables[$requiredVar] = $allVariables[$requiredVar];
-                }
-                // Also check for wrapped variables like {{var}}
-                $wrappedVar = "{{$requiredVar}}";
-                if (isset($allVariables[$wrappedVar])) {
-                    $filteredVariables[$wrappedVar] = $allVariables[$wrappedVar];
-                }
-            }
-            return $filteredVariables;
-        }
-
-        return $allVariables;
-    }
-
-
-
-    /**
-     * Filter sections based on conditions
-     *
-     * @param array $sections Sections array to filter
-     * @param int|null $userId User ID for condition evaluation
-     * @return array Filtered sections
-     */
-    public function filterSectionsByConditions(array $sections, ?int $userId = null): array
-    {
-        return $this->filterSectionsRecursive($sections, $userId);
+        return $this->variableResolverService->getAllVariables($userId, $languageId, false);
     }
 
     /**
-     * Recursively filter sections, handling debug mode
+     * Build the `condition_debug` payload that the frontend renders below
+     * a section when `debug` is enabled.
      *
-     * @param array $sections Sections to filter
-     * @param int|null $userId User ID
-     * @return array Filtered sections
+     * Single source of truth — `PageService::evaluateSectionCondition()` calls
+     * this so the wire shape is identical wherever a condition is evaluated.
+     *
+     * Note: `evaluateCondition()` may return early without a `debug` key
+     * (invalid JSON, boolean primitive, exception). The null-coalesces below
+     * guard those paths so open-access / anonymous hits never 500 under
+     * `APP_DEBUG=1`.
+     *
+     * @param array{result: bool, fields?: mixed, debug?: array<string, mixed>} $conditionResult
+     * @param array|string|null $rawCondition The original condition value off the section
+     * @return array{result: bool, error: mixed, variables: array<string, mixed>, condition_object: mixed}
      */
-    private function filterSectionsRecursive(array $sections, ?int $userId): array
+    public function buildConditionDebug(array $conditionResult, array|string|null $rawCondition): array
     {
-        $filteredSections = [];
-
-        foreach ($sections as $section) {
-            // Check if section has a condition
-            if (isset($section['condition']) && !empty($section['condition'])) {
-                $conditionResult = $this->evaluateCondition(
-                    $section['condition'],
-                    $userId,
-                    $section['keyword'] ?? 'unknown'
-                );
-
-                // Include the original condition as an object for easier frontend handling
-                $conditionObject = $section['condition'];
-                if (is_string($conditionObject)) {
-                    // Handle double-encoded JSON strings
-                    $conditionObject = json_decode($conditionObject, true);
-                    if (is_string($conditionObject)) {
-                        // If still a string, try decoding again
-                        $conditionObject = json_decode($conditionObject, true);
-                    }
-                }
-                // evaluateCondition() may return early without a 'debug' key
-                // (anonymous user, invalid JSON, boolean primitive, thrown exception).
-                // Guard against missing keys so open-access pages don't 500 on anonymous hits.
-                $section['condition_debug'] =
-                 [
-                    "result" => $conditionResult['result'],
-                    "error" => $conditionResult['fields'] ?? [],
-                    "variables" => $conditionResult['debug']['variables'] ?? [],
-                    "condition_object" => $conditionObject
-                ];
-
-                // Ensure condition is returned as proper JSON string (not escaped)
-                if (is_string($section['condition'])) {
-                    // Handle escaped JSON strings - decode to get proper JSON string
-                    $decoded = json_decode($section['condition']);
-                    if (is_string($decoded)) {
-                        // If we got a string back, that's the unescaped JSON string we want
-                        $section['condition'] = $decoded;
-                    } elseif (is_array($decoded) || is_object($decoded)) {
-                        // If we got an object/array, encode it back to string
-                        $section['condition'] = json_encode($decoded);
-                    }
-                    // If decode failed or returned null, keep original
-                } else {
-                    $section['condition'] = json_encode($section['condition']);
-                }
-
-                // If condition fails and debug is NOT enabled, skip this section entirely
-                if (!$conditionResult['result'] && !(isset($section['debug']) && $section['debug'])) {
-                    continue;
-                }
-
-                // If condition failed but debug is enabled, remove children
-                if (!$conditionResult['result'] && isset($section['debug']) && $section['debug']) {
-                    $section['children'] = [];
-                }
+        $conditionObject = $rawCondition;
+        if (is_string($conditionObject)) {
+            // Handle double-encoded JSON strings
+            $conditionObject = json_decode($conditionObject, true);
+            if (is_string($conditionObject)) {
+                $conditionObject = json_decode($conditionObject, true);
             }
-
-            // Process children recursively
-            if (isset($section['children']) && is_array($section['children'])) {
-                $section['children'] = $this->filterSectionsRecursive($section['children'], $userId);
-            }
-
-            $filteredSections[] = $section;
         }
 
-        return $filteredSections;
+        return [
+            'result' => $conditionResult['result'],
+            'error' => $conditionResult['fields'] ?? [],
+            'variables' => $conditionResult['debug']['variables'] ?? [],
+            'condition_object' => $conditionObject,
+        ];
     }
 }

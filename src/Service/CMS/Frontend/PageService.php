@@ -727,6 +727,17 @@ class PageService extends BaseService
                     $section['children'] = $this->processSectionsRecursively($section['children'], $sectionData, $userId, $languageId);
                 }
 
+                // Step 9: `retrieved_data` is internal scaffolding for the
+                // interpolation pass that just ran on this section. Once we're
+                // here every `{{var}}` in `content`/`meta`/`css`/etc has been
+                // substituted, so the field has no FE consumer (verified by
+                // ripgrep against `sh-selfhelp_frontend/src` — zero hits) and
+                // payload bloat is real for list widgets that load hundreds of
+                // rows. Keep it only for sections that explicitly opt into
+                // debug mode so the admin inspector can still show the data
+                // that drove the render.
+                $this->cleanupInternalSectionScaffolding($section);
+
                 $processedSections[] = $section;
             } elseif (isset($section['debug']) && $section['debug']) {
                 // Condition failed but debug is enabled: include section without children
@@ -738,12 +749,29 @@ class PageService extends BaseService
                 // Remove children for failed conditions with debug enabled
                 $section['children'] = [];
 
+                // No cleanup here: this branch only fires when `debug=true`,
+                // so we keep `retrieved_data` for the admin inspector.
                 $processedSections[] = $section;
             }
             // Condition failed and debug not enabled: skip section entirely (do nothing)
         }
 
         return $processedSections;
+    }
+
+    /**
+     * Drop backend-only fields from a section before it ships in the API
+     * response. Currently this only removes `retrieved_data` from sections
+     * whose `debug` flag is not `true` — see Step 9 above for context.
+     *
+     * @param array $section Section reference (mutated in place).
+     */
+    private function cleanupInternalSectionScaffolding(array &$section): void
+    {
+        $debugEnabled = !empty($section['debug']);
+        if (!$debugEnabled && array_key_exists('retrieved_data', $section)) {
+            unset($section['retrieved_data']);
+        }
     }
 
     /**
@@ -873,35 +901,6 @@ class PageService extends BaseService
     }
 
     /**
-     * Apply interpolation to a section using provided data (legacy method)
-     *
-     * @param array &$section The section to interpolate
-     * @param array $interpolationData The data to use for interpolation
-     */
-    private function applyInterpolationWithData(array &$section, array $interpolationData): void
-    {
-        if (empty($interpolationData)) {
-            return;
-        }
-
-        // Check if debug is enabled for this section
-        $isDebugEnabled = isset($section['debug']) && $section['debug'];
-
-        // Interpolate content fields
-        if (isset($section['content']) && is_array($section['content'])) {
-            $section['content'] = $this->interpolationService->interpolateArray($section['content'], $interpolationData);
-        }
-
-        // Interpolate meta fields if they exist
-        if (isset($section['meta']) && is_array($section['meta'])) {
-            $section['meta'] = $this->interpolationService->interpolateArray($section['meta'], $interpolationData);
-        }
-
-        // Interpolate content fields that may contain variables
-        $this->interpolateContentFields($section, [$interpolationData], $isDebugEnabled);
-    }
-
-    /**
      * Retrieve data for a single section from its data_config
      *
      * @param array &$section The section to retrieve data for
@@ -1012,9 +1011,8 @@ class PageService extends BaseService
      */
     private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1): array
     {
-        // Check if section has a condition
         if (!isset($section['condition']) || empty($section['condition'])) {
-            return ['passes' => true]; // No condition means section passes
+            return ['passes' => true];
         }
 
         $conditionResult = $this->conditionService->evaluateCondition(
@@ -1024,254 +1022,10 @@ class PageService extends BaseService
             $languageId
         );
 
-        // Include the original condition as an object for easier frontend handling
-        $conditionObject = $section['condition'];
-        if (is_string($conditionObject)) {
-            // Handle double-encoded JSON strings
-            $conditionObject = json_decode($conditionObject, true);
-            if (is_string($conditionObject)) {
-                // If still a string, try decoding again
-                $conditionObject = json_decode($conditionObject, true);
-            }
-        }
-
-        // ConditionService::evaluateCondition() omits the 'debug' key on short-circuit
-        // paths (no user context, invalid JSON, boolean primitive, exception).
-        // Without the null-coalesce below, anonymous visitors hitting any open-access page
-        // that contains sections with conditions would crash with
-        // "Undefined array key 'debug'" under APP_DEBUG=1.
-        $debugInfo = [
-            "result" => $conditionResult['result'],
-            "error" => $conditionResult['fields'] ?? [],
-            "variables" => $conditionResult['debug']['variables'] ?? [],
-            "condition_object" => $conditionObject
-        ];
-
-        // Ensure condition is returned as proper JSON string (not escaped)
-        if (is_string($section['condition'])) {
-            // Handle escaped JSON strings - decode to get proper JSON string
-            $decoded = json_decode($section['condition']);
-            if ($decoded !== null) {
-                $section['condition'] = json_encode($decoded);
-            }
-        }
-
         return [
             'passes' => $conditionResult['result'],
-            'debug' => $debugInfo
+            'debug' => $this->conditionService->buildConditionDebug($conditionResult, $section['condition']),
         ];
     }
 
-    /**
-     * Apply variable interpolation to sections recursively (legacy method for backward compatibility)
-     *
-     * Replaces {{variable_name}} patterns in content fields with values from retrieved_data
-     *
-     * @param array &$sections The sections array to process (passed by reference)
-     */
-    private function applyInterpolationToSections(array &$sections): void
-    {
-        foreach ($sections as &$section) {
-            // Apply interpolation to the current section's content fields
-            $this->interpolateSectionContent($section);
-
-            // Recursively apply to children if they exist
-            if (isset($section['children']) && is_array($section['children'])) {
-                $this->applyInterpolationToSections($section['children']);
-            }
-        }
-    }
-
-    /**
-     * Apply interpolation to a single section's content fields
-     *
-     * @param array &$section The section to process (passed by reference)
-     */
-    private function interpolateSectionContent(array &$section): void
-    {
-        // Check if section has retrieved_data to interpolate with
-        $interpolationData = [];
-        if (isset($section['retrieved_data']) && is_array($section['retrieved_data'])) {
-            $interpolationData[] = $section['retrieved_data'];
-        }
-
-        // If no data to interpolate with, skip
-        if (empty($interpolationData)) {
-            return;
-        }
-
-        // Check if debug is enabled for this section
-        $isDebugEnabled = isset($section['debug']) && $section['debug'];
-
-        // Interpolate content fields
-        if (isset($section['content']) && is_array($section['content'])) {
-            $section['content'] = $this->interpolationService->interpolateArray($section['content'], ...$interpolationData);
-        }
-
-        // Interpolate meta fields if they exist
-        if (isset($section['meta']) && is_array($section['meta'])) {
-            $section['meta'] = $this->interpolationService->interpolateArray($section['meta'], ...$interpolationData);
-        }
-
-        // Interpolate content fields that may contain variables
-        // Include condition interpolation only if debug is enabled
-        $this->interpolateContentFields($section, $interpolationData, $isDebugEnabled);
-    }
-
-    /**
-     * Interpolate content fields that may contain {{variable}} patterns
-     *
-     * @param array &$section The section to process (passed by reference)
-     * @param array $interpolationData The data arrays for interpolation
-     * @param bool $includeCondition Whether to include condition field interpolation (only when debug enabled)
-     */
-    private function interpolateContentFields(array &$section, array $interpolationData, bool $includeCondition = false): void
-    {
-        // Direct string fields that may contain variables
-        $directStringFields = [
-            'css',
-            'css_mobile',
-            'condition'
-        ];
-
-        foreach ($directStringFields as $field) {
-            if (isset($section[$field]) && is_string($section[$field])) {
-                // Special handling for condition field with debug support
-                if ($section['debug'] && $field === 'condition') {
-                    $section[$field] = $this->interpolationService->interpolateConditionWithDebug($section, ...$interpolationData);
-                } else {
-                    $section[$field] = $this->interpolationService->interpolate($section[$field], ...$interpolationData);
-                }
-            }
-        }
-
-        // Object fields with "content" sub-property that may contain variables
-        // Based on TypeScript IContentField<string> definitions - all user-editable content fields
-        $contentObjectFields = [
-            // Core content fields
-            'content',                              // Main content field
-            'text',                                 // Text content
-            'html',                                 // HTML content
-            'markdown',                             // Markdown content
-            'title',                                // Titles
-            'name',                                 // Names (sometimes user-editable)
-
-            // Form field content
-            'label',                                // Field labels
-            'placeholder',                          // Input placeholders
-            'description',                          // Field descriptions
-            'value',                                // Field values (sometimes contain text)
-
-            // Button and action labels
-            'btn_save_label',                       // Save button labels
-            'btn_update_label',                     // Update button labels
-            'btn_cancel_label',                     // Cancel button labels
-            'label_cancel',                         // Cancel button label (alternative)
-
-            // Alert and message content
-            'alert_success',                        // Success alert messages
-            'alert_error',                          // Error alert messages
-            'close_button_label',                   // Close button labels
-
-            // URLs and navigation
-            'redirect_at_end',                      // Redirect URLs
-            'btn_cancel_url',                       // Cancel button URLs
-            'url',                                  // General URLs
-            'page_keyword',                         // Page keywords
-
-            // Confirmation dialogs
-            'confirmation_title',                   // Confirmation dialog titles
-            'confirmation_continue',                // Continue button text
-            'confirmation_message',                 // Confirmation messages
-
-            // Mantine component translatable content
-            'mantine_notification_title',           // Notification titles
-            'mantine_alert_title',                  // Alert titles
-            'mantine_spoiler_show_label',           // Spoiler show labels
-            'mantine_spoiler_hide_label',           // Spoiler hide labels
-            'mantine_switch_on_label',              // Switch on labels
-            'mantine_switch_off_label',             // Switch off labels
-            'mantine_tooltip_label',                // Tooltip text
-            'mantine_list_item_content',            // List item content
-            'mantine_highlight_highlight',          // Text to highlight
-            'mantine_datepicker_placeholder',       // Date picker placeholders
-            'mantine_color_picker_button_label',    // Color picker button labels
-            'mantine_rich_text_editor_placeholder', // Rich text editor placeholders
-            'mantine_text_gradient',                // Text gradient configurations
-            'mantine_accordion_item_value',         // Accordion item values
-            'mantine_accordion_default_value',      // Default accordion values
-            'mantine_title_text_wrap',              // Title text wrap settings
-            'mantine_blockquote_cite',              // Blockquote citations
-            'mantine_background_image_src',         // Background image sources
-            'mantine_fieldset_legend',              // Fieldset legends
-            'mantine_list_item_icon',               // List item icons
-            'mantine_carousel_next_control_icon',   // Carousel control icons
-            'mantine_carousel_previous_control_icon', // Carousel control icons
-            'mantine_left_icon',                    // Left icons
-            'mantine_right_icon',                   // Right icons
-            'mantine_avatar_initials',              // Avatar initials
-            'mantine_chip_on_value',                // Chip on values
-            'mantine_chip_off_value',               // Chip off values
-            'mantine_switch_on_value',              // Switch on values
-            'mantine_switch_off_value',             // Switch off values
-            'mantine_rating_empty_icon',            // Rating empty icons
-            'mantine_rating_full_icon',             // Rating full icons
-            'mantine_progress_section_label',       // Progress section labels
-            'mantine_tooltip_label',                // Tooltip labels (duplicate for completeness)
-            'mantine_accordion_item_icon',          // Accordion item icons
-            'mantine_theme_icon',                   // Theme icons
-
-            // Additional translatable fields from various components
-            'alt',                                  // Image alt text
-            'caption',                              // Figure captions
-            'caption_title',                        // Caption titles
-            'img_src',                              // Image sources
-            'cite',                                 // Blockquote citations
-            'legend',                               // Fieldset legends
-            'subject_user',                         // Email subjects
-            'email_user',                           // Email addresses
-            'anonymous_user_name_description',      // User descriptions
-            'pw_placeholder',                       // Password placeholders
-            'success',                              // Success messages
-            'login_title',                          // Login titles
-            'subtitle',                             // Subtitles
-            'type',                                 // Types (sometimes contain text)
-            'is_active',                            // Active states (sometimes contain text)
-            'icon',                                 // Icon references
-            'chip_value',                           // Chip values
-            'checkbox_value',                       // Checkbox values
-            'mantine_checkbox_icon',                // Checkbox icons
-            'mantine_file_input_accept',            // File input accept types
-            'mantine_color_picker_saturation_label', // Color picker labels
-            'mantine_color_picker_hue_label',       // Color picker labels
-            'mantine_color_picker_alpha_label',     // Color picker labels
-            'mantine_segmented_control_data',       // Segmented control data (JSON)
-            'mantine_combobox_options',             // Combobox options (JSON)
-            'mantine_multi_select_data',            // Multi-select data (JSON)
-            'mantine_radio_options',                // Radio options (JSON)
-            'mantine_slider_marks_values',          // Slider marks (JSON)
-            'mantine_color_picker_swatches',        // Color swatches (JSON)
-            'mantine_color_input_swatches',         // Color input swatches
-            'mantine_file_input_accept',            // File accept types (duplicate)
-            'mantine_combobox_data',                // Combobox data (JSON)
-            'mantine_carousel_embla_options',       // Carousel options (JSON)
-
-            // Any other fields that might contain user-editable content
-        ];
-
-        foreach ($contentObjectFields as $field) {
-            if (isset($section[$field]) && is_array($section[$field]) && isset($section[$field]['content'])) {
-                if (is_string($section[$field]['content'])) {
-                    $section[$field]['content'] = $this->interpolationService->interpolate($section[$field]['content'], ...$interpolationData);
-                }
-            }
-        }
-
-        // Special handling for nested structures like children
-        if (isset($section['children']) && is_array($section['children'])) {
-            foreach ($section['children'] as &$child) {
-                $this->interpolateContentFields($child, $interpolationData);
-            }
-        }
-    }
 }
