@@ -288,24 +288,58 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->getSingleColumnResult();
 
         if (empty($accessibleGroupIds)) {
-            return [];
+            return [
+                'users' => [],
+                'pagination' => $this->createPaginationInfo($page, $pageSize, 0),
+            ];
         }
 
-        // Now get all users who belong to these accessible groups
-        // Use a subquery approach to avoid GROUP_CONCAT issues and improve performance
-        $subQuery = $this->getEntityManager()->createQueryBuilder()
-            ->select('DISTINCT u2.id')
-            ->from(User::class, 'u2')
-            ->innerJoin('u2.usersGroups', 'ug2')
-            ->innerJoin('ug2.group', 'g2')
-            ->where('g2.id IN (:groupIds)')
-            ->andWhere('u2.intern = :intern')
-            ->andWhere('u2.id_status > 0')
-            ->getDQL();
+        // Step 1: Build a paginated query for DISTINCT user IDs.
+        // No fetch-join of collections + setMaxResults — that would truncate the result.
+        $idQb = $this->getEntityManager()->createQueryBuilder()
+            ->select('DISTINCT u.id')
+            ->from(User::class, 'u')
+            ->innerJoin('u.usersGroups', 'ug')
+            ->innerJoin('ug.group', 'g')
+            ->leftJoin('u.userType', 'ut')
+            ->leftJoin('u.status', 'us')
+            ->where('g.id IN (:groupIds)')
+            ->andWhere('u.intern = :intern')
+            ->andWhere('u.id_status > 0')
+            ->setParameter('groupIds', $accessibleGroupIds)
+            ->setParameter('intern', false);
 
-        // Get users with their related data for formatting
+        if ($search) {
+            $idQb->leftJoin('u.validationCodes', 'vc')
+                ->leftJoin('u.roles', 'ur');
+        }
+
+        $this->applyUserSearchFilter($idQb, $search);
+        $this->applyUserSorting($idQb, $sort, $sortDirection);
+
+        // Total count of distinct accessible users matching the filter
+        $countQb = clone $idQb;
+        $countQb->resetDQLPart('orderBy');
+        $countQb->select('COUNT(DISTINCT u.id)');
+        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
+
+        // Page of user IDs (sorted)
+        $idQb->setFirstResult(($page - 1) * $pageSize)
+            ->setMaxResults($pageSize);
+
+        $idRows = $idQb->getQuery()->getScalarResult();
+        $userIds = array_map(static fn($row) => (int) $row['id'], $idRows);
+
+        if (empty($userIds)) {
+            return [
+                'users' => [],
+                'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount),
+            ];
+        }
+
+        // Step 2: Fetch the page of users together with their collections (safe, no LIMIT)
         $qb = $this->getEntityManager()->createQueryBuilder()
-            ->select('u')
+            ->select('u', 'ug', 'g', 'ur', 'ua', 'vc', 'us', 'ut')
             ->from(User::class, 'u')
             ->leftJoin('u.usersGroups', 'ug')
             ->leftJoin('ug.group', 'g')
@@ -314,54 +348,21 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->leftJoin('u.validationCodes', 'vc')
             ->leftJoin('u.status', 'us')
             ->leftJoin('u.userType', 'ut')
-            ->where('u.id IN (' . $subQuery . ')')
-            ->andWhere('u.intern = :intern')
-            ->andWhere('u.id_status > 0')
-            ->setParameter('groupIds', $accessibleGroupIds)
-            ->setParameter('intern', false)
-            ->groupBy('u.id');
+            ->where('u.id IN (:ids)')
+            ->setParameter('ids', $userIds);
 
-        // Apply search filter
-        $this->applyUserSearchFilter($qb, $search);
-
-        // Apply sorting
         $this->applyUserSorting($qb, $sort, $sortDirection);
-
-        // Get total count - use a simple query to avoid complex join issues
-        $countSql = 'SELECT COUNT(DISTINCT u.id) FROM users u WHERE u.intern = 0 AND u.id_status > 0';
-        $params = [];
-
-        if ($search) {
-            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search)';
-            $params['search'] = '%' . $search . '%';
-        }
-
-        $conn = $this->getEntityManager()->getConnection();
-        $stmt = $conn->prepare($countSql);
-
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-
-        $result = $stmt->executeQuery();
-        $totalCount = (int) $result->fetchOne();
-
-        // Apply pagination
-        $offset = ($page - 1) * $pageSize;
-        $qb->setFirstResult($offset)->setMaxResults($pageSize);
 
         $users = $qb->getQuery()->getResult();
 
-        // Format users
         $formattedUsers = array_map(
-            fn($user) => $this->formatUserForResponse($user, 15), // Full permissions for accessible groups
+            fn($user) => $this->formatUserForResponse($user, 15),
             $users
         );
 
-        // Return paginated response with pagination info
         return [
             'users' => $formattedUsers,
-            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount)
+            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount),
         ];
     }
 
@@ -373,9 +374,51 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
-        // Get all users with their related data (similar to AdminUserService.createUserQueryBuilder)
+        // Step 1: Build a paginated query for DISTINCT user IDs.
+        // We must NOT fetch-join collections here, otherwise setMaxResults() limits
+        // the cartesian-product rows instead of the user rows.
+        $idQb = $this->getEntityManager()->createQueryBuilder()
+            ->select('DISTINCT u.id')
+            ->from(User::class, 'u')
+            ->leftJoin('u.userType', 'ut')
+            ->leftJoin('u.status', 'us')
+            ->where('u.intern = :intern')
+            ->andWhere('u.id_status > 0')
+            ->setParameter('intern', false);
+
+        // Search needs the validation/role joins so we mirror the user-facing search
+        if ($search) {
+            $idQb->leftJoin('u.validationCodes', 'vc')
+                ->leftJoin('u.roles', 'ur');
+        }
+
+        $this->applyUserSearchFilter($idQb, $search);
+        $this->applyUserSorting($idQb, $sort, $sortDirection);
+
+        // Total count of distinct users matching the filter
+        $countQb = clone $idQb;
+        $countQb->resetDQLPart('orderBy');
+        $countQb->select('COUNT(DISTINCT u.id)');
+        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
+
+        // Page of user IDs (sorted)
+        $idQb->setFirstResult(($page - 1) * $pageSize)
+            ->setMaxResults($pageSize);
+
+        $idRows = $idQb->getQuery()->getScalarResult();
+        $userIds = array_map(static fn($row) => (int) $row['id'], $idRows);
+
+        if (empty($userIds)) {
+            return [
+                'users' => [],
+                'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount),
+            ];
+        }
+
+        // Step 2: Fetch the page of users together with their collections.
+        // No setMaxResults here, so fetch-joins are safe.
         $qb = $this->getEntityManager()->createQueryBuilder()
-            ->select('u')
+            ->select('u', 'ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us')
             ->from(User::class, 'u')
             ->leftJoin('u.usersGroups', 'ug')
             ->leftJoin('u.roles', 'ur')
@@ -384,52 +427,23 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->leftJoin('u.userActivities', 'ua')
             ->leftJoin('u.validationCodes', 'vc')
             ->leftJoin('u.status', 'us')
-            ->where('u.intern = :intern')
-            ->andWhere('u.id_status > 0')
-            ->setParameter('intern', false)
-            ->addSelect('ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us');
+            ->where('u.id IN (:ids)')
+            ->setParameter('ids', $userIds);
 
-        // Apply search filter
-        $this->applyUserSearchFilter($qb, $search);
-
-        // Apply sorting
+        // Re-apply sorting so the page preserves the requested order
         $this->applyUserSorting($qb, $sort, $sortDirection);
-
-        // Get total count - use a simple query to avoid complex join issues
-        $countSql = 'SELECT COUNT(DISTINCT u.id) FROM users u WHERE u.intern = 0 AND u.id_status > 0';
-        $params = [];
-
-        if ($search) {
-            $countSql .= ' AND (u.email LIKE :search OR u.name LIKE :search OR u.user_name LIKE :search OR u.id LIKE :search)';
-            $params['search'] = '%' . $search . '%';
-        }
-
-        $conn = $this->getEntityManager()->getConnection();
-        $stmt = $conn->prepare($countSql);
-
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-
-        $result = $stmt->executeQuery();
-        $totalCount = (int) $result->fetchOne();
-
-        // Apply pagination
-        $offset = ($page - 1) * $pageSize;
-        $qb->setFirstResult($offset)->setMaxResults($pageSize);
 
         $users = $qb->getQuery()->getResult();
 
-        // Format users
+        // Format users (full CRUD permissions for admin)
         $formattedUsers = array_map(
-            fn($user) => $this->formatUserForResponse($user, 15), // Full permissions for admin
+            fn($user) => $this->formatUserForResponse($user, 15),
             $users
         );
 
-        // Return paginated response with pagination info
         return [
             'users' => $formattedUsers,
-            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount)
+            'pagination' => $this->createPaginationInfo($page, $pageSize, $totalCount),
         ];
     }
 
