@@ -1,0 +1,70 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Styles Schema Response",
+    "description": "Full style/field schema for every CMS style. Keyed by style name.",
+    "type": "object",
+    "allOf": [
+        {
+            "$ref": "../common/_response_envelope.json"
+        },
+        {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "description": "Map of styleName → style schema",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "integer" },
+                            "group": { "type": "string" },
+                            "can_have_children": { "type": "boolean" },
+                            "description": { "type": ["string", "null"] },
+                            "fields": {
+                                "type": "object",
+                                "description": "Map of fieldName → field metadata",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": { "type": ["string", "null"] },
+                                        "display": { "type": "integer" },
+                                        "default_value": { "type": ["string", "null"] },
+                                        "help": { "type": ["string", "null"] },
+                                        "title": { "type": ["string", "null"] },
+                                        "disabled": { "type": "boolean" },
+                                        "hidden": { "type": "integer" },
+                                        "placeholder": { "type": ["string", "null"] },
+                                        "options": {
+                                            "type": "array",
+                                            "description": "Valid enum choices (empty for free-form fields). Use each item's `value` when writing JSON.",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "value": { "type": "string" },
+                                                    "text": { "type": "string" }
+                                                },
+                                                "required": ["value", "text"]
+                                            }
+                                        }
+                                    },
+                                    "required": ["type", "display", "default_value", "options"]
+                                }
+                            },
+                            "allowed_children": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Allowed child style names. Empty array when can_have_children=true (any child allowed)."
+                            },
+                            "allowed_parents": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                            }
+                        },
+                        "required": ["id", "group", "can_have_children", "fields", "allowed_children", "allowed_parents"]
+                    }
+                }
+            },
+            "required": ["data"]
+        }
+    ]
+}

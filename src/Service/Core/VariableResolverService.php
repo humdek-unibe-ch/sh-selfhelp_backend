@@ -21,6 +21,16 @@ use App\Service\Core\UserContextAwareService;
  */
 class VariableResolverService
 {
+    /**
+     * Request-scoped memoization for getAllVariables().
+     * Keys: "{userId}|{languageId}|{includeGlobalVars}". A typical page render
+     * calls this once per section; without this cache every call ran user,
+     * validation-code, and global-value queries.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private array $memoizedAllVariables = [];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly UserRepository $userRepository,
@@ -47,6 +57,17 @@ class VariableResolverService
         if ($userId === null) {
             $user = $this->userContextAwareService->getCurrentUser();
             $userId = $user ? $user->getId() : null;
+        }
+
+        $memoKey = ($userId ?? 'anon') . '|' . $languageId . '|' . ($includeGlobalVars ? '1' : '0');
+        if (isset($this->memoizedAllVariables[$memoKey])) {
+            $cached = $this->memoizedAllVariables[$memoKey];
+            // Refresh only the cheap/time-sensitive variables on each call so cached
+            // values never drift noticeably in long-running requests.
+            $cached['current_date'] = date('Y-m-d');
+            $cached['current_datetime'] = date('Y-m-d H:i:s');
+            $cached['current_time'] = date('H:i');
+            return $cached;
         }
 
         $variables = [];
@@ -118,6 +139,7 @@ class VariableResolverService
             }
         }
 
+        $this->memoizedAllVariables[$memoKey] = $variables;
         return $variables;
     }
 

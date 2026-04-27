@@ -923,17 +923,39 @@ namespace App\Service\CMS\Admin;
 
 class SectionExportImportService extends BaseService
 {
+    /**
+     * Restoration is *ID-preserving*. We do NOT route through the regular
+     * import path (which auto-suffixes section names with `-{timestamp}` to
+     * avoid collisions). Instead `performSmartSectionRestoration()`:
+     *  1. Flattens the published-version tree.
+     *  2. Bumps the `sections.AUTO_INCREMENT` to cover any preserved IDs.
+     *  3. UPDATEs sections that already exist with the published payload.
+     *  4. INSERTs missing sections via raw SQL with the original IDs.
+     *  5. Deletes orphans (sections present on draft but not in the version).
+     *  6. Rebuilds `pages_sections` + `sections_hierarchy` from the version.
+     */
     public function restoreSectionsFromVersion(int $pageId, int $versionId): array
     {
-        // Convert published version to export format
-        $sectionsToRestore = $this->convertPublishedSectionsToExportFormat($publishedSections);
+        // ...validation + transaction...
+        $result = $this->performSmartSectionRestoration($page, $publishedSections);
 
-        // Clear existing sections and import new ones
-        $this->clearPageSections($page);
-        return $this->importSections($sectionsToRestore, $page, null, null);
+        // Restored sections can change `condition`/`data_config`/`css`, so
+        // the PAGE, SECTIONS, and CONDITIONS categories all get invalidated.
+        $this->cache->withCategory(CacheService::CATEGORY_PAGES)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateAllListsInCategory();
+        $this->cache->withCategory(CacheService::CATEGORY_CONDITIONS)
+                    ->invalidateAllListsInCategory();
+        return $result;
     }
 }
 ```
+
+> The legacy `convertPublishedSectionsToExportFormat()` /
+> `clearPageSections()` helpers were removed — they were leftover from an
+> earlier "delete-then-import" approach that broke `dataTables` referential
+> integrity.
 
 ## ⚙️ CMS Preferences System
 

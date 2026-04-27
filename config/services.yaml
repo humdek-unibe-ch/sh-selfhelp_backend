@@ -7,6 +7,30 @@ parameters:
     # JWT token TTL settings from environment variables
     jwt_token_ttl: '%env(int:JWT_TOKEN_TTL)%'
     jwt_refresh_token_ttl: '%env(int:JWT_REFRESH_TOKEN_TTL)%'
+    # Response-schema validation (expensive). Opt in via env; defaults to false.
+    # See docs/developer/05-api-patterns.md.
+    validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'
+
+    # Directory that hosts the AI section-generation prompt templates
+    # (base + generated). Relative paths are resolved against
+    # `%kernel.project_dir%` inside BuildPromptTemplateCommand and
+    # AdminStyleController::getSectionPromptTemplate. Default: `docs/ai`.
+    # See docs/developer/style-schema-endpoint.md.
+    ai_prompt_template_dir: '%env(default:default_ai_prompt_template_dir:AI_PROMPT_TEMPLATE_DIR)%'
+    default_ai_prompt_template_dir: 'docs/ai'
+
+    # Mercure topic IRI prefix. Topics are opaque identifiers — never
+    # dereferenced — but Mercure recommends URL-shaped names so wildcard
+    # subscriptions stay unambiguous. See `App\Service\Mercure\MercureTopicResolver`
+    # and docs/developer/13-acl-system.md#real-time-acl-push-mercure.
+    mercure_topic_prefix: '%env(default:default_mercure_topic_prefix:MERCURE_TOPIC_PREFIX)%'
+    default_mercure_topic_prefix: 'https://selfhelp.app'
+
+    # Lifetime (seconds) of the subscriber JWT minted by
+    # AuthEventsController::events(). Short on purpose; the BFF re-mints on
+    # every Mercure reconnect.
+    mercure_subscriber_ttl: '%env(int:default:default_mercure_subscriber_ttl:MERCURE_SUBSCRIBER_TTL)%'
+    default_mercure_subscriber_ttl: '3600'
 
 services:
     # default configuration for services in *this* file
@@ -59,3 +83,24 @@ services:
         autowire: false
         autoconfigure: false
         arguments: []
+
+    # Response-schema validation toggle wired from the `validate_response_schema` param.
+    App\Service\Core\ApiResponseFormatter:
+        arguments:
+            $validateResponseSchema: '%validate_response_schema%'
+
+    # Mercure topic resolver — single source of truth for topic IRIs used
+    # by both publishers (AclVersionMercurePublisher) and the subscriber
+    # bootstrap endpoint (AuthEventsController).
+    App\Service\Mercure\MercureTopicResolver:
+        arguments:
+            $topicPrefix: '%mercure_topic_prefix%'
+
+    # Auth events controller — issues short-lived Mercure subscriber JWTs.
+    # The hub URL is the *public* URL the browser-side BFF connects to (the
+    # internal `MERCURE_URL` is only used by Symfony to publish to the hub).
+    App\Controller\Api\V1\Auth\AuthEventsController:
+        arguments:
+            $mercurePublicUrl: '%env(MERCURE_PUBLIC_URL)%'
+            $mercureJwtSecret: '%env(MERCURE_JWT_SECRET)%'
+            $mercureSubscriberTtl: '%mercure_subscriber_ttl%'

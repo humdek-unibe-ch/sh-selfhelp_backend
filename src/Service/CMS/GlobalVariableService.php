@@ -20,6 +20,15 @@ class GlobalVariableService extends BaseService
     private const SH_GLOBAL_VALUES_KEYWORD = 'sh-global-values';
     private const PF_GLOBAL_VALUES = 'global_values';
 
+    // Request-scoped memoization. Symfony shared services live for a single HTTP request,
+    // so these properties act as a zero-overhead in-request cache. Without them the
+    // page lookup below ran 200+ times on pages that interpolate many sections, each
+    // hitting MySQL round-trip latency. See PageService::processSectionsRecursively.
+    private ?Page $memoizedGlobalPage = null;
+    private bool $globalPageLoaded = false;
+    /** @var array<int, array<string, mixed>> keyed by languageId */
+    private array $memoizedGlobalValuesByLanguage = [];
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly PageRepository $pageRepository,
@@ -36,14 +45,18 @@ class GlobalVariableService extends BaseService
      */
     public function getGlobalVariableValues(int $languageId): array
     {
+        if (array_key_exists($languageId, $this->memoizedGlobalValuesByLanguage)) {
+            return $this->memoizedGlobalValuesByLanguage[$languageId];
+        }
+
         $cacheKey = "global_variable_values_{$languageId}";
         $globalPage = $this->getGlobalPage();
 
         if (!$globalPage) {
-            return [];
+            return $this->memoizedGlobalValuesByLanguage[$languageId] = [];
         }
 
-        return $this->cache
+        $values = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $globalPage->getId())
             ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
@@ -59,6 +72,8 @@ class GlobalVariableService extends BaseService
 
                 return [];
             });
+
+        return $this->memoizedGlobalValuesByLanguage[$languageId] = $values ?? [];
     }
 
     /**
@@ -115,15 +130,26 @@ class GlobalVariableService extends BaseService
     /**
      * Get the global values page
      *
+     * Result is memoized for the lifetime of the request — the same Page entity is
+     * requested many times per page render (once per interpolated section), and
+     * each findOneBy was issuing a fresh SQL round-trip.
+     *
      * @return Page|null The global values page or null if not found
      */
     private function getGlobalPage(): ?Page
     {
-        try {
-            return $this->pageRepository->findOneBy(['keyword' => self::SH_GLOBAL_VALUES_KEYWORD]);
-        } catch (\Exception $e) {
-            return null;
+        if ($this->globalPageLoaded) {
+            return $this->memoizedGlobalPage;
         }
+
+        try {
+            $this->memoizedGlobalPage = $this->pageRepository->findOneBy(['keyword' => self::SH_GLOBAL_VALUES_KEYWORD]);
+        } catch (\Exception $e) {
+            $this->memoizedGlobalPage = null;
+        }
+
+        $this->globalPageLoaded = true;
+        return $this->memoizedGlobalPage;
     }
 
     /**

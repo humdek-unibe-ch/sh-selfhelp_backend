@@ -24,6 +24,7 @@
         "symfony/dotenv": "7.3.*",
         "symfony/flex": "^2.9.0",
         "symfony/framework-bundle": "7.3.*",
+        "symfony/mercure-bundle": "^0.4.2",
         "symfony/mime": "7.3.*",
         "symfony/monolog-bundle": "^3.10",
         "symfony/runtime": "7.3.*",

@@ -1,5 +1,47 @@
 # v8.0.0 (Not released yet)
 
+### Real-time ACL push (Mercure)
+ - **New dependency: [`symfony/mercure-bundle`](https://symfony.com/doc/current/mercure.html)** plus a dockerised Caddy/Mercure hub (`docker-compose.mercure.yml`). Real-time `acl-changed` events now flow through a proper push hub instead of PHP-FPM holding long-lived SSE connections. Zero polling, zero busy loops — Symfony only ever does cheap fire-and-forget POSTs to the hub when ACL state actually changes.
+ - **`GET /cms-api/v1/auth/events`** is now a Mercure subscriber bootstrap endpoint. The success
+   payload is wrapped in the standard `ApiResponseFormatter` envelope
+   (`{ status, message, error, logged_in, meta, data: { hubUrl, topic, token, expiresIn } }`) and
+   validated against `config/schemas/api/v1/responses/auth/events.json` — same shape as every other
+   auth endpoint. The previous polling/`StreamedResponse` implementation has been removed; PHP no
+   longer streams SSE.
+ - **Publisher: `App\EventListener\AclVersionMercurePublisher`.** Doctrine `onFlush` + `postFlush`
+   listener: collects User entities whose changeset includes `acl_version`, then publishes one
+   Mercure update per user once the flush succeeds (so a rolled-back transaction does not leak a
+   stale notification). Update payload is `{ aclVersion: string }`, event type is `acl-changed`,
+   topic is `https://selfhelp.app/users/{id}/acl` (configurable via `MERCURE_TOPIC_PREFIX`).
+ - **Topic resolver: `App\Service\Mercure\MercureTopicResolver`.** Single source of truth for the
+   topic IRI scheme so publishers and subscribers stay in lock-step. Rename in one place if you
+   ever need to change the format.
+ - **Controller: `App\Controller\Api\V1\Auth\AuthEventsController::events`.** Mints a short-lived
+   HMAC-SHA256 JWT (Lcobucci) scoped to the caller's ACL topic via Mercure's
+   `LcobucciFactory`, returns it alongside the public hub URL. Lifetime is 1 h by default
+   (`MERCURE_SUBSCRIBER_TTL`), but the BFF re-mints on every reconnect so a leaked token cannot be
+   replayed for long.
+ - **New env vars** (with sensible localhost defaults shipped in `.env`/`.env.dev`/`.env.default`):
+   - `MERCURE_URL` — internal hub URL Symfony POSTs to
+   - `MERCURE_PUBLIC_URL` — public hub URL the frontend BFF subscribes against
+   - `MERCURE_JWT_SECRET` — shared HMAC key (must match the hub container's
+     `MERCURE_PUBLISHER_JWT_KEY` and `MERCURE_SUBSCRIBER_JWT_KEY`)
+   - `MERCURE_TOPIC_PREFIX` — IRI prefix for emitted topics
+   - `MERCURE_SUBSCRIBER_TTL` — subscriber JWT lifetime in seconds
+ - **Docker setup: `docker-compose.mercure.yml`.** One-command spin-up of a Caddy/Mercure hub on
+   `http://localhost:3001/.well-known/mercure` with CORS pre-configured for the Next.js dev origin.
+   See README "Real-time push (Mercure)" for the full operational guide (compose / `docker run` /
+   prod-deployment notes).
+ - **Wire contract on the frontend stays identical** — `useAclEventStream` still opens
+   `EventSource('/api/auth/events')` and listens for `acl-changed` events with a
+   `{ aclVersion: string }` payload. Only the BFF route's upstream changed: it now first calls
+   Symfony for the discovery payload, then opens the Mercure subscription and pipes the bytes
+   through to the browser as same-origin SSE.
+ - Route registration: `migrations/Version20260425000000.php` adds the row to `api_routes`;
+   `db/update_scripts/api_routes.sql` mirrors the same `INSERT IGNORE` so fresh installs
+   bootstrapped from the SQL seed pick up the route too. No `api_routes_permissions` row is
+   needed — the controller 401s anonymous callers itself.
+
 ### Frontend SEO payload
  - **`title` + `description` now returned on frontend page endpoints.**
    Both `GET /cms-api/v1/pages/{language_id}` (nav list) and

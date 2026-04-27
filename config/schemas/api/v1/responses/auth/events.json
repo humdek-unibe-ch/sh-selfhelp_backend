@@ -1,0 +1,37 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Auth Events Subscriber Bootstrap Response",
+    "description": "Mercure subscriber bootstrap payload returned by GET /cms-api/v1/auth/events. Contains the public hub URL, the per-user private topic IRI, a short-lived HMAC-SHA256 JWT scoped to that topic, and the JWT lifetime in seconds. The frontend BFF uses these to open an upstream Mercure subscription on the user's behalf and pipe the byte stream back to the browser as same-origin SSE.",
+    "allOf": [
+        { "$ref": "../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "hubUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Public URL of the Mercure hub the subscriber should connect to (MERCURE_PUBLIC_URL). The internal MERCURE_URL used by Symfony to publish is intentionally NOT exposed."
+                },
+                "topic": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Per-user private topic IRI (e.g. https://selfhelp.app/users/{id}/acl). The accompanying token only authorises this exact topic. Topics are opaque identifiers — never dereferenced."
+                },
+                "token": {
+                    "type": "string",
+                    "description": "Short-lived HMAC-SHA256 JWT to send as Authorization: Bearer <token> when subscribing to hubUrl. Lifetime equals expiresIn seconds; the BFF should re-mint via this endpoint on every Mercure reconnect."
+                },
+                "expiresIn": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Lifetime of token in seconds (MERCURE_SUBSCRIBER_TTL). Treat as an upper bound."
+                }
+            },
+            "required": ["hubUrl", "topic", "token", "expiresIn"],
+            "additionalProperties": false
+        }
+    },
+    "required": ["data"]
+}

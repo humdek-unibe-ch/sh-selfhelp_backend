@@ -486,6 +486,64 @@ Two client patterns are in active use:
 
 The system will automatically load and map the routes to the correct controllers.
 
+### Real-time ACL push (Mercure)
+
+Real-time `acl-changed` events flow through a [Mercure](https://mercure.rocks)
+hub (Caddy + Mercure module) running alongside the API. PHP-FPM never holds
+an SSE connection — the hub does. Symfony only does cheap publish POSTs to
+the hub when ACL state actually changes. This eliminates the
+"one worker per subscriber" bottleneck inherent to PHP-on-SSE.
+
+Three moving parts:
+
+1. **Publisher: `App\EventListener\AclVersionMercurePublisher`.**
+   Doctrine listener on `onFlush` + `postFlush`. `onFlush` collects every
+   `User` entity whose changeset includes `acl_version`; `postFlush`
+   publishes one Mercure update per buffered user once the SQL has actually
+   committed (so a rolled-back transaction never leaks a stale notification).
+   The published `Update` carries `type=acl-changed`,
+   `topic=https://selfhelp.app/users/{id}/acl` (private, per-user), and
+   `data={"aclVersion":"<new hex>"}`. The topic format is centralised in
+   `App\Service\Mercure\MercureTopicResolver` so emitter and subscribers
+   stay in lock-step.
+
+2. **Subscriber bootstrap:
+   `GET /cms-api/v1/auth/events` →
+   `App\Controller\Api\V1\Auth\AuthEventsController::events`.**
+   Mints a short-lived HMAC-SHA256 JWT (via
+   `Symfony\Component\Mercure\Jwt\LcobucciFactory`) scoped to the caller's
+   per-user topic. Returns `{ hubUrl, topic, token, expiresIn }` —
+   the discovery payload the frontend BFF needs to subscribe. Endpoint is
+   registered in `api_routes` by `migrations/Version20260425000000.php`
+   (mirrored in `db/update_scripts/api_routes.sql`) and authenticates
+   manually via `UserContextService` (no `api_routes_permissions` row).
+
+3. **Hub: `dunglas/mercure` container** (see `docker-compose.mercure.yml` and
+   the README "Real-time push (Mercure)" section). Holds the long-lived SSE
+   connection on behalf of every subscriber. Shared HMAC key
+   (`MERCURE_JWT_SECRET`) signs both publisher tokens (used by
+   `mercure-bundle` when Symfony POSTs publishes) and subscriber tokens
+   (issued by the bootstrap endpoint).
+
+The trigger for an `acl-changed` push is `User::bumpAclVersion()` — called
+by `AdminGroupService`, `AdminRoleService`, `AdminUserService`,
+`ProfileService`, and `TaskJobExecutorService` whenever an ACL-relevant
+mutation happens. Because the publisher is a Doctrine listener,
+*anything* that bumps `acl_version` and flushes is automatically pushed
+to the hub — no Mercure wiring required at the call site.
+
+Frontend wire contract: `useAclEventStream` opens a same-origin
+`EventSource('/api/auth/events')`; the BFF route there calls the bootstrap
+endpoint, opens an upstream `${hubUrl}?topic=${topic}` request with
+`Authorization: Bearer ${token}`, and pipes the bytes back to the browser.
+The hook listens for `acl-changed` events and invalidates `['user-data']`,
+which cascades through `useAclVersionWatcher` into navigation, admin
+sidebar, and page-content invalidations.
+
+Detailed wire contract: see
+[`docs/api-usage/01-authentication.md`](docs/api-usage/01-authentication.md#real-time-acl-events-stream-mercure-subscriber-bootstrap)
+and [`docs/developer/13-acl-system.md`](docs/developer/13-acl-system.md#real-time-acl-push-mercure).
+
 ## JWT Key Generation and Configuration
 
 ### JWT Firewall and User Provider Configuration

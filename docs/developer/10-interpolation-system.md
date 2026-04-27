@@ -411,6 +411,23 @@ childSectionData = {
 }
 ```
 
+### **Lifecycle ends at Step 9 — `retrieved_data` is render-only**
+
+`retrieved_data` is **internal scaffolding** for the interpolation pass. By
+the time `processSectionsRecursively()` finishes a section, every
+`{{var}}` referenced in its `content`/`meta`/`css`/etc has been
+substituted, and the field has no consumer outside the backend (verified
+by `rg retrieved_data sh-selfhelp_frontend/src` — zero matches).
+
+To keep API payloads lean (list widgets routinely retrieve hundreds of
+rows per section), `PageService::cleanupInternalSectionScaffolding()`
+strips `retrieved_data` from every section that does NOT have
+`debug: true`. Sections with `debug: true` keep it so the admin
+inspector can show the data that fed interpolation. The same field is
+also stripped by `PageVersionService::stripDynamicElements()` before
+versions get persisted, so the two write paths agree on what is
+"internal-only" state.
+
 ---
 
 ## 🧪 Testing Results
@@ -537,4 +554,89 @@ Variable dropdowns will now show:
 
 ---
 
-**Implementation completed successfully! 🎊**
+## ⚡ Request-Scoped Memoization (2026-04)
+
+The variable resolution layer is hot — a single page render triggers
+`getAllVariables()` once per section that has a condition or interpolated
+content. Without an in-request cache this fanned out into hundreds of MySQL
+round-trips for the user, validation-code, last-login, language, and
+global-values queries.
+
+### `VariableResolverService::getAllVariables()`
+
+Memoized per request, keyed by `({userId|'anon'}|{languageId}|{includeGlobalVars})`.
+Time-sensitive variables (`current_date`, `current_datetime`, `current_time`)
+are refreshed on every call so they never drift, but everything else is
+served from the in-memory map.
+
+```php
+// First call: full resolution (DB + cache layer).
+$vars = $variableResolverService->getAllVariables(42, 3, false);
+
+// Second call (same request, same args): served from in-memory map,
+// but `current_*` keys are re-evaluated.
+$vars = $variableResolverService->getAllVariables(42, 3, false);
+```
+
+### `GlobalVariableService`
+
+`getGlobalPage()` and `getGlobalVariableValues($languageId)` are also
+memoized for the request lifetime. The `sh-global-values` Page lookup, which
+previously ran once per interpolated section, now runs once per request.
+
+### When does memoization break?
+
+Both services are Symfony shared services (default scope). They live for one
+HTTP request, then the container is torn down — there is no risk of stale
+data crossing requests. Long-running CLI commands (`messenger:consume`,
+custom workers) should boot a fresh container per task; if you write a worker
+that reuses a single container for many "logical" requests, instantiate a new
+service or call the underlying repositories directly.
+
+---
+
+## 🌍 Anonymous Condition Evaluation & Language Propagation (2026-04)
+
+Two pre-existing crashers in the condition path were fixed:
+
+### 1. Anonymous visitors
+
+`ConditionService::evaluateCondition()` now accepts `?int $userId = null`
+and forwards `null` straight to `VariableResolverService`, which returns
+anonymous-safe defaults: `user_group=[]`, `user_name=''`, `user_email=''`,
+`user_code=''`, `last_login=''`, `language=$languageId`. Open-access pages
+that contain sections with conditions no longer 500 on anonymous hits.
+
+### 2. Language is request-scoped, not hard-coded
+
+The condition path now threads `$languageId` from
+`PageService::processSectionsRecursively()` →
+`PageService::evaluateSectionCondition()` →
+`ConditionService::evaluateCondition()` →
+`VariableResolverService::getAllVariables()`. Conditions like
+`{"==": [{"var":"language"}, 3]}` now match the **render language**, not the
+default `1`. Previously every render evaluated against `language=1` unless
+the user had a saved language preference.
+
+### 2b. Non-page contexts default to the CMS language preference
+
+`ConditionService::evaluateCondition()`'s `$languageId` parameter is
+**nullable** (`?int $languageId = null`). When callers omit it (action
+runtime, scheduled jobs, CLI commands), the service resolves the language
+via `CmsPreferenceService::getDefaultLanguageId()`, falling back to `1` if
+no CMS preference exists yet. So `ActionConditionEvaluatorService::passes()`
+and `JobSchedulerService::canExecuteJob()` now evaluate against the CMS
+default language, not a hard-coded `1`.
+
+### 3. Single source of truth for `condition_debug`
+
+The wire shape sent to the frontend (`{result, error, variables, condition_object}`)
+used to be assembled in two places (`PageService::evaluateSectionCondition`
+and `ConditionService::filterSectionsByConditions` — the latter has been
+deleted as dead code). It now lives in
+`ConditionService::buildConditionDebug()` so any future change updates both
+flows automatically.
+
+---
+
+**Implementation completed successfully!**

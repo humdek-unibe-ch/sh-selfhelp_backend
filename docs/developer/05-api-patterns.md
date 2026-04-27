@@ -35,65 +35,39 @@ All API responses follow a consistent JSON envelope structure:
 - **`data`**: The actual response payload
 
 ### ApiResponseFormatter Implementation
+
+Response-schema validation is **opt-in** via the `VALIDATE_RESPONSE_SCHEMA`
+env variable (wired through the `validate_response_schema` container
+parameter — see `config/services.yaml`). Default: `false`.
+
+- Production: leave it `0`. Validating every response is expensive (deep
+  array→object conversion + recursive JSON Schema walk).
+- Local / CI: set `VALIDATE_RESPONSE_SCHEMA=1` in `.env.local` / CI env to
+  catch a controller drifting from its declared response schema before
+  the contract reaches the frontend.
+
 ```php
 <?php
 namespace App\Service\Core;
 
 class ApiResponseFormatter
 {
-    /**
-     * Whether to validate the response schema. It consumes a lot of resources and should be disabled in production.
-     *
-     * @var bool
-     */
-    private const VALIDATE_RESPONSE_SCHEMA = false;
+    public function __construct(
+        private readonly Security $security,
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly LoggerInterface $logger,
+        // Wired from the `validate_response_schema` container parameter
+        // (sourced from VALIDATE_RESPONSE_SCHEMA env, default false).
+        private readonly bool $validateResponseSchema = false
+    ) {}
 
     public function formatSuccess($data = null, ?string $responseSchemaName = null, int $status = Response::HTTP_OK, bool $isLoggedIn = false): JsonResponse
     {
-        $isLoggedIn = $isLoggedIn || $this->security->getUser() !== null;
+        $responseData = [/* … envelope … */];
 
-        // Normalize any Doctrine entities in the data using Symfony Serializer
-        $normalizedData = Utils::normalizeWithSymfonySerializer($data);
-
-        $responseData = [
-            'status' => $status,
-            'message' => Response::$statusTexts[$status] ?? 'OK',
-            'error' => null,
-            'logged_in' => $isLoggedIn,
-            'meta' => [
-                'version' => 'v1', // Consider making this configurable
-                'timestamp' => (new \DateTimeImmutable())->format(\DateTimeInterface::ATOM),
-            ],
-            'data' => $normalizedData,
-            // validation field is not included in success responses
-        ];
-
-        // Only perform schema validation in non-production environments and when explicitly enabled
-        if (self::VALIDATE_RESPONSE_SCHEMA) {
-            try {
-                // Deep convert arrays to objects for proper JSON Schema validation
-                $responseDataForValidation = $this->arrayToObject($responseData);
-
-                // Validate the entire responseData object
-                $validationErrors = $this->jsonSchemaValidationService->validate($responseDataForValidation, $responseSchemaName);
-
-                if (!empty($validationErrors)) {
-                    $this->logger->error('API Response Schema Validation Failed.', [
-                        'schema' => $responseSchemaName,
-                        'errors' => $validationErrors,
-                        // 'data' => $responseData, // Be cautious with logging sensitive data
-                    ]);
-
-                    // Add debug info directly to the responseData for non-prod environments
-                    $responseData['_debug'] = ['validation_errors' => $validationErrors];
-                }
-            } catch (\Exception $e) {
-                $this->logger->error('Error during response schema validation.', [
-                    'schema' => $responseSchemaName,
-                    'exception' => $e->getMessage(),
-                ]);
-                $responseData['_debug'] = ['validation_exception' => $e->getMessage()];
-            }
+        if ($this->validateResponseSchema && $responseSchemaName !== null) {
+            // Deep convert arrays → objects, run JsonSchemaValidationService,
+            // attach `_debug.validation_errors` on mismatch.
         }
 
         return new JsonResponse($responseData, $status);
@@ -120,8 +94,9 @@ class ApiResponseFormatter
             $responseData['validation'] = $validationErrors;
         }
 
-        // Only perform schema validation in non-production environments
-        if ($this->kernel->getEnvironment() !== 'prod') {
+        // Same opt-in toggle as the success path — error envelope validation
+        // only fires when VALIDATE_RESPONSE_SCHEMA is enabled.
+        if ($this->validateResponseSchema) {
             try {
                 // Deep convert arrays to objects for proper JSON Schema validation
                 $responseDataForValidation = $this->arrayToObject($responseData);
