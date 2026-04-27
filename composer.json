@@ -6,38 +6,37 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "require": {
-        "php": ">=8.2",
+        "php": ">=8.4",
         "ext-ctype": "*",
         "ext-iconv": "*",
-        "doctrine/dbal": "^3.10.3",
-        "doctrine/doctrine-bundle": "^2.18.1",
-        "doctrine/doctrine-migrations-bundle": "^3.6.0",
-        "doctrine/orm": "^3.5.7",
-        "jfcherng/php-diff": "6.15",
-        "justinrainbow/json-schema": "^6.6.1",
+        "doctrine/dbal": "^4.4.3",
+        "doctrine/doctrine-bundle": "^3.2.2",
+        "doctrine/doctrine-migrations-bundle": "^4.0",
+        "doctrine/orm": "^3.6.3",
+        "jfcherng/php-diff": "^7.0",
+        "justinrainbow/json-schema": "^6.8",
         "jwadhams/json-logic-php": "^1.5.1",
-        "lexik/jwt-authentication-bundle": ">=3.1.1",
+        "lexik/jwt-authentication-bundle": "^3.2",
         "mustache/mustache": "^3.0",
-        "nelmio/cors-bundle": ">=2.6",
-        "predis/predis": "^3.2",
-        "symfony/console": "7.3.*",
-        "symfony/dotenv": "7.3.*",
-        "symfony/flex": "^2.9.0",
-        "symfony/framework-bundle": "7.3.*",
+        "nelmio/cors-bundle": "^2.6.1",
+        "predis/predis": "^3.4.2",
+        "symfony/console": "7.4.*",
+        "symfony/dotenv": "7.4.*",
+        "symfony/flex": "^2.10",
+        "symfony/framework-bundle": "7.4.*",
         "symfony/mercure-bundle": "^0.4.2",
-        "symfony/mime": "7.3.*",
-        "symfony/monolog-bundle": "^3.10",
-        "symfony/runtime": "7.3.*",
-        "symfony/security-bundle": "7.3.*",
-        "symfony/serializer": "7.3.*",
-        "symfony/validator": "7.3.*",
-        "symfony/yaml": "7.3.*"
+        "symfony/mime": "7.4.*",
+        "symfony/monolog-bundle": "^4.0.2",
+        "symfony/runtime": "7.4.*",
+        "symfony/security-bundle": "7.4.*",
+        "symfony/serializer": "7.4.*",
+        "symfony/validator": "7.4.*",
+        "symfony/yaml": "7.4.*"
     },
     "config": {
         "allow-plugins": {
             "php-http/discovery": true,
             "phpstan/extension-installer": true,
-            "phpstan/extenson-installer": true,
             "symfony/flex": true,
             "symfony/runtime": true
         },
@@ -62,7 +61,9 @@
         "symfony/polyfill-php74": "*",
         "symfony/polyfill-php80": "*",
         "symfony/polyfill-php81": "*",
-        "symfony/polyfill-php82": "*"
+        "symfony/polyfill-php82": "*",
+        "symfony/polyfill-php83": "*",
+        "symfony/polyfill-php84": "*"
     },
     "scripts": {
         "test": "php bin/phpunit --testdox",
@@ -90,22 +91,22 @@
     "extra": {
         "symfony": {
             "allow-contrib": false,
-            "require": "7.3.*"
+            "require": "7.4.*"
         }
     },
     "require-dev": {
-        "doctrine/doctrine-fixtures-bundle": ">=4.3",
-        "phpstan/extension-installer": ">=1.4.3",
-        "phpstan/phpstan": ">=2.1.32",
-        "phpstan/phpstan-doctrine": ">=2.0.11",
-        "phpstan/phpstan-symfony": ">=2.0.8",
-        "phpunit/phpunit": "^12.4.3",
-        "shipmonk/dead-code-detector": "^0.13.5",
-        "symfony/browser-kit": "7.3.*",
-        "symfony/css-selector": "7.3.*",
-        "symfony/maker-bundle": "^1.64",
-        "symfony/phpunit-bridge": "^7.3.4",
-        "symfony/stopwatch": "7.3.*",
-        "symfony/web-profiler-bundle": "7.3.*"
+        "doctrine/doctrine-fixtures-bundle": "^4.3.1",
+        "phpstan/extension-installer": "^1.4.3",
+        "phpstan/phpstan": "^2.1.51",
+        "phpstan/phpstan-doctrine": "^2.0.21",
+        "phpstan/phpstan-symfony": "^2.0.15",
+        "phpunit/phpunit": "^12.5.23",
+        "shipmonk/dead-code-detector": "^1.1",
+        "symfony/browser-kit": "7.4.*",
+        "symfony/css-selector": "7.4.*",
+        "symfony/maker-bundle": "^1.67",
+        "symfony/phpunit-bridge": "^7.4.8",
+        "symfony/stopwatch": "7.4.*",
+        "symfony/web-profiler-bundle": "7.4.*"
     }
 }

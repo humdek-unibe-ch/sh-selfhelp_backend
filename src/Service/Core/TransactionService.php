@@ -68,7 +68,7 @@ class TransactionService
             elseif ($logRow === true) {
                 $conn = $this->entityManager->getConnection();
                 $stmt = $conn->prepare('SELECT * FROM ' . $tableName . ' WHERE id = :id');
-                $stmt->bindValue('id', $entryId, \PDO::PARAM_INT);
+                $stmt->bindValue('id', $entryId, \Doctrine\DBAL\ParameterType::INTEGER);
                 $result = $stmt->executeQuery();
                 $entry = $result->fetchAssociative();
                 

@@ -10,7 +10,9 @@ doctrine:
         # server_version: 'mariadb-10.4.10' # For MariaDB
 
     orm:
-        auto_generate_proxy_classes: true
+        # PHP 8.4 native lazy objects replace generated proxies in
+        # doctrine-bundle 3 / ORM 3, so the legacy `auto_generate_proxy_classes`
+        # option no longer exists.
         # You may want to use a different DQL custom functions configuration for tests
         # dql:
         #     string_functions:

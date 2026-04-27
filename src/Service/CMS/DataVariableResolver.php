@@ -353,7 +353,7 @@ class DataVariableResolver extends BaseService
                     $conn = $this->entityManager->getConnection();
                     $sql = 'SELECT DISTINCT `name` FROM dataCols WHERE id_dataTables = :tableId ORDER BY `name`';
                     $stmt = $conn->prepare($sql);
-                    $stmt->bindValue('tableId', $tableId, \PDO::PARAM_INT);
+                    $stmt->bindValue('tableId', $tableId, \Doctrine\DBAL\ParameterType::INTEGER);
                     $result = $stmt->executeQuery();
 
                     $columnNames = [];
