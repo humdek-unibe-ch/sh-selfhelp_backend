@@ -109,14 +109,16 @@ doctrine:
         logging: true
         profiling: true
     orm:
-        # Faster test execution
-        auto_generate_proxy_classes: true
-        metadata_cache_driver:
-            type: array
-        query_cache_driver:
-            type: array
-        result_cache_driver:
-            type: array
+        # Doctrine ORM 3 + doctrine-bundle 3 use PHP 8.4 native lazy objects;
+        # the old `auto_generate_proxy_classes` option no longer exists.
+        entity_managers:
+            default:
+                metadata_cache_driver:
+                    type: array
+                query_cache_driver:
+                    type: array
+                result_cache_driver:
+                    type: array
 ```
 
 ### Environment Variables

@@ -529,7 +529,7 @@ class AdminUserController extends AbstractController
             $conn = $this->entityManager->getConnection();
             $sql = "SELECT id_groups FROM users_groups WHERE id_users = :user_id LIMIT 1";
             $stmt = $conn->prepare($sql);
-            $stmt->bindValue('user_id', $userId, \PDO::PARAM_INT);
+            $stmt->bindValue('user_id', $userId, \Doctrine\DBAL\ParameterType::INTEGER);
             $result = $stmt->executeQuery();
             $row = $result->fetchAssociative();
 

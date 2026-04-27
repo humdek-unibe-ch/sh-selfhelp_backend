@@ -32,7 +32,7 @@ class SectionRepository extends ServiceEntityRepository
                 $conn = $this->getEntityManager()->getConnection();
                 $sql = 'CALL get_page_sections_hierarchical(:page_id)';
                 $stmt = $conn->prepare($sql);
-                $stmt->bindValue('page_id', $pageId, \PDO::PARAM_INT);
+                $stmt->bindValue('page_id', $pageId, \Doctrine\DBAL\ParameterType::INTEGER);
                 $result = $stmt->executeQuery(); // Use executeQuery for statements returning results
                 return $result->fetchAllAssociative();
             });
@@ -51,7 +51,7 @@ class SectionRepository extends ServiceEntityRepository
                 INNER JOIN pages_sections ps ON ps.id_sections = s.id
                 WHERE ps.id_pages = :page_id';
         $stmt = $conn->prepare($sql);
-        $stmt->bindValue('page_id', $pageId, \PDO::PARAM_INT);
+        $stmt->bindValue('page_id', $pageId, \Doctrine\DBAL\ParameterType::INTEGER);
         $result = $stmt->executeQuery();
         $rows = $result->fetchAllAssociative();
 

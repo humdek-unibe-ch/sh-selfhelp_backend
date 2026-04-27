@@ -4,8 +4,8 @@ namespace App\Repository;
 
 use App\Service\Cache\Core\CacheService;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
-use PDO;
 use App\Entity\DataTable;
 use App\Entity\User;
 
@@ -50,12 +50,12 @@ class DataTableRepository extends ServiceEntityRepository
                 $conn = $this->getEntityManager()->getConnection();
                 $sql = 'CALL get_dataTable_with_filter(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
-                $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
-                $stmt->bindValue('userId', $userId, PDO::PARAM_INT);
-                $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
-                $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
-                $stmt->bindValue('languageId', $languageId, PDO::PARAM_INT);
-                $stmt->bindValue('timezoneCode', $timezoneCode, PDO::PARAM_STR);
+                $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
+                $stmt->bindValue('userId', $userId, ParameterType::INTEGER);
+                $stmt->bindValue('filter', $filter, ParameterType::STRING);
+                $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
+                $stmt->bindValue('languageId', $languageId, ParameterType::INTEGER);
+                $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();
@@ -90,12 +90,12 @@ class DataTableRepository extends ServiceEntityRepository
                 $conn = $this->getEntityManager()->getConnection();
                 $sql = 'CALL get_dataTable_with_user_group_filter(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
-                $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
-                $stmt->bindValue('currentUserId', $currentUserId, PDO::PARAM_INT);
-                $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
-                $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
-                $stmt->bindValue('languageId', $languageId, PDO::PARAM_INT);
-                $stmt->bindValue('timezoneCode', $timezoneCode, PDO::PARAM_STR);
+                $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
+                $stmt->bindValue('currentUserId', $currentUserId, ParameterType::INTEGER);
+                $stmt->bindValue('filter', $filter, ParameterType::STRING);
+                $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
+                $stmt->bindValue('languageId', $languageId, ParameterType::INTEGER);
+                $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();
@@ -124,11 +124,11 @@ class DataTableRepository extends ServiceEntityRepository
                 $conn = $this->getEntityManager()->getConnection();
                 $sql = 'CALL get_dataTable_with_all_languages(:tableId, :userId, :filter, :excludeDeleted, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
-                $stmt->bindValue('tableId', $tableId, PDO::PARAM_INT);
-                $stmt->bindValue('userId', $userId, PDO::PARAM_INT);
-                $stmt->bindValue('filter', $filter, PDO::PARAM_STR);
-                $stmt->bindValue('excludeDeleted', $excludeDeleted, PDO::PARAM_BOOL);
-                $stmt->bindValue('timezoneCode', $timezoneCode, PDO::PARAM_STR);
+                $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
+                $stmt->bindValue('userId', $userId, ParameterType::INTEGER);
+                $stmt->bindValue('filter', $filter, ParameterType::STRING);
+                $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
+                $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();

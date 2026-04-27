@@ -8,38 +8,30 @@ doctrine:
 
         profiling_collect_backtrace: '%kernel.debug%'
         profiling: true
-        use_savepoints: true
     orm:
-        # Windows-safe proxy strategy.
-        #
-        # `true` (== ALWAYS) regenerates and `rename()`s the proxy file on
-        # every request. On Windows that races under concurrent requests
-        # (e.g. parallel /pages/by-keyword calls during a language switch)
-        # because the OS keeps the old file handle open, causing:
-        #   Warning: rename(...__CG__AppEntity*.php.<tmp>, ...__CG__...php):
-        #   Access is denied (code: 5)
-        #
-        # `file_not_exists` still auto-generates proxies on first access in
-        # dev (no manual warmup required), but never re-writes an existing
-        # proxy — eliminating the rename race entirely. If you change an
-        # entity's mapping, run `bin/console cache:clear` once.
-        auto_generate_proxy_classes: file_not_exists
-        enable_lazy_ghost_objects: true
-        report_fields_where_declared: true
-        validate_xml_mapping: true
-        naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
-        identity_generation_preferences:
-            Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
-        auto_mapping: true
-        mappings:
-            App:
-                type: attribute
-                is_bundle: false
-                dir: '%kernel.project_dir%/src/Entity'
-                prefix: 'App\Entity'
-                alias: App
+        # PHP 8.4 + Doctrine ORM 3 + doctrine-bundle 3 use native PHP lazy
+        # objects instead of generated proxy classes. There is no longer a
+        # proxy file on disk, so the legacy Windows rename-race that the old
+        # `auto_generate_proxy_classes: file_not_exists` setting was guarding
+        # against simply cannot occur. `enable_native_lazy_objects` is the new
+        # default (see doctrine-bundle 3 NEWS); it is left implicit.
         controller_resolver:
             auto_mapping: false
+        default_entity_manager: default
+        entity_managers:
+            default:
+                validate_xml_mapping: true
+                naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
+                identity_generation_preferences:
+                    Doctrine\DBAL\Platforms\PostgreSQLPlatform: identity
+                auto_mapping: true
+                mappings:
+                    App:
+                        type: attribute
+                        is_bundle: false
+                        dir: '%kernel.project_dir%/src/Entity'
+                        prefix: 'App\Entity'
+                        alias: App
 
 when@test:
     doctrine:
@@ -50,14 +42,14 @@ when@test:
 when@prod:
     doctrine:
         orm:
-            auto_generate_proxy_classes: false
-            proxy_dir: '%kernel.build_dir%/doctrine/orm/Proxies'
-            query_cache_driver:
-                type: pool
-                pool: doctrine.system_cache_pool
-            result_cache_driver:
-                type: pool
-                pool: doctrine.result_cache_pool
+            entity_managers:
+                default:
+                    query_cache_driver:
+                        type: pool
+                        pool: doctrine.system_cache_pool
+                    result_cache_driver:
+                        type: pool
+                        pool: doctrine.result_cache_pool
 
     framework:
         cache:

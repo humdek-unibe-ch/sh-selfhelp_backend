@@ -174,9 +174,9 @@ class GlobalVariableService extends BaseService
                 LIMIT 1
             ";
             $stmt = $conn->prepare($sql);
-            $stmt->bindValue('pageId', $page->getId(), \PDO::PARAM_INT);
-            $stmt->bindValue('fieldName', $fieldName, \PDO::PARAM_STR);
-            $stmt->bindValue('languageId', $languageId, \PDO::PARAM_INT);
+            $stmt->bindValue('pageId', $page->getId(), \Doctrine\DBAL\ParameterType::INTEGER);
+            $stmt->bindValue('fieldName', $fieldName, \Doctrine\DBAL\ParameterType::STRING);
+            $stmt->bindValue('languageId', $languageId, \Doctrine\DBAL\ParameterType::INTEGER);
             $result = $stmt->executeQuery();
 
             $row = $result->fetchAssociative();
