@@ -475,6 +475,20 @@ class AdminPageService extends BaseService
             // Check if user has delete access to the page
             $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'delete');
 
+            // Block deletion of system pages. Pages flagged as `is_system = 1`
+            // (e.g. the GDPR `/privacy` notice seeded by migration
+            // Version20260425090000) MUST remain reachable on every install,
+            // because regulators expect a privacy notice to be permanently
+            // available even when admins customise the rest of the CMS.
+            // Admins can still edit / extend / translate the content; only
+            // hard-deletion of the page row is blocked.
+            if ($page->isSystem()) {
+                throw new ServiceException(
+                    'Cannot delete system pages. This page is marked as a system page and is required for the platform to function correctly.',
+                    Response::HTTP_FORBIDDEN
+                );
+            }
+
             // Check if the page has children
             $children = $this->pageRepository->findBy(['parentPage' => $page->getId()]);
             if (count($children) > 0) {
