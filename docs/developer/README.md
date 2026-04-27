@@ -32,6 +32,7 @@ This developer documentation is organized into the following sections:
 - [🛠️ **Development Workflow**](./14-development-workflow.md) - How to add features and maintain code
 - [🧪 **Testing Guidelines**](./15-testing-guidelines.md) - Testing strategies and best practices
 - [🚀 **Deployment Process**](./16-deployment-process.md) - Version management and deployment
+- [🧱 **Seeding System Pages**](./21-seeding-system-pages.md) - How `is_system` CMS pages (login, privacy, profile, …) are shipped and extended
 
 ## 🚀 Quick Start for New Developers
 
