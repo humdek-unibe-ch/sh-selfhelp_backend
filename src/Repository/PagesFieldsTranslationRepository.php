@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\PagesFieldsTranslation;
+use App\Util\TranslationContentHelper;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -61,6 +62,12 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
      * Fetch page field translations with fallback to default language
      * Only fetches translations for fields with display=1 (title fields)
      *
+     * Field-level merge: a primary-language translation only overrides the
+     * default-language translation when its content is user-visibly non-empty.
+     * This avoids empty rich-text wrappers (e.g. `<p></p>`,
+     * `<p class="single-line-paragraph"></p>`) silently winning over the
+     * default-language value. See {@see TranslationContentHelper::isEffectivelyEmpty()}.
+     *
      * @param array $pageIds Array of page IDs
      * @param int $languageId Primary language ID
      * @param int|null $defaultLanguageId Default language ID for fallback
@@ -74,31 +81,36 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
 
         // Get primary language translations
         $primaryTranslations = $this->fetchTitleTranslationsForPages($pageIds, $languageId);
-        
+
         // If no default language or it's the same as primary, return primary translations
         if ($defaultLanguageId === null || $defaultLanguageId === $languageId) {
             return $primaryTranslations;
         }
-        
+
         // Get default language translations for fallback
         $defaultTranslations = $this->fetchTitleTranslationsForPages($pageIds, $defaultLanguageId);
-        
-        // Merge translations with primary taking precedence
+
+        // Merge translations with primary taking precedence at field level
         $mergedTranslations = [];
         foreach ($pageIds as $pageId) {
             $mergedTranslations[$pageId] = [];
-            
+
             // Start with default translations
             if (isset($defaultTranslations[$pageId])) {
                 $mergedTranslations[$pageId] = $defaultTranslations[$pageId];
             }
-            
-            // Override with primary translations
+
+            // Override with primary translations only when content is user-visibly non-empty
             if (isset($primaryTranslations[$pageId])) {
-                $mergedTranslations[$pageId] = array_merge($mergedTranslations[$pageId], $primaryTranslations[$pageId]);
+                foreach ($primaryTranslations[$pageId] as $fieldName => $primaryContent) {
+                    if (!TranslationContentHelper::isEffectivelyEmpty($primaryContent)) {
+                        $mergedTranslations[$pageId][$fieldName] = $primaryContent;
+                    }
+                    // Else keep the default value already seeded above.
+                }
             }
         }
-        
+
         return $mergedTranslations;
     }
 } 

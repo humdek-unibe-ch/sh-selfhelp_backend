@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\SectionsFieldsTranslation;
+use App\Util\TranslationContentHelper;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -62,8 +63,14 @@ class SectionsFieldsTranslationRepository extends ServiceEntityRepository
      * Fetch all section field translations for a list of section IDs with fallback to default language
      *
      * This method fetches translations for the requested language and automatically falls back
-     * to the default language at the field level. Only fields with non-empty content in the
-     * primary language will override the default language translations.
+     * to the default language at the field level. Only fields with user-visibly non-empty
+     * content in the primary language will override the default language translations.
+     *
+     * "User-visibly non-empty" goes beyond a plain trim() check: rich-text fields
+     * persisted by the CMS editor often look like `<p class="single-line-paragraph"></p>`
+     * or `<p><br></p>` when the user clears them. Those wrappers must trigger the
+     * fallback just like literal empty strings do. See
+     * {@see TranslationContentHelper::isEffectivelyEmpty()} for the exact rules.
      *
      * @param array $sectionIds Array of section IDs
      * @param int $languageId Primary language ID
@@ -100,8 +107,10 @@ class SectionsFieldsTranslationRepository extends ServiceEntityRepository
             // Override with primary translations at field level
             if (isset($primaryTranslations[$sectionId])) {
                 foreach ($primaryTranslations[$sectionId] as $fieldName => $primaryField) {
-                    // Only override if primary language has non-empty content
-                    if (isset($primaryField['content']) && !empty(trim($primaryField['content']))) {
+                    // Only override if the primary language has user-visibly non-empty content.
+                    // Empty rich-text wrappers (`<p></p>`, `<p><br></p>`, etc.) keep the default.
+                    $primaryContent = $primaryField['content'] ?? null;
+                    if (!TranslationContentHelper::isEffectivelyEmpty($primaryContent)) {
                         $mergedTranslations[$sectionId][$fieldName] = $primaryField;
                     }
                     // If primary has empty content or doesn't exist, keep default (already set above)
