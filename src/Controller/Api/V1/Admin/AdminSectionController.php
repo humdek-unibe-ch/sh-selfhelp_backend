@@ -105,23 +105,24 @@ class AdminSectionController extends AbstractController
     }
 
     /**
-     * Creates a new section with the specified style and adds it to a page
+     * Create new sections with the specified style and adds it to a page
      */
     public function createPageSection(Request $request, int $page_id): Response
     {
         $data = $this->validateRequest($request, 'requests/section/create_page_section', $this->jsonSchemaValidationService);
 
-        $result = $this->adminSectionService->createPageSection(
-            $page_id,
-            $data['styleId'],
-            $data['position'] ?? null
-        );
+        $results = [];
+
+        foreach ($data as $item) {
+            $results[] = $this->adminSectionService->createPageSection(
+                $page_id,
+                $item['styleId'],
+                $item['position'] ?? null
+            );
+        }
 
         return $this->apiResponseFormatter->formatSuccess(
-            [
-                'id' => $result['id'],
-                'position' => $result['position'],
-            ],
+            $results,
             null,
             Response::HTTP_CREATED
         );
