@@ -133,20 +133,28 @@ class AdminSectionController extends AbstractController
      */
     public function createChildSection(Request $request, int $page_id, int $parent_section_id): Response
     {
-        $data = $this->validateRequest($request, 'requests/section/create_child_section', $this->jsonSchemaValidationService);
-
-        $result = $this->adminSectionService->createChildSection(
-            $page_id,
-            $parent_section_id,
-            $data['styleId'],
-            $data['position'] ?? null
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/create_child_section',
+            $this->jsonSchemaValidationService
         );
 
+        $results = [];
+
+        foreach ($data as $item) {
+            $results[] = $this->adminSectionService->createChildSection(
+                $page_id,
+                $parent_section_id,
+                $item['styleId'],
+                $item['position'] ?? null
+            );
+        }
+
         return $this->apiResponseFormatter->formatSuccess(
-            [
-                'id' => $result['id'],
-                'position' => $result['position'],
-            ],
+            array_map(fn($r) => [
+                'id' => $r['id'],
+                'position' => $r['position'],
+            ], $results),
             null,
             Response::HTTP_CREATED
         );
