@@ -228,17 +228,30 @@ class AdminPageController extends AbstractController
 
     public function addSectionToPage(Request $request, int $page_id): Response
     {
-        $data = $this->validateRequest($request, 'requests/page/add_section_to_page', $this->jsonSchemaValidationService);
-
-        $result = $this->adminPageService->addSectionToPage(
-            $page_id,
-            $data['sectionId'],
-            $data['position'],
-            $data['oldParentSectionId'] ?? null,
+        $data = $this->validateRequest(
+            $request,
+            'requests/page/add_section_to_page',
+            $this->jsonSchemaValidationService
         );
 
+        $results = [];
+
+        foreach ($data['sections'] as $section) {
+            $result = $this->adminPageService->addSectionToPage(
+                pageId: $page_id,
+                sectionId: $section['sectionId'],
+                position: $section['position'] ?? null,
+                oldParentSectionId: $section['oldParentSectionId'] ?? null,
+            );
+
+            $results[] = [
+                'id' => $result->getSection()->getId(),
+                'position' => $result->getPosition(),
+            ];
+        }
+
         return $this->responseFormatter->formatSuccess(
-            ['id' => $result->getSection()->getId(), 'position' => $result->getPosition()],
+            $results,
             null,
             Response::HTTP_OK
         );

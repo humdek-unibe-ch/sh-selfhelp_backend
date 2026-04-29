@@ -52,23 +52,37 @@ class AdminSectionController extends AbstractController
             Response::HTTP_OK
         );
     }
-    public function addSectionToSection(Request $request, int $page_id, int $parent_section_id): Response
-    {
-        $data = $this->validateRequest($request, 'requests/section/add_section_to_section', $this->jsonSchemaValidationService);
+    public function addSectionToSection(
+        Request $request,
+        int $page_id,
+        int $parent_section_id
+    ): Response {
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/add_section_to_section',
+            $this->jsonSchemaValidationService
+        );
 
+        $results = [];
+
+        foreach ($data['sections'] as $section) {
         $result = $this->adminSectionService->addSectionToSection(
             page_id: $page_id,
             parent_section_id: $parent_section_id,
-            child_section_id: $data['childSectionId'],
-            position: $data['position'],
-            oldParentPageId: $data['oldParentPageId'] ?? null,
-            oldParentSectionId: $data['oldParentSectionId'] ?? null
+            child_section_id: $section['sectionId'],
+            position: $section['position'] ?? null,
+            oldParentPageId: $section['oldParentPageId'] ?? null,
+            oldParentSectionId: $section['oldParentSectionId'] ?? null
         );
 
-        // Section cache is automatically invalidated by the service
+        $results[] = [
+            'id' => $result->getChildSection()->getId(),
+            'position' => $result->getPosition(),
+        ];
+        }
 
         return $this->apiResponseFormatter->formatSuccess(
-            ['id' => $result->getChildSection()->getId(), 'position' => $result->getPosition()],
+            $results,
             null,
             Response::HTTP_OK
         );

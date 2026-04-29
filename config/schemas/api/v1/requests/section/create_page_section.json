@@ -3,6 +3,8 @@
   "title": "Create Page Section Request",
   "description": "Request schema for creating multiple sections on a page",
   "type": "array",
+  "minItems": 1,
+  "maxItems": 20,
   "items": {
     "type": "object",
     "properties": {

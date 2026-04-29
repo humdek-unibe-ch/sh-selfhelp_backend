@@ -1,29 +1,32 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Add Section to Page Request",
-    "description": "Schema for adding a section to a page",
-    "type": "object",
-    "properties": {
-        "sectionId": {
-            "type": "integer",
-            "description": "The ID of the section to add."
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Add Sections to Page Request",
+  "description": "Schema for adding one or more sections to a page",
+  "type": "object",
+  "properties": {
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sectionId": {
+            "type": "integer"
+          },
+          "position": {
+            "type": "integer"
+          },
+          "oldParentPageId": {
+            "type": ["integer", "null"]
+          },
+          "oldParentSectionId": {
+            "type": ["integer", "null"]
+          }
         },
-        "position": {
-            "type": "integer",
-            "description": "The position of the section within the page. If null, it will be added at the end."
-        },
-        "oldParentSectionId": {
-            "type": "integer",
-            "description": "The ID of the old parent section to remove the relationship from (optional)."
-        },
-        "oldParentPageId": {
-            "type": "integer",
-            "description": "The ID of the old parent page to remove the relationship from (optional)."
-        }
-    },
-    "required": [
-        "sectionId",
-        "position"
-    ],
-    "additionalProperties": false
+        "required": ["sectionId"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["sections"],
+  "additionalProperties": false
 }
