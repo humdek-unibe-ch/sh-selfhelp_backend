@@ -320,9 +320,9 @@ class AdminSectionService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the parent section or style is not found
      */
-    public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position): array
+    public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position, ?string $name = null): array
     {
-        $result = $this->sectionCreationService->createChildSection($page_id, $parent_section_id, $styleId, $position);
+        $result = $this->sectionCreationService->createChildSection($page_id, $parent_section_id, $styleId, $position, $name);
         if ($page_id) {
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
         }

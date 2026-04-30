@@ -161,7 +161,8 @@ class AdminSectionController extends AbstractController
                 $page_id,
                 $parent_section_id,
                 $item['styleId'],
-                $item['position'] ?? null
+                $item['position'] ?? null,
+                $item['name'] ?? null
             );
         }
 

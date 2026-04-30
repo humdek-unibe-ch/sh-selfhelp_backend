@@ -13,6 +13,10 @@
       },
       "position": {
         "type": "integer"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1
       }
     },
     "required": ["styleId", "position"],
