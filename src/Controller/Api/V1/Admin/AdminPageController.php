@@ -257,17 +257,35 @@ class AdminPageController extends AbstractController
         );
     }
 
-    public function removeSectionFromPage(int $page_id, array $sectionIds): Response
+    public function removeSectionFromPage(int $page_id, int $section_id): Response
     {
-        $result = $this->adminPageService->bulkRemoveSectionsFromPage(
-            $page_id,
-            $sectionIds
+        $this->adminPageService->removeSectionFromPage($page_id, $section_id);
+
+        return $this->responseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
+    }
+
+   public function bulkRemoveSectionsFromPage(Request $request, int $page_id): Response
+    {
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/bulk_remove_sections',
+            $this->jsonSchemaValidationService
         );
 
-        return $this->responseFormatter->formatSuccess(
-            $result,
-            null,
-            Response::HTTP_NO_CONTENT
-        );
+        try {
+            $result = $this->adminPageService->bulkRemoveSectionsFromPage(
+                $page_id,
+                $data['sectionIds']
+            );
+
+            return $this->responseFormatter->formatSuccess([
+                'deleted_count' => $result['deleted_count'] ?? count($data['sectionIds']),
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError(
+                'Bulk delete failed',
+            );
+        }
     }
 }

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bulk Delete Sections Request",
+  "description": "Request schema for bulk removing sections from a page.",
+  "type": "object",
+  "properties": {
+    "sectionIds": {
+      "type": "array",
+      "description": "Array of section IDs to remove from the page.",
+      "items": {
+        "type": "integer",
+        "description": "Section ID"
+      }
+    }
+  },
+  "required": ["sectionIds"],
+  "additionalProperties": false
+}
