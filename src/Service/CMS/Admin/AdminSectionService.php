@@ -303,9 +303,9 @@ class AdminSectionService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
-    public function createPageSection(int $page_id, int $styleId, ?int $position): array
+    public function createPageSection(int $page_id, int $styleId, ?int $position, ?string $name = null): array
     {
-        $result = $this->sectionCreationService->createPageSection($page_id, $styleId, $position);
+        $result = $this->sectionCreationService->createPageSection($page_id, $styleId, $position,$name);
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
         return $result;
     }

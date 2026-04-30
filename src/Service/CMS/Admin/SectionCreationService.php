@@ -49,7 +49,7 @@ class SectionCreationService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
-    public function createPageSection(int $pageId, int $styleId, ?int $position): array
+    public function createPageSection(int $pageId, int $styleId, ?int $position, ?string $name): array
     {
         // Permission check
        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
@@ -67,7 +67,11 @@ class SectionCreationService extends BaseService
 
             // Create a new section with the specified style
             $section = new Section();
-            $section->setName(time() . '-' . $style->getName());
+            if ($name) {
+            $section->setName($name);
+            } else {
+                $section->setName(time() . '-' . $style->getName());
+            }
             $section->setStyle($style);
             $this->entityManager->persist($section);
             $this->entityManager->flush(); // Flush to get the section ID

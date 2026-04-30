@@ -131,7 +131,8 @@ class AdminSectionController extends AbstractController
             $results[] = $this->adminSectionService->createPageSection(
                 $page_id,
                 $item['styleId'],
-                $item['position'] ?? null
+                $item['position'] ?? null,
+                $item['name'] ?? null
             );
         }
 
