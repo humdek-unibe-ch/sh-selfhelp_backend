@@ -236,7 +236,13 @@ class SectionRelationshipService extends BaseService
         }
     }
 
-
+    /**
+     * Remove multiple sections from a page
+     * 
+     * @param int $pageId The ID of the page
+     * @param array $sectionIds The List of IDs of the sections to remove
+     * @throws ServiceException If the relationship does not exist
+     */
     public function bulkRemoveSections(int $pageId, array $sectionIds): array
     {
         $this->entityManager->beginTransaction();
