@@ -608,6 +608,37 @@ class AdminPageService extends BaseService
             ->invalidateAllListsInCategory();
     }
 
+    public function bulkRemoveSectionsFromPage(int $pageId, array $sectionIds): array
+    {
+        $result = $this->sectionRelationshipService
+            ->bulkRemoveSections($pageId, $sectionIds);
+
+        // Page cache
+        $this->cache->invalidateEntityScope(
+            CacheService::ENTITY_SCOPE_PAGE,
+            $pageId
+        );
+
+        // Section cache (bulk-safe)
+        foreach ($sectionIds as $sectionId) {
+            $this->cache->invalidateEntityScope(
+                CacheService::ENTITY_SCOPE_SECTION,
+                $sectionId
+            );
+        }
+
+        // Global invalidations
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateAllListsInCategory();
+
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->invalidateAllListsInCategory();
+
+        return $result;
+    }
+
     /**
      * Get all pages for admin purposes without ACL filtering
      * Returns pages in the same format as PageService for compatibility

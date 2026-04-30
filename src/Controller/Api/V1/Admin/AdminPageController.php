@@ -257,10 +257,17 @@ class AdminPageController extends AbstractController
         );
     }
 
-    public function removeSectionFromPage(int $page_id, int $section_id): Response
+    public function removeSectionFromPage(int $page_id, array $sectionIds): Response
     {
-        $this->adminPageService->removeSectionFromPage($page_id, $section_id);
+        $result = $this->adminPageService->bulkRemoveSectionsFromPage(
+            $page_id,
+            $sectionIds
+        );
 
-        return $this->responseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
+        return $this->responseFormatter->formatSuccess(
+            $result,
+            null,
+            Response::HTTP_NO_CONTENT
+        );
     }
 }

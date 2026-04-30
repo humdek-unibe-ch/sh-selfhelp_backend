@@ -254,15 +254,6 @@ class AdminSectionService extends BaseService
         $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
     }
 
-    /**
-     * Deletes a section permanently.
-     *
-     * This will remove the section and all its relationships (parent, child, and page attachments).
-     *
-     * @param int|null $page_id The page ID.
-     * @param int $section_id The ID of the section to delete.
-     * @throws ServiceException If the section is not found.
-     */
     public function deleteSection(?int $page_id, int $section_id): void
     {
         $this->sectionRelationshipService->deleteSection($page_id, $section_id);

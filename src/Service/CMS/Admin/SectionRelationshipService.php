@@ -236,6 +236,96 @@ class SectionRelationshipService extends BaseService
         }
     }
 
+
+    public function bulkRemoveSections(int $pageId, array $sectionIds): array
+    {
+        $this->entityManager->beginTransaction();
+
+        $deleted = 0;
+        $errors = [];
+
+        try {
+            $page = $this->pageRepository->find($pageId);
+
+            if (!$page) {
+                $this->throwNotFound('Page not found');
+            }
+
+            $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
+            foreach ($sectionIds as $sectionId) {
+                try {
+                    $pageSection = $this->entityManager
+                        ->getRepository(PagesSection::class)
+                        ->findOneBy([
+                            'page' => $page,
+                            'section' => $sectionId
+                        ]);
+
+                    if ($pageSection) {
+                        $this->entityManager->remove($pageSection);
+                        $deleted++;
+                        continue;
+                    }
+
+                    $section = $this->entityManager
+                        ->getRepository(Section::class)
+                        ->find($sectionId);
+
+                    if (!$section) {
+                        $errors[] = [
+                            'sectionId' => $sectionId,
+                            'error' => 'Section not found'
+                        ];
+                        continue;
+                    }
+
+                    if (
+                        !$this->sectionBelongsToPageHierarchy(
+                            $page,
+                            $sectionId,
+                            $this->entityManager,
+                            $this->sectionRepository
+                        )
+                    ) {
+                        $errors[] = [
+                            'sectionId' => $sectionId,
+                            'error' => 'Section not in page hierarchy'
+                        ];
+                        continue;
+                    }
+
+                    $this->removeAllSectionRelationships($section, $this->entityManager);
+                    $this->entityManager->remove($section);
+
+                    $deleted++;
+
+                } catch (\Throwable $e) {
+                    $errors[] = [
+                        'sectionId' => $sectionId,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+
+            return [
+                'deleted_count' => $deleted,
+                'errors' => $errors
+            ];
+
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw new ServiceException(
+                'Bulk remove failed: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e]
+            );
+        }
+    }
+
     /**
      * Remove a section from another section
      * 
