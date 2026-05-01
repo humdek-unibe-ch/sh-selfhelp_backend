@@ -52,6 +52,23 @@ class AdminSectionController extends AbstractController
             Response::HTTP_OK
         );
     }
+
+    /**
+     * Add one or more child sections to a parent section in a single atomic operation.
+     *
+     * Accepts a batch of section assignments under a given parent section, each
+     * optionally including a target position, an old parent page, and an old parent
+     * section to detach from before re-parenting. All assignments are persisted in
+     * one transaction and positions are normalized once at the end.
+     *
+     * @route /admin/pages/{page_id}/sections/{parent_section_id}/sections
+     * @method POST
+     *
+     * @param Request $request           JSON body validated against add_section_to_section schema
+     * @param int     $page_id           The page the parent section belongs to
+     * @param int     $parent_section_id The section to nest the child sections under
+     * @return Response                  200 with an array of {id, position} for each added section
+     */
     public function addSectionToSection(
         Request $request,
         int $page_id,
@@ -63,23 +80,7 @@ class AdminSectionController extends AbstractController
             $this->jsonSchemaValidationService
         );
 
-        $results = [];
-
-        foreach ($data['sections'] as $section) {
-        $result = $this->adminSectionService->addSectionToSection(
-            page_id: $page_id,
-            parent_section_id: $parent_section_id,
-            child_section_id: $section['sectionId'],
-            position: $section['position'] ?? null,
-            oldParentPageId: $section['oldParentPageId'] ?? null,
-            oldParentSectionId: $section['oldParentSectionId'] ?? null
-        );
-
-        $results[] = [
-            'id' => $result->getChildSection()->getId(),
-            'position' => $result->getPosition(),
-        ];
-        }
+        $results = $this->adminSectionService->addSectionToSection($page_id, $parent_section_id, $data['sections']);
 
         return $this->apiResponseFormatter->formatSuccess(
             $results,

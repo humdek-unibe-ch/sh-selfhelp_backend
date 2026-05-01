@@ -92,23 +92,25 @@ class SectionRelationshipService extends BaseService
     }
 
     /**
-     * Add a section to another section
-     * 
-     * @param int $pageId The page ID
-     * @param int $parentSectionId The ID of the parent section
-     * @param int $childSectionId The ID of the child section
-     * @param int|null $position The desired position
-     * @param int|null $oldParentPageId The ID of the old parent page to remove the relationship from (optional)
-     * @param int|null $oldParentSectionId The ID of the old parent section to remove the relationship from (optional)
-     * @return SectionsHierarchy The new section hierarchy relationship
-     * @throws ServiceException If the relationship already exists or entities are not found
+     * Add one or more child sections to a parent section in a single atomic operation.
+     *
+     * Validates page access and parent section membership once, then iterates the
+     * batch inside a single transaction — removing old parent relationships, creating
+     * or updating hierarchy records, flushing once, and normalizing positions once
+     * at the end. This avoids the N-transaction, N-flush, and N-normalize overhead
+     * of the single-section path called in a loop.
+     *
+     * @param int   $pageId          The page the parent section belongs to
+     * @param int   $parentSectionId The section to nest the child sections under
+     * @param array $sections        Raw section payloads (sectionId, position?, oldParentPageId?, oldParentSectionId?)
+     * @return array<array{id: int, position: int, sectionId: int}> Result for each added section
+     * @throws ServiceException If any entity is not found, access is denied, or the DB operation fails
      */
-    public function addSectionToSection(int $pageId, int $parentSectionId, int $childSectionId, ?int $position, ?int $oldParentPageId = null, ?int $oldParentSectionId = null): SectionsHierarchy
+    public function addSectionsToSection(int $pageId, int $parentSectionId, array $sections): array
     {
-        // Permission check
-       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $this->checkSectionInPage($pageId, $parentSectionId);
-        
+
         $this->entityManager->beginTransaction();
         try {
             $parentSection = $this->sectionRepository->find($parentSectionId);
@@ -116,44 +118,60 @@ class SectionRelationshipService extends BaseService
                 $this->throwNotFound('Parent section not found');
             }
 
-            $childSection = $this->sectionRepository->find($childSectionId);
-            if (!$childSection) {
-                $this->throwNotFound('Child section not found');
+            $results = [];
+            foreach ($sections as $section) {
+                $childSectionId  = $section['sectionId'];
+                $position        = $section['position'] ?? null;
+                $oldParentPageId = $section['oldParentPageId'] ?? null;
+                $oldParentSection = $section['oldParentSectionId'] ?? null;
+
+                $childSection = $this->sectionRepository->find($childSectionId);
+                if (!$childSection) {
+                    $this->throwNotFound("Child section {$childSectionId} not found");
+                }
+
+                $this->removeOldParentRelationships($oldParentPageId, $oldParentSection, $childSection, $this->entityManager);
+
+                // Flush removal before creating the new relationship to avoid identity map conflicts
+                $this->entityManager->flush();
+
+                $sectionHierarchy = $this->createSectionHierarchyRelationship($parentSection, $childSection, $position, $this->entityManager);
+
+                $results[] = [
+                    'id'        => $sectionHierarchy->getChildSection()->getId(),
+                    'position'  => $sectionHierarchy->getPosition(),
+                    'sectionId' => $childSectionId,
+                ];
             }
 
-            // Remove old parent relationships
-            $this->removeOldParentRelationships($oldParentPageId, $oldParentSectionId, $childSection, $this->entityManager);
-            
-            // Flush the removal of old relationships to avoid identity map conflicts
-            $this->entityManager->flush();
-
-            // Create section hierarchy relationship
-            $sectionHierarchy = $this->createSectionHierarchyRelationship($parentSection, $childSection, $position, $this->entityManager);                       
-            
+            // One flush → one normalize → one commit for the entire batch
             $this->entityManager->flush();
             $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
-            
-            // Invalidate section caches
+
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
             $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $childSection->getId());
-            $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+            foreach (array_column($results, 'sectionId') as $sectionId) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+            }
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
-            
+
             $this->entityManager->commit();
-            
-            return $sectionHierarchy;
+
+            return $results;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
-            
-            throw $e instanceof ServiceException ? $e : new ServiceException('Failed to add section to section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
+
+            throw $e instanceof ServiceException
+                ? $e
+                : new ServiceException('Failed to add sections to section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
         }
     }
 
