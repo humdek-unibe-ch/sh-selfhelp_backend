@@ -608,6 +608,13 @@ class AdminPageService extends BaseService
             ->invalidateAllListsInCategory();
     }
 
+    /**
+     * Remove multiple sections from a page, invalidaes all cache entries to the affected entities.
+     * 
+     * @param int $pageId The ID of the page
+     * @param array $sectionIds The List of IDs of the sections to remove
+     * @throws ServiceException If the relationship does not exist
+     */
     public function bulkRemoveSectionsFromPage(int $pageId, array $sectionIds): array
     {
         $result = $this->sectionRelationshipService

@@ -264,6 +264,20 @@ class AdminPageController extends AbstractController
         return $this->responseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
     }
 
+    /**
+     * Remove multiple sections from a page in one request.
+     *
+     * Accepts an array of section IDs and delegates to the service for a single
+     * bulk delete operation, avoiding the overhead of individual DELETE calls.
+     * Returns the counter of relationships actually removed.
+     *
+     * @route /admin/pages/{page_id}/sections
+     * @method DELETE
+     *
+     * @param Request $request  JSON body validated against bulk_remove_sections schema
+     * @param int     $page_id  The page to remove sections from
+     * @return Response         200 with {deleted_count} on success, 500 on failure
+     */
    public function bulkRemoveSectionsFromPage(Request $request, int $page_id): Response
     {
         $data = $this->validateRequest(
