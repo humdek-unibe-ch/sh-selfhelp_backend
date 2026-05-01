@@ -226,6 +226,21 @@ class AdminPageController extends AbstractController
         }
     }
 
+    /**
+     * Add one or more sections to a page in a single atomic operation.
+     *
+     * Accepts a batch of section assignments, each optionally including a target
+     * position and an old parent section to detach from before re-parenting.
+     * All assignments are persisted in one transaction and positions are
+     * normalized once at the end.
+     *
+     * @route /admin/pages/{page_id}/sections
+     * @method POST
+     *
+     * @param Request $request  JSON body validated against add_section_to_page schema
+     * @param int     $page_id  The page to attach the sections to
+     * @return Response         200 with an array of {id, position} for each added section
+     */
     public function addSectionToPage(Request $request, int $page_id): Response
     {
         $data = $this->validateRequest(
@@ -234,21 +249,7 @@ class AdminPageController extends AbstractController
             $this->jsonSchemaValidationService
         );
 
-        $results = [];
-
-        foreach ($data['sections'] as $section) {
-            $result = $this->adminPageService->addSectionToPage(
-                pageId: $page_id,
-                sectionId: $section['sectionId'],
-                position: $section['position'] ?? null,
-                oldParentSectionId: $section['oldParentSectionId'] ?? null,
-            );
-
-            $results[] = [
-                'id' => $result->getSection()->getId(),
-                'position' => $result->getPosition(),
-            ];
-        }
+        $results = $this->adminPageService->addSectionToPage($page_id, $data['sections']);
 
         return $this->responseFormatter->formatSuccess(
             $results,
@@ -257,10 +258,45 @@ class AdminPageController extends AbstractController
         );
     }
 
+    /**
+     * Remove a single section from a page.
+     *
+     * @route /admin/pages/{page_id}/sections/{section_id}
+     * @method DELETE
+     *
+     * @param int $page_id    The page to remove the section from
+     * @param int $section_id The section to detach
+     * @return Response       204 No Content on success
+     */
     public function removeSectionFromPage(int $page_id, int $section_id): Response
     {
         $this->adminPageService->removeSectionFromPage($page_id, $section_id);
 
         return $this->responseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
+    }
+
+   public function bulkRemoveSectionsFromPage(Request $request, int $page_id): Response
+    {
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/bulk_remove_sections',
+            $this->jsonSchemaValidationService
+        );
+
+        try {
+            $result = $this->adminPageService->bulkRemoveSectionsFromPage(
+                $page_id,
+                $data['sectionIds']
+            );
+
+            return $this->responseFormatter->formatSuccess([
+                'deleted_count' => $result['deleted_count'] ?? count($data['sectionIds']),
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError(
+                'Bulk delete failed',
+            );
+        }
     }
 }

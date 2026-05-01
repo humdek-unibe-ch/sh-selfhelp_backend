@@ -41,58 +41,53 @@ class SectionRelationshipService extends BaseService
      * Add a section to a page
      * 
      * @param int $pageId The ID of the page
-     * @param int $sectionId The ID of the section to add
-     * @param int|null $position The position of the section on the page
-     * @param int|null $oldParentSectionId The ID of the old parent section if moving from a section hierarchy
-     * @return PagesSection The created or updated page section relationship
+     * @param array $sections The list of IDs of the sections to add
+     * @return array<array{id: int, position: int, sectionId: int}> as list of results
      * @throws ServiceException If page or section not found or access denied
      */
-    public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
+    public function addSectionToPage(int $pageId, array $sections): array
     {
         $this->entityManager->beginTransaction();
         try {
-            // Find the page
             $parentPage = $this->pageRepository->find($pageId);
             if (!$parentPage) {
                 $this->throwNotFound('Page not found');
             }
-            
-            // Check if user has update access to the page
-           $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
-            
-            // Find the section
-            $childSection = $this->entityManager->getRepository(Section::class)->find($sectionId);
-            if (!$childSection) {
-                $this->throwNotFound('Section not found');
+
+            $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
+            $results = [];
+            foreach ($sections as $section) {
+                $sectionId        = $section['sectionId'];
+                $position         = $section['position'] ?? null;
+                $oldParentSection = $section['oldParentSectionId'] ?? null;
+
+                $childSection = $this->entityManager->getRepository(Section::class)->find($sectionId);
+                if (!$childSection) {
+                    $this->throwNotFound("Section {$sectionId} not found");
+                }
+
+                $this->removeOldParentRelationships(null, $oldParentSection, $childSection, $this->entityManager);
+                $pageSection = $this->createOrUpdatePageSectionRelationship($parentPage, $childSection, $position, $this->entityManager);
+
+                $results[] = [
+                    'id'        => $pageSection->getSection()->getId(),
+                    'position'  => $pageSection->getPosition(),
+                    'sectionId' => $sectionId,
+                ];
             }
-            
-            // Remove old parent section relationship if needed
-            $this->removeOldParentRelationships(null, $oldParentSectionId, $childSection, $this->entityManager);
-            
-            // Create or update page-section relationship
-            $pageSection = $this->createOrUpdatePageSectionRelationship($parentPage, $childSection, $position, $this->entityManager);            
-            
+
+            // Just one even for bulk operations
             $this->entityManager->flush();
-            $this->positionManagementService->normalizePageSectionPositions($parentPage->getId());
-            
-            // Invalidate page and section caches
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $parentPage->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $childSection->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateAllListsInCategory();
-            
+            $this->positionManagementService->normalizePageSectionPositions($pageId);
             $this->entityManager->commit();
-        
-            return $pageSection;
+
+            return $results;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
-            
-            throw $e instanceof ServiceException ? $e : new ServiceException('Failed to add section to page: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
+            throw $e instanceof ServiceException
+                ? $e
+                : new ServiceException('Failed to add sections to page: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
         }
     }
 

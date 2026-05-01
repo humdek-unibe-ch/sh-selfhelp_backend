@@ -561,27 +561,22 @@ class AdminPageService extends BaseService
      * Add a section to a page
      * 
      * @param int $pageId The ID of the page
-     * @param int $sectionId The ID of the section to add
-     * @param int|null $position The position of the section on the page
-     * @param int|null $oldParentSectionId The ID of the old parent section if moving from a section hierarchy
-     * @return PagesSection The created or updated page section relationship
+     * @param array $sections The list of IDs of the sections to add
+     * @return array<array{id: int, position: int, sectionId: int}> as list of results
      * @throws ServiceException If page or section not found or access denied
      */
-    public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
+    public function addSectionToPage(int $pageId, array $sections): array
     {
-        $result = $this->sectionRelationshipService->addSectionToPage($pageId, $sectionId, $position, $oldParentSectionId);
+        $results = $this->sectionRelationshipService->addSectionToPage($pageId, $sections);
 
-        // Invalidate cache for this specific page
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_PAGES)
-            ->invalidateAllListsInCategory();
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_SECTIONS)
-            ->invalidateAllListsInCategory();
+        foreach (array_column($results, 'sectionId') as $sectionId) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+        }
+        $this->cache->withCategory(CacheService::CATEGORY_PAGES)->invalidateAllListsInCategory();
+        $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
 
-        return $result;
+        return array_map(fn($r) => ['id' => $r['id'], 'position' => $r['position']], $results);
     }
 
     /**
