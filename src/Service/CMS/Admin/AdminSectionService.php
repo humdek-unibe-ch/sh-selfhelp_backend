@@ -254,15 +254,6 @@ class AdminSectionService extends BaseService
         $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
     }
 
-    /**
-     * Deletes a section permanently.
-     *
-     * This will remove the section and all its relationships (parent, child, and page attachments).
-     *
-     * @param int|null $page_id The page ID.
-     * @param int $section_id The ID of the section to delete.
-     * @throws ServiceException If the section is not found.
-     */
     public function deleteSection(?int $page_id, int $section_id): void
     {
         $this->sectionRelationshipService->deleteSection($page_id, $section_id);
@@ -303,9 +294,9 @@ class AdminSectionService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
-    public function createPageSection(int $page_id, int $styleId, ?int $position): array
+    public function createPageSection(int $page_id, int $styleId, ?int $position, ?string $name = null): array
     {
-        $result = $this->sectionCreationService->createPageSection($page_id, $styleId, $position);
+        $result = $this->sectionCreationService->createPageSection($page_id, $styleId, $position,$name);
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
         return $result;
     }
@@ -320,9 +311,9 @@ class AdminSectionService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the parent section or style is not found
      */
-    public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position): array
+    public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position, ?string $name = null): array
     {
-        $result = $this->sectionCreationService->createChildSection($page_id, $parent_section_id, $styleId, $position);
+        $result = $this->sectionCreationService->createChildSection($page_id, $parent_section_id, $styleId, $position, $name);
         if ($page_id) {
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
         }

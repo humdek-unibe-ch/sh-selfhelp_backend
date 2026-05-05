@@ -52,23 +52,39 @@ class AdminSectionController extends AbstractController
             Response::HTTP_OK
         );
     }
-    public function addSectionToSection(Request $request, int $page_id, int $parent_section_id): Response
-    {
-        $data = $this->validateRequest($request, 'requests/section/add_section_to_section', $this->jsonSchemaValidationService);
-
-        $result = $this->adminSectionService->addSectionToSection(
-            page_id: $page_id,
-            parent_section_id: $parent_section_id,
-            child_section_id: $data['childSectionId'],
-            position: $data['position'],
-            oldParentPageId: $data['oldParentPageId'] ?? null,
-            oldParentSectionId: $data['oldParentSectionId'] ?? null
+    public function addSectionToSection(
+        Request $request,
+        int $page_id,
+        int $parent_section_id
+    ): Response {
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/add_section_to_section',
+            $this->jsonSchemaValidationService
         );
 
-        // Section cache is automatically invalidated by the service
+        $isBulkRequest = isset($data['sections']);
+        $sections = $isBulkRequest ? $data['sections'] : [$data];
+        $results = [];
+
+        foreach ($sections as $section) {
+            $result = $this->adminSectionService->addSectionToSection(
+                page_id: $page_id,
+                parent_section_id: $parent_section_id,
+                child_section_id: $section['sectionId'] ?? $section['childSectionId'],
+                position: $section['position'] ?? null,
+                oldParentPageId: $section['oldParentPageId'] ?? null,
+                oldParentSectionId: $section['oldParentSectionId'] ?? null
+            );
+
+            $results[] = [
+                'id' => $result->getChildSection()->getId(),
+                'position' => $result->getPosition(),
+            ];
+        }
 
         return $this->apiResponseFormatter->formatSuccess(
-            ['id' => $result->getChildSection()->getId(), 'position' => $result->getPosition()],
+            $isBulkRequest ? $results : $results[0],
             null,
             Response::HTTP_OK
         );
@@ -105,23 +121,27 @@ class AdminSectionController extends AbstractController
     }
 
     /**
-     * Creates a new section with the specified style and adds it to a page
+     * Create new sections with the specified style and adds it to a page
      */
     public function createPageSection(Request $request, int $page_id): Response
     {
         $data = $this->validateRequest($request, 'requests/section/create_page_section', $this->jsonSchemaValidationService);
 
-        $result = $this->adminSectionService->createPageSection(
-            $page_id,
-            $data['styleId'],
-            $data['position'] ?? null
-        );
+        $isBulkRequest = array_is_list($data);
+        $items = $isBulkRequest ? $data : [$data];
+        $results = [];
+
+        foreach ($items as $item) {
+            $results[] = $this->adminSectionService->createPageSection(
+                $page_id,
+                $item['styleId'],
+                $item['position'] ?? null,
+                $item['name'] ?? null
+            );
+        }
 
         return $this->apiResponseFormatter->formatSuccess(
-            [
-                'id' => $result['id'],
-                'position' => $result['position'],
-            ],
+            $isBulkRequest ? $results : $results[0],
             null,
             Response::HTTP_CREATED
         );
@@ -132,20 +152,33 @@ class AdminSectionController extends AbstractController
      */
     public function createChildSection(Request $request, int $page_id, int $parent_section_id): Response
     {
-        $data = $this->validateRequest($request, 'requests/section/create_child_section', $this->jsonSchemaValidationService);
-
-        $result = $this->adminSectionService->createChildSection(
-            $page_id,
-            $parent_section_id,
-            $data['styleId'],
-            $data['position'] ?? null
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/create_child_section',
+            $this->jsonSchemaValidationService
         );
 
+        $isBulkRequest = array_is_list($data);
+        $items = $isBulkRequest ? $data : [$data];
+        $results = [];
+
+        foreach ($items as $item) {
+            $results[] = $this->adminSectionService->createChildSection(
+                $page_id,
+                $parent_section_id,
+                $item['styleId'],
+                $item['position'] ?? null,
+                $item['name'] ?? null
+            );
+        }
+
+        $formattedResults = array_map(fn($r) => [
+            'id' => $r['id'],
+            'position' => $r['position'],
+        ], $results);
+
         return $this->apiResponseFormatter->formatSuccess(
-            [
-                'id' => $result['id'],
-                'position' => $result['position'],
-            ],
+            $isBulkRequest ? $formattedResults : $formattedResults[0],
             null,
             Response::HTTP_CREATED
         );

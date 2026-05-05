@@ -609,6 +609,44 @@ class AdminPageService extends BaseService
     }
 
     /**
+     * Remove multiple sections from a page, invalidaes all cache entries to the affected entities.
+     * 
+     * @param int $pageId The ID of the page
+     * @param array $sectionIds The List of IDs of the sections to remove
+     * @throws ServiceException If the relationship does not exist
+     */
+    public function bulkRemoveSectionsFromPage(int $pageId, array $sectionIds): array
+    {
+        $result = $this->sectionRelationshipService
+            ->bulkRemoveSections($pageId, $sectionIds);
+
+        // Page cache
+        $this->cache->invalidateEntityScope(
+            CacheService::ENTITY_SCOPE_PAGE,
+            $pageId
+        );
+
+        // Section cache (bulk-safe)
+        foreach ($sectionIds as $sectionId) {
+            $this->cache->invalidateEntityScope(
+                CacheService::ENTITY_SCOPE_SECTION,
+                $sectionId
+            );
+        }
+
+        // Global invalidations
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateAllListsInCategory();
+
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->invalidateAllListsInCategory();
+
+        return $result;
+    }
+
+    /**
      * Get all pages for admin purposes without ACL filtering
      * Returns pages in the same format as PageService for compatibility
      *
