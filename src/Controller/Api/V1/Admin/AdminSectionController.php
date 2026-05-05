@@ -63,26 +63,28 @@ class AdminSectionController extends AbstractController
             $this->jsonSchemaValidationService
         );
 
+        $isBulkRequest = isset($data['sections']);
+        $sections = $isBulkRequest ? $data['sections'] : [$data];
         $results = [];
 
-        foreach ($data['sections'] as $section) {
-        $result = $this->adminSectionService->addSectionToSection(
-            page_id: $page_id,
-            parent_section_id: $parent_section_id,
-            child_section_id: $section['sectionId'],
-            position: $section['position'] ?? null,
-            oldParentPageId: $section['oldParentPageId'] ?? null,
-            oldParentSectionId: $section['oldParentSectionId'] ?? null
-        );
+        foreach ($sections as $section) {
+            $result = $this->adminSectionService->addSectionToSection(
+                page_id: $page_id,
+                parent_section_id: $parent_section_id,
+                child_section_id: $section['sectionId'] ?? $section['childSectionId'],
+                position: $section['position'] ?? null,
+                oldParentPageId: $section['oldParentPageId'] ?? null,
+                oldParentSectionId: $section['oldParentSectionId'] ?? null
+            );
 
-        $results[] = [
-            'id' => $result->getChildSection()->getId(),
-            'position' => $result->getPosition(),
-        ];
+            $results[] = [
+                'id' => $result->getChildSection()->getId(),
+                'position' => $result->getPosition(),
+            ];
         }
 
         return $this->apiResponseFormatter->formatSuccess(
-            $results,
+            $isBulkRequest ? $results : $results[0],
             null,
             Response::HTTP_OK
         );
@@ -125,9 +127,11 @@ class AdminSectionController extends AbstractController
     {
         $data = $this->validateRequest($request, 'requests/section/create_page_section', $this->jsonSchemaValidationService);
 
+        $isBulkRequest = array_is_list($data);
+        $items = $isBulkRequest ? $data : [$data];
         $results = [];
 
-        foreach ($data as $item) {
+        foreach ($items as $item) {
             $results[] = $this->adminSectionService->createPageSection(
                 $page_id,
                 $item['styleId'],
@@ -137,7 +141,7 @@ class AdminSectionController extends AbstractController
         }
 
         return $this->apiResponseFormatter->formatSuccess(
-            $results,
+            $isBulkRequest ? $results : $results[0],
             null,
             Response::HTTP_CREATED
         );
@@ -154,9 +158,11 @@ class AdminSectionController extends AbstractController
             $this->jsonSchemaValidationService
         );
 
+        $isBulkRequest = array_is_list($data);
+        $items = $isBulkRequest ? $data : [$data];
         $results = [];
 
-        foreach ($data as $item) {
+        foreach ($items as $item) {
             $results[] = $this->adminSectionService->createChildSection(
                 $page_id,
                 $parent_section_id,
@@ -166,11 +172,13 @@ class AdminSectionController extends AbstractController
             );
         }
 
+        $formattedResults = array_map(fn($r) => [
+            'id' => $r['id'],
+            'position' => $r['position'],
+        ], $results);
+
         return $this->apiResponseFormatter->formatSuccess(
-            array_map(fn($r) => [
-                'id' => $r['id'],
-                'position' => $r['position'],
-            ], $results),
+            $isBulkRequest ? $formattedResults : $formattedResults[0],
             null,
             Response::HTTP_CREATED
         );

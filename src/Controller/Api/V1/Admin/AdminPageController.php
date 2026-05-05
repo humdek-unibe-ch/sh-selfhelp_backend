@@ -234,9 +234,11 @@ class AdminPageController extends AbstractController
             $this->jsonSchemaValidationService
         );
 
+        $isBulkRequest = isset($data['sections']);
+        $sections = $isBulkRequest ? $data['sections'] : [$data];
         $results = [];
 
-        foreach ($data['sections'] as $section) {
+        foreach ($sections as $section) {
             $result = $this->adminPageService->addSectionToPage(
                 pageId: $page_id,
                 sectionId: $section['sectionId'],
@@ -251,7 +253,7 @@ class AdminPageController extends AbstractController
         }
 
         return $this->responseFormatter->formatSuccess(
-            $results,
+            $isBulkRequest ? $results : $results[0],
             null,
             Response::HTTP_OK
         );
@@ -278,7 +280,7 @@ class AdminPageController extends AbstractController
      * @param int     $page_id  The page to remove sections from
      * @return Response         200 with {deleted_count} on success, 500 on failure
      */
-   public function bulkRemoveSectionsFromPage(Request $request, int $page_id): Response
+    public function bulkRemoveSectionsFromPage(Request $request, int $page_id): Response
     {
         $data = $this->validateRequest(
             $request,
@@ -292,13 +294,14 @@ class AdminPageController extends AbstractController
                 $data['sectionIds']
             );
 
-            return $this->responseFormatter->formatSuccess([
-                'deleted_count' => $result['deleted_count'] ?? count($data['sectionIds']),
-            ]);
+            return $this->responseFormatter->formatSuccess($result);
 
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
-                'Bulk delete failed',
+                'Bulk delete failed: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
     }

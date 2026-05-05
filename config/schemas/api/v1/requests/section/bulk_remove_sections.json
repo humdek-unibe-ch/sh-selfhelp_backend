@@ -7,6 +7,8 @@
     "sectionIds": {
       "type": "array",
       "description": "Array of section IDs to remove from the page.",
+      "minItems": 1,
+      "uniqueItems": true,
       "items": {
         "type": "integer",
         "description": "Section ID"

@@ -245,73 +245,110 @@ class SectionRelationshipService extends BaseService
      */
     public function bulkRemoveSections(int $pageId, array $sectionIds): array
     {
+        $sectionIds = array_values(array_unique(array_map('intval', $sectionIds)));
+
+        $page = $this->pageRepository->find($pageId);
+        if (!$page) {
+            $this->throwNotFound('Page not found');
+        }
+
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         $this->entityManager->beginTransaction();
-
-        $deleted = 0;
-        $errors = [];
-
         try {
-            $page = $this->pageRepository->find($pageId);
-
-            if (!$page) {
-                $this->throwNotFound('Page not found');
-            }
-
-            $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+            $pageSectionsToRemove = [];
+            $sectionsToDelete = [];
+            $parentSectionIdsToNormalize = [];
+            $errors = [];
 
             foreach ($sectionIds as $sectionId) {
-                try {
-                    $pageSection = $this->entityManager
-                        ->getRepository(PagesSection::class)
-                        ->findOneBy([
-                            'page' => $page,
-                            'section' => $sectionId
-                        ]);
+                $pageSection = $this->entityManager
+                    ->getRepository(PagesSection::class)
+                    ->findOneBy([
+                        'page' => $page,
+                        'section' => $sectionId
+                    ]);
 
-                    if ($pageSection) {
-                        $this->entityManager->remove($pageSection);
-                        $deleted++;
-                        continue;
-                    }
+                if ($pageSection) {
+                    $pageSectionsToRemove[] = $pageSection;
+                    continue;
+                }
 
-                    $section = $this->entityManager
-                        ->getRepository(Section::class)
-                        ->find($sectionId);
+                $section = $this->entityManager
+                    ->getRepository(Section::class)
+                    ->find($sectionId);
 
-                    if (!$section) {
-                        $errors[] = [
-                            'sectionId' => $sectionId,
-                            'error' => 'Section not found'
-                        ];
-                        continue;
-                    }
-
-                    if (
-                        !$this->sectionBelongsToPageHierarchy(
-                            $page,
-                            $sectionId,
-                            $this->entityManager,
-                            $this->sectionRepository
-                        )
-                    ) {
-                        $errors[] = [
-                            'sectionId' => $sectionId,
-                            'error' => 'Section not in page hierarchy'
-                        ];
-                        continue;
-                    }
-
-                    $this->removeAllSectionRelationships($section, $this->entityManager);
-                    $this->entityManager->remove($section);
-
-                    $deleted++;
-
-                } catch (\Throwable $e) {
+                if (!$section) {
                     $errors[] = [
                         'sectionId' => $sectionId,
-                        'error' => $e->getMessage()
+                        'error' => 'Section not found'
                     ];
+                    continue;
                 }
+
+                if (
+                    !$this->sectionBelongsToPageHierarchy(
+                        $page,
+                        $sectionId,
+                        $this->entityManager,
+                        $this->sectionRepository
+                    )
+                ) {
+                    $errors[] = [
+                        'sectionId' => $sectionId,
+                        'error' => 'Section not in page hierarchy'
+                    ];
+                    continue;
+                }
+
+                $parentRows = $this->entityManager
+                    ->createQueryBuilder()
+                    ->select('IDENTITY(sh.parentSection) AS parent_id')
+                    ->from(SectionsHierarchy::class, 'sh')
+                    ->where('sh.childSection = :section')
+                    ->setParameter('section', $section)
+                    ->getQuery()
+                    ->getArrayResult();
+
+                foreach ($parentRows as $parentRow) {
+                    if (isset($parentRow['parent_id'])) {
+                        $parentSectionIdsToNormalize[] = (int) $parentRow['parent_id'];
+                    }
+                }
+
+                $sectionsToDelete[] = $section;
+            }
+
+            if ($errors !== []) {
+                throw new ServiceException(
+                    'Bulk remove sections failed validation',
+                    Response::HTTP_BAD_REQUEST,
+                    [
+                        'deleted_count' => 0,
+                        'errors' => $errors
+                    ]
+                );
+            }
+
+            foreach ($pageSectionsToRemove as $pageSection) {
+                $this->entityManager->remove($pageSection);
+            }
+
+            foreach ($sectionsToDelete as $section) {
+                $this->removeAllSectionRelationships($section, $this->entityManager);
+                $this->entityManager->remove($section);
+            }
+
+            $deleted = count($pageSectionsToRemove) + count($sectionsToDelete);
+
+            $this->entityManager->flush();
+
+            if ($pageSectionsToRemove !== []) {
+                $this->positionManagementService->normalizePageSectionPositions($page->getId());
+            }
+
+            foreach (array_unique($parentSectionIdsToNormalize) as $parentSectionId) {
+                $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId);
             }
 
             $this->entityManager->flush();
@@ -319,9 +356,12 @@ class SectionRelationshipService extends BaseService
 
             return [
                 'deleted_count' => $deleted,
-                'errors' => $errors
+                'errors' => []
             ];
 
+        } catch (ServiceException $e) {
+            $this->entityManager->rollback();
+            throw $e;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw new ServiceException(
@@ -566,4 +606,4 @@ class SectionRelationshipService extends BaseService
             $this->throwForbidden('Access denied: Section does not belong to page');
         }
     }
-} 
+}

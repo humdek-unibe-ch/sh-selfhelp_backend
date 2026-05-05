@@ -209,14 +209,14 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 ('admin_pages_bulk_remove_sections',
  'v1',
  '/admin/pages/{page_id}/sections',
- 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::removeSectionFromPage',
+ 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::bulkRemoveSectionsFromPage',
  'DELETE',
  JSON_OBJECT(
     'page_id', '[0-9]+'
  ),
  JSON_OBJECT(
     'sectionIds', JSON_OBJECT('in', 'body', 'required', true, 'type', 'array')
- ))
+ )),
 
 -- Admin Section in Section 
 ('admin_sections_create_child', 'v1', '/admin/pages/{page_id}/sections/{parent_section_id}/sections/create', 'App\\Controller\\Api\\V1\\Admin\\AdminSectionController::createChildSection', 'POST', JSON_OBJECT(
@@ -387,6 +387,7 @@ WHERE ar.`route_name` IN (
 	'admin_pages_create_section',
 	'admin_pages_add_section',
 	'admin_pages_remove_section',
+	'admin_pages_bulk_remove_sections',
 	'admin_sections_create_child',
 	'admin_sections_add',
 	'admin_sections_remove',
