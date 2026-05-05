@@ -18,6 +18,7 @@ use App\Service\Auth\UserContextService;
 use App\Service\Auth\UserValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
+use App\Service\Auth\JWTService;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
@@ -44,7 +45,8 @@ class AdminUserService extends BaseService
         private readonly CacheService $cache,
         private readonly EntityManagerInterface $entityManager,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
-        private readonly RoleDataAccessRepository $roleDataAccessRepository
+        private readonly RoleDataAccessRepository $roleDataAccessRepository,
+        private readonly JWTService $jwtService,
     ) {
     }
 
@@ -508,13 +510,44 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Impersonate user (placeholder)
+     * Impersonate user - generates a short-lived impersonation JWT for the target user.
+     *
+     * The token carries an extra `impersonated_by` claim so downstream services
+     * can distinguish impersonated sessions from real ones.
+     *
+     * @throws ServiceException if the target user is a protected system user
      */
-    public function impersonateUser(int $userId): array
+    public function impersonateUser(int $currentUserId, int $targetUserId): array
     {
-        $user = $this->findUserOrThrow($userId);
-        // TODO: Implement impersonation logic
-        return ['impersonation_token' => 'placeholder_token'];
+        // Prevent impersonating system accounts
+        $targetUser = $this->findUserOrThrow($targetUserId);
+        if (in_array($targetUser->getName(), self::SYSTEM_USERS)) {
+            throw new ServiceException('Cannot impersonate system users', Response::HTTP_FORBIDDEN);
+        }
+
+        // Generate impersonation token
+        $tokenData = $this->jwtService->createImpersonationToken($targetUser, $currentUserId);
+
+        // Audit trail — logged against the *admin* performing the action
+        $adminUser = $this->findUserOrThrow($currentUserId);
+        $this->logUserTransaction(
+            LookupService::TRANSACTION_TYPES_UPDATE,
+            $adminUser,
+            sprintf(
+                'Admin impersonated user: admin_id=%d → target_id=%d (%s)',
+                $currentUserId,
+                $targetUserId,
+                $targetUser->getEmail()
+            )
+        );
+
+        return [
+            'impersonation_token' => $tokenData['access_token'],
+            'expires_in'          => $tokenData['expires_in'],
+            'target_user_id'      => $targetUserId,
+            'target_email'        => $targetUser->getEmail(),
+            'impersonated_by'     => $currentUserId,
+        ];
     }
 
     // Private helper methods

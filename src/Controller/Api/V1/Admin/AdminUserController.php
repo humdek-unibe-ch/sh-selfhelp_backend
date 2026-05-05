@@ -509,7 +509,8 @@ class AdminUserController extends AbstractController
     public function impersonateUser(int $userId): JsonResponse
     {
         try {
-            $result = $this->adminUserService->impersonateUser($userId);
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            $result = $this->adminUserService->impersonateUser($currentUserId, $userId);
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(

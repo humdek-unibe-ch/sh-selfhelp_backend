@@ -216,4 +216,43 @@ class JWTService
 
         return null;
     }
+
+    /**
+     * Create a short-lived JWT for impersonation.
+     *
+     * The token same as normal access token but carries two extra claims:
+     *   - impersonated_by : the admin's user ID
+     *   - impersonation   : true  (flag)
+     *
+     * TTL is intentionally much shorter than a regular token (default 15 min).
+     * Override via the IMPERSONATION_TOKEN_TTL env var (seconds).
+     */
+    public function createImpersonationToken(User $targetUser, int $adminUserId): array
+    {
+        $ttl = (int) ($this->params->has('jwt_impersonation_token_ttl')
+            ? $this->params->get('jwt_impersonation_token_ttl')
+            : 900); // 15 minutes fallback
+
+        $payload = [
+            'id_users'        => $targetUser->getId(),
+            'impersonated_by' => $adminUserId,
+            'impersonation'   => true,
+            'exp'             => time() + $ttl,
+        ];
+
+        // jwtManager needs an identifier — use email as the subject
+        $targetUser->setUserName($targetUser->getEmail());
+        $token = $this->jwtManager->createFromPayload($targetUser, $payload);
+
+        $this->logger->info('[JWTService] Impersonation token created.', [
+            'target_user_id'  => $targetUser->getId(),
+            'admin_user_id'   => $adminUserId,
+            'expires_in'      => $ttl,
+        ]);
+
+        return [
+            'access_token' => $token,
+            'expires_in'   => $ttl,
+        ];
+    }
 }
