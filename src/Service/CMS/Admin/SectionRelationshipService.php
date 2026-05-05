@@ -38,82 +38,134 @@ class SectionRelationshipService extends BaseService
     }
 
     /**
-     * Add a section to a page
-     * 
-     * @param int $pageId The ID of the page
-     * @param int $sectionId The ID of the section to add
-     * @param int|null $position The position of the section on the page
-     * @param int|null $oldParentSectionId The ID of the old parent section if moving from a section hierarchy
-     * @return PagesSection The created or updated page section relationship
-     * @throws ServiceException If page or section not found or access denied
+     * Add one or more sections to a page in a single atomic operation.
+     *
+     * The whole batch runs inside one transaction: each section's old parent
+     * relationship is removed and the new page-section relationship is
+     * created/updated, then a single flush + normalize is performed at the end.
+     * This avoids the N-transaction, N-flush, N-normalize overhead of calling
+     * the single-section flow in a loop from the controller.
+     *
+     * @param int   $pageId   The ID of the page to attach the sections to
+     * @param array $sections Batch of section payloads. Each item must contain
+     *                        `sectionId` and may include `position` and
+     *                        `oldParentSectionId`.
+     * @return array<int, array{id: int, position: int|null, sectionId: int}>
+     *         Result for each input section, in the same order.
+     * @throws ServiceException If the page is missing, access is denied, or
+     *                          any section in the batch is not found.
      */
-    public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
+    public function addSectionToPage(int $pageId, array $sections): array
     {
+        if ($sections === []) {
+            return [];
+        }
+
+        $parentPage = $this->pageRepository->find($pageId);
+        if (!$parentPage) {
+            $this->throwNotFound('Page not found');
+        }
+
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+
         $this->entityManager->beginTransaction();
         try {
-            // Find the page
-            $parentPage = $this->pageRepository->find($pageId);
-            if (!$parentPage) {
-                $this->throwNotFound('Page not found');
+            $results = [];
+            $sectionRepository = $this->entityManager->getRepository(Section::class);
+
+            foreach ($sections as $section) {
+                $sectionId = (int) $section['sectionId'];
+                $position = $section['position'] ?? null;
+                $oldParentSectionId = $section['oldParentSectionId'] ?? null;
+
+                $childSection = $sectionRepository->find($sectionId);
+                if (!$childSection) {
+                    $this->throwNotFound("Section {$sectionId} not found");
+                }
+
+                $this->removeOldParentRelationships(
+                    null,
+                    $oldParentSectionId,
+                    $childSection,
+                    $this->entityManager
+                );
+
+                $pageSection = $this->createOrUpdatePageSectionRelationship(
+                    $parentPage,
+                    $childSection,
+                    $position,
+                    $this->entityManager
+                );
+
+                $results[] = [
+                    'id'        => $pageSection->getSection()->getId(),
+                    'position'  => $pageSection->getPosition(),
+                    'sectionId' => $sectionId,
+                ];
             }
-            
-            // Check if user has update access to the page
-           $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
-            
-            // Find the section
-            $childSection = $this->entityManager->getRepository(Section::class)->find($sectionId);
-            if (!$childSection) {
-                $this->throwNotFound('Section not found');
-            }
-            
-            // Remove old parent section relationship if needed
-            $this->removeOldParentRelationships(null, $oldParentSectionId, $childSection, $this->entityManager);
-            
-            // Create or update page-section relationship
-            $pageSection = $this->createOrUpdatePageSectionRelationship($parentPage, $childSection, $position, $this->entityManager);            
-            
+
+            // Single flush + single normalize for the whole batch
             $this->entityManager->flush();
-            $this->positionManagementService->normalizePageSectionPositions($parentPage->getId());
-            
-            // Invalidate page and section caches
+            $this->positionManagementService->normalizePageSectionPositions($pageId);
+
+            // Cache invalidation: page + every touched section + lists
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $parentPage->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $childSection->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+            foreach ($results as $row) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $row['sectionId']);
+            }
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
-            
+
             $this->entityManager->commit();
-        
-            return $pageSection;
+
+            return $results;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
-            
-            throw $e instanceof ServiceException ? $e : new ServiceException('Failed to add section to page: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
+
+            throw $e instanceof ServiceException
+                ? $e
+                : new ServiceException(
+                    'Failed to add sections to page: ' . $e->getMessage(),
+                    Response::HTTP_INTERNAL_SERVER_ERROR,
+                    ['previous' => $e]
+                );
         }
     }
 
     /**
-     * Add a section to another section
-     * 
-     * @param int $pageId The page ID
-     * @param int $parentSectionId The ID of the parent section
-     * @param int $childSectionId The ID of the child section
-     * @param int|null $position The desired position
-     * @param int|null $oldParentPageId The ID of the old parent page to remove the relationship from (optional)
-     * @param int|null $oldParentSectionId The ID of the old parent section to remove the relationship from (optional)
-     * @return SectionsHierarchy The new section hierarchy relationship
-     * @throws ServiceException If the relationship already exists or entities are not found
+     * Add one or more child sections to a parent section in a single atomic operation.
+     *
+     * Validates page access and parent-section membership once, then iterates the
+     * batch inside a single transaction: each child's old parent relationships are
+     * removed (and flushed before creating the new hierarchy row to avoid
+     * identity-map conflicts on `(parentSection, childSection)`), the new hierarchy
+     * row is created/updated, and a single normalize is performed at the end.
+     *
+     * @param int   $pageId          The page the parent section belongs to
+     * @param int   $parentSectionId The section to nest the child sections under
+     * @param array $sections        Batch of section payloads. Each item must
+     *                               contain `sectionId` (or legacy `childSectionId`)
+     *                               and may include `position`, `oldParentPageId`,
+     *                               and `oldParentSectionId`.
+     * @return array<int, array{id: int, position: int|null, sectionId: int}>
+     *         Result for each input section, in the same order.
+     * @throws ServiceException If access is denied, the parent section is missing,
+     *                          or any child section in the batch is not found.
      */
-    public function addSectionToSection(int $pageId, int $parentSectionId, int $childSectionId, ?int $position, ?int $oldParentPageId = null, ?int $oldParentSectionId = null): SectionsHierarchy
+    public function addSectionToSection(int $pageId, int $parentSectionId, array $sections): array
     {
-        // Permission check
-       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+        if ($sections === []) {
+            return [];
+        }
+
+        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
         $this->checkSectionInPage($pageId, $parentSectionId);
-        
+
         $this->entityManager->beginTransaction();
         try {
             $parentSection = $this->sectionRepository->find($parentSectionId);
@@ -121,44 +173,76 @@ class SectionRelationshipService extends BaseService
                 $this->throwNotFound('Parent section not found');
             }
 
-            $childSection = $this->sectionRepository->find($childSectionId);
-            if (!$childSection) {
-                $this->throwNotFound('Child section not found');
+            $results = [];
+            foreach ($sections as $section) {
+                $childSectionId = (int) ($section['sectionId'] ?? $section['childSectionId']);
+                $position = $section['position'] ?? null;
+                $oldParentPageId = $section['oldParentPageId'] ?? null;
+                $oldParentSectionId = $section['oldParentSectionId'] ?? null;
+
+                $childSection = $this->sectionRepository->find($childSectionId);
+                if (!$childSection) {
+                    $this->throwNotFound("Child section {$childSectionId} not found");
+                }
+
+                $this->removeOldParentRelationships(
+                    $oldParentPageId,
+                    $oldParentSectionId,
+                    $childSection,
+                    $this->entityManager
+                );
+
+                // Flush old-parent removals before creating the new hierarchy row
+                // to avoid identity-map conflicts on (parentSection, childSection).
+                $this->entityManager->flush();
+
+                $sectionHierarchy = $this->createSectionHierarchyRelationship(
+                    $parentSection,
+                    $childSection,
+                    $position,
+                    $this->entityManager
+                );
+
+                $results[] = [
+                    'id'        => $sectionHierarchy->getChildSection()->getId(),
+                    'position'  => $sectionHierarchy->getPosition(),
+                    'sectionId' => $childSectionId,
+                ];
             }
 
-            // Remove old parent relationships
-            $this->removeOldParentRelationships($oldParentPageId, $oldParentSectionId, $childSection, $this->entityManager);
-            
-            // Flush the removal of old relationships to avoid identity map conflicts
-            $this->entityManager->flush();
-
-            // Create section hierarchy relationship
-            $sectionHierarchy = $this->createSectionHierarchyRelationship($parentSection, $childSection, $position, $this->entityManager);                       
-            
+            // Single flush + single normalize for the whole batch
             $this->entityManager->flush();
             $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
-            
-            // Invalidate section caches
+
+            // Cache invalidation: parent + every touched child + page + lists
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
             $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $childSection->getId());
-            $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+            foreach ($results as $row) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $row['sectionId']);
+            }
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
-            
+
             $this->entityManager->commit();
-            
-            return $sectionHierarchy;
+
+            return $results;
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
-            
-            throw $e instanceof ServiceException ? $e : new ServiceException('Failed to add section to section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
+
+            throw $e instanceof ServiceException
+                ? $e
+                : new ServiceException(
+                    'Failed to add sections to section: ' . $e->getMessage(),
+                    Response::HTTP_INTERNAL_SERVER_ERROR,
+                    ['previous' => $e]
+                );
         }
     }
 

@@ -4,7 +4,6 @@ namespace App\Service\CMS\Admin;
 
 use App\Entity\Group;
 use App\Entity\Page;
-use App\Entity\PagesSection;
 use App\Entity\PageTypeField;
 use App\Entity\User;
 use App\Exception\ServiceException;
@@ -558,22 +557,29 @@ class AdminPageService extends BaseService
     }
 
     /**
-     * Add a section to a page
-     * 
-     * @param int $pageId The ID of the page
-     * @param int $sectionId The ID of the section to add
-     * @param int|null $position The position of the section on the page
-     * @param int|null $oldParentSectionId The ID of the old parent section if moving from a section hierarchy
-     * @return PagesSection The created or updated page section relationship
+     * Add one or more sections to a page in a single atomic operation.
+     *
+     * Delegates the whole batch to the relationship service (one transaction)
+     * and then performs a top-level cache invalidation pass for the page and
+     * every touched section.
+     *
+     * @param int   $pageId   The ID of the page to attach the sections to
+     * @param array $sections Batch of section payloads. Each item must contain
+     *                        `sectionId` and may include `position` and
+     *                        `oldParentSectionId`.
+     * @return array<int, array{id: int, position: int|null}> Result for each
+     *         input section, in the same order. Internal `sectionId` is stripped.
      * @throws ServiceException If page or section not found or access denied
      */
-    public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
+    public function addSectionToPage(int $pageId, array $sections): array
     {
-        $result = $this->sectionRelationshipService->addSectionToPage($pageId, $sectionId, $position, $oldParentSectionId);
+        $results = $this->sectionRelationshipService->addSectionToPage($pageId, $sections);
 
-        // Invalidate cache for this specific page
+        // Top-level cache invalidation for page + every touched section + lists
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+        foreach ($results as $row) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $row['sectionId']);
+        }
         $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->invalidateAllListsInCategory();
@@ -581,7 +587,10 @@ class AdminPageService extends BaseService
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
 
-        return $result;
+        return array_map(
+            static fn(array $row): array => ['id' => $row['id'], 'position' => $row['position']],
+            $results
+        );
     }
 
     /**

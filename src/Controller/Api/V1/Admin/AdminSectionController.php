@@ -52,6 +52,18 @@ class AdminSectionController extends AbstractController
             Response::HTTP_OK
         );
     }
+    /**
+     * Add one or more child sections to a parent section in a single atomic operation.
+     *
+     * Accepts either a single-section payload (legacy shape, with
+     * `childSectionId` or `sectionId`) or a `{sections: [...]}` batch. Both
+     * are normalized into the same array and persisted in one transaction
+     * by the service. Returns either a single object (legacy shape) or an
+     * array (batch shape) to match the input.
+     *
+     * @route /admin/pages/{page_id}/sections/{parent_section_id}/sections
+     * @method POST
+     */
     public function addSectionToSection(
         Request $request,
         int $page_id,
@@ -65,23 +77,12 @@ class AdminSectionController extends AbstractController
 
         $isBulkRequest = isset($data['sections']);
         $sections = $isBulkRequest ? $data['sections'] : [$data];
-        $results = [];
 
-        foreach ($sections as $section) {
-            $result = $this->adminSectionService->addSectionToSection(
-                page_id: $page_id,
-                parent_section_id: $parent_section_id,
-                child_section_id: $section['sectionId'] ?? $section['childSectionId'],
-                position: $section['position'] ?? null,
-                oldParentPageId: $section['oldParentPageId'] ?? null,
-                oldParentSectionId: $section['oldParentSectionId'] ?? null
-            );
-
-            $results[] = [
-                'id' => $result->getChildSection()->getId(),
-                'position' => $result->getPosition(),
-            ];
-        }
+        $results = $this->adminSectionService->addSectionToSection(
+            $page_id,
+            $parent_section_id,
+            $sections
+        );
 
         return $this->apiResponseFormatter->formatSuccess(
             $isBulkRequest ? $results : $results[0],

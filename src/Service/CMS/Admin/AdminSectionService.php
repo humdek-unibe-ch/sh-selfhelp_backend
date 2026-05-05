@@ -207,30 +207,39 @@ class AdminSectionService extends BaseService
     }
 
     /**
-     * Adds a child section to a parent section.
-     * 
-     * @param int $page_id The page ID.
-     * @param int $parent_section_id The ID of the parent section.
-     * @param int $child_section_id The ID of the child section.
-     * @param int|null $position The desired position.
-     * @param int|null $oldParentPageId The ID of the old parent page to remove the relationship from (optional).
-     * @param int|null $oldParentSectionId The ID of the old parent section to remove the relationship from (optional).
-     * @return SectionsHierarchy The new section hierarchy relationship.
-     * @throws ServiceException If the relationship already exists or entities are not found.
+     * Add one or more child sections to a parent section in a single atomic operation.
+     *
+     * Delegates the whole batch to the relationship service (one transaction)
+     * and then performs a top-level cache invalidation pass for the parent
+     * section, the page, and every touched child section.
+     *
+     * @param int   $pageId          The page the parent section belongs to
+     * @param int   $parentSectionId The section to nest the child sections under
+     * @param array $sections        Batch of section payloads. Each item must
+     *                               contain `sectionId` (or legacy `childSectionId`)
+     *                               and may include `position`, `oldParentPageId`,
+     *                               and `oldParentSectionId`.
+     * @return array<int, array{id: int, position: int|null}> Result for each
+     *         input section, in the same order. Internal `sectionId` is stripped.
+     * @throws ServiceException If access is denied, the parent section is missing,
+     *                          or any child section in the batch is not found.
      */
-    public function addSectionToSection(int $page_id, int $parent_section_id, int $child_section_id, ?int $position, ?int $oldParentPageId = null, ?int $oldParentSectionId = null): SectionsHierarchy
+    public function addSectionToSection(int $pageId, int $parentSectionId, array $sections): array
     {
-        $result = $this->sectionRelationshipService->addSectionToSection($page_id, $parent_section_id, $child_section_id, $position, $oldParentPageId, $oldParentSectionId);
-        
-        // Invalidate section-specific cache
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parent_section_id);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $child_section_id);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
-        
-        // Invalidate all section lists in category
+        $results = $this->sectionRelationshipService->addSectionToSection($pageId, $parentSectionId, $sections);
+
+        // Top-level cache invalidation for parent + page + every touched child + lists
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSectionId);
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        foreach ($results as $row) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $row['sectionId']);
+        }
         $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
-        
-        return $result;
+
+        return array_map(
+            static fn(array $row): array => ['id' => $row['id'], 'position' => $row['position']],
+            $results
+        );
     }
 
     /**

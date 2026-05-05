@@ -226,6 +226,18 @@ class AdminPageController extends AbstractController
         }
     }
 
+    /**
+     * Add one or more sections to a page in a single atomic operation.
+     *
+     * Accepts either a single-section payload (legacy shape) or a
+     * `{sections: [...]}` batch. Both are normalized into the same array
+     * and persisted in one transaction by the service. Returns either a
+     * single object (legacy shape) or an array (batch shape) to match the
+     * input.
+     *
+     * @route /admin/pages/{page_id}/sections
+     * @method POST
+     */
     public function addSectionToPage(Request $request, int $page_id): Response
     {
         $data = $this->validateRequest(
@@ -236,21 +248,8 @@ class AdminPageController extends AbstractController
 
         $isBulkRequest = isset($data['sections']);
         $sections = $isBulkRequest ? $data['sections'] : [$data];
-        $results = [];
 
-        foreach ($sections as $section) {
-            $result = $this->adminPageService->addSectionToPage(
-                pageId: $page_id,
-                sectionId: $section['sectionId'],
-                position: $section['position'] ?? null,
-                oldParentSectionId: $section['oldParentSectionId'] ?? null,
-            );
-
-            $results[] = [
-                'id' => $result->getSection()->getId(),
-                'position' => $result->getPosition(),
-            ];
-        }
+        $results = $this->adminPageService->addSectionToPage($page_id, $sections);
 
         return $this->responseFormatter->formatSuccess(
             $isBulkRequest ? $results : $results[0],
