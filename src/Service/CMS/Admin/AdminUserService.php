@@ -544,9 +544,7 @@ class AdminUserService extends BaseService
         return [
             'impersonation_token' => $tokenData['access_token'],
             'expires_in'          => $tokenData['expires_in'],
-            'target_user_id'      => $targetUserId,
             'target_email'        => $targetUser->getEmail(),
-            'impersonated_by'     => $currentUserId,
         ];
     }
 
