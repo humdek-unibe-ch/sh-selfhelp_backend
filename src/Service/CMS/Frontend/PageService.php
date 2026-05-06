@@ -216,7 +216,7 @@ class PageService extends BaseService
      * @return array The page object with translated sections
      * @throws \App\Exception\ServiceException If page not found or access denied
      */
-    public function getPage(int $page_id, ?int $language_id = null, bool $preview = false): array
+    public function getPage(int $page_id, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
     {
         // Determine which language ID to use for translations
         $languageId = $this->determineLanguageId($language_id);
@@ -230,15 +230,20 @@ class PageService extends BaseService
         if (!$page) {
             $this->throwNotFound('Page not found');
         }
-        return $this->resolvePageResponse($page, $page_id, $languageId, $preview);
+        return $this->resolvePageResponse($page, $page_id, $languageId, $preview, $mode);
     }
 
     /**
      * Resolve a page by its unique keyword. Used by the BFF to eliminate the
      * keyword -> id waterfall on page loads. Returns the same payload as
      * getPage(). Throws 404 if no page with this keyword exists.
+     *
+     * `$mode` is the page-access type the caller is requesting (web, mobile,
+     * mobile_and_web). If supplied, the page's own access type must be
+     * compatible (`mobile_and_web` is universal). Mismatches throw 404 to
+     * avoid leaking page metadata across platforms.
      */
-    public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false): array
+    public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
     {
         $languageId = $this->determineLanguageId($language_id);
 
@@ -247,14 +252,26 @@ class PageService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        return $this->resolvePageResponse($page, $page->getId(), $languageId, $preview);
+        return $this->resolvePageResponse($page, $page->getId(), $languageId, $preview, $mode);
     }
 
     /**
      * Shared resolution path used by getPage() and getPageByKeyword().
+     *
+     * Page-access enforcement:
+     * - Pages flagged `mobile_and_web` are universal and always pass.
+     * - Pages flagged `web` only resolve for `web` callers.
+     * - Pages flagged `mobile` only resolve for `mobile` callers.
+     * - When `$mode` is null (legacy callers / internal callers), the
+     *   check is skipped for back-compat.
+     * - Pages with no `id_pageAccessTypes` are treated as `web` (legacy
+     *   default).
      */
-    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview): array
+    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array
     {
+        if ($mode !== null) {
+            $this->assertPageAccessForMode($page, $mode);
+        }
 
         // Check if user has access to the page
         $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'select');
@@ -266,6 +283,32 @@ class PageService extends BaseService
 
         // Otherwise serve the draft version (fresh from database)
         return $this->serveDraftVersion($page_id, $languageId, $page);
+    }
+
+    /**
+     * Throw a 404 (not 403, to avoid leaking page existence) if the page's
+     * declared platform doesn't match the caller's requested mode.
+     */
+    private function assertPageAccessForMode(\App\Entity\Page $page, string $mode): void
+    {
+        $pageType = $page->getPageAccessType();
+        $pageMode = $pageType ? strtolower((string) $pageType->getLookupCode()) : \App\Service\Core\LookupService::PAGE_ACCESS_TYPES_WEB;
+
+        if ($pageMode === \App\Service\Core\LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB) {
+            return;
+        }
+
+        $callerMode = strtolower($mode);
+        if ($callerMode === \App\Service\Core\LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB) {
+            // The caller explicitly asks for the universal lane — match.
+            return;
+        }
+
+        if ($pageMode === $callerMode) {
+            return;
+        }
+
+        $this->throwNotFound('Page not found');
     }
 
     /**
