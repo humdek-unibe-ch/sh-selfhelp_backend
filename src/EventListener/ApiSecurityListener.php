@@ -10,6 +10,8 @@ use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\HttpFoundation\Request;
+use Lexik\Bundle\JWTAuthenticationBundle\Encoder\JWTEncoderInterface;
 
 /**
  * Listener that checks if the user has the required permissions for the API route
@@ -25,7 +27,8 @@ class ApiSecurityListener implements EventSubscriberInterface
         private RouterInterface $router,
         private UserContextService $userContextService,
         private UserPermissionService $permissionService,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private JWTEncoderInterface $jwtEncoder
     ) {}
     
     /**
@@ -57,6 +60,9 @@ class ApiSecurityListener implements EventSubscriberInterface
         if ($request->getMethod() === 'OPTIONS') {
             return;
         }
+
+        // Block mutations from impersonated sessions
+        $this->checkImpersonationMutationGuard($request);
         
         try {
             // Debug logging for specific URL
@@ -125,6 +131,37 @@ class ApiSecurityListener implements EventSubscriberInterface
             
             // Let the ApiExceptionListener handle this exception
             throw new AccessDeniedException('An error occurred while checking permissions.', $e);
+        }
+    }
+
+    /**
+     * Reject write operations performed under an impersonation token.
+     * The JWT payload carries impersonation: true when the token was issued
+     * via AdminUserService::impersonateUser().
+     */
+    private function checkImpersonationMutationGuard(Request $request): void
+    {
+        $unsafeMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+        if (!in_array($request->getMethod(), $unsafeMethods)) {
+            return;
+        }
+
+        $authHeader = $request->headers->get('Authorization');
+        if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
+            return;
+        }
+
+        try {
+            $token = substr($authHeader, 7);
+            $payload = $this->jwtEncoder->decode($token);
+
+            if (!empty($payload['impersonation'])) {
+                throw new AccessDeniedException('Mutations are not allowed during impersonation.');
+            }
+        } catch (AccessDeniedException $e) {
+            throw $e;
+        } catch (\Exception) {
+            // Invalid token — let the auth layer handle it
         }
     }
 }
