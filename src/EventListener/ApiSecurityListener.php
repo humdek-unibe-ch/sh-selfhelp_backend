@@ -141,6 +141,11 @@ class ApiSecurityListener implements EventSubscriberInterface
      */
     private function checkImpersonationMutationGuard(Request $request): void
     {
+      // Allow impersonation endpoint first — switching users while impersonating is valid
+      if (str_contains($request->attributes->get('_route'), 'admin_users_impersonate')) {
+      return;
+      }
+
         $unsafeMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
         if (!in_array($request->getMethod(), $unsafeMethods)) {
             return;
