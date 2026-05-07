@@ -76,6 +76,7 @@ class JobSchedulerService extends BaseService
             $user = $this->getUserForJob($jobData);
 
             $job = $this->createScheduledJob($jobData, $user);
+
             if (!$job) {
                 throw new \RuntimeException('Failed to create scheduled job');
             }
@@ -135,7 +136,7 @@ class JobSchedulerService extends BaseService
         $jobData = [
             'type' => LookupService::JOB_TYPES_EMAIL,
             'description' => 'User account validation email',
-            'date_to_be_executed' => new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
+            'date_to_be_executed' => new \DateTime('now', new \DateTimeZone('UTC')),
             'users' => [$userId],
             'email_config' => $defaultConfig,
         ];
@@ -407,7 +408,7 @@ class JobSchedulerService extends BaseService
             $scheduledJob->setJobType($jobType);
             $scheduledJob->setStatus($status);
             $scheduledJob->setDescription($jobData['description'] ?? '');
-            $scheduledJob->setDateToBeExecuted($jobData['date_to_be_executed'] ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+            $scheduledJob->setDateToBeExecuted($jobData['date_to_be_executed'] ?? new \DateTime('now', new \DateTimeZone('UTC')));
 
             if (isset($jobData['action']) && $jobData['action'] instanceof Action) {
                 $scheduledJob->setAction($jobData['action']);
@@ -427,6 +428,7 @@ class JobSchedulerService extends BaseService
 
             return $scheduledJob;
         } catch (\Throwable $e) {
+            dd($e->getMessage());
             $this->logger->error('Failed to create scheduled job', ['error' => $e->getMessage()]);
             return false;
         }

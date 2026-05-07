@@ -16,6 +16,10 @@
         <server name="SYMFONY_PHPUNIT_REMOVE" value="" />
         <server name="SYMFONY_PHPUNIT_VERSION" value="9.5" /> <!-- Adjust if necessary based on your phpunit-bridge -->
         <server name="KERNEL_CLASS" value="App\Kernel" />
+
+        <!-- ###+ symfony/mailer ### -->
+        <env name="MAILER_DSN" value="null://null"/>
+        <!-- ###- symfony/mailer ### -->
     </php>
 
     <testsuites>
