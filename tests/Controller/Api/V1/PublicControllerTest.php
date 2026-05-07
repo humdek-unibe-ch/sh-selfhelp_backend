@@ -1,4 +1,10 @@
 <?php
+
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Tests\Controller\Api\V1;
 
 use Symfony\Component\HttpFoundation\Response;

@@ -723,4 +723,40 @@ For support and bug reports:
 
 ### License
 
-This project is licensed under the terms specified in the LICENSE file.
+Licensed under the [Mozilla Public License 2.0](LICENSE). Copyright (c) 2026 Humdek, University of Bern.
+
+#### SPDX headers
+
+Every PHP source file should carry a two-line SPDX header in a block comment placed immediately after the opening `<?php` tag:
+
+```php
+<?php
+
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+namespace App\...;
+```
+
+The header text lives in [`header.txt`](header.txt). Header insertion / verification / removal is automated with a small native PHP script — no Composer dev dependency required.
+
+```bash
+# Add the SPDX header to every .php file under src/, tests/, public/,
+# config/, migrations/, scripts/. Skips files that already contain
+# `SPDX-License-Identifier:` so it is safe to run repeatedly.
+composer headers:add
+# (or directly: php scripts/add-license-headers.php)
+
+# Verify (CI-friendly: exits 1 if any file is missing the header).
+composer headers:check
+
+# Strip the SPDX block (rarely needed; e.g. before re-licensing).
+composer headers:remove
+
+# Preview without writing.
+php scripts/add-license-headers.php --dry-run
+```
+
+The script never touches `vendor/`, `var/`, `cache/`, `node_modules/`, or `.git/`. Detection is by literal `SPDX-License-Identifier:` token, so any pre-existing manually-written SPDX header is preserved.
