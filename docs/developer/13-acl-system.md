@@ -194,27 +194,36 @@ caller's per-user topic and returns the discovery payload:
 }
 ```
 
-The Next.js BFF (`/api/auth/events/route.ts`) calls this endpoint, opens
-an upstream request to `${hubUrl}?topic=${encodeURIComponent(topic)}`
-with `Authorization: Bearer ${token}`, and pipes the byte stream straight
-back to the browser as same-origin SSE. The browser-side
-`useAclEventStream` hook listens for `acl-changed` events and invalidates
-its `['user-data']` React Query cache, which cascades into navigation,
-admin sidebar, and page-content invalidations through
-`useAclVersionWatcher`. Net result: an admin can grant a permission in
-one tab and the affected user's menu reveals the new page within ~1 RTT
-in another browser, without any user interaction.
+There are two supported subscriber shapes:
+
+- **Next.js web frontend** — the BFF (`/api/auth/events/route.ts`) calls
+  this endpoint, opens an upstream request to
+  `${hubUrl}?topic=${encodeURIComponent(topic)}` with
+  `Authorization: Bearer ${token}`, and pipes the byte stream straight
+  back to the browser as same-origin SSE.
+- **Expo mobile app / Expo Web preview** — the app calls this endpoint
+  directly through its bearer-authenticated API client and then opens
+  the Mercure subscription itself with `react-native-sse`, sending the
+  returned subscriber JWT as `Authorization: Bearer ${token}`.
+
+In both cases the client-side `useAclEventStream` hook listens for
+`acl-changed` events and invalidates its `['user-data']` React Query
+cache, which cascades into navigation, admin sidebar, and page-content
+invalidations through `useAclVersionWatcher`. Net result: an admin can
+grant a permission in one tab and the affected user's menu reveals the
+new page within ~1 RTT in another client, without any user interaction.
 
 Subscriber JWT lifetime is intentionally short (1 h default,
-`MERCURE_SUBSCRIBER_TTL`); the BFF re-mints on every Mercure reconnect
-so leaked tokens age out quickly.
+`MERCURE_SUBSCRIBER_TTL`); clients re-mint on every Mercure reconnect so
+leaked tokens age out quickly.
 
 #### Setup
 
 The hub runs as a separate container — see README "Real-time push
 (Mercure)" for the dockerised setup (`docker-compose.mercure.yml`,
-publisher/subscriber JWT secret coordination, CORS configuration). The
-shared HMAC key is `MERCURE_JWT_SECRET`; it must match the
+publisher/subscriber JWT secret coordination, API CORS configuration,
+and Mercure browser-origin allow-listing). The shared HMAC key is
+`MERCURE_JWT_SECRET`; it must match the
 `MERCURE_PUBLISHER_JWT_KEY` / `MERCURE_SUBSCRIBER_JWT_KEY` baked into
 the hub container.
 

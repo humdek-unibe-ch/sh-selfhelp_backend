@@ -191,15 +191,15 @@ php bin/console app:create-admin-user your.email@example.com "Admin Name"
 
 ## Real-time push (Mercure)
 
-The backend uses [Mercure](https://mercure.rocks) (Caddy + the Mercure module) to push live `acl-changed` events to the frontend the moment a user's effective permission set changes — no polling, no PHP-FPM workers held open. The flow is:
+The backend uses [Mercure](https://mercure.rocks) (Caddy + the Mercure module) to push live `acl-changed` events to clients the moment a user's effective permission set changes — no polling, no PHP-FPM workers held open. The flow is:
 
 1. `User::bumpAclVersion()` is called somewhere in a service (group/role mutation, async job grant, profile edit, etc.).
 2. `App\EventListener\AclVersionMercurePublisher` fires on Doctrine `postFlush`, sees `acl_version` in the changeset, and publishes an `acl-changed` update to the user's private topic on the hub.
-3. The Next.js BFF (`/api/auth/events`) holds a single upstream Mercure subscription per browser tab and pipes the events back to the browser as same-origin SSE.
+3. The Next.js frontend subscribes through its BFF (`/api/auth/events`). Expo native iOS/Android subscribes directly with a bearer token after calling `GET /cms-api/v1/auth/events`, while Expo Web preview can request `transport=cookie` and subscribe with browser-native `EventSource`.
 
 ### Setup (Docker)
 
-A ready-to-use Caddy/Mercure container is provided in `docker-compose.mercure.yml`. The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`).
+A ready-to-use Caddy/Mercure container is provided in `docker-compose.mercure.yml`. The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`) and allow browser subscribers from the local Next.js dev server, the local Expo Web dev server, and a stable Expo Web preview host (`https://mobile-preview.example.com`).
 
 ```bash
 # 1. Generate (or pick) a strong secret and write it to .env.local — the
@@ -234,14 +234,16 @@ docker run -d --name selfhelp_mercure --rm \
   -e SERVER_NAME=":80" \
   -e MERCURE_PUBLISHER_JWT_KEY="$MERCURE_JWT_SECRET" \
   -e MERCURE_SUBSCRIBER_JWT_KEY="$MERCURE_JWT_SECRET" \
-  -e MERCURE_EXTRA_DIRECTIVES=$'cors_origins http://localhost:3000 http://127.0.0.1:3000\nanonymous false\npublish_origins http://localhost http://127.0.0.1\nsubscriptions' \
+  -e MERCURE_EXTRA_DIRECTIVES=$'cors_origins http://localhost:3000 http://127.0.0.1:3000 http://localhost:8081 http://127.0.0.1:8081 https://mobile-preview.example.com\nanonymous false\npublish_origins http://localhost http://127.0.0.1\nsubscriptions' \
   dunglas/mercure:v0.16
 ```
 
 ### Production notes
 
-- Put the hub behind your reverse proxy on the **same domain** as the application (e.g. `https://app.example.com/.well-known/mercure`) so the browser can subscribe directly without cross-origin cookie issues. Update `MERCURE_PUBLIC_URL` accordingly; `MERCURE_URL` (used by Symfony) can stay on the internal network.
-- Replace `cors_origins` and `publish_origins` in `MERCURE_EXTRA_DIRECTIVES` with your real frontend / backend hostnames.
+- Put the hub behind your reverse proxy on the **same host/domain** as the application (e.g. `https://app.example.com/.well-known/mercure`) so browser cookie-based subscriptions work cleanly. Update `MERCURE_PUBLIC_URL` accordingly; `MERCURE_URL` (used by Symfony) can stay on the internal network.
+- Set `CORS_ALLOW_ORIGIN` to include every browser origin that talks to the Symfony API directly, including any stable Expo Web preview host.
+- Set `MERCURE_CORS_ORIGINS` / `cors_origins` to include every browser origin that subscribes to the hub directly. Expo native apps do not need this because they do not send an `Origin` header.
+- Replace `publish_origins` in `MERCURE_EXTRA_DIRECTIVES` with your real backend hostnames.
 - Issue the publisher and subscriber JWT secrets separately (do **not** reuse `MERCURE_JWT_SECRET` for both) for stronger isolation. Update `config/packages/mercure.yaml` accordingly.
 - For HA, point the hub at a Redis backend instead of the default in-memory transport — see [the Mercure docs](https://mercure.rocks/docs/hub/cluster).
 

@@ -8,6 +8,8 @@ use App\Service\Auth\UserContextService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Mercure\MercureTopicResolver;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Mercure\Jwt\LcobucciFactory;
 
@@ -66,6 +68,9 @@ use Symfony\Component\Mercure\Jwt\LcobucciFactory;
  */
 class AuthEventsController extends AbstractController
 {
+    private const TRANSPORT_COOKIE = 'cookie';
+    private const MERCURE_AUTH_COOKIE = 'mercureAuthorization';
+
     /**
      * @param int $mercureSubscriberTtl Lifetime in seconds for the subscriber JWT
      *                                  returned by this endpoint. Short on purpose
@@ -93,7 +98,7 @@ class AuthEventsController extends AbstractController
      * helper for rendering Twig templates as a `StreamedResponse`, and PHP
      * would (rightly) refuse to override it with an incompatible signature.
      */
-    public function events(): Response
+    public function events(Request $request): Response
     {
         $user = $this->userContextService->getCurrentUser();
         if (!$user) {
@@ -105,6 +110,8 @@ class AuthEventsController extends AbstractController
 
         $userId = (int) $user->getId();
         $topic = $this->topics->userAclTopic($userId);
+        $useCookieTransport = $this->shouldUseCookieTransport($request);
+        $hubUrl = $this->resolvePublicHubUrl($request);
 
         if ($this->mercureJwtSecret === '') {
             // Misconfiguration. Fail loud so the dev notices instead of
@@ -122,15 +129,97 @@ class AuthEventsController extends AbstractController
         );
         $token = $factory->create([$topic], null);
 
-        return $this->responseFormatter->formatSuccess(
+        if ($useCookieTransport && !$this->canIssueMercureCookie($hubUrl, $request)) {
+            return $this->responseFormatter->formatError(
+                'Browser Mercure cookie mode requires MERCURE_PUBLIC_URL to use the same host as the API request host. Put the hub behind the same public host as the app/API.',
+                Response::HTTP_CONFLICT
+            );
+        }
+
+        $response = $this->responseFormatter->formatSuccess(
             [
-                'hubUrl' => $this->mercurePublicUrl,
+                'hubUrl' => $hubUrl,
                 'topic' => $topic,
-                'token' => $token,
+                'token' => $useCookieTransport ? null : $token,
                 'expiresIn' => $this->mercureSubscriberTtl,
             ],
             'responses/auth/events',
             Response::HTTP_OK
         );
+
+        if ($useCookieTransport) {
+            $response->headers->setCookie($this->buildMercureCookie($token, $hubUrl));
+        }
+
+        return $response;
+    }
+
+    private function shouldUseCookieTransport(Request $request): bool
+    {
+        return $request->query->getString('transport') === self::TRANSPORT_COOKIE;
+    }
+
+    private function resolvePublicHubUrl(Request $request): string
+    {
+        $parts = parse_url($this->mercurePublicUrl);
+        if ($parts === false || !isset($parts['host'])) {
+            return $this->mercurePublicUrl;
+        }
+
+        $requestHost = $request->getHost();
+        if (!$this->isLocalDevHost($parts['host']) || !$this->isLocalDevHost($requestHost)) {
+            return $this->mercurePublicUrl;
+        }
+
+        $parts['host'] = $requestHost;
+
+        return $this->unparseUrl($parts);
+    }
+
+    private function canIssueMercureCookie(string $hubUrl, Request $request): bool
+    {
+        $hubHost = parse_url($hubUrl, PHP_URL_HOST);
+
+        return is_string($hubHost) && strcasecmp($hubHost, $request->getHost()) === 0;
+    }
+
+    private function buildMercureCookie(string $token, string $hubUrl): Cookie
+    {
+        $scheme = (string) parse_url($hubUrl, PHP_URL_SCHEME);
+        $path = (string) (parse_url($hubUrl, PHP_URL_PATH) ?: '/.well-known/mercure');
+        $isSecure = strcasecmp($scheme, 'https') === 0;
+
+        return Cookie::create(self::MERCURE_AUTH_COOKIE)
+            ->withValue($token)
+            ->withPath($path)
+            ->withExpires(new \DateTimeImmutable(sprintf('+%d seconds', $this->mercureSubscriberTtl)))
+            ->withHttpOnly(true)
+            ->withSecure($isSecure)
+            ->withSameSite($isSecure ? Cookie::SAMESITE_NONE : Cookie::SAMESITE_LAX);
+    }
+
+    private function isLocalDevHost(string $host): bool
+    {
+        $normalized = trim(strtolower($host), '[]');
+
+        return in_array($normalized, ['localhost', '127.0.0.1', '::1', '10.0.2.2'], true);
+    }
+
+    /**
+     * @param array<string, int|string> $parts
+     */
+    private function unparseUrl(array $parts): string
+    {
+        $scheme = isset($parts['scheme']) ? sprintf('%s://', $parts['scheme']) : '';
+        $user = (string) ($parts['user'] ?? '');
+        $pass = isset($parts['pass']) ? sprintf(':%s', $parts['pass']) : '';
+        $auth = $user !== '' ? sprintf('%s%s@', $user, $pass) : '';
+        $host = (string) ($parts['host'] ?? '');
+        $port = isset($parts['port']) ? sprintf(':%s', $parts['port']) : '';
+        $path = (string) ($parts['path'] ?? '');
+        $query = isset($parts['query']) ? sprintf('?%s', $parts['query']) : '';
+        $fragment = isset($parts['fragment']) ? sprintf('#%s', $parts['fragment']) : '';
+
+        return sprintf('%s%s%s%s%s%s%s', $scheme, $auth, $host, $port, $path, $query, $fragment);
     }
 }
