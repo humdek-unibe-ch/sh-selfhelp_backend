@@ -19,9 +19,18 @@ class LookupController extends AbstractController
     }
 
     /**
-     * Get all lookups
+     * Get all system lookups (timezones, type codes, weekdays, audit
+     * categories, …).
      *
-     * @route /admin/lookups
+     * Authenticated-only — the JWT firewall rejects anonymous callers —
+     * but NOT admin-gated, because public frontend styles such as
+     * `ProfileStyle` consume the timezone list. The class still lives
+     * under `App\Controller\Api\V1\Admin\Common` for historical reasons;
+     * the route itself was demoted from `/admin/lookups` (route name
+     * `admin_lookups`) to `/lookups` (route name `system_lookups`) in
+     * Doctrine migration `Version20260508160000`.
+     *
+     * @route /lookups
      * @method GET
      */
     public function getAllLookups(): JsonResponse

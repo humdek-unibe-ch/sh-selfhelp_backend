@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Admin Lookups Response Schema",
-    "description": "Schema for the admin/lookups API endpoint response",
+    "title": "System Lookups Response Schema",
+    "description": "Schema for the GET /lookups (route name `system_lookups`) endpoint response. Authenticated-only reference data (timezones, type codes, weekdays, audit categories) consumed by both admin tooling and public frontend styles such as ProfileStyle. Schema file path kept under admin/common/ for historical reasons; the route itself is no longer admin-gated since migration Version20260508160000.",
     "type": "object",
     "allOf": [
         {
