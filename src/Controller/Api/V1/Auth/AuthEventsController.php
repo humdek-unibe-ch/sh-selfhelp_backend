@@ -22,7 +22,13 @@ use Symfony\Component\Mercure\Jwt\LcobucciFactory;
  *
  * {
  *   "status": 200, "message": "OK", "error": null, "logged_in": true, "meta": {...},
- *   "data": { "hubUrl": "...", "topic": "...", "token": "...", "expiresIn": 3600 }
+ *   "data": {
+ *     "hubUrl": "...",
+ *     "topic": "...",                 // ACL topic (kept for compatibility)
+ *     "impersonationTopic": "...",    // impersonation-status topic
+ *     "token": "...",                 // single JWT scoped to BOTH topics
+ *     "expiresIn": 3600
+ *   }
  * }
  * ```
  *
@@ -104,7 +110,8 @@ class AuthEventsController extends AbstractController
         }
 
         $userId = (int) $user->getId();
-        $topic = $this->topics->userAclTopic($userId);
+        $aclTopic = $this->topics->userAclTopic($userId);
+        $impersonationTopic = $this->topics->userImpersonationTopic($userId);
 
         if ($this->mercureJwtSecret === '') {
             // Misconfiguration. Fail loud so the dev notices instead of
@@ -120,12 +127,18 @@ class AuthEventsController extends AbstractController
             'hmac.sha256',
             $this->mercureSubscriberTtl
         );
-        $token = $factory->create([$topic], null);
+
+        // One subscriber JWT, two topics. Mercure supports multiple
+        // `topic=` query params on a single SSE connection, so the BFF
+        // opens ONE upstream socket instead of two — half the RAM in the
+        // hub, half the file descriptors per logged-in user.
+        $token = $factory->create([$aclTopic, $impersonationTopic], null);
 
         return $this->responseFormatter->formatSuccess(
             [
                 'hubUrl' => $this->mercurePublicUrl,
-                'topic' => $topic,
+                'topic' => $aclTopic,
+                'impersonationTopic' => $impersonationTopic,
                 'token' => $token,
                 'expiresIn' => $this->mercureSubscriberTtl,
             ],

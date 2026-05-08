@@ -220,39 +220,92 @@ class JWTService
     /**
      * Create a short-lived JWT for impersonation.
      *
-     * The token same as normal access token but carries two extra claims:
-     *   - impersonated_by : the admin's user ID
-     *   - impersonation   : true  (flag)
+     * Claim shape follows RFC 8693 (OAuth 2.0 Token Exchange):
+     *   - `sub`          : target user id (effective principal — the
+     *                       standard OAuth subject claim)
+     *   - `id_users`     : same value, the project-internal alias every
+     *                       Symfony service already reads
+     *   - `act.sub`      : admin user id  (actual party — the "actor")
+     *   - `act.id_users` : same value, kept for in-house consumers
+     *   - `purpose`      : the literal string "impersonation" — RFC-compliant
+     *                       way of declaring this token is NOT a regular
+     *                       access token, useful for token-introspection
+     *                       gateways and audit dashboards
+     *   - `impersonation`: `true`  (fast-path boolean — cheaper than parsing
+     *                       `act` for the hot path of every API request)
+     *   - `exp`          : absolute expiry (seconds since epoch)
      *
-     * TTL is intentionally much shorter than a regular token (default 15 min).
-     * Override via the IMPERSONATION_TOKEN_TTL env var (seconds).
+     * TTL is intentionally much shorter than a regular access token
+     * (default 15 min, configurable via IMPERSONATION_TOKEN_TTL).
      */
     public function createImpersonationToken(User $targetUser, int $adminUserId): array
     {
-        $ttl = (int) ($this->params->has('jwt_impersonation_token_ttl')
-            ? $this->params->get('jwt_impersonation_token_ttl')
-            : 900); // 15 minutes fallback
+        $ttl = (int) $this->params->get('jwt_impersonation_token_ttl');
+        if ($ttl <= 0) {
+            $ttl = 900; // defensive: never issue a token with a non-positive lifetime
+        }
 
         $payload = [
-            'id_users'        => $targetUser->getId(),
-            'impersonated_by' => $adminUserId,
-            'impersonation'   => true,
-            'exp'             => time() + $ttl,
+            'sub'           => (string) $targetUser->getId(),
+            'id_users'      => $targetUser->getId(),
+            'act'           => [
+                'sub'      => (string) $adminUserId,
+                'id_users' => $adminUserId,
+            ],
+            'purpose'       => 'impersonation',
+            'impersonation' => true,
+            'exp'           => time() + $ttl,
         ];
 
-        // jwtManager needs an identifier — use email as the subject
         $targetUser->setUserName($targetUser->getEmail());
         $token = $this->jwtManager->createFromPayload($targetUser, $payload);
 
         $this->logger->info('[JWTService] Impersonation token created.', [
-            'target_user_id'  => $targetUser->getId(),
-            'admin_user_id'   => $adminUserId,
-            'expires_in'      => $ttl,
+            'target_user_id' => $targetUser->getId(),
+            'admin_user_id'  => $adminUserId,
+            'expires_in'     => $ttl,
         ]);
 
         return [
             'access_token' => $token,
             'expires_in'   => $ttl,
         ];
+    }
+
+    /**
+     * Whether a decoded JWT payload represents an impersonation session.
+     * Cheap O(1) flag check — safe to call on every request.
+     */
+    public function isImpersonationPayload(array $payload): bool
+    {
+        return !empty($payload['impersonation']);
+    }
+
+    /**
+     * Extract the *original* admin user id from an impersonation payload.
+     * Returns `null` for regular tokens.
+     *
+     * Reads the standard RFC 8693 `act.sub` claim first, falls back to the
+     * legacy `act.id_users` shape we emit for in-house consumers, and
+     * finally to the deprecated `impersonated_by` claim used by the v1
+     * implementation so old tokens still work during a rolling deploy.
+     */
+    public function getImpersonatorUserId(array $payload): ?int
+    {
+        if (isset($payload['act']) && is_array($payload['act'])) {
+            $act = $payload['act'];
+            if (isset($act['id_users'])) {
+                return (int) $act['id_users'];
+            }
+            if (isset($act['sub'])) {
+                return (int) $act['sub'];
+            }
+        }
+
+        if (isset($payload['impersonated_by'])) {
+            return (int) $payload['impersonated_by'];
+        }
+
+        return null;
     }
 }
