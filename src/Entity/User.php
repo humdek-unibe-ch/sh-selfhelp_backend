@@ -119,8 +119,8 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'boolean', options: ['default' => 1])]
     private bool $is_reminded = true;
 
-    #[ORM\Column(type: 'date', nullable: true)]
-    private ?\DateTimeInterface $last_login = null;
+   #[ORM\Column(type: 'date_immutable', nullable: true)]
+    private ?\DateTimeImmutable $last_login = null;
 
     #[ORM\Column(type: 'string', length: 100, nullable: true)]
     private ?string $last_url = null;
