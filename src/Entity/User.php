@@ -281,7 +281,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
-    public function getLastLogin(): ?\DateTime
+    public function getLastLogin(): ?\DateTimeImmutable
     {
         return $this->last_login;
     }
