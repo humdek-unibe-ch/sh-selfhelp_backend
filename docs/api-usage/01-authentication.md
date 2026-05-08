@@ -6,15 +6,21 @@ The SelfHelp API provides comprehensive authentication and user management funct
 
 ## Token lifetimes
 
-| Token                    | Default TTL             | Env variable              | Behaviour on expiry                                                       |
-|--------------------------|-------------------------|---------------------------|---------------------------------------------------------------------------|
-| Access (JWT)             | **3600 s / 1 hour**     | `JWT_TOKEN_TTL`           | Symfony answers `401 Unauthorized`. Client calls `/auth/refresh-token`.   |
-| Refresh                  | **2 592 000 s / 30 days** | `JWT_REFRESH_TOKEN_TTL` | Symfony answers `401` from `/auth/refresh-token`. Client must log in again. |
+| Token                    | Default TTL               | Env variable              | Behaviour on expiry                                                         |
+|--------------------------|---------------------------|---------------------------|-----------------------------------------------------------------------------|
+| Access (JWT)             | **3600 s / 1 hour**       | `JWT_TOKEN_TTL`           | Symfony answers `401 Unauthorized`. Client calls `/auth/refresh-token`.     |
+| Refresh                  | **2 592 000 s / 30 days** | `JWT_REFRESH_TOKEN_TTL`   | Symfony answers `401` from `/auth/refresh-token`. Client must log in again. |
+| Impersonation (JWT)      | **900 s / 15 minutes**    | `IMPERSONATION_TOKEN_TTL` | Symfony answers `401`. There is **no refresh** for impersonation; the admin must call `/admin/users/{id}/impersonate` again or stop. |
 
 The refresh endpoint **rotates** the refresh token: each successful call
 deletes the old `refreshTokens` row and returns a fresh pair. Holding a
 long-lived session therefore advances the refresh expiry by another full
 window every hour (or every access-token lifetime you configure).
+
+The impersonation token is intentionally non-rotating and short-lived —
+see [Admin Users → Impersonate User](07-admin-users.md#impersonate-user)
+for the full lifecycle (start → audit-logged mutations → stop +
+blacklist).
 
 To change these values for a particular environment, see
 *Token TTL configuration* in
