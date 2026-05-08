@@ -17,11 +17,16 @@
                 "topic": {
                     "type": "string",
                     "format": "uri",
-                    "description": "Per-user private topic IRI (e.g. https://selfhelp.app/users/{id}/acl). The accompanying token only authorises this exact topic. Topics are opaque identifiers — never dereferenced."
+                    "description": "Per-user ACL change topic IRI (e.g. https://selfhelp.app/users/{id}/acl). Receives `acl-changed` events when the user's ACL version is bumped. Topics are opaque identifiers — never dereferenced."
+                },
+                "impersonationTopic": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Per-user impersonation-lifecycle topic IRI (e.g. https://selfhelp.app/users/{id}/impersonation). Receives `impersonation-status` events when an admin starts or stops impersonating this user. Both topics share the same subscriber JWT in the `token` field."
                 },
                 "token": {
-                    "type": ["string", "null"],
-                    "description": "Short-lived HMAC-SHA256 JWT for header-based Mercure subscriptions. Native clients send it as Authorization: Bearer <token>. Browser cookie transport returns null because the JWT is delivered as an HttpOnly mercureAuthorization cookie instead."
+                    "type": "string",
+                    "description": "Short-lived HMAC-SHA256 JWT to send as Authorization: Bearer <token> when subscribing to hubUrl. Authorises BOTH `topic` and `impersonationTopic` so the BFF only needs one upstream connection. Lifetime equals expiresIn seconds; the BFF should re-mint via this endpoint on every Mercure reconnect."
                 },
                 "expiresIn": {
                     "type": "integer",
@@ -29,7 +34,7 @@
                     "description": "Lifetime of token in seconds (MERCURE_SUBSCRIBER_TTL). Treat as an upper bound."
                 }
             },
-            "required": ["hubUrl", "topic", "token", "expiresIn"],
+            "required": ["hubUrl", "topic", "impersonationTopic", "token", "expiresIn"],
             "additionalProperties": false
         }
     },

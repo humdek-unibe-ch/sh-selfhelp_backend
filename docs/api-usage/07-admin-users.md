@@ -522,18 +522,113 @@ Remove all user-generated content and data.
 
 ### Impersonate User
 
-Temporarily assume another user's identity for debugging.
+Issue a short-lived JWT that lets an admin act as another user for
+debugging or QA. The token follows RFC 8693 *OAuth 2.0 Token Exchange*:
+the target user is the effective principal (`id_users`) while the
+original admin is preserved as the *actor* in the `act` claim.
 
 **Endpoint:** `POST /cms-api/v1/admin/users/{userId}/impersonate`
 
-**Authentication:** Required (JWT Bearer token)
-
-**Path Parameters:**
-- `userId`: User ID to impersonate
-
-**Response:** New JWT tokens for the impersonated user
+**Authentication:** Required (JWT Bearer token, real admin session — must NOT
+already be impersonating).
 
 **Permissions:** `admin.user.impersonate`
+
+**Path parameters:**
+
+- `userId`: id of the user to impersonate.
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": true,
+  "meta": { "version": "v1", "timestamp": "2026-05-08T12:00:00Z" },
+  "data": {
+    "impersonation_token": "eyJ0eXAi...",
+    "expires_in": 900,
+    "target_email": "alice@example.com"
+  }
+}
+```
+
+**Token shape (decoded payload):**
+
+```json
+{
+  "id_users": 42,
+  "act": { "sub": "1", "id_users": 1 },
+  "impersonation": true,
+  "exp": 1715170800
+}
+```
+
+**Validation rules (deny-by-default):**
+
+- The target must exist and not be a system user (`admin`, `tpf`).
+- The target must not be blocked.
+- An admin cannot impersonate themselves.
+
+**Authorisation rules under an impersonation token:**
+
+- *Read* requests run as the target — the admin sees what the user sees.
+- *Mutations* are allowed and are recorded in the `transactions` table
+  with a verbose entry attributing the action to the **original admin**
+  (`act.sub`). This matches industry practice (Salesforce "Login as",
+  Auth0 "View as", GitHub Enterprise impersonation, Symfony's own
+  `switch_user`).
+- A small high-risk allow list is **never** permitted under an
+  impersonation token: starting another impersonation, deleting users,
+  granting/revoking roles or groups, blocking/unblocking, and cleaning
+  user data. The listener returns 403 with a clear message and the
+  admin must call `stop-impersonate` first.
+
+**Storage on the BFF / browser side:**
+
+The Next.js BFF route `/api/admin/users/{id}/impersonate` strips the
+JWT from this response and parks it in an httpOnly cookie
+(`sh_impersonate`). It also sets a non-httpOnly hint cookie
+(`sh_impersonate_target_email`) carrying just the email so the React
+banner can render. The browser **never** sees the JWT.
+
+### Stop impersonating
+
+Blacklist the impersonation JWT so it cannot be replayed even if it
+leaked, and write an audit entry against the original admin.
+
+**Endpoint:** `POST /cms-api/v1/admin/users/stop-impersonate`
+
+**Authentication:** Required (JWT Bearer token — the impersonation token
+itself is sent as `Authorization`).
+
+**Permissions:** None — the route is gated by JWT authentication only.
+This is intentional: the request executes as the target user, who
+typically does NOT have `admin.user.impersonate`. The controller checks
+for the `impersonation: true` flag and returns `{stopped: false}` if
+the caller is on a regular access token.
+
+**Response (active session):**
+
+```json
+{
+  "status": 200, "message": "OK", "error": null, "logged_in": true,
+  "meta": { "version": "v1", "timestamp": "2026-05-08T12:00:30Z" },
+  "data": { "stopped": true }
+}
+```
+
+**Response (no active impersonation):**
+
+```json
+{ "status": 200, "data": { "stopped": false } }
+```
+
+The BFF route `/api/admin/users/stop-impersonate` clears both
+impersonation cookies regardless of the upstream outcome so the admin
+is never trapped in a stale state.
 
 ## Group Management
 

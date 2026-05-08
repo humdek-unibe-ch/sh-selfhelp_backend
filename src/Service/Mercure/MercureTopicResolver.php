@@ -45,4 +45,25 @@ final class MercureTopicResolver
     {
         return rtrim($this->topicPrefix, '/') . '/users/' . $userId . '/acl';
     }
+
+    /**
+     * Per-user impersonation lifecycle topic.
+     *
+     * Subscribers JWT-scoped to this topic receive `impersonation-status`
+     * updates whenever an admin starts or stops impersonating the *target*
+     * user. The {@see \App\Service\CMS\Admin\AdminUserService} publishes
+     * to it, the BFF subscribes on behalf of the browser, and the React
+     * banner reacts in real time without polling.
+     *
+     * Why the *target* user's id and not the admin's? Because while
+     * impersonation is active, the issued JWT authenticates as the target;
+     * this is the topic that JWT is allowed to subscribe to. The target's
+     * own normal sessions also see the event, which is desirable —
+     * "someone is impersonating you" is exactly the kind of transparency
+     * we want to surface.
+     */
+    public function userImpersonationTopic(int $userId): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/users/' . $userId . '/impersonation';
+    }
 }

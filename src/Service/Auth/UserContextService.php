@@ -8,16 +8,42 @@
 
 namespace App\Service\Auth;
 
+use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
 use Symfony\Bundle\SecurityBundle\Security;
-use App\Entity\User;
+use Symfony\Component\HttpFoundation\RequestStack;
 
+/**
+ * Request-scoped helper around the Symfony security context.
+ *
+ * Exposes the current authenticated user and — when the caller is using
+ * an impersonation JWT — the original admin id. The decoded JWT payload
+ * is read from the request attribute `_jwt_payload` that
+ * {@see \App\Security\JWTTokenAuthenticator} populates after a successful
+ * decode, so this service does NO extra parsing or DB work.
+ *
+ * Naming follows the OAuth 2.0 Token Exchange (RFC 8693) terminology:
+ *
+ *   - **Effective user**: who the request runs as (the JWT `sub`/`id_users`).
+ *     In a regular session that is the admin themselves; in an
+ *     impersonation session that is the target user.
+ *   - **Actual user**: the human being who authenticated (the JWT `act.sub`
+ *     when impersonating, otherwise the same as effective).
+ *
+ * Use `isImpersonating()` for fast-path branches, `getActualUserId()` for
+ * audit trails and "who really did this?" decisions, `getEffectiveUserId()`
+ * for authorisation decisions ("can THIS principal do THIS thing?").
+ */
 class UserContextService
 {
     private ?User $cachedUser = null;
     private bool $userResolved = false;
 
-    public function __construct(private Security $security, private CacheService $cache) {}
+    public function __construct(
+        private Security $security,
+        private CacheService $cache,
+        private RequestStack $requestStack,
+    ) {}
 
     /**
      * Returns the current authenticated User entity or null if not authenticated.
@@ -40,5 +66,93 @@ class UserContextService
     public function getCache(): CacheService
     {
         return $this->cache;
+    }
+
+    /**
+     * Returns the JWT payload that {@see JWTTokenAuthenticator::authenticate}
+     * stashed on the current request, or `null` for unauthenticated /
+     * non-API requests where the listener never ran.
+     *
+     * Internal helper — domain code should call the typed accessors below.
+     */
+    private function getJwtPayload(): ?array
+    {
+        $request = $this->requestStack->getCurrentRequest();
+        if ($request === null) {
+            return null;
+        }
+
+        $payload = $request->attributes->get('_jwt_payload');
+        return is_array($payload) ? $payload : null;
+    }
+
+    /**
+     * Whether the current request authenticates with an impersonation JWT.
+     * Cheap O(1) flag check — safe on every API call.
+     */
+    public function isImpersonating(): bool
+    {
+        $payload = $this->getJwtPayload();
+        return $payload !== null && !empty($payload['impersonation']);
+    }
+
+    /**
+     * The id of the *actual* admin behind an impersonation session, or
+     * `null` if the caller is not impersonating. Reads RFC 8693 `act.sub`
+     * (with the legacy `impersonated_by` fallback for tokens minted before
+     * the v8 rewrite).
+     */
+    public function getImpersonatedByUserId(): ?int
+    {
+        $payload = $this->getJwtPayload();
+        if ($payload === null || empty($payload['impersonation'])) {
+            return null;
+        }
+
+        if (isset($payload['act']) && is_array($payload['act'])) {
+            $act = $payload['act'];
+            if (isset($act['id_users'])) {
+                return (int) $act['id_users'];
+            }
+            if (isset($act['sub'])) {
+                return (int) $act['sub'];
+            }
+        }
+
+        if (isset($payload['impersonated_by'])) {
+            return (int) $payload['impersonated_by'];
+        }
+
+        return null;
+    }
+
+    /**
+     * The id of the *actual* user who authenticated. When impersonating,
+     * this is the original admin (`act.sub`); otherwise it is the same
+     * as the effective user. Returns `null` for anonymous requests.
+     *
+     * Use this for audit trails — "who really did this?" — never for
+     * authorisation decisions.
+     */
+    public function getActualUserId(): ?int
+    {
+        if ($this->isImpersonating()) {
+            return $this->getImpersonatedByUserId();
+        }
+
+        return $this->getCurrentUser()?->getId();
+    }
+
+    /**
+     * The id under which the current request is being authorised. When
+     * impersonating, this is the *target* user; otherwise the same as
+     * the actual user. Returns `null` for anonymous requests.
+     *
+     * Use this for authorisation decisions — every CRUD/permission check
+     * should run as the effective principal.
+     */
+    public function getEffectiveUserId(): ?int
+    {
+        return $this->getCurrentUser()?->getId();
     }
 }

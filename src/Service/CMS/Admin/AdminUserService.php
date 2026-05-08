@@ -24,8 +24,13 @@ use App\Service\Auth\UserContextService;
 use App\Service\Auth\UserValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
+use App\Service\Auth\JWTService;
+use App\Service\Mercure\MercureTopicResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Mercure\Update;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -50,7 +55,11 @@ class AdminUserService extends BaseService
         private readonly CacheService $cache,
         private readonly EntityManagerInterface $entityManager,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
-        private readonly RoleDataAccessRepository $roleDataAccessRepository
+        private readonly RoleDataAccessRepository $roleDataAccessRepository,
+        private readonly JWTService $jwtService,
+        private readonly HubInterface $mercureHub,
+        private readonly MercureTopicResolver $mercureTopics,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -514,13 +523,170 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Impersonate user (placeholder)
+     * Start an impersonation session.
+     *
+     * Returns a short-lived JWT (RFC 8693 Token Exchange shape: `act.sub`
+     * carries the original admin id) so downstream code can distinguish
+     * impersonated sessions from real ones, while every authorisation
+     * decision still runs as the *target* user.
+     *
+     * Authorisation rules (deny-by-default):
+     *   1. Admin must be authenticated (controller already guarantees this).
+     *   2. Target must exist and not be a protected system account.
+     *   3. Admin cannot impersonate themselves.
+     *   4. Target must not be blocked — there is no value in seeing what a
+     *      blocked user "would" see, and it can hide the fact that the
+     *      block has not yet propagated.
+     *
+     * Every successful start writes an entry to the `transactions` audit
+     * trail; every failed attempt is logged via the standard exception
+     * pipeline (status code + message) so the admin UI can surface a
+     * specific reason.
+     *
+     * @throws ServiceException on any of the validation failures above
      */
-    public function impersonateUser(int $userId): array
+    public function impersonateUser(int $currentUserId, int $targetUserId): array
     {
-        $user = $this->findUserOrThrow($userId);
-        // TODO: Implement impersonation logic
-        return ['impersonation_token' => 'placeholder_token'];
+        if ($currentUserId === $targetUserId) {
+            throw new ServiceException(
+                'Cannot impersonate yourself',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        $targetUser = $this->findUserOrThrow($targetUserId);
+
+        if (in_array($targetUser->getName(), self::SYSTEM_USERS, true)) {
+            throw new ServiceException(
+                'Cannot impersonate system users',
+                Response::HTTP_FORBIDDEN
+            );
+        }
+
+        if ($targetUser->isBlocked()) {
+            throw new ServiceException(
+                'Cannot impersonate a blocked user',
+                Response::HTTP_FORBIDDEN
+            );
+        }
+
+        $tokenData = $this->jwtService->createImpersonationToken($targetUser, $currentUserId);
+
+        // Audit trail. Logged against the *admin* (not the target) so the
+        // `transactions.id_users` column points to the original actor.
+        // We use the entity manager reference to avoid a second SELECT —
+        // the user was already authenticated upstream so we know the row
+        // exists; logUserTransaction only reads getId() / getName().
+        $adminUser = $this->entityManager->getReference(\App\Entity\User::class, $currentUserId);
+        $this->logUserTransaction(
+            LookupService::TRANSACTION_TYPES_UPDATE,
+            $adminUser,
+            sprintf(
+                'Impersonation started: admin_id=%d -> target_id=%d (%s)',
+                $currentUserId,
+                $targetUserId,
+                $targetUser->getEmail()
+            )
+        );
+
+        // Real-time push to the target user's impersonation topic so any
+        // session subscribed via the BFF SSE stream (the impersonating
+        // tab as well as the target's own normal sessions, if any) flips
+        // its banner state without polling. Best-effort — a hub outage
+        // does NOT abort the impersonation start; the client-side
+        // setTimeout(expires_in) safety-net still tears the banner down.
+        $expiresAt = time() + (int) $tokenData['expires_in'];
+        $this->publishImpersonationEvent($targetUserId, [
+            'active'         => true,
+            'targetEmail'    => $targetUser->getEmail(),
+            'targetUserId'   => $targetUserId,
+            'adminUserId'    => $currentUserId,
+            'expiresAt'      => $expiresAt,
+            'expiresIn'      => (int) $tokenData['expires_in'],
+        ]);
+
+        return [
+            'impersonation_token' => $tokenData['access_token'],
+            'expires_in'          => $tokenData['expires_in'],
+            'target_email'        => $targetUser->getEmail(),
+        ];
+    }
+
+    /**
+     * Stop an impersonation session.
+     *
+     * Blacklists the supplied impersonation JWT so it cannot be replayed,
+     * even if the cookie has leaked, and writes an audit entry against
+     * the original admin (`adminUserId`).
+     *
+     * @param int    $adminUserId       the admin id recovered from the JWT's
+     *                                  `act.sub` (or legacy `impersonated_by`)
+     * @param int    $targetUserId      the user being impersonated (`id_users`)
+     * @param string $impersonationToken the raw JWT we want to invalidate
+     */
+    public function stopImpersonateUser(
+        int $adminUserId,
+        int $targetUserId,
+        string $impersonationToken
+    ): array {
+        $this->jwtService->blacklistAccessToken($impersonationToken);
+
+        // Audit log under the admin id (no SELECT needed — see impersonateUser).
+        $adminUser = $this->entityManager->getReference(\App\Entity\User::class, $adminUserId);
+        $this->logUserTransaction(
+            LookupService::TRANSACTION_TYPES_UPDATE,
+            $adminUser,
+            sprintf(
+                'Impersonation stopped: admin_id=%d -> target_id=%d',
+                $adminUserId,
+                $targetUserId
+            )
+        );
+
+        // Mercure push so every open tab (impersonating session AND the
+        // target's normal sessions) clears the banner instantly — this
+        // is what replaces the old 5-second cookie poll on the client.
+        $this->publishImpersonationEvent($targetUserId, [
+            'active'       => false,
+            'targetUserId' => $targetUserId,
+            'adminUserId'  => $adminUserId,
+        ]);
+
+        return ['stopped' => true];
+    }
+
+    /**
+     * Publish an `impersonation-status` update to the target user's
+     * Mercure topic.
+     *
+     * Wrapped in a try/catch on purpose: a Mercure publish failure must
+     * never roll back the auditable JWT state change. The frontend has a
+     * `setTimeout(expires_in)` safety-net for missed `active: false`
+     * events, and a `visibilitychange` reconnection that re-subscribes
+     * after sleep/network blips, so a single dropped publish degrades
+     * gracefully into "banner disappears at TTL" instead of "banner
+     * stuck forever".
+     *
+     * @param int                  $targetUserId user whose topic we publish to
+     * @param array<string, mixed> $payload      will be JSON-encoded; must be UTF-8 safe
+     */
+    private function publishImpersonationEvent(int $targetUserId, array $payload): void
+    {
+        try {
+            $this->mercureHub->publish(new Update(
+                $this->mercureTopics->userImpersonationTopic($targetUserId),
+                json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+                true,
+                null,
+                'impersonation-status'
+            ));
+        } catch (\Throwable $e) {
+            $this->logger->warning('Failed to publish impersonation-status to Mercure hub', [
+                'target_user_id' => $targetUserId,
+                'active'         => $payload['active'] ?? null,
+                'exception'      => $e->getMessage(),
+            ]);
+        }
     }
 
     // Private helper methods
