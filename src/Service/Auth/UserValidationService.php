@@ -166,7 +166,7 @@ class UserValidationService extends BaseService
 
     /**
      * Resend validation email for a user
-     * 
+     *
      * @param int $userId User ID
      * @param array $emailConfig Email configuration overrides
      * @return array Result of resend operation
@@ -174,27 +174,40 @@ class UserValidationService extends BaseService
     public function resendValidationEmail(int $userId, array $emailConfig = []): array
     {
         try {
-            // Check if user exists and is not validated
             $user = $this->entityManager->getRepository(User::class)->find($userId);
             if (!$user) {
                 return [
                     'success' => false,
-                    'error' => 'User not found'
+                    'error' => 'User not found',
                 ];
             }
 
-            // Generate new token
             $token = $this->generateValidationToken();
             $user->setToken($token);
             $this->entityManager->flush();
 
-            // Schedule new validation email
             $job = $this->scheduleValidationEmail($userId, $token, $emailConfig);
-
             if (!$job) {
                 return [
                     'success' => false,
-                    'error' => 'Failed to schedule validation email'
+                    'error' => 'Failed to schedule validation email',
+                ];
+            }
+
+            // Execute the scheduled job immediately
+            $executed = $this->jobSchedulerService->executeJob(
+                $job->getId(),
+                LookupService::TRANSACTION_BY_BY_SYSTEM
+            );
+
+            if ($executed === false) {
+                $this->logger->error('Failed to execute validation email job', [
+                    'userId' => $userId,
+                    'jobId' => $job->getId(),
+                ]);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to send validation email',
                 ];
             }
 
@@ -203,18 +216,17 @@ class UserValidationService extends BaseService
                 'message' => 'Validation email resent successfully',
                 'token' => $token,
                 'job_id' => $job->getId(),
-                'validation_url' => "validate/{$userId}/{$token}"
+                'validation_url' => "validate/{$userId}/{$token}",
             ];
-
         } catch (\Exception $e) {
             $this->logger->error('Failed to resend validation email', [
                 'userId' => $userId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => 'Failed to resend validation email'
+                'error' => 'Failed to resend validation email',
             ];
         }
     }
@@ -236,7 +248,7 @@ class UserValidationService extends BaseService
      * @param int $userId User ID
      * @param string $token Validation token
      * @param array $emailConfig Email configuration overrides
-     * @return int|false Job ID if successful, false on failure
+     * @return ScheduledJob|false Job ID if successful, false on failure
      */
     private function scheduleValidationEmail(int $userId, string $token, array $emailConfig = []): ScheduledJob|false
     {
