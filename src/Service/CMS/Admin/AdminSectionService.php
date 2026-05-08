@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\PagesSection;
@@ -207,30 +213,39 @@ class AdminSectionService extends BaseService
     }
 
     /**
-     * Adds a child section to a parent section.
-     * 
-     * @param int $page_id The page ID.
-     * @param int $parent_section_id The ID of the parent section.
-     * @param int $child_section_id The ID of the child section.
-     * @param int|null $position The desired position.
-     * @param int|null $oldParentPageId The ID of the old parent page to remove the relationship from (optional).
-     * @param int|null $oldParentSectionId The ID of the old parent section to remove the relationship from (optional).
-     * @return SectionsHierarchy The new section hierarchy relationship.
-     * @throws ServiceException If the relationship already exists or entities are not found.
+     * Add one or more child sections to a parent section in a single atomic operation.
+     *
+     * Delegates the whole batch to the relationship service (one transaction)
+     * and then performs a top-level cache invalidation pass for the parent
+     * section, the page, and every touched child section.
+     *
+     * @param int   $pageId          The page the parent section belongs to
+     * @param int   $parentSectionId The section to nest the child sections under
+     * @param array $sections        Batch of section payloads. Each item must
+     *                               contain `sectionId` (or legacy `childSectionId`)
+     *                               and may include `position`, `oldParentPageId`,
+     *                               and `oldParentSectionId`.
+     * @return array<int, array{id: int, position: int|null}> Result for each
+     *         input section, in the same order. Internal `sectionId` is stripped.
+     * @throws ServiceException If access is denied, the parent section is missing,
+     *                          or any child section in the batch is not found.
      */
-    public function addSectionToSection(int $page_id, int $parent_section_id, int $child_section_id, ?int $position, ?int $oldParentPageId = null, ?int $oldParentSectionId = null): SectionsHierarchy
+    public function addSectionToSection(int $pageId, int $parentSectionId, array $sections): array
     {
-        $result = $this->sectionRelationshipService->addSectionToSection($page_id, $parent_section_id, $child_section_id, $position, $oldParentPageId, $oldParentSectionId);
-        
-        // Invalidate section-specific cache
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parent_section_id);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $child_section_id);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
-        
-        // Invalidate all section lists in category
+        $results = $this->sectionRelationshipService->addSectionToSection($pageId, $parentSectionId, $sections);
+
+        // Top-level cache invalidation for parent + page + every touched child + lists
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSectionId);
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        foreach ($results as $row) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $row['sectionId']);
+        }
         $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
-        
-        return $result;
+
+        return array_map(
+            static fn(array $row): array => ['id' => $row['id'], 'position' => $row['position']],
+            $results
+        );
     }
 
     /**
@@ -254,15 +269,6 @@ class AdminSectionService extends BaseService
         $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
     }
 
-    /**
-     * Deletes a section permanently.
-     *
-     * This will remove the section and all its relationships (parent, child, and page attachments).
-     *
-     * @param int|null $page_id The page ID.
-     * @param int $section_id The ID of the section to delete.
-     * @throws ServiceException If the section is not found.
-     */
     public function deleteSection(?int $page_id, int $section_id): void
     {
         $this->sectionRelationshipService->deleteSection($page_id, $section_id);
@@ -303,9 +309,9 @@ class AdminSectionService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
-    public function createPageSection(int $page_id, int $styleId, ?int $position): array
+    public function createPageSection(int $page_id, int $styleId, ?int $position, ?string $name = null): array
     {
-        $result = $this->sectionCreationService->createPageSection($page_id, $styleId, $position);
+        $result = $this->sectionCreationService->createPageSection($page_id, $styleId, $position,$name);
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
         return $result;
     }
@@ -320,9 +326,9 @@ class AdminSectionService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the parent section or style is not found
      */
-    public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position): array
+    public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position, ?string $name = null): array
     {
-        $result = $this->sectionCreationService->createChildSection($page_id, $parent_section_id, $styleId, $position);
+        $result = $this->sectionCreationService->createChildSection($page_id, $parent_section_id, $styleId, $position, $name);
         if ($page_id) {
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
         }

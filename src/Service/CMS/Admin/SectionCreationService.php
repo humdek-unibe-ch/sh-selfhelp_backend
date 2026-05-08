@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\Section;
@@ -49,7 +55,7 @@ class SectionCreationService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
-    public function createPageSection(int $pageId, int $styleId, ?int $position): array
+    public function createPageSection(int $pageId, int $styleId, ?int $position, ?string $name): array
     {
         // Permission check
        $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
@@ -67,7 +73,11 @@ class SectionCreationService extends BaseService
 
             // Create a new section with the specified style
             $section = new Section();
-            $section->setName(time() . '-' . $style->getName());
+            if ($name) {
+            $section->setName($name);
+            } else {
+                $section->setName(time() . '-' . $style->getName());
+            }
             $section->setStyle($style);
             $this->entityManager->persist($section);
             $this->entityManager->flush(); // Flush to get the section ID
@@ -129,7 +139,7 @@ class SectionCreationService extends BaseService
      * @return array The ID and position of the new section
      * @throws ServiceException If the parent section or style is not found
      */
-    public function createChildSection(?int $pageId, int $parentSectionId, int $styleId, ?int $position): array
+    public function createChildSection(?int $pageId, int $parentSectionId, int $styleId, ?int $position, ?string $name): array
     {
         $parentSection = $this->sectionRepository->find($parentSectionId);
         if (!$parentSection) {
@@ -167,7 +177,11 @@ class SectionCreationService extends BaseService
 
             // Create a new section with the specified style
             $childSection = new Section();
-            $childSection->setName(time() . '-' . $style->getName());
+            if ($name) {
+            $childSection ->setName($name);
+            } else {
+            $childSection ->setName(time() . '-' . $style->getName());
+            }
             $childSection->setStyle($style);
             $this->entityManager->persist($childSection);
             $this->entityManager->flush(); // Flush to get the section ID

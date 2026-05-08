@@ -334,7 +334,7 @@ Real-time `acl-changed` events are delivered through a [Mercure](https://mercure
 hub (Caddy + Mercure module) running alongside the API. PHP-FPM never holds an
 SSE connection — it only POSTs publishes to the hub when ACL state actually
 changes. The `/auth/events` endpoint described below returns the *discovery
-payload* the frontend BFF needs to subscribe to the hub on the user's behalf.
+payload* clients use to subscribe to the hub, either directly or through a BFF.
 
 **Endpoint:** `GET /cms-api/v1/auth/events`
 
@@ -376,11 +376,18 @@ The payload is wrapped in the standard `ApiResponseFormatter` envelope
 
 **Subscribing:** open a `text/event-stream` request to
 `${hubUrl}?topic=${encodeURIComponent(topic)}` with the `Authorization`
-header set to `Bearer ${token}`. The reference implementation
-(`sh-selfhelp_frontend/src/app/api/auth/events/route.ts`) is the BFF
-proxy: it calls this endpoint, opens the upstream subscription, and
-pipes the bytes back to the browser as same-origin SSE so
-`useAclEventStream` can use a plain `EventSource('/api/auth/events')`.
+header set to `Bearer ${token}`.
+
+- `sh-selfhelp_frontend` uses a BFF proxy
+  (`src/app/api/auth/events/route.ts`): it calls this endpoint, opens
+  the upstream subscription, and pipes the bytes back to the browser as
+  same-origin SSE so `useAclEventStream` can use a plain
+  `EventSource('/api/auth/events')`.
+- `sh-selfhelp_mobile` subscribes directly to the hub with
+  `react-native-sse`. Native iOS/Android builds do not need CORS for
+  this because they do not send a browser `Origin` header. Expo Web
+  preview does, so its host must be present in both Symfony API CORS
+  (`CORS_ALLOW_ORIGIN`) and the Mercure hub `cors_origins` allow-list.
 
 **Hub events:**
 
@@ -415,7 +422,7 @@ entity — no Mercure wiring required.
 
 **Configuration / setup:** see the README "Real-time push (Mercure)"
 section for the hub Docker Compose setup, JWT secret coordination,
-and production-deployment notes.
+API/browser CORS notes, and production-deployment guidance.
 
 ### Update User Name
 
