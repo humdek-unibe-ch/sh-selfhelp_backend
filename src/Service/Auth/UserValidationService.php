@@ -322,6 +322,47 @@ class UserValidationService extends BaseService
     }
 
     /**
+     * Schedule and immediately send a 2FA verification code email
+     *
+     * @param int $userId User ID
+     * @param int $code 2FA code to send
+     * @return bool True if the email was sent successfully, false otherwise
+     */
+    public function send2faEmail(int $userId, int $code): bool
+    {
+        $user = $this->entityManager->getRepository(User::class)->find($userId);
+         if (!$user) {
+            $this->logger->error('User not found for welcome email', ['userId' => $userId]);
+            return false;
+        }
+
+        $userName = $user->getName() ?: $user->getEmail();
+
+        $emailConfig = [
+            'from_email' => 'noreply@selfhelp.com',
+            'from_name' => 'SelfHelp Platform',
+            'reply_to' => 'noreply@selfhelp.com',
+            'recipient_emails' => $user->getEmail(),
+            'subject' => 'Your verification code',
+            'body' => $this->generate2faEmailBody($userName, $code),
+            'is_html' => true,
+        ];
+
+        $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(
+            $emailConfig,
+            new \DateTime(),
+            $userId
+        );
+
+        if (!$jobId) {
+            $this->logger->error('Failed to schedule 2FA email', ['userId' => $userId]);
+            return false;
+        }
+
+        return $this->jobSchedulerService->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM) !== false;
+    }
+
+    /**
      * Generate the HTML body for validation email
      */
     private function generateValidationEmailBody(User $user, string $token): string
@@ -424,4 +465,30 @@ class UserValidationService extends BaseService
         </html>
         ";
     }
+
+    private function generate2faEmailBody(string $userName, int $code): string
+    {
+        return "
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset='UTF-8'><title>Two-Factor Authentication</title></head>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                <h2 style='color: #2c3e50;'>Two-Factor Authentication</h2>
+                <p>Hello {$userName},</p>
+                <p>Your verification code is:</p>
+                <div style='text-align: center; margin: 30px 0;'>
+                    <span style='font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #2c3e50;'>{$code}</span>
+                </div>
+                <p>This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0;'>
+                <p style='font-size: 12px; color: #666;'>
+                    This is an automated message from the SelfHelp Platform. Please do not reply to this email.
+                </p>
+            </div>
+        </body>
+        </html>
+        ";
+    }
+
 } 

@@ -9,6 +9,7 @@ use App\Repository\AuthRepository;
 use App\Service\Auth\JWTService;
 use App\Service\Auth\LoginService;
 use App\Service\Auth\UserDataService;
+use App\Service\CMS\Admin\AdminUserService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -19,6 +20,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use App\Service\Auth\UserValidationService;
 
 /**
  * API V1 Auth Controller
@@ -41,7 +43,9 @@ class AuthController extends AbstractController
         private readonly AuthRepository $authRepository,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserDataService $userDataService,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly AdminUserService $userService,
+        private readonly UserValidationService $userValidationService,
     ) {
     }
 
@@ -88,9 +92,16 @@ class AuthController extends AbstractController
                 );
             }
 
-            // If the user is found check if 2fa is required
+            // If the user is found check if 2FA is required
             if ($user->isTwoFactorRequired()) {
-                $this->authRepository->generateAndStore2faCode($user->getId()); // Ensure code is generated when 2FA is required
+                $code = $this->authRepository->generateAndStore2faCode($user->getId());
+                $emailSent = $this->userValidationService->send2faEmail($user->getId(), $code);
+                if (!$emailSent) {
+                    return $this->responseFormatter->formatError(
+                        'Failed to send 2FA email.',
+                        Response::HTTP_INTERNAL_SERVER_ERROR
+                    );
+                }
                 return $this->responseFormatter->formatSuccess([
                     'requires_2fa' => true,
                     'id_users' => $user->getId()

@@ -182,7 +182,7 @@ class JobSchedulerService extends BaseService
             ]);
 
             $job->setStatus($finalStatus);
-            $job->setDateExecuted(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+            $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
             $this->em->flush();
 
             $this->transactionService->logTransaction(
@@ -209,7 +209,7 @@ class JobSchedulerService extends BaseService
                         'lookupCode' => LookupService::SCHEDULED_JOBS_STATUS_FAILED,
                     ]);
                     $job->setStatus($failedStatus);
-                    $job->setDateExecuted(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+                    $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
                     $this->em->flush();
                 }
             } catch (\Throwable $statusError) {
@@ -362,7 +362,7 @@ class JobSchedulerService extends BaseService
         $jobData = [
             'type' => LookupService::JOB_TYPES_EMAIL,
             'description' => $emailConfig['subject'] ?? 'Email job',
-            'date_to_be_executed' => $dateToExecute ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC')),
+            'date_to_be_executed' => $dateToExecute ?? new \DateTime('now', new \DateTimeZone('UTC')),
             'email_config' => $emailConfig,
         ];
 
