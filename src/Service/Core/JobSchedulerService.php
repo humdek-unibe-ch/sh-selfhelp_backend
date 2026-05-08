@@ -14,6 +14,9 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Mailer\MailerInterface;
+use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Address;
 
 /**
  * Central service for creating, persisting, and executing scheduled jobs.
@@ -33,7 +36,8 @@ class JobSchedulerService extends BaseService
         private readonly ConditionService $conditionService,
         private readonly TaskJobExecutorService $taskJobExecutorService,
         private readonly LoggerInterface $logger,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly MailerInterface $mailer,
     ) {
     }
 
@@ -597,27 +601,42 @@ class JobSchedulerService extends BaseService
         $isHtml = (bool) ($emailConfig['is_html'] ?? true);
         $attachments = is_array($emailConfig['attachments'] ?? null) ? $emailConfig['attachments'] : [];
 
-        [$headers, $message] = $this->buildEmailPayload(
-            $fromEmail,
-            $fromName,
-            $replyTo,
-            $body,
-            $isHtml,
-            $attachments
-        );
+        try {
+            $email = (new Email())
+                ->from(new Address($fromEmail, $fromName))
+                ->replyTo($replyTo)
+                ->to($recipients)
+                ->subject($subject);
 
-        $result = @mail($recipients, $subject, $message, $headers);
+            $isHtml ? $email->html($body) : $email->text($body);
+
+            foreach ($attachments as $attachment) {
+                $path = $attachment['path'] ?? '';
+                if (is_string($path) && $path !== '' && is_file($path)) {
+                    $email->attachFromPath($path, $attachment['filename'] ?? null);
+                }
+            }
+
+            $this->mailer->send($email);
+            $success = true;
+        } catch (\Throwable $e) {
+            $this->logger->error('Mailer send failed', [
+                'jobId' => $job->getId(),
+                'error' => $e->getMessage(),
+            ]);
+            $success = false;
+        }
 
         $this->transactionService->logTransaction(
-            $result ? LookupService::TRANSACTION_TYPES_SEND_MAIL_OK : LookupService::TRANSACTION_TYPES_SEND_MAIL_FAIL,
+            $success ? LookupService::TRANSACTION_TYPES_SEND_MAIL_OK : LookupService::TRANSACTION_TYPES_SEND_MAIL_FAIL,
             $transactionBy,
             'scheduledJobs',
             $job->getId(),
             false,
-            sprintf('Email %s to %s', $result ? 'sent' : 'failed', $recipients)
+            sprintf('Email %s to %s', $success ? 'sent' : 'failed', $recipients)
         );
 
-        return $result;
+        return $success;
     }
 
     /**
@@ -728,6 +747,7 @@ class JobSchedulerService extends BaseService
      *   Attachment descriptors containing `filename` and `path`.
      * @return array{0: string, 1: string}
      *   Mail headers and message body ready for PHP `mail()`.
+     * @deprecated We now use mailtip, we dont need this helper function anymore.
      */
     private function buildEmailPayload(
         string $fromEmail,
