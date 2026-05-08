@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Service\Core;
 
 use App\Entity\Page;
@@ -249,23 +254,57 @@ class VariableResolverService
     }
 
     /**
-     * Get platform (web/mobile) from request
+     * Get platform (web/mobile) from request.
+     *
+     * Resolution order (first match wins):
+     *   1. `X-Client-Type` header ('mobile', 'web', 'mobile_and_web') —
+     *      preferred for the mobile app.
+     *   2. `?platform=…` query / form parameter — used by the mobile dev
+     *      preview running in a browser.
+     *   3. Legacy `?mobile` truthy flag — kept for the old Ionic app.
+     *   4. Default: 'web'.
+     *
+     * `mobile_and_web` is normalised to `mobile` for condition evaluation —
+     * the Mantine condition builder offers only the binary (web|mobile)
+     * platform variable, and conditions written for it should match either
+     * client when the page is flagged as universal.
      *
      * @param \Symfony\Component\HttpFoundation\Request|null $request
      * @return string Platform ('web' or 'mobile')
      */
     private function getPlatform(?\Symfony\Component\HttpFoundation\Request $request): string
     {
-        $platform = 'web';
-
-        if ($request && (
-            $request->query->get('mobile') ||
-            $request->request->get('mobile')
-        )) {
-            $platform = 'mobile';
+        if (!$request) {
+            return 'web';
         }
 
-        return $platform;
+        $header = $request->headers->get('X-Client-Type');
+        if (is_string($header) && $header !== '') {
+            $normalised = strtolower($header);
+            if ($normalised === 'mobile' || $normalised === 'mobile_and_web') {
+                return 'mobile';
+            }
+            if ($normalised === 'web') {
+                return 'web';
+            }
+        }
+
+        $queryPlatform = $request->query->get('platform') ?? $request->request->get('platform');
+        if (is_string($queryPlatform) && $queryPlatform !== '') {
+            $normalised = strtolower($queryPlatform);
+            if ($normalised === 'mobile' || $normalised === 'mobile_and_web') {
+                return 'mobile';
+            }
+            if ($normalised === 'web') {
+                return 'web';
+            }
+        }
+
+        if ($request->query->get('mobile') || $request->request->get('mobile')) {
+            return 'mobile';
+        }
+
+        return 'web';
     }
 
     /**

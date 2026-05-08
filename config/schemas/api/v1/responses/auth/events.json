@@ -1,7 +1,7 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Auth Events Subscriber Bootstrap Response",
-    "description": "Mercure subscriber bootstrap payload returned by GET /cms-api/v1/auth/events. Contains the public hub URL, the per-user private topic IRI, a short-lived HMAC-SHA256 JWT scoped to that topic, and the JWT lifetime in seconds. The frontend BFF uses these to open an upstream Mercure subscription on the user's behalf and pipe the byte stream back to the browser as same-origin SSE.",
+    "description": "Mercure subscriber bootstrap payload returned by GET /cms-api/v1/auth/events. Contains the public hub URL, the per-user private topic IRI, and the JWT lifetime in seconds. Native clients receive a short-lived HMAC-SHA256 JWT scoped to that topic and subscribe with an Authorization bearer header. Browser clients can request transport=cookie, in which case the backend sets an HttpOnly mercureAuthorization cookie and token is null.",
     "allOf": [
         { "$ref": "../common/_response_envelope.json" }
     ],
@@ -20,8 +20,8 @@
                     "description": "Per-user private topic IRI (e.g. https://selfhelp.app/users/{id}/acl). The accompanying token only authorises this exact topic. Topics are opaque identifiers — never dereferenced."
                 },
                 "token": {
-                    "type": "string",
-                    "description": "Short-lived HMAC-SHA256 JWT to send as Authorization: Bearer <token> when subscribing to hubUrl. Lifetime equals expiresIn seconds; the BFF should re-mint via this endpoint on every Mercure reconnect."
+                    "type": ["string", "null"],
+                    "description": "Short-lived HMAC-SHA256 JWT for header-based Mercure subscriptions. Native clients send it as Authorization: Bearer <token>. Browser cookie transport returns null because the JWT is delivered as an HttpOnly mercureAuthorization cookie instead."
                 },
                 "expiresIn": {
                     "type": "integer",
