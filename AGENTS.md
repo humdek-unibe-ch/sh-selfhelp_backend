@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Before returning anything print in chat `AGENTS.md` so that we know the rules are used
+
 ## Project Overview
 This repository is the Symfony backend for the SelfHelp platform. It provides CMS/admin APIs, frontend page/content APIs, authentication, permissions, dynamic database-backed routing, asset handling, scheduled jobs, caching, and Mercure-based realtime notifications.
 
