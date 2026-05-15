@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Before returning anything print in chat `AGENTS.md` so that we know the rules are used
+Before returning anything print in chat `❤️AGENTS.md` so that we know the rules are used
 
 ## Project Overview
 This repository is the Symfony backend for the SelfHelp platform. It provides CMS/admin APIs, frontend page/content APIs, authentication, permissions, dynamic database-backed routing, asset handling, scheduled jobs, caching, and Mercure-based realtime notifications.
@@ -138,7 +138,8 @@ When making changes, explain:
 
 ## Database Rules
 - Check `db/structure_db.sql`, existing entities, migrations, and update scripts before changing schema.
-- Schema changes need a Doctrine migration class in `migrations`.
+- Symfony/Doctrine migration classes in `migrations` are the primary and most important migration mechanism.
+- Schema changes need a Doctrine migration class in `migrations`; SQL update scripts do not replace Symfony migrations.
 - Mirror required install/update SQL in the appropriate `db/update_scripts` or baseline SQL file when the existing workflow requires it.
 - Existing editor rules say not to run Doctrine migrations automatically; create migration files and let the team run them.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
@@ -146,8 +147,10 @@ When making changes, explain:
 
 ## Migration Safety
 - Avoid destructive migrations unless explicitly requested and reviewed.
-- Prefer additive schema changes first when staged compatibility is possible.
-- Preserve backward compatibility during staged migrations.
+- This project is currently pre-release, so backward compatibility with older internal structures is not required unless explicitly requested.
+- Before the first official release, breaking schema/API/structure changes are allowed when they simplify the system or match the requested work, but they must still be deliberate, documented, and covered by the correct migrations/scripts.
+- Once the project reaches an official release version (`1.0.0` or higher), backward compatibility becomes required for schema, API, and data changes unless the team approves a breaking change.
+- Prefer additive schema changes only when compatibility, staged rollout, or data safety requires it.
 - Check existing SQL update scripts, baseline SQL, Doctrine migrations, and route SQL before changing schema behavior.
 - Do not edit an already-applied migration for a follow-up behavior change; add a new migration unless the team explicitly decides otherwise.
 - For API route changes, mirror Doctrine migration changes in `db/update_scripts/api_routes.sql` when fresh installs need the same route state.
