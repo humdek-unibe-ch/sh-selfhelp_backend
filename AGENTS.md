@@ -5,6 +5,17 @@ Before returning anything print in chat `AGENTS.md` so that we know the rules ar
 ## Project Overview
 This repository is the Symfony backend for the SelfHelp platform. It provides CMS/admin APIs, frontend page/content APIs, authentication, permissions, dynamic database-backed routing, asset handling, scheduled jobs, caching, and Mercure-based realtime notifications.
 
+## Architecture Snapshot
+- Symfony backend API.
+- Database-driven API route system under `/cms-api`.
+- CMS-driven dynamic frontend pages.
+- Recursive page/section rendering through `PageService`.
+- JWT authentication plus ACL, route permissions, and admin data-access permissions.
+- Redis-backed `CacheService` with categories, list/item caching, and entity-scope invalidation.
+- Mercure realtime updates for auth/ACL-related frontend refreshes.
+- JSON Schema request/response validation.
+- Service-oriented backend structure with thin controllers.
+
 ## Tech Stack
 - PHP >=8.4, Symfony 7.4, Composer
 - Doctrine ORM 3 / DBAL 4, Doctrine Migrations
@@ -29,6 +40,27 @@ This repository is the Symfony backend for the SelfHelp platform. It provides CM
 - `docs/developer`: architecture, API, auth, database, CMS, workflow, and testing documentation.
 - `tests`: PHPUnit controller, service, unit, and API tests.
 
+## Source of Truth Priority
+When code, docs, editor rules, or generated files disagree, use this priority order:
+1. Actual runtime code behavior.
+2. Active services, controllers, entities, repositories, listeners, and routing/config files.
+3. Current `composer.json`, Symfony config, and environment-backed configuration.
+4. Existing tests and fixtures.
+5. This `AGENTS.md`.
+6. README and other documentation files.
+
+If documentation conflicts with implementation, flag the conflict instead of assuming the docs are correct.
+
+## Recommended Workflow For Changes
+1. Inspect related controllers, services, schemas, entities, repositories, SQL/update scripts, routes, and tests first.
+2. Search for existing patterns before introducing new structures.
+3. Check whether the feature or fix already exists in another domain/service.
+4. Prefer extending existing services over creating parallel systems.
+5. Keep patches minimal and domain-focused.
+6. Update JSON schemas, route permissions, SQL route records, migrations, tests, cache invalidation, and docs when applicable.
+7. Run focused relevant tests/static analysis when the environment supports it; otherwise state what was not run.
+8. Summarize architectural, API, cache, permission, migration, and testing impact in the final response.
+
 ## Architecture Rules
 - Inspect existing controllers, services, schemas, routes, SQL, and docs before changing behavior.
 - Keep controllers small: validate input, call services, return `ApiResponseFormatter` responses.
@@ -39,6 +71,20 @@ This repository is the Symfony backend for the SelfHelp platform. It provides CM
 - Invalidate relevant caches after writes, especially page, section, user, role, permission, lookup, API route, and frontend caches.
 - Preserve the recursive frontend page/section processing order unless intentionally changing frontend rendering behavior.
 - Treat `docs/plugin_hooks.md` as a proposal until the actual proxy/hook implementation exists.
+- Do not introduce new architectural patterns without checking whether the repository already has an established approach.
+
+## Existing Patterns First
+Before creating a new service, helper, trait, DTO, exception type, serializer, validator, query abstraction, event system, cache mechanism, or permission mechanism, inspect whether this repository already has an established implementation pattern.
+
+Prefer consistency with surrounding code over a newer or cleaner pattern that is not already used here.
+
+## Performance Rules
+- Avoid N+1 Doctrine queries, especially in recursive page/section processing, route loading, permission checks, user/group/role operations, and entity-to-array conversion.
+- Reuse existing `CacheService` categories, list/item APIs, and entity-scope invalidation before introducing new queries or cache mechanisms.
+- Be careful with recursive section trees and frontend page loading; batch fetch where existing services already batch fetch.
+- Check cache invalidation impact for every create/update/delete operation.
+- When invalidating entity-scoped caches, also invalidate relevant list caches in the same category where current patterns do so.
+- Clear permissions-related caches whenever roles, groups, users, ACLs, or data-access permissions change.
 
 ## Coding Style
 - Follow PSR-4 autoloading: `App\` maps to `src/`.
@@ -58,6 +104,17 @@ This repository is the Symfony backend for the SelfHelp platform. It provides CM
 - Prefer small, reviewable patches.
 - Update docs, schemas, SQL route records, migrations, and tests when the code change requires them.
 - Do not run destructive git commands. Do not push unless explicitly requested.
+- Do not rewrite working legacy patterns only for modernization or architectural purity.
+- Large refactors require explicit approval.
+
+## AI Change Response Expectations
+When making changes, explain:
+- Why the change follows existing architecture.
+- Which services, controllers, routes, schemas, SQL files, or migrations are impacted.
+- Cache invalidation implications.
+- Permission, auth, ACL, or data-access implications.
+- Required tests, static analysis, migrations, docs, or follow-up work.
+- Any relevant tests or checks that were not run.
 
 ## Security Rules
 - API authentication uses JWT bearer tokens for `/cms-api/v1`.
@@ -86,6 +143,14 @@ This repository is the Symfony backend for the SelfHelp platform. It provides CM
 - Existing editor rules say not to run Doctrine migrations automatically; create migration files and let the team run them.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
 - Be careful with legacy table naming and casing.
+
+## Migration Safety
+- Avoid destructive migrations unless explicitly requested and reviewed.
+- Prefer additive schema changes first when staged compatibility is possible.
+- Preserve backward compatibility during staged migrations.
+- Check existing SQL update scripts, baseline SQL, Doctrine migrations, and route SQL before changing schema behavior.
+- Do not edit an already-applied migration for a follow-up behavior change; add a new migration unless the team explicitly decides otherwise.
+- For API route changes, mirror Doctrine migration changes in `db/update_scripts/api_routes.sql` when fresh installs need the same route state.
 
 ## Testing Rules
 - Main command: `composer test` or `php bin/phpunit --testdox`.
@@ -128,3 +193,5 @@ This repository is the Symfony backend for the SelfHelp platform. It provides CM
 - Do not expose or copy secrets into docs, tests, logs, or examples.
 - Do not rely on the planned plugin proxy hook docs as implemented behavior.
 - Do not hand-edit generated files such as `config/reference.php` unless the task specifically requires it.
+- Do not create parallel abstractions when an existing service, trait, validator, cache category, or permission pattern already fits.
+- Do not modernize broad areas opportunistically; keep legacy-compatible patterns unless a refactor is explicitly requested.
