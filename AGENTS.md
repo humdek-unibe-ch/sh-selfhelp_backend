@@ -144,6 +144,17 @@ When making changes, explain:
 - Existing editor rules say not to run Doctrine migrations automatically; create migration files and let the team run them.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
 - Be careful with legacy table naming and casing.
+- For all new database objects and all renamed database objects, use `lowercase_snake_case` only. Do not introduce new camelCase, PascalCase, or mixed-case table, column, index, or constraint names.
+- Use plural `lowercase_snake_case` table names for normal entity tables, for example `users`, `page_versions`, `scheduled_jobs`, `role_data_access`.
+- Use `id` as the primary key column name for normal entity tables. Do not use table-specific primary key names such as `id_users` as the main primary key of a base table.
+- If a table references another table, name the foreign key column `id_<target_table_name>`, for example `id_users`, `id_groups`, `id_page_types`.
+- Pure relation tables must be named `rel_<table_a>_<table_b>` using a fixed, predictable order rule. Use alphabetical order by final table name unless the repository already has an established exception that must be preserved for compatibility.
+- Pure relation tables should normally contain only the two foreign keys plus optional relation metadata such as `created_at`, `position`, `sort_order`, or audit fields. Do not add a surrogate `id` column to a pure relation table unless the relation is intentionally being promoted to a first-class entity.
+- Pure relation tables should use a composite primary key or at minimum a unique constraint across their foreign key columns so duplicate links cannot exist.
+- If a relation table gains significant business meaning or lifecycle beyond linking two records, promote it to a normal entity table with its own domain name instead of keeping it as a generic relation table.
+- Prefer explicit self-reference column names such as `id_parent_page` or `id_child_section` over ambiguous names like `parent` or `child` when introducing new schema.
+- Name indexes and constraints consistently in `lowercase_snake_case`: use `pk_<table>`, `fk_<table>_<column>`, `idx_<table>_<column>`, and `uq_<table>_<column_or_columns>` where practical.
+- Keep Doctrine mappings aligned with these naming rules. If legacy tables do not follow them yet, preserve compatibility intentionally and document the exception in the migration or related service comments.
 
 ## Migration Safety
 - Avoid destructive migrations unless explicitly requested and reviewed.
@@ -198,3 +209,4 @@ When making changes, explain:
 - Do not hand-edit generated files such as `config/reference.php` unless the task specifically requires it.
 - Do not create parallel abstractions when an existing service, trait, validator, cache category, or permission pattern already fits.
 - Do not modernize broad areas opportunistically; keep legacy-compatible patterns unless a refactor is explicitly requested.
+- Do not introduce new camelCase or mixed-case database object names to distinguish relation tables from normal tables; use the explicit relation-table naming rule instead.
