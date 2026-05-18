@@ -10,6 +10,7 @@ use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
+use App\Service\Auth\MailTemplateService;
 
 /**
  * Service responsible for user account validation
@@ -21,13 +22,16 @@ use Psr\Log\LoggerInterface;
  */
 class UserValidationService extends BaseService
 {
+    private const DEFAULT_FROM_EMAIL = 'noreply@selfhelp.com';
+    private const DEFAULT_FROM_NAME  = 'SelfHelp Platform';
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly TransactionService $transactionService,
         private readonly LoggerInterface $logger,
-        private readonly LookupService $lookupService
+        private readonly LookupService $lookupService,
+        private readonly MailTemplateService $mailTemplateService
     ) {
     }
 
@@ -259,19 +263,18 @@ class UserValidationService extends BaseService
             return false;
         }
 
-        // Prepare email configuration
-        $defaultConfig = [
-            'from_email' => 'noreply@selfhelp.com',
-            'from_name' => 'SelfHelp Platform',
-            'reply_to' => 'noreply@selfhelp.com',
-            'subject' => 'Please validate your account',
-            'recipient_emails' => $user->getEmail(),
-            'body' => $this->generateValidationEmailBody($user, $token),
-            'is_html' => true
+        $emailConfig = [
+            ...$this->mailTemplateService->buildEmailConfig('mail_confirm', [
+                'from_email'       => self::DEFAULT_FROM_EMAIL,
+                'from_name'        => self::DEFAULT_FROM_NAME,
+                'reply_to'         => self::DEFAULT_FROM_EMAIL,
+                'subject'          => 'Please validate your account',
+                'recipient_emails' => $user->getEmail(),
+                'body'             => $this->generateValidationEmailBody($user, $token),
+                'is_html'          => true,
+            ]),
+            ...$emailConfig,
         ];
-
-        // Merge with provided configuration
-        $emailConfig = array_merge($defaultConfig, $emailConfig);
 
         // Schedule the email job
         return $this->jobSchedulerService->scheduleUserValidationEmail($userId, $token, $emailConfig);
@@ -293,19 +296,18 @@ class UserValidationService extends BaseService
             return false;
         }
 
-        // Prepare welcome email configuration
-        $defaultConfig = [
-            'from_email' => 'noreply@selfhelp.com',
-            'from_name' => 'SelfHelp Platform',
-            'reply_to' => 'support@selfhelp.com',
-            'subject' => 'Welcome to SelfHelp Platform - Your account is now active!',
-            'recipient_emails' => $user->getEmail(),
-            'body' => $this->generateWelcomeEmailBody($user),
-            'is_html' => true
+        $emailConfig = [
+            ...$this->mailTemplateService->buildEmailConfig('mail_welcome', [
+                'from_email'       => self::DEFAULT_FROM_EMAIL,
+                'from_name'        => self::DEFAULT_FROM_NAME,
+                'reply_to'         => 'support@selfhelp.com',
+                'subject'          => 'Welcome to SelfHelp Platform - Your account is now active!',
+                'recipient_emails' => $user->getEmail(),
+                'body'             => $this->generateWelcomeEmailBody($user),
+                'is_html'          => true,
+            ]),
+            ...$emailConfig,
         ];
-
-        // Merge with provided configuration
-        $emailConfig = array_merge($defaultConfig, $emailConfig);
 
         // Schedule the email job to be sent immediately
         try {
@@ -348,17 +350,16 @@ class UserValidationService extends BaseService
             return false;
         }
 
-        $userName = $user->getName() ?: $user->getEmail();
-
-        $emailConfig = [
-            'from_email' => 'noreply@selfhelp.com',
-            'from_name' => 'SelfHelp Platform',
-            'reply_to' => 'noreply@selfhelp.com',
+        $userName    = $user->getName() ?: $user->getEmail();
+        $emailConfig = $this->mailTemplateService->buildEmailConfig('mail_2fa', [
+            'from_email'       => self::DEFAULT_FROM_EMAIL,
+            'from_name'        => self::DEFAULT_FROM_NAME,
+            'reply_to'         => self::DEFAULT_FROM_EMAIL,
             'recipient_emails' => $user->getEmail(),
-            'subject' => 'Your verification code',
-            'body' => $this->generate2faEmailBody($userName, $code),
-            'is_html' => true,
-        ];
+            'subject'          => 'Your verification code',
+            'body'             => $this->generate2faEmailBody($userName, $code),
+            'is_html'          => true,
+        ]);
 
         $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(
             $emailConfig,

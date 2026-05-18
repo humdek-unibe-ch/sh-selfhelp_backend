@@ -81,7 +81,7 @@ class PageFieldService extends BaseService
             ->innerJoin('f.type', 'ft')
             ->where('ptf.pageType = :pageTypeId')
             ->setParameter('pageTypeId', $page->getPageType()->getId())
-            ->orderBy('f.name', 'ASC');
+            ->orderBy('f.id', 'ASC');
 
         $pageTypeFields = $qb->getQuery()->getResult();
 
