@@ -357,7 +357,7 @@ class DataVariableResolver extends BaseService
             ->getList($cacheKey, function () use ($tableId) {
                 try {
                     $conn = $this->entityManager->getConnection();
-                    $sql = 'SELECT DISTINCT `name` FROM dataCols WHERE id_dataTables = :tableId ORDER BY `name`';
+                    $sql = 'SELECT DISTINCT `name` FROM data_cols WHERE id_data_tables = :tableId ORDER BY `name`';
                     $stmt = $conn->prepare($sql);
                     $stmt->bindValue('tableId', $tableId, \Doctrine\DBAL\ParameterType::INTEGER);
                     $result = $stmt->executeQuery();

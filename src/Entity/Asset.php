@@ -20,7 +20,7 @@ class Asset
     private ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_assetTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_asset_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private Lookup $assetType;
 
     #[ORM\Column(name: 'folder', type: 'string', length: 100, nullable: true)]

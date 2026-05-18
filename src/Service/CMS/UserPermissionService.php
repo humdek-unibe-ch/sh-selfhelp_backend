@@ -73,8 +73,8 @@ class UserPermissionService
         $sql = '
             SELECT DISTINCT p.name
             FROM permissions p
-            INNER JOIN roles_permissions rp ON p.id = rp.id_permissions
-            INNER JOIN users_roles ur ON rp.id_roles = ur.id_roles
+            INNER JOIN rel_permissions_roles rp ON p.id = rp.id_permissions
+            INNER JOIN rel_roles_users ur ON rp.id_roles = ur.id_roles
             WHERE ur.id_users = :userId
             ORDER BY p.name
         ';

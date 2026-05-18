@@ -10,9 +10,17 @@ namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
+/**
+ * Page-level ACL: per-group CRUD rights against a single page.
+ *
+ * Renamed from `AclGroup` (legacy `acl_groups` table) to
+ * `PageAclGroup` (`page_acl_groups`) under the strict_split policy:
+ * because this join table carries the four boolean CRUD columns it is
+ * a first-class domain entity, not a pure relation.
+ */
 #[ORM\Entity]
-#[ORM\Table(name: 'acl_groups')]
-class AclGroup
+#[ORM\Table(name: 'page_acl_groups')]
+class PageAclGroup
 {
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Group::class)]

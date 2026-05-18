@@ -10,9 +10,17 @@ namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
+/**
+ * Per-group binding of a validation code.
+ *
+ * Renamed from `CodesGroup` (legacy `codes_groups` table) to
+ * `ValidationCodeGroup` (`validation_code_groups`) under the
+ * strict_split policy: this is the lifecycle table for the
+ * validation-code → group assignment, not a pure link.
+ */
 #[ORM\Entity]
-#[ORM\Table(name: 'codes_groups')]
-class CodesGroup
+#[ORM\Table(name: 'validation_code_groups')]
+class ValidationCodeGroup
 {
     public function __construct()
     {

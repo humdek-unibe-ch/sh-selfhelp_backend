@@ -369,7 +369,7 @@ class AdminUserService extends BaseService
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 $user,
                 'Groups added to user: ' . $user->getEmail() . ' (Group IDs: ' . implode(', ', $groupIds) . ')',
-                'users_groups'
+                'rel_groups_users'
             );
 
             // Get fresh data before invalidating caches
@@ -401,7 +401,7 @@ class AdminUserService extends BaseService
                 LookupService::TRANSACTION_TYPES_DELETE,
                 $user,
                 'Groups removed from user: ' . $user->getEmail() . ' (Group IDs: ' . implode(', ', $groupIds) . ')',
-                'users_groups'
+                'rel_groups_users'
             );
 
             // Get fresh data before invalidating caches

@@ -14,10 +14,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(
     name: 'action_translations',
     indexes: [
-        new ORM\Index(name: 'IDX_5AC50EA77BA2F5EB', columns: ['translation_key'])
+        new ORM\Index(name: 'idx_action_translations_translation_key', columns: ['translation_key'])
     ],
     uniqueConstraints: [
-        new ORM\UniqueConstraint(name: 'UNIQ_5AC50EA7DBD5589F7BA2F5EB20E4EF5E', columns: ['id_actions', 'translation_key', 'id_languages'])
+        new ORM\UniqueConstraint(name: 'uq_action_translations_action_key_language', columns: ['id_actions', 'translation_key', 'id_languages'])
     ]
 )]
 class ActionTranslation

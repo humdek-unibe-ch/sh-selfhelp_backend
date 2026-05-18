@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'sections_navigation')]
+#[ORM\Table(name: 'rel_sections_navigation')]
 class SectionsNavigation
 {
 
@@ -20,14 +20,15 @@ class SectionsNavigation
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_parent_section', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Section $parent = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'child', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_child_section', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Section $child = null;
 
+    #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Page::class)]
     #[ORM\JoinColumn(name: 'id_pages', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Page $page = null;

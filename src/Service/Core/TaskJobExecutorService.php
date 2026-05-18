@@ -59,7 +59,7 @@ class TaskJobExecutorService extends BaseService
                 $this->transactionService->logTransaction(
                     LookupService::TRANSACTION_TYPES_EXECUTE_TASK_FAIL,
                     $transactionBy,
-                    'scheduledJobs',
+                    'scheduled_jobs',
                     $job->getId(),
                     false,
                     'Task job failed because group could not be resolved'
@@ -95,7 +95,7 @@ class TaskJobExecutorService extends BaseService
             $this->transactionService->logTransaction(
                 $success ? LookupService::TRANSACTION_TYPES_EXECUTE_TASK_OK : LookupService::TRANSACTION_TYPES_EXECUTE_TASK_FAIL,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 false,
                 sprintf('%s %s for user %d', $taskType, $group->getName(), $user->getId())

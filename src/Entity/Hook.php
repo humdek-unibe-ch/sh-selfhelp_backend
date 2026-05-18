@@ -19,7 +19,7 @@ class Hook
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'id_hookTypes', type: 'integer')]
+    #[ORM\Column(name: 'id_hook_types', type: 'integer')]
     private int $idHookTypes;
 
     #[ORM\Column(name: 'name', type: 'string', length: 100, nullable: true)]

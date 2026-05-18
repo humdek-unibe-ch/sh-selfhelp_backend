@@ -863,14 +863,13 @@ class SectionExportImportService extends BaseService
 
             $sql = "
                 INSERT INTO sections (
-                    id, name, id_styles, `condition`, data_config, css, css_mobile, debug, timestamp
+                    id, name, id_styles, `condition`, data_config, css, css_mobile, debug
                 ) VALUES (
-                    :id, :name, :style_id, :condition, :data_config, :css, :css_mobile, :debug, :timestamp
+                    :id, :name, :style_id, :condition, :data_config, :css, :css_mobile, :debug
                 )
             ";
 
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([
+            $conn->executeStatement($sql, [
                 'id' => $sectionId,
                 'name' => $section->getName(),
                 'style_id' => $styleId,
@@ -879,7 +878,6 @@ class SectionExportImportService extends BaseService
                 'css' => $section->getCss(),
                 'css_mobile' => $section->getCssMobile(),
                 'debug' => $section->isDebug() ? 1 : 0,
-                'timestamp' => (new \DateTime())->format('Y-m-d H:i:s')
             ]);
 
             // Clear Doctrine's identity map for this entity to avoid conflicts
@@ -1054,8 +1052,8 @@ class SectionExportImportService extends BaseService
                 $conn = $this->entityManager->getConnection();
                 $idsString = implode(',', $sectionIds);
 
-                $conn->executeStatement("DELETE FROM pages_sections WHERE id_pages = {$page->getId()}");
-                $conn->executeStatement("DELETE FROM sections_hierarchy WHERE parent IN ({$idsString}) OR child IN ({$idsString})");
+                $conn->executeStatement("DELETE FROM rel_pages_sections WHERE id_pages = {$page->getId()}");
+                $conn->executeStatement("DELETE FROM rel_sections_hierarchy WHERE id_parent_section IN ({$idsString}) OR id_child_section IN ({$idsString})");
             }
         }
 

@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'dataTables')]
+#[ORM\Table(name: 'data_tables')]
 class DataTable
 {
     /**

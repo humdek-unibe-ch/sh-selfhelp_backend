@@ -198,10 +198,10 @@ class StyleRepository extends ServiceEntityRepository
                 sf.disabled        AS disabled,
                 sf.hidden          AS hidden
             FROM styles s
-            INNER JOIN styleGroup sg ON sg.id = s.id_group
-            LEFT JOIN styles_fields sf ON sf.id_styles = s.id
+            INNER JOIN style_groups sg ON sg.id = s.id_group
+            LEFT JOIN rel_fields_styles sf ON sf.id_styles = s.id
             LEFT JOIN fields f ON f.id = sf.id_fields
-            LEFT JOIN fieldType ft ON ft.id = f.id_type
+            LEFT JOIN field_types ft ON ft.id = f.id_type
             ORDER BY s.name ASC, f.name ASC
         ')->fetchAllAssociative();
 
@@ -242,7 +242,7 @@ class StyleRepository extends ServiceEntityRepository
             SELECT
                 parent.name AS parent_name,
                 child.name  AS child_name
-            FROM styles_allowed_relationships sar
+            FROM rel_styles_allowed_relationships sar
             INNER JOIN styles parent ON parent.id = sar.id_parent_style
             INNER JOIN styles child  ON child.id  = sar.id_child_style
         ')->fetchAllAssociative();

@@ -27,15 +27,15 @@ use App\Repository\PageVersionRepository;
 // Map to 'page_versions' table in database
 #[ORM\Table(name: 'page_versions')]
 // Index on id_pages for efficient foreign key lookups and joins with pages table
-#[ORM\Index(name: 'idx_id_pages', columns: ['id_pages'])]
+#[ORM\Index(name: 'idx_page_versions_id_pages', columns: ['id_pages'])]
 // Index on created_by for efficient user-based queries and joins with users table
-#[ORM\Index(name: 'idx_created_by', columns: ['created_by'])]
+#[ORM\Index(name: 'idx_page_versions_created_by', columns: ['created_by'])]
 // Index on created_at for efficient time-based queries and ordering
-#[ORM\Index(name: 'idx_created_at', columns: ['created_at'])]
+#[ORM\Index(name: 'idx_page_versions_created_at', columns: ['created_at'])]
 // Index on published_at for efficient queries on published versions
-#[ORM\Index(name: 'idx_published_at', columns: ['published_at'])]
+#[ORM\Index(name: 'idx_page_versions_published_at', columns: ['published_at'])]
 // Ensure version numbers are unique per page (composite unique constraint)
-#[ORM\UniqueConstraint(name: 'uniq_page_version_number', columns: ['id_pages', 'version_number'])]
+#[ORM\UniqueConstraint(name: 'uq_page_versions_id_pages_version_number', columns: ['id_pages', 'version_number'])]
 class PageVersion
 {
     /**

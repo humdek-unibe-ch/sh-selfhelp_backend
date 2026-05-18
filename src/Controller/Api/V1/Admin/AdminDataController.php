@@ -135,7 +135,7 @@ class AdminDataController extends AbstractController
                 $this->transactionService->logTransaction(
                     LookupService::TRANSACTION_TYPES_SELECT,
                     LookupService::TRANSACTION_BY_BY_USER,
-                    'dataTables',
+                    'data_tables',
                     $dataTable->getId(),
                     false,
 

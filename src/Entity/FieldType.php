@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'fieldType')]
+#[ORM\Table(name: 'field_types')]
 class FieldType
 {
     #[ORM\OneToMany(mappedBy: 'type', targetEntity: Field::class)]

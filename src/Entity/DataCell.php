@@ -12,17 +12,17 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'dataCells')]
+#[ORM\Table(name: 'data_cells')]
 class DataCell
 {
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: DataRow::class, inversedBy: 'dataCells', cascade: ['persist', 'remove'])]
-    #[ORM\JoinColumn(name: 'id_dataRows', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_rows', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?DataRow $dataRow = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: DataCol::class, inversedBy: 'dataCells', cascade: ['persist', 'remove'])]
-    #[ORM\JoinColumn(name: 'id_dataCols', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_cols', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?DataCol $dataCol = null;
 
     #[ORM\Id]

@@ -1,5 +1,28 @@
 # Database Design
 
+> ⚠️ **Document status.** This file describes the historical legacy schema
+> for context. The canonical schema is now defined by Doctrine migrations
+> only (`migrations/Version20260601000000.php` baseline + four seed
+> migrations). The runtime contract uses **canonical names**:
+> `data_tables`, `data_rows`, `data_cols`, `data_cells`, `scheduled_jobs`,
+> `scheduled_job_reminders`, `refresh_tokens`, `api_request_logs`,
+> `callback_logs`, `data_access_audits`, `page_types`, `field_types`,
+> `style_groups`, `log_performance`, `user_2fa_codes`, `user_activities`,
+> `rel_groups_users`, `rel_roles_users`, `rel_permissions_roles`,
+> `rel_api_routes_permissions`, `rel_pages_sections`, `rel_fields_pages`,
+> `rel_fields_styles`, `rel_fields_page_types`, `rel_sections_hierarchy`,
+> `rel_sections_navigation`, `rel_styles_allowed_relationships`,
+> `page_acl_groups` (was `acl_groups`), `validation_code_groups`
+> (was `codes_groups`). All FK columns follow `id_<target_table>` (with
+> explicit self-references like `id_parent_page`, `id_child_section`,
+> `id_parent_scheduled_job`). Indexes, foreign keys and uniques are
+> `idx_*`, `fk_*`, `uq_*` in `lowercase_snake_case`. The mixed-case
+> identifiers shown in the legacy CREATE TABLE snippets below
+> (`dataTables`, `users_groups`, `id_pageAccessTypes`, …) are **no longer
+> used at runtime** — they only appear in `db/legacy/new_create_db.sql`,
+> which the four seed migrations consume transitionally through
+> `migrations/LegacySeedTrait.php` rename mappings.
+
 ## 🗄️ Database Architecture Overview
 
 The SelfHelp Symfony Backend uses a sophisticated MySQL database design that supports dynamic routing, fine-grained permissions, content management, and comprehensive audit trails.

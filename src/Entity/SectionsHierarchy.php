@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'sections_hierarchy')]
+#[ORM\Table(name: 'rel_sections_hierarchy')]
 class SectionsHierarchy
 {
 
@@ -20,12 +20,12 @@ class SectionsHierarchy
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_parent_section', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Section $parentSection = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'child', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_child_section', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Section $childSection = null;
 
     public function getPosition(): ?int

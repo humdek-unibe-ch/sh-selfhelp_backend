@@ -11,11 +11,11 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'dataRows')]
+#[ORM\Table(name: 'data_rows')]
 class DataRow
 {
     #[ORM\ManyToOne(targetEntity: DataTable::class, inversedBy: 'dataRows', cascade: ['persist'])]
-    #[ORM\JoinColumn(name: 'id_dataTables', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_tables', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?DataTable $dataTable = null;
 
     /**
@@ -41,7 +41,7 @@ class DataRow
     #[ORM\Column(name: 'id_users', type: 'integer', nullable: true)]
     private ?int $idUsers = null;
 
-    #[ORM\Column(name: 'id_actionTriggerTypes', type: 'integer', nullable: true)]
+    #[ORM\Column(name: 'id_action_trigger_types', type: 'integer', nullable: true)]
     private ?int $idActionTriggerTypes = null;
 
     public function getId(): ?int

@@ -30,7 +30,7 @@ class Permission
     private ?string $description = null;
 
     #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'permissions')]
-    #[ORM\JoinTable(name: 'roles_permissions',
+    #[ORM\JoinTable(name: 'rel_permissions_roles',
         joinColumns: [new ORM\JoinColumn(name: 'id_permissions', referencedColumnName: 'id', onDelete: 'CASCADE')],
         inverseJoinColumns: [new ORM\JoinColumn(name: 'id_roles', referencedColumnName: 'id', onDelete: 'CASCADE')]
     )]

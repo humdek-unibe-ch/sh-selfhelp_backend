@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'apiRequestLogs')]
+#[ORM\Table(name: 'api_request_logs')]
 class ApiRequestLog
 {
     #[ORM\Id]

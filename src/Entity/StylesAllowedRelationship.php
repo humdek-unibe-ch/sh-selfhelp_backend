@@ -12,10 +12,10 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: "App\Repository\StylesAllowedRelationshipRepository")]
 #[ORM\Table(
-    name: "styles_allowed_relationships",
+    name: "rel_styles_allowed_relationships",
     indexes: [
-        new ORM\Index(name: "IDX_757F0414DC4D59BB", columns: ["id_parent_style"]),
-        new ORM\Index(name: "IDX_757F041478A9D70E", columns: ["id_child_style"]),
+        new ORM\Index(name: "idx_rel_styles_allowed_id_parent_style", columns: ["id_parent_style"]),
+        new ORM\Index(name: "idx_rel_styles_allowed_id_child_style", columns: ["id_child_style"]),
     ]
 )]
 class StylesAllowedRelationship

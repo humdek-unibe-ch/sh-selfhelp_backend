@@ -89,7 +89,7 @@ class DataTableService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_INSERT,
                 LookupService::TRANSACTION_BY_BY_USER,
-                'dataTables',
+                'data_tables',
                 $dataTable->getId()
             );
 
@@ -144,7 +144,7 @@ class DataTableService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_SYSTEM,
-                'dataTables',
+                'data_tables',
                 $dataTable->getId()
             );
 
@@ -246,7 +246,7 @@ class DataTableService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 LookupService::TRANSACTION_BY_BY_SYSTEM,
-                'dataTables',
+                'data_tables',
                 $dataTable->getId()
             );
 
@@ -351,7 +351,7 @@ class DataTableService extends BaseService
                 $this->transactionService->logTransaction(
                     LookupService::TRANSACTION_TYPES_DELETE,
                     LookupService::TRANSACTION_BY_BY_SYSTEM,
-                    'dataTables',
+                    'data_tables',
                     $dataTable->getId()
                 );
             }

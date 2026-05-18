@@ -38,9 +38,16 @@ The shipped catalogue is:
 | `disclaimer`                | Disclaimer                      | operator-specific text; default scaffolding shipped |
 | `privacy`                   | GDPR privacy notice             | open access; full GDPR-compliant content |
 
-The page rows themselves were created by the early `new_create_db.sql`
-schema and the page-flag patches — what each migration in
-`migrations/` adds is the **content** (sections + translations).
+As of the pre-release DB cutover, system pages are seeded entirely by
+`migrations/Version20260601000400.php` — the page rows, the page-level
+field translations (privacy notice URL, title, headless flag, …), the
+sections, the per-locale section translations, and the page ACL rows are
+all inserted by that single seed migration via the
+`LegacySeedTrait::reinsertLegacyInsertsAs()` helper, which reads
+`db/legacy/new_create_db.sql` and applies the canonical rename map. The
+older statement that "page rows come from `new_create_db.sql` and only
+content comes from migrations" no longer applies — there is no
+`new_create_db.sql` execution at install time anymore.
 
 ## 2. The components in play
 

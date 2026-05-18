@@ -14,7 +14,7 @@ use Doctrine\Common\Collections\Collection;
 
 #[ORM\Entity(repositoryClass: "App\Repository\LookupRepository")]
 #[ORM\Table(name: 'lookups')]
-#[ORM\UniqueConstraint(name: 'uniq_type_lookup', columns: ['type_code', 'lookup_code'])]
+#[ORM\UniqueConstraint(name: 'uq_lookups_type_code_lookup_code', columns: ['type_code', 'lookup_code'])]
 class Lookup
 {
     #[ORM\Id]

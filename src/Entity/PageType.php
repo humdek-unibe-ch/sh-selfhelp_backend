@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'pageType')]
+#[ORM\Table(name: 'page_types')]
 class PageType
 {
     #[ORM\Id]

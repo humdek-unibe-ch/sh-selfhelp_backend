@@ -12,7 +12,7 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'callbackLogs')]
+#[ORM\Table(name: 'callback_logs')]
 class CallbackLog
 {
     #[ORM\Id]

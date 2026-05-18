@@ -114,7 +114,7 @@ class ActionCleanupService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 false,
                 'Scheduled job marked as deleted by action cleanup'
