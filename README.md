@@ -247,6 +247,106 @@ docker run -d --name selfhelp_mercure --rm \
 
 For the algorithm and on-the-wire payload details, see `docs/developer/13-acl-system.md` ("Real-time ACL push").
 
+## Local mail (Mailpit)
+
+[Mailpit](https://mailpit.axllent.org) is a local SMTP catch-all that traps every outbound email during development so it never reaches a real inbox. A web UI lets you preview, inspect, and delete messages.
+
+The flow is:
+1. Symfony sends mail via `MAILER_DSN=smtp://mailpit:1025` (the container name resolves on the Docker network; use `localhost` when Symfony runs on the host).
+2. Mailpit accepts the message over SMTP and stores it in memory (capped at 500 by default).
+3. Open `http://localhost:8025` in your browser to view the inbox.
+
+### Setup (Docker)
+
+Mailpit is included in `docker-compose.mercure.yml` alongside Mercure and Redis.
+
+```bash
+# 1. Point Symfony at the local SMTP server.
+#    Add to .env.local so it overrides the production DSN without touching .env.
+echo 'MAILER_DSN=smtp://localhost:1025' >> .env.local
+
+# 2. Start the containers (starts Mailpit, Redis, and Mercure together).
+docker compose -f docker-compose.mercure.yml up -d
+
+# 3. Open the web inbox.
+open http://localhost:8025        # macOS
+xdg-open http://localhost:8025   # Linux
+
+# 4. Tail Mailpit logs if an email never shows up.
+docker compose -f docker-compose.mercure.yml logs -f mailpit
+
+# 5. Stop when done.
+docker compose -f docker-compose.mercure.yml down
+```
+
+### Gmail alternative (production / staging)
+
+If you want real delivery without a dedicated relay, use a Gmail account with an [App Password](https://myaccount.google.com/apppasswords) (requires google 2FA to be enabled). **Never use your real Gmail password here.**
+
+```env
+# .env.local
+MAILER_DSN=smtp://you@gmail.com:your_google_app_password@smtp.gmail.com:587?encryption=tls
+```
+
+Steps:
+1. Go to **Google Account → Security → 2-Step Verification → App Passwords**.
+2. Create a new App Password (name it e.g. `selfhelp-dev`).
+3. Copy the 16-character password (spaces are optional) into `MAILER_DSN` above.
+4. Gmail imposes a daily send quota (~500 messages/day for free accounts) — fine for dev/staging, not for bulk production use.
+
+### Production notes
+
+- The Mailpit container should **not** be deployed to production.
+- Mailpit stores messages in memory; all captured mail is lost on container restart. This is intentional for a dev tool.
+- For high-volume production use, prefer a dedicated relay such as SendGrid, AWS SES, or Postmark over the Gmail SMTP approach.
+
+## Cache (Redis)
+
+The application uses [Redis](https://redis.io) as the backing store for all Symfony cache pools (`app`, `cache.global`, `cache.user_frontend`, `cache.admin`, `cache.lookups`, `cache.permissions`). Without Redis running, every cache read will fail and the app will fall back to no-cache behaviour (or throw on strict pool adapters).
+
+### Setup (Docker)
+
+Redis is included in `docker-compose.mercure.yml` alongside Mercure and Mailpit.
+
+```bash
+# 1. Start the containers (starts Redis, Mailpit, and Mercure together).
+docker compose -f docker-compose.mercure.yml up -d
+
+# 2. Verify Redis is responding.
+docker compose -f docker-compose.mercure.yml exec redis redis-cli ping   # → PONG
+# or, if redis-cli is installed locally:
+redis-cli ping   # → PONG
+
+# 3. Flush all cache pools (useful after a schema or config change).
+php bin/console cache:pool:clear cache.global
+php bin/console cache:pool:clear cache.user_frontend
+# … or clear everything at once:
+php bin/console cache:clear
+
+# 4. Stop / clean up. Add `--volumes` to wipe persisted data.
+docker compose -f docker-compose.mercure.yml down
+docker compose -f docker-compose.mercure.yml down --volumes
+```
+
+### Environment variable
+
+```env
+# .env (default — works when Symfony runs on the host)
+REDIS_URL=redis://localhost:6379?persistent=1&retry_interval=0&timeout=0.2
+```
+
+When Symfony runs **inside Docker** on the same network as the Redis container, replace `localhost` with the service name:
+
+```env
+REDIS_URL=redis://redis:6379?persistent=1&retry_interval=0&timeout=0.2
+```
+
+### Production notes
+
+- Use a password-protected Redis instance (`redis://:<password>@host:6379`) and restrict the port to the private network.
+- Enable [Redis persistence](https://redis.io/docs/manual/persistence/) (`appendonly yes` or RDB snapshots) if cache warm-up time is a concern after a restart.
+- For HA, use Redis Sentinel or Redis Cluster and update `REDIS_URL` accordingly.
+
 ## Web Server Configuration
 
 ### Apache Configuration

@@ -1,4 +1,10 @@
 services:
+  # Mailpit — local SMTP catch-all + web UI for previewing outbound emails.
+  #
+  # Wire contract (must match Symfony's MAILER_DSN in .env / .env.local):
+  #   MAILER_DSN=smtp://mailpit:1025
+  #
+  # See README.md "Local mail (Mailpit)" for the full operational guide.
   mailpit:
     image: axllent/mailpit:latest
     container_name: mailpit
@@ -10,6 +16,28 @@ services:
       MP_MAX_MESSAGES: 500
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  # Redis — persistent key-value store used for Symfony's cache pools
+  # (app, global, user_frontend, admin, lookups, permissions).
+  #
+  # Wire contract (must match REDIS_URL in .env / .env.local):
+  #   REDIS_URL=redis://localhost:6379?persistent=1&retry_interval=0&timeout=0.2
+  #
+  # See README.md "Cache (Redis)" for the full operational guide.
+  redis:
+    image: redis:7-alpine
+    container_name: selfhelp_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
+
   # Mercure Hub — Caddy build with the Mercure module.
   #
   # The hub holds long-lived SSE connections on behalf of every subscriber
@@ -60,3 +88,4 @@ services:
 volumes:
   mercure_data:
   mercure_config:
+  redis_data:
