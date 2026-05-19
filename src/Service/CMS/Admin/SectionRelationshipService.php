@@ -114,6 +114,24 @@ class SectionRelationshipService extends BaseService
             $this->entityManager->flush();
             $this->positionManagementService->normalizePageSectionPositions($pageId);
 
+            // Page-level audit entry: a single 'pages' transaction summarising
+            // the batch so the page's audit trail captures "section attached"
+            // operations (otherwise only deleteSection/forceDeleteSection were
+            // ever logged for this service).
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $pageId,
+                (object) [
+                    'id' => $parentPage->getId(),
+                    'keyword' => $parentPage->getKeyword(),
+                    'url' => $parentPage->getUrl(),
+                    'attached_sections' => array_column($results, 'sectionId'),
+                ],
+                "Attached " . count($results) . " section(s) to page '{$parentPage->getKeyword()}'"
+            );
+
             // Cache invalidation: page + every touched section + lists
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
@@ -220,6 +238,26 @@ class SectionRelationshipService extends BaseService
             $this->entityManager->flush();
             $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
 
+            // Page-level audit entry so the parent page's transaction history
+            // captures nested-section attachments. The parent section ID is
+            // included in the log payload for forensic traceability.
+            $parentPage = $this->pageRepository->find($pageId);
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $pageId,
+                (object) [
+                    'id' => $pageId,
+                    'keyword' => $parentPage?->getKeyword(),
+                    'url' => $parentPage?->getUrl(),
+                    'parent_section_id' => $parentSectionId,
+                    'parent_section_name' => $parentSection->getName(),
+                    'attached_sections' => array_column($results, 'sectionId'),
+                ],
+                "Attached " . count($results) . " section(s) under parent section '{$parentSection->getName()}' (ID: {$parentSectionId}) in page '{$parentPage?->getKeyword()}'"
+            );
+
             // Cache invalidation: parent + every touched child + page + lists
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
@@ -275,11 +313,32 @@ class SectionRelationshipService extends BaseService
             $pageSection = $this->entityManager->getRepository(PagesSection::class)->findOneBy(['page' => $page, 'section' => $sectionId]);
             
             if ($pageSection) {
+                // Capture section reference for the audit log before removal.
+                $detachedSection = $pageSection->getSection();
+                $detachedSectionName = $detachedSection?->getName();
+
                 // Direct page section - just remove the association
                 $this->entityManager->remove($pageSection);
                 $this->entityManager->flush();
                 $this->positionManagementService->normalizePageSectionPositions($page->getId());
-                
+
+                // Page-level audit entry — the page tree was modified even
+                // though the section row itself still exists.
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_UPDATE,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    'pages',
+                    $page->getId(),
+                    (object) [
+                        'id' => $page->getId(),
+                        'keyword' => $page->getKeyword(),
+                        'url' => $page->getUrl(),
+                        'detached_section_id' => $sectionId,
+                        'detached_section_name' => $detachedSectionName,
+                    ],
+                    "Detached section '{$detachedSectionName}' (ID: {$sectionId}) from page '{$page->getKeyword()}'"
+                );
+
                 // Invalidate page cache
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
@@ -301,12 +360,41 @@ class SectionRelationshipService extends BaseService
                 
                 // Store the section ID before removal for cache invalidation
                 $sectionIdToInvalid = $section->getId();
+                $sectionNameToInvalid = $section->getName();
+
+                // Log the deletion BEFORE removal so the entity snapshot is
+                // preserved in the audit trail (mirrors deleteSection()).
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_DELETE,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    'sections',
+                    $section->getId(),
+                    $section,
+                    "Section deleted via removeSectionFromPage: '{$sectionNameToInvalid}' (ID: {$sectionIdToInvalid}) from page '{$page->getKeyword()}'"
+                );
 
                 // This is a child section that belongs to the page hierarchy - delete it completely
                 $this->removeAllSectionRelationships($section, $this->entityManager);
                 $this->entityManager->remove($section);
                 $this->entityManager->flush();
-                
+
+                // Companion page-level entry so the page audit trail reflects
+                // the structural change too.
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_UPDATE,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    'pages',
+                    $page->getId(),
+                    (object) [
+                        'id' => $page->getId(),
+                        'keyword' => $page->getKeyword(),
+                        'url' => $page->getUrl(),
+                        'removed_section_id' => $sectionIdToInvalid,
+                        'removed_section_name' => $sectionNameToInvalid,
+                    ],
+                    "Removed section '{$sectionNameToInvalid}' (ID: {$sectionIdToInvalid}) from page '{$page->getKeyword()}'"
+                );
+
                 // Invalidate page and section caches
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
@@ -420,11 +508,30 @@ class SectionRelationshipService extends BaseService
                 );
             }
 
+            // Audit each deleted section BEFORE removal so the entity
+            // snapshot is preserved in the transaction log (mirrors
+            // deleteSection()).
+            $detachedSectionIds = [];
             foreach ($pageSectionsToRemove as $pageSection) {
+                $sectionEntity = $pageSection->getSection();
+                $detachedSectionIds[] = $sectionEntity?->getId();
                 $this->entityManager->remove($pageSection);
             }
 
+            $deletedSectionAudit = [];
             foreach ($sectionsToDelete as $section) {
+                $this->transactionService->logTransaction(
+                    LookupService::TRANSACTION_TYPES_DELETE,
+                    LookupService::TRANSACTION_BY_BY_USER,
+                    'sections',
+                    $section->getId(),
+                    $section,
+                    "Section deleted via bulkRemoveSections: '{$section->getName()}' (ID: {$section->getId()}) from page '{$page->getKeyword()}'"
+                );
+                $deletedSectionAudit[] = [
+                    'id' => $section->getId(),
+                    'name' => $section->getName(),
+                ];
                 $this->removeAllSectionRelationships($section, $this->entityManager);
                 $this->entityManager->remove($section);
             }
@@ -432,6 +539,23 @@ class SectionRelationshipService extends BaseService
             $deleted = count($pageSectionsToRemove) + count($sectionsToDelete);
 
             $this->entityManager->flush();
+
+            // Single page-level audit entry that summarises the batch.
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $page->getId(),
+                (object) [
+                    'id' => $page->getId(),
+                    'keyword' => $page->getKeyword(),
+                    'url' => $page->getUrl(),
+                    'detached_section_ids' => array_values(array_filter($detachedSectionIds)),
+                    'deleted_sections' => $deletedSectionAudit,
+                    'total_removed' => $deleted,
+                ],
+                "Bulk-removed {$deleted} section(s) from page '{$page->getKeyword()}'"
+            );
 
             if ($pageSectionsToRemove !== []) {
                 $this->positionManagementService->normalizePageSectionPositions($page->getId());
@@ -484,10 +608,36 @@ class SectionRelationshipService extends BaseService
                 $this->throwNotFound('Section hierarchy relationship not found.');
             }
 
+            // Capture entity references for the audit log before removal.
+            $parentSectionPre = $sectionHierarchy->getParentSection();
+            $childSectionPre = $sectionHierarchy->getChildSection();
+            $parentName = $parentSectionPre?->getName();
+            $childName = $childSectionPre?->getName();
+
             $this->entityManager->remove($sectionHierarchy);
             $this->entityManager->flush();
             $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
-            
+
+            // Page-level audit entry — the parent page's section tree was
+            // modified even though both section rows still exist.
+            $pageEntity = $this->pageRepository->find($pageId);
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $pageId,
+                (object) [
+                    'id' => $pageId,
+                    'keyword' => $pageEntity?->getKeyword(),
+                    'url' => $pageEntity?->getUrl(),
+                    'parent_section_id' => $parentSectionId,
+                    'parent_section_name' => $parentName,
+                    'child_section_id' => $childSectionId,
+                    'child_section_name' => $childName,
+                ],
+                "Detached child section '{$childName}' (ID: {$childSectionId}) from parent section '{$parentName}' (ID: {$parentSectionId}) in page '{$pageEntity?->getKeyword()}'"
+            );
+
             // Invalidate section caches
             $parentSection = $this->sectionRepository->find($parentSectionId);
             $childSection = $this->sectionRepository->find($childSectionId);

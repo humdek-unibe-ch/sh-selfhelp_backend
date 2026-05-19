@@ -157,6 +157,25 @@ class SectionExportImportService extends BaseService
         try {
             $importedSections = $this->importSections($sectionsData, $page, null, $position);
 
+            // Page-level audit entry so the import is visible in the page's
+            // transaction history (mirrors restoreSectionsFromVersion()).
+            // Without this, a user sees "page created" but no entry for the
+            // import that materially modified the page's section tree.
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $page->getId(),
+                (object) [
+                    'id' => $page->getId(),
+                    'keyword' => $page->getKeyword(),
+                    'url' => $page->getUrl(),
+                    'sections_imported' => count($importedSections),
+                    'position' => $position,
+                ],
+                "Imported " . count($importedSections) . " section(s) into page '{$page->getKeyword()}'"
+            );
+
             $this->invalidateImportCaches($page->getId());
 
             // Commit transaction
@@ -205,6 +224,27 @@ class SectionExportImportService extends BaseService
         
         try {
             $importedSections = $this->importSections($sectionsData, null, $parentSection, $position);
+
+            // Page-level audit entry so the import shows up in the parent
+            // page's transaction history. Without this the page audit trail
+            // would silently miss every nested-section import operation.
+            $page = $this->pageRepository->find($pageId);
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $pageId,
+                (object) [
+                    'id' => $pageId,
+                    'keyword' => $page?->getKeyword(),
+                    'url' => $page?->getUrl(),
+                    'parent_section_id' => $parentSectionId,
+                    'parent_section_name' => $parentSection->getName(),
+                    'sections_imported' => count($importedSections),
+                    'position' => $position,
+                ],
+                "Imported " . count($importedSections) . " section(s) under parent section '{$parentSection->getName()}' (ID: {$parentSectionId}) in page '{$page?->getKeyword()}'"
+            );
 
             $this->invalidateImportCaches($pageId);
 
