@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'apiRequestLogs')]
+#[ORM\Table(name: 'api_request_logs')]
 class ApiRequestLog
 {
     #[ORM\Id]
@@ -31,7 +31,7 @@ class ApiRequestLog
     #[ORM\Column(name: 'status_code', type: 'integer')]
     private int $statusCode;
 
-    #[ORM\Column(name: 'user_id', type: 'integer', nullable: true)]
+    #[ORM\Column(name: 'id_users', type: 'integer', nullable: true)]
     private ?int $userId = null;
 
     #[ORM\Column(name: 'ip_address', type: 'string', length: 45, nullable: true)]

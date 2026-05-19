@@ -111,8 +111,8 @@ class AdminActionService extends BaseService
                 $action->setName((string) $data['name']);
             }
 
-            if (array_key_exists('id_actionTriggerTypes', $data)) {
-                $lookup = $this->lookupRepository->find($data['id_actionTriggerTypes']);
+            if (array_key_exists('id_action_trigger_types', $data)) {
+                $lookup = $this->lookupRepository->find($data['id_action_trigger_types']);
                 if (!$lookup instanceof Lookup) {
                     throw new ServiceException('Invalid action trigger type', Response::HTTP_BAD_REQUEST);
                 }
@@ -124,8 +124,8 @@ class AdminActionService extends BaseService
                 $action->setConfig(is_string($data['config']) ? $data['config'] : json_encode($data['config'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             }
 
-            if (array_key_exists('id_dataTables', $data)) {
-                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, (int) $data['id_dataTables']);
+            if (array_key_exists('id_data_tables', $data)) {
+                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, (int) $data['id_data_tables']);
                 if (!$dataTable) {
                     throw new ServiceException('Invalid data table', Response::HTTP_BAD_REQUEST);
                 }
@@ -187,28 +187,28 @@ class AdminActionService extends BaseService
             }
             $action->setName((string) $data['name']);
 
-            if (!empty($data['id_actionTriggerTypes'])) {
-                $lookup = $this->lookupRepository->find($data['id_actionTriggerTypes']);
+            if (!empty($data['id_action_trigger_types'])) {
+                $lookup = $this->lookupRepository->find($data['id_action_trigger_types']);
                 if (!$lookup instanceof Lookup) {
                     $this->throwBadRequest('Invalid action trigger type');
                 }
                 $action->setActionTriggerType($lookup);
             } else {
-                $this->throwBadRequest('Field "id_actionTriggerTypes" is required');
+                $this->throwBadRequest('Field "id_action_trigger_types" is required');
             }
 
             if (array_key_exists('config', $data)) {
                 $action->setConfig(is_string($data['config']) ? $data['config'] : json_encode($data['config'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             }
 
-            if (array_key_exists('id_dataTables', $data)) {
-                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, (int) $data['id_dataTables']);
+            if (array_key_exists('id_data_tables', $data)) {
+                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, (int) $data['id_data_tables']);
                 if (!$dataTable) {
                     $this->throwBadRequest('Invalid data table');
                 }
                 $action->setDataTable($dataTable);
             } else {
-                $this->throwBadRequest('Field "id_dataTables" is required');
+                $this->throwBadRequest('Field "id_data_tables" is required');
             }
 
             $this->entityManager->persist($action);

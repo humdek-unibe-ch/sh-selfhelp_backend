@@ -54,7 +54,7 @@ class SectionRepository extends ServiceEntityRepository
     {
         $conn = $this->getEntityManager()->getConnection();
         $sql = 'SELECT DISTINCT s.id FROM sections s
-                INNER JOIN pages_sections ps ON ps.id_sections = s.id
+                INNER JOIN rel_pages_sections ps ON ps.id_sections = s.id
                 WHERE ps.id_pages = :page_id';
         $stmt = $conn->prepare($sql);
         $stmt->bindValue('page_id', $pageId, \Doctrine\DBAL\ParameterType::INTEGER);

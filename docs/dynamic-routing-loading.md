@@ -13,7 +13,7 @@ The application uses a database-driven routing system instead of traditional Sym
 ### Benefits:
 
 - Routes can be modified without code deployment (just update the database)
-- Route permissions can be managed dynamically through the `api_routes_permissions` table
+- Route permissions can be managed dynamically through the `rel_api_routes_permissions` table
 - API versioning is built into the routing system
 
 ### Database Table: `api_routes`

@@ -47,7 +47,7 @@ The system uses predefined cache categories with specific prefixes:
 - `frontend_user` - User-specific frontend data
 - `cms_preferences` - CMS configuration preferences
 - `scheduled_jobs` - Scheduled job entities
-- `actions` - Actions for dataTables
+- `actions` - Actions for data tables
 
 ### Cache Configuration
 

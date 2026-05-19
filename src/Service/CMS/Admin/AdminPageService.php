@@ -379,7 +379,7 @@ class AdminPageService extends BaseService
                 }
                 $pageTypeId = $pageType->getId();
 
-                // Get all valid field IDs for this page type from pageType_fields
+                // Get all valid field IDs for this page type from rel_fields_page_types
                 $validFieldIds = $this->entityManager->getRepository(PageTypeField::class)
                     ->createQueryBuilder('ptf')
                     ->select('f.id')
@@ -481,7 +481,7 @@ class AdminPageService extends BaseService
 
             // Block deletion of system pages. Pages flagged as `is_system = 1`
             // (e.g. the GDPR `/privacy` notice seeded by migration
-            // Version20260425090000) MUST remain reachable on every install,
+            // Version20260601000500) MUST remain reachable on every install,
             // because regulators expect a privacy notice to be permanently
             // available even when admins customise the rest of the CMS.
             // Admins can still edit / extend / translate the content; only
@@ -675,7 +675,7 @@ class AdminPageService extends BaseService
         // Cache key for admin pages (no ACL filtering)
         $cacheKey = "admin_pages";
 
-        return $this->cache
+        $pages = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList($cacheKey, function () use ($userId) {
@@ -687,7 +687,7 @@ class AdminPageService extends BaseService
                 foreach ($pages as $page) {
                     $allPages[] = [
                         'id_pages' => $page->getId(),
-                        'parent' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
+                        'id_parent_page' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
                         'keyword' => $page->getKeyword(),
                         'url' => $page->getUrl(),
                         'nav_position' => $page->getNavPosition(),
@@ -695,13 +695,15 @@ class AdminPageService extends BaseService
                         'is_headless' => $page->isHeadless() ? 1 : 0,
                         'is_open_access' => $page->isOpenAccess() ? 1 : 0,
                         'is_system' => $page->isSystem() ? 1 : 0,
-                        'id_pageAccessTypes' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
-                        'id_type' => $page->getPageType() ? $page->getPageType()->getId() : null,
+                        'id_page_access_types' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
+                        'id_page_types' => $page->getPageType() ? $page->getPageType()->getId() : null,
                     ];
                 }
 
                 return $allPages;
             });
+
+        return $pages;
     }
 
     /**
@@ -800,19 +802,27 @@ class AdminPageService extends BaseService
             $pages = $this->roleDataAccessRepository->getAccessiblePagesForUser($userId, $resourceTypeId);
         }
 
-        // Apply additional filters if provided (keyword, type)
+        // Apply additional filters if provided (keyword, type).
+        // The repository already returns canonical snake_case columns
+        // (id_parent_page, id_page_types, id_page_access_types), so we
+        // can filter against them directly.
         if (!empty($filters)) {
             $pages = array_filter($pages, function ($page) use ($filters) {
+                if (!is_array($page)) {
+                    return false;
+                }
+
                 // Filter by keyword
                 if (isset($filters['keyword']) && $filters['keyword']) {
-                    if (stripos($page['keyword'], $filters['keyword']) === false) {
+                    $keyword = isset($page['keyword']) ? (string) $page['keyword'] : '';
+                    if (stripos($keyword, (string) $filters['keyword']) === false) {
                         return false;
                     }
                 }
 
-                // Filter by type
+                // Filter by page type
                 if (isset($filters['type']) && $filters['type']) {
-                    if ($page['id_type'] != $filters['type']) {
+                    if (($page['id_page_types'] ?? null) != $filters['type']) {
                         return false;
                     }
                 }

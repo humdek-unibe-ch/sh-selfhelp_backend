@@ -12,7 +12,8 @@ use Doctrine\ORM\Mapping as ORM;
 use DateTimeInterface;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'users_2fa_codes')]
+#[ORM\Table(name: 'user_2fa_codes')]
+#[ORM\Index(name: 'idx_user_2fa_codes_id_users', columns: ['id_users'])]
 class Users2faCode
 {
     #[ORM\Id]

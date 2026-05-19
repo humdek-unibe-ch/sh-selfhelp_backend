@@ -24,7 +24,7 @@ use Symfony\Component\HttpFoundation\Response;
  * --------------------------
  * The frontend is web (Mantine) and the mobile app is Expo + HeroUI Native.
  * We support three values for the page-access "mode" stored on the
- * `pages.id_pageAccessTypes` lookup:
+ * `pages.id_page_access_types` lookup:
  *
  *   - {@see LookupService::PAGE_ACCESS_TYPES_WEB} (`web`)
  *   - {@see LookupService::PAGE_ACCESS_TYPES_MOBILE} (`mobile`)

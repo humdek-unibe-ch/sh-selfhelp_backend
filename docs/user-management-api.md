@@ -78,7 +78,7 @@ GET /cms-api/v1/admin/users/{userId}
     "user_name": "johndoe",
     
     "id_languages": 1,
-    "id_userTypes": 72,
+    "id_user_types": 72,
     "groups": [
       {"id": 1, "name": "admin", "description": "Administrator group"}
     ],
@@ -240,8 +240,8 @@ When creating a user with a validation code:
 
 ### Key Tables
 - `users`: Main user table
-- `users_groups`: Many-to-many relationship between users and groups
-- `users_roles`: Many-to-many relationship between users and roles
+- `rel_groups_users`: Many-to-many relationship between users and groups
+- `rel_roles_users`: Many-to-many relationship between users and roles
 - `validation_codes`: Validation codes for user registration
 - `lookups`: Lookup values for user types and statuses
 

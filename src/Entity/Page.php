@@ -13,7 +13,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'pages')]
-#[ORM\Index(name: 'IDX_pages_published_version_id', columns: ['published_version_id'])]
+#[ORM\UniqueConstraint(name: 'uq_pages_keyword', columns: ['keyword'])]
+#[ORM\Index(name: 'idx_pages_id_parent_page', columns: ['id_parent_page'])]
+#[ORM\Index(name: 'idx_pages_id_page_types', columns: ['id_page_types'])]
+#[ORM\Index(name: 'idx_pages_id_page_access_types', columns: ['id_page_access_types'])]
+#[ORM\Index(name: 'idx_pages_id_published_page_versions', columns: ['id_published_page_versions'])]
 class Page
 {
     #[ORM\Id]
@@ -21,22 +25,22 @@ class Page
     #[ORM\Column(type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'keyword', type: 'string', length: 100, unique: true)]
+    #[ORM\Column(name: 'keyword', type: 'string', length: 100)]
     private ?string $keyword = null;
 
     #[ORM\Column(name: 'url', type: 'string', length: 255, nullable: true)]
     private ?string $url = null;
 
     #[ORM\ManyToOne(targetEntity: Page::class)]
-    #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_parent_page', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Page $parentPage = null;
 
     #[ORM\ManyToOne(targetEntity: PageType::class)]
-    #[ORM\JoinColumn(name: 'id_type', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_page_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?PageType $pageType = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_pageAccessTypes', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_page_access_types', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Lookup $pageAccessType = null;
 
     #[ORM\Column(name: 'is_headless', type: 'boolean', options: ['default' => 0])]
@@ -62,7 +66,7 @@ class Page
      * Indexed for efficient queries on published versions.
      */
     #[ORM\ManyToOne(targetEntity: PageVersion::class)]
-    #[ORM\JoinColumn(name: 'published_version_id', referencedColumnName: 'id', nullable: true)]
+    #[ORM\JoinColumn(name: 'id_published_page_versions', referencedColumnName: 'id', nullable: true)]
     private ?PageVersion $publishedVersion = null;
 
     public function getId(): ?int

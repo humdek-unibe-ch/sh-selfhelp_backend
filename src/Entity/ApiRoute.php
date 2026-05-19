@@ -15,8 +15,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: ApiRouteRepository::class)]
 #[ORM\Table(name: 'api_routes')]
-#[ORM\UniqueConstraint(name: 'uniq_version_path_methods', columns: ['version', 'path', 'methods'])]
-#[ORM\UniqueConstraint(name: 'uniq_route_name_version', columns: ['route_name', 'version'])]
+#[ORM\UniqueConstraint(name: 'uq_api_routes_version_path_methods', columns: ['version', 'path', 'methods'])]
+#[ORM\UniqueConstraint(name: 'uq_api_routes_route_name_version', columns: ['route_name', 'version'])]
 class ApiRoute
 {
     #[ORM\Id]
@@ -46,7 +46,7 @@ class ApiRoute
     private ?string $version = 'v1';
 
     #[ORM\ManyToMany(targetEntity: Permission::class, inversedBy: 'apiRoutes')]
-    #[ORM\JoinTable(name: 'api_routes_permissions',
+    #[ORM\JoinTable(name: 'rel_api_routes_permissions',
         joinColumns: [new ORM\JoinColumn(name: 'id_api_routes', referencedColumnName: 'id', onDelete: 'CASCADE')],
         inverseJoinColumns: [new ORM\JoinColumn(name: 'id_permissions', referencedColumnName: 'id', onDelete: 'CASCADE')]
     )]

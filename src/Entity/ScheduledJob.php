@@ -17,18 +17,17 @@ use Doctrine\ORM\Mapping as ORM;
  * `ScheduledJobReminder` entity so the base job table stays focused on common fields.
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'scheduledJobs',indexes: [
-    new ORM\Index(name: 'IDX_3E186B37FA06E4D9', columns: ['id_users']),
-    new ORM\Index(name: 'IDX_3E186B37DBD5589F', columns: ['id_actions']),
-    new ORM\Index(name: 'IDX_3E186B37E2E6A7C3', columns: ['id_dataTables']),
-    new ORM\Index(name: 'IDX_3E186B37F3854F45', columns: ['id_dataRows']),
-    new ORM\Index(name: 'IDX_3E186B3777FD8DE1', columns: ['id_jobStatus']),
-    new ORM\Index(name: 'IDX_3E186B3712C34CFB', columns: ['id_jobTypes']),
-    new ORM\Index(name: 'IDX_3E186B37B1E3B97B', columns: ['date_to_be_executed']),
-    new ORM\Index(name: 'index_id_users_date_to_be_executed', columns: ['id_users', 'date_to_be_executed']),
-    new ORM\Index(name: 'IDX_3E186B3712C34CFB77FD8DE1', columns: ['id_jobTypes', 'id_jobStatus']),
-    new ORM\Index(name: 'IDX_3E186B37E2E6A7C3A76ED395', columns: ['id_dataTables', 'id_users']),
-])]
+#[ORM\Table(name: 'scheduled_jobs')]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_actions', columns: ['id_actions'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_data_tables', columns: ['id_data_tables'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_data_rows', columns: ['id_data_rows'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_job_status', columns: ['id_job_status'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_job_types', columns: ['id_job_types'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_date_to_be_executed', columns: ['date_to_be_executed'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_users_date_to_be_executed', columns: ['id_users', 'date_to_be_executed'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_job_types_id_job_status', columns: ['id_job_types', 'id_job_status'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_data_tables_id_users', columns: ['id_data_tables', 'id_users'])]
 class ScheduledJob
 {
     #[ORM\Id]
@@ -56,14 +55,14 @@ class ScheduledJob
      * The source data table associated with the job trigger.
      */
     #[ORM\ManyToOne(targetEntity: DataTable::class)]
-    #[ORM\JoinColumn(name: 'id_dataTables', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_tables', nullable: true, onDelete: 'CASCADE')]
     private ?DataTable $dataTable = null;
 
     /**
      * The source data row associated with the job trigger.
      */
     #[ORM\ManyToOne(targetEntity: DataRow::class)]
-    #[ORM\JoinColumn(name: 'id_dataRows', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_rows', nullable: true, onDelete: 'CASCADE')]
     private ?DataRow $dataRow = null;
 
     /**
@@ -76,14 +75,14 @@ class ScheduledJob
      * Lookup describing the persisted job type.
      */
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_jobTypes', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_job_types', nullable: false, onDelete: 'CASCADE')]
     private Lookup $jobType;
 
     /**
      * Lookup describing the current execution status.
      */
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_jobStatus', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_job_status', nullable: false, onDelete: 'CASCADE')]
     private Lookup $status;
 
 

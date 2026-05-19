@@ -137,10 +137,10 @@ When making changes, explain:
 - Use appropriate HTTP status codes through service exceptions and formatter helpers.
 
 ## Database Rules
-- Check `db/structure_db.sql`, existing entities, migrations, and update scripts before changing schema.
-- Symfony/Doctrine migration classes in `migrations` are the primary and most important migration mechanism.
-- Schema changes need a Doctrine migration class in `migrations`; SQL update scripts do not replace Symfony migrations.
-- Mirror required install/update SQL in the appropriate `db/update_scripts` or baseline SQL file when the existing workflow requires it.
+- The canonical schema lives in the Doctrine migrations under `migrations/`. The `Version20260601000000` baseline plus the four `Version20260601000100..400` seed migrations are the **only** install source — fresh installs do not load `db/legacy/new_create_db.sql` or any other SQL dump.
+- `db/legacy/` is deprecated reference / history (`new_create_db.sql`, `structure_db.sql`, `update_scripts/*.sql`). Do not treat it as authoritative; do not edit it for new features. See `db/legacy/README.md`.
+- Symfony/Doctrine migration classes in `migrations` are the primary and only migration mechanism. Schema changes need a new Doctrine migration class added **after** the canonical baseline, not edits to the baseline or seed migrations.
+- For new API routes, add the route row to `migrations/Version20260601000300.php` only if you are still iterating on the baseline; otherwise add a new follow-up migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do not rely on `db/legacy/update_scripts/api_routes.sql` to populate fresh installs.
 - Existing editor rules say not to run Doctrine migrations automatically; create migration files and let the team run them.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
 - Be careful with legacy table naming and casing.
@@ -164,7 +164,7 @@ When making changes, explain:
 - Prefer additive schema changes only when compatibility, staged rollout, or data safety requires it.
 - Check existing SQL update scripts, baseline SQL, Doctrine migrations, and route SQL before changing schema behavior.
 - Do not edit an already-applied migration for a follow-up behavior change; add a new migration unless the team explicitly decides otherwise.
-- For API route changes, mirror Doctrine migration changes in `db/update_scripts/api_routes.sql` when fresh installs need the same route state.
+- For API route changes, add/modify rows via a new Doctrine migration that inserts into `api_routes` + `rel_api_routes_permissions`. Do **not** depend on `db/legacy/update_scripts/api_routes.sql` — that file is no longer wired into install/upgrade.
 
 ## Testing Rules
 - Main command: `composer test` or `php bin/phpunit --testdox`.
@@ -191,7 +191,7 @@ When making changes, explain:
 - Start Mercure locally: `docker compose -f docker-compose.mercure.yml up -d`.
 
 ## Common Tasks
-- Add endpoint: add/update controller action, JSON schemas, `api_routes` SQL, permissions, service logic, tests, and route cache notes.
+- Add endpoint: add/update controller action, JSON schemas, a new Doctrine migration that inserts the row into `api_routes` and the matching links into `rel_api_routes_permissions`, permissions, service logic, tests, and route cache notes.
 - Add service: place it under the matching `src/Service` domain, inject dependencies via constructor, keep transactions/cache invalidation explicit.
 - Add migration: inspect schema first, create a Doctrine migration, update relevant SQL scripts if required, and do not run migrations automatically.
 - Add frontend page behavior: inspect `PageService`, section/field processing, interpolation, conditions, ACL, and cache effects.

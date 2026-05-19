@@ -260,18 +260,18 @@ CREATE TABLE `page_versions` (
   `version_number` INT NOT NULL,
   `version_name` VARCHAR(255) DEFAULT NULL,
   `page_json` JSON NOT NULL,
-  `created_by` INT DEFAULT NULL,
+  `id_users` INT DEFAULT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `published_at` DATETIME DEFAULT NULL,
   `metadata` JSON DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_page_version_number` (`id_pages`, `version_number`),
-  KEY `idx_id_pages` (`id_pages`),
-  KEY `idx_created_by` (`created_by`),
-  KEY `idx_created_at` (`created_at`),
-  KEY `idx_published_at` (`published_at`),
-  CONSTRAINT `fk_page_versions_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_page_versions_users` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+  UNIQUE KEY `uq_page_versions_id_pages_version_number` (`id_pages`, `version_number`),
+  KEY `idx_page_versions_id_pages` (`id_pages`),
+  KEY `idx_page_versions_id_users` (`id_users`),
+  KEY `idx_page_versions_created_at` (`created_at`),
+  KEY `idx_page_versions_published_at` (`published_at`),
+  CONSTRAINT `fk_page_versions_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_page_versions_id_users` FOREIGN KEY (`id_users`)  REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 

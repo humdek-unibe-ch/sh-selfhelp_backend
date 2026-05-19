@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'dataTables')]
+#[ORM\Table(name: 'data_tables')]
 class DataTable
 {
     /**
@@ -43,7 +43,7 @@ class DataTable
     #[ORM\Column(name: 'timestamp', type: 'datetime_immutable')]
     private \DateTimeImmutable $timestamp;
 
-    #[ORM\Column(name: 'displayName', type: 'string', length: 1000, nullable: true)]
+    #[ORM\Column(name: 'display_name', type: 'string', length: 1000, nullable: true)]
     private ?string $displayName = null;
 
     public function getId(): ?int

@@ -11,6 +11,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: "App\Repository\StyleRepository")]
 #[ORM\Table(name: 'styles')]
+#[ORM\UniqueConstraint(name: 'uq_styles_name', columns: ['name'])]
+#[ORM\Index(name: 'idx_styles_id_style_groups', columns: ['id_style_groups'])]
 class Style
 {
     public function __construct()
@@ -26,20 +28,20 @@ class Style
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: 'string', length: 100, unique: true)]
+    #[ORM\Column(name: 'name', type: 'string', length: 100)]
     private string $name;
 
     #[ORM\Column(name: 'can_have_children', type: 'boolean', options: ['default' => 0])]
     private bool $canHaveChildren = false;
 
-    #[ORM\Column(name: 'id_group', type: 'integer')]
-    private int $idGroup;
+    #[ORM\Column(name: 'id_style_groups', type: 'integer')]
+    private int $idStyleGroups;
 
     #[ORM\Column(name: 'description', type: 'text', nullable: true)]
     private ?string $description = null;
 
     #[ORM\ManyToOne(targetEntity: StyleGroup::class, inversedBy: 'styles')]
-    #[ORM\JoinColumn(name: 'id_group', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_style_groups', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?StyleGroup $group = null;
 
     #[ORM\OneToMany(mappedBy: 'parentStyle', targetEntity: StylesAllowedRelationship::class, cascade: ['persist', 'remove'])]
@@ -68,7 +70,12 @@ class Style
 
     public function getIdGroup(): ?int
     {
-        return $this->idGroup;
+        return $this->idStyleGroups;
+    }
+
+    public function getIdStyleGroups(): ?int
+    {
+        return $this->idStyleGroups;
     }
 
 

@@ -151,7 +151,7 @@ Responsibilities:
 
 Core job state remains on `ScheduledJob`.
 
-Reminder-only metadata now lives in the dedicated `scheduledJobs_reminders` table and `ScheduledJobReminder` entity.
+Reminder-only metadata now lives in the dedicated `scheduled_job_reminders` table and `ScheduledJobReminder` entity.
 
 That reminder metadata stores:
 
@@ -161,7 +161,7 @@ That reminder metadata stores:
 - reminder session start
 - reminder session end
 
-This keeps reminder-specific state out of the main `scheduledJobs` table while still supporting cleanup and lineage queries.
+This keeps reminder-specific state out of the main `scheduled_jobs` table while still supporting cleanup and lineage queries.
 
 ## Database Migration
 
@@ -177,9 +177,9 @@ php bin/console doctrine:migrations:migrate
 
 This will:
 
-- create `scheduledJobs_reminders`
+- create `scheduled_job_reminders`
 - add the reminder foreign keys and indexes
-- remove obsolete reminder columns from `scheduledJobs` when they exist
+- remove obsolete reminder columns from `scheduled_jobs` when they exist
 
 ### Preview the upgrade SQL
 
@@ -211,9 +211,10 @@ To roll back this specific migration after it has been applied, migrate to the p
 
 ### Migration file
 
-The reminder metadata migration is:
+The reminder metadata table (`scheduled_job_reminders`) ships in the
+canonical baseline:
 
-- `migrations/Version20260413130000.php`
+- `migrations/Version20260601000000.php`
 
 ## Execution Surfaces
 
@@ -346,4 +347,4 @@ Check:
 - `src/Service/Core/JobSchedulerService.php`
 - `src/Service/Core/TaskJobExecutorService.php`
 - `src/Entity/ScheduledJob.php`
-- `migrations/Version20260413130000.php`
+- `migrations/Version20260601000000.php` (canonical baseline; defines `scheduled_jobs` + `scheduled_job_reminders`)

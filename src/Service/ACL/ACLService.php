@@ -8,7 +8,7 @@
 
 namespace App\Service\ACL;
 
-use App\Entity\AclGroup;
+use App\Entity\PageAclGroup;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\User;
@@ -124,7 +124,7 @@ class ACLService
      */
     public function addGroupAcl(Page $page, Group $group, bool $select, bool $insert, bool $update, bool $delete, EntityManagerInterface $em): void
     {
-        $aclGroup = new AclGroup();
+        $aclGroup = new PageAclGroup();
         $aclGroup->setGroup($group)
             ->setPage($page)
             ->setAclSelect($select)

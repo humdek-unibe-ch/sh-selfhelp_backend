@@ -29,7 +29,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Service for managing dataTables creation and column management
+ * Service for managing data_tables creation and column management
  */
 class DataTableService extends BaseService
 {
@@ -89,7 +89,7 @@ class DataTableService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_INSERT,
                 LookupService::TRANSACTION_BY_BY_USER,
-                'dataTables',
+                'data_tables',
                 $dataTable->getId()
             );
 
@@ -144,7 +144,7 @@ class DataTableService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_SYSTEM,
-                'dataTables',
+                'data_tables',
                 $dataTable->getId()
             );
 
@@ -212,19 +212,19 @@ class DataTableService extends BaseService
     }
 
     /**
-     * Get all form dataTables
-     * 
-     * @return DataTable[] Array of dataTables that correspond to forms
+     * Get all form data tables
+     *
+     * @return DataTable[] Array of data tables that correspond to forms
      */
     public function getFormDataTables(): array
     {
-        // For now, return all dataTables
-        // In the future, we could add a flag or naming convention to identify form dataTables
+        // For now, return all data tables
+        // In the future, we could add a flag or naming convention to identify form data tables
         return $this->dataTableRepository->findAll();
     }
 
     /**
-     * Delete dataTable and all associated data
+     * Delete data table and all associated data
      * 
      * @param string $tableName The name of the table to delete
      * @return bool Success status
@@ -246,7 +246,7 @@ class DataTableService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 LookupService::TRANSACTION_BY_BY_SYSTEM,
-                'dataTables',
+                'data_tables',
                 $dataTable->getId()
             );
 
@@ -351,7 +351,7 @@ class DataTableService extends BaseService
                 $this->transactionService->logTransaction(
                     LookupService::TRANSACTION_TYPES_DELETE,
                     LookupService::TRANSACTION_BY_BY_SYSTEM,
-                    'dataTables',
+                    'data_tables',
                     $dataTable->getId()
                 );
             }

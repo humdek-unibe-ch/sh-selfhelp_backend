@@ -606,7 +606,7 @@ class AdminUserController extends AbstractController
         try {
             // Get user's primary group ID
             $conn = $this->entityManager->getConnection();
-            $sql = "SELECT id_groups FROM users_groups WHERE id_users = :user_id LIMIT 1";
+            $sql = "SELECT id_groups FROM rel_groups_users WHERE id_users = :user_id LIMIT 1";
             $stmt = $conn->prepare($sql);
             $stmt->bindValue('user_id', $userId, \Doctrine\DBAL\ParameterType::INTEGER);
             $result = $stmt->executeQuery();

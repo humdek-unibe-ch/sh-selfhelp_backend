@@ -46,7 +46,7 @@ use Doctrine\Migrations\AbstractMigration;
  * follow-up migration (`Version20260425100100`) so they can be reverted
  * independently of the seeding work.
  */
-final class Version20260425100000 extends AbstractMigration
+final class Version20260601000600 extends AbstractMigration
 {
     /**
      * Locale → human label, used for the page-level title + description
@@ -1473,7 +1473,7 @@ final class Version20260425100000 extends AbstractMigration
      *   1. INSERT IGNORE the page-level `description` translation per locale.
      *   2. INSERT IGNORE the canonical (admin / therapist / subject) ACL rows.
      *   3. Walk the `sections` list to insert sections, wire them into
-     *      `pages_sections` or `sections_hierarchy`, and persist their
+     *      `rel_pages_sections` or `rel_sections_hierarchy`, and persist their
      *      property + translation field values.
      *
      * The `prefix` is used to namespace section names so each migration
@@ -1537,7 +1537,7 @@ final class Version20260425100000 extends AbstractMigration
 
         foreach ($rules as [$group, $sel, $ins, $upd, $del]) {
             $this->addSql(<<<SQL
-                INSERT IGNORE INTO `acl_groups`
+                INSERT IGNORE INTO `page_acl_groups`
                     (`id_groups`, `id_pages`, `acl_select`, `acl_insert`, `acl_update`, `acl_delete`)
                 SELECT g.id, p.id, {$sel}, {$ins}, {$upd}, {$del}
                 FROM `groups` g, `pages` p
@@ -1574,7 +1574,7 @@ final class Version20260425100000 extends AbstractMigration
 
             if ($parentKey === null) {
                 $this->addSql(<<<SQL
-                    INSERT INTO `pages_sections` (`id_pages`, `id_sections`, `position`)
+                    INSERT INTO `rel_pages_sections` (`id_pages`, `id_sections`, `position`)
                     SELECT p.id, sec.id, {$rootPos}
                     FROM `pages` p, `sections` sec
                     WHERE p.`keyword` = '{$keyword}' AND sec.`name` = '{$sectionName}'
@@ -1585,7 +1585,7 @@ final class Version20260425100000 extends AbstractMigration
                 $childPos[$parentName] = ($childPos[$parentName] ?? 0) + 10;
                 $pos = $childPos[$parentName];
                 $this->addSql(<<<SQL
-                    INSERT INTO `sections_hierarchy` (`parent`, `child`, `position`)
+                    INSERT INTO `rel_sections_hierarchy` (`id_parent_section`, `id_child_section`, `position`)
                     SELECT parent_sec.id, child_sec.id, {$pos}
                     FROM `sections` parent_sec, `sections` child_sec
                     WHERE parent_sec.`name` = '{$parentName}'

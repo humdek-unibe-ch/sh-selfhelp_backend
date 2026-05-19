@@ -12,6 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'languages')]
+#[ORM\UniqueConstraint(name: 'uq_languages_locale', columns: ['locale'])]
 class Language
 {
     #[ORM\Id]
@@ -19,7 +20,7 @@ class Language
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'locale', type: 'string', length: 5, unique: true)]
+    #[ORM\Column(name: 'locale', type: 'string', length: 5)]
     private string $locale = '';
 
     #[ORM\Column(name: 'language', type: 'string', length: 100)]

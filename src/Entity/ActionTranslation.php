@@ -11,15 +11,11 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(
-    name: 'action_translations',
-    indexes: [
-        new ORM\Index(name: 'IDX_5AC50EA77BA2F5EB', columns: ['translation_key'])
-    ],
-    uniqueConstraints: [
-        new ORM\UniqueConstraint(name: 'UNIQ_5AC50EA7DBD5589F7BA2F5EB20E4EF5E', columns: ['id_actions', 'translation_key', 'id_languages'])
-    ]
-)]
+#[ORM\Table(name: 'action_translations')]
+#[ORM\Index(name: 'idx_action_translations_translation_key', columns: ['translation_key'])]
+#[ORM\Index(name: 'idx_action_translations_id_actions', columns: ['id_actions'])]
+#[ORM\Index(name: 'idx_action_translations_id_languages', columns: ['id_languages'])]
+#[ORM\UniqueConstraint(name: 'uq_action_translations_action_key_language', columns: ['id_actions', 'translation_key', 'id_languages'])]
 class ActionTranslation
 {
     #[ORM\Id]

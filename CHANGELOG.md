@@ -1,5 +1,70 @@
 # v8.0.0 (Not released yet)
 
+### Database bootstrap rebuilt — migrations-only, canonical naming
+
+- **Pre-release breaking cutover.** The old hybrid bootstrap (load
+  `db/new_create_db.sql` then run Doctrine migrations on top) is gone. A brand
+  new database now boots the backend by running **Doctrine migrations only**:
+  the canonical baseline `migrations/Version20260601000000.php` creates the
+  full schema plus the five stored procedures (`get_user_acl`,
+  `get_data_table_filtered`, `get_data_table_for_user_groups`,
+  `get_data_table_all_languages`, `get_page_sections_hierarchical`), and the
+  four seed migrations `Version20260601000100..400` load every row a fresh
+  install used to inherit from the legacy SQL dump (lookups, languages,
+  fields, styles, api_routes + route-permission links, system pages, page
+  ACLs, default groups). No SQL bootstrap script is read at install time
+  anymore.
+- **Canonical schema naming.** Every runtime-used database object is now
+  `lowercase_snake_case`: tables use plural snake_case (`pages`,
+  `scheduled_jobs`, `data_tables`, `api_request_logs`, …), foreign keys use
+  the explicit `id_<target_table>` form (`id_page_types`, `id_users`, …),
+  self-references are explicit (`id_parent_page`, `id_child_section`,
+  `id_parent_scheduled_job`, …), pure relation tables are prefixed
+  `rel_<a>_<b>` in alphabetical order (`rel_groups_users`, `rel_roles_users`,
+  `rel_permissions_roles`, `rel_api_routes_permissions`, `rel_pages_sections`,
+  `rel_fields_pages`, `rel_fields_styles`, `rel_fields_page_types`,
+  `rel_sections_hierarchy`, `rel_sections_navigation`,
+  `rel_styles_allowed_relationships`), and join tables that carry business
+  columns have been promoted to first-class entities (`acl_groups` →
+  `page_acl_groups`, `codes_groups` → `validation_code_groups`). All indexes,
+  unique constraints and foreign keys use `pk_*`, `fk_*`, `idx_*`, `uq_*`
+  in lowercase_snake_case.
+- **Stored procedures rebuilt.** The five procedures consumed by the PHP
+  repositories are recreated under canonical names in the baseline migration
+  and reference the renamed tables/columns directly. Unused legacy views are
+  intentionally not recreated.
+- **Legacy SQL archived.** `db/new_create_db.sql`, `db/structure_db.sql` and
+  every `db/update_scripts/*.sql` script were moved into
+  [`db/legacy/`](db/legacy/README.md) with a deprecation README explaining
+  that they are reference / history only — not consumed by either install or
+  upgrade. The four seed migrations transitionally read the legacy dump via
+  `migrations/LegacySeedTrait.php`, which applies a table/column rename map
+  and rewrites legacy positional `INSERT` statements into explicit-column
+  INSERTs against the canonical schema.
+- **Migration history squashed.** The twelve incremental migrations
+  (`Version20260413..` through `Version20260508160000`) were consolidated
+  into the new baseline + seed migrations and deleted. There is no
+  upgrade-in-place path from a pre-cutover database; a fresh install or
+  drop-and-recreate is required.
+- **PHP layer aligned.** Every Doctrine entity (`#[ORM\Table]`,
+  `#[ORM\JoinTable]`, `#[ORM\JoinColumn]`, `#[ORM\Column]`,
+  `#[ORM\Index]`, `#[ORM\UniqueConstraint]`) was updated to the canonical
+  names. `App\Entity\AclGroup` was renamed to
+  `App\Entity\PageAclGroup`, `App\Entity\CodesGroup` to
+  `App\Entity\ValidationCodeGroup`, and the unused `App\Entity\Version`
+  entity was dropped. Every raw-SQL caller in repositories
+  (`StyleRepository`, `SectionRepository`, `ApiRouteRepository`,
+  `AuthRepository`, …) and services (`DataVariableResolver`,
+  `UserPermissionService`, `SectionExportImportService`, …) was updated to
+  reference the new table and column names; transaction-log labels emitted
+  by `JobSchedulerService`, `DataService`, `DataTableService`, etc., now use
+  the canonical table names too.
+- **Verification.** `php bin/console doctrine:schema:validate` reports the
+  entity mappings as in-sync with the canonical baseline, and
+  `php bin/console doctrine:migrations:list` shows the new baseline + four
+  seed migrations as the only pending migrations on a clean database. See
+  the install instructions in `README.md` for the from-zero install flow.
+
 ### User impersonation — state-of-the-art rewrite
  - **Standards-compliant token shape.** `JWTService::createImpersonationToken()` now emits a JWT that follows
    [RFC 8693 OAuth 2.0 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693): the target user is the

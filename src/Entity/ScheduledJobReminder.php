@@ -13,15 +13,13 @@ use Doctrine\ORM\Mapping as ORM;
  * Stores reminder-only metadata for scheduled jobs.
  *
  * This keeps reminder lineage and session-window data out of the base
- * `scheduledJobs` table while still allowing efficient cleanup queries.
+ * `scheduled_jobs` table while still allowing efficient cleanup queries.
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'scheduledJobs_reminders', uniqueConstraints: [
-    new ORM\UniqueConstraint(name: 'UNIQ_SJR_JOB', columns: ['id_scheduledJobs']),
-], indexes: [
-    new ORM\Index(name: 'IDX_SJR_PARENT', columns: ['id_parentScheduledJobs']),
-    new ORM\Index(name: 'IDX_SJR_TABLE', columns: ['id_dataTables']),
-])]
+#[ORM\Table(name: 'scheduled_job_reminders')]
+#[ORM\UniqueConstraint(name: 'uq_scheduled_job_reminders_id_scheduled_jobs', columns: ['id_scheduled_jobs'])]
+#[ORM\Index(name: 'idx_scheduled_job_reminders_id_parent_scheduled_jobs', columns: ['id_parent_scheduled_jobs'])]
+#[ORM\Index(name: 'idx_scheduled_job_reminders_id_data_tables', columns: ['id_data_tables'])]
 class ScheduledJobReminder
 {
     #[ORM\Id]
@@ -33,21 +31,21 @@ class ScheduledJobReminder
      * The reminder job that owns this metadata row.
      */
     #[ORM\OneToOne(inversedBy: 'reminderMetadata', targetEntity: ScheduledJob::class)]
-    #[ORM\JoinColumn(name: 'id_scheduledJobs', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_scheduled_jobs', nullable: false, onDelete: 'CASCADE')]
     private ?ScheduledJob $scheduledJob = null;
 
     /**
      * The parent scheduled job that spawned this reminder.
      */
     #[ORM\ManyToOne(targetEntity: ScheduledJob::class)]
-    #[ORM\JoinColumn(name: 'id_parentScheduledJobs', nullable: true, onDelete: 'SET NULL')]
+    #[ORM\JoinColumn(name: 'id_parent_scheduled_jobs', nullable: true, onDelete: 'SET NULL')]
     private ?ScheduledJob $parentJob = null;
 
     /**
      * The target data table whose completion invalidates the reminder.
      */
     #[ORM\ManyToOne(targetEntity: DataTable::class)]
-    #[ORM\JoinColumn(name: 'id_dataTables', nullable: true, onDelete: 'SET NULL')]
+    #[ORM\JoinColumn(name: 'id_data_tables', nullable: true, onDelete: 'SET NULL')]
     private ?DataTable $reminderDataTable = null;
 
     /**

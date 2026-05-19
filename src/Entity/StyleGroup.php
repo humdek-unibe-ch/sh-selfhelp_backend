@@ -12,8 +12,8 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: "App\Repository\StyleGroupRepository")]
-#[ORM\Table(name: 'styleGroup')]
-#[ORM\UniqueConstraint(name: 'styleGroup_name', columns: ['name'])]
+#[ORM\Table(name: 'style_groups')]
+#[ORM\UniqueConstraint(name: 'uq_style_groups_name', columns: ['name'])]
 class StyleGroup
 {
     #[ORM\OneToMany(mappedBy: 'group', targetEntity: Style::class)]

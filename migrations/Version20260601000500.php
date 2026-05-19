@@ -36,7 +36,7 @@ use Doctrine\Migrations\AbstractMigration;
  *     the user creates an account.
  *
  * Page structure (top-level sections in display order; list children are nested
- * via `sections_hierarchy`):
+ * via `rel_sections_hierarchy`):
  *
  *   - h1                              "Privacy & Cookies"
  *   - intro                           short summary paragraph
@@ -63,12 +63,12 @@ use Doctrine\Migrations\AbstractMigration;
  * Migration is idempotent at the page-level via `INSERT IGNORE` on
  * `pages.keyword = 'privacy'`. Doctrine's migration tracker prevents
  * accidental re-runs in normal use; if `down()` is invoked the page row is
- * removed and the FK CASCADE on `pages_sections`, `pages_fields_translation`
- * and `acl_groups` cleans up everything bound to it. Sections themselves are
+ * removed and the FK CASCADE on `rel_pages_sections`, `pages_fields_translation`
+ * and `page_acl_groups` cleans up everything bound to it. Sections themselves are
  * not cascade-deleted by the page (they live in their own table) so `down()`
  * also does an explicit `DELETE FROM sections WHERE name LIKE 'privacy-%'`.
  */
-final class Version20260425090000 extends AbstractMigration
+final class Version20260601000500 extends AbstractMigration
 {
     private const PAGE_KEYWORD = 'privacy';
     private const PAGE_URL = '/privacy';
@@ -96,8 +96,8 @@ final class Version20260425090000 extends AbstractMigration
      * iterate to emit DB rows. Each entry produces:
      *
      *   - one row in `sections` (name = `privacy-<key>`, id_styles = style)
-     *   - if `parent` is null: one row in `pages_sections`     (top-level)
-     *     otherwise          : one row in `sections_hierarchy` (nested child)
+     *   - if `parent` is null: one row in `rel_pages_sections`     (top-level)
+     *     otherwise          : one row in `rel_sections_hierarchy` (nested child)
      *   - one row in `sections_fields_translation` per non-translatable field
      *     in `fields` (language = 'all'/id 1)
      *   - one row in `sections_fields_translation` per translatable field
@@ -545,15 +545,15 @@ final class Version20260425090000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        // Sections live in their own table — `pages_sections` cascades on
+        // Sections live in their own table — `rel_pages_sections` cascades on
         // page delete but does NOT delete the section rows themselves, so we
         // remove them explicitly. The `sections_fields_translation` and
-        // `sections_hierarchy` rows cascade off `sections.id`.
+        // `rel_sections_hierarchy` rows cascade off `sections.id`.
         $prefix = self::SECTION_PREFIX;
         $this->addSql("DELETE FROM `sections` WHERE `name` LIKE '{$prefix}-%'");
 
-        // FK CASCADE handles `pages_sections`, `pages_fields_translation`,
-        // `acl_groups` rows that reference this page id.
+        // FK CASCADE handles `rel_pages_sections`, `pages_fields_translation`,
+        // `page_acl_groups` rows that reference this page id.
         $keyword = self::PAGE_KEYWORD;
         $this->addSql("DELETE FROM `pages` WHERE `keyword` = '{$keyword}'");
     }
@@ -574,11 +574,11 @@ final class Version20260425090000 extends AbstractMigration
 
         $this->addSql(<<<SQL
             INSERT IGNORE INTO `pages`
-                (`keyword`, `url`, `parent`, `is_headless`, `nav_position`, `footer_position`,
-                 `id_type`, `id_pageAccessTypes`, `is_open_access`, `is_system`, `published_version_id`)
+                (`keyword`, `url`, `id_parent_page`, `is_headless`, `nav_position`, `footer_position`,
+                 `id_page_types`, `id_page_access_types`, `is_open_access`, `is_system`, `id_published_page_versions`)
             VALUES
                 ('{$keyword}', '{$url}', NULL, 0, NULL, {$footerPos},
-                 (SELECT id FROM `pageType` WHERE `name` = 'core' LIMIT 1),
+                 (SELECT id FROM `page_types` WHERE `name` = 'core' LIMIT 1),
                  (SELECT id FROM `lookups` WHERE `type_code` = 'pageAccessTypes' AND `lookup_code` = 'mobile_and_web' LIMIT 1),
                  1, 1, NULL)
         SQL);
@@ -643,7 +643,7 @@ final class Version20260425090000 extends AbstractMigration
 
         foreach ($rules as [$group, $sel, $ins, $upd, $del]) {
             $this->addSql(<<<SQL
-                INSERT IGNORE INTO `acl_groups`
+                INSERT IGNORE INTO `page_acl_groups`
                     (`id_groups`, `id_pages`, `acl_select`, `acl_insert`, `acl_update`, `acl_delete`)
                 SELECT g.id, p.id, {$sel}, {$ins}, {$upd}, {$del}
                 FROM `groups` g, `pages` p
@@ -655,7 +655,7 @@ final class Version20260425090000 extends AbstractMigration
     /**
      * Walk the SECTIONS table once to:
      *   1. Insert each `sections` row.
-     *   2. Wire it into `pages_sections` (top-level) or `sections_hierarchy` (nested).
+     *   2. Wire it into `rel_pages_sections` (top-level) or `rel_sections_hierarchy` (nested).
      *   3. Persist its non-translatable field values (language id 1).
      *   4. Persist its translatable field values for each locale.
      *
@@ -689,7 +689,7 @@ final class Version20260425090000 extends AbstractMigration
             if ($parentKey === null) {
                 // Top-level section attached to the page
                 $this->addSql(<<<SQL
-                    INSERT INTO `pages_sections` (`id_pages`, `id_sections`, `position`)
+                    INSERT INTO `rel_pages_sections` (`id_pages`, `id_sections`, `position`)
                     SELECT p.id, sec.id, {$rootPos}
                     FROM `pages` p, `sections` sec
                     WHERE p.`keyword` = '{$keyword}' AND sec.`name` = '{$sectionName}'
@@ -700,7 +700,7 @@ final class Version20260425090000 extends AbstractMigration
                 $childPos[$parentName] = ($childPos[$parentName] ?? 0) + 10;
                 $pos = $childPos[$parentName];
                 $this->addSql(<<<SQL
-                    INSERT INTO `sections_hierarchy` (`parent`, `child`, `position`)
+                    INSERT INTO `rel_sections_hierarchy` (`id_parent_section`, `id_child_section`, `position`)
                     SELECT parent_sec.id, child_sec.id, {$pos}
                     FROM `sections` parent_sec, `sections` child_sec
                     WHERE parent_sec.`name` = '{$parentName}'

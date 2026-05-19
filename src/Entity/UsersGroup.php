@@ -11,7 +11,7 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'users_groups')]
+#[ORM\Table(name: 'rel_groups_users')]
 class UsersGroup
 {
     #[ORM\Id]

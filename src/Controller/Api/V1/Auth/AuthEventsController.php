@@ -103,7 +103,8 @@ class AuthEventsController extends AbstractController
      * Issue a Mercure subscriber JWT scoped to the current user's ACL topic.
      *
      * Wired to `GET /auth/events` via the `auth_events_stream_v1` row in
-     * the `api_routes` table (see `migrations/Version20260425000000.php`).
+     * the `api_routes` table (see `migrations/Version20260601000300.php`,
+     * `seedMissingRoutes()`).
      *
      * Method name is intentionally `events()` and not `stream()` because
      * `AbstractController` already declares a `stream(string $view, ...)`

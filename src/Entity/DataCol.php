@@ -11,11 +11,12 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'dataCols')]
+#[ORM\Table(name: 'data_cols')]
+#[ORM\Index(name: 'idx_data_cols_id_data_tables', columns: ['id_data_tables'])]
 class DataCol
 {
     #[ORM\ManyToOne(targetEntity: DataTable::class, inversedBy: 'dataCols', cascade: ['persist'])]
-    #[ORM\JoinColumn(name: 'id_dataTables', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_tables', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?DataTable $dataTable = null;
 
     /**

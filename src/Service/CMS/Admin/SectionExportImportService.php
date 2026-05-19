@@ -157,6 +157,25 @@ class SectionExportImportService extends BaseService
         try {
             $importedSections = $this->importSections($sectionsData, $page, null, $position);
 
+            // Page-level audit entry so the import is visible in the page's
+            // transaction history (mirrors restoreSectionsFromVersion()).
+            // Without this, a user sees "page created" but no entry for the
+            // import that materially modified the page's section tree.
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $page->getId(),
+                (object) [
+                    'id' => $page->getId(),
+                    'keyword' => $page->getKeyword(),
+                    'url' => $page->getUrl(),
+                    'sections_imported' => count($importedSections),
+                    'position' => $position,
+                ],
+                "Imported " . count($importedSections) . " section(s) into page '{$page->getKeyword()}'"
+            );
+
             $this->invalidateImportCaches($page->getId());
 
             // Commit transaction
@@ -205,6 +224,27 @@ class SectionExportImportService extends BaseService
         
         try {
             $importedSections = $this->importSections($sectionsData, null, $parentSection, $position);
+
+            // Page-level audit entry so the import shows up in the parent
+            // page's transaction history. Without this the page audit trail
+            // would silently miss every nested-section import operation.
+            $page = $this->pageRepository->find($pageId);
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $pageId,
+                (object) [
+                    'id' => $pageId,
+                    'keyword' => $page?->getKeyword(),
+                    'url' => $page?->getUrl(),
+                    'parent_section_id' => $parentSectionId,
+                    'parent_section_name' => $parentSection->getName(),
+                    'sections_imported' => count($importedSections),
+                    'position' => $position,
+                ],
+                "Imported " . count($importedSections) . " section(s) under parent section '{$parentSection->getName()}' (ID: {$parentSectionId}) in page '{$page?->getKeyword()}'"
+            );
 
             $this->invalidateImportCaches($pageId);
 
@@ -280,7 +320,7 @@ class SectionExportImportService extends BaseService
      * Add field translations to sections recursively and build the minimized export shape.
      *
      * Rules (see `docs/section-export-import.md`):
-     * - A field entry is emitted only when `content !== styles_fields.default_value` OR `meta !== null`.
+     * - A field entry is emitted only when `content !== rel_fields_styles.default_value` OR `meta !== null`.
      * - `meta` is omitted from the entry when null.
      * - `global_fields` keys are omitted when null; `debug` is omitted when false.
      *   The entire `global_fields` object is omitted when all keys would be omitted.
@@ -569,7 +609,7 @@ class SectionExportImportService extends BaseService
      *
      * This method takes sections from a published version and replaces all current
      * sections on the page with those sections, preserving the original section IDs
-     * to maintain referential integrity with dataTables and other relationships.
+     * to maintain referential integrity with data_tables and other relationships.
      *
      * @param int $pageId The ID of the page to restore sections to
      * @param int $versionId The ID of the published version to restore from
@@ -763,7 +803,7 @@ class SectionExportImportService extends BaseService
      * Perform smart section restoration that preserves section IDs
      *
      * This method restores sections from a published version while preserving
-     * the original section IDs to maintain referential integrity with dataTables.
+     * the original section IDs to maintain referential integrity with data_tables.
      *
      * @param Page $page The page to restore sections to
      * @param array $publishedSections The sections from the published version
@@ -863,14 +903,13 @@ class SectionExportImportService extends BaseService
 
             $sql = "
                 INSERT INTO sections (
-                    id, name, id_styles, `condition`, data_config, css, css_mobile, debug, timestamp
+                    id, name, id_styles, `condition`, data_config, css, css_mobile, debug
                 ) VALUES (
-                    :id, :name, :style_id, :condition, :data_config, :css, :css_mobile, :debug, :timestamp
+                    :id, :name, :style_id, :condition, :data_config, :css, :css_mobile, :debug
                 )
             ";
 
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([
+            $conn->executeStatement($sql, [
                 'id' => $sectionId,
                 'name' => $section->getName(),
                 'style_id' => $styleId,
@@ -879,7 +918,6 @@ class SectionExportImportService extends BaseService
                 'css' => $section->getCss(),
                 'css_mobile' => $section->getCssMobile(),
                 'debug' => $section->isDebug() ? 1 : 0,
-                'timestamp' => (new \DateTime())->format('Y-m-d H:i:s')
             ]);
 
             // Clear Doctrine's identity map for this entity to avoid conflicts
@@ -1029,7 +1067,7 @@ class SectionExportImportService extends BaseService
                     (object) [
                         'page_id' => $page->getId(),
                         'sections_cleared' => count($sectionIds),
-                        'pages_sections_deleted' => $deletedPagesSections,
+                        'rel_pages_sections_deleted' => $deletedPagesSections,
                         'hierarchy_deleted' => $deletedHierarchy
                     ],
                     "Cleared relationships for section restoration on page {$page->getId()}"
@@ -1054,8 +1092,8 @@ class SectionExportImportService extends BaseService
                 $conn = $this->entityManager->getConnection();
                 $idsString = implode(',', $sectionIds);
 
-                $conn->executeStatement("DELETE FROM pages_sections WHERE id_pages = {$page->getId()}");
-                $conn->executeStatement("DELETE FROM sections_hierarchy WHERE parent IN ({$idsString}) OR child IN ({$idsString})");
+                $conn->executeStatement("DELETE FROM rel_pages_sections WHERE id_pages = {$page->getId()}");
+                $conn->executeStatement("DELETE FROM rel_sections_hierarchy WHERE id_parent_section IN ({$idsString}) OR id_child_section IN ({$idsString})");
             }
         }
 
@@ -1290,7 +1328,7 @@ class SectionExportImportService extends BaseService
      * Detected issues:
      *  - unknown style_name
      *  - field that doesn't exist in the `fields` table
-     *  - field that isn't part of the `styles_fields` mapping for the section's style
+     *  - field that isn't part of the `rel_fields_styles` mapping for the section's style
      *  - unknown locale (no row in `languages.locale`)
      *  - missing `style_name` (required)
      *

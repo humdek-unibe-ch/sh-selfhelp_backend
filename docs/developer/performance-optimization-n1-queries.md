@@ -42,7 +42,7 @@ public function findAllRoutesWithPermissionsAsArray(): array
             r.requirements, r.params, r.version,
             GROUP_CONCAT(p.name ORDER BY p.name SEPARATOR ",") as permission_names
         FROM api_routes r
-        LEFT JOIN api_routes_permissions arp ON r.id = arp.id_api_routes
+        LEFT JOIN rel_api_routes_permissions arp ON r.id = arp.id_api_routes
         LEFT JOIN permissions p ON arp.id_permissions = p.id
         GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version
         ORDER BY r.version ASC, r.id ASC
@@ -77,8 +77,8 @@ Added performance indexes to optimize the bulk query:
 
 ```sql
 -- Composite index for optimal JOIN performance
-CREATE INDEX IF NOT EXISTS idx_arp_route_permission_composite 
-ON api_routes_permissions (id_api_routes, id_permissions);
+CREATE INDEX IF NOT EXISTS idx_arp_route_permission_composite
+ON rel_api_routes_permissions (id_api_routes, id_permissions);
 
 -- Index on permissions.name for faster lookups
 CREATE INDEX IF NOT EXISTS idx_permissions_name 

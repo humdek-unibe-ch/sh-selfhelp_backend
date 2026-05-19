@@ -12,6 +12,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'assets')]
+#[ORM\UniqueConstraint(name: 'uq_assets_file_name', columns: ['file_name'])]
+#[ORM\Index(name: 'idx_assets_id_asset_types', columns: ['id_asset_types'])]
 class Asset
 {
     #[ORM\Id]
@@ -20,13 +22,13 @@ class Asset
     private ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_assetTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_asset_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private Lookup $assetType;
 
     #[ORM\Column(name: 'folder', type: 'string', length: 100, nullable: true)]
     private ?string $folder = null;
 
-    #[ORM\Column(name: 'file_name', type: 'string', length: 100, unique: true, nullable: true)]
+    #[ORM\Column(name: 'file_name', type: 'string', length: 100, nullable: true)]
     private ?string $fileName = null;
 
     #[ORM\Column(name: 'file_path', type: 'string', length: 1000)]

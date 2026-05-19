@@ -50,7 +50,7 @@ security:
 Routes are defined in the database (`api_routes` table) with associated permissions:
 
 1. **Route Definition**: Routes are stored in the `api_routes` table
-2. **Permission Association**: Permissions are associated with routes in the `api_routes_permissions` junction table
+2. **Permission Association**: Permissions are associated with routes in the `rel_api_routes_permissions` junction table
 3. **Dynamic Loading**: `ApiRouteLoader` loads routes from the database and attaches permissions as route options
 4. **Permission Check**: `ApiSecurityListener` checks if the user has the required permissions for the route
 
@@ -70,7 +70,7 @@ For more complex authorization logic:
   - `name`: Unique permission name (e.g., "view_users")
   - `description`: Human-readable description
 
-- **`api_routes_permissions`**: Junction table linking routes to permissions
+- **`rel_api_routes_permissions`**: Junction table linking routes to permissions
   - `id_api_routes`: Foreign key to `api_routes`
   - `id_permissions`: Foreign key to `permissions`
 
@@ -177,7 +177,7 @@ protected function voteOnAttribute(string $attribute, mixed $subject, TokenInter
 
 2. **Assign Permissions to Route**:
    ```sql
-   INSERT INTO api_routes_permissions (id_api_routes, id_permissions)
+   INSERT INTO rel_api_routes_permissions (id_api_routes, id_permissions)
    VALUES (
        (SELECT id FROM api_routes WHERE route_name = 'content_management' AND version = 'v1'),
        (SELECT id FROM permissions WHERE name = 'manage_content')

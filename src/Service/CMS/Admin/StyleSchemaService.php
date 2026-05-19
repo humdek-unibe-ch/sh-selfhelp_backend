@@ -20,7 +20,7 @@ use App\Service\Cache\Core\CacheService;
  *   SectionExportImportService to minimize exports and reason about defaults during imports.
  *
  * Backed by CacheService (CATEGORY_STYLES). After any DB change that touches the
- * `styles`, `fields`, `styles_fields`, or `styles_allowed_relationships` tables,
+ * `styles`, `fields`, `rel_fields_styles`, or `rel_styles_allowed_relationships` tables,
  * invalidate this category directly via:
  *
  *   $cacheService->withCategory(CacheService::CATEGORY_STYLES)->invalidateAllListsInCategory();

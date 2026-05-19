@@ -231,7 +231,7 @@ class UserValidationController extends AbstractController
     }
 
     /**
-     * Save user form inputs to dataTables
+     * Save user form inputs to data_tables
      *
      * @param int $userId User ID
      * @param array $formInputs Form input data

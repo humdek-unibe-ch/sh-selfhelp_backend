@@ -11,7 +11,9 @@ namespace App\Entity;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'styles_fields')]
+#[ORM\Table(name: 'rel_fields_styles')]
+#[ORM\Index(name: 'idx_rel_fields_styles_id_styles', columns: ['id_styles'])]
+#[ORM\Index(name: 'idx_rel_fields_styles_id_fields', columns: ['id_fields'])]
 class StylesField
 {
     #[ORM\Id]
@@ -47,8 +49,8 @@ class StylesField
     #[ORM\Column(name: 'hidden', type: 'integer', nullable: true)]
     private ?int $hidden = 0;
 
-    #[ORM\Column(name: 'title', type: 'string', length: 100, nullable: false)]
-    private string $title;
+    #[ORM\Column(name: 'title', type: 'string', length: 255, nullable: true)]
+    private ?string $title = null;
 
     public function getDefaultValue(): ?string
     {

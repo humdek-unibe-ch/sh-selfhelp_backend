@@ -30,7 +30,7 @@ class AdminSectionUtilityController extends AbstractController
     ) {}
 
     /**
-     * Get all unused sections (not in hierarchy and not in pages_sections)
+     * Get all unused sections (not in hierarchy and not in rel_pages_sections)
      * Requires permission: admin.page.update
      */
     public function getUnusedSections(): JsonResponse

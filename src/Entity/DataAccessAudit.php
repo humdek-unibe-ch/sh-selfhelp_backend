@@ -18,14 +18,15 @@ use Doctrine\ORM\Mapping as ORM;
  * Provides complete audit trail for security monitoring and compliance
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'dataAccessAudit')]
-#[ORM\Index(name: 'IDX_dataAccessAudit_users', columns: ['id_users'])]
-#[ORM\Index(name: 'IDX_dataAccessAudit_resource_types', columns: ['id_resourceTypes'])]
-#[ORM\Index(name: 'IDX_dataAccessAudit_resource_id', columns: ['resource_id'])]
-#[ORM\Index(name: 'IDX_dataAccessAudit_created_at', columns: ['created_at'])]
-#[ORM\Index(name: 'IDX_dataAccessAudit_permission_results', columns: ['id_permissionResults'])]
-#[ORM\Index(name: 'IDX_dataAccessAudit_http_method', columns: ['http_method'])]
-#[ORM\Index(name: 'IDX_dataAccessAudit_request_body_hash', columns: ['request_body_hash'])]
+#[ORM\Table(name: 'data_access_audits')]
+#[ORM\Index(name: 'idx_data_access_audits_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_data_access_audits_id_resource_types', columns: ['id_resource_types'])]
+#[ORM\Index(name: 'idx_data_access_audits_resource_id', columns: ['resource_id'])]
+#[ORM\Index(name: 'idx_data_access_audits_id_audit_actions', columns: ['id_audit_actions'])]
+#[ORM\Index(name: 'idx_data_access_audits_created_at', columns: ['created_at'])]
+#[ORM\Index(name: 'idx_data_access_audits_id_permission_results', columns: ['id_permission_results'])]
+#[ORM\Index(name: 'idx_data_access_audits_http_method', columns: ['http_method'])]
+#[ORM\Index(name: 'idx_data_access_audits_request_body_hash', columns: ['request_body_hash'])]
 class DataAccessAudit
 {
     #[ORM\Id]
@@ -36,16 +37,16 @@ class DataAccessAudit
     #[ORM\Column(name: 'id_users', type: Types::INTEGER)]
     private int $idUsers;
 
-    #[ORM\Column(name: 'id_resourceTypes', type: Types::INTEGER)]
+    #[ORM\Column(name: 'id_resource_types', type: Types::INTEGER)]
     private int $idResourceTypes;
 
     #[ORM\Column(name: 'resource_id', type: Types::INTEGER)]
     private int $resourceId;
 
-    #[ORM\Column(name: 'id_actions', type: Types::INTEGER)]
-    private int $idActions;
+    #[ORM\Column(name: 'id_audit_actions', type: Types::INTEGER)]
+    private int $idAuditActions;
 
-    #[ORM\Column(name: 'id_permissionResults', type: Types::INTEGER)]
+    #[ORM\Column(name: 'id_permission_results', type: Types::INTEGER)]
     private int $idPermissionResults;
 
     #[ORM\Column(name: 'crud_permission', type: Types::SMALLINT, nullable: true, options: ['unsigned' => true])]
@@ -78,15 +79,15 @@ class DataAccessAudit
     private User $user;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_resourceTypes', referencedColumnName: 'id', nullable: false)]
+    #[ORM\JoinColumn(name: 'id_resource_types', referencedColumnName: 'id', nullable: false)]
     private Lookup $resourceType;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_actions', referencedColumnName: 'id', nullable: false)]
+    #[ORM\JoinColumn(name: 'id_audit_actions', referencedColumnName: 'id', nullable: false)]
     private Lookup $action;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_permissionResults', referencedColumnName: 'id', nullable: false)]
+    #[ORM\JoinColumn(name: 'id_permission_results', referencedColumnName: 'id', nullable: false)]
     private Lookup $permissionResult;
 
     public function __construct()
@@ -123,7 +124,12 @@ class DataAccessAudit
 
     public function getIdActions(): int
     {
-        return $this->idActions;
+        return $this->idAuditActions;
+    }
+
+    public function getIdAuditActions(): int
+    {
+        return $this->idAuditActions;
     }
 
     public function getIdPermissionResults(): int

@@ -241,7 +241,7 @@ class DataService extends BaseService
             $this->transactionService->logTransaction(
                 'delete',
                 LookupService::TRANSACTION_BY_BY_USER,
-                'dataTables',
+                'data_tables',
                 $dataRow->getDataTable()?->getId()
             );
 
@@ -510,7 +510,7 @@ class DataService extends BaseService
         $this->transactionService->logTransaction(
             'update',
             $transactionBy,
-            'dataTables',
+            'data_tables',
             $dataRow->getDataTable()?->getId()
         );
 
@@ -590,7 +590,7 @@ class DataService extends BaseService
         $this->transactionService->logTransaction(
             'insert',
             $transactionBy,
-            'dataTables',
+            'data_tables',
             $dataTable->getId()
         );
 

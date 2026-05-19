@@ -433,7 +433,7 @@ class AdminScheduledJobService extends BaseService
                 $transactions = $this->transactionRepository->createQueryBuilder('t')
                     ->where('t.tableName = :tableName')
                     ->andWhere('t.idTableName = :idTableName')
-                    ->setParameter('tableName', 'scheduledJobs')
+                    ->setParameter('tableName', 'scheduled_jobs')
                     ->setParameter('idTableName', $jobId)
                     ->orderBy('t.transactionTime', 'desc')
                     ->getQuery()
