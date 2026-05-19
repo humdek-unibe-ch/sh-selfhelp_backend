@@ -197,7 +197,7 @@ class UserValidationService extends BaseService
                 'subject'          => 'Please validate your account',
                 'recipient_emails' => $user->getEmail(),
                 'body'             => $this->generateValidationEmailBody($user, $token),
-                'is_html'          => false,
+                'is_html'          => true,
                 ...$emailConfig,
             ]);
 
@@ -282,7 +282,7 @@ class UserValidationService extends BaseService
                 'subject'          => 'Please validate your account',
                 'recipient_emails' => $user->getEmail(),
                 'body'             => $this->generateValidationEmailBody($user, $token),
-                'is_html'          => false,
+                'is_html'          => true,
             ]),
             ...$emailConfig,
         ];
@@ -315,7 +315,7 @@ class UserValidationService extends BaseService
                 'subject'          => 'Welcome to SelfHelp Platform - Your account is now active!',
                 'recipient_emails' => $user->getEmail(),
                 'body'             => $this->generateWelcomeEmailBody($user),
-                'is_html'          => false,
+                'is_html'          => true,
             ]),
             ...$emailConfig,
         ];
@@ -369,7 +369,7 @@ class UserValidationService extends BaseService
             'recipient_emails' => $user->getEmail(),
             'subject'          => 'Your verification code',
             'body'             => $this->generate2faEmailBody($userName, $code),
-            'is_html'          => false,
+            'is_html'          => true,
         ]);
 
         $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(

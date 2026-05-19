@@ -247,6 +247,75 @@ docker run -d --name selfhelp_mercure --rm \
 
 For the algorithm and on-the-wire payload details, see `docs/developer/13-acl-system.md` ("Real-time ACL push").
 
+## Mail Template System
+
+The mail template system is driven by a CMS page with keyword `sh-mail-config`. It centralises all email sender settings and per-email-type templates, with a three-layer resolution order.
+
+### Overview
+
+```
+fallback (caller hardcodes) → global CMS config → per-type template override
+```
+
+`MailTemplateService::buildEmailConfig(string $type, array $fallback)` merges these three layers and returns a complete email config array ready for the job scheduler.
+
+### Global configuration fields
+
+These fields live on the `sh-mail-config` page and apply to every email type. They are stored as page **properties** (always `id_languages = 1`), not translated content.
+
+| CMS field name   | Key in email config | Description                              |
+|------------------|---------------------|------------------------------------------|
+| `mail_from_email` | `from_email`       | Sender address (`From:` header)          |
+| `mail_from_name`  | `from_name`        | Sender display name                      |
+| `mail_reply_to`   | `reply_to`         | Reply-To address (falls back to `from_email` when absent) |
+| `mail_is_html`    | `is_html`          | `1` → HTML email · `0` → plain text     |
+
+#### `mail_is_html` — HTML vs plain text
+
+| CMS value | `is_html` bool | Symfony call        | Content-Type  |
+|-----------|---------------|---------------------|---------------|
+| `1`       | `true`        | `$email->html($body)` | `text/html`   |
+| `0` / unset | `false`     | `$email->text($body)` | `text/plain`  |
+
+The mailer in `JobSchedulerService` applies this directly:
+
+```php
+$isHtml ? $email->html($body) : $email->text($body);
+```
+
+> **Debugging note:** If HTML renders as raw markup or plain text renders as escaped HTML, the bug is in the mailer's `is_html` handling — check `JobSchedulerService::executeEmailJob()` around line 601 — not in how the CMS stores the value.
+
+### Email types and template fields
+
+Each type has a `_subject` and `_body` field. Both are optional; when absent the hardcoded caller fallback is used unchanged.
+
+| Type             | Subject field              | Body field              | Triggered by                  |
+|------------------|---------------------------|-------------------------|-------------------------------|
+| `mail_2fa`       | `mail_2fa_subject`        | `mail_2fa_body`         | 2FA code delivery             |
+| `mail_confirm`   | `mail_confirm_subject`    | `mail_confirm_body`     | Account email confirmation    |
+| `mail_welcome`   | `mail_welcome_subject`    | `mail_welcome_body`     | Post-validation welcome       |
+| `mail_recovery`  | `mail_recovery_subject`   | `mail_recovery_body`    | Password recovery (reserved)  |
+
+Template fields are translated content (resolved with the CMS default language). Subject fields are always stripped of HTML tags before use; body fields are returned as-is.
+
+### Configuration resolution
+
+```php
+// Example: 2FA email with CMS overrides
+$config = $mailTemplateService->buildEmailConfig('mail_2fa', [
+    'from_email'       => 'noreply@example.com',
+    'from_name'        => 'SelfHelp',
+    'subject'          => 'Your verification code',   // overridden if CMS has mail_2fa_subject
+    'body'             => $generatedBody,              // overridden if CMS has mail_2fa_body
+    'is_html'          => true,                       // overridden by global mail_is_html
+    'recipient_emails' => $user->getEmail(),
+]);
+```
+
+`array_merge($fallback, $cmsGlobal, $cmsType)` — keys absent from the CMS pass through unchanged from `$fallback`.
+
+---
+
 ## Local mail (Mailpit)
 
 [Mailpit](https://mailpit.axllent.org) is a local SMTP catch-all that traps every outbound email during development so it never reaches a real inbox. A web UI lets you preview, inspect, and delete messages.

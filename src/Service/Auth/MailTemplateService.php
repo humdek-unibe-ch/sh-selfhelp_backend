@@ -80,7 +80,7 @@ class MailTemplateService
     public function buildEmailConfig(string $type, array $fallback): array
     {
         $global   = $this->resolveGlobalConfig();
-        $template = $this->resolve($type, $global['is_html'] ?? false);
+        $template = $this->resolve($type, $global['is_html'] ?? true);
 
         $cmsGlobal = array_filter([
             'from_email' => $global['from_email'],
@@ -126,7 +126,7 @@ class MailTemplateService
             'from_email' => $this->fetchField($pageId, 'mail_from_email', $languageId),
             'from_name'  => $this->fetchField($pageId, 'mail_from_name', $languageId),
             'reply_to'   => $this->fetchField($pageId, 'mail_reply_to', $languageId),
-            'is_html' => $isHtmlRaw === '1',
+            'is_html' => $isHtmlRaw !== null ? $isHtmlRaw === '1' : null,
         ];
     }
 

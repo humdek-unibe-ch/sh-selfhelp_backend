@@ -133,7 +133,7 @@ class JobSchedulerService extends BaseService
             'recipient_emails' => $emailConfig['recipient_emails'] ?? null,
             'subject' => $emailConfig['subject'] ?? 'Account Validation Required',
             'body' => $emailConfig['body'] ?? $this->getDefaultValidationEmailBody($userId, $token),
-            'is_html' => $emailConfig['is_html'] ?? false,
+            'is_html' => $emailConfig['is_html'] ?? true,
             'attachments' => $emailConfig['attachments'] ?? [],
         ];
 
@@ -598,7 +598,7 @@ class JobSchedulerService extends BaseService
         $fromEmail = (string) ($emailConfig['from_email'] ?? 'noreply@example.com');
         $fromName = (string) ($emailConfig['from_name'] ?? 'SelfHelp');
         $replyTo = (string) ($emailConfig['reply_to'] ?? $fromEmail);
-        $isHtml = (bool) ($emailConfig['is_html'] ?? false);
+        $isHtml = (bool) ($emailConfig['is_html'] ?? true);
         $attachments = is_array($emailConfig['attachments'] ?? null) ? $emailConfig['attachments'] : [];
 
         try {
