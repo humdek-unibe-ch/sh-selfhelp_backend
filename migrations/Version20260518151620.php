@@ -52,10 +52,10 @@ final class Version20260518120000 extends AbstractMigration
         // =====================================
         $this->addSql("
             INSERT IGNORE INTO fields (name, id_type, display) VALUES
-            ('mail_from_email', get_field_type_id('text'), 1),
-            ('mail_from_name', get_field_type_id('text'), 1),
-            ('mail_reply_to', get_field_type_id('text'), 1),
-            ('mail_is_html', get_field_type_id('checkbox'), 1)
+            ('mail_from_email', get_field_type_id('text'), 0),
+            ('mail_from_name', get_field_type_id('text'), 0),
+            ('mail_reply_to', get_field_type_id('text'), 0),
+            ('mail_is_html', get_field_type_id('checkbox'), 0)
         ");
 
         // =====================================
