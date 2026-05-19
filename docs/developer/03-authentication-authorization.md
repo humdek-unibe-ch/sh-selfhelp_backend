@@ -346,7 +346,7 @@ lexik_jwt_authentication:
 Both token lifetimes are driven from environment variables (in seconds).
 **Access tokens** are signed JWTs and their TTL is enforced client-side by
 LexikJWTBundle (the `exp` claim). **Refresh tokens** are opaque strings backed
-by the `refreshTokens` DB table (entity `App\Entity\RefreshToken`); their TTL
+by the `refresh_tokens` DB table (entity `App\Entity\RefreshToken`); their TTL
 is written into the `expires_at` column when the row is created.
 
 | Variable                  | Default               | Meaning                                                            | Wired in                                                                                                                       |
@@ -378,7 +378,7 @@ php bin/console cache:clear
 
 Existing JWTs keep whatever `exp` they were minted with; only tokens created
 **after** the change pick up the new TTL. If you want to guarantee the next
-login uses the new TTL, also drop the `refreshTokens` table rows you no
+login uses the new TTL, also drop the `refresh_tokens` table rows you no
 longer need (otherwise old refresh tokens remain valid for their original
 window):
 
@@ -527,15 +527,15 @@ public function getPermissionNames(): array
 ## 🛡️ Route-Level Permissions
 
 ### Database-Driven Route Permissions
-Routes are associated with permissions through the `api_routes_permissions` table:
+Routes are associated with permissions through the `rel_api_routes_permissions` table:
 
 ```sql
-CREATE TABLE `api_routes_permissions` (
+CREATE TABLE `rel_api_routes_permissions` (
   `id_api_routes`   INT NOT NULL,
   `id_permissions`  INT NOT NULL,
   PRIMARY KEY (`id_api_routes`, `id_permissions`),
-  FOREIGN KEY (`id_api_routes`) REFERENCES `api_routes` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_permissions`) REFERENCES `permissions` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_rel_api_routes_permissions_id_api_routes`  FOREIGN KEY (`id_api_routes`)  REFERENCES `api_routes`  (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rel_api_routes_permissions_id_permissions` FOREIGN KEY (`id_permissions`) REFERENCES `permissions` (`id`) ON DELETE CASCADE
 );
 ```
 
@@ -711,9 +711,10 @@ the same exclusion list (`ADMIN_SESSION_ROUTE_PREFIXES` /
 the "SSR rendered as admin while client refetched as target" hydration
 mismatch we saw before this rule was made consistent.
 
-> **Note on `/lookups` (route name `system_lookups`).** Same migration
-> `Version20260508160000` (a) renamed the route from `admin_lookups`
-> at `/admin/lookups`, and (b) dropped its `admin.access` permission.
+> **Note on `/lookups` (route name `system_lookups`).** The canonical
+> `Version20260601000300` API-routes seed (a) ships the route as
+> `system_lookups` at `/lookups` (no longer under `/admin/`), and
+> (b) does NOT attach the `admin.access` permission to it.
 > The endpoint exposes pure reference data (timezones, type codes,
 > weekdays, audit categories) that public frontend styles such as
 > `ProfileStyle` rely on. Gating it on `admin.access` was the cause of
@@ -780,7 +781,7 @@ user's own sessions within milliseconds, with no polling.
 The ACL system provides page-level access control with CRUD operations:
 
 ```sql
-CREATE TABLE `acl_groups` (
+CREATE TABLE `page_acl_groups` (
   `id_groups`   INT NOT NULL,
   `id_pages`    INT NOT NULL,
   `acl_select`  TINYINT(1) NOT NULL DEFAULT '1',
@@ -916,7 +917,7 @@ WHERE ug.name = 'admin' AND p.name = 'admin.asset.upload';
 
 3. **Associate with Routes**:
 ```sql
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE ar.route_name = 'admin_upload_asset' AND p.name = 'admin.asset.upload';

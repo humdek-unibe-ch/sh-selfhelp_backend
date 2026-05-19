@@ -13,15 +13,13 @@ use Doctrine\ORM\Mapping as ORM;
  * Stores reminder-only metadata for scheduled jobs.
  *
  * This keeps reminder lineage and session-window data out of the base
- * `scheduledJobs` table while still allowing efficient cleanup queries.
+ * `scheduled_jobs` table while still allowing efficient cleanup queries.
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'scheduled_job_reminders', uniqueConstraints: [
-    new ORM\UniqueConstraint(name: 'uq_scheduled_job_reminders_id_scheduled_job', columns: ['id_scheduled_job']),
-], indexes: [
-    new ORM\Index(name: 'idx_scheduled_job_reminders_id_parent_scheduled_job', columns: ['id_parent_scheduled_job']),
-    new ORM\Index(name: 'idx_scheduled_job_reminders_id_data_tables', columns: ['id_data_tables']),
-])]
+#[ORM\Table(name: 'scheduled_job_reminders')]
+#[ORM\UniqueConstraint(name: 'uq_scheduled_job_reminders_id_scheduled_jobs', columns: ['id_scheduled_jobs'])]
+#[ORM\Index(name: 'idx_scheduled_job_reminders_id_parent_scheduled_jobs', columns: ['id_parent_scheduled_jobs'])]
+#[ORM\Index(name: 'idx_scheduled_job_reminders_id_data_tables', columns: ['id_data_tables'])]
 class ScheduledJobReminder
 {
     #[ORM\Id]
@@ -33,14 +31,14 @@ class ScheduledJobReminder
      * The reminder job that owns this metadata row.
      */
     #[ORM\OneToOne(inversedBy: 'reminderMetadata', targetEntity: ScheduledJob::class)]
-    #[ORM\JoinColumn(name: 'id_scheduled_job', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_scheduled_jobs', nullable: false, onDelete: 'CASCADE')]
     private ?ScheduledJob $scheduledJob = null;
 
     /**
      * The parent scheduled job that spawned this reminder.
      */
     #[ORM\ManyToOne(targetEntity: ScheduledJob::class)]
-    #[ORM\JoinColumn(name: 'id_parent_scheduled_job', nullable: true, onDelete: 'SET NULL')]
+    #[ORM\JoinColumn(name: 'id_parent_scheduled_jobs', nullable: true, onDelete: 'SET NULL')]
     private ?ScheduledJob $parentJob = null;
 
     /**

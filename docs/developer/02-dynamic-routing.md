@@ -25,7 +25,7 @@ graph TD
     
     subgraph "Database"
         H[(api_routes table)]
-        I[(api_routes_permissions)]
+        I[(rel_api_routes_permissions)]
     end
     
     D --> H
@@ -159,16 +159,16 @@ public function handle(string $routeName, Request $request, array $attributes = 
 ## 🔐 Permission Integration
 
 ### Route-Permission Association
-Routes can be associated with permissions through the `api_routes_permissions` table:
+Routes can be associated with permissions through the `rel_api_routes_permissions` table:
 
 ```sql
-CREATE TABLE `api_routes_permissions` (
+CREATE TABLE `rel_api_routes_permissions` (
   `id_api_routes`   INT NOT NULL,
   `id_permissions`  INT NOT NULL,
   PRIMARY KEY (`id_api_routes`, `id_permissions`),
-  CONSTRAINT `FK_arp_api_routes` FOREIGN KEY (`id_api_routes`) 
+  CONSTRAINT `fk_rel_api_routes_permissions_id_api_routes`  FOREIGN KEY (`id_api_routes`)
     REFERENCES `api_routes` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_arp_permissions` FOREIGN KEY (`id_permissions`) 
+  CONSTRAINT `fk_rel_api_routes_permissions_id_permissions` FOREIGN KEY (`id_permissions`)
     REFERENCES `permissions` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
@@ -209,7 +209,7 @@ class AdminUserController extends AbstractController
 
 4. **Associate Permissions** (if needed):
 ```sql
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE ar.route_name = 'admin_create_user' 

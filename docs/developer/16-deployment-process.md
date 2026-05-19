@@ -161,7 +161,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `method
 '{"userId": {"in": "path", "required": true, "type": "integer"}, "profileId": {"in": "path", "required": true, "type": "integer"}}');
 
 -- Associate routes with permissions
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE ar.route_name IN ('admin_get_user_profiles', 'admin_create_user_profile', 'admin_update_user_profile', 'admin_delete_user_profile')

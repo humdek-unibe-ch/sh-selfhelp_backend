@@ -92,17 +92,17 @@ $entityManager->createQueryBuilder()
 
 ## Database Indexes Added
 
-Enhanced database performance with strategic indexes in `db/update_scripts/39_update_v7.6.0_v8.0.0.sql`:
+The canonical schema (Doctrine baseline + seed migrations) already declares the indexes below using canonical table/column names. They are reproduced here for reference; create new follow-up indexes only through a new Doctrine migration class:
 
 ### API Route Loading Indexes
 ```sql
-CREATE INDEX IF NOT EXISTS idx_arp_route_permission_composite 
-ON api_routes_permissions (id_api_routes, id_permissions);
+CREATE INDEX IF NOT EXISTS idx_arp_route_permission_composite
+ON rel_api_routes_permissions (id_api_routes, id_permissions);
 
-CREATE INDEX IF NOT EXISTS idx_permissions_name 
+CREATE INDEX IF NOT EXISTS idx_permissions_name
 ON permissions (name);
 
-CREATE INDEX IF NOT EXISTS idx_api_routes_version_id 
+CREATE INDEX IF NOT EXISTS idx_api_routes_version_id
 ON api_routes (version, id);
 ```
 
@@ -110,21 +110,21 @@ ON api_routes (version, id);
 ```sql
 CREATE INDEX IF NOT EXISTS idx_groups_id ON groups (id);
 CREATE INDEX IF NOT EXISTS idx_roles_id ON roles (id);
-CREATE INDEX IF NOT EXISTS idx_users_groups_user_group ON users_groups (id_users, id_groups);
+CREATE INDEX IF NOT EXISTS idx_rel_groups_users_user_group ON rel_groups_users (id_users, id_groups);
 CREATE INDEX IF NOT EXISTS idx_pages_id ON pages (id);
 ```
 
 ### ACL Management Indexes
 ```sql
-CREATE INDEX IF NOT EXISTS idx_acl_groups_group ON acl_groups (id_groups);
-CREATE INDEX IF NOT EXISTS idx_acl_groups_page ON acl_groups (id_pages);
+CREATE INDEX IF NOT EXISTS idx_page_acl_groups_group ON page_acl_groups (id_groups);
+CREATE INDEX IF NOT EXISTS idx_page_acl_groups_page ON page_acl_groups (id_pages);
 ```
 
 ### Section Relationship Indexes
 ```sql
-CREATE INDEX IF NOT EXISTS idx_pages_sections_section ON pages_sections (id_sections);
-CREATE INDEX IF NOT EXISTS idx_sections_hierarchy_parent ON sections_hierarchy (id_parent_sections);
-CREATE INDEX IF NOT EXISTS idx_sections_hierarchy_child ON sections_hierarchy (id_child_sections);
+CREATE INDEX IF NOT EXISTS idx_rel_pages_sections_section ON rel_pages_sections (id_sections);
+CREATE INDEX IF NOT EXISTS idx_rel_sections_hierarchy_parent ON rel_sections_hierarchy (id_parent_section);
+CREATE INDEX IF NOT EXISTS idx_rel_sections_hierarchy_child ON rel_sections_hierarchy (id_child_section);
 ```
 
 ## Optimization Patterns Used

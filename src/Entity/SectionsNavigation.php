@@ -21,12 +21,12 @@ class SectionsNavigation
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
     #[ORM\JoinColumn(name: 'id_parent_section', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Section $parent = null;
+    private ?Section $parentSection = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
     #[ORM\JoinColumn(name: 'id_child_section', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Section $child = null;
+    private ?Section $childSection = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Page::class)]
@@ -45,26 +45,26 @@ class SectionsNavigation
         return $this;
     }
 
-    public function getParent(): ?Section
+    public function getParentSection(): ?Section
     {
-        return $this->parent;
+        return $this->parentSection;
     }
 
-    public function setParent(?Section $parent): static
+    public function setParentSection(?Section $parentSection): static
     {
-        $this->parent = $parent;
+        $this->parentSection = $parentSection;
 
         return $this;
     }
 
-    public function getChild(): ?Section
+    public function getChildSection(): ?Section
     {
-        return $this->child;
+        return $this->childSection;
     }
 
-    public function setChild(?Section $child): static
+    public function setChildSection(?Section $childSection): static
     {
-        $this->child = $child;
+        $this->childSection = $childSection;
 
         return $this;
     }

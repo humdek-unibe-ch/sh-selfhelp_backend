@@ -72,6 +72,15 @@ final class Version20260601000000 extends AbstractMigration
         );
 
         // ============================================================
+        // 0) Convert Doctrine migrations bookkeeping table to InnoDB.
+        //    Doctrine Migrations creates `doctrine_migration_versions`
+        //    with the default storage engine (MyISAM on MySQL), which is
+        //    inconsistent with the rest of our InnoDB/FK-oriented schema
+        //    (see AGENTS.md). It exists by the time this baseline runs.
+        // ============================================================
+        $this->addSql('ALTER TABLE `doctrine_migration_versions` ENGINE=InnoDB');
+
+        // ============================================================
         // 1) Base reference tables (no FKs to other app tables)
         // ============================================================
         $this->addSql(<<<SQL
@@ -250,25 +259,25 @@ final class Version20260601000000 extends AbstractMigration
               `id_users` INT NOT NULL,
               `url` VARCHAR(200) NOT NULL,
               `timestamp` DATETIME NOT NULL,
-              `id_type` INT NOT NULL,
+              `id_user_activity_types` INT NOT NULL,
               `exec_time` DECIMAL(10,8) DEFAULT NULL,
               `keyword` VARCHAR(100) DEFAULT NULL,
               `params` VARCHAR(1000) DEFAULT NULL,
               `mobile` TINYINT(1) DEFAULT NULL,
               PRIMARY KEY (`id`),
-              KEY `IDX_12966909FA06E4D9` (`id_users`),
-              KEY `IDX_129669097FE4B2B` (`id_type`),
+              KEY `idx_user_activities_id_users` (`id_users`),
+              KEY `idx_user_activities_id_user_activity_types` (`id_user_activity_types`),
               CONSTRAINT `fk_user_activities_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-              CONSTRAINT `fk_user_activities_id_type` FOREIGN KEY (`id_type`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+              CONSTRAINT `fk_user_activities_id_user_activity_types` FOREIGN KEY (`id_user_activity_types`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
 
         $this->addSql(<<<SQL
             CREATE TABLE `log_performance` (
-              `id_user_activity` INT NOT NULL,
+              `id_user_activities` INT NOT NULL,
               `log` LONGTEXT,
-              PRIMARY KEY (`id_user_activity`),
-              CONSTRAINT `fk_log_performance_id_user_activity` FOREIGN KEY (`id_user_activity`) REFERENCES `user_activities` (`id`) ON DELETE CASCADE
+              PRIMARY KEY (`id_user_activities`),
+              CONSTRAINT `fk_log_performance_id_user_activities` FOREIGN KEY (`id_user_activities`) REFERENCES `user_activities` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
 
@@ -311,13 +320,13 @@ final class Version20260601000000 extends AbstractMigration
             CREATE TABLE `fields` (
               `id` INT NOT NULL AUTO_INCREMENT,
               `name` VARCHAR(100) NOT NULL,
-              `id_type` INT NOT NULL,
+              `id_field_types` INT NOT NULL,
               `display` TINYINT(1) NOT NULL,
               `config` JSON DEFAULT NULL,
               PRIMARY KEY (`id`),
-              UNIQUE KEY `UNIQ_7EE5E3885E237E06` (`name`),
-              KEY `IDX_7EE5E3887FE4B2B` (`id_type`),
-              CONSTRAINT `fk_fields_id_type` FOREIGN KEY (`id_type`) REFERENCES `field_types` (`id`) ON DELETE CASCADE
+              UNIQUE KEY `uq_fields_name` (`name`),
+              KEY `idx_fields_id_field_types` (`id_field_types`),
+              CONSTRAINT `fk_fields_id_field_types` FOREIGN KEY (`id_field_types`) REFERENCES `field_types` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
 
@@ -325,13 +334,13 @@ final class Version20260601000000 extends AbstractMigration
             CREATE TABLE `styles` (
               `id` INT NOT NULL AUTO_INCREMENT,
               `name` VARCHAR(100) NOT NULL,
-              `id_group` INT NOT NULL,
+              `id_style_groups` INT NOT NULL,
               `description` LONGTEXT,
               `can_have_children` TINYINT(1) NOT NULL DEFAULT 0,
               PRIMARY KEY (`id`),
-              UNIQUE KEY `UNIQ_B65AFAF55E237E06` (`name`),
-              KEY `IDX_B65AFAF5834505F5` (`id_group`),
-              CONSTRAINT `fk_styles_id_group` FOREIGN KEY (`id_group`) REFERENCES `style_groups` (`id`) ON DELETE CASCADE
+              UNIQUE KEY `uq_styles_name` (`name`),
+              KEY `idx_styles_id_style_groups` (`id_style_groups`),
+              CONSTRAINT `fk_styles_id_style_groups` FOREIGN KEY (`id_style_groups`) REFERENCES `style_groups` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
 
@@ -384,7 +393,7 @@ final class Version20260601000000 extends AbstractMigration
         // Schema mirrors the legacy `pages` table exactly with canonical
         // renames (parent -> id_parent_page, id_type -> id_page_types,
         // id_pageAccessTypes -> id_page_access_types, published_version_id
-        // -> id_published_version). No invented columns.
+        // -> id_published_page_versions). No invented columns.
         $this->addSql(<<<SQL
             CREATE TABLE `pages` (
               `id` INT NOT NULL AUTO_INCREMENT,
@@ -398,13 +407,13 @@ final class Version20260601000000 extends AbstractMigration
               `id_page_access_types` INT DEFAULT NULL,
               `is_open_access` TINYINT DEFAULT 0,
               `is_system` TINYINT DEFAULT 0,
-              `id_published_version` INT DEFAULT NULL,
+              `id_published_page_versions` INT DEFAULT NULL,
               PRIMARY KEY (`id`),
-              UNIQUE KEY `UNIQ_2074E5755A93713B` (`keyword`),
-              KEY `IDX_2074E57531FB4D63` (`id_parent_page`),
-              KEY `IDX_2074E5759A3BF631` (`id_page_types`),
-              KEY `IDX_2074E575FF8E313A` (`id_page_access_types`),
-              KEY `idx_pages_id_published_version` (`id_published_version`),
+              UNIQUE KEY `uq_pages_keyword` (`keyword`),
+              KEY `idx_pages_id_parent_page` (`id_parent_page`),
+              KEY `idx_pages_id_page_types` (`id_page_types`),
+              KEY `idx_pages_id_page_access_types` (`id_page_access_types`),
+              KEY `idx_pages_id_published_page_versions` (`id_published_page_versions`),
               CONSTRAINT `fk_pages_id_parent_page` FOREIGN KEY (`id_parent_page`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
               CONSTRAINT `fk_pages_id_page_types` FOREIGN KEY (`id_page_types`) REFERENCES `page_types` (`id`) ON DELETE CASCADE,
               CONSTRAINT `fk_pages_id_page_access_types` FOREIGN KEY (`id_page_access_types`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
@@ -521,22 +530,22 @@ final class Version20260601000000 extends AbstractMigration
               `version_number` INT NOT NULL COMMENT 'Incremental version number per page',
               `version_name` VARCHAR(255) DEFAULT NULL COMMENT 'Optional user-defined name for the version',
               `page_json` JSON NOT NULL COMMENT 'Complete JSON structure from getPage() including all languages, conditions, data table configs',
-              `created_by` INT DEFAULT NULL,
+              `id_users` INT DEFAULT NULL,
               `created_at` DATETIME NOT NULL,
               `published_at` DATETIME DEFAULT NULL COMMENT 'When this version was published',
               `metadata` JSON DEFAULT NULL COMMENT 'Additional info like change summary, tags, etc.',
               PRIMARY KEY (`id`),
               UNIQUE KEY `uq_page_versions_id_pages_version_number` (`id_pages`, `version_number`),
               KEY `idx_page_versions_id_pages` (`id_pages`),
-              KEY `idx_page_versions_created_by` (`created_by`),
+              KEY `idx_page_versions_id_users` (`id_users`),
               KEY `idx_page_versions_created_at` (`created_at`),
               KEY `idx_page_versions_published_at` (`published_at`),
               CONSTRAINT `fk_page_versions_id_pages` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-              CONSTRAINT `fk_page_versions_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
+              CONSTRAINT `fk_page_versions_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
 
-        $this->addSql('ALTER TABLE `pages` ADD CONSTRAINT `fk_pages_id_published_version` FOREIGN KEY (`id_published_version`) REFERENCES `page_versions` (`id`)');
+        $this->addSql('ALTER TABLE `pages` ADD CONSTRAINT `fk_pages_id_published_page_versions` FOREIGN KEY (`id_published_page_versions`) REFERENCES `page_versions` (`id`)');
 
         // ============================================================
         // 6) Data tables (form storage)
@@ -546,7 +555,7 @@ final class Version20260601000000 extends AbstractMigration
               `id` INT NOT NULL AUTO_INCREMENT,
               `name` VARCHAR(100) NOT NULL,
               `timestamp` DATETIME NOT NULL,
-              `displayName` VARCHAR(1000) DEFAULT NULL,
+              `display_name` VARCHAR(1000) DEFAULT NULL,
               PRIMARY KEY (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
@@ -743,7 +752,7 @@ final class Version20260601000000 extends AbstractMigration
               `path` VARCHAR(255) NOT NULL,
               `method` VARCHAR(10) NOT NULL,
               `status_code` INT NOT NULL,
-              `user_id` INT DEFAULT NULL,
+              `id_users` INT DEFAULT NULL,
               `ip_address` VARCHAR(45) DEFAULT NULL,
               `request_time` DATETIME NOT NULL,
               `response_time` DATETIME NOT NULL,
@@ -775,7 +784,7 @@ final class Version20260601000000 extends AbstractMigration
               `id_users` INT NOT NULL,
               `id_resource_types` INT NOT NULL,
               `resource_id` INT NOT NULL,
-              `id_actions` INT NOT NULL,
+              `id_audit_actions` INT NOT NULL,
               `id_permission_results` INT NOT NULL,
               `crud_permission` SMALLINT UNSIGNED DEFAULT NULL,
               `http_method` VARCHAR(10) DEFAULT NULL,
@@ -789,14 +798,14 @@ final class Version20260601000000 extends AbstractMigration
               KEY `idx_data_access_audits_id_users` (`id_users`),
               KEY `idx_data_access_audits_id_resource_types` (`id_resource_types`),
               KEY `idx_data_access_audits_resource_id` (`resource_id`),
-              KEY `IDX_318C9F74DBD5589F` (`id_actions`),
+              KEY `idx_data_access_audits_id_audit_actions` (`id_audit_actions`),
               KEY `idx_data_access_audits_id_permission_results` (`id_permission_results`),
               KEY `idx_data_access_audits_created_at` (`created_at`),
               KEY `idx_data_access_audits_http_method` (`http_method`),
               KEY `idx_data_access_audits_request_body_hash` (`request_body_hash`),
               CONSTRAINT `fk_data_access_audits_id_users` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`),
               CONSTRAINT `fk_data_access_audits_id_resource_types` FOREIGN KEY (`id_resource_types`) REFERENCES `lookups` (`id`),
-              CONSTRAINT `fk_data_access_audits_id_actions` FOREIGN KEY (`id_actions`) REFERENCES `lookups` (`id`),
+              CONSTRAINT `fk_data_access_audits_id_audit_actions` FOREIGN KEY (`id_audit_actions`) REFERENCES `lookups` (`id`),
               CONSTRAINT `fk_data_access_audits_id_permission_results` FOREIGN KEY (`id_permission_results`) REFERENCES `lookups` (`id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3
         SQL);
@@ -859,15 +868,15 @@ final class Version20260601000000 extends AbstractMigration
               `id` INT NOT NULL AUTO_INCREMENT,
               `session_start_date` DATETIME DEFAULT NULL,
               `session_end_date` DATETIME DEFAULT NULL,
-              `id_scheduled_job` INT NOT NULL,
-              `id_parent_scheduled_job` INT DEFAULT NULL,
+              `id_scheduled_jobs` INT NOT NULL,
+              `id_parent_scheduled_jobs` INT DEFAULT NULL,
               `id_data_tables` INT DEFAULT NULL,
               PRIMARY KEY (`id`),
-              UNIQUE KEY `UNIQ_2DFC91973E2281AB` (`id_scheduled_job`),
-              KEY `IDX_2DFC9197507CC2F8` (`id_parent_scheduled_job`),
-              KEY `IDX_2DFC9197FCABFECF` (`id_data_tables`),
-              CONSTRAINT `fk_scheduled_job_reminders_id_scheduled_job` FOREIGN KEY (`id_scheduled_job`) REFERENCES `scheduled_jobs` (`id`) ON DELETE CASCADE,
-              CONSTRAINT `fk_scheduled_job_reminders_id_parent_scheduled_job` FOREIGN KEY (`id_parent_scheduled_job`) REFERENCES `scheduled_jobs` (`id`) ON DELETE SET NULL,
+              UNIQUE KEY `uq_scheduled_job_reminders_id_scheduled_jobs` (`id_scheduled_jobs`),
+              KEY `idx_scheduled_job_reminders_id_parent_scheduled_jobs` (`id_parent_scheduled_jobs`),
+              KEY `idx_scheduled_job_reminders_id_data_tables` (`id_data_tables`),
+              CONSTRAINT `fk_scheduled_job_reminders_id_scheduled_jobs` FOREIGN KEY (`id_scheduled_jobs`) REFERENCES `scheduled_jobs` (`id`) ON DELETE CASCADE,
+              CONSTRAINT `fk_scheduled_job_reminders_id_parent_scheduled_jobs` FOREIGN KEY (`id_parent_scheduled_jobs`) REFERENCES `scheduled_jobs` (`id`) ON DELETE SET NULL,
               CONSTRAINT `fk_scheduled_job_reminders_id_data_tables` FOREIGN KEY (`id_data_tables`) REFERENCES `data_tables` (`id`) ON DELETE SET NULL
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         SQL);
@@ -928,7 +937,7 @@ final class Version20260601000000 extends AbstractMigration
         }
 
         // Reverse dependency order
-        $this->addSql('ALTER TABLE `pages` DROP FOREIGN KEY `fk_pages_id_published_version`');
+        $this->addSql('ALTER TABLE `pages` DROP FOREIGN KEY `fk_pages_id_published_page_versions`');
 
         foreach ([
             'transactions',

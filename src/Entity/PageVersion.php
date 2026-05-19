@@ -28,8 +28,8 @@ use App\Repository\PageVersionRepository;
 #[ORM\Table(name: 'page_versions')]
 // Index on id_pages for efficient foreign key lookups and joins with pages table
 #[ORM\Index(name: 'idx_page_versions_id_pages', columns: ['id_pages'])]
-// Index on created_by for efficient user-based queries and joins with users table
-#[ORM\Index(name: 'idx_page_versions_created_by', columns: ['created_by'])]
+// Index on id_users for efficient user-based queries and joins with users table
+#[ORM\Index(name: 'idx_page_versions_id_users', columns: ['id_users'])]
 // Index on created_at for efficient time-based queries and ordering
 #[ORM\Index(name: 'idx_page_versions_created_at', columns: ['created_at'])]
 // Index on published_at for efficient queries on published versions
@@ -117,10 +117,10 @@ class PageVersion
      * Set to NULL if the creating user is deleted to preserve version history.
      */
     // Many-to-one relationship with User entity - tracks who created this version
-    // Foreign key column 'created_by' references users.id, can be null
+    // Foreign key column 'id_users' references users.id, can be null
     // SET NULL on delete preserves version history even if user is deleted
     #[ORM\ManyToOne(targetEntity: User::class)]
-    #[ORM\JoinColumn(name: 'created_by', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?User $createdBy = null;
 
     /**

@@ -92,14 +92,20 @@ class PositionManagementServiceTest extends BaseControllerTest
             $this->markTestSkipped('No section hierarchies found to test with');
         }
         
-        $parentSectionId = $sectionHierarchy->getParent();
-        
+        $parentSection = $sectionHierarchy->getParentSection();
+        if ($parentSection === null) {
+            $this->markTestSkipped('Section hierarchy row without a parent section found; cannot normalize.');
+        }
+        $parentSectionId = (int) $parentSection->getId();
+
         // Call the method with real database
         $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
-        
-        // Verify the result by checking the database state
+
+        // Verify the result by checking the database state. The entity uses
+        // the canonical `parentSection` / `childSection` ORM properties that
+        // map to `id_parent_section` / `id_child_section`.
         $hierarchies = $this->entityManager->getRepository('App\Entity\SectionsHierarchy')
-            ->findBy(['parent' => $parentSectionId], ['position' => 'ASC', 'child' => 'ASC']);
+            ->findBy(['parentSection' => $parentSection], ['position' => 'ASC', 'childSection' => 'ASC']);
             
         // Assert that positions are normalized to increments of 10
         $expectedPosition = 0;

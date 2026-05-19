@@ -90,8 +90,8 @@ trait LegacySeedTrait
             'id_jobStatus'          => 'id_job_status',
             'id_resourceTypes'      => 'id_resource_types',
             'id_permissionResults'  => 'id_permission_results',
-            'id_parentScheduledJobs'=> 'id_parent_scheduled_job',
-            'id_scheduledJobs'      => 'id_scheduled_job',
+            'id_parentScheduledJobs'=> 'id_parent_scheduled_jobs',
+            'id_scheduledJobs'      => 'id_scheduled_jobs',
             'id_transactionTypes'   => 'id_transaction_types',
             'id_transactionBy'      => 'id_transaction_by',
             'id_hookTypes'          => 'id_hook_types',
@@ -135,7 +135,39 @@ trait LegacySeedTrait
                 'parent'               => 'id_parent_page',
                 'id_type'              => 'id_page_types',
                 'id_pageAccessTypes'   => 'id_page_access_types',
-                'published_version_id' => 'id_published_version',
+                'published_version_id' => 'id_published_page_versions',
+            ],
+            // fields: legacy id_type is a generic name for the FK to
+            // field_types; canonical naming requires id_<target_table>.
+            'fields' => [
+                'id_type' => 'id_field_types',
+            ],
+            // styles: legacy id_group is a generic name for the FK to
+            // style_groups; canonical naming requires id_<target_table>.
+            'styles' => [
+                'id_group' => 'id_style_groups',
+            ],
+            // user_activity: legacy id_type points at the `lookups` row
+            // describing the activity type; canonical name follows the
+            // id_<semantic_lookup_category> convention used elsewhere.
+            'user_activity' => [
+                'id_type' => 'id_user_activity_types',
+            ],
+            // dataAccessAudit: legacy id_actions referenced the `lookups`
+            // table (auditActions category), not the `actions` entity
+            // table, so the canonical name reflects the lookup category.
+            'dataAccessAudit' => [
+                'id_actions' => 'id_audit_actions',
+            ],
+            // logPerformance: canonical FK uses the plural target table
+            // name (user_activities).
+            'logPerformance' => [
+                'id_user_activity' => 'id_user_activities',
+            ],
+            // apiRequestLogs: legacy user_id is a snake_case but not
+            // table-prefixed FK column; canonical name uses id_users.
+            'apiRequestLogs' => [
+                'user_id' => 'id_users',
             ],
         ];
     }

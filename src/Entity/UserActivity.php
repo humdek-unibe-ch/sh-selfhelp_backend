@@ -13,6 +13,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'user_activities')]
+#[ORM\Index(name: 'idx_user_activities_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_user_activities_id_user_activity_types', columns: ['id_user_activity_types'])]
 class UserActivity
 {
     #[ORM\Id]
@@ -26,8 +28,8 @@ class UserActivity
     #[ORM\Column(name: 'timestamp', type: 'datetime_immutable')]
     private \DateTimeImmutable $timestamp;
 
-    #[ORM\Column(name: 'id_type', type: 'integer')]
-    private int $idType;
+    #[ORM\Column(name: 'id_user_activity_types', type: 'integer')]
+    private int $idUserActivityTypes;
 
     #[ORM\Column(name: 'exec_time', type: 'decimal', precision: 10, scale: 8, nullable: true)]
     private ?string $execTime = null;
@@ -46,7 +48,7 @@ class UserActivity
     private ?User $user = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_type', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_user_activity_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Lookup $activityType = null;
 
     #[ORM\OneToOne(mappedBy: 'userActivity', targetEntity: LogPerformance::class)]
@@ -95,7 +97,12 @@ class UserActivity
 
     public function getIdType(): ?int
     {
-        return $this->idType;
+        return $this->idUserActivityTypes;
+    }
+
+    public function getIdUserActivityTypes(): ?int
+    {
+        return $this->idUserActivityTypes;
     }
 
     public function getExecTime(): ?string

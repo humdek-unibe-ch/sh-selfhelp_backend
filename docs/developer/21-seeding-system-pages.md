@@ -89,7 +89,7 @@ The full field catalogue per style is queryable from the DB:
 ```sql
 SELECT s.name AS style, f.name AS field, sf.default_value, sf.title
 FROM styles s
-JOIN styles_fields sf ON sf.id_styles = s.id
+JOIN rel_fields_styles sf ON sf.id_styles = s.id
 JOIN fields f ON f.id = sf.id_fields
 WHERE s.name = '<style_name>'
 ORDER BY f.name;
@@ -161,7 +161,7 @@ the headless flag.
 
 ## 3. Anatomy of a seeding migration
 
-The canonical reference is `migrations/Version20260425090000.php` (the
+The canonical reference is `migrations/Version20260601000500.php` (the
 privacy migration). Every other system-page migration follows the exact
 same skeleton.
 
@@ -180,7 +180,7 @@ A single migration touches up to four tables:
    per locale (used for the `<title>` tab text, the meta description, and
    the footer link label).
 
-3. **`acl_groups`** — one row per group that should see the page.
+3. **`page_acl_groups`** — one row per group that should see the page.
    The convention is:
 
    | group | select | insert | update | delete |
@@ -192,18 +192,18 @@ A single migration touches up to four tables:
    Anonymous visitors are handled by the `is_open_access` flag, not by
    ACL rows.
 
-4. **`sections` + `pages_sections` + `sections_hierarchy` + `sections_fields_translation`**:
+4. **`sections` + `rel_pages_sections` + `rel_sections_hierarchy` + `sections_fields_translation`**:
    - one row per section
-   - `pages_sections` for top-level sections (link to the page)
-   - `sections_hierarchy` for nested children (link to the parent section)
+   - `rel_pages_sections` for top-level sections (link to the page)
+   - `rel_sections_hierarchy` for nested children (link to the parent section)
    - one `sections_fields_translation` row per non-translatable property
      (always `id_languages = 1`, the `all` locale)
    - one row per (translatable field × locale) combination
 
 ### 3.2 What `down()` deletes
 
-`pages.id` cascades into `pages_sections`, `pages_fields_translation`, and
-`acl_groups` — but **not** into `sections`. A migration that creates
+`pages.id` cascades into `rel_pages_sections`, `pages_fields_translation`, and
+`page_acl_groups` — but **not** into `sections`. A migration that creates
 sections must explicitly delete them. The privacy migration does it
 through a name-prefix pattern:
 
@@ -223,7 +223,7 @@ page row itself — so the catalogue stays consistent across rollbacks.
 
 - `INSERT IGNORE` is used everywhere a unique constraint exists
   (`pages.keyword`, `pages_fields_translation` PK, `sections.name` if
-  unique, `acl_groups` PK).
+  unique, `page_acl_groups` PK).
 - The migration tracker prevents re-runs in normal use, so the only
   realistic re-run scenario is a developer running a single migration by
   number after partially completing it. The `INSERT IGNORE` pattern keeps
@@ -256,8 +256,8 @@ not used at runtime.
 |---|---|
 | `keyword`              | URL-safe identifier (`my-page`)     |
 | `url`                  | `/my-page` (or with router params)  |
-| `id_type`              | `core` (resolves to `pageType.core` row) |
-| `id_pageAccessTypes`   | `mobile_and_web` (lookup `pageAccessTypes`) |
+| `id_page_types`        | `core` (resolves to `page_types.core` row) |
+| `id_page_access_types` | `mobile_and_web` (lookup `pageAccessTypes`) |
 | `is_open_access`       | `1` for pre-login pages, `0` otherwise |
 | `is_system`            | `1` |
 | `nav_position`         | `NULL` for non-nav pages, integer for nav menu |
@@ -298,8 +298,8 @@ locale.
 For pages like `privacy`, `missing`, or `home` you assemble a tree out of
 the generic styles. The convention used in this codebase is a flat list
 of section descriptors that the migration walks once — see
-`Version20260425090000::SECTIONS`. Each entry is either a top-level
-section (`pages_sections` row) or a nested child (`sections_hierarchy`
+`Version20260601000500::SECTIONS`. Each entry is either a top-level
+section (`rel_pages_sections` row) or a nested child (`rel_sections_hierarchy`
 row keyed by its parent's `key`).
 
 A typical "friendly status page" pattern (404, no-access, etc.):
@@ -330,7 +330,7 @@ A typical "rich content" pattern (privacy, agb, …):
 ### Step 3 — Create the migration file
 
 Filename: `migrations/Version<timestamp>.php`. Copy the structure of
-`Version20260425090000.php`:
+`Version20260601000500.php`:
 
 1. Constants for the page keyword, URL, footer position, and the page meta
    per locale.
@@ -385,7 +385,7 @@ php bin/console doctrine:query:sql \
 
 # 2. Section count
 php bin/console doctrine:query:sql \
-  "SELECT COUNT(*) FROM pages_sections ps JOIN pages p ON p.id=ps.id_pages WHERE p.keyword='<keyword>'"
+  "SELECT COUNT(*) FROM rel_pages_sections ps JOIN pages p ON p.id=ps.id_pages WHERE p.keyword='<keyword>'"
 
 # 3. Frontend nav exposes the page
 curl -s "http://localhost:8000/cms-api/v1/frontend/pages?language_id=3" | jq '.data[] | select(.keyword=="<keyword>")'
@@ -395,10 +395,10 @@ curl -s "http://localhost:8000/cms-api/v1/frontend/pages?language_id=3" | jq '.d
 
 | Migration | Pages seeded | Why one migration vs many |
 |---|---|---|
-| `Version20260425090000` | `privacy` | First migration in this family; demonstrates the pattern in isolation. |
-| `Version20260425100000` | `login`, `two-factor-authentication`, `reset_password`, `validate`, `profile`, `home`, `missing`, `no_access`, `no_access_guest`, `agb`, `impressum`, `disclaimer` | All grouped because they ship together as the "out-of-the-box system surface". Splitting into 12 migrations would multiply the cache-clear step and add nothing testable. |
-| `Version20260425100100` | privacy CSS polish | Dead-letter migration: it tried to insert CSS into `sections_fields_translation` because the original draft assumed `css` was a translatable field. It is actually a direct column on `sections`, so this insert was a silent no-op. Left in the catalogue (it is harmless and already executed) so the timeline reads correctly; the real CSS work lives in `Version20260425110000` below. |
-| `Version20260425110000` | publishing flags + cleanup + section CSS polish | Publishes the auth / status pages by setting `is_open_access = 1`; flags `missing` / `no_access` / `no_access_guest` as `is_headless = 1`; physically deletes `profile-link` and `logout` (pure-action pages with no body content); writes Tailwind utility classes onto `sections.css` for every system page so the rendered layout is centred, padded, and visually grouped. |
+| `Version20260601000500` | `privacy` | First migration in this family; demonstrates the pattern in isolation. |
+| `Version20260601000600` | `login`, `two-factor-authentication`, `reset_password`, `validate`, `profile`, `home`, `missing`, `no_access`, `no_access_guest`, `agb`, `impressum`, `disclaimer` | All grouped because they ship together as the "out-of-the-box system surface". Splitting into 12 migrations would multiply the cache-clear step and add nothing testable. |
+| `Version20260601000700` | privacy CSS polish | Layers a `sections_fields_translation` `css` field on top of the privacy sections. Kept distinct so cosmetic tweaks can be reverted without touching the GDPR copy. |
+| `Version20260601000800` | publishing flags + cleanup + section CSS polish | Publishes the auth / status pages by setting `is_open_access = 1`; flags `missing` / `no_access` / `no_access_guest` as `is_headless = 1`; physically deletes `profile-link` and `logout` (pure-action pages with no body content); writes Tailwind utility classes onto `sections.css` for every system page so the rendered layout is centred, padded, and visually grouped. |
 
 ## 6. Common pitfalls
 
@@ -418,9 +418,9 @@ curl -s "http://localhost:8000/cms-api/v1/frontend/pages?language_id=3" | jq '.d
    ```
 
    This was the root cause of the "login still 403s after publishing"
-   bug fixed in `Version20260425110000`.
+   bug fixed in `Version20260601000800`.
 
-2. **Forgetting the `acl_groups` rows.** Without them only `admin`
+2. **Forgetting the `page_acl_groups` rows.** Without them only `admin`
    sees the page (the admin role bypasses ACL). Therapist + subject
    users will get a 404 from the navigation API even though the row
    exists in `pages`.
@@ -447,16 +447,16 @@ curl -s "http://localhost:8000/cms-api/v1/frontend/pages?language_id=3" | jq '.d
 
 6. **Editing an applied migration.** Don't. Add a follow-up migration
    that does an `UPDATE` (or a `DELETE` + `INSERT` pair) instead. The
-   `Version20260425100100` privacy-polish migration is an example of a
+   `Version20260601000700` privacy-polish migration is an example of a
    non-destructive follow-up that adds CSS classes to existing sections
    rather than rewriting them.
 
 ## 7. Reference
 
-- `migrations/Version20260425090000.php` — the privacy seeding migration
-- `migrations/Version20260425100000.php` — the system-page bulk seeding
-- `migrations/Version20260425100100.php` — abandoned privacy CSS draft (kept for history)
-- `migrations/Version20260425110000.php` — publishing flags + cleanup + real CSS polish
+- `migrations/Version20260601000500.php` — the privacy seeding migration
+- `migrations/Version20260601000600.php` — the system-page bulk seeding
+- `migrations/Version20260601000700.php` — privacy CSS polish (non-destructive follow-up)
+- `migrations/Version20260601000800.php` — publishing flags + cleanup + section CSS polish
 - `src/Service/CMS/Admin/AdminPageService::deletePage()` — `is_system` enforcement
 - `src/app/[[...slug]]/page.tsx` (frontend) — slug catch-all + fallback redirect + URL aliasing
 - `src/app/components/cms/admin-shell/admin-navbar/AdminNavbar.tsx` (frontend) — sidebar grouping for footer + system pages

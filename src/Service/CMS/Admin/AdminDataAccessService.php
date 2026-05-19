@@ -336,7 +336,7 @@ class AdminDataAccessService extends BaseService
             $formattedPermissions[] = [
                 'id_roles' => $permission->getIdRoles(),
                 'role_name' => $permission->getRole()->getName(),
-                'id_resourceTypes' => $permission->getIdResourceTypes(),
+                'id_resource_types' => $permission->getIdResourceTypes(),
                 'resource_id' => $permission->getResourceId(),
                 'resource_type_name' => $permission->getResourceType()->getLookupValue(),
                 'unified_permissions' => $permission->getCrudPermissions(),

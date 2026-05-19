@@ -46,7 +46,7 @@ graph TD
 | **Users** | Frontend website users | Admin/CMS users |
 | **Granularity** | Page access (select/insert/update/delete) | Resource-specific permissions |
 | **Logic** | User > Group permissions | Role aggregation (BIT_OR) |
-| **Tables** | `acl_groups` | `role_data_access`, `dataAccessAudit` |
+| **Tables** | `page_acl_groups` | `role_data_access`, `data_access_audits` |
 | **Caching** | Stored procedure based | Advanced CacheService integration |
 
 ## 🗄️ Database Schema
@@ -56,31 +56,31 @@ graph TD
 CREATE TABLE role_data_access (
   id int NOT NULL AUTO_INCREMENT,
   id_roles int NOT NULL,
-  id_resourceTypes int NOT NULL,
+  id_resource_types int NOT NULL,
   resource_id int NOT NULL,
   crud_permissions smallint unsigned NOT NULL DEFAULT '2' COMMENT 'Bitwise: 1=CREATE, 2=READ, 4=UPDATE, 8=DELETE',
   created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY unique_role_resource (id_roles, id_resourceTypes, resource_id),
-  KEY IDX_role_data_access_roles (id_roles),
-  KEY IDX_role_data_access_resource_types (id_resourceTypes),
-  KEY IDX_role_data_access_resource_id (resource_id),
-  KEY IDX_role_data_access_permissions (crud_permissions),
-  CONSTRAINT FK_role_data_access_roles FOREIGN KEY (id_roles) REFERENCES roles (id) ON DELETE CASCADE,
-  CONSTRAINT FK_role_data_access_resource_types FOREIGN KEY (id_resourceTypes) REFERENCES lookups (id) ON DELETE CASCADE
+  UNIQUE KEY uq_role_data_access_role_resource (id_roles, id_resource_types, resource_id),
+  KEY idx_role_data_access_id_roles (id_roles),
+  KEY idx_role_data_access_id_resource_types (id_resource_types),
+  KEY idx_role_data_access_resource_id (resource_id),
+  KEY idx_role_data_access_crud_permissions (crud_permissions),
+  CONSTRAINT fk_role_data_access_id_roles          FOREIGN KEY (id_roles)          REFERENCES roles (id)   ON DELETE CASCADE,
+  CONSTRAINT fk_role_data_access_id_resource_types FOREIGN KEY (id_resource_types) REFERENCES lookups (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
 ### Data Access Audit Table
 ```sql
-CREATE TABLE dataAccessAudit (
+CREATE TABLE data_access_audits (
   id int NOT NULL AUTO_INCREMENT,
   id_users int NOT NULL,
-  id_resourceTypes int NOT NULL,
+  id_resource_types int NOT NULL,
   resource_id int NOT NULL,
   id_actions int NOT NULL,
-  id_permissionResults int NOT NULL,
+  id_permission_results int NOT NULL,
   crud_permission smallint unsigned DEFAULT NULL,
   http_method varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   request_body_hash varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -90,17 +90,17 @@ CREATE TABLE dataAccessAudit (
   notes text COLLATE utf8mb4_unicode_ci,
   created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY IDX_dataAccessAudit_users (id_users),
-  KEY IDX_dataAccessAudit_resource_types (id_resourceTypes),
-  KEY IDX_dataAccessAudit_resource_id (resource_id),
-  KEY IDX_dataAccessAudit_created_at (created_at),
-  KEY IDX_dataAccessAudit_permission_results (id_permissionResults),
-  KEY IDX_dataAccessAudit_http_method (http_method),
-  KEY IDX_dataAccessAudit_request_body_hash (request_body_hash),
-  CONSTRAINT FK_dataAccessAudit_users FOREIGN KEY (id_users) REFERENCES users (id),
-  CONSTRAINT FK_dataAccessAudit_resource_types FOREIGN KEY (id_resourceTypes) REFERENCES lookups (id),
-  CONSTRAINT FK_dataAccessAudit_actions FOREIGN KEY (id_actions) REFERENCES lookups (id),
-  CONSTRAINT FK_dataAccessAudit_permission_results FOREIGN KEY (id_permissionResults) REFERENCES lookups (id)
+  KEY idx_data_access_audits_id_users (id_users),
+  KEY idx_data_access_audits_id_resource_types (id_resource_types),
+  KEY idx_data_access_audits_resource_id (resource_id),
+  KEY idx_data_access_audits_created_at (created_at),
+  KEY idx_data_access_audits_id_permission_results (id_permission_results),
+  KEY idx_data_access_audits_http_method (http_method),
+  KEY idx_data_access_audits_request_body_hash (request_body_hash),
+  CONSTRAINT fk_data_access_audits_id_users              FOREIGN KEY (id_users)              REFERENCES users (id),
+  CONSTRAINT fk_data_access_audits_id_resource_types     FOREIGN KEY (id_resource_types)     REFERENCES lookups (id),
+  CONSTRAINT fk_data_access_audits_id_actions            FOREIGN KEY (id_actions)            REFERENCES lookups (id),
+  CONSTRAINT fk_data_access_audits_id_permission_results FOREIGN KEY (id_permission_results) REFERENCES lookups (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
@@ -157,7 +157,7 @@ class RoleDataAccess
     #[ORM\Column(name: 'id_roles', type: Types::INTEGER)]
     private int $idRoles;
 
-    #[ORM\Column(name: 'id_resourceTypes', type: Types::INTEGER)]
+    #[ORM\Column(name: 'id_resource_types', type: Types::INTEGER)]
     private int $idResourceTypes;
 
     #[ORM\Column(name: 'resource_id', type: Types::INTEGER)]
@@ -193,7 +193,7 @@ class RoleDataAccess
 namespace App\Entity;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'dataAccessAudit')]
+#[ORM\Table(name: 'data_access_audits')]
 class DataAccessAudit
 {
     #[ORM\Id]
@@ -205,7 +205,7 @@ class DataAccessAudit
     #[ORM\Column(name: 'id_users', type: Types::INTEGER)]
     private int $idUsers;
 
-    #[ORM\Column(name: 'id_resourceTypes', type: Types::INTEGER)]
+    #[ORM\Column(name: 'id_resource_types', type: Types::INTEGER)]
     private int $idResourceTypes;
 
     #[ORM\Column(name: 'resource_id', type: Types::INTEGER)]
@@ -353,7 +353,7 @@ private function extractResourceId($item, string $resourceType): int
 {
     return match ($resourceType) {
         LookupService::RESOURCE_TYPES_GROUP => $item['id_groups'] ?? $item['group_id'] ?? $item['id'] ?? 0,
-        LookupService::RESOURCE_TYPES_DATA_TABLE => $item['id_dataTables'] ?? $item['id'] ?? 0,
+        LookupService::RESOURCE_TYPES_DATA_TABLE => $item['id_data_tables'] ?? $item['id'] ?? 0,
         LookupService::RESOURCE_TYPES_PAGES => $item['id_pages'] ?? $item['id'] ?? $item['page_id'] ?? 0,
         default => 0
     };
@@ -424,7 +424,7 @@ The `applyFilters()` method provides **global, dynamic filtering** capability ac
 
 **Resource Type Field Mapping:**
 - **Pages**: `id_pages` → `id` → `page_id`
-- **Data Tables**: `id_dataTables` → `id`
+- **Data Tables**: `id_data_tables` → `id`
 - **Groups**: `id_groups` → `group_id` → `id`
 
 **Permission Map Structure:**
@@ -574,9 +574,9 @@ class AdminDataAccessController extends AbstractController
                 ];
             }
 
-            if ($row['id_resourceTypes']) {
+            if ($row['id_resource_types']) {
                 $grouped[$roleId]['permissions'][] = [
-                    'resource_type_id' => $row['id_resourceTypes'],
+                    'resource_type_id' => $row['id_resource_types'],
                     'resource_type_name' => $row['resource_type_name'],
                     'resource_id' => $row['resource_id'],
                     'crud_permissions' => $row['crud_permissions']
@@ -1009,11 +1009,11 @@ SELECT
     da.ip_address,
     da.user_agent,
     da.created_at
-FROM dataAccessAudit da
+FROM data_access_audits da
 JOIN users u ON da.id_users = u.id
-JOIN lookups rt ON da.id_resourceTypes = rt.id
+JOIN lookups rt ON da.id_resource_types = rt.id
 JOIN lookups a ON da.id_actions = a.id
-JOIN lookups pr ON da.id_permissionResults = pr.id
+JOIN lookups pr ON da.id_permission_results = pr.id
 WHERE pr.lookup_code = 'denied'
 AND da.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
 ORDER BY da.created_at DESC;
@@ -1024,9 +1024,9 @@ SELECT
     COUNT(*) as permission_checks,
     SUM(CASE WHEN pr.lookup_code = 'granted' THEN 1 ELSE 0 END) as granted,
     SUM(CASE WHEN pr.lookup_code = 'denied' THEN 1 ELSE 0 END) as denied
-FROM dataAccessAudit da
+FROM data_access_audits da
 JOIN users u ON da.id_users = u.id
-JOIN lookups pr ON da.id_permissionResults = pr.id
+JOIN lookups pr ON da.id_permission_results = pr.id
 WHERE da.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
 GROUP BY u.id, u.username
 ORDER BY permission_checks DESC;

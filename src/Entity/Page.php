@@ -13,7 +13,11 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'pages')]
-#[ORM\Index(name: 'idx_pages_id_published_version', columns: ['id_published_version'])]
+#[ORM\UniqueConstraint(name: 'uq_pages_keyword', columns: ['keyword'])]
+#[ORM\Index(name: 'idx_pages_id_parent_page', columns: ['id_parent_page'])]
+#[ORM\Index(name: 'idx_pages_id_page_types', columns: ['id_page_types'])]
+#[ORM\Index(name: 'idx_pages_id_page_access_types', columns: ['id_page_access_types'])]
+#[ORM\Index(name: 'idx_pages_id_published_page_versions', columns: ['id_published_page_versions'])]
 class Page
 {
     #[ORM\Id]
@@ -21,7 +25,7 @@ class Page
     #[ORM\Column(type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'keyword', type: 'string', length: 100, unique: true)]
+    #[ORM\Column(name: 'keyword', type: 'string', length: 100)]
     private ?string $keyword = null;
 
     #[ORM\Column(name: 'url', type: 'string', length: 255, nullable: true)]
@@ -62,7 +66,7 @@ class Page
      * Indexed for efficient queries on published versions.
      */
     #[ORM\ManyToOne(targetEntity: PageVersion::class)]
-    #[ORM\JoinColumn(name: 'id_published_version', referencedColumnName: 'id', nullable: true)]
+    #[ORM\JoinColumn(name: 'id_published_page_versions', referencedColumnName: 'id', nullable: true)]
     private ?PageVersion $publishedVersion = null;
 
     public function getId(): ?int

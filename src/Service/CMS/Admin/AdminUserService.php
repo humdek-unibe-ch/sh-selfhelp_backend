@@ -1002,7 +1002,7 @@ class AdminUserService extends BaseService
         return array_merge($basic, [
             'user_name' => $user->getUserName(),
             'id_languages' => $user->getLanguage()?->getId(),
-            'id_userTypes' => $user->getUserType()?->getId(),
+            'id_user_types' => $user->getUserType()?->getId(),
             'groups' => $fresh ? $this->fetchUserGroupsFromEntity($user) : $this->getUserGroups($user->getId()),
             'roles' => $fresh ? $this->fetchUserRolesFromEntity($user) : $this->getUserRoles($user->getId())
         ]);

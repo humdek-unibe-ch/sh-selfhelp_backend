@@ -646,7 +646,7 @@ class AdminRoleService extends BaseService
                 GROUP_CONCAT(DISTINCT p.name ORDER BY p.name SEPARATOR ',') as required_permissions,
                 GROUP_CONCAT(DISTINCT p.description ORDER BY p.name SEPARATOR '||') as permission_descriptions
             FROM api_routes ar
-            LEFT JOIN api_routes_permissions arp ON ar.id = arp.id_api_routes
+            LEFT JOIN rel_api_routes_permissions arp ON ar.id = arp.id_api_routes
             LEFT JOIN permissions p ON arp.id_permissions = p.id
             WHERE ar.route_name NOT LIKE 'auth_%'  -- Exclude auth routes as they're handled separately
             GROUP BY ar.id, ar.route_name, ar.version, ar.path, ar.controller, ar.methods, ar.requirements, ar.params

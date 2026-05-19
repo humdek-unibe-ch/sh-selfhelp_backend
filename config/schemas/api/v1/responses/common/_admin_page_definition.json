@@ -12,7 +12,7 @@
             "type": "object",
             "properties": {
                 "id_pages": { "type": "integer" },
-                "parent": { "type": ["integer", "null"] },
+                "id_parent_page": { "type": ["integer", "null"] },
                 "keyword": { "type": "string" },
                 "url": { "type": ["string", "null"] },
                 "nav_position": { "type": ["integer", "null"] },
@@ -20,14 +20,14 @@
                 "is_headless": { "type": "boolean" },
                 "is_open_access": { "type": "boolean" },
                 "is_system": { "type": "boolean" },
-                "id_pageAccessTypes": { "type": "integer" },
-                "id_type": { "type": "integer" },
+                "id_page_access_types": { "type": "integer" },
+                "id_page_types": { "type": "integer" },
                 "crud": { "type": "integer", "minimum": 0, "maximum": 15 }
             },
             "required": [
-                "id_pages", "parent", "keyword", "url",
+                "id_pages", "id_parent_page", "keyword", "url",
                 "nav_position", "footer_position", "is_headless", "is_open_access",
-                "is_system", "id_pageAccessTypes", "id_type", "crud"
+                "is_system", "id_page_access_types", "id_page_types", "crud"
             ]
         }
     },

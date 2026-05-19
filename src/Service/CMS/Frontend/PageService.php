@@ -103,12 +103,15 @@ class PageService extends BaseService
         // Try to get from cache first
         $cacheKey = "pages_{$mode}_{$admin}_{$languageId}";
 
-        return $this->cache
+        $pages = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
             ->getList($cacheKey, function () use ($mode, $admin, $languageId, $userId) {
-                // Get all pages with ACL for the user using the ACLService (cached)
+                // Get all pages with ACL for the user using the ACLService (cached).
+                // The `get_user_acl` stored procedure returns canonical snake_case
+                // columns (id_parent_page, id_page_types, id_page_access_types)
+                // — no key normalization is needed.
                 $allPages = $this->aclService->getAllUserAcls($userId);
 
                 // Determine which type to remove based on mode
@@ -124,8 +127,9 @@ class PageService extends BaseService
                     }
 
                     // If admin is true, then all pages (normal filtering)
-                    // If not admin, then only pages with id_type = 2 or 3 (core and experiment pages)
-                    if (!$admin && isset($item['id_type']) && !in_array($item['id_type'], [2, 3])) {
+                    // If not admin, then only pages with id_page_types = 2 or 3
+                    // (core and experiment pages)
+                    if (!$admin && isset($item['id_page_types']) && !in_array($item['id_page_types'], [2, 3])) {
                         return false;
                     }
 
@@ -134,7 +138,7 @@ class PageService extends BaseService
                         return true;
                     }
 
-                    return $item['id_pageAccessTypes'] != $removeTypeId;
+                    return ($item['id_page_access_types'] ?? null) != $removeTypeId;
                 }));
 
                 // Get default language ID for fallback translations
@@ -190,9 +194,9 @@ class PageService extends BaseService
                 // Build the hierarchy
                 $nestedPages = [];
                 foreach ($pagesMap as $id => &$page) {
-                    if (isset($page['parent']) && $page['parent'] !== null && isset($pagesMap[$page['parent']])) {
+                    if (isset($page['id_parent_page']) && $page['id_parent_page'] !== null && isset($pagesMap[$page['id_parent_page']])) {
                         // This is a child page, add it to its parent's children array
-                        $pagesMap[$page['parent']]['children'][] = &$page;
+                        $pagesMap[$page['id_parent_page']]['children'][] = &$page;
                     } else {
                         // This is a root level page
                         $nestedPages[] = &$page;
@@ -206,6 +210,8 @@ class PageService extends BaseService
                 // Cache the result for this user
                 return $nestedPages;
             });
+
+        return $pages;
     }
 
     /**
@@ -269,7 +275,7 @@ class PageService extends BaseService
      * - Pages flagged `mobile` only resolve for `mobile` callers.
      * - When `$mode` is null (legacy callers / internal callers), the
      *   check is skipped for back-compat.
-     * - Pages with no `id_pageAccessTypes` are treated as `web` (legacy
+     * - Pages with no `id_page_access_types` are treated as `web` (legacy
      *   default).
      */
     private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array

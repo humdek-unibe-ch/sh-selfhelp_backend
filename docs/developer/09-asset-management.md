@@ -57,7 +57,7 @@ class Asset
     private ?int $id = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_assetTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_asset_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private Lookup $assetType;
 
     #[ORM\Column(name: 'folder', type: 'string', length: 100, nullable: true)]
@@ -78,13 +78,13 @@ class Asset
 ```sql
 CREATE TABLE `assets` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `id_assetTypes` int NOT NULL,
+  `id_asset_types` int NOT NULL,
   `folder` varchar(100) DEFAULT NULL,
   `file_name` varchar(100) DEFAULT NULL,
   `file_path` varchar(1000) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `UNIQ_79D17D8ED7DF1668` (`file_name`),
-  FOREIGN KEY (`id_assetTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+  FOREIGN KEY (`id_asset_types`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 

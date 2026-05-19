@@ -172,7 +172,7 @@ class FormValidationService extends BaseService
         }
 
         // Check for potentially dangerous fields
-        $forbiddenFields = ['id', 'timestamp', 'id_actionTriggerTypes'];
+        $forbiddenFields = ['id', 'timestamp', 'id_action_trigger_types'];
         foreach ($forbiddenFields as $forbiddenField) {
             if (array_key_exists($forbiddenField, $formData)) {
                 throw new ServiceException(

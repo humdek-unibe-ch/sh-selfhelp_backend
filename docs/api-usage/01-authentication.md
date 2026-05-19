@@ -13,7 +13,7 @@ The SelfHelp API provides comprehensive authentication and user management funct
 | Impersonation (JWT)      | **900 s / 15 minutes**    | `IMPERSONATION_TOKEN_TTL` | Symfony answers `401`. There is **no refresh** for impersonation; the admin must call `/admin/users/{id}/impersonate` again or stop. |
 
 The refresh endpoint **rotates** the refresh token: each successful call
-deletes the old `refreshTokens` row and returns a fresh pair. Holding a
+deletes the old `refresh_tokens` row and returns a fresh pair. Holding a
 long-lived session therefore advances the refresh expiry by another full
 window every hour (or every access-token lifetime you configure).
 

@@ -16,21 +16,37 @@ use Doctrine\ORM\Mapping as ORM;
 class LogPerformance
 {
     #[ORM\Id]
-    #[ORM\Column(name: 'id_user_activity', type: 'integer')]
-    private int $idUserActivity;
+    #[ORM\Column(name: 'id_user_activities', type: 'integer')]
+    private int $idUserActivities;
 
     #[ORM\Column(name: 'log', type: 'text', nullable: true)]
     private ?string $log = null;
 
     #[ORM\OneToOne(targetEntity: UserActivity::class, inversedBy: 'logPerformance')]
-    #[ORM\JoinColumn(name: 'id_user_activity', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_user_activities', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?UserActivity $userActivity = null;
 
     public function getIdUserActivity(): ?int
     {
-        return $this->idUserActivity;
+        return $this->idUserActivities;
     }
-    public function setIdUserActivity(int $idUserActivity): self { $this->idUserActivity = $idUserActivity; return $this; }
+
+    public function setIdUserActivity(int $idUserActivities): self
+    {
+        $this->idUserActivities = $idUserActivities;
+        return $this;
+    }
+
+    public function getIdUserActivities(): ?int
+    {
+        return $this->idUserActivities;
+    }
+
+    public function setIdUserActivities(int $idUserActivities): self
+    {
+        $this->idUserActivities = $idUserActivities;
+        return $this;
+    }
 
     public function getLog(): ?string
     {

@@ -144,7 +144,7 @@ class StyleRepository extends ServiceEntityRepository
     /**
      * Fetch the full style/field schema for every style, keyed by style name.
      *
-     * Single-query join over styles → styles_fields → fields → fieldType, then
+     * Single-query join over styles → rel_fields_styles → fields → field_types, then
      * a second query for allowed parent/child relationships (resolved by name).
      *
      * Shape:
@@ -198,10 +198,10 @@ class StyleRepository extends ServiceEntityRepository
                 sf.disabled        AS disabled,
                 sf.hidden          AS hidden
             FROM styles s
-            INNER JOIN style_groups sg ON sg.id = s.id_group
+            INNER JOIN style_groups sg ON sg.id = s.id_style_groups
             LEFT JOIN rel_fields_styles sf ON sf.id_styles = s.id
             LEFT JOIN fields f ON f.id = sf.id_fields
-            LEFT JOIN field_types ft ON ft.id = f.id_type
+            LEFT JOIN field_types ft ON ft.id = f.id_field_types
             ORDER BY s.name ASC, f.name ASC
         ')->fetchAllAssociative();
 
