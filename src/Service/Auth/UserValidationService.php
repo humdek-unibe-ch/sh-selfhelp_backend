@@ -190,6 +190,17 @@ class UserValidationService extends BaseService
             $user->setToken($token);
             $this->entityManager->flush();
 
+            $emailConfig = $this->mailTemplateService->buildEmailConfig('mail_confirm', [
+                'from_email'       => self::DEFAULT_FROM_EMAIL,
+                'from_name'        => self::DEFAULT_FROM_NAME,
+                'reply_to'         => self::DEFAULT_FROM_EMAIL,
+                'subject'          => 'Please validate your account',
+                'recipient_emails' => $user->getEmail(),
+                'body'             => $this->generateValidationEmailBody($user, $token),
+                'is_html'          => false,
+                ...$emailConfig,
+            ]);
+
             $job = $this->scheduleValidationEmail($userId, $token, $emailConfig);
             if (!$job) {
                 return [
@@ -271,7 +282,7 @@ class UserValidationService extends BaseService
                 'subject'          => 'Please validate your account',
                 'recipient_emails' => $user->getEmail(),
                 'body'             => $this->generateValidationEmailBody($user, $token),
-                'is_html'          => true,
+                'is_html'          => false,
             ]),
             ...$emailConfig,
         ];
@@ -304,7 +315,7 @@ class UserValidationService extends BaseService
                 'subject'          => 'Welcome to SelfHelp Platform - Your account is now active!',
                 'recipient_emails' => $user->getEmail(),
                 'body'             => $this->generateWelcomeEmailBody($user),
-                'is_html'          => true,
+                'is_html'          => false,
             ]),
             ...$emailConfig,
         ];
@@ -358,7 +369,7 @@ class UserValidationService extends BaseService
             'recipient_emails' => $user->getEmail(),
             'subject'          => 'Your verification code',
             'body'             => $this->generate2faEmailBody($userName, $code),
-            'is_html'          => true,
+            'is_html'          => false,
         ]);
 
         $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(

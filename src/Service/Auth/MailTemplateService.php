@@ -24,7 +24,7 @@ use Doctrine\DBAL\Connection;
  */
 class MailTemplateService
 {
-    private const PAGE_KEYWORD = 'sh-mail-templates';
+    private const PAGE_KEYWORD = 'sh-mail-config';
 
     /** @var array<string, string|null>|null resolved once per request */
     private ?array $globalConfig = null;
@@ -48,7 +48,7 @@ class MailTemplateService
      * @param string $type  'mail_2fa' | 'mail_confirm' | 'mail_welcome' | 'mail_recovery'
      * @return array{subject: string|null, body: string|null}
      */
-    public function resolve(string $type): array
+    public function resolve(string $type, bool $isHtml = true): array
     {
         if (isset($this->typeCache[$type])) {
             return $this->typeCache[$type];
@@ -63,7 +63,7 @@ class MailTemplateService
 
         return $this->typeCache[$type] = [
             'subject' => $this->fetchField($pageId, $type . '_subject', $languageId),
-            'body'    => $this->fetchField($pageId, $type . '_body', $languageId),
+            'body'    => $this->fetchField($pageId, $type . '_body', $languageId, $isHtml),
         ];
     }
 
@@ -80,7 +80,7 @@ class MailTemplateService
     public function buildEmailConfig(string $type, array $fallback): array
     {
         $global   = $this->resolveGlobalConfig();
-        $template = $this->resolve($type);
+        $template = $this->resolve($type, $global['is_html'] ?? false);
 
         $cmsGlobal = array_filter([
             'from_email' => $global['from_email'],
@@ -93,7 +93,7 @@ class MailTemplateService
             'subject' => $template['subject'],
             'body'    => $template['body'],
         ], fn($v) => $v !== null);
-
+    
         return array_merge($fallback, $cmsGlobal, $cmsType);
     }
 
@@ -118,10 +118,10 @@ class MailTemplateService
             ];
         }
 
-        $languageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        // Always 1 because is a props
+        $languageId = 1;
 
         $isHtmlRaw = $this->fetchField($pageId, 'mail_is_html', $languageId);
-
         return $this->globalConfig = [
             'from_email' => $this->fetchField($pageId, 'mail_from_email', $languageId),
             'from_name'  => $this->fetchField($pageId, 'mail_from_name', $languageId),
@@ -145,17 +145,22 @@ class MailTemplateService
     {
         $content = $this->connection->fetchOne(
             'SELECT pft.content
-             FROM pages_fields_translation pft
-             INNER JOIN fields f ON pft.id_fields = f.id
-             WHERE pft.id_pages    = :pageId
-               AND f.name          = :fieldName
-               AND pft.id_languages = :languageId
-             LIMIT 1',
+         FROM pages_fields_translation pft
+         INNER JOIN fields f ON pft.id_fields = f.id
+         WHERE pft.id_pages     = :pageId
+           AND f.name           = :fieldName
+           AND pft.id_languages = :languageId
+         LIMIT 1',
             ['pageId' => $pageId, 'fieldName' => $fieldName, 'languageId' => $languageId]
         );
 
-        if ($content === false || TranslationContentHelper::isEffectivelyEmpty($content)) {
+        if ($content === false || $content === null || $content === '') {
             return null;
+        }
+
+        // Strip HTML for subjects always
+        if (str_ends_with($fieldName, '_subject')) {
+            return html_entity_decode(strip_tags($content), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }
 
         return $content;
