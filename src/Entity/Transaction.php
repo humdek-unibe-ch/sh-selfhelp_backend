@@ -13,6 +13,9 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'transactions')]
+#[ORM\Index(name: 'idx_transactions_id_transaction_types', columns: ['id_transaction_types'])]
+#[ORM\Index(name: 'idx_transactions_id_transaction_by', columns: ['id_transaction_by'])]
+#[ORM\Index(name: 'idx_transactions_id_users', columns: ['id_users'])]
 class Transaction
 {
     #[ORM\Id]

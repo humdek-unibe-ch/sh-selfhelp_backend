@@ -16,6 +16,7 @@ use Doctrine\DBAL\Types\Types;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'permissions')]
+#[ORM\UniqueConstraint(name: 'uq_permissions_name', columns: ['name'])]
 class Permission
 {
     #[ORM\Id]
@@ -23,7 +24,7 @@ class Permission
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: Types::STRING, length: 100, unique: true)]
+    #[ORM\Column(name: 'name', type: Types::STRING, length: 100)]
     private string $name;
 
     #[ORM\Column(name: 'description', type: Types::STRING, length: 255, nullable: true)]

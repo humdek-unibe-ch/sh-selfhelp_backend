@@ -12,6 +12,9 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'rel_sections_navigation')]
+#[ORM\Index(name: 'idx_rel_sections_navigation_id_parent_section', columns: ['id_parent_section'])]
+#[ORM\Index(name: 'idx_rel_sections_navigation_id_child_section', columns: ['id_child_section'])]
+#[ORM\Index(name: 'idx_rel_sections_navigation_id_pages', columns: ['id_pages'])]
 class SectionsNavigation
 {
 

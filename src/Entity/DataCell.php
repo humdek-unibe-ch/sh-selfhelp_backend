@@ -13,6 +13,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'data_cells')]
+#[ORM\Index(name: 'idx_data_cells_id_data_cols', columns: ['id_data_cols'])]
+#[ORM\Index(name: 'idx_data_cells_id_languages', columns: ['id_languages'])]
 class DataCell
 {
     #[ORM\Id]

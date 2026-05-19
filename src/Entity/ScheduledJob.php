@@ -17,18 +17,17 @@ use Doctrine\ORM\Mapping as ORM;
  * `ScheduledJobReminder` entity so the base job table stays focused on common fields.
  */
 #[ORM\Entity]
-#[ORM\Table(name: 'scheduled_jobs', indexes: [
-    new ORM\Index(name: 'idx_scheduled_jobs_id_users', columns: ['id_users']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_actions', columns: ['id_actions']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_data_tables', columns: ['id_data_tables']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_data_rows', columns: ['id_data_rows']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_job_status', columns: ['id_job_status']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_job_types', columns: ['id_job_types']),
-    new ORM\Index(name: 'idx_scheduled_jobs_date_to_be_executed', columns: ['date_to_be_executed']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_users_date_to_be_executed', columns: ['id_users', 'date_to_be_executed']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_job_types_id_job_status', columns: ['id_job_types', 'id_job_status']),
-    new ORM\Index(name: 'idx_scheduled_jobs_id_data_tables_id_users', columns: ['id_data_tables', 'id_users']),
-])]
+#[ORM\Table(name: 'scheduled_jobs')]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_actions', columns: ['id_actions'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_data_tables', columns: ['id_data_tables'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_data_rows', columns: ['id_data_rows'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_job_status', columns: ['id_job_status'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_job_types', columns: ['id_job_types'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_date_to_be_executed', columns: ['date_to_be_executed'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_users_date_to_be_executed', columns: ['id_users', 'date_to_be_executed'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_job_types_id_job_status', columns: ['id_job_types', 'id_job_status'])]
+#[ORM\Index(name: 'idx_scheduled_jobs_id_data_tables_id_users', columns: ['id_data_tables', 'id_users'])]
 class ScheduledJob
 {
     #[ORM\Id]

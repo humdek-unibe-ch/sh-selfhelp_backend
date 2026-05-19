@@ -12,6 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'rel_sections_hierarchy')]
+#[ORM\Index(name: 'idx_rel_sections_hierarchy_id_child_section', columns: ['id_child_section'])]
 class SectionsHierarchy
 {
 

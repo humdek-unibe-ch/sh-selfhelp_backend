@@ -20,6 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'validation_code_groups')]
+#[ORM\Index(name: 'idx_validation_code_groups_id_groups', columns: ['id_groups'])]
 class ValidationCodeGroup
 {
     public function __construct()

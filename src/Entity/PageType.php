@@ -12,6 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'page_types')]
+#[ORM\UniqueConstraint(name: 'uq_page_types_name', columns: ['name'])]
 class PageType
 {
     #[ORM\Id]
@@ -19,7 +20,7 @@ class PageType
     #[ORM\Column(type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(type: 'string', length: 100, unique: true)]
+    #[ORM\Column(type: 'string', length: 100)]
     private ?string $name = null;
 
     public function getId(): ?int

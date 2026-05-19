@@ -138,7 +138,6 @@ class CreateAdminUserCommand extends Command
             ->setUserName($userName)
             ->setBlocked(false)
             ->setIntern(false)
-            ->setIsReminded(true)
             ->setStatus($activeStatus)
             ->setUserType($userType);
 

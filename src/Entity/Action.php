@@ -12,6 +12,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'actions')]
+#[ORM\Index(name: 'idx_actions_id_action_trigger_types', columns: ['id_action_trigger_types'])]
+#[ORM\Index(name: 'idx_actions_id_data_tables', columns: ['id_data_tables'])]
 class Action
 {
     #[ORM\Id]

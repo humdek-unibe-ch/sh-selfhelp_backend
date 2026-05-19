@@ -47,14 +47,11 @@ trait LegacySeedTrait
             'scheduledJobs'               => 'scheduled_jobs',
             'refreshTokens'               => 'refresh_tokens',
             'apiRequestLogs'              => 'api_request_logs',
-            'callbackLogs'                => 'callback_logs',
             'fieldType'                   => 'field_types',
             'pageType_fields'             => 'rel_fields_page_types',
             'pageType'                    => 'page_types',
             'styleGroup'                  => 'style_groups',
-            'logPerformance'              => 'log_performance',
             'users_2fa_codes'             => 'user_2fa_codes',
-            'user_activity'               => 'user_activities',
             'users_groups'                => 'rel_groups_users',
             'users_roles'                 => 'rel_roles_users',
             'roles_permissions'           => 'rel_permissions_roles',
@@ -147,22 +144,11 @@ trait LegacySeedTrait
             'styles' => [
                 'id_group' => 'id_style_groups',
             ],
-            // user_activity: legacy id_type points at the `lookups` row
-            // describing the activity type; canonical name follows the
-            // id_<semantic_lookup_category> convention used elsewhere.
-            'user_activity' => [
-                'id_type' => 'id_user_activity_types',
-            ],
             // dataAccessAudit: legacy id_actions referenced the `lookups`
             // table (auditActions category), not the `actions` entity
             // table, so the canonical name reflects the lookup category.
             'dataAccessAudit' => [
                 'id_actions' => 'id_audit_actions',
-            ],
-            // logPerformance: canonical FK uses the plural target table
-            // name (user_activities).
-            'logPerformance' => [
-                'id_user_activity' => 'id_user_activities',
             ],
             // apiRequestLogs: legacy user_id is a snake_case but not
             // table-prefixed FK column; canonical name uses id_users.

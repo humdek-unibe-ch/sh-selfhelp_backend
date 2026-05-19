@@ -20,6 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'page_acl_groups')]
+#[ORM\Index(name: 'idx_page_acl_groups_id_pages', columns: ['id_pages'])]
 class PageAclGroup
 {
     #[ORM\Id]

@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'refresh_tokens')]
+#[ORM\Index(name: 'idx_refresh_tokens_id_users', columns: ['id_users'])]
 class RefreshToken
 {
     #[ORM\Id]

@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'rel_fields_page_types')]
+#[ORM\Index(name: 'idx_rel_fields_page_types_id_fields', columns: ['id_fields'])]
 class PageTypeField
 {
 

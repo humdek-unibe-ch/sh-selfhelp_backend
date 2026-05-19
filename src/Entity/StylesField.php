@@ -12,6 +12,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'rel_fields_styles')]
+#[ORM\Index(name: 'idx_rel_fields_styles_id_styles', columns: ['id_styles'])]
+#[ORM\Index(name: 'idx_rel_fields_styles_id_fields', columns: ['id_fields'])]
 class StylesField
 {
     #[ORM\Id]

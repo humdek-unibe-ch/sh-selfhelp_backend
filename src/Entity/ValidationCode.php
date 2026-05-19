@@ -12,6 +12,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'validation_codes')]
+#[ORM\Index(name: 'idx_validation_codes_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_validation_codes_id_groups', columns: ['id_groups'])]
 class ValidationCode
 {
 

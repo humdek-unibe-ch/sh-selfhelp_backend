@@ -12,6 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'data_cols')]
+#[ORM\Index(name: 'idx_data_cols_id_data_tables', columns: ['id_data_tables'])]
 class DataCol
 {
     #[ORM\ManyToOne(targetEntity: DataTable::class, inversedBy: 'dataCols', cascade: ['persist'])]
