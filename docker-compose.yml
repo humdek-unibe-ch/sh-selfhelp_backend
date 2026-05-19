@@ -62,10 +62,20 @@ services:
       # MERCURE_JWT_SECRET feeds *both* publisher and subscriber tokens.
       MERCURE_PUBLISHER_JWT_KEY: ${MERCURE_JWT_SECRET:-!ChangeThisMercureHubJWTSecretKey!}
       MERCURE_SUBSCRIBER_JWT_KEY: ${MERCURE_JWT_SECRET:-!ChangeThisMercureHubJWTSecretKey!}
-      # Allow the BFF (Next.js dev server) to subscribe with credentials.
-      # Tighten this list for production to the exact origin(s) of the BFF.
+      # Allow:
+      #   - the Next.js BFF (web frontend, default `http://localhost:3000`)
+      #   - the Expo Web dev preview (mobile app, default
+      #     `http://localhost:8081`) — the mobile app subscribes to the
+      #     hub directly (no BFF) using `react-native-sse`, so its
+      #     origin must be on this list.
+      #   - the stable Expo Web preview host used by editors, e.g.
+      #     `https://mobile-preview.example.com`
+      # Tighten this list for production to the exact origin(s) of the
+      # BFF / mobile build. Native iOS/Android builds do not send an
+      # `Origin` header so CORS does not affect them; only browser
+      # subscribers need to be allow-listed here.
       MERCURE_EXTRA_DIRECTIVES: |
-        cors_origins http://localhost:3000 http://127.0.0.1:3000
+        cors_origins ${MERCURE_CORS_ORIGINS:-http://localhost:3000 http://127.0.0.1:3000 http://localhost:8081 http://127.0.0.1:8081 https://mobile-preview.example.com}
         anonymous false
         publish_origins http://localhost http://127.0.0.1
         subscriptions

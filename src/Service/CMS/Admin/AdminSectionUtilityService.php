@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\PagesSection;
@@ -29,7 +35,7 @@ class AdminSectionUtilityService extends BaseService
     }
 
     /**
-     * Get all unused sections (not in hierarchy and not in pages_sections)
+     * Get all unused sections (not in hierarchy and not in rel_pages_sections)
      * 
      * @return array
      */
@@ -214,7 +220,7 @@ class AdminSectionUtilityService extends BaseService
     }
     
     /**
-     * Check if a section is unused (not in hierarchy and not in pages_sections)
+     * Check if a section is unused (not in hierarchy and not in rel_pages_sections)
      * 
      * @param int $sectionId
      * @return bool
@@ -234,7 +240,7 @@ class AdminSectionUtilityService extends BaseService
             return false;
         }
         
-        // Check if section is in pages_sections
+        // Check if section is in rel_pages_sections
         $pageSectionCount = $this->entityManager->createQueryBuilder()
             ->select('COUNT(ps.section)')
             ->from('App\Entity\PagesSection', 'ps')
@@ -267,7 +273,7 @@ class AdminSectionUtilityService extends BaseService
             $this->entityManager->remove($hierarchy);
         }
         
-        // Remove from pages_sections
+        // Remove from rel_pages_sections
         $pageSections = $this->entityManager->getRepository(PagesSection::class)
             ->findBy(['section' => $section]);
         foreach ($pageSections as $pageSection) {

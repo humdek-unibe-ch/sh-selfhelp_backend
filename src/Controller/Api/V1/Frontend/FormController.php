@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Controller\Api\V1\Frontend;
 
 use App\Controller\Trait\RequestValidatorTrait;

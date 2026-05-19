@@ -10,7 +10,12 @@ parameters:
     # JWT token TTL settings from environment variables
     jwt_token_ttl: '%env(int:JWT_TOKEN_TTL)%'
     jwt_refresh_token_ttl: '%env(int:JWT_REFRESH_TOKEN_TTL)%'
-    jwt_impersonation_token_ttl: '%env(int:IMPERSONATION_TOKEN_TTL)%'
+    # Impersonation JWT lifetime (seconds). Default 900 s / 15 min.
+    # Override with the IMPERSONATION_TOKEN_TTL env var. The `default:900:`
+    # prefix lets the container boot even when ops have not set the var
+    # (older deployments) — the var ALWAYS resolves to a positive integer.
+    jwt_impersonation_token_ttl: '%env(default:jwt_impersonation_token_ttl_default:int:IMPERSONATION_TOKEN_TTL)%'
+    jwt_impersonation_token_ttl_default: 900
     # Response-schema validation (expensive). Opt in via env; defaults to false.
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'

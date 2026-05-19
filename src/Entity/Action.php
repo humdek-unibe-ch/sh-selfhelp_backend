@@ -1,11 +1,19 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'actions')]
+#[ORM\Index(name: 'idx_actions_id_action_trigger_types', columns: ['id_action_trigger_types'])]
+#[ORM\Index(name: 'idx_actions_id_data_tables', columns: ['id_data_tables'])]
 class Action
 {
     #[ORM\Id]
@@ -17,14 +25,14 @@ class Action
     private string $name = '';
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_actionTriggerTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_action_trigger_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Lookup $actionTriggerType = null; // ENTITY RULE
 
     #[ORM\Column(name: 'config', type: 'text', nullable: true)]
     private ?string $config = null;
 
     #[ORM\ManyToOne(targetEntity: DataTable::class)]
-    #[ORM\JoinColumn(name: 'id_dataTables', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_data_tables', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?DataTable $dataTable = null; // ENTITY RULE
 
     public function getId(): ?int

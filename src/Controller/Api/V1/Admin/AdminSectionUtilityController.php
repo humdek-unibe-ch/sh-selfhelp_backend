@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
@@ -24,7 +30,7 @@ class AdminSectionUtilityController extends AbstractController
     ) {}
 
     /**
-     * Get all unused sections (not in hierarchy and not in pages_sections)
+     * Get all unused sections (not in hierarchy and not in rel_pages_sections)
      * Requires permission: admin.page.update
      */
     public function getUnusedSections(): JsonResponse

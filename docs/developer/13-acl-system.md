@@ -194,27 +194,36 @@ caller's per-user topic and returns the discovery payload:
 }
 ```
 
-The Next.js BFF (`/api/auth/events/route.ts`) calls this endpoint, opens
-an upstream request to `${hubUrl}?topic=${encodeURIComponent(topic)}`
-with `Authorization: Bearer ${token}`, and pipes the byte stream straight
-back to the browser as same-origin SSE. The browser-side
-`useAclEventStream` hook listens for `acl-changed` events and invalidates
-its `['user-data']` React Query cache, which cascades into navigation,
-admin sidebar, and page-content invalidations through
-`useAclVersionWatcher`. Net result: an admin can grant a permission in
-one tab and the affected user's menu reveals the new page within ~1 RTT
-in another browser, without any user interaction.
+There are two supported subscriber shapes:
+
+- **Next.js web frontend** — the BFF (`/api/auth/events/route.ts`) calls
+  this endpoint, opens an upstream request to
+  `${hubUrl}?topic=${encodeURIComponent(topic)}` with
+  `Authorization: Bearer ${token}`, and pipes the byte stream straight
+  back to the browser as same-origin SSE.
+- **Expo mobile app / Expo Web preview** — the app calls this endpoint
+  directly through its bearer-authenticated API client and then opens
+  the Mercure subscription itself with `react-native-sse`, sending the
+  returned subscriber JWT as `Authorization: Bearer ${token}`.
+
+In both cases the client-side `useAclEventStream` hook listens for
+`acl-changed` events and invalidates its `['user-data']` React Query
+cache, which cascades into navigation, admin sidebar, and page-content
+invalidations through `useAclVersionWatcher`. Net result: an admin can
+grant a permission in one tab and the affected user's menu reveals the
+new page within ~1 RTT in another client, without any user interaction.
 
 Subscriber JWT lifetime is intentionally short (1 h default,
-`MERCURE_SUBSCRIBER_TTL`); the BFF re-mints on every Mercure reconnect
-so leaked tokens age out quickly.
+`MERCURE_SUBSCRIBER_TTL`); clients re-mint on every Mercure reconnect so
+leaked tokens age out quickly.
 
 #### Setup
 
 The hub runs as a separate container — see README "Real-time push
 (Mercure)" for the dockerised setup (`docker-compose.mercure.yml`,
-publisher/subscriber JWT secret coordination, CORS configuration). The
-shared HMAC key is `MERCURE_JWT_SECRET`; it must match the
+publisher/subscriber JWT secret coordination, API CORS configuration,
+and Mercure browser-origin allow-listing). The shared HMAC key is
+`MERCURE_JWT_SECRET`; it must match the
 `MERCURE_PUBLISHER_JWT_KEY` / `MERCURE_SUBSCRIBER_JWT_KEY` baked into
 the hub container.
 
@@ -224,14 +233,14 @@ Detailed wire contract: see
 ### 🔧 Admin Role-Based API System (CMS Backend)
 - **Purpose**: Controls access to admin API routes and CMS functionality
 - **Users**: Admin users, editors, content managers
-- **Tables**: `roles`, `permissions`, `users_roles`, `roles_permissions`, `api_routes_permissions`
+- **Tables**: `roles`, `permissions`, `rel_roles_users`, `rel_permissions_roles`, `rel_api_routes_permissions`
 - **Scope**: API endpoint access, system-level operations
 - **Examples**: Can access admin panel, can view user management routes
 
 ### 🔐 Admin Data Access Management (Resource-Level CRUD)
 - **Purpose**: Fine-grained CRUD permissions on specific resources (pages, sections, users)
 - **Users**: Admin users, editors with limited resource access
-- **Tables**: `role_data_access`, `dataAccessAudit`
+- **Tables**: `role_data_access`, `data_access_audits`
 - **Scope**: Create, Read, Update, Delete operations on data entities
 - **Examples**: Can edit specific pages, can create sections, can delete users
 - **Implementation**: `DataAccessSecurityService` with bitwise permission flags
@@ -239,7 +248,7 @@ Detailed wire contract: see
 ### 👥 Frontend User ACL System (Website Access)
 - **Purpose**: Fine-grained page-level permissions for website content
 - **Users**: Frontend website users, regular users
-- **Tables**: `groups`, `users_groups`, `acl_groups`
+- **Tables**: `groups`, `rel_groups_users`, `page_acl_groups`
 - **Scope**: Page visibility and interaction permissions
 - **Examples**: Can view specific pages, can comment on pages, can edit page content
 
@@ -370,7 +379,7 @@ Each API route requires specific permissions:
 
 ```sql
 -- Page reading routes require 'admin.page.read'
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE p.name = 'admin.page.read'
@@ -382,14 +391,14 @@ AND ar.route_name IN (
 );
 
 -- Page creation routes require 'admin.page.create'
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE p.name = 'admin.page.create'
 AND ar.route_name IN ('admin_pages_create');
 
 -- Page modification routes require 'admin.page.update'
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE p.name = 'admin.page.update'
@@ -400,7 +409,7 @@ AND ar.route_name IN (
 );
 
 -- Page deletion routes require 'admin.page.delete'
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE p.name = 'admin.page.delete'
@@ -417,9 +426,9 @@ AND ar.route_name IN ('admin_pages_delete');
 
 ### ACL Tables Structure
 
-#### `acl_groups` - Group-Level Page Permissions
+#### `page_acl_groups` - Group-Level Page Permissions
 ```sql
-CREATE TABLE `acl_groups` (
+CREATE TABLE `page_acl_groups` (
   `id_groups` int NOT NULL,
   `id_pages` int NOT NULL,
   `acl_select` tinyint(1) NOT NULL DEFAULT '1',
@@ -427,23 +436,23 @@ CREATE TABLE `acl_groups` (
   `acl_update` tinyint(1) NOT NULL DEFAULT '0',
   `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`,`id_pages`),
-  KEY `IDX_AB370E20D65A8C9D` (`id_groups`),
-  KEY `IDX_AB370E20CEF1A445` (`id_pages`),
-  CONSTRAINT `FK_AB370E20CEF1A445` FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_AB370E20D65A8C9D` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
+  KEY `idx_page_acl_groups_id_groups` (`id_groups`),
+  KEY `idx_page_acl_groups_id_pages`  (`id_pages`),
+  CONSTRAINT `fk_page_acl_groups_id_pages`  FOREIGN KEY (`id_pages`)  REFERENCES `pages` (`id`)  ON DELETE CASCADE,
+  CONSTRAINT `fk_page_acl_groups_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
 ### ACL Entities
 
-#### AclGroup Entity
+#### PageAclGroup Entity
 ```php
 <?php
 namespace App\Entity;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'acl_groups')]
-class AclGroup
+#[ORM\Table(name: 'page_acl_groups')]
+class PageAclGroup
 {
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Group::class)]
@@ -486,8 +495,8 @@ BEGIN
         MAX(ag.acl_update) as acl_update,
         MAX(ag.acl_delete) as acl_delete
     FROM users u
-    LEFT JOIN users_groups ug ON u.id = ug.id_users
-    LEFT JOIN acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
+    LEFT JOIN rel_groups_users ug ON u.id = ug.id_users
+    LEFT JOIN page_acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
     WHERE u.id = userId;
 END //
 DELIMITER ;
@@ -640,8 +649,8 @@ class ACLService
                        COALESCE(MAX(au.{$aclColumn}), MAX(ag.{$aclColumn}), 0) as has_access
                 FROM pages p
                 LEFT JOIN acl_users au ON p.id = au.id_pages AND au.id_users = :userId
-                LEFT JOIN acl_groups ag ON p.id = ag.id_pages
-                LEFT JOIN users_groups ug ON ag.id_groups = ug.id_groups AND ug.id_users = :userId
+                LEFT JOIN page_acl_groups ag ON p.id = ag.id_pages
+                LEFT JOIN rel_groups_users ug ON ag.id_groups = ug.id_groups AND ug.id_users = :userId
                 GROUP BY p.id, p.keyword, p.url
                 HAVING has_access = 1
                 ORDER BY p.keyword

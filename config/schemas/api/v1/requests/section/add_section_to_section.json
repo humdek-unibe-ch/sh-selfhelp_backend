@@ -1,29 +1,65 @@
 {
-    "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Add Section to Section Request",
-    "description": "Schema for adding a child section to a parent section",
-    "type": "object",
-    "properties": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Add Section to Section Request",
+  "description": "Schema for adding one or more child sections to a parent section",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
         "childSectionId": {
-            "type": "integer",
-            "description": "The ID of the child section to add."
+          "type": "integer",
+          "description": "The ID of the child section to add."
         },
         "position": {
-            "type": "integer",
-            "description": "The position of the child section within the parent. If null, it will be added at the end."
+          "type": "integer",
+          "description": "The position of the child section within the parent. If null, it will be added at the end."
         },
         "oldParentSectionId": {
-            "type": "integer",
-            "description": "The ID of the old parent section to remove the relationship from (optional)."
+          "type": ["integer", "null"],
+          "description": "The ID of the old parent section to remove the relationship from (optional)."
         },
         "oldParentPageId": {
-            "type": "integer",
-            "description": "The ID of the old parent page to remove the relationship from (optional)."
+          "type": ["integer", "null"],
+          "description": "The ID of the old parent page to remove the relationship from (optional)."
         }
+      },
+      "required": ["childSectionId"],
+      "additionalProperties": false
     },
-    "required": [
-        "childSectionId",
-        "position"
-    ],
-    "additionalProperties": false
+    {
+      "type": "object",
+      "properties": {
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "properties": {
+              "sectionId": {
+                "type": "integer",
+                "description": "The ID of the section to add."
+              },
+              "position": {
+                "type": "integer",
+                "description": "The position of the section within the parent section. If null, it will be added at the end."
+              },
+              "oldParentPageId": {
+                "type": ["integer", "null"],
+                "description": "The ID of the old parent page to remove the relationship from (optional)."
+              },
+              "oldParentSectionId": {
+                "type": ["integer", "null"],
+                "description": "The ID of the old parent section to remove the relationship from (optional)."
+              }
+            },
+            "required": ["sectionId"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["sections"],
+      "additionalProperties": false
+    }
+  ]
 }

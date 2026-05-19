@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS;
 
 use App\Entity\Field;
@@ -351,7 +357,7 @@ class DataVariableResolver extends BaseService
             ->getList($cacheKey, function () use ($tableId) {
                 try {
                     $conn = $this->entityManager->getConnection();
-                    $sql = 'SELECT DISTINCT `name` FROM dataCols WHERE id_dataTables = :tableId ORDER BY `name`';
+                    $sql = 'SELECT DISTINCT `name` FROM data_cols WHERE id_data_tables = :tableId ORDER BY `name`';
                     $stmt = $conn->prepare($sql);
                     $stmt->bindValue('tableId', $tableId, \Doctrine\DBAL\ParameterType::INTEGER);
                     $result = $stmt->executeQuery();
@@ -362,7 +368,7 @@ class DataVariableResolver extends BaseService
                     }
 
                     // Add the standard columns that always exist as variables
-                    $standardColumns = ['id_users', 'record_id', 'user_name', 'id_actionTriggerTypes', 'triggerType', 'entry_date', 'user_code'];
+                    $standardColumns = ['id_users', 'record_id', 'user_name', 'id_action_trigger_types', 'triggerType', 'entry_date', 'user_code'];
                     foreach ($standardColumns as $column) {
                         if (!in_array($column, $columnNames)) {
                             $columnNames[] = $column;

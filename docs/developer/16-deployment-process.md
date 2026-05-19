@@ -1,5 +1,22 @@
 # Deployment Process
 
+> ⚠️ **Document status.** The SQL-script-based "update_scripts" examples
+> further down in this file describe the legacy bootstrap and are kept
+> only for historical context. As of the pre-release DB cutover, fresh
+> installs run **Doctrine migrations only** — no `db/legacy/` SQL is
+> applied. The authoritative deploy steps are:
+>
+> ```bash
+> php bin/console doctrine:migrations:status
+> php bin/console doctrine:migrations:migrate --no-interaction
+> php bin/console doctrine:schema:validate
+> php bin/console cache:clear --env=prod
+> php bin/console cache:clear-api-routes
+> ```
+>
+> See `README.md → Database Bootstrap (migrations-only)` and
+> `docs/developer/14-development-workflow.md` for the canonical workflow.
+
 ## 🚀 Overview
 
 The SelfHelp Symfony Backend follows a structured deployment process that emphasizes database version management, zero-downtime deployments, and comprehensive validation. The deployment strategy is built around the version management system where database changes trigger major version increments.
@@ -144,7 +161,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `method
 '{"userId": {"in": "path", "required": true, "type": "integer"}, "profileId": {"in": "path", "required": true, "type": "integer"}}');
 
 -- Associate routes with permissions
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE ar.route_name IN ('admin_get_user_profiles', 'admin_create_user_profile', 'admin_update_user_profile', 'admin_delete_user_profile')

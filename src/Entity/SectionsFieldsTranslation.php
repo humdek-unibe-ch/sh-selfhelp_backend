@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\DBAL\Types\Types;
@@ -7,6 +13,8 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'sections_fields_translation')]
+#[ORM\Index(name: 'idx_sections_fields_translation_id_fields', columns: ['id_fields'])]
+#[ORM\Index(name: 'idx_sections_fields_translation_id_languages', columns: ['id_languages'])]
 class SectionsFieldsTranslation
 {
     #[ORM\Column(name: 'content', type: 'text')]

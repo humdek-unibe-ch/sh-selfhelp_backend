@@ -1,16 +1,23 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'pageType_fields')]
+#[ORM\Table(name: 'rel_fields_page_types')]
+#[ORM\Index(name: 'idx_rel_fields_page_types_id_fields', columns: ['id_fields'])]
 class PageTypeField
 {
 
-    #[ORM\Column(name: 'default_value', type: 'string', length: 100, nullable: true)]
+    #[ORM\Column(name: 'default_value', type: 'text', nullable: true)]
     private ?string $defaultValue = null;
 
     #[ORM\Column(name: 'help', type: 'text', nullable: true)]
@@ -18,7 +25,7 @@ class PageTypeField
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: PageType::class)]
-    #[ORM\JoinColumn(name: 'id_pageType', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_page_types', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?PageType $pageType = null;
 
     #[ORM\Id]
@@ -26,8 +33,8 @@ class PageTypeField
     #[ORM\JoinColumn(name: 'id_fields', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Field $field = null;
 
-    #[ORM\Column(name: 'title', type: 'string', length: 100, nullable: false)]
-    private string $title;
+    #[ORM\Column(name: 'title', type: 'string', length: 255, nullable: true)]
+    private ?string $title = null;
 
     public function getDefaultValue(): ?string
     {

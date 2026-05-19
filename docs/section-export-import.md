@@ -32,7 +32,7 @@ Two supporting endpoints power AI-assisted authoring:
 ## Minimized JSON shape
 
 Both export and import use a **minimized** JSON payload: any field whose
-value equals the DB default (`styles_fields.default_value`) is dropped from
+value equals the DB default (`rel_fields_styles.default_value`) is dropped from
 the export, and a missing field in an import falls back to that same DB
 default. This keeps payloads small and makes hand-authored or AI-generated
 JSON much easier to write correctly.
@@ -54,7 +54,7 @@ Example (minimized export of one hero container):
 Emission rules:
 
 - A field translation entry is emitted **only** when
-  `content !== styles_fields.default_value` **or** `meta !== null`.
+  `content !== rel_fields_styles.default_value` **or** `meta !== null`.
 - `meta` is emitted only when non-null.
 - `global_fields` (holds `condition`, `data_config`, `css`, `css_mobile`,
   `debug`) — each key is emitted only when non-null/non-empty; `debug` only
@@ -130,8 +130,8 @@ output:
 
 Notes:
 - `section_name` is the auto-suffixed name actually persisted (`-{timestamp}`).
-- `position` is `null` for descendants (they're attached via `sections_hierarchy`,
-  not `pages_sections`); only first-level entries inserted with a `position`
+- `position` is `null` for descendants (they're attached via `rel_sections_hierarchy`,
+  not `rel_pages_sections`); only first-level entries inserted with a `position`
   argument carry a numeric value.
 
 ### Import validation failure (HTTP 422)

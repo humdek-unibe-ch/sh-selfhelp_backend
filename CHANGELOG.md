@@ -1,5 +1,142 @@
 # v8.0.0 (Not released yet)
 
+### Database bootstrap rebuilt — migrations-only, canonical naming
+
+- **Pre-release breaking cutover.** The old hybrid bootstrap (load
+  `db/new_create_db.sql` then run Doctrine migrations on top) is gone. A brand
+  new database now boots the backend by running **Doctrine migrations only**:
+  the canonical baseline `migrations/Version20260601000000.php` creates the
+  full schema plus the five stored procedures (`get_user_acl`,
+  `get_data_table_filtered`, `get_data_table_for_user_groups`,
+  `get_data_table_all_languages`, `get_page_sections_hierarchical`), and the
+  four seed migrations `Version20260601000100..400` load every row a fresh
+  install used to inherit from the legacy SQL dump (lookups, languages,
+  fields, styles, api_routes + route-permission links, system pages, page
+  ACLs, default groups). No SQL bootstrap script is read at install time
+  anymore.
+- **Canonical schema naming.** Every runtime-used database object is now
+  `lowercase_snake_case`: tables use plural snake_case (`pages`,
+  `scheduled_jobs`, `data_tables`, `api_request_logs`, …), foreign keys use
+  the explicit `id_<target_table>` form (`id_page_types`, `id_users`, …),
+  self-references are explicit (`id_parent_page`, `id_child_section`,
+  `id_parent_scheduled_job`, …), pure relation tables are prefixed
+  `rel_<a>_<b>` in alphabetical order (`rel_groups_users`, `rel_roles_users`,
+  `rel_permissions_roles`, `rel_api_routes_permissions`, `rel_pages_sections`,
+  `rel_fields_pages`, `rel_fields_styles`, `rel_fields_page_types`,
+  `rel_sections_hierarchy`, `rel_sections_navigation`,
+  `rel_styles_allowed_relationships`), and join tables that carry business
+  columns have been promoted to first-class entities (`acl_groups` →
+  `page_acl_groups`, `codes_groups` → `validation_code_groups`). All indexes,
+  unique constraints and foreign keys use `pk_*`, `fk_*`, `idx_*`, `uq_*`
+  in lowercase_snake_case.
+- **Stored procedures rebuilt.** The five procedures consumed by the PHP
+  repositories are recreated under canonical names in the baseline migration
+  and reference the renamed tables/columns directly. Unused legacy views are
+  intentionally not recreated.
+- **Legacy SQL archived.** `db/new_create_db.sql`, `db/structure_db.sql` and
+  every `db/update_scripts/*.sql` script were moved into
+  [`db/legacy/`](db/legacy/README.md) with a deprecation README explaining
+  that they are reference / history only — not consumed by either install or
+  upgrade. The four seed migrations transitionally read the legacy dump via
+  `migrations/LegacySeedTrait.php`, which applies a table/column rename map
+  and rewrites legacy positional `INSERT` statements into explicit-column
+  INSERTs against the canonical schema.
+- **Migration history squashed.** The twelve incremental migrations
+  (`Version20260413..` through `Version20260508160000`) were consolidated
+  into the new baseline + seed migrations and deleted. There is no
+  upgrade-in-place path from a pre-cutover database; a fresh install or
+  drop-and-recreate is required.
+- **PHP layer aligned.** Every Doctrine entity (`#[ORM\Table]`,
+  `#[ORM\JoinTable]`, `#[ORM\JoinColumn]`, `#[ORM\Column]`,
+  `#[ORM\Index]`, `#[ORM\UniqueConstraint]`) was updated to the canonical
+  names. `App\Entity\AclGroup` was renamed to
+  `App\Entity\PageAclGroup`, `App\Entity\CodesGroup` to
+  `App\Entity\ValidationCodeGroup`, and the unused `App\Entity\Version`
+  entity was dropped. Every raw-SQL caller in repositories
+  (`StyleRepository`, `SectionRepository`, `ApiRouteRepository`,
+  `AuthRepository`, …) and services (`DataVariableResolver`,
+  `UserPermissionService`, `SectionExportImportService`, …) was updated to
+  reference the new table and column names; transaction-log labels emitted
+  by `JobSchedulerService`, `DataService`, `DataTableService`, etc., now use
+  the canonical table names too.
+- **Verification.** `php bin/console doctrine:schema:validate` reports the
+  entity mappings as in-sync with the canonical baseline, and
+  `php bin/console doctrine:migrations:list` shows the new baseline + four
+  seed migrations as the only pending migrations on a clean database. See
+  the install instructions in `README.md` for the from-zero install flow.
+
+### User impersonation — state-of-the-art rewrite
+ - **Standards-compliant token shape.** `JWTService::createImpersonationToken()` now emits a JWT that follows
+   [RFC 8693 OAuth 2.0 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693): the target user is the
+   effective principal (`sub` + project alias `id_users`), the original admin is preserved in the `act` claim
+   (`act.sub`, `act.id_users`), the literal `purpose: "impersonation"` declares the token type for any
+   introspection gateway, and the boolean `impersonation: true` is kept as a fast-path flag for the hot path in
+   `ApiSecurityListener`. Backwards-compatible reader (`getImpersonatorUserId`) still understands the v1
+   `impersonated_by` claim so tokens minted before the upgrade keep working until they expire.
+ - **`UserContextService` now exposes typed impersonation accessors** —
+   `isImpersonating()`, `getImpersonatedByUserId()`, `getActualUserId()`, `getEffectiveUserId()`. These read
+   the decoded JWT payload from the request attribute `_jwt_payload` (populated by `JWTTokenAuthenticator`),
+   so domain code never has to juggle raw payloads or re-decode tokens. Use `getActualUserId()` for audit
+   trails ("who really did this?") and `getEffectiveUserId()` for authorisation checks.
+ - **New env var `IMPERSONATION_TOKEN_TTL`** (default 900 s / 15 min) shipped in `.env.default` and wired
+   in `config/services.yaml` with a built-in fallback (`%env(default:jwt_impersonation_token_ttl_default:int:IMPERSONATION_TOKEN_TTL)%`)
+   so the container always boots even when ops have not set the var. Documented in
+   `docs/api-usage/01-authentication.md` and `docs/developer/03-authentication-authorization.md` next to
+   the existing access/refresh TTLs.
+ - **Hardened authorisation in `AdminUserService::impersonateUser()`.** Adds explicit checks for self-impersonation
+   (admin id == target id), blocked targets (`isBlocked()`), and protected system accounts. Each failure has
+   its own HTTP status (`400`, `403`) so the UI can show a precise reason. The redundant second `findUserOrThrow`
+   in the hot path was replaced with `EntityManager::getReference()` — one less SELECT per call.
+ - **New endpoint `POST /admin/users/stop-impersonate`** (`admin_users_stop_impersonate_v1`),
+   registered in `db/update_scripts/api_routes.sql` AND in the matching Doctrine migration
+   `migrations/Version20260508140000.php` so both fresh installs and upgrades pick it up.
+   Adds `AdminUserController::stopImpersonateUser()` and `AdminUserService::stopImpersonateUser()`, which
+   blacklist the impersonation JWT via `JWTService::blacklistAccessToken()` and audit-log the action against
+   the original admin. Idempotent: callers without an impersonation token receive `200 { stopped: false }`
+   so the BFF can safely retry. Route is intentionally NOT mapped to `admin.user.impersonate` — while the
+   user is impersonated they authenticate as the *target*, who typically lacks that permission.
+ - **State-of-the-art impersonation enforcement (audit, don't block).** The previous "blanket reject every mutation"
+   guard in `ApiSecurityListener` is gone. Instead:
+   - A small **deny-list** (`IMPERSONATION_FORBIDDEN_ROUTES`) blocks high-risk operations under impersonation
+     (delete user, block/unblock, change groups/roles, clean data, start chained impersonation). Returns 403 with
+     a clear message.
+   - Every other mutation is **allowed** and audit-logged via `TransactionService` with the original admin id
+     (`act.sub`), the target id (`id_users`), the HTTP method, the path and the route name. This matches
+     industry practice (Salesforce "Login as", Auth0 "View as", GitHub Enterprise impersonation, Symfony
+     `switch_user`) and finally makes the feature useful for QA / "reproduce the user's bug" workflows.
+   - Route comparison is now exact (`=== 'admin_users_stop_impersonate_v1'`) instead of substring-based, and
+     the listener no longer re-decodes the JWT — `JWTTokenAuthenticator` stores the decoded payload on the
+     request as `_jwt_payload`, so impersonation policy reads it directly. Saves one decode per API call and
+     keeps the blacklist check authoritative.
+ - **Audit trail entries** use ASCII (`->`) instead of the U+2192 arrow that previously broke older
+   `latin1` audit pipelines, and now log every impersonated mutation in `transactions` (the start and stop
+   events also continue to log there).
+ - **Lookups endpoint demoted to system status.** `admin_lookups` at `/admin/lookups` becomes
+   `system_lookups` at `/lookups` — single migration `Version20260508160000.php` does both the rename
+   and the `admin.access` permission drop. The endpoint exposes reference data (timezones, type codes,
+   weekdays, audit categories) that public frontend styles such as `ProfileStyle` need to render.
+   Gating it on `admin.access` produced a hard regression where a non-admin authenticated user —
+   naturally, or via impersonation — got `403 Forbidden` opening their own profile page. The endpoint
+   still requires authentication via the JWT firewall (anonymous callers get 401). Mirrored in
+   `db/update_scripts/api_routes.sql` and `db/new_create_db.sql` so fresh installs boot with the same
+   shape; existing installs pick up the rename when the migration runs.
+ - **Real-time impersonation banner via Mercure (no polling).** Two new pieces in the existing real-time
+   infrastructure:
+   - `MercureTopicResolver::userImpersonationTopic()` returns
+     `https://selfhelp.app/users/{id}/impersonation`. The matching subscriber JWT minted by
+     `AuthEventsController::events()` now authorises BOTH the ACL topic and the impersonation topic
+     on a single upstream connection, so the BFF still opens only one Mercure socket per user.
+   - `AdminUserService::impersonateUser()` and `stopImpersonateUser()` publish an
+     `impersonation-status` Mercure update (active/inactive + admin/target ids + expiry) on the
+     target user's topic. Failures are logged but never roll back the JWT lifecycle — the frontend's
+     TTL setTimeout is the safety net.
+   - The response of `GET /auth/events` gained an `impersonationTopic` field; the JSON schema at
+     `config/schemas/api/v1/responses/auth/events.json` was updated accordingly.
+ - **Docs.** New "Impersonation" section in `docs/developer/03-authentication-authorization.md` (token shape,
+   sequence diagram, audit-don't-block rationale). The `Impersonate User` entry in
+   `docs/api-usage/07-admin-users.md` was rewritten to describe the new claim shape, validation rules,
+   forbidden routes, and the matching `stop-impersonate` endpoint.
+
 ### Real-time ACL push (Mercure)
  - **New dependency: [`symfony/mercure-bundle`](https://symfony.com/doc/current/mercure.html)** plus a dockerised Caddy/Mercure hub (`docker-compose.mercure.yml`). Real-time `acl-changed` events now flow through a proper push hub instead of PHP-FPM holding long-lived SSE connections. Zero polling, zero busy loops — Symfony only ever does cheap fire-and-forget POSTs to the hub when ACL state actually changes.
  - **`GET /cms-api/v1/auth/events`** is now a Mercure subscriber bootstrap endpoint. The success

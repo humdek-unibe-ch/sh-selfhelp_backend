@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
@@ -130,7 +135,7 @@ class AdminDataController extends AbstractController
                 $this->transactionService->logTransaction(
                     LookupService::TRANSACTION_TYPES_SELECT,
                     LookupService::TRANSACTION_BY_BY_USER,
-                    'dataTables',
+                    'data_tables',
                     $dataTable->getId(),
                     false,
 

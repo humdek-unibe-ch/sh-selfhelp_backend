@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Security;
 
 use App\Entity\User;
@@ -72,6 +78,12 @@ class JWTTokenAuthenticator extends AbstractAuthenticator
         } catch (AuthenticationException $e) {
             throw new CustomUserMessageAuthenticationException('Invalid API Token: ' . $e->getMessage());
         }
+
+        // Stash the decoded payload + raw token on the request so downstream
+        // listeners (e.g. ApiSecurityListener for the impersonation audit
+        // log) can read claims without re-decoding the JWT a second time.
+        $request->attributes->set('_jwt_payload', $payload);
+        $request->attributes->set('_jwt_token', $token);
 
         // Assuming your JWT payload contains 'username' or 'email' as the user identifier
         // Adjust 'email' to whatever claim you use (e.g., 'sub', 'id', 'user_identifier')

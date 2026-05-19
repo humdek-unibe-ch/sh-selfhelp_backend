@@ -1,17 +1,19 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: "App\Repository\StylesAllowedRelationshipRepository")]
-#[ORM\Table(
-    name: "styles_allowed_relationships",
-    indexes: [
-        new ORM\Index(name: "IDX_757F0414DC4D59BB", columns: ["id_parent_style"]),
-        new ORM\Index(name: "IDX_757F041478A9D70E", columns: ["id_child_style"]),
-    ]
-)]
+#[ORM\Table(name: "rel_styles_allowed_relationships")]
+#[ORM\Index(name: 'idx_rel_styles_allowed_relationships_id_parent_style', columns: ['id_parent_style'])]
+#[ORM\Index(name: 'idx_rel_styles_allowed_relationships_id_child_style', columns: ['id_child_style'])]
 class StylesAllowedRelationship
 {
     #[ORM\Id]

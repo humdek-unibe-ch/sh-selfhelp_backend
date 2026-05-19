@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
@@ -70,7 +75,7 @@ class AdminStyleController extends AbstractController
      *
      * GET /cms-api/v1/admin/ai/section-prompt-template
      *
-     * Permission: admin.page.export (same as export/import). Locked down via api_routes_permissions.
+     * Permission: admin.page.export (same as export/import). Locked down via rel_api_routes_permissions.
      */
     public function getSectionPromptTemplate(): Response
     {

@@ -53,55 +53,81 @@ Before starting any development work:
 
 ### When Database Changes Are Needed
 
-Database changes require a **major version increment** (e.g., 7.5.1 → 7.6.0):
+Database changes are made by adding a new Doctrine migration **after** the
+canonical baseline (`migrations/Version20260601000000.php` + four
+`Version20260601000100..400` seeds). Do **not** edit the baseline / seed
+migrations once they have been applied, and do **not** add SQL to
+`db/legacy/update_scripts/` — that folder is deprecated reference history,
+not consumed by install or upgrade.
 
-1. **Create Update Script**
+1. **Create a new migration**
+
    ```bash
-   # Create new update script
-   touch db/update_scripts/40_update_v8.0.0_v8.1.0.sql
+   php bin/console doctrine:migrations:generate
+   # → writes migrations/VersionYYYYMMDDHHMMSS.php
    ```
 
-2. **Update Script Structure**
-   ```sql
-   -- File: 40_update_v8.0.0_v8.1.0.sql
-   
-   -- Set DB version (ALWAYS FIRST)
-   UPDATE version SET version = 'v8.1.0';
-   
-   -- Add description of changes
-   -- New Feature: User Profile Management
-   -- - Added user_profiles table
-   -- - Added profile_types lookup
-   -- - Updated user entity relationships
-   
-   -- 1. Create new tables
-   CREATE TABLE `user_profiles` (
-     `id` INT AUTO_INCREMENT NOT NULL,
-     `id_users` INT NOT NULL,
-     `profile_data` JSON NULL,
-     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-     PRIMARY KEY (`id`),
-     FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
-   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-   
-   -- 2. Add indexes
-   CALL add_index('user_profiles', 'idx_user_id', 'id_users', FALSE);
-   
-   -- 3. Insert lookup data
-   INSERT INTO `lookups` (`type_code`, `code`, `description`) VALUES
-   ('PROFILE_TYPES', 'PERSONAL', 'Personal Profile'),
-   ('PROFILE_TYPES', 'BUSINESS', 'Business Profile');
+2. **Migration body — follow canonical naming**
+
+   ```php
+   public function up(Schema $schema): void
+   {
+       $this->addSql(<<<SQL
+           CREATE TABLE `user_profiles` (
+             `id` INT NOT NULL AUTO_INCREMENT,
+             `id_users` INT NOT NULL,
+             `profile_data` JSON DEFAULT NULL,
+             `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             PRIMARY KEY (`id`),
+             KEY `idx_user_profiles_id_users` (`id_users`),
+             CONSTRAINT `fk_user_profiles_id_users`
+               FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE CASCADE
+           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+       SQL);
+
+       $this->addSql(
+           "INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`) VALUES
+            ('profile_types', 'personal', 'Personal Profile'),
+            ('profile_types', 'business', 'Business Profile')"
+       );
+   }
    ```
 
-3. **Update api_routes.sql**
-   ```sql
-   -- Add new API routes
-   INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `params`) VALUES
-   ('admin_get_user_profiles', 'v1', '/admin/users/{userId}/profiles', 'App\\Controller\\AdminUserProfileController::getProfiles', 'GET', 
-   '{"userId": {"in": "path", "required": true, "type": "integer"}}'),
-   ('admin_create_user_profile', 'v1', '/admin/users/{userId}/profiles', 'App\\Controller\\AdminUserProfileController::createProfile', 'POST',
-   '{"userId": {"in": "path", "required": true, "type": "integer"}, "profile": {"in": "body", "required": true}}');
+   - Tables: plural `lowercase_snake_case`.
+   - Primary key: `id`.
+   - Foreign keys: `id_<target_table>` (`id_users`, `id_page_types`, …).
+   - Self-references: explicit (`id_parent_page`, `id_child_section`, …).
+   - Pure relation tables: `rel_<a>_<b>` in alphabetical order, composite PK.
+   - Indexes / FKs / uniques: `idx_*`, `fk_*`, `uq_*` in
+     `lowercase_snake_case`.
+
+3. **Adding API routes**
+
+   API routes live in the `api_routes` table and the `rel_api_routes_permissions`
+   link table. To add a new route, insert into both from the same migration:
+
+   ```php
+   $this->addSql(
+       "INSERT INTO `api_routes`
+        (`route_name`, `version`, `path`, `controller`, `methods`, `params`)
+        VALUES
+        ('admin_get_user_profiles', 'v1',
+         '/admin/users/{userId}/profiles',
+         'App\\\\Controller\\\\AdminUserProfileController::getProfiles',
+         'GET',
+         '{\\\"userId\\\":{\\\"in\\\":\\\"path\\\",\\\"required\\\":true,\\\"type\\\":\\\"integer\\\"}}')
+       "
+   );
+   $this->addSql(
+       "INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
+        SELECT r.id, p.id
+        FROM `api_routes` r JOIN `permissions` p
+        ON r.route_name = 'admin_get_user_profiles' AND p.name = 'admin.user.read'"
+   );
    ```
+
+   After the migration runs in your env, refresh the route cache with
+   `php bin/console cache:clear-api-routes`.
 
 ### When Only Code Changes Are Needed
 
@@ -408,8 +434,11 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
 ### Required Documentation Updates
 
 1. **Update API Routes List**
-   - Add new routes to `db/update_scripts/api_routes.sql`
-   - Document route parameters and responses
+   - Add a new Doctrine migration that inserts the route into `api_routes`
+     and links it in `rel_api_routes_permissions` (see "Adding API routes"
+     above). Do **not** rely on `db/legacy/update_scripts/api_routes.sql` —
+     that file is no longer wired into install/upgrade.
+   - Document route parameters and responses.
 
 2. **Update Entity Documentation**
    - Document new entities and relationships
@@ -467,22 +496,20 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
 
 ### Pre-Deployment Checklist
 
-1. **Version Management**
+1. **Migration Status**
    ```bash
-   # Check current version
-   SELECT version FROM version ORDER BY id DESC LIMIT 1;
-   
-   # Verify migration script version matches
-   grep "UPDATE version SET version" db/update_scripts/latest_script.sql
+   # Show every Doctrine migration and whether it has been applied
+   php bin/console doctrine:migrations:status
+   php bin/console doctrine:migrations:list
    ```
 
 2. **Database Migration**
    ```bash
-   # Run migration on staging first
-   mysql -u user -p database < db/update_scripts/40_update_v8.0.0_v8.1.0.sql
-   
-   # Verify version updated
-   SELECT version FROM version ORDER BY id DESC LIMIT 1;
+   # Run pending migrations on staging first, then production
+   php bin/console doctrine:migrations:migrate --no-interaction
+
+   # Verify schema matches entity mappings
+   php bin/console doctrine:schema:validate
    ```
 
 3. **Code Deployment**
@@ -504,9 +531,10 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    curl -X GET https://api.example.com/cms-api/v1/health
    ```
 
-2. **Database Version Check**
-   ```sql
-   SELECT version FROM version ORDER BY id DESC LIMIT 1;
+2. **Database Migration Check**
+   ```bash
+   php bin/console doctrine:migrations:status
+   php bin/console doctrine:schema:validate
    ```
 
 3. **New Feature Testing**

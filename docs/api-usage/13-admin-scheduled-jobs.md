@@ -66,7 +66,7 @@ Authorization: Bearer <token>
 
 Returns:
 
-- `scheduledJobs`
+- `scheduled_jobs`
 - `totalCount`
 - `page`
 - `pageSize`

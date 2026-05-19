@@ -1,11 +1,14 @@
 nelmio_cors:
     defaults:
         origin_regex: true
-        allow_origin: ['%env(CORS_ALLOW_ORIGIN)%'] # Ensure this env var is 'http://127.0.0.1:3000' or 'http://localhost:3000'
+        # Covers direct API callers such as the Expo mobile/web preview.
+        # The Mercure hub has its own browser CORS allow-list in
+        # docker-compose.mercure.yml / MERCURE_CORS_ORIGINS.
+        allow_origin: ['%env(CORS_ALLOW_ORIGIN)%']
         allow_methods: ['GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']
-        allow_headers: ['Content-Type', 'Authorization', 'X-Client-Type'] # Added 'X-Client-Type'
+        allow_headers: ['Content-Type', 'Authorization', 'X-Client-Type']
         expose_headers: ['Link']
         max_age: 3600
-        allow_credentials: true  # <-- Add this line
+        allow_credentials: true
     paths:
-        '^/': null # This will inherit the defaults, including allow_credentials
+        '^/': null

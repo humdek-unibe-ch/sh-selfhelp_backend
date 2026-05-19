@@ -63,17 +63,43 @@ Markdown fences):
 8. Booleans are ALWAYS strings (`"0"` / `"1"`) when stored in a translation
    field. Real JSON booleans are only allowed inside `global_fields.debug`.
 9. CSS uses **Tailwind utility classes**. Every visual element that can be
-   themed MUST include `dark:` variants. Mobile overrides go into
-   `global_fields.css_mobile`.
-10. Image fields use `img_src`. For placeholder/illustrative images, use the
+   themed MUST include `dark:` variants. Use **two complementary mechanisms**
+   for mobile responsiveness — pick whichever fits the situation, not both
+   for the same property:
+   - **Tailwind responsive prefixes inside `global_fields.css`** —
+     `px-4 sm:px-6 lg:px-8`, `text-2xl md:text-3xl`. This is the default.
+   - **`global_fields.css_mobile`** — every token here is automatically
+     prefixed with `max-md:` by the web renderer, so the classes only apply
+     below the `md` breakpoint (typically <768px). Use this for clarity when
+     the override is genuinely mobile-only and the desktop variant would be
+     noisy. Native (react-expo) renderers will read this field directly.
+   - Do **not** put a token under `css_mobile` that already starts with a
+     viewport prefix (`sm:`, `md:`, `max-md:`, …). Strip the prefix first.
+10. **Responsive layout grids use the v9 object syntax.** `simple-grid`'s
+    `mantine_cols` and `grid-column`'s `mantine_grid_span` accept either:
+    - a fixed number string (`"3"`) — same column count on every viewport, or
+    - a **JSON object** keyed by Mantine breakpoints
+      (`base`, `xs`, `sm`, `md`, `lg`, `xl`) stored as a stringified JSON in
+      the `content` field. Examples:
+      ```json
+      "mantine_cols": {
+        "all": { "content": "{\"base\":1,\"sm\":2,\"lg\":3}" }
+      }
+      "mantine_grid_span": {
+        "all": { "content": "{\"base\":12,\"sm\":6,\"md\":4}" }
+      }
+      ```
+    `mantine_breakpoints` (legacy) is honoured only when `mantine_cols` is
+    omitted; new content should ignore it.
+11. Image fields use `img_src`. For placeholder/illustrative images, use the
     canonical URL `/assets/image-holder.png` (relative path; the backend
     serves the placeholder).
-11. **Enum options are pre-validated implicitly.** When a field advertises
+12. **Enum options are pre-validated implicitly.** When a field advertises
     `options: "a" | "b" | "c"` in the catalog, the rendered page will only
     behave correctly if you write one of those exact `value` strings. Do not
     invent new values. Free-form fields (`text`, `textarea`, `markdown-inline`,
     `json`) have no options list — write what makes sense.
-12. **Mantine spacing fields are JSON objects, NOT Tailwind strings.** Any
+13. **Mantine spacing fields are JSON objects, NOT Tailwind strings.** Any
     field whose catalog type is `mantine_spacing_margin`,
     `mantine_spacing_padding`, or `mantine_spacing_margin_padding` expects a
     JSON-encoded object keyed by Mantine spacing keys with Mantine size
@@ -121,8 +147,33 @@ Markdown fences):
     Rule of thumb: if the value you want is a Mantine size token use the
     spacing field, otherwise omit it entirely and express the spacing with
     Tailwind classes inside `global_fields.css`.
-13. Do NOT include `id`, `position`, `timestamp`, or any ID-like key — the
+14. Do NOT include `id`, `position`, `timestamp`, or any ID-like key — the
     backend assigns those.
+
+15. **Field-name landmines (the recurring import-time 422s).** The catalog
+    below is the source of truth, but these mistakes show up in nearly
+    every freshly generated page. Fix them before emitting:
+
+    - `group` uses **`mantine_group_wrap`** with `"0"` (no wrap) /
+      `"1"` (wrap). It does **not** use `mantine_wrap` (that's only on
+      `flex` and takes Mantine's keyword strings `"wrap"`/`"nowrap"`).
+    - `simple-grid` exposes **`mantine_vertical_spacing`** for its
+      `verticalSpacing` prop. There is **no** `mantine_spacing` field on
+      `simple-grid`; horizontal gap defaults to `sm` and is overridden
+      via the standard `mantine_spacing_margin_padding` field if needed.
+    - `card` does **not** carry a `mantine_card_padding` field. To
+      remove its built-in padding, use a `card-segment` child with
+      `global_fields.css = "p-0"` (or whatever spacing you want).
+    - Native form-record/log fields are `name`, `alert_success`,
+      `btn_save_label`, etc. Always read the catalog entry for the
+      `form-*` style — its required fields differ from generic styles.
+    - Image fields are `img_src`/`alt`. Audio is `mantine_audio_*`,
+      Video is `mantine_video_*`. Mixing these (e.g. `video_src` on
+      `audio`) yields `unknown_field`.
+    - Any field name your draft uses that the catalog below does not
+      list — drop it. The importer's `unknown_field` and
+      `invalid_field_for_style` errors are not recoverable; the entire
+      import fails until every offending key is removed.
 
 ---
 
@@ -183,6 +234,86 @@ Notice how the translatable `content` field is replicated across every real
 locale while the property `mantine_title_order` uses the `all` locale exactly
 once. The style/field catalog below tells you which is which (`locale=all` for
 property, `locale=en-GB|de-CH|...` for translatable).
+
+**Responsive feature grid (the canonical mobile-friendly pattern):**
+
+```json
+[
+  {
+    "style_name": "container",
+    "global_fields": {
+      "css": "px-4 py-12 sm:px-6 sm:py-16 lg:py-20 max-w-7xl mx-auto"
+    },
+    "children": [
+      {
+        "style_name": "simple-grid",
+        "fields": {
+          "mantine_cols": {
+            "all": { "content": "{\"base\":1,\"sm\":2,\"lg\":3}" }
+          },
+          "mantine_vertical_spacing": { "all": { "content": "md" } }
+        },
+        "children": [
+          {
+            "style_name": "card",
+            "fields": {
+              "mantine_border": { "all": { "content": "1" } },
+              "mantine_radius": { "all": { "content": "lg" } }
+            },
+            "global_fields": {
+              "css": "min-w-0 overflow-hidden bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
+            },
+            "children": [
+              {
+                "style_name": "card-segment",
+                "global_fields": { "css": "p-4 sm:p-6" },
+                "children": [
+                  {
+                    "style_name": "title",
+                    "fields": {
+                      "content": {
+                        "en-GB": { "content": "Fast" }
+                      },
+                      "mantine_title_order": { "all": { "content": "3" } }
+                    },
+                    "global_fields": {
+                      "css": "text-lg font-semibold text-gray-900 dark:text-gray-50"
+                    }
+                  },
+                  {
+                    "style_name": "text",
+                    "fields": {
+                      "text": {
+                        "en-GB": {
+                          "content": "Pre-rendered pages reach the user in milliseconds."
+                        }
+                      }
+                    },
+                    "global_fields": {
+                      "css": "mt-2 text-sm text-gray-600 dark:text-gray-400 break-words"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
+```
+
+Notes on the snippet above:
+
+- `mantine_cols` is a stringified JSON object for true responsive behaviour
+  (1 col on mobile, 2 on tablet, 3 on desktop).
+- Each card carries `min-w-0 overflow-hidden` so long text can break instead
+  of pushing the grid sideways.
+- Padding is responsive (`p-4 sm:p-6`) instead of a fixed
+  `mantine_card_padding`.
+- The text body has `break-words` so unbroken words/URLs do not overflow on
+  narrow screens.
 
 ---
 
@@ -251,6 +382,9 @@ if a `<p>` contains another `<p>`, so follow these rules:
   visual label, or rely on the control's `label` field when present.
 - `textarea` ships with its own built-in label when
   `use_mantine_style` is `"1"` (the default).
+- Wrap multi-input rows in a `simple-grid` with
+  `mantine_cols="{\"base\":1,\"md\":2}"` so they collapse to one column on
+  mobile. Plain `flex` rows with hard-coded `gap-6` will overflow.
 
 ### Reading the style catalog's relationship lines
 
@@ -340,30 +474,162 @@ inventing new combinations — it keeps pages consistent.
 
 ### Mobile overrides (`global_fields.css_mobile`)
 
-Use `css_mobile` only when a class needs to be different on small screens,
-not to repeat what Tailwind responsive prefixes already solve. Good uses:
+The web renderer auto-prefixes every token in `css_mobile` with `max-md:`,
+so they apply only below the `md` breakpoint (<768px). Use it when the
+mobile classes would clutter the desktop string, or when the override
+truly only makes sense on mobile (different layout direction, hidden
+content, smaller image, etc.).
 
-- Tighter padding: `py-10 px-4` in `css_mobile` vs. `py-16 px-6` in `css`.
-- Smaller display text: `text-3xl` in `css_mobile` vs.
-  `text-4xl md:text-5xl` in `css`.
-- Stack instead of flex-row: `flex-col items-start` in `css_mobile`.
+For one-off responsive tweaks, **prefer responsive prefixes inside `css`**
+(`py-16 sm:py-12`, `text-3xl md:text-5xl`). Reach for `css_mobile` when:
+
+- The mobile rules are several tokens long and would dominate the `css`
+  string visually (`flex-col items-stretch gap-3 p-4` vs. `flex-row items-center gap-6 p-8`).
+- A native (react-expo) renderer needs an unambiguous mobile-only field.
+
+**Never** put already-prefixed tokens in `css_mobile`
+(`md:hidden`, `sm:px-6` …) — the renderer strips known viewport prefixes
+to avoid generating broken selectors.
+
+**Use only the curated mobile-safe allow-list** in `css_mobile`. The
+native renderer (Uniwind on react-expo) cannot compile arbitrary
+Tailwind, so `css_mobile` is filtered through
+`@selfhelp/shared/cms-classes/allow-list` at render time. Anything outside
+the allow-list is dropped on native with a dev warning, even though it
+would still work on web. Stick to:
+
+- Spacing: `m{,t,b,l,r,s,e,x,y}-{0..12,xs,sm,md,lg,xl,auto}`,
+  `p{,t,b,l,r,s,e,x,y}-{0..12,xs,sm,md,lg,xl}`, `gap-{0..12,xs..xl}`.
+- Sizing: `w-{full,auto,fit,1/2,1/3,2/3,1/4,3/4}`, `h-{auto,full,fit}`,
+  `min-w-0`, `min-h-{0,full,fit,screen}`,
+  `max-w-{xs..xl,full,fit,screen,none}`.
+- Typography: `text-{xs..xl,left,center,right,justify,<color>-<0..9>}`,
+  `font-{thin..black}`, `leading-{tight..loose}`,
+  `tracking-{tighter..widest}`.
+- Background / border: `bg-{transparent,white,black,<color>-<0..9>}`,
+  `border-{0,1,2,4,<color>-<0..9>}`, `rounded-{none,xs..xl,full}`.
+- Flex / grid: `flex-{row,col,row-reverse,col-reverse,wrap,nowrap,1,auto,none}`,
+  `items-{start,center,end,baseline,stretch}`,
+  `justify-{start,center,end,between,around,evenly}`,
+  `col-span-1..12`, `row-span-1..12`.
+- Atomic literals: `flex`, `inline-flex`, `block`, `inline-block`,
+  `inline`, `hidden`, `absolute`, `relative`, `sticky`, `fixed`,
+  `overflow-hidden`, `overflow-auto`, `rounded`, `border`, `shadow`,
+  `shadow-{sm,md,lg,xl}`, `italic`, `underline`, `truncate`,
+  `whitespace-nowrap`, `pointer-events-none`, `select-none`.
+
+Hover / focus / cursor / responsive prefixes belong in `css`, not in
+`css_mobile` — the native renderer drops them either way.
+
+Examples:
+
+```json
+"global_fields": {
+  "css": "flex flex-row items-center gap-6 px-8 py-12",
+  "css_mobile": "flex-col items-stretch gap-3 px-4 py-8"
+}
+```
+
+---
+
+## Mobile-first guardrails (apply on every page)
+
+The web renderer is consumed inside cards, drawers and narrow viewports.
+Skip these and the page breaks the moment you open it on a phone.
+
+1. **Container width**: top-level `container`/`box` should be a single
+   column on mobile. Use `mantine_cols="{\"base\":1,\"sm\":2,\"lg\":3}"`
+   on `simple-grid`, NEVER fixed `mantine_cols="3"` for content cards.
+2. **Min-width zero**: any flex/grid child that contains long text must
+   include `min-w-0` (and often `flex-1`) in its `css` so the parent can
+   shrink instead of overflowing horizontally.
+3. **Word breaking**: paragraphs and titles inside narrow cards need
+   `break-words` (or `overflow-wrap-anywhere` for code-like content).
+   Card surfaces should also include `overflow-hidden`.
+4. **Responsive padding**: prefer `p-4 sm:p-6 lg:p-8` in `css` over a
+   single fixed `mantine_card_padding="lg"`. Mobile users do not need
+   24-32px of dead space on every side of a card.
+5. **Responsive display text**: hero/title classes always need a mobile
+   step (`text-3xl sm:text-4xl lg:text-5xl`).
+6. **No horizontal scroll**: never set fixed pixel widths on body content
+   (`w-[1200px]`, `min-w-[400px]`). If a media element absolutely needs a
+   ratio, wrap it in `aspect-ratio` and let the parent govern width.
+7. **Tap targets**: interactive elements (`button`, `action-icon`,
+   `link`, `chip`) need a minimum height of 36-44px. Use `mantine_size="md"`
+   or larger on mobile-critical actions; do not shrink them to `xs` to
+   save space.
+8. **Carousel slides**: set `mantine_carousel_slide_size="100%"` on
+   mobile (or by default and override to a percentage on larger screens
+   via `css`); the default `slideSize` of `100` (px) creates a horizontal
+   scroll trap on phones.
+9. **Tabs with many items**: when a `tabs` parent has more than 3 tabs,
+   add `overflow-x-auto` and `scrollbar-thin` to its `css` so users can
+   swipe through them on narrow viewports.
+10. **Timeline alignment**: `timeline` looks best with
+    `mantine_timeline_align="left"` on mobile. Avoid `right` alignment
+    unless your design requires it.
+
+---
+
+## Cross-platform readiness (web + mobile-web + native react-expo)
+
+Pages are imported once and may be rendered by multiple frontends:
+
+| Surface         | Renderer                            | Tailwind?      | Mantine props? |
+|-----------------|-------------------------------------|----------------|----------------|
+| Desktop web     | `sh-selfhelp_frontend` (Next.js)    | yes            | yes (Mantine v9) |
+| Mobile web      | `sh-selfhelp_frontend`              | yes            | yes              |
+| Native (mobile) | react-expo app (planned)            | **NO**         | yes (mapped)     |
+
+Because the same JSON has to render in all three, follow these rules:
+
+- **Carry meaning in Mantine props first, Tailwind second.** Color, size,
+  variant, radius, spacing, alignment, layout direction and gap should be
+  expressed via `mantine_color`, `mantine_size`, `mantine_variant`,
+  `mantine_radius`, `mantine_gap`, `mantine_align`, `mantine_justify`,
+  `mantine_direction`, `mantine_cols`, `mantine_grid_span`. These map 1:1
+  to the native renderer; Tailwind classes do not.
+- **Use Tailwind for visual polish, not for structure.** Gradients,
+  shadows, hover effects, dark-mode tints — fine. Building a flex layout
+  out of `flex flex-col items-center gap-4` instead of using `stack` is
+  not — the native renderer will just see an empty `box`.
+- **Prefer semantic styles over assemblies.** `card`, `alert`,
+  `notification`, `badge`, `button`, `accordion`, `tabs`, `timeline`,
+  `list` already encode their semantics for every renderer. Re-creating
+  them with `box` + `html-tag` works on web but renders as plain
+  containers on native.
+- **Avoid `html-tag` for content.** It exists for legacy templates and
+  emits raw HTML. The native renderer will skip unknown tags. If you
+  need a paragraph use `text`; for emphasis use `highlight`; for code
+  use `code`; for arbitrary structure prefer Mantine layout primitives.
+- **`css_mobile` is portable.** The web renderer auto-prefixes its tokens
+  for the browser; the native renderer can read the raw field and apply
+  its own platform-specific adjustments.
+- **Image URLs must be HTTPS or relative.** Native renderers cannot fetch
+  `localhost`/`http://` resources. For demo content use `/assets/image-holder.png`.
 
 ---
 
 ## Recipe hints (pick one as a starting point)
 
-- **Hero**: `container` → `stack` → [`title` (gradient display), `text`
-  (body), `group` with two `button`s].
-- **Feature grid**: `container` → `simple-grid` with `mantine_cols="3"` →
-  three `card` entries, each with one `card-segment` holding a `title`,
-  `text`, and a trailing `button`.
+- **Hero**: `container` → `stack` → [`title` (gradient display, responsive
+  font size in `css`), `text` (body), `group` with two `button`s].
+  Container `css`: `px-4 py-12 sm:px-6 sm:py-16 lg:py-20 max-w-7xl mx-auto`.
+- **Feature grid (responsive)**: `container` → `simple-grid` with
+  `mantine_cols="{\"base\":1,\"sm\":2,\"lg\":3}"` → three `card` entries
+  with `min-w-0 break-words` in `css`. Each card holds a `card-segment`
+  with a `title`, `text`, and a trailing `button`.
 - **Form**: `form-record` (or `form-log`) → `fieldset` → input controls in
-  a `stack`. Follow with a submit-labelled `button` or rely on the form's
-  built-in submit.
+  a `stack`. Follow with the form's built-in submit; do not add an extra
+  button.
 - **FAQ**: `accordion` → several `accordion-item`s, each with `text`
-  children.
-- **Marketing list**: `list` with type `unordered` → `list-item` children
-  each holding a short `text`.
+  children. `mantine_accordion_variant="separated"` reads well on mobile.
+- **Marketing list**: `list` with `mantine_list_list_style_type="disc"`
+  and `list-item` children each holding `mantine_list_item_content`.
+- **Side-by-side that collapses on mobile**: `grid` with
+  `mantine_cols="12"` and two `grid-column` children whose
+  `mantine_grid_span` is `"{\"base\":12,\"md\":8}"` and
+  `"{\"base\":12,\"md\":4}"` respectively.
 
 ---
 

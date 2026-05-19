@@ -6,15 +6,21 @@ The SelfHelp API provides comprehensive authentication and user management funct
 
 ## Token lifetimes
 
-| Token                    | Default TTL             | Env variable              | Behaviour on expiry                                                       |
-|--------------------------|-------------------------|---------------------------|---------------------------------------------------------------------------|
-| Access (JWT)             | **3600 s / 1 hour**     | `JWT_TOKEN_TTL`           | Symfony answers `401 Unauthorized`. Client calls `/auth/refresh-token`.   |
-| Refresh                  | **2 592 000 s / 30 days** | `JWT_REFRESH_TOKEN_TTL` | Symfony answers `401` from `/auth/refresh-token`. Client must log in again. |
+| Token                    | Default TTL               | Env variable              | Behaviour on expiry                                                         |
+|--------------------------|---------------------------|---------------------------|-----------------------------------------------------------------------------|
+| Access (JWT)             | **3600 s / 1 hour**       | `JWT_TOKEN_TTL`           | Symfony answers `401 Unauthorized`. Client calls `/auth/refresh-token`.     |
+| Refresh                  | **2 592 000 s / 30 days** | `JWT_REFRESH_TOKEN_TTL`   | Symfony answers `401` from `/auth/refresh-token`. Client must log in again. |
+| Impersonation (JWT)      | **900 s / 15 minutes**    | `IMPERSONATION_TOKEN_TTL` | Symfony answers `401`. There is **no refresh** for impersonation; the admin must call `/admin/users/{id}/impersonate` again or stop. |
 
 The refresh endpoint **rotates** the refresh token: each successful call
-deletes the old `refreshTokens` row and returns a fresh pair. Holding a
+deletes the old `refresh_tokens` row and returns a fresh pair. Holding a
 long-lived session therefore advances the refresh expiry by another full
 window every hour (or every access-token lifetime you configure).
+
+The impersonation token is intentionally non-rotating and short-lived —
+see [Admin Users → Impersonate User](07-admin-users.md#impersonate-user)
+for the full lifecycle (start → audit-logged mutations → stop +
+blacklist).
 
 To change these values for a particular environment, see
 *Token TTL configuration* in
@@ -328,7 +334,7 @@ Real-time `acl-changed` events are delivered through a [Mercure](https://mercure
 hub (Caddy + Mercure module) running alongside the API. PHP-FPM never holds an
 SSE connection — it only POSTs publishes to the hub when ACL state actually
 changes. The `/auth/events` endpoint described below returns the *discovery
-payload* the frontend BFF needs to subscribe to the hub on the user's behalf.
+payload* clients use to subscribe to the hub, either directly or through a BFF.
 
 **Endpoint:** `GET /cms-api/v1/auth/events`
 
@@ -370,11 +376,18 @@ The payload is wrapped in the standard `ApiResponseFormatter` envelope
 
 **Subscribing:** open a `text/event-stream` request to
 `${hubUrl}?topic=${encodeURIComponent(topic)}` with the `Authorization`
-header set to `Bearer ${token}`. The reference implementation
-(`sh-selfhelp_frontend/src/app/api/auth/events/route.ts`) is the BFF
-proxy: it calls this endpoint, opens the upstream subscription, and
-pipes the bytes back to the browser as same-origin SSE so
-`useAclEventStream` can use a plain `EventSource('/api/auth/events')`.
+header set to `Bearer ${token}`.
+
+- `sh-selfhelp_frontend` uses a BFF proxy
+  (`src/app/api/auth/events/route.ts`): it calls this endpoint, opens
+  the upstream subscription, and pipes the bytes back to the browser as
+  same-origin SSE so `useAclEventStream` can use a plain
+  `EventSource('/api/auth/events')`.
+- `sh-selfhelp_mobile` subscribes directly to the hub with
+  `react-native-sse`. Native iOS/Android builds do not need CORS for
+  this because they do not send a browser `Origin` header. Expo Web
+  preview does, so its host must be present in both Symfony API CORS
+  (`CORS_ALLOW_ORIGIN`) and the Mercure hub `cors_origins` allow-list.
 
 **Hub events:**
 
@@ -409,7 +422,7 @@ entity — no Mercure wiring required.
 
 **Configuration / setup:** see the README "Real-time push (Mercure)"
 section for the hub Docker Compose setup, JWT secret coordination,
-and production-deployment notes.
+API/browser CORS notes, and production-deployment guidance.
 
 ### Update User Name
 

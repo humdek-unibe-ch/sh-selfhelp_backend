@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use App\Repository\UserRepository;
@@ -11,6 +17,12 @@ use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: 'users')]
+#[ORM\UniqueConstraint(name: 'uq_users_email', columns: ['email'])]
+#[ORM\UniqueConstraint(name: 'uq_users_user_name', columns: ['user_name'])]
+#[ORM\Index(name: 'idx_users_id_languages', columns: ['id_languages'])]
+#[ORM\Index(name: 'idx_users_id_status', columns: ['id_status'])]
+#[ORM\Index(name: 'idx_users_id_user_types', columns: ['id_user_types'])]
+#[ORM\Index(name: 'idx_users_id_timezones', columns: ['id_timezones'])]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: UsersGroup::class, orphanRemoval: true)]
@@ -52,9 +64,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this->usersGroups;
     }
 
-    #[ORM\OneToMany(mappedBy: 'user', targetEntity: UserActivity::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
-    private Collection $userActivities;
-
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: Transaction::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $transactions;
 
@@ -66,7 +75,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
     #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'users', fetch: 'EAGER')]
     #[ORM\JoinTable(
-        name: 'users_roles',
+        name: 'rel_roles_users',
         joinColumns: [new ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')],
         inverseJoinColumns: [new ORM\JoinColumn(name: 'id_roles', referencedColumnName: 'id', onDelete: 'CASCADE')]
     )]
@@ -75,7 +84,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function __construct()
     {
         $this->usersGroups = new ArrayCollection();
-        $this->userActivities = new ArrayCollection();
         $this->transactions = new ArrayCollection();
         $this->refreshTokens = new ArrayCollection();
         $this->validationCodes = new ArrayCollection();
@@ -91,7 +99,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(type: 'string', length: 100, unique: true)]
+    #[ORM\Column(type: 'string', length: 100)]
     private ?string $email = null;
 
     #[ORM\Column(type: 'string', length: 100, nullable: true)]
@@ -116,26 +124,14 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $id_languages = null;
 
-    #[ORM\Column(type: 'boolean', options: ['default' => 1])]
-    private bool $is_reminded = true;
-
-   #[ORM\Column(type: 'date_immutable', nullable: true)]
-    private ?\DateTimeImmutable $last_login = null;
-
-    #[ORM\Column(type: 'string', length: 100, nullable: true)]
-    private ?string $last_url = null;
-
-    #[ORM\Column(type: 'string', length: 100, nullable: true)]
-    private ?string $device_id = null;
+    #[ORM\Column(type: 'date', nullable: true)]
+    private ?\DateTimeInterface $last_login = null;
 
     #[ORM\Column(type: 'string', length: 200, nullable: true)]
     private ?string $device_token = null;
 
-    #[ORM\Column(type: 'string', length: 1000, nullable: true)]
-    private ?string $security_questions = null;
-
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_userTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE', options: ['default' => 72])] //TODO: set default value to user type dynamically
+    #[ORM\JoinColumn(name: 'id_user_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE', options: ['default' => 72])] //TODO: set default value to user type dynamically
     private ?Lookup $userType = null;
 
 
@@ -151,7 +147,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\JoinColumn(name: 'id_timezones', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Lookup $timezone = null;
 
-    #[ORM\Column(type: 'string', length: 100, nullable: true, unique: true)]
+    #[ORM\Column(type: 'string', length: 100, nullable: true)]
     private ?string $user_name = null;
 
     /**
@@ -269,19 +265,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
 
 
-    public function isReminded(): ?bool
-    {
-        return $this->is_reminded;
-    }
-
-    public function setIsReminded(bool $is_reminded): static
-    {
-        $this->is_reminded = $is_reminded;
-
-        return $this;
-    }
-
-    public function getLastLogin(): ?\DateTimeImmutable
+    public function getLastLogin(): ?\DateTime
     {
         return $this->last_login;
     }
@@ -289,18 +273,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setLastLogin(?\DateTimeImmutable $last_login): static
     {
         $this->last_login = $last_login;
-
-        return $this;
-    }
-
-    public function getLastUrl(): ?string
-    {
-        return $this->last_url;
-    }
-
-    public function setLastUrl(?string $last_url): static
-    {
-        $this->last_url = $last_url;
 
         return $this;
     }
@@ -370,30 +342,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     }
 
     // --- RELATIONSHIP GETTERS & SETTERS ---
-    /**
-     * @return Collection|UserActivity[]
-     */
-    public function getUserActivities(): Collection
-    {
-        return $this->userActivities;
-    }
-    public function addUserActivity(UserActivity $userActivity): self
-    {
-        if (!$this->userActivities->contains($userActivity)) {
-            $this->userActivities[] = $userActivity;
-            $userActivity->setUser($this);
-        }
-        return $this;
-    }
-    public function removeUserActivity(UserActivity $userActivity): self
-    {
-        if ($this->userActivities->removeElement($userActivity)) {
-            if ($userActivity->getUser() === $this) {
-                $userActivity->setUser(null);
-            }
-        }
-        return $this;
-    }
 
     /**
      * @return Collection|Transaction[]

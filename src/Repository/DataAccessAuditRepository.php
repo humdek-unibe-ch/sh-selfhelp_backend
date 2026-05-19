@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Repository;
 
 use App\Entity\DataAccessAudit;
@@ -41,7 +47,7 @@ class DataAccessAuditRepository extends ServiceEntityRepository
                 'a.idUsers',
                 'a.idResourceTypes',
                 'a.resourceId',
-                'a.idActions',
+                'a.idAuditActions AS idActions',
                 'a.idPermissionResults',
                 'a.crudPermission',
                 'a.httpMethod',
@@ -281,7 +287,7 @@ class DataAccessAuditRepository extends ServiceEntityRepository
                 'a.idUsers',
                 'a.idResourceTypes',
                 'a.resourceId',
-                'a.idActions',
+                'a.idAuditActions AS idActions',
                 'a.idPermissionResults',
                 'a.crudPermission',
                 'a.httpMethod',

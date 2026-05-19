@@ -34,7 +34,7 @@
                                 "type": "string",
                                 "description": "Name of the role"
                             },
-                            "id_resourceTypes": {
+                            "id_resource_types": {
                                 "type": ["integer", "null"],
                                 "description": "Resource type ID"
                             },

@@ -69,7 +69,7 @@ namespace App\Entity;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'pages')]
-#[ORM\Index(name: 'IDX_pages_published_version_id', columns: ['published_version_id'])]
+#[ORM\Index(name: 'idx_pages_id_published_page_versions', columns: ['id_published_page_versions'])]
 class Page
 {
     #[ORM\Id]
@@ -84,15 +84,15 @@ class Page
     private ?string $url = null;
 
     #[ORM\ManyToOne(targetEntity: Page::class)]
-    #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_parent_page', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Page $parentPage = null;
 
     #[ORM\ManyToOne(targetEntity: PageType::class)]
-    #[ORM\JoinColumn(name: 'id_type', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_page_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?PageType $pageType = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_pageAccessTypes', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_page_access_types', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Lookup $pageAccessType = null;
 
     #[ORM\Column(name: 'is_headless', type: 'boolean', options: ['default' => 0])]
@@ -114,7 +114,7 @@ class Page
      * Reference to the currently published version of this page
      */
     #[ORM\ManyToOne(targetEntity: PageVersion::class)]
-    #[ORM\JoinColumn(name: 'published_version_id', referencedColumnName: 'id', nullable: true)]
+    #[ORM\JoinColumn(name: 'id_published_page_versions', referencedColumnName: 'id', nullable: true)]
     private ?PageVersion $publishedVersion = null;
 
     // ... getters and setters ...
@@ -123,10 +123,10 @@ class Page
 ```
 
 ### Page Types
-Pages are categorized by types stored in the `pageTypes` table:
+Pages are categorized by types stored in the `page_types` table:
 
 ```sql
-CREATE TABLE `pageTypes` (
+CREATE TABLE `page_types` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `description` varchar(255) DEFAULT NULL,
@@ -135,7 +135,7 @@ CREATE TABLE `pageTypes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 
 -- Common page types
-INSERT INTO `pageTypes` (`name`, `description`) VALUES
+INSERT INTO `page_types` (`name`, `description`) VALUES
 ('standard', 'Standard content page'),
 ('landing', 'Landing page with special layout'),
 ('system', 'System-generated page'),
@@ -196,7 +196,7 @@ class Section
 namespace App\Entity;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'pages_sections')]
+#[ORM\Table(name: 'rel_pages_sections')]
 class PagesSection
 {
     #[ORM\Id]
@@ -393,7 +393,7 @@ class Field
     private ?string $name = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_fieldTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_type', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Lookup $fieldType = null;
 
     #[ORM\Column(name: 'default_value', type: 'text', nullable: true)]
@@ -412,10 +412,10 @@ class Field
 ```
 
 ### Field Types
-Field types are managed through the dedicated `fieldTypes` table:
+Field types are managed through the dedicated `field_types` table:
 
 ```sql
-CREATE TABLE `fieldTypes` (
+CREATE TABLE `field_types` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `description` varchar(255) DEFAULT NULL,
@@ -427,7 +427,7 @@ CREATE TABLE `fieldTypes` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Field types for CMS content management
-INSERT INTO `fieldTypes` (`name`, `description`, `input_type`) VALUES
+INSERT INTO `field_types` (`name`, `description`, `input_type`) VALUES
 ('TEXT', 'Single line text input', 'text'),
 ('TEXTAREA', 'Multi-line text area', 'textarea'),
 ('HTML', 'Rich text HTML editor', 'html'),
@@ -440,15 +440,21 @@ INSERT INTO `fieldTypes` (`name`, `description`, `input_type`) VALUES
 ('NUMBER', 'Numeric input', 'number');
 ```
 
-### Sections-Fields Relationship
+### Sections-Fields Relationship (Translation-driven)
 ```php
 <?php
 namespace App\Entity;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'sections_fields')]
-class SectionsField
+#[ORM\Table(name: 'sections_fields_translation')]
+class SectionsFieldsTranslation
 {
+    #[ORM\Column(name: 'content', type: 'text')]
+    private string $content;
+
+    #[ORM\Column(name: 'meta', type: 'string', length: 10000, nullable: true)]
+    private ?string $meta = null;
+
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
     #[ORM\JoinColumn(name: 'id_sections', referencedColumnName: 'id', onDelete: 'CASCADE')]
@@ -459,14 +465,15 @@ class SectionsField
     #[ORM\JoinColumn(name: 'id_fields', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Field $field = null;
 
-    #[ORM\Column(name: 'position', type: 'integer', nullable: true)]
-    private ?int $position = null;
-
-    #[ORM\Column(name: 'display', type: 'boolean', options: ['default' => 1])]
-    private bool $display = true;
+    #[ORM\Id]
+    #[ORM\ManyToOne(targetEntity: Language::class)]
+    #[ORM\JoinColumn(name: 'id_languages', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    private ?Language $language = null;
 }
 // ENTITY RULE
 ```
+
+> The canonical schema no longer has a separate `sections_fields` link table. Field values per section are stored directly in `sections_fields_translation` (composite PK `id_sections`, `id_fields`, `id_languages`). Section-level display flags moved to `sections` / `rel_sections_hierarchy` row metadata.
 
 ## 🌍 Multi-language Support
 
@@ -619,7 +626,7 @@ class PageVersionService extends BaseService
     public function publishVersion(int $pageId, int $versionId): PageVersion
     {
         // Publishes a specific version, unpublishing any currently published version
-        // Updates page.published_version_id reference
+        // Updates page.id_published_page_versions reference
     }
 
     public function createAndPublishVersion(int $pageId, ?string $versionName = null, ?array $metadata = null): PageVersion
@@ -932,7 +939,7 @@ class SectionExportImportService extends BaseService
      *  3. UPDATEs sections that already exist with the published payload.
      *  4. INSERTs missing sections via raw SQL with the original IDs.
      *  5. Deletes orphans (sections present on draft but not in the version).
-     *  6. Rebuilds `pages_sections` + `sections_hierarchy` from the version.
+     *  6. Rebuilds `rel_pages_sections` + `rel_sections_hierarchy` from the version.
      */
     public function restoreSectionsFromVersion(int $pageId, int $versionId): array
     {
@@ -954,7 +961,7 @@ class SectionExportImportService extends BaseService
 
 > The legacy `convertPublishedSectionsToExportFormat()` /
 > `clearPageSections()` helpers were removed — they were leftover from an
-> earlier "delete-then-import" approach that broke `dataTables` referential
+> earlier "delete-then-import" approach that broke `data_tables` referential
 > integrity.
 
 ## ⚙️ CMS Preferences System

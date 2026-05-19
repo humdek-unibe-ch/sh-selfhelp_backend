@@ -39,9 +39,9 @@ The permission system is built on three key components:
   );
   ```
 
-- **`api_routes_permissions`**: Junction table linking routes to permissions
+- **`rel_api_routes_permissions`**: Junction table linking routes to permissions
   ```sql
-  CREATE TABLE api_routes_permissions (
+  CREATE TABLE rel_api_routes_permissions (
       id_api_routes INT NOT NULL,
       id_permissions INT NOT NULL,
       PRIMARY KEY (id_api_routes, id_permissions),
@@ -553,7 +553,7 @@ VALUES (
 3. **Associate the permission with API routes**:
 
 ```sql
-INSERT INTO api_routes_permissions (id_api_routes, id_permissions)
+INSERT INTO rel_api_routes_permissions (id_api_routes, id_permissions)
 VALUES (
     (SELECT id FROM api_routes WHERE route_name = 'user_management' AND version = 'v1'),
     (SELECT id FROM permissions WHERE name = 'manage_users')
@@ -580,7 +580,7 @@ VALUES (
 2. **Associate permissions with the route**:
 
 ```sql
-INSERT INTO api_routes_permissions (id_api_routes, id_permissions)
+INSERT INTO rel_api_routes_permissions (id_api_routes, id_permissions)
 VALUES (
     (SELECT id FROM api_routes WHERE route_name = 'user_management' AND version = 'v1'),
     (SELECT id FROM permissions WHERE name = 'manage_users')
@@ -828,7 +828,7 @@ class SecurityTest extends WebTestCase
 
 2. **Permission Not Applied**: If permissions are not being checked:
    - Verify the permission exists in the `permissions` table
-   - Check that it's associated with the route in `api_routes_permissions`
+   - Check that it's associated with the route in `rel_api_routes_permissions`
    - Ensure the user's group has the permission in `user_groups_permissions`
 
 3. **User Not Authenticated**: If authentication fails:
@@ -855,16 +855,15 @@ class SecurityTest extends WebTestCase
    -- Check if route has permissions
    SELECT r.route_name, p.name 
    FROM api_routes r
-   JOIN api_routes_permissions rp ON r.id = rp.id_api_routes
+   JOIN rel_api_routes_permissions rp ON r.id = rp.id_api_routes
    JOIN permissions p ON p.id = rp.id_permissions
    WHERE r.route_name = 'your_route_name';
-   
-   -- Check if user group has permissions
-   SELECT g.name AS group_name, p.name AS permission_name
-   FROM user_groups g
-   JOIN user_groups_permissions gp ON g.id = gp.id_user_groups
-   JOIN permissions p ON p.id = gp.id_permissions
-   WHERE g.id = (SELECT id_user_groups FROM users_groups WHERE id_users = YOUR_USER_ID);
+
+   -- Check if a user's groups grant any group-level permission (where applicable)
+   SELECT g.name AS group_name
+   FROM groups g
+   JOIN rel_groups_users gu ON g.id = gu.id_groups
+   WHERE gu.id_users = YOUR_USER_ID;
    ```
 
 3. **Test with Symfony Console**:

@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
@@ -226,19 +232,33 @@ class AdminPageController extends AbstractController
         }
     }
 
+    /**
+     * Add one or more sections to a page in a single atomic operation.
+     *
+     * Accepts either a single-section payload (legacy shape) or a
+     * `{sections: [...]}` batch. Both are normalized into the same array
+     * and persisted in one transaction by the service. Returns either a
+     * single object (legacy shape) or an array (batch shape) to match the
+     * input.
+     *
+     * @route /admin/pages/{page_id}/sections
+     * @method POST
+     */
     public function addSectionToPage(Request $request, int $page_id): Response
     {
-        $data = $this->validateRequest($request, 'requests/page/add_section_to_page', $this->jsonSchemaValidationService);
-
-        $result = $this->adminPageService->addSectionToPage(
-            $page_id,
-            $data['sectionId'],
-            $data['position'],
-            $data['oldParentSectionId'] ?? null,
+        $data = $this->validateRequest(
+            $request,
+            'requests/page/add_section_to_page',
+            $this->jsonSchemaValidationService
         );
 
+        $isBulkRequest = isset($data['sections']);
+        $sections = $isBulkRequest ? $data['sections'] : [$data];
+
+        $results = $this->adminPageService->addSectionToPage($page_id, $sections);
+
         return $this->responseFormatter->formatSuccess(
-            ['id' => $result->getSection()->getId(), 'position' => $result->getPosition()],
+            $isBulkRequest ? $results : $results[0],
             null,
             Response::HTTP_OK
         );
@@ -249,5 +269,45 @@ class AdminPageController extends AbstractController
         $this->adminPageService->removeSectionFromPage($page_id, $section_id);
 
         return $this->responseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Remove multiple sections from a page in one request.
+     *
+     * Accepts an array of section IDs and delegates to the service for a single
+     * bulk delete operation, avoiding the overhead of individual DELETE calls.
+     * Returns the counter of relationships actually removed.
+     *
+     * @route /admin/pages/{page_id}/sections
+     * @method DELETE
+     *
+     * @param Request $request  JSON body validated against bulk_remove_sections schema
+     * @param int     $page_id  The page to remove sections from
+     * @return Response         200 with {deleted_count} on success, 500 on failure
+     */
+    public function bulkRemoveSectionsFromPage(Request $request, int $page_id): Response
+    {
+        $data = $this->validateRequest(
+            $request,
+            'requests/section/bulk_remove_sections',
+            $this->jsonSchemaValidationService
+        );
+
+        try {
+            $result = $this->adminPageService->bulkRemoveSectionsFromPage(
+                $page_id,
+                $data['sectionIds']
+            );
+
+            return $this->responseFormatter->formatSuccess($result);
+
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError(
+                'Bulk delete failed: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
     }
 }

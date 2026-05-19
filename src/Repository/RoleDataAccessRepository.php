@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Repository;
 
 use App\Entity\DataTable;
@@ -125,7 +131,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'role_id' => $result['role_id'],
                 'role_name' => $result['role_name'],
                 'role_description' => $result['role_description'],
-                'id_resourceTypes' => $result['idResourceTypes'],
+                'id_resource_types' => $result['idResourceTypes'],
                 'resource_id' => $result['resourceId'],
                 'crud_permissions' => $result['crudPermissions'],
                 'resource_type_name' => $result['resource_type_name'],
@@ -152,7 +158,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         $qb = $this->createQueryBuilder('rda')
             ->select([
                 'p.id as id_pages',
-                'IDENTITY(p.parentPage) as parent',
+                'IDENTITY(p.parentPage) as id_parent_page',
                 'p.keyword',
                 'p.url',
                 'p.nav_position as nav_position',
@@ -160,8 +166,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'p.is_headless as is_headless',
                 'p.is_open_access as is_open_access',
                 'p.is_system as is_system',
-                'pat.id as id_pageAccessTypes',
-                'pt.id as id_type',
+                'pat.id as id_page_access_types',
+                'pt.id as id_page_types',
                 'rda.crudPermissions as crud'
             ])
             ->innerJoin('rda.role', 'r')
@@ -189,7 +195,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function getAccessibleDataTablesForUser(int $userId, int $resourceTypeId): array
     {
-        // Join dataTables with role_data_access - permission filtering done in service layer
+        // Join data_tables with role_data_access - permission filtering done in service layer
         $qb = $this->createQueryBuilder('rda')
             ->select([
                 'dt.id',
@@ -223,7 +229,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         $qb = $this->getEntityManager()->createQueryBuilder()
             ->select([
                 'p.id as id_pages',
-                'IDENTITY(p.parentPage) as parent', // Use IDENTITY() to get foreign key value
+                'IDENTITY(p.parentPage) as id_parent_page', // Use IDENTITY() to get foreign key value
                 'p.keyword',
                 'p.url',
                 'p.nav_position as nav_position',
@@ -231,8 +237,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'p.is_headless as is_headless',
                 'p.is_open_access as is_open_access',
                 'p.is_system as is_system',
-                'IDENTITY(p.pageAccessType) as id_pageAccessTypes',
-                'IDENTITY(p.pageType) as id_type',
+                'IDENTITY(p.pageAccessType) as id_page_access_types',
+                'IDENTITY(p.pageType) as id_page_types',
                 '15 as crud' // Full permissions for admin
             ])
             ->from(Page::class, 'p')

@@ -1,7 +1,7 @@
 # Data Management Access Control
 
 ## Overview
-Extremely simple custom CRUD access for custom data types (groups, dataTables, surveys in future). Permissions are attached to roles, not individual users. Uses lookup table for resource types.
+Extremely simple custom CRUD access for custom data types (groups, data_tables, surveys in future). Permissions are attached to roles, not individual users. Uses lookup table for resource types.
 
 ## 🔒 Security-First Approach
 **Important**: We use a secure "deny by default" model where users get NO access unless they have explicit permissions. This prevents security vulnerabilities from forgotten filtering logic.
@@ -58,25 +58,25 @@ User Request → Security Layer
 CREATE TABLE role_data_access (
     id INT PRIMARY KEY AUTO_INCREMENT,
     id_roles INT NOT NULL,
-    id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
+    id_resource_types INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
     resource_id INT NOT NULL,
     crud_permissions TINYINT UNSIGNED NOT NULL DEFAULT 2, -- 2 = Read only
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (id_roles) REFERENCES role(id),
-    FOREIGN KEY (id_resourceTypes) REFERENCES lookups(id),
-    UNIQUE KEY unique_role_resource (id_roles, id_resourceTypes, resource_id)
+    FOREIGN KEY (id_roles) REFERENCES roles(id),
+    FOREIGN KEY (id_resource_types) REFERENCES lookups(id),
+    UNIQUE KEY uq_role_data_access_role_resource (id_roles, id_resource_types, resource_id)
 );
 
--- Audit table for custom data access checks
-CREATE TABLE dataAccessAudit (
+-- Audit table for custom data access checks (canonical: data_access_audits)
+CREATE TABLE data_access_audits (
     id INT PRIMARY KEY AUTO_INCREMENT,
     id_users INT NOT NULL,                    -- Who performed the action
-    id_resourceTypes INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
+    id_resource_types INT NOT NULL, -- References lookups table (type_code = 'resourceTypes')
     resource_id INT NOT NULL,                -- ID of the resource accessed
     id_actions INT NOT NULL,                 -- References lookups table (type_code = 'auditActions')
-    id_permissionResults INT NOT NULL,       -- References lookups table (type_code = 'permissionResults')
+    id_permission_results INT NOT NULL,      -- References lookups table (type_code = 'permissionResults')
     crud_permission TINYINT UNSIGNED NULL,   -- Bit flags for the permission checked
     http_method VARCHAR(10) NULL,            -- HTTP method (GET, POST, PUT, DELETE)
     request_body_hash VARCHAR(64) NULL,      -- SHA-256 hash of request body (forensic tracking)
@@ -87,17 +87,17 @@ CREATE TABLE dataAccessAudit (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (id_users) REFERENCES users(id),
-    FOREIGN KEY (id_resourceTypes) REFERENCES lookups(id),
+    FOREIGN KEY (id_resource_types) REFERENCES lookups(id),
     FOREIGN KEY (id_actions) REFERENCES lookups(id),
-    FOREIGN KEY (id_permissionResults) REFERENCES lookups(id),
+    FOREIGN KEY (id_permission_results) REFERENCES lookups(id),
 
-    INDEX IDX_9DCB3F7E5FE6C863 (id_users),                    -- user index
-    INDEX IDX_9DCB3F7EDE12AB56 (id_resourceTypes),            -- resource type index
-    INDEX IDX_9DCB3F7E12345678 (resource_id),                 -- resource id index
-    INDEX IDX_9DCB3F7E87654321 (created_at),                  -- timestamp index
-    INDEX IDX_9DCB3F7E11223344 (id_permissionResults),        -- permission result index
-    INDEX IDX_9DCB3F7E99887766 (http_method),                 -- HTTP method index
-    INDEX IDX_9DCB3F7E55443322 (request_body_hash)            -- request body hash index
+    INDEX idx_data_access_audits_id_users (id_users),
+    INDEX idx_data_access_audits_id_resource_types (id_resource_types),
+    INDEX idx_data_access_audits_resource_id (resource_id),
+    INDEX idx_data_access_audits_created_at (created_at),
+    INDEX idx_data_access_audits_id_permission_results (id_permission_results),
+    INDEX idx_data_access_audits_http_method (http_method),
+    INDEX idx_data_access_audits_request_body_hash (request_body_hash)
 );
 ```
 
@@ -123,40 +123,40 @@ Every permission check performed by the `DataAccessSecurityService` is automatic
 #### **Filter Operations (READ access):**
 ```sql
 -- When filtering user lists, data tables, pages, etc.
-INSERT INTO dataAccessAudit (
-    id_users, id_resourceTypes, resource_id, id_actions, id_permissionResults,
+INSERT INTO data_access_audits (
+    id_users, id_resource_types, resource_id, id_actions, id_permission_results,
     crud_permission, http_method, request_body_hash, ip_address, notes
 ) VALUES (
     123, 1, 0, 1, 1,
     NULL, 'GET', NULL, '192.168.1.100', 'Custom filter applied'
 );
--- Where: id_resourceTypes=1 (group), id_actions=1 (filter), id_permissionResults=1 (granted)
+-- Where: id_resource_types=1 (group), id_actions=1 (filter), id_permission_results=1 (granted)
 ```
 
 #### **Permission Checks (CREATE/UPDATE/DELETE):**
 ```sql
 -- When checking permissions for specific operations
-INSERT INTO dataAccessAudit (
-    id_users, id_resourceTypes, resource_id, id_actions, id_permissionResults,
+INSERT INTO data_access_audits (
+    id_users, id_resource_types, resource_id, id_actions, id_permission_results,
     crud_permission, http_method, request_body_hash, ip_address, notes
 ) VALUES (
     123, 2, 25, 4, 1,
     4, 'PUT', 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3', '192.168.1.100', 'Permission granted'
 );
--- Where: id_resourceTypes=2 (data_table), id_actions=4 (update), id_permissionResults=1 (granted), crud_permission=4 (UPDATE bit)
+-- Where: id_resource_types=2 (data_table), id_actions=4 (update), id_permission_results=1 (granted), crud_permission=4 (UPDATE bit)
 ```
 
 #### **Denied Access Attempts:**
 ```sql
 -- When users try to access resources they don't have permission for
-INSERT INTO dataAccessAudit (
-    id_users, id_resourceTypes, resource_id, id_actions, id_permissionResults,
+INSERT INTO data_access_audits (
+    id_users, id_resource_types, resource_id, id_actions, id_permission_results,
     crud_permission, http_method, request_body_hash, ip_address, notes
 ) VALUES (
     123, 3, 10, 5, 2,
     8, 'DELETE', NULL, '192.168.1.100', 'Insufficient permissions'
 );
--- Where: id_resourceTypes=3 (pages), id_actions=5 (delete), id_permissionResults=2 (denied), crud_permission=8 (DELETE bit)
+-- Where: id_resource_types=3 (pages), id_actions=5 (delete), id_permission_results=2 (denied), crud_permission=8 (DELETE bit)
 ```
 
 ### Audit Actions Logged (via Lookups):
@@ -215,7 +215,7 @@ INSERT INTO lookups (type_code, lookup_code, lookup_value, lookup_description) V
 #### Single Group Access (Read Only)
 ```sql
 -- Assuming group resource_type has id = 1 in lookups table
-INSERT INTO role_data_access (id_roles, id_resourceTypes, resource_id, crud_permissions)
+INSERT INTO role_data_access (id_roles, id_resource_types, resource_id, crud_permissions)
 VALUES (5, 1, 10, 2); -- 2 = Read only
 ```
 → Users with id_roles 5 can only read data for users in group 10
@@ -223,31 +223,31 @@ VALUES (5, 1, 10, 2); -- 2 = Read only
 #### Single DataTable Access (Read + Write)
 ```sql
 -- Assuming data_table resource_type has id = 2 in lookups table
-INSERT INTO role_data_access (id_roles, id_resourceTypes, resource_id, crud_permissions)
+INSERT INTO role_data_access (id_roles, id_resource_types, resource_id, crud_permissions)
 VALUES (5, 2, 25, 6); -- 6 = Read (2) + Update (4)
 ```
-→ Users with id_roles 5 can read and update data in dataTable 25
+→ Users with id_roles 5 can read and update data in data_table 25
 
 #### Combined Access (Read + Update for specific table and group)
 ```sql
-INSERT INTO role_data_access (id_roles, id_resourceTypes, resource_id, crud_permissions)
-VALUES (5, 1, 10, 2),        -- Read only for group 10 (id_resourceTypes = 1)
-       (5, 2, 25, 6);        -- Read + Update for dataTable 25 (id_resourceTypes = 2)
+INSERT INTO role_data_access (id_roles, id_resource_types, resource_id, crud_permissions)
+VALUES (5, 1, 10, 2),        -- Read only for group 10 (id_resource_types = 1)
+       (5, 2, 25, 6);        -- Read + Update for data_table 25 (id_resource_types = 2)
 ```
-→ Users with id_roles 5 can read data from dataTable 25 AND only for users in group 10
+→ Users with id_roles 5 can read data from data_table 25 AND only for users in group 10
 
 #### Multiple Tables (Read + Create + Update)
 ```sql
-INSERT INTO role_data_access (id_roles, id_resourceTypes, resource_id, crud_permissions)
-VALUES (5, 2, 25, 7),    -- Read + Create + Update for dataTable 25
-       (5, 2, 30, 7);    -- Read + Create + Update for dataTable 30
+INSERT INTO role_data_access (id_roles, id_resource_types, resource_id, crud_permissions)
+VALUES (5, 2, 25, 7),    -- Read + Create + Update for data_table 25
+       (5, 2, 30, 7);    -- Read + Create + Update for data_table 30
 ```
-→ Users with id_roles 5 can read, create, and update data in dataTables 25 AND 30
+→ Users with id_roles 5 can read, create, and update data in data_tables 25 AND 30
 
 #### Full CRUD Access to Survey Data (Future)
 ```sql
 -- Assuming survey resource_type has id = 3 in lookups table
-INSERT INTO role_data_access (id_roles, id_resourceTypes, resource_id, crud_permissions)
+INSERT INTO role_data_access (id_roles, id_resource_types, resource_id, crud_permissions)
 VALUES (5, 3, 100, 15); -- 15 = Full CRUD for survey 100
 ```
 → Users with id_roles 5 have full CRUD access to survey 100
@@ -258,7 +258,7 @@ When a user has multiple roles, permissions are **unified using most-permissive 
 
 ### How It Works:
 1. **Collect all permissions** for the user across their roles
-2. **Group by resource** (same `id_resourceTypes` + `resource_id`)
+2. **Group by resource** (same `id_resource_types` + `resource_id`)
 3. **Bitwise OR** the `crud_permissions` for each resource group
 4. **Result**: User gets the combined permissions from all their roles
 
@@ -288,13 +288,13 @@ Result:
 ### SQL Query for Unified Permissions
 ```sql
 SELECT
-    rda.id_resourceTypes,
+    rda.id_resource_types,
     rda.resource_id,
     BIT_OR(rda.crud_permissions) as unified_permissions
 FROM role_data_access rda
-INNER JOIN users_roles ur ON ur.id_roles = rda.id_roles
+INNER JOIN rel_roles_users ur ON ur.id_roles = rda.id_roles
 WHERE ur.id_users = :user_id
-GROUP BY rda.id_resourceTypes, rda.resource_id;
+GROUP BY rda.id_resource_types, rda.resource_id;
 ```
 
 ## Implementation Notes

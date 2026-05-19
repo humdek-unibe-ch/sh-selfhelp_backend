@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Service\Core;
 
 use App\Entity\Action;
@@ -90,7 +95,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_INSERT,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 $job,
                 'Job scheduled: ' . ($jobData['description'] ?? $jobData['type'])
@@ -192,7 +197,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $jobId,
                 false,
                 'Job executed: ' . ($success ? 'executed' : 'failed')
@@ -272,7 +277,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $jobId,
                 $job,
                 'Job cancelled by user'
@@ -324,7 +329,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $jobId,
                 false,
                 'Job marked as deleted'
@@ -585,7 +590,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_SEND_MAIL_FAIL,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 false,
                 'No email recipients were resolved for the scheduled job'
@@ -630,7 +635,7 @@ class JobSchedulerService extends BaseService
         $this->transactionService->logTransaction(
             $success ? LookupService::TRANSACTION_TYPES_SEND_MAIL_OK : LookupService::TRANSACTION_TYPES_SEND_MAIL_FAIL,
             $transactionBy,
-            'scheduledJobs',
+            'scheduled_jobs',
             $job->getId(),
             false,
             sprintf('Email %s to %s', $success ? 'sent' : 'failed', $recipients)
@@ -659,7 +664,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_FAIL,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 false,
                 'Notification failed because the user does not have a device token'
@@ -672,7 +677,7 @@ class JobSchedulerService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_FAIL,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 false,
                 'Notification failed because Firebase config is not available'
@@ -717,7 +722,7 @@ class JobSchedulerService extends BaseService
         $this->transactionService->logTransaction(
             $result ? LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_OK : LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_FAIL,
             $transactionBy,
-            'scheduledJobs',
+            'scheduled_jobs',
             $job->getId(),
             false,
             sprintf('Push notification %s for user %d', $result ? 'sent' : 'failed', $user->getId())

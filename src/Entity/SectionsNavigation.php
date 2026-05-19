@@ -1,11 +1,20 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'sections_navigation')]
+#[ORM\Table(name: 'rel_sections_navigation')]
+#[ORM\Index(name: 'idx_rel_sections_navigation_id_parent_section', columns: ['id_parent_section'])]
+#[ORM\Index(name: 'idx_rel_sections_navigation_id_child_section', columns: ['id_child_section'])]
+#[ORM\Index(name: 'idx_rel_sections_navigation_id_pages', columns: ['id_pages'])]
 class SectionsNavigation
 {
 
@@ -14,14 +23,15 @@ class SectionsNavigation
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Section $parent = null;
+    #[ORM\JoinColumn(name: 'id_parent_section', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    private ?Section $parentSection = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'child', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
-    private ?Section $child = null;
+    #[ORM\JoinColumn(name: 'id_child_section', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    private ?Section $childSection = null;
 
+    #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Page::class)]
     #[ORM\JoinColumn(name: 'id_pages', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?Page $page = null;
@@ -38,26 +48,26 @@ class SectionsNavigation
         return $this;
     }
 
-    public function getParent(): ?Section
+    public function getParentSection(): ?Section
     {
-        return $this->parent;
+        return $this->parentSection;
     }
 
-    public function setParent(?Section $parent): static
+    public function setParentSection(?Section $parentSection): static
     {
-        $this->parent = $parent;
+        $this->parentSection = $parentSection;
 
         return $this;
     }
 
-    public function getChild(): ?Section
+    public function getChildSection(): ?Section
     {
-        return $this->child;
+        return $this->childSection;
     }
 
-    public function setChild(?Section $child): static
+    public function setChildSection(?Section $childSection): static
     {
-        $this->child = $child;
+        $this->childSection = $childSection;
 
         return $this;
     }

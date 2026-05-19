@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Service\CMS\Frontend;
 
 use App\Repository\PageRepository;
@@ -98,12 +103,15 @@ class PageService extends BaseService
         // Try to get from cache first
         $cacheKey = "pages_{$mode}_{$admin}_{$languageId}";
 
-        return $this->cache
+        $pages = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
             ->getList($cacheKey, function () use ($mode, $admin, $languageId, $userId) {
-                // Get all pages with ACL for the user using the ACLService (cached)
+                // Get all pages with ACL for the user using the ACLService (cached).
+                // The `get_user_acl` stored procedure returns canonical snake_case
+                // columns (id_parent_page, id_page_types, id_page_access_types)
+                // — no key normalization is needed.
                 $allPages = $this->aclService->getAllUserAcls($userId);
 
                 // Determine which type to remove based on mode
@@ -119,8 +127,9 @@ class PageService extends BaseService
                     }
 
                     // If admin is true, then all pages (normal filtering)
-                    // If not admin, then only pages with id_type = 2 or 3 (core and experiment pages)
-                    if (!$admin && isset($item['id_type']) && !in_array($item['id_type'], [2, 3])) {
+                    // If not admin, then only pages with id_page_types = 2 or 3
+                    // (core and experiment pages)
+                    if (!$admin && isset($item['id_page_types']) && !in_array($item['id_page_types'], [2, 3])) {
                         return false;
                     }
 
@@ -129,7 +138,7 @@ class PageService extends BaseService
                         return true;
                     }
 
-                    return $item['id_pageAccessTypes'] != $removeTypeId;
+                    return ($item['id_page_access_types'] ?? null) != $removeTypeId;
                 }));
 
                 // Get default language ID for fallback translations
@@ -185,9 +194,9 @@ class PageService extends BaseService
                 // Build the hierarchy
                 $nestedPages = [];
                 foreach ($pagesMap as $id => &$page) {
-                    if (isset($page['parent']) && $page['parent'] !== null && isset($pagesMap[$page['parent']])) {
+                    if (isset($page['id_parent_page']) && $page['id_parent_page'] !== null && isset($pagesMap[$page['id_parent_page']])) {
                         // This is a child page, add it to its parent's children array
-                        $pagesMap[$page['parent']]['children'][] = &$page;
+                        $pagesMap[$page['id_parent_page']]['children'][] = &$page;
                     } else {
                         // This is a root level page
                         $nestedPages[] = &$page;
@@ -201,6 +210,8 @@ class PageService extends BaseService
                 // Cache the result for this user
                 return $nestedPages;
             });
+
+        return $pages;
     }
 
     /**
@@ -216,7 +227,7 @@ class PageService extends BaseService
      * @return array The page object with translated sections
      * @throws \App\Exception\ServiceException If page not found or access denied
      */
-    public function getPage(int $page_id, ?int $language_id = null, bool $preview = false): array
+    public function getPage(int $page_id, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
     {
         // Determine which language ID to use for translations
         $languageId = $this->determineLanguageId($language_id);
@@ -230,15 +241,20 @@ class PageService extends BaseService
         if (!$page) {
             $this->throwNotFound('Page not found');
         }
-        return $this->resolvePageResponse($page, $page_id, $languageId, $preview);
+        return $this->resolvePageResponse($page, $page_id, $languageId, $preview, $mode);
     }
 
     /**
      * Resolve a page by its unique keyword. Used by the BFF to eliminate the
      * keyword -> id waterfall on page loads. Returns the same payload as
      * getPage(). Throws 404 if no page with this keyword exists.
+     *
+     * `$mode` is the page-access type the caller is requesting (web, mobile,
+     * mobile_and_web). If supplied, the page's own access type must be
+     * compatible (`mobile_and_web` is universal). Mismatches throw 404 to
+     * avoid leaking page metadata across platforms.
      */
-    public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false): array
+    public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
     {
         $languageId = $this->determineLanguageId($language_id);
 
@@ -247,14 +263,26 @@ class PageService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        return $this->resolvePageResponse($page, $page->getId(), $languageId, $preview);
+        return $this->resolvePageResponse($page, $page->getId(), $languageId, $preview, $mode);
     }
 
     /**
      * Shared resolution path used by getPage() and getPageByKeyword().
+     *
+     * Page-access enforcement:
+     * - Pages flagged `mobile_and_web` are universal and always pass.
+     * - Pages flagged `web` only resolve for `web` callers.
+     * - Pages flagged `mobile` only resolve for `mobile` callers.
+     * - When `$mode` is null (legacy callers / internal callers), the
+     *   check is skipped for back-compat.
+     * - Pages with no `id_page_access_types` are treated as `web` (legacy
+     *   default).
      */
-    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview): array
+    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array
     {
+        if ($mode !== null) {
+            $this->assertPageAccessForMode($page, $mode);
+        }
 
         // Check if user has access to the page
         $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'select');
@@ -266,6 +294,32 @@ class PageService extends BaseService
 
         // Otherwise serve the draft version (fresh from database)
         return $this->serveDraftVersion($page_id, $languageId, $page);
+    }
+
+    /**
+     * Throw a 404 (not 403, to avoid leaking page existence) if the page's
+     * declared platform doesn't match the caller's requested mode.
+     */
+    private function assertPageAccessForMode(\App\Entity\Page $page, string $mode): void
+    {
+        $pageType = $page->getPageAccessType();
+        $pageMode = $pageType ? strtolower((string) $pageType->getLookupCode()) : \App\Service\Core\LookupService::PAGE_ACCESS_TYPES_WEB;
+
+        if ($pageMode === \App\Service\Core\LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB) {
+            return;
+        }
+
+        $callerMode = strtolower($mode);
+        if ($callerMode === \App\Service\Core\LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB) {
+            // The caller explicitly asks for the universal lane — match.
+            return;
+        }
+
+        if ($pageMode === $callerMode) {
+            return;
+        }
+
+        $this->throwNotFound('Page not found');
     }
 
     /**

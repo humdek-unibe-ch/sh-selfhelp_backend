@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 declare(strict_types=1);
 
 namespace DoctrineMigrations;
@@ -43,7 +49,7 @@ use Doctrine\Migrations\AbstractMigration;
  * confirmed they should disappear from the catalogue and any future
  * migration can recreate them via the standard install seed).
  */
-final class Version20260425110000 extends AbstractMigration
+final class Version20260601000800 extends AbstractMigration
 {
     /**
      * Pages that need to be reachable without an authenticated session
@@ -78,7 +84,7 @@ final class Version20260425110000 extends AbstractMigration
 
     /**
      * Page keywords to physically delete (they are pure nav actions, not
-     * content pages). Their `acl_groups` and `pages_fields_translation`
+     * content pages). Their `page_acl_groups` and `pages_fields_translation`
      * children are removed first to satisfy the FK constraints on the
      * `pages` row.
      */
@@ -236,7 +242,7 @@ final class Version20260425110000 extends AbstractMigration
         $list = $this->quoteList(self::KEYWORDS_TO_DELETE);
 
         $this->addSql(<<<SQL
-            DELETE ag FROM `acl_groups` ag
+            DELETE ag FROM `page_acl_groups` ag
             JOIN `pages` p ON p.`id` = ag.`id_pages`
             WHERE p.`keyword` IN ({$list})
         SQL);
@@ -246,7 +252,7 @@ final class Version20260425110000 extends AbstractMigration
             WHERE p.`keyword` IN ({$list})
         SQL);
         $this->addSql(<<<SQL
-            DELETE pf FROM `pages_fields` pf
+            DELETE pf FROM `rel_fields_pages` pf
             JOIN `pages` p ON p.`id` = pf.`id_pages`
             WHERE p.`keyword` IN ({$list})
         SQL);

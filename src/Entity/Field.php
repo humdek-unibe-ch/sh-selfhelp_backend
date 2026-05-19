@@ -1,11 +1,19 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'fields')]
+#[ORM\UniqueConstraint(name: 'uq_fields_name', columns: ['name'])]
+#[ORM\Index(name: 'idx_fields_id_field_types', columns: ['id_field_types'])]
 class Field
 {
     #[ORM\OneToMany(mappedBy: 'field', targetEntity: StylesField::class)]
@@ -15,11 +23,11 @@ class Field
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: 'string', length: 100, unique: true)]
+    #[ORM\Column(name: 'name', type: 'string', length: 100)]
     private string $name;
 
     #[ORM\ManyToOne(targetEntity: FieldType::class, inversedBy: 'fields', cascade: ['persist', 'remove'])]
-    #[ORM\JoinColumn(name: 'id_type', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_field_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?FieldType $type = null;
 
     #[ORM\Column(name: 'display', type: 'boolean')]

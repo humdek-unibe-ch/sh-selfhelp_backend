@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Service\CMS;
 
 use App\Entity\DataTable;
@@ -236,7 +241,7 @@ class DataService extends BaseService
             $this->transactionService->logTransaction(
                 'delete',
                 LookupService::TRANSACTION_BY_BY_USER,
-                'dataTables',
+                'data_tables',
                 $dataRow->getDataTable()?->getId()
             );
 
@@ -505,7 +510,7 @@ class DataService extends BaseService
         $this->transactionService->logTransaction(
             'update',
             $transactionBy,
-            'dataTables',
+            'data_tables',
             $dataRow->getDataTable()?->getId()
         );
 
@@ -585,7 +590,7 @@ class DataService extends BaseService
         $this->transactionService->logTransaction(
             'insert',
             $transactionBy,
-            'dataTables',
+            'data_tables',
             $dataTable->getId()
         );
 

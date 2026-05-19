@@ -65,11 +65,11 @@ class Transaction
     private ?User $user = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_transactionTypes', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    #[ORM\JoinColumn(name: 'id_transaction_types', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Lookup $transactionType = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_transactionBy', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    #[ORM\JoinColumn(name: 'id_transaction_by', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Lookup $transactionBy = null;
 
     #[ORM\Column(name: 'table_name', type: 'string', length: 100, nullable: true)]
@@ -99,20 +99,20 @@ class Transaction
 CREATE TABLE `transactions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `id_users` int DEFAULT NULL,
-  `id_transactionTypes` int DEFAULT NULL,
-  `id_transactionBy` int DEFAULT NULL,
+  `id_transaction_types` int DEFAULT NULL,
+  `id_transaction_by` int DEFAULT NULL,
   `table_name` varchar(100) DEFAULT NULL,
   `id_table_name` int DEFAULT NULL,
   `transaction_log` longtext,
   `transaction_time` datetime NOT NULL,
   PRIMARY KEY (`id`),
   KEY `IDX_EAA81A4CFA06E4D9` (`id_users`),
-  KEY `IDX_EAA81A4C8B8E8428` (`id_transactionTypes`),
-  KEY `IDX_EAA81A4C5A8C7B02` (`id_transactionBy`),
+  KEY `idx_transactions_id_transaction_types` (`id_transaction_types`),
+  KEY `idx_transactions_id_transaction_by`    (`id_transaction_by`),
   KEY `idx_transactions_table` (`table_name`,`id_table_name`),
   KEY `idx_transactions_time` (`transaction_time`),
-  CONSTRAINT `FK_EAA81A4C5A8C7B02` FOREIGN KEY (`id_transactionBy`) REFERENCES `lookups` (`id`) ON DELETE SET NULL,
-  CONSTRAINT `FK_EAA81A4C8B8E8428` FOREIGN KEY (`id_transactionTypes`) REFERENCES `lookups` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_transactions_id_transaction_by`    FOREIGN KEY (`id_transaction_by`)    REFERENCES `lookups` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_transactions_id_transaction_types` FOREIGN KEY (`id_transaction_types`) REFERENCES `lookups` (`id`) ON DELETE SET NULL,
   CONSTRAINT `FK_EAA81A4CFA06E4D9` FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
@@ -872,7 +872,7 @@ public function testServiceTransactionLogging(): void
 ```sql
 -- Optimize transaction queries
 CREATE INDEX idx_transactions_user_time ON transactions(id_users, transaction_time);
-CREATE INDEX idx_transactions_type_time ON transactions(id_transactionTypes, transaction_time);
+CREATE INDEX idx_transactions_type_time ON transactions(id_transaction_types, transaction_time);
 CREATE INDEX idx_transactions_table_record ON transactions(table_name, id_table_name);
 ```
 

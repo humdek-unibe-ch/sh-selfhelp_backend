@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Repository;
 
 use App\Entity\ApiRoute;
@@ -129,7 +135,7 @@ class ApiRouteRepository extends ServiceEntityRepository
                 r.version,
                 GROUP_CONCAT(p.name ORDER BY p.name SEPARATOR ",") as permission_names
             FROM api_routes r
-            LEFT JOIN api_routes_permissions arp ON r.id = arp.id_api_routes
+            LEFT JOIN rel_api_routes_permissions arp ON r.id = arp.id_api_routes
             LEFT JOIN permissions p ON arp.id_permissions = p.id
             GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version
             ORDER BY r.version ASC, r.id ASC

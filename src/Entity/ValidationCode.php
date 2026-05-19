@@ -1,11 +1,19 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'validation_codes')]
+#[ORM\Index(name: 'idx_validation_codes_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_validation_codes_id_groups', columns: ['id_groups'])]
 class ValidationCode
 {
 

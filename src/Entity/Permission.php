@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use App\Entity\ApiRoute;
@@ -10,6 +16,7 @@ use Doctrine\DBAL\Types\Types;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'permissions')]
+#[ORM\UniqueConstraint(name: 'uq_permissions_name', columns: ['name'])]
 class Permission
 {
     #[ORM\Id]
@@ -17,14 +24,14 @@ class Permission
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: Types::STRING, length: 100, unique: true)]
+    #[ORM\Column(name: 'name', type: Types::STRING, length: 100)]
     private string $name;
 
     #[ORM\Column(name: 'description', type: Types::STRING, length: 255, nullable: true)]
     private ?string $description = null;
 
     #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'permissions')]
-    #[ORM\JoinTable(name: 'roles_permissions',
+    #[ORM\JoinTable(name: 'rel_permissions_roles',
         joinColumns: [new ORM\JoinColumn(name: 'id_permissions', referencedColumnName: 'id', onDelete: 'CASCADE')],
         inverseJoinColumns: [new ORM\JoinColumn(name: 'id_roles', referencedColumnName: 'id', onDelete: 'CASCADE')]
     )]

@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 declare(strict_types=1);
 
 namespace DoctrineMigrations;
@@ -32,7 +38,7 @@ use Doctrine\Migrations\AbstractMigration;
  * `css` field. They include `dark:` variants so the page looks right
  * in both color schemes.
  */
-final class Version20260425100100 extends AbstractMigration
+final class Version20260601000700 extends AbstractMigration
 {
     /**
      * Map of `<section_name> => <Tailwind classes>` to apply via the

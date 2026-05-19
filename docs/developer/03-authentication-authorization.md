@@ -346,13 +346,14 @@ lexik_jwt_authentication:
 Both token lifetimes are driven from environment variables (in seconds).
 **Access tokens** are signed JWTs and their TTL is enforced client-side by
 LexikJWTBundle (the `exp` claim). **Refresh tokens** are opaque strings backed
-by the `refreshTokens` DB table (entity `App\Entity\RefreshToken`); their TTL
+by the `refresh_tokens` DB table (entity `App\Entity\RefreshToken`); their TTL
 is written into the `expires_at` column when the row is created.
 
-| Variable                | Default              | Meaning                                                            | Wired in                                                                                           |
-|-------------------------|----------------------|--------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|
-| `JWT_TOKEN_TTL`         | `3600` (1 hour)      | Lifetime of a newly minted access JWT.                             | `config/packages/lexik_jwt_authentication.yaml` → `token_ttl` + `config/services.yaml` → `jwt_token_ttl`. |
-| `JWT_REFRESH_TOKEN_TTL` | `2592000` (30 days)  | Lifetime of a newly minted refresh token row.                      | `config/services.yaml` → `jwt_refresh_token_ttl`, consumed by `JWTService::createRefreshToken()`.  |
+| Variable                  | Default               | Meaning                                                            | Wired in                                                                                                                       |
+|---------------------------|-----------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------|
+| `JWT_TOKEN_TTL`           | `3600` (1 hour)       | Lifetime of a newly minted access JWT.                             | `config/packages/lexik_jwt_authentication.yaml` → `token_ttl` + `config/services.yaml` → `jwt_token_ttl`.                      |
+| `JWT_REFRESH_TOKEN_TTL`   | `2592000` (30 days)   | Lifetime of a newly minted refresh token row.                      | `config/services.yaml` → `jwt_refresh_token_ttl`, consumed by `JWTService::createRefreshToken()`.                              |
+| `IMPERSONATION_TOKEN_TTL` | `900` (15 minutes)    | Lifetime of an impersonation JWT issued via `/admin/users/{id}/impersonate`. The container has a hard-coded fallback (`900`) so booting without setting the var still works. | `config/services.yaml` → `jwt_impersonation_token_ttl`, consumed by `JWTService::createImpersonationToken()`.                  |
 
 Defaults live in `.env` / `.env.dev`. To override for your local machine
 without committing changes, set them in **`.env.local`** (not tracked by git):
@@ -377,7 +378,7 @@ php bin/console cache:clear
 
 Existing JWTs keep whatever `exp` they were minted with; only tokens created
 **after** the change pick up the new TTL. If you want to guarantee the next
-login uses the new TTL, also drop the `refreshTokens` table rows you no
+login uses the new TTL, also drop the `refresh_tokens` table rows you no
 longer need (otherwise old refresh tokens remain valid for their original
 window):
 
@@ -526,15 +527,15 @@ public function getPermissionNames(): array
 ## 🛡️ Route-Level Permissions
 
 ### Database-Driven Route Permissions
-Routes are associated with permissions through the `api_routes_permissions` table:
+Routes are associated with permissions through the `rel_api_routes_permissions` table:
 
 ```sql
-CREATE TABLE `api_routes_permissions` (
+CREATE TABLE `rel_api_routes_permissions` (
   `id_api_routes`   INT NOT NULL,
   `id_permissions`  INT NOT NULL,
   PRIMARY KEY (`id_api_routes`, `id_permissions`),
-  FOREIGN KEY (`id_api_routes`) REFERENCES `api_routes` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_permissions`) REFERENCES `permissions` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_rel_api_routes_permissions_id_api_routes`  FOREIGN KEY (`id_api_routes`)  REFERENCES `api_routes`  (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rel_api_routes_permissions_id_permissions` FOREIGN KEY (`id_permissions`) REFERENCES `permissions` (`id`) ON DELETE CASCADE
 );
 ```
 
@@ -586,13 +587,201 @@ class ApiSecurityListener
 }
 ```
 
+## 🎭 Impersonation
+
+The "view as another user" feature lets an admin diagnose user-specific
+problems without ever asking the user for their password. The
+implementation is **stateless** (no session table) and **state-of-the-art**
+in three respects:
+
+1. **RFC 8693 Token Exchange shape.** The impersonation JWT carries
+   `sub` (and the project alias `id_users`) set to the *target*
+   (effective principal), with the original admin id preserved in the
+   `act` claim:
+
+   ```json
+   {
+     "sub": "42",
+     "id_users": 42,
+     "act": { "sub": "1", "id_users": 1 },
+     "purpose": "impersonation",
+     "impersonation": true,
+     "exp": 1715170800
+   }
+   ```
+
+   `act.sub` is the OAuth 2.0 Token Exchange standard for "actor"
+   claims. `purpose: "impersonation"` is the RFC-recommended way of
+   declaring the token type for any introspection gateway. The boolean
+   `impersonation` is redundant on purpose — it's a fast-path flag the
+   `ApiSecurityListener` reads on every request without parsing `act`.
+
+   `UserContextService` exposes typed accessors so domain code does not
+   touch the raw payload:
+
+   - `isImpersonating(): bool`
+   - `getImpersonatedByUserId(): ?int` (the admin behind `act.sub`)
+   - `getActualUserId(): ?int` (use for audit trails — "who really did this?")
+   - `getEffectiveUserId(): ?int` (use for authorisation checks)
+
+2. **Token never reaches the browser DOM.** The Symfony response carries
+   the JWT exactly once, in JSON. The Next.js BFF route
+   `src/app/api/admin/users/[userId]/impersonate/route.ts` strips it,
+   parks it in an **httpOnly** cookie (`sh_impersonate`), and returns
+   only `{target_email, expires_in}` to React. A separate non-httpOnly
+   hint cookie (`sh_impersonate_target_email`) carries just the email
+   so the impersonation banner can render — no secret material is
+   readable from JavaScript. This mirrors the existing `sh_auth` /
+   `sh_refresh` pattern and is what lets us claim "tokens never touch
+   the DOM".
+
+3. **Audit, don't block.** The `ApiSecurityListener::handleImpersonation`
+   method is the single place where impersonation policy lives:
+
+   - The route name is checked against
+     `IMPERSONATION_FORBIDDEN_ROUTES` — a small allow-list of high-risk
+     mutations (delete user, change roles/groups, block/unblock, clean
+     data, start another impersonation chain). These return 403 with a
+     clear message.
+   - Every other mutation is **allowed** but writes a row to
+     `transactions` recording the admin id (`act.sub`), the target id
+     (`id_users`), the HTTP method, the path, and the route name.
+     Reads do not generate noise — only mutations.
+   - The single route `admin_users_stop_impersonate_v1` is always
+     allowed even under impersonation, so the admin can always exit.
+
+The `JWTTokenAuthenticator` writes the decoded payload to
+`$request->attributes` (`_jwt_payload`, `_jwt_token`), so the listener
+and the stop-impersonate controller never re-parse the JWT — that would
+both waste CPU and bypass the blacklist check.
+
+### Stop-impersonate flow
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant BFF as Next.js BFF
+    participant Symfony
+
+    Browser->>BFF: POST /api/admin/users/stop-impersonate
+    BFF->>BFF: read sh_impersonate cookie
+    BFF->>Symfony: POST /admin/users/stop-impersonate (Bearer = impersonation JWT)
+    Symfony->>Symfony: read act.sub from payload
+    Symfony->>Symfony: blacklistAccessToken(jwt) -> JWTService cache
+    Symfony->>Symfony: log audit row in transactions
+    Symfony-->>BFF: 200 { stopped: true }
+    BFF->>BFF: clear sh_impersonate + sh_impersonate_target_email
+    BFF-->>Browser: 200 { stopped: true }
+    Note over Browser: globalThis.location.reload()
+```
+
+The blacklist is the same one `JWTService::blacklistAccessToken()` uses
+on logout — Symfony caches the token hash with a TTL equal to the
+remaining JWT lifetime, so even if the impersonation cookie was leaked,
+the token is unusable the moment "Stop" is pressed.
+
+### Effective-identity rule (BFF + SSR)
+
+The single rule that drives the impersonation token routing across all
+three layers (Symfony, the Next.js BFF proxy, and the SSR helpers) is:
+
+> An impersonation cookie wins over the admin cookie for **every**
+> upstream call **except** the routes that operate on the admin's own
+> session lifecycle.
+
+Concretely:
+
+| Path                       | Token sent       | Why                                   |
+|----------------------------|------------------|---------------------------------------|
+| `/auth/login`              | none / admin     | Pre-impersonation auth flow.          |
+| `/auth/refresh-token`      | admin            | Refreshes the admin's `sh_auth`.       |
+| `/auth/logout`             | admin            | Logs out the admin's session.          |
+| `/auth/two-factor-*`       | admin            | Continues the admin's auth flow.       |
+| `/auth/set-language`       | admin            | Sets the admin's preferred language.   |
+| `/auth/user-data`          | impersonation    | "Who am I right now?" must reflect the impersonated identity. |
+| `/auth/events` (Mercure)   | impersonation    | Subscriber JWT must be minted for the effective principal. |
+| `/lookups`                 | impersonation    | System reference data — see endpoint note below. |
+| `/admin/*`                 | impersonation    | Anything the impersonated user is allowed to do. Mutations are still audit-logged via `ApiSecurityListener::handleImpersonation`. |
+| `/pages/*`                 | impersonation    | Public site rendered as the target.    |
+
+Both `Next.js BFF proxy` (`src/app/api/_lib/proxy.ts::pickUpstreamToken`)
+and `SSR helpers` (`src/app/_lib/server-fetch.ts::authHeaders`) implement
+the same exclusion list (`ADMIN_SESSION_ROUTE_PREFIXES` /
+`isAdminSessionRoute`). Keeping the two in lock-step is what prevents
+the "SSR rendered as admin while client refetched as target" hydration
+mismatch we saw before this rule was made consistent.
+
+> **Note on `/lookups` (route name `system_lookups`).** The canonical
+> `Version20260601000300` API-routes seed (a) ships the route as
+> `system_lookups` at `/lookups` (no longer under `/admin/`), and
+> (b) does NOT attach the `admin.access` permission to it.
+> The endpoint exposes pure reference data (timezones, type codes,
+> weekdays, audit categories) that public frontend styles such as
+> `ProfileStyle` rely on. Gating it on `admin.access` was the cause of
+> the impersonation 403 on profile pages — and the same regression bit
+> any non-admin authenticated user. The endpoint still requires
+> authentication via the JWT firewall (anonymous → 401).
+
+### Real-time banner via Mercure
+
+The "You are impersonating ..." banner is **not polled**. It rides on
+the same Mercure SSE infrastructure the ACL change push uses:
+
+- Every authenticated browser session opens exactly one SSE stream via
+  the frontend BFF route `/api/auth/events`.
+- `MercureTopicResolver::userImpersonationTopic($id)` defines the
+  topic IRI `https://selfhelp.app/users/{id}/impersonation`.
+- `AuthEventsController::events()` mints a single subscriber JWT scoped
+  to *both* the caller's ACL topic and impersonation topic. The BFF
+  multiplexes both event streams over one upstream Mercure socket
+  (Mercure accepts repeated `topic=` query params).
+- The stream is scoped to the session's **effective identity**:
+  normal sessions bootstrap `/auth/events` with `sh_auth`, while active
+  impersonation sessions bootstrap it with `sh_impersonate`. That means
+  the impersonating tab subscribes to the target user's topics, exactly
+  like the rest of its API traffic runs as the target user.
+- `AdminUserService::impersonateUser()` and `stopImpersonateUser()`
+  publish an `impersonation-status` update on the target's topic. The
+  payload schema is:
+
+  ```json
+  {
+    "active": true,
+    "targetEmail": "user@example.com",
+    "targetUserId": 42,
+    "adminUserId": 1,
+    "expiresAt": 1715170800,
+    "expiresIn": 900
+  }
+  ```
+
+  (`active: false` events omit `targetEmail`, `expiresAt`, `expiresIn`.)
+- Failures publishing to Mercure are logged but never roll back the JWT
+  state change. The frontend has a `setTimeout(expires_in)` safety-net,
+  so the banner disappears at the JWT TTL even if a single Mercure event
+  is dropped.
+- When impersonation expires naturally, the `sh_impersonate` cookie
+  expires with the same TTL as the JWT. The next EventSource reconnect
+  therefore falls back to `sh_auth` and re-subscribes as the original
+  admin automatically.
+- The original admin identity is still preserved inside the
+  impersonation JWT (`act.sub`) and remains the source of truth for
+  audit logging and the restricted-route guard that blocks a small set
+  of high-risk actions during impersonation.
+
+The frontend hook `useAclEventStream` (despite the name — it's the
+single SSE subscription for the user) listens for both events and drives
+the Zustand `impersonation.store.ts`. Net result: clicking "Stop" in one
+admin tab clears the banner in every other open tab and on the target
+user's own sessions within milliseconds, with no polling.
+
 ## 🔒 Access Control Lists (ACL)
 
 ### Fine-Grained Page Access Control
 The ACL system provides page-level access control with CRUD operations:
 
 ```sql
-CREATE TABLE `acl_groups` (
+CREATE TABLE `page_acl_groups` (
   `id_groups`   INT NOT NULL,
   `id_pages`    INT NOT NULL,
   `acl_select`  TINYINT(1) NOT NULL DEFAULT '1',
@@ -728,7 +917,7 @@ WHERE ug.name = 'admin' AND p.name = 'admin.asset.upload';
 
 3. **Associate with Routes**:
 ```sql
-INSERT INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
+INSERT INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT ar.id, p.id 
 FROM `api_routes` ar, `permissions` p
 WHERE ar.route_name = 'admin_upload_asset' AND p.name = 'admin.asset.upload';

@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\DBAL\Types\Types;
@@ -7,6 +13,9 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'transactions')]
+#[ORM\Index(name: 'idx_transactions_id_transaction_types', columns: ['id_transaction_types'])]
+#[ORM\Index(name: 'idx_transactions_id_transaction_by', columns: ['id_transaction_by'])]
+#[ORM\Index(name: 'idx_transactions_id_users', columns: ['id_users'])]
 class Transaction
 {
     #[ORM\Id]
@@ -17,10 +26,10 @@ class Transaction
     #[ORM\Column(name: 'transaction_time', type: 'datetime_immutable', options: ['default' => 'CURRENT_TIMESTAMP'])]
     private \DateTimeImmutable $transactionTime;
 
-    #[ORM\Column(name: 'id_transactionTypes', type: 'integer', nullable: true)]
+    #[ORM\Column(name: 'id_transaction_types', type: 'integer', nullable: true)]
     private ?int $idTransactionTypes = null;
 
-    #[ORM\Column(name: 'id_transactionBy', type: 'integer', nullable: true)]
+    #[ORM\Column(name: 'id_transaction_by', type: 'integer', nullable: true)]
     private ?int $idTransactionBy = null;
 
     #[ORM\Column(name: 'id_users', type: 'integer', nullable: true)]
@@ -36,11 +45,11 @@ class Transaction
     private ?string $transactionLog = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_transactionTypes', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_transaction_types', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Lookup $transactionType = null;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_transactionBy', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_transaction_by', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Lookup $transactionBy = null;
 
     #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'transactions')]

@@ -463,7 +463,7 @@ The SH-Self-help backend uses JSON Web Tokens (JWT) for stateless API authentica
 3. **Token Refresh**
    - When JWT expires, client can send refresh token to `/cms-api/v1/auth/refresh-token`
    - System validates refresh token and issues a new JWT **and** rotates the refresh
-     token (`processRefreshToken()` removes the old `refreshTokens` row and inserts
+     token (`processRefreshToken()` removes the old `refresh_tokens` row and inserts
      a new one before responding), so every refresh advances the refresh-token
      expiry by another full `JWT_REFRESH_TOKEN_TTL` window.
    - Refresh tokens are stored in the database and can be invalidated.
@@ -516,7 +516,7 @@ Three moving parts:
    the discovery payload the frontend BFF needs to subscribe. Endpoint is
    registered in `api_routes` by `migrations/Version20260425000000.php`
    (mirrored in `db/update_scripts/api_routes.sql`) and authenticates
-   manually via `UserContextService` (no `api_routes_permissions` row).
+   manually via `UserContextService` (no `rel_api_routes_permissions` row).
 
 3. **Hub: `dunglas/mercure` container** (see `docker-compose.mercure.yml` and
    the README "Real-time push (Mercure)" section). Holds the long-lived SSE
@@ -915,7 +915,7 @@ The `SectionService` handles the business logic for creating sections:
 
 - **Section Naming Convention**: Sections are named using the pattern `unixTimestamp-styleName`
 - **Transaction Management**: All operations use explicit transaction management
-- **Database Structure**: Uses the `pages_sections` and `sections_hierarchy` tables to manage relationships
+- **Database Structure**: Uses the `rel_pages_sections` and `rel_sections_hierarchy` tables to manage relationships
 
 ### JSON Schema Validation
 
@@ -1703,7 +1703,7 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 
 ### Asset
 - `id`: int (PK)
-- `id_assetTypes`: int (FK to Lookup)
+- `id_asset_types`: int (FK to lookups, `type_code='assetTypes'`)
 - `folder`: string (nullable)
 - `file_name`: string (nullable)
 - `file_path`: string
@@ -1751,40 +1751,40 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `anonymous_users`: int
 - `firebase_config`: string (nullable)
 
-### CodesGroup
-- `code`: string (PK, FK to ValidationCode)
-- `id_groups`: int (PK, FK to Group)
+### validation_code_groups (renamed from `codes_groups`)
+- `code`: string (PK, FK to validation_codes)
+- `id_groups`: int (PK, FK to groups)
 
-### DataCell
-- `id_dataRows`: int (PK, FK to DataRow)
-- `id_dataCols`: int (PK, FK to DataCol)
+### data_cells
+- `id_data_rows`: int (PK, FK to data_rows)
+- `id_data_cols`: int (PK, FK to data_cols)
 - `value`: text
 
-### DataCol
+### data_cols
 - `id`: int (PK)
 - `name`: string (nullable)
-- `id_dataTables`: int (nullable, FK to DataTable)
+- `id_data_tables`: int (nullable, FK to data_tables)
 
-### DataRow
+### data_rows
 - `id`: int (PK)
-- `id_dataTables`: int (nullable, FK to DataTable)
+- `id_data_tables`: int (nullable, FK to data_tables)
 - `timestamp`: datetime
-- `id_users`: int (nullable, FK to User)
-- `id_actionTriggerTypes`: int (nullable, FK to Lookup)
+- `id_users`: int (nullable, FK to users)
+- `id_action_trigger_types`: int (nullable, FK to lookups, `type_code='actionTriggerTypes'`)
 
-### DataTable
+### data_tables
 - `id`: int (PK)
 - `name`: string
 - `timestamp`: datetime
-- `displayName`: string (nullable)
+- `display_name`: string (nullable)
 
-### Field
+### fields
 - `id`: int (PK)
 - `name`: string
-- `id_type`: int (FK to FieldType)
+- `id_type`: int (FK to field_types) — legacy column name retained
 - `display`: bool
 
-### FieldType
+### field_types
 - `id`: int (PK)
 - `name`: string
 - `position`: int
@@ -1809,7 +1809,7 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 
 ### Hook
 - `id`: int (PK)
-- `id_hookTypes`: int (FK to Lookup)
+- `id_hook_types`: int (FK to lookups, `type_code='hookTypes'`)
 - `name`: string (nullable)
 - `description`: string (nullable)
 - `class`: string
@@ -1832,7 +1832,7 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `comments`: string (nullable)
 
 ### LogPerformance
-- `id_user_activity`: int (PK, FK to UserActivity)
+- `id_user_activities`: int (PK, FK to user_activities)
 - `log`: text (nullable)
 
 ### Lookup
@@ -1842,9 +1842,9 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `lookup_value`: string (nullable)
 - `lookup_description`: string (nullable)
 
-### MailAttachment
+### mail_attachments
 - `id`: int (PK)
-- `id_mailQueue`: int (FK to MailQueue)
+- `id_mail_queue`: int (FK to mail_queue)
 - `attachment_name`: string (nullable)
 - `attachment_path`: string
 - `attachment_url`: string
@@ -1868,47 +1868,47 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `body`: text
 - `url`: string (nullable)
 
-### Page
+### pages
 - `id`: int (PK)
 - `keyword`: string (unique)
 - `url`: string (nullable)
 - `protocol`: string (nullable)
-- `id_actions`: int (nullable, FK to Action)
-- `id_navigation_section`: int (nullable, FK to Section)
-- `parent`: int (nullable, FK to Page)
+- `id_actions`: int (nullable, FK to actions)
+- `id_navigation_section`: int (nullable, FK to sections)
+- `id_parent_page`: int (nullable, self-FK to pages)
 - `is_headless`: bool
 - `nav_position`: int (nullable)
 - `footer_position`: int (nullable)
-- `id_type`: int (FK to PageType)
-- `id_pageAccessTypes`: int (nullable, FK to Lookup)
+- `id_page_types`: int (FK to page_types)
+- `id_page_access_types`: int (nullable, FK to lookups, `type_code='pageAccessTypes'`)
 - `is_open_access`: bool (nullable)
 - `is_system`: bool (nullable)
 
-### PageType
+### page_types
 - `id`: int (PK)
 - `name`: string
 
-### PageTypeField
-- `id_pageType`: int (PK, FK to PageType)
-- `id_fields`: int (PK, FK to Field)
+### rel_fields_page_types (relation: pure link)
+- `id_page_types`: int (PK, FK to page_types)
+- `id_fields`: int (PK, FK to fields)
 - `default_value`: string (nullable)
 - `help`: text (nullable)
 
-### PagesField
-- `id_pages`: int (PK, FK to Page)
-- `id_fields`: int (PK, FK to Field)
+### rel_fields_pages (relation: pure link)
+- `id_pages`: int (PK, FK to pages)
+- `id_fields`: int (PK, FK to fields)
 - `default_value`: string (nullable)
 - `help`: text (nullable)
 
-### PagesFieldsTranslation
-- `id_pages`: int (PK, FK to Page)
-- `id_fields`: int (PK, FK to Field)
-- `id_languages`: int (PK, FK to Language)
+### pages_fields_translation
+- `id_pages`: int (PK, FK to pages)
+- `id_fields`: int (PK, FK to fields)
+- `id_languages`: int (PK, FK to languages)
 - `content`: text
 
-### PagesSection
-- `id_pages`: int (PK, FK to Page)
-- `id_sections`: int (PK, FK to Section)
+### rel_pages_sections (relation: pure link)
+- `id_pages`: int (PK, FK to pages)
+- `id_sections`: int (PK, FK to sections)
 - `position`: int (nullable)
 
 ### Plugin
@@ -1921,7 +1921,7 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_qualtricsProjects`: int (FK to QualtricsProject)
 - `id_qualtricsSurveys`: int (FK to QualtricsSurvey)
 - `name`: string
-- `id_qualtricsProjectActionTriggerTypes`: int (FK to Lookup)
+- `id_qualtrics_project_action_trigger_types`: int (FK to lookups)
 - `id_qualtricsActionScheduleTypes`: int (FK to Lookup)
 - `id_qualtricsSurveys_reminder`: int (nullable, FK to QualtricsSurvey)
 - `schedule_info`: text (nullable)
@@ -1946,121 +1946,123 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `edited_on`: datetime
 
 ### QualtricsReminder
-- `id_qualtricsSurveys`: int (PK, FK to QualtricsSurvey)
-- `id_users`: int (PK, FK to User)
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
+- `id_qualtrics_surveys`: int (PK, FK to qualtrics_surveys)
+- `id_users`: int (PK, FK to users)
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
 
-### QualtricsSurvey
+### qualtrics_surveys
 - `id`: int (PK)
 - `name`: string
 - `description`: string (nullable)
 - `qualtrics_survey_id`: string (nullable)
-- `id_qualtricsSurveyTypes`: int (FK to Lookup)
+- `id_qualtrics_survey_types`: int (FK to lookups, `type_code='qualtricsSurveyTypes'`)
 - `participant_variable`: string (nullable)
 - `group_variable`: int (nullable)
 - `created_on`: datetime
 - `edited_on`: datetime
 - `config`: text (nullable)
 
-### QualtricsSurveysResponse
+### qualtrics_surveys_responses
 - `id`: int (PK)
-- `id_users`: int (FK to User)
-- `id_surveys`: int (FK to QualtricsSurvey)
-- `id_qualtricsProjectActionTriggerTypes`: int (FK to Lookup)
+- `id_users`: int (FK to users)
+- `id_surveys`: int (FK to qualtrics_surveys)
+- `id_qualtrics_project_action_trigger_types`: int (FK to lookups)
 - `survey_response_id`: string (nullable)
 - `started_on`: datetime
 - `edited_on`: datetime
-### RefreshToken
+
+### refresh_tokens
 - `id`: bigint (PK)
 - `id_users`: bigint
 - `token_hash`: string
 - `expires_at`: datetime
 - `created_at`: datetime (nullable)
 
-### ScheduledJob
+### scheduled_jobs
 - `id`: int (PK)
-- `id_jobTypes`: int (FK to Lookup)
-- `id_jobStatus`: int (FK to Lookup)
+- `id_job_types`: int (FK to lookups, `type_code='jobTypes'`)
+- `id_job_status`: int (FK to lookups, `type_code='jobStatus'`)
 - `description`: string (nullable)
 - `date_create`: datetime
 - `date_to_be_executed`: datetime (nullable)
 - `date_executed`: datetime (nullable)
 - `config`: string (nullable)
 
-### ScheduledJobsFormAction
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-- `id_formActions`: int (PK, FK to FormAction)
-- `id_dataRows`: int (nullable, FK to DataRow)
+### rel_scheduled_jobs_form_actions (relation: pure link)
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
+- `id_form_actions`: int (PK, FK to actions)
+- `id_data_rows`: int (nullable, FK to data_rows)
 
 
-### ScheduledJobsQualtricsAction
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-- `id_qualtricsActions`: int (PK, FK to QualtricsAction)
+### rel_scheduled_jobs_qualtrics_actions (relation: pure link)
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
+- `id_qualtrics_actions`: int (PK, FK to qualtrics_actions)
 
-### ScheduledJobsReminder
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-- `id_dataTables`: int (PK, FK to DataTable)
+### scheduled_job_reminders
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
+- `id_parent_scheduled_jobs`: int (nullable, FK to scheduled_jobs)
+- `id_data_tables`: int (nullable, FK to data_tables)
 - `session_start_date`: datetime (nullable)
 - `session_end_date`: datetime (nullable)
 
-### ScheduledJobsTask
-- `id_scheduledJobs`: int (PK, FK to ScheduledJob)
-- `id_tasks`: int (PK, FK to Task)
+### rel_scheduled_jobs_tasks (relation: pure link)
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
+- `id_tasks`: int (PK, FK to tasks)
 
-### Section
+### sections
 - `id`: int (PK)
-- `id_styles`: int (FK to Style)
+- `id_styles`: int (FK to styles)
 - `name`: string
 
-### SectionsFieldsTranslation
-- `id_sections`: int (PK, FK to Section)
-- `id_fields`: int (PK, FK to Field)
-- `id_languages`: int (PK, FK to Language)
+### sections_fields_translation
+- `id_sections`: int (PK, FK to sections)
+- `id_fields`: int (PK, FK to fields)
+- `id_languages`: int (PK, FK to languages)
 - `content`: text
 - `meta`: string (nullable)
 
-### SectionsHierarchy
-- `parent`: int (PK, FK to Section)
-- `child`: int (PK, FK to Section)
+### rel_sections_hierarchy (relation: pure link, parent/child sections)
+- `id_parent_section`: int (PK, FK to sections)
+- `id_child_section`: int (PK, FK to sections)
 - `position`: int (nullable)
 
-### SectionsNavigation
-- `parent`: int (PK, FK to Section)
-- `child`: int (PK, FK to Section)
-- `id_pages`: int (FK to Page)
+### rel_sections_navigation (relation: pure link, parent/child sections per page)
+- `id_parent_section`: int (PK, FK to sections)
+- `id_child_section`: int (PK, FK to sections)
+- `id_pages`: int (FK to pages)
 - `position`: int
 
-### Style
+### styles
 - `id`: int (PK)
 - `name`: string
-- `id_type`: int (FK to Lookup with type_code = 'styleType')
-- `id_group`: int (FK to StyleGroup)
+- `id_style_groups`: int (FK to style_groups)
 - `description`: text (nullable)
+- `can_have_children`: bool
 
-### StyleGroup
+### style_groups
 - `id`: int (PK)
 - `name`: string
 - `description`: text (nullable)
 - `position`: int (nullable)
 
-### StylesField
-- `id_styles`: int (PK, FK to Style)
-- `id_fields`: int (PK, FK to Field)
+### rel_fields_styles (relation: pure link, renamed from `styles_fields`)
+- `id_styles`: int (PK, FK to styles)
+- `id_fields`: int (PK, FK to fields)
 - `default_value`: string (nullable)
 - `help`: text (nullable)
 - `disabled`: bool
 - `hidden`: int (nullable)
 
-### Task
+### tasks
 - `id`: int (PK)
 - `config`: text (nullable)
 
-### Transaction
+### transactions
 - `id`: int (PK)
 - `transaction_time`: datetime
-- `id_transactionTypes`: int (nullable, FK to Lookup)
-- `id_transactionBy`: int (nullable, FK to Lookup)
-- `id_users`: int (nullable, FK to User)
+- `id_transaction_types`: int (nullable, FK to lookups, `type_code='transactionTypes'`)
+- `id_transaction_by`: int (nullable, FK to lookups, `type_code='transactionBy'`)
+- `id_users`: int (nullable, FK to users)
 - `table_name`: string (nullable)
 - `id_table_name`: int (nullable)
 - `transaction_log`: text (nullable)
@@ -2083,30 +2085,30 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `device_token`: string (nullable)
 - `security_questions`: string (nullable)
 - `user_name`: string (nullable)
-- `id_userTypes`: int (FK to Lookup)
+- `id_user_types`: int (FK to lookups, `type_code='userTypes'`)
 
-### UserActivity
+### user_activities (renamed from `user_activity`)
 - `id`: int (PK)
-- `id_users`: int (FK to User)
+- `id_users`: int (FK to users)
 - `url`: string
 - `timestamp`: datetime
-- `id_type`: int (FK to ActivityType)
+- `id_type`: int (FK to lookups, `type_code='activityType'`) — legacy column name retained
 - `exec_time`: decimal (nullable)
 - `keyword`: string (nullable)
 - `params`: string (nullable)
 - `mobile`: bool (nullable)
 
-### Users2faCode
+### user_2fa_codes (renamed from `users_2fa_codes`)
 - `id`: int (PK)
-- `id_users`: int (FK to User)
+- `id_users`: int (FK to users)
 - `code`: string
 - `created_at`: datetime
 - `expires_at`: datetime
 - `is_used`: bool
 
-### UsersGroup
-- `id_users`: int (PK, FK to User)
-- `id_groups`: int (PK, FK to Group)
+### rel_groups_users (relation: pure link, renamed from `users_groups`)
+- `id_users`: int (PK, FK to users)
+- `id_groups`: int (PK, FK to groups)
 
 ### UserStatus
 - `id`: int (PK)
@@ -2148,50 +2150,50 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `anonymous_users`: int (default 0)
 - `firebase_config`: string (nullable, length 10000)
 
-### CodesGroup
-- `code`: string (PK, length 16)
-- `id_groups`: int (PK)
+### validation_code_groups (renamed from `codes_groups`)
+- `code`: string (PK, length 16, FK to validation_codes)
+- `id_groups`: int (PK, FK to groups)
 
-### DataCell
-- `id_dataRows`: int (PK)
-- `id_dataCols`: int (PK)
+### data_cells
+- `id_data_rows`: int (PK, FK to data_rows)
+- `id_data_cols`: int (PK, FK to data_cols)
 - `value`: text
 
-### DataCol
+### data_cols
 - `id`: int (PK)
 - `name`: string (nullable, length 255)
-- `id_dataTables`: int (nullable)
+- `id_data_tables`: int (nullable, FK to data_tables)
 
-### DataRow
+### data_rows
 - `id`: int (PK)
-- `id_dataTables`: int (nullable)
+- `id_data_tables`: int (nullable, FK to data_tables)
 - `timestamp`: datetime
-- `id_users`: int (nullable)
-- `id_actionTriggerTypes`: int (nullable)
+- `id_users`: int (nullable, FK to users)
+- `id_action_trigger_types`: int (nullable, FK to lookups, `type_code='actionTriggerTypes'`)
 
-### DataTable
+### data_tables
 - `id`: int (PK)
 - `name`: string (length 100)
 - `timestamp`: datetime
-- `displayName`: string (nullable, length 1000)
+- `display_name`: string (nullable, length 1000)
 
-### Field
+### fields
 - `id`: int (PK)
 - `name`: string (length 100)
-- `id_type`: int
+- `id_type`: int (FK to field_types) — legacy column name retained
 - `display`: bool (default 1)
 
-### FieldType
+### field_types
 - `id`: int (PK)
 - `name`: string (length 100)
 - `position`: int
 
-### FormAction
+### actions (form actions)
 - `id`: int (PK)
 - `name`: string (length 200)
-- `id_formProjectActionTriggerTypes`: int
+- `id_action_trigger_types`: int (FK to lookups, `type_code='actionTriggerTypes'`)
 - `config`: text (nullable)
-- `id_dataTables`: int (nullable)
+- `id_data_tables`: int (nullable, FK to data_tables)
 
 ### Gender
 - `id`: int (PK)
@@ -2204,9 +2206,9 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_group_types`: int (nullable)
 - `requires_2fa`: bool (default 0)
 
-### Hook
+### hooks
 - `id`: int (PK)
-- `id_hookTypes`: int
+- `id_hook_types`: int (FK to lookups, `type_code='hookTypes'`)
 - `name`: string (nullable, length 100)
 - `description`: string (nullable, length 1000)
 - `class`: string (length 100)
@@ -2228,9 +2230,9 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `license`: string (nullable, length 1000)
 - `comments`: string (nullable, length 1000)
 
-### MailAttachment
+### mail_attachments
 - `id`: int (PK)
-- `id_mailQueue`: int
+- `id_mail_queue`: int (FK to mail_queue)
 - `attachment_name`: string (nullable, length 1000)
 - `attachment_path`: string (length 1000)
 - `attachment_url`: string (length 1000)
@@ -2252,84 +2254,80 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `created_on`: datetime
 - `edited_on`: datetime
 
-### QualtricsSurvey
+### qualtrics_surveys
 - `id`: int (PK)
 - `name`: string (length 200)
 - `description`: string (nullable, length 1000)
 - `qualtrics_survey_id`: string (nullable, length 100)
-- `id_qualtricsSurveyTypes`: int
+- `id_qualtrics_survey_types`: int (FK to lookups, `type_code='qualtricsSurveyTypes'`)
 - `participant_variable`: string (nullable, length 100)
 - `group_variable`: int (default 0)
 - `created_on`: datetime
 - `edited_on`: datetime
 - `config`: text (nullable)
 
-### QualtricsSurveysResponse
+### qualtrics_surveys_responses
 - `id`: int (PK)
-- `id_users`: int
-- `id_surveys`: int
-- `id_qualtricsProjectActionTriggerTypes`: int
+- `id_users`: int (FK to users)
+- `id_surveys`: int (FK to qualtrics_surveys)
+- `id_qualtrics_project_action_trigger_types`: int (FK to lookups)
 - `survey_response_id`: string (nullable, length 100)
 - `started_on`: datetime
 - `edited_on`: datetime
 
-### ScheduledJob
+### scheduled_jobs
 - `id`: int (PK)
-- `id_jobTypes`: int
-- `id_jobStatus`: int
+- `id_job_types`: int (FK to lookups, `type_code='jobTypes'`)
+- `id_job_status`: int (FK to lookups, `type_code='jobStatus'`)
 - `description`: string (nullable, length 1000)
 - `date_create`: datetime
 - `date_to_be_executed`: datetime (nullable)
 - `date_executed`: datetime (nullable)
 - `config`: string (nullable, length 1000)
 
-### ScheduledJobsFormAction
-- `id_scheduledJobs`: int (PK)
-- `id_formActions`: int (PK)
-- `id_dataRows`: int (nullable)
+### rel_scheduled_jobs_form_actions (relation: pure link)
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
+- `id_form_actions`: int (PK, FK to actions)
+- `id_data_rows`: int (nullable, FK to data_rows)
 
 
-### ScheduledJobsQualtricsAction
-- `id_scheduledJobs`: int (PK)
-- `id_qualtricsActions`: int (PK)
+### rel_scheduled_jobs_qualtrics_actions (relation: pure link)
+- `id_scheduled_jobs`: int (PK, FK to scheduled_jobs)
+- `id_qualtrics_actions`: int (PK, FK to qualtrics_actions)
 
-### RefreshToken
+### refresh_tokens
 - `id`: bigint (PK)
-- `user`: FK to User
+- `user`: FK to users
 - `token_hash`: string
 - `expires_at`: datetime
 - `created_at`: datetime
 
-### Section
+### sections
 - `id`: int (PK)
-- `style`: FK to Style
+- `style`: FK to styles
 - `name`: string (unique)
 
-### Style
+### styles
 - `id`: int (PK)
 - `name`: string (unique)
-- `type`: FK to StyleType
-- `group`: FK to StyleGroup
+- `group`: FK to style_groups — exposed via `id_style_groups` column
 - `description`: text (nullable)
+- `can_have_children`: bool
 
-### StyleGroup
+### style_groups (renamed from `styleGroup`)
 - `id`: int (PK)
 - `name`: string (unique)
 - `description`: text (nullable)
 - `position`: int (nullable)
 
-### StyleType
-- `id`: int (PK)
-- `name`: string
-
-### User
+### users
 - `id`: int (PK)
 - `email`: string (unique)
 - `name`: string (nullable)
 - `password`: string (nullable)
-- `id_genders`: int (nullable)
-- `id_languages`: int (nullable)
-- `id_status`: int (nullable)
+- `id_genders`: int (nullable, FK to lookups)
+- `id_languages`: int (nullable, FK to languages)
+- `id_status`: int (nullable, FK to lookups, `type_code='userStatus'`)
 - `blocked`: bool
 - `intern`: bool
 - `last_login`: datetime (nullable)
@@ -2338,7 +2336,7 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `is_reminded`: bool
 - `token`: string (nullable)
 - `twoFactorRequired`: bool
-- `id_userTypes`: int (nullable)
+- `id_user_types`: int (nullable, FK to lookups, `type_code='userTypes'`)
 
 
 ### Canonical ACL Source: get_user_acl Stored Procedure
@@ -2422,9 +2420,9 @@ INSERT INTO `api_routes` (`route_name`,`version`,`path`,...) VALUES
 ### Entities
 
 ### Page Entity Update (Step 879)
-- Aligned the `Page` entity with the latest `pages` table schema in `sh_structure.sql`.
-- Removed legacy fields `id_type` and `id_pageAccessTypes` (and their getters/setters) which were not needed as properties, since relationships are handled via Doctrine ORM attributes.
-- Ensured all ORM attributes match the SQL table, including column types, nullability, and relationships:
+- Aligned the `Page` entity with the canonical `pages` table baseline (`migrations/Version20260601000000.php`).
+- Foreign keys are exposed via Doctrine ManyToOne associations using the canonical column names: `id_page_types`, `id_page_access_types`, `id_parent_page`, `id_actions`, `id_navigation_section`.
+- Ensured all ORM attributes match the canonical SQL table, including column types, nullability, and relationships:
   - ManyToOne relationships for `action` (Lookup), `navigationSection` (Section), `parentPage` (self-referencing Page), `pageType` (PageType), and `pageAccessType` (Lookup).
   - All columns (`keyword`, `url`, `protocol`, `is_headless`, `nav_position`, `footer_position`, `is_open_access`, `is_system`) are present and use correct types.
 - All required getters and setters are present and up-to-date, following ENTITY RULE and Symfony best practice.
@@ -2547,7 +2545,7 @@ VALUES (
 - Removes pages of the opposite access type (web/mobile), only returns pages with:
   - `acl_select` == 1
   - `id_actions` == 3 (published)
-  - `id_type` in [2, 3, 4] (core, experiment, open)
+  - `id_page_types` in [2, 3, 4] (core, experiment, open)
   - `url` not empty
 - Implemented in Symfony:
   - Controller: `App\Controller\Api\V1\Frontend\PageController::getPages()`

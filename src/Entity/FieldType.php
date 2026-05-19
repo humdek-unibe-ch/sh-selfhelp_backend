@@ -1,11 +1,18 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'fieldType')]
+#[ORM\Table(name: 'field_types')]
+#[ORM\UniqueConstraint(name: 'uq_field_types_name', columns: ['name'])]
 class FieldType
 {
     #[ORM\OneToMany(mappedBy: 'type', targetEntity: Field::class)]
@@ -15,7 +22,7 @@ class FieldType
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: 'string', length: 100, unique: true)]
+    #[ORM\Column(name: 'name', type: 'string', length: 100)]
     private string $name;
 
     #[ORM\Column(name: 'position', type: 'integer')]

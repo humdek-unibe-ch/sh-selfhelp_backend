@@ -1,5 +1,28 @@
 # Database Design
 
+> ⚠️ **Document status.** This file describes the historical legacy schema
+> for context. The canonical schema is now defined by Doctrine migrations
+> only (`migrations/Version20260601000000.php` baseline + four seed
+> migrations). The runtime contract uses **canonical names**:
+> `data_tables`, `data_rows`, `data_cols`, `data_cells`, `scheduled_jobs`,
+> `scheduled_job_reminders`, `refresh_tokens`, `api_request_logs`,
+> `callback_logs`, `data_access_audits`, `page_types`, `field_types`,
+> `style_groups`, `log_performance`, `user_2fa_codes`, `user_activities`,
+> `rel_groups_users`, `rel_roles_users`, `rel_permissions_roles`,
+> `rel_api_routes_permissions`, `rel_pages_sections`, `rel_fields_pages`,
+> `rel_fields_styles`, `rel_fields_page_types`, `rel_sections_hierarchy`,
+> `rel_sections_navigation`, `rel_styles_allowed_relationships`,
+> `page_acl_groups` (was `acl_groups`), `validation_code_groups`
+> (was `codes_groups`). All FK columns follow `id_<target_table>` (with
+> explicit self-references like `id_parent_page`, `id_child_section`,
+> `id_parent_scheduled_job`). Indexes, foreign keys and uniques are
+> `idx_*`, `fk_*`, `uq_*` in `lowercase_snake_case`. The mixed-case
+> identifiers shown in the legacy CREATE TABLE snippets below
+> (`dataTables`, `users_groups`, `id_pageAccessTypes`, …) are **no longer
+> used at runtime** — they only appear in `db/legacy/new_create_db.sql`,
+> which the four seed migrations consume transitionally through
+> `migrations/LegacySeedTrait.php` rename mappings.
+
 ## 🗄️ Database Architecture Overview
 
 The SelfHelp Symfony Backend uses a sophisticated MySQL database design that supports dynamic routing, fine-grained permissions, content management, and comprehensive audit trails.
@@ -9,54 +32,53 @@ The SelfHelp Symfony Backend uses a sophisticated MySQL database design that sup
 ```mermaid
 erDiagram
     %% Core Authentication & Authorization - Admin Users (Role-based)
-    User ||--o{ UsersRole : has_roles
-    UsersRole }o--|| Role : belongs_to
-    Role ||--o{ RolePermission : grants
-    RolePermission }o--|| Permission : permission_type
+    users ||--o{ rel_roles_users : has_roles
+    rel_roles_users }o--|| roles : belongs_to
+    roles ||--o{ rel_permissions_roles : grants
+    rel_permissions_roles }o--|| permissions : permission_type
 
     %% Frontend User Groups (for page ACL)
-    User ||--o{ UsersGroup : belongs_to
-    UsersGroup }o--|| Group : represents
+    users ||--o{ rel_groups_users : belongs_to
+    rel_groups_users }o--|| groups : represents
 
     %% API Routes & Permissions (Admin Access)
-    ApiRoute ||--o{ ApiRoutePermission : requires
-    ApiRoutePermission }o--|| Permission : grants
+    api_routes ||--o{ rel_api_routes_permissions : requires
+    rel_api_routes_permissions }o--|| permissions : grants
 
     %% CMS Content Structure
-    Page ||--o{ PagesSection : contains
-    PagesSection }o--|| Section : has
-    Section ||--o{ SectionsField : contains
-    SectionsField }o--|| Field : has
-    Section }o--|| Style : styled_by
+    pages ||--o{ rel_pages_sections : contains
+    rel_pages_sections }o--|| sections : has
+    sections ||--o{ rel_sections_hierarchy : contains
+    sections }o--|| styles : styled_by
 
     %% Page Versioning & Publishing
-    Page ||--o{ PageVersion : has_versions
-    PageVersion }o--|| User : created_by
-    Page ||--|| PageVersion : published_version
+    pages ||--o{ page_versions : has_versions
+    page_versions }o--|| users : created_by
+    pages ||--|| page_versions : id_published_page_versions
 
     %% Fine-grained Access Control (Frontend Users)
-    Page ||--o{ AclGroup : group_acl
-    AclGroup }o--|| Group : for_group
+    pages ||--o{ page_acl_groups : group_acl
+    page_acl_groups }o--|| groups : for_group
 
     %% Multi-language Support
-    Field ||--o{ FieldsTranslation : translations
-    FieldsTranslation }o--|| Language : in_language
-    Page ||--o{ PagesFieldsTranslation : page_translations
-    PagesFieldsTranslation }o--|| Language : in_language
+    fields ||--o{ sections_fields_translation : translations
+    sections_fields_translation }o--|| languages : in_language
+    pages ||--o{ pages_fields_translation : page_translations
+    pages_fields_translation }o--|| languages : in_language
 
     %% Dynamic Data Tables System
-    DataTable ||--o{ DataRow : contains
-    DataRow ||--o{ DataCell : has
-    DataCell }o--|| DataCol : column
-    DataCell }o--|| Language : language
+    data_tables ||--o{ data_rows : contains
+    data_rows ||--o{ data_cells : has
+    data_cells }o--|| data_cols : column
+    data_cells }o--|| languages : language
 
     %% Field Types
-    Field }o--|| FieldType : field_type
+    fields }o--|| field_types : field_type
 
     %% System Components
-    User ||--o{ Transaction : performed_by
-    User ||--o{ ApiRequestLog : made_requests
-    Asset }o--|| Lookup : asset_type
+    users ||--o{ transactions : performed_by
+    users ||--o{ api_request_logs : made_requests
+    assets }o--|| lookups : asset_type
 ```
 
 ## 🔧 Core Table Groups
@@ -118,8 +140,8 @@ INSERT INTO `roles` (`name`, `description`) VALUES
 ```
 
 #### Junction Tables
-- **`users_roles`**: Links users to roles (many-to-many) - Admin role assignments
-- **`roles_permissions`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
+- **`rel_roles_users`**: Links users to roles (many-to-many) - Admin role assignments
+- **`rel_permissions_roles`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
 
 #### `permissions` - System Permissions
 ```sql
@@ -142,9 +164,9 @@ INSERT INTO `permissions` (`name`, `description`) VALUES
 ```
 
 #### Junction Tables
-- **`users_groups`**: Links users to groups (many-to-many) - Used for frontend user group memberships (page ACL)
-- **`users_roles`**: Links users to roles (many-to-many) - Admin role assignments
-- **`roles_permissions`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
+- **`rel_groups_users`**: Links users to groups (many-to-many) - Used for frontend user group memberships (page ACL)
+- **`rel_roles_users`**: Links users to roles (many-to-many) - Admin role assignments
+- **`rel_permissions_roles`**: Links roles to permissions (many-to-many) - Role-based permissions for admin system
 
 ### 2. Dynamic Routing Tables
 
@@ -171,9 +193,9 @@ CREATE TABLE `api_routes` (
 - **Parameter Documentation**: JSON schema for expected parameters
 - **Method Specification**: HTTP methods (GET, POST, PUT, DELETE)
 
-#### `api_routes_permissions` - Route Permission Requirements
+#### `rel_api_routes_permissions` - Route Permission Requirements
 ```sql
-CREATE TABLE `api_routes_permissions` (
+CREATE TABLE `rel_api_routes_permissions` (
   `id_api_routes` int NOT NULL,
   `id_permissions` int NOT NULL,
   PRIMARY KEY (`id_api_routes`,`id_permissions`),
@@ -190,22 +212,22 @@ CREATE TABLE `pages` (
   `id` int NOT NULL AUTO_INCREMENT,
   `keyword` varchar(100) NOT NULL,
   `url` varchar(255) NULL,
-  `parent` int DEFAULT NULL,
-  `id_type` int NOT NULL,
-  `id_pageAccessTypes` int DEFAULT NULL,
+  `id_parent_page` int DEFAULT NULL,
+  `id_page_types` int NOT NULL,
+  `id_page_access_types` int DEFAULT NULL,
   `is_headless` tinyint(1) NOT NULL DEFAULT '0',
   `nav_position` int DEFAULT NULL,
   `footer_position` int DEFAULT NULL,
   `is_open_access` tinyint(1) DEFAULT '0',
   `is_system` tinyint(1) DEFAULT '0',
-  `published_version_id` int DEFAULT NULL,
+  `id_published_page_versions` int DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_2074E575A17F5E88` (`keyword`),
-  KEY `IDX_pages_published_version_id` (`published_version_id`),
-  FOREIGN KEY (`parent`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_type`) REFERENCES `pageTypes` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_pageAccessTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`published_version_id`) REFERENCES `page_versions` (`id`) ON DELETE SET NULL
+  UNIQUE KEY `uq_pages_keyword` (`keyword`),
+  KEY `idx_pages_id_published_page_versions` (`id_published_page_versions`),
+  CONSTRAINT `fk_pages_id_parent_page`                FOREIGN KEY (`id_parent_page`)                REFERENCES `pages` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pages_id_page_types`                 FOREIGN KEY (`id_page_types`)                 REFERENCES `page_types` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pages_id_page_access_types`          FOREIGN KEY (`id_page_access_types`)          REFERENCES `lookups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_pages_id_published_page_versions`    FOREIGN KEY (`id_published_page_versions`)    REFERENCES `page_versions` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
@@ -215,39 +237,41 @@ CREATE TABLE `sections` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `id_styles` int NOT NULL,
-  `parent` int DEFAULT NULL,
   `position` int DEFAULT NULL,
   PRIMARY KEY (`id`),
-  FOREIGN KEY (`id_styles`) REFERENCES `styles` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`parent`) REFERENCES `sections` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_sections_id_styles` FOREIGN KEY (`id_styles`) REFERENCES `styles` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
+
+Parent/child relationships between sections live in the dedicated relation
+tables `rel_sections_hierarchy` and `rel_sections_navigation`, with explicit
+`id_parent_section` / `id_child_section` foreign keys.
 
 #### `fields` - Content Fields
 ```sql
 CREATE TABLE `fields` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
-  `id_fieldTypes` int NOT NULL,
-  `default_value` longtext,
-  `help` varchar(1000) DEFAULT NULL,
-  `disabled` tinyint(1) NOT NULL DEFAULT '0',
-  `hidden` tinyint(1) NOT NULL DEFAULT '0',
+  `id_type` int NOT NULL,           -- legacy column name retained
+  `display` tinyint(1) NOT NULL,
+  `config` JSON DEFAULT NULL,
   PRIMARY KEY (`id`),
-  FOREIGN KEY (`id_fieldTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+  UNIQUE KEY `uq_fields_name` (`name`),
+  CONSTRAINT `fk_fields_id_type` FOREIGN KEY (`id_type`) REFERENCES `field_types` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
-#### Junction Tables for CMS
-- **`pages_sections`**: Links pages to sections with position
-- **`sections_fields`**: Links sections to fields with position
-- **`sections_navigation`**: Navigation-specific section relationships
+#### Junction Tables for CMS (canonical `rel_` naming)
+- **`rel_pages_sections`**: Links pages to sections with position
+- **`rel_fields_pages`**: Page-level field defaults
+- **`rel_sections_navigation`**: Navigation-specific section relationships
+- **`rel_sections_hierarchy`**: Parent/child relationships between sections
 
 ### 4. Access Control Lists (ACL) Tables
 
-#### `acl_groups` - Group-Level Page Permissions
+#### `page_acl_groups` - Group-Level Page Permissions
 ```sql
-CREATE TABLE `acl_groups` (
+CREATE TABLE `page_acl_groups` (
   `id_groups` int NOT NULL,
   `id_pages` int NOT NULL,
   `acl_select` tinyint(1) NOT NULL DEFAULT '1',
@@ -255,8 +279,8 @@ CREATE TABLE `acl_groups` (
   `acl_update` tinyint(1) NOT NULL DEFAULT '0',
   `acl_delete` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id_groups`,`id_pages`),
-  FOREIGN KEY (`id_pages`) REFERENCES `pages` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_page_acl_groups_id_pages`  FOREIGN KEY (`id_pages`)  REFERENCES `pages` (`id`)  ON DELETE CASCADE,
+  CONSTRAINT `fk_page_acl_groups_id_groups` FOREIGN KEY (`id_groups`) REFERENCES `groups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
@@ -281,9 +305,9 @@ CREATE TABLE `languages` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
-#### `fieldsTranslations` - Field Content Translations
+#### `sections_fields_translation` - Field Content Translations
 ```sql
-CREATE TABLE `fieldsTranslations` (
+CREATE TABLE `sections_fields_translation` (
   `id` int NOT NULL AUTO_INCREMENT,
   `id_fields` int NOT NULL,
   `id_languages` int NOT NULL,
@@ -299,24 +323,24 @@ CREATE TABLE `fieldsTranslations` (
 ### 6. Data Tables Translation System
 
 #### Overview
-The data tables translation system allows for multi-language support in dynamic data tables (`dataTables`, `dataRows`, `dataCols`, `dataCells`). This system enables storing and retrieving translated content for user-generated data in different languages while maintaining backward compatibility.
+The data tables translation system allows for multi-language support in dynamic data tables (`data_tables`, `data_rows`, `data_cols`, `data_cells`). This system enables storing and retrieving translated content for user-generated data in different languages.
 
 #### Core Tables Structure
 
-#### `dataCells` - Data Cell Values with Language Support
+#### `data_cells` - Data Cell Values with Language Support
 ```sql
-CREATE TABLE `dataCells` (
-  `id_dataRows` int NOT NULL,
-  `id_dataCols` int NOT NULL,
+CREATE TABLE `data_cells` (
+  `id_data_rows` int NOT NULL,
+  `id_data_cols` int NOT NULL,
   `language_id` int NOT NULL DEFAULT 1,
   `value` longtext NOT NULL,
-  PRIMARY KEY (`id_dataRows`,`id_dataCols`,`language_id`),
-  KEY `IDX_726A5F25F3854F45` (`id_dataRows`),
-  KEY `IDX_726A5F25B216B425` (`id_dataCols`),
-  KEY `IDX_dataCells_language` (`language_id`),
-  CONSTRAINT `FK_726A5F25B216B425` FOREIGN KEY (`id_dataCols`) REFERENCES `dataCols` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_726A5F25F3854F45` FOREIGN KEY (`id_dataRows`) REFERENCES `dataRows` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `FK_dataCells_languages` FOREIGN KEY (`language_id`) REFERENCES `languages` (`id`) ON DELETE CASCADE
+  PRIMARY KEY (`id_data_rows`,`id_data_cols`,`language_id`),
+  KEY `idx_data_cells_id_data_rows` (`id_data_rows`),
+  KEY `idx_data_cells_id_data_cols` (`id_data_cols`),
+  KEY `idx_data_cells_language` (`language_id`),
+  CONSTRAINT `fk_data_cells_id_data_cols` FOREIGN KEY (`id_data_cols`) REFERENCES `data_cols` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_data_cells_id_data_rows` FOREIGN KEY (`id_data_rows`) REFERENCES `data_rows` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_data_cells_languages`    FOREIGN KEY (`language_id`)  REFERENCES `languages` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
@@ -362,7 +386,7 @@ CALL get_dataTable_with_filter(1, 0, '', FALSE, 3);
 #### Data Entry Rules
 
 1. **Default Language**: New cells automatically get `language_id = 1`
-2. **Adding Translations**: Insert new rows with same `id_dataRows`/`id_dataCols` but different `language_id > 1`
+2. **Adding Translations**: Insert new rows with same `id_data_rows`/`id_data_cols` but different `language_id > 1`
 3. **Validation**: Cannot add `language_id > 1` if `language_id = 1` already exists for same cell
 4. **Multiple Translations**: Can add multiple `language_id > 1` for same cell (multiple translations)
 
@@ -502,48 +526,43 @@ The `FormValidationService` has been updated to handle translation arrays:
 CREATE TABLE `transactions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `id_users` int DEFAULT NULL,
-  `id_transactionTypes` int DEFAULT NULL,
-  `id_transactionBy` int DEFAULT NULL,
+  `id_transaction_types` int DEFAULT NULL,
+  `id_transaction_by` int DEFAULT NULL,
   `table_name` varchar(100) DEFAULT NULL,
   `id_table_name` int DEFAULT NULL,
   `transaction_log` longtext,
   `transaction_time` datetime NOT NULL,
   PRIMARY KEY (`id`),
-  FOREIGN KEY (`id_users`) REFERENCES `users` (`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`id_transactionTypes`) REFERENCES `lookups` (`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`id_transactionBy`) REFERENCES `lookups` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_transactions_id_users`             FOREIGN KEY (`id_users`)             REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_transactions_id_transaction_types` FOREIGN KEY (`id_transaction_types`) REFERENCES `lookups` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_transactions_id_transaction_by`    FOREIGN KEY (`id_transaction_by`)    REFERENCES `lookups` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
-#### `scheduledJobs` - Background Tasks
+#### `scheduled_jobs` - Background Tasks
 ```sql
-CREATE TABLE `scheduledJobs` (
+CREATE TABLE `scheduled_jobs` (
   `id` int NOT NULL AUTO_INCREMENT,
   `description` varchar(1000) DEFAULT NULL,
   `date_create` datetime NOT NULL,
   `date_to_be_executed` datetime DEFAULT NULL,
   `date_executed` datetime DEFAULT NULL,
   `config` varchar(1000) DEFAULT NULL,
-  `id_jobStatus` int NOT NULL,
-  `id_jobTypes` int NOT NULL,
+  `id_job_status` int NOT NULL,
+  `id_job_types` int NOT NULL,
   PRIMARY KEY (`id`),
-  FOREIGN KEY (`id_jobStatus`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`id_jobTypes`) REFERENCES `lookups` (`id`) ON DELETE CASCADE
+  CONSTRAINT `fk_scheduled_jobs_id_job_status` FOREIGN KEY (`id_job_status`) REFERENCES `lookups` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_scheduled_jobs_id_job_types`  FOREIGN KEY (`id_job_types`)  REFERENCES `lookups` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
-#### `version` - Database Version Tracking
-```sql
-CREATE TABLE `version` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `version` varchar(100) DEFAULT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
-```
+> Note: schema versioning is handled by Doctrine Migrations
+> (`doctrine_migration_versions` table). A legacy `version` table is no
+> longer maintained.
 
-#### `apiRequestLogs` - API Request Tracking
+#### `api_request_logs` - API Request Tracking
 ```sql
-CREATE TABLE `apiRequestLogs` (
+CREATE TABLE `api_request_logs` (
   `id` int NOT NULL AUTO_INCREMENT,
   `id_users` int DEFAULT NULL,
   `method` varchar(10) NOT NULL,
@@ -566,9 +585,9 @@ CREATE TABLE `apiRequestLogs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-#### `fieldTypes` - Content Field Types
+#### `field_types` - Content Field Types
 ```sql
-CREATE TABLE `fieldTypes` (
+CREATE TABLE `field_types` (
   `id` int NOT NULL AUTO_INCREMENT,
   `name` varchar(100) NOT NULL,
   `description` varchar(255) DEFAULT NULL,
@@ -576,11 +595,11 @@ CREATE TABLE `fieldTypes` (
   `validation_rules` json DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `UNIQ_FIELD_TYPE_NAME` (`name`)
+  UNIQUE KEY `uq_field_types_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Field types for CMS content management
-INSERT INTO `fieldTypes` (`name`, `description`, `input_type`) VALUES
+INSERT INTO `field_types` (`name`, `description`, `input_type`) VALUES
 ('TEXT', 'Single line text input', 'text'),
 ('TEXTAREA', 'Multi-line text area', 'textarea'),
 ('HTML', 'Rich text HTML editor', 'html'),
@@ -685,8 +704,8 @@ BEGIN
         MAX(ag.acl_update) as acl_update,
         MAX(ag.acl_delete) as acl_delete
     FROM users u
-    LEFT JOIN users_groups ug ON u.id = ug.id_users
-    LEFT JOIN acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
+    LEFT JOIN rel_groups_users ug ON u.id = ug.id_users
+    LEFT JOIN page_acl_groups ag ON ug.id_groups = ag.id_groups AND ag.id_pages = pageId
     WHERE u.id = userId;
 END //
 DELIMITER ;
@@ -729,19 +748,19 @@ DELIMITER ;
 ### Foreign Key Relationships
 ```mermaid
 graph TD
-    A[users] --> B[users_groups]
+    A[users] --> B[rel_groups_users]
     C[groups] --> B
-    C --> D[user_groups_permissions]
+    C --> D[rel_permissions_roles]
     E[permissions] --> D
-    E --> F[api_routes_permissions]
+    E --> F[rel_api_routes_permissions]
     G[api_routes] --> F
     
-    H[pages] --> I[pages_sections]
+    H[pages] --> I[rel_pages_sections]
     J[sections] --> I
-    J --> K[sections_fields]
+    J --> K[sections_fields_translation]
     L[fields] --> K
     
-    C --> N[acl_groups]
+    C --> N[page_acl_groups]
     H --> N
     
     A --> O[transactions]
@@ -749,11 +768,11 @@ graph TD
 ```
 
 ### Cascade Delete Rules
-- **User deletion**: Cascades to `users_groups`, sets NULL in `transactions`
-- **Group deletion**: Cascades to `users_groups`, `user_groups_permissions`, `acl_groups`
-- **Page deletion**: Cascades to `pages_sections`, `acl_groups`
-- **Section deletion**: Cascades to `sections_fields`, child sections
-- **API route deletion**: Cascades to `api_routes_permissions`
+- **User deletion**: Cascades to `rel_groups_users`, sets NULL in `transactions`
+- **Group deletion**: Cascades to `rel_groups_users`, `rel_permissions_roles`, `page_acl_groups`
+- **Page deletion**: Cascades to `rel_pages_sections`, `page_acl_groups`
+- **Section deletion**: Cascades to `sections_fields_translation`, child rows in `rel_sections_hierarchy`
+- **API route deletion**: Cascades to `rel_api_routes_permissions`
 
 ## 🔍 Indexing Strategy
 
@@ -768,14 +787,14 @@ CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_email ON users(email);
 
 -- ACL performance
-CREATE INDEX idx_acl_groups_group ON acl_groups(id_groups);
-CREATE INDEX idx_acl_groups_page ON acl_groups(id_pages);
+CREATE INDEX idx_page_acl_groups_id_groups ON page_acl_groups(id_groups);
+CREATE INDEX idx_page_acl_groups_id_pages  ON page_acl_groups(id_pages);
 
 -- CMS navigation
-CREATE INDEX idx_pages_parent ON pages(parent);
-CREATE INDEX idx_pages_nav_position ON pages(nav_position);
-CREATE INDEX idx_sections_parent ON sections(parent);
-CREATE INDEX idx_sections_position ON sections(position);
+CREATE INDEX idx_pages_id_parent_page ON pages(id_parent_page);
+CREATE INDEX idx_pages_nav_position   ON pages(nav_position);
+CREATE INDEX idx_rel_sections_hierarchy_id_parent_section ON rel_sections_hierarchy(id_parent_section);
+CREATE INDEX idx_sections_position    ON sections(position);
 
 -- API routing
 CREATE INDEX idx_api_routes_version ON api_routes(version);

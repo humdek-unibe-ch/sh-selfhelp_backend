@@ -1,11 +1,18 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'sections_hierarchy')]
+#[ORM\Table(name: 'rel_sections_hierarchy')]
+#[ORM\Index(name: 'idx_rel_sections_hierarchy_id_child_section', columns: ['id_child_section'])]
 class SectionsHierarchy
 {
 
@@ -14,12 +21,12 @@ class SectionsHierarchy
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'parent', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_parent_section', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Section $parentSection = null;
 
     #[ORM\Id]
     #[ORM\ManyToOne(targetEntity: Section::class)]
-    #[ORM\JoinColumn(name: 'child', referencedColumnName: 'id', onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_child_section', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Section $childSection = null;
 
     public function getPosition(): ?int

@@ -303,10 +303,10 @@ erDiagram
 ### Key Database Tables
 - **`api_routes`**: Dynamic route definitions with permissions
 - **`users`, `roles`, `permissions`**: Authentication/authorization (role-based)
-- **`users_groups`**: Group memberships (for page ACL)
+- **`rel_groups_users`**: Group memberships (for page ACL)
 - **`pages`, `sections`, `fields`**: CMS content structure
 - **`page_versions`**: Page versioning and publishing system
-- **`acl_groups`**: Fine-grained access control for pages
+- **`page_acl_groups`**: Fine-grained access control for pages
 - **`fields_translations`, `sections_fields_translations`**: Multi-language support
 - **`transactions`**: Comprehensive audit trail
 - **`scheduled_jobs`**: Background task scheduling system
@@ -329,7 +329,7 @@ erDiagram
 5. User context established for the request
 
 ### Authorization Flow
-1. Route permissions checked via `api_routes_permissions`
+1. Route permissions checked via `rel_api_routes_permissions`
 2. ACL permissions checked for page-level access
 3. Business logic validation in services
 4. All operations logged via `TransactionService`

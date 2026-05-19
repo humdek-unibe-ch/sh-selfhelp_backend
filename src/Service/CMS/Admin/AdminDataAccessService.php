@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\RoleDataAccess;
@@ -330,7 +336,7 @@ class AdminDataAccessService extends BaseService
             $formattedPermissions[] = [
                 'id_roles' => $permission->getIdRoles(),
                 'role_name' => $permission->getRole()->getName(),
-                'id_resourceTypes' => $permission->getIdResourceTypes(),
+                'id_resource_types' => $permission->getIdResourceTypes(),
                 'resource_id' => $permission->getResourceId(),
                 'resource_type_name' => $permission->getResourceType()->getLookupValue(),
                 'unified_permissions' => $permission->getCrudPermissions(),

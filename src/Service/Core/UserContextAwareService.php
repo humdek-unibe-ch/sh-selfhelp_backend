@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\Core;
 
 use App\Entity\User;
@@ -29,7 +35,7 @@ use App\Service\Security\DataAccessSecurityService;
  * - Frontend operations use ACL permissions (user-specific + group inheritance)
  * - Admin operations use Data Access permissions (role aggregation with BIT_OR)
  * - Admin users bypass ACL checks but are subject to Data Access restrictions
- * - All permission checks are audited in dataAccessAudit table
+ * - All permission checks are audited in data_access_audits table
  *
  * USAGE GUIDELINES:
  * - Frontend services: Use checkAclAccess*() methods

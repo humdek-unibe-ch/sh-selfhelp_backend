@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Controller\Api\V1\Admin;
 
 use App\Repository\RoleDataAccessRepository;
@@ -53,9 +59,9 @@ class AdminDataAccessController extends AbstractController
                     ];
                 }
 
-                if ($row['id_resourceTypes']) {
+                if ($row['id_resource_types']) {
                     $grouped[$roleId]['permissions'][] = [
-                        'resource_type_id' => $row['id_resourceTypes'],
+                        'resource_type_id' => $row['id_resource_types'],
                         'resource_type_name' => $row['resource_type_name'],
                         'resource_id' => $row['resource_id'],
                         'crud_permissions' => $row['crud_permissions'],

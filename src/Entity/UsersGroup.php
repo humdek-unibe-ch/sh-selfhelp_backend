@@ -1,11 +1,17 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'users_groups')]
+#[ORM\Table(name: 'rel_groups_users')]
 class UsersGroup
 {
     #[ORM\Id]

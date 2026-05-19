@@ -1,9 +1,15 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\Group;
-use App\Entity\AclGroup;
+use App\Entity\PageAclGroup;
 use App\Entity\Page;
 use App\Entity\UsersGroup;
 use App\Repository\RoleDataAccessRepository;
@@ -318,7 +324,7 @@ class AdminGroupService extends BaseService
                     throw new ServiceException('Group not found', Response::HTTP_NOT_FOUND);
                 }
 
-                $acls = $this->entityManager->getRepository(AclGroup::class)
+                $acls = $this->entityManager->getRepository(PageAclGroup::class)
                     ->createQueryBuilder('ag')
                     ->select('ag, p')
                     ->leftJoin('ag.page', 'p')
@@ -351,7 +357,7 @@ class AdminGroupService extends BaseService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_USER,
-                'acl_groups',
+                'page_acl_groups',
                 $group->getId(),
                 false,
                 'Group ACLs updated: ' . $group->getName() . ' (' . count($aclsData) . ' ACLs)'
@@ -411,7 +417,7 @@ class AdminGroupService extends BaseService
     /**
      * Format ACL for response
      */
-    private function formatAclForResponse(AclGroup $acl): array
+    private function formatAclForResponse(PageAclGroup $acl): array
     {
         return [
             'page_id' => $acl->getPage()->getId(),
@@ -459,7 +465,7 @@ class AdminGroupService extends BaseService
     private function updateGroupAclsInternal(Group $group, array $aclsData): void
     {
         // First, remove all existing ACL permissions for this group
-        $existingAcls = $this->entityManager->getRepository(AclGroup::class)
+        $existingAcls = $this->entityManager->getRepository(PageAclGroup::class)
             ->findBy(['group' => $group]);
 
         foreach ($existingAcls as $existingAcl) {
@@ -499,7 +505,7 @@ class AdminGroupService extends BaseService
                 }
 
                 // Create new ACL
-                $acl = new AclGroup();
+                $acl = new PageAclGroup();
                 $acl->setGroup($group);
                 $acl->setPage($pageMap[$pageId]);
                 $acl->setAclSelect($aclData['acl_select'] ?? true);

@@ -133,7 +133,13 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 ), NULL),
 
 -- Admin routes
-('admin_lookups', 'v1', '/admin/lookups', 'App\\Controller\\Api\\V1\\Admin\\Common\\LookupController::getAllLookups', 'GET', NULL, NULL),
+-- System reference data (timezones, type codes, weekdays, audit
+-- categories). Authenticated-only — JWT firewall rejects anonymous
+-- callers — but NOT admin-gated, because public frontend styles such
+-- as `ProfileStyle` consume the timezone list. See migration
+-- Version20260508160000 for the historical context (was
+-- `admin_lookups` at `/admin/lookups`).
+('system_lookups', 'v1', '/lookups', 'App\\Controller\\Api\\V1\\Admin\\Common\\LookupController::getAllLookups', 'GET', NULL, NULL),
 ('admin_page_keywords', 'v1', '/admin/page-keywords', 'App\\Controller\\Api\\V1\\Admin\\Common\\LookupController::getPageKeywords', 'GET', NULL, NULL),
 ('admin_pages_get_all', 'v1', '/admin/pages', 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::getPages', 'GET', NULL, NULL),
 ('admin_pages_get_all_with_language', 'v1', '/admin/pages/language/{language_id}', 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::getPages', 'GET', JSON_OBJECT(
@@ -206,6 +212,17 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
     'page_id', '[0-9]+',
     'section_id', '[0-9]+'
 ), NULL),
+('admin_pages_bulk_remove_sections',
+ 'v1',
+ '/admin/pages/{page_id}/sections',
+ 'App\\Controller\\Api\\V1\\Admin\\AdminPageController::bulkRemoveSectionsFromPage',
+ 'DELETE',
+ JSON_OBJECT(
+    'page_id', '[0-9]+'
+ ),
+ JSON_OBJECT(
+    'sectionIds', JSON_OBJECT('in', 'body', 'required', true, 'type', 'array')
+ )),
 
 -- Admin Section in Section 
 ('admin_sections_create_child', 'v1', '/admin/pages/{page_id}/sections/{parent_section_id}/sections/create', 'App\\Controller\\Api\\V1\\Admin\\AdminSectionController::createChildSection', 'POST', JSON_OBJECT(
@@ -330,6 +347,16 @@ WHERE ar.`route_name` IN (
   'admin_pages_sections_get'
 );
 
+-- Note: the formerly-admin `admin_lookups` route was renamed to
+-- `system_lookups` and moved to `/lookups` in migration
+-- Version20260508160000. It is intentionally NOT permission-gated —
+-- it exposes reference data (timezones, type codes, weekdays, audit
+-- categories) needed by both admin pages AND public frontend styles
+-- such as `ProfileStyle` (timezone selector). It still requires
+-- authentication via the JWT firewall — anonymous callers get 401.
+--
+-- `admin_page_keywords` keeps the `admin.access` requirement: its
+-- response leaks the full keyword namespace, which is admin tooling.
 INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
 SELECT
   ar.`id`      AS id_api_routes,
@@ -338,7 +365,6 @@ FROM `api_routes`     AS ar
 JOIN `permissions`   AS p
   ON p.`name` = 'admin.access'
 WHERE ar.`route_name` IN (
-  'admin_lookups',
   'admin_page_keywords'
 );
 
@@ -376,6 +402,7 @@ WHERE ar.`route_name` IN (
 	'admin_pages_create_section',
 	'admin_pages_add_section',
 	'admin_pages_remove_section',
+	'admin_pages_bulk_remove_sections',
 	'admin_sections_create_child',
 	'admin_sections_add',
 	'admin_sections_remove',
@@ -502,6 +529,13 @@ INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, 
 INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
 ('admin_users_impersonate_v1', 'v1', '/admin/users/{userId}/impersonate', 'App\\Controller\\Api\\V1\\Admin\\AdminUserController::impersonateUser', 'POST', JSON_OBJECT('userId', '[0-9]+'), NULL);
 
+-- Stop impersonation. Must be POST (mutating action: it BLACKLISTS the
+-- impersonation JWT). Route name is referenced from the
+-- ApiSecurityListener::IMPERSONATION_ALWAYS_ALLOWED_ROUTE constant — keep
+-- the two in sync if you ever rename either.
+INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`) VALUES
+('admin_users_stop_impersonate_v1', 'v1', '/admin/users/stop-impersonate', 'App\\Controller\\Api\\V1\\Admin\\AdminUserController::stopImpersonateUser', 'POST', NULL, NULL);
+
 
 
 INSERT IGNORE INTO `api_routes_permissions` (`id_api_routes`, `id_permissions`)
@@ -581,6 +615,13 @@ JOIN `permissions`   AS p
 WHERE ar.`route_name` IN (
   'admin_users_impersonate_v1'
 );
+
+-- Note: `admin_users_stop_impersonate_v1` intentionally has NO permission
+-- mapping. While impersonating, the request authenticates as the *target*
+-- user (who likely lacks `admin.user.impersonate`); the controller itself
+-- verifies the JWT carries an impersonation claim before doing anything
+-- destructive, so any authenticated request can hit the endpoint and
+-- safely return `{stopped: false}` when there is nothing to stop.
 
 -- Group Management API Routes
 

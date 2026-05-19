@@ -1,10 +1,14 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\Group;
 use App\Entity\Page;
-use App\Entity\PagesSection;
 use App\Entity\PageTypeField;
 use App\Entity\User;
 use App\Exception\ServiceException;
@@ -375,7 +379,7 @@ class AdminPageService extends BaseService
                 }
                 $pageTypeId = $pageType->getId();
 
-                // Get all valid field IDs for this page type from pageType_fields
+                // Get all valid field IDs for this page type from rel_fields_page_types
                 $validFieldIds = $this->entityManager->getRepository(PageTypeField::class)
                     ->createQueryBuilder('ptf')
                     ->select('f.id')
@@ -477,7 +481,7 @@ class AdminPageService extends BaseService
 
             // Block deletion of system pages. Pages flagged as `is_system = 1`
             // (e.g. the GDPR `/privacy` notice seeded by migration
-            // Version20260425090000) MUST remain reachable on every install,
+            // Version20260601000500) MUST remain reachable on every install,
             // because regulators expect a privacy notice to be permanently
             // available even when admins customise the rest of the CMS.
             // Admins can still edit / extend / translate the content; only
@@ -558,22 +562,29 @@ class AdminPageService extends BaseService
     }
 
     /**
-     * Add a section to a page
-     * 
-     * @param int $pageId The ID of the page
-     * @param int $sectionId The ID of the section to add
-     * @param int|null $position The position of the section on the page
-     * @param int|null $oldParentSectionId The ID of the old parent section if moving from a section hierarchy
-     * @return PagesSection The created or updated page section relationship
+     * Add one or more sections to a page in a single atomic operation.
+     *
+     * Delegates the whole batch to the relationship service (one transaction)
+     * and then performs a top-level cache invalidation pass for the page and
+     * every touched section.
+     *
+     * @param int   $pageId   The ID of the page to attach the sections to
+     * @param array $sections Batch of section payloads. Each item must contain
+     *                        `sectionId` and may include `position` and
+     *                        `oldParentSectionId`.
+     * @return array<int, array{id: int, position: int|null}> Result for each
+     *         input section, in the same order. Internal `sectionId` is stripped.
      * @throws ServiceException If page or section not found or access denied
      */
-    public function addSectionToPage(int $pageId, int $sectionId, ?int $position = null, ?int $oldParentSectionId = null): PagesSection
+    public function addSectionToPage(int $pageId, array $sections): array
     {
-        $result = $this->sectionRelationshipService->addSectionToPage($pageId, $sectionId, $position, $oldParentSectionId);
+        $results = $this->sectionRelationshipService->addSectionToPage($pageId, $sections);
 
-        // Invalidate cache for this specific page
+        // Top-level cache invalidation for page + every touched section + lists
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+        foreach ($results as $row) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $row['sectionId']);
+        }
         $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->invalidateAllListsInCategory();
@@ -581,7 +592,10 @@ class AdminPageService extends BaseService
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
 
-        return $result;
+        return array_map(
+            static fn(array $row): array => ['id' => $row['id'], 'position' => $row['position']],
+            $results
+        );
     }
 
     /**
@@ -609,6 +623,44 @@ class AdminPageService extends BaseService
     }
 
     /**
+     * Remove multiple sections from a page, invalidaes all cache entries to the affected entities.
+     * 
+     * @param int $pageId The ID of the page
+     * @param array $sectionIds The List of IDs of the sections to remove
+     * @throws ServiceException If the relationship does not exist
+     */
+    public function bulkRemoveSectionsFromPage(int $pageId, array $sectionIds): array
+    {
+        $result = $this->sectionRelationshipService
+            ->bulkRemoveSections($pageId, $sectionIds);
+
+        // Page cache
+        $this->cache->invalidateEntityScope(
+            CacheService::ENTITY_SCOPE_PAGE,
+            $pageId
+        );
+
+        // Section cache (bulk-safe)
+        foreach ($sectionIds as $sectionId) {
+            $this->cache->invalidateEntityScope(
+                CacheService::ENTITY_SCOPE_SECTION,
+                $sectionId
+            );
+        }
+
+        // Global invalidations
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateAllListsInCategory();
+
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->invalidateAllListsInCategory();
+
+        return $result;
+    }
+
+    /**
      * Get all pages for admin purposes without ACL filtering
      * Returns pages in the same format as PageService for compatibility
      *
@@ -623,7 +675,7 @@ class AdminPageService extends BaseService
         // Cache key for admin pages (no ACL filtering)
         $cacheKey = "admin_pages";
 
-        return $this->cache
+        $pages = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList($cacheKey, function () use ($userId) {
@@ -635,7 +687,7 @@ class AdminPageService extends BaseService
                 foreach ($pages as $page) {
                     $allPages[] = [
                         'id_pages' => $page->getId(),
-                        'parent' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
+                        'id_parent_page' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
                         'keyword' => $page->getKeyword(),
                         'url' => $page->getUrl(),
                         'nav_position' => $page->getNavPosition(),
@@ -643,13 +695,15 @@ class AdminPageService extends BaseService
                         'is_headless' => $page->isHeadless() ? 1 : 0,
                         'is_open_access' => $page->isOpenAccess() ? 1 : 0,
                         'is_system' => $page->isSystem() ? 1 : 0,
-                        'id_pageAccessTypes' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
-                        'id_type' => $page->getPageType() ? $page->getPageType()->getId() : null,
+                        'id_page_access_types' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
+                        'id_page_types' => $page->getPageType() ? $page->getPageType()->getId() : null,
                     ];
                 }
 
                 return $allPages;
             });
+
+        return $pages;
     }
 
     /**
@@ -748,19 +802,27 @@ class AdminPageService extends BaseService
             $pages = $this->roleDataAccessRepository->getAccessiblePagesForUser($userId, $resourceTypeId);
         }
 
-        // Apply additional filters if provided (keyword, type)
+        // Apply additional filters if provided (keyword, type).
+        // The repository already returns canonical snake_case columns
+        // (id_parent_page, id_page_types, id_page_access_types), so we
+        // can filter against them directly.
         if (!empty($filters)) {
             $pages = array_filter($pages, function ($page) use ($filters) {
+                if (!is_array($page)) {
+                    return false;
+                }
+
                 // Filter by keyword
                 if (isset($filters['keyword']) && $filters['keyword']) {
-                    if (stripos($page['keyword'], $filters['keyword']) === false) {
+                    $keyword = isset($page['keyword']) ? (string) $page['keyword'] : '';
+                    if (stripos($keyword, (string) $filters['keyword']) === false) {
                         return false;
                     }
                 }
 
-                // Filter by type
+                // Filter by page type
                 if (isset($filters['type']) && $filters['type']) {
-                    if ($page['id_type'] != $filters['type']) {
+                    if (($page['id_page_types'] ?? null) != $filters['type']) {
                         return false;
                     }
                 }

@@ -1,7 +1,7 @@
 {
     "name": "symfony/skeleton",
     "type": "project",
-    "license": "MIT",
+    "license": "MPL-2.0",
     "description": "A minimal Symfony project recommended to create bare bones applications",
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -75,6 +75,9 @@
         "dev": "php -S localhost:8000 -t public/",
         "phpstan": "phpstan analyse",
         "phpstan-baseline": "phpstan analyse --generate-baseline",
+        "headers:add": "php scripts/add-license-headers.php",
+        "headers:check": "php scripts/add-license-headers.php --check",
+        "headers:remove": "php scripts/add-license-headers.php --remove",
         "auto-scripts": {
             "cache:clear": "symfony-cmd",
             "assets:install %PUBLIC_DIR%": "symfony-cmd"

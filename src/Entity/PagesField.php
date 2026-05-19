@@ -1,12 +1,19 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'pages_fields')]
+#[ORM\Table(name: 'rel_fields_pages')]
+#[ORM\Index(name: 'idx_rel_fields_pages_id_fields', columns: ['id_fields'])]
 class PagesField
 {
     #[ORM\Id]
@@ -19,7 +26,7 @@ class PagesField
     #[ORM\JoinColumn(name: 'id_fields', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Field $field = null;
 
-    #[ORM\Column(name: 'default_value', type: 'string', length: 100, nullable: true)]
+    #[ORM\Column(name: 'default_value', type: 'text', nullable: true)]
     private ?string $defaultValue = null;
 
     #[ORM\Column(name: 'help', type: 'text', nullable: true)]

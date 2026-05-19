@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin;
 
 use App\Entity\ScheduledJob;
@@ -427,7 +433,7 @@ class AdminScheduledJobService extends BaseService
                 $transactions = $this->transactionRepository->createQueryBuilder('t')
                     ->where('t.tableName = :tableName')
                     ->andWhere('t.idTableName = :idTableName')
-                    ->setParameter('tableName', 'scheduledJobs')
+                    ->setParameter('tableName', 'scheduled_jobs')
                     ->setParameter('idTableName', $jobId)
                     ->orderBy('t.transactionTime', 'desc')
                     ->getQuery()

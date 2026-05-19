@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Service\CMS\Admin\Traits;
 
 use App\Entity\Page;
@@ -124,7 +130,7 @@ trait RelationshipManagerTrait
     {
         // Use batch operations with DQL for better performance - removes all relationships in fewer queries
         
-        // Remove from pages_sections
+        // Remove from rel_pages_sections
         $entityManager->createQueryBuilder()
             ->delete(PagesSection::class, 'ps')
             ->where('ps.section = :section')
@@ -132,7 +138,7 @@ trait RelationshipManagerTrait
             ->getQuery()
             ->execute();
 
-        // Remove from sections_hierarchy as parent
+        // Remove from rel_sections_hierarchy as parent
         $entityManager->createQueryBuilder()
             ->delete(SectionsHierarchy::class, 'sh')
             ->where('sh.parentSection = :section')
@@ -140,7 +146,7 @@ trait RelationshipManagerTrait
             ->getQuery()
             ->execute();
 
-        // Remove from sections_hierarchy as child
+        // Remove from rel_sections_hierarchy as child
         $entityManager->createQueryBuilder()
             ->delete(SectionsHierarchy::class, 'sh')
             ->where('sh.childSection = :section')

@@ -1,5 +1,10 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
 namespace App\Service\Action;
 
 use App\Entity\Action;
@@ -109,7 +114,7 @@ class ActionCleanupService
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
                 $transactionBy,
-                'scheduledJobs',
+                'scheduled_jobs',
                 $job->getId(),
                 false,
                 'Scheduled job marked as deleted by action cleanup'

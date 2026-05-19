@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Controller\Api\V1\Auth;
 
 use App\Controller\Trait\RequestValidatorTrait;
@@ -225,7 +231,7 @@ class UserValidationController extends AbstractController
     }
 
     /**
-     * Save user form inputs to dataTables
+     * Save user form inputs to data_tables
      *
      * @param int $userId User ID
      * @param array $formInputs Form input data

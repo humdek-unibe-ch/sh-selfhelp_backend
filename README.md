@@ -23,6 +23,7 @@ The application is built with a modular architecture where:
 ## Available Features
 
 The system provides comprehensive functionality including:
+
 - **CMS Management**: Full content management with hierarchical sections
 - **User Management**: Role-based user system with permissions
 - **API System**: RESTful API with JWT authentication and versioning
@@ -31,13 +32,12 @@ The system provides comprehensive functionality including:
 - **Asset Management**: File upload and management system
 - **Job Scheduling**: Automated task scheduling and execution
 - **Multi-language Support**: Internationalization with translation system
-
- - For detailed architecture documentation refer to [ARCHITECTURE](ARCHITECTURE.md)
- - For development patterns and best practices refer to [DEVELOPMENT_GUIDE](DEVELOPMENT_GUIDE.md)
- - For information about recent changes refer to [CHANGELOG](CHANGELOG.md)
- - For comprehensive developer documentation refer to [Developer Docs](docs/developer/)
- - For API security architecture refer to [Security Guide](docs/api-security-architecture.md)
- - For permission system implementation refer to [Permission Guide](docs/permission-system-guide.md)
+- For detailed architecture documentation refer to [ARCHITECTURE](ARCHITECTURE.md)
+- For development patterns and best practices refer to [DEVELOPMENT_GUIDE](DEVELOPMENT_GUIDE.md)
+- For information about recent changes refer to [CHANGELOG](CHANGELOG.md)
+- For comprehensive developer documentation refer to [Developer Docs](docs/developer/)
+- For API security architecture refer to [Security Guide](docs/api-security-architecture.md)
+- For permission system implementation refer to [Permission Guide](docs/permission-system-guide.md)
 
 # Installation
 
@@ -126,6 +126,7 @@ nano .env
 ```
 
 Configure the following variables:
+
 ```env
 APP_ENV=prod
 APP_SECRET=your-secret-key-here
@@ -172,34 +173,89 @@ JWT_PUBLIC_KEY=%kernel.project_dir%/config/jwt/public.pem
 
 **Important**: Never commit JWT private keys to version control. Add `config/jwt/*.pem` to your `.gitignore` file.
 
-## Database Migration
+## Database Bootstrap (migrations-only)
+
+> **Heads up — pre-release breaking cutover.** Fresh installs no longer load
+> `db/new_create_db.sql` or any other SQL dump. The full schema, all stored
+> procedures, and every seed row (lookups, languages, fields, styles, API
+> routes, system pages, default groups, …) are built end-to-end by Doctrine
+> migrations. The legacy SQL bootstrap files have been archived under
+> `[db/legacy/](db/legacy/README.md)` for historical reference only.
 
 ```bash
-# Run Doctrine migrations
+# 1) Create an empty database (see "Database Setup" above for grants).
+# 2) Configure DATABASE_URL in .env / .env.local.
+# 3) Run every migration. This will:
+#      - apply Version20260601000000        → canonical baseline schema +
+#                                              5 stored procedures
+#      - apply Version20260601000100..400   → seed lookups, fields, styles,
+#                                              api_routes, system pages, …
 php bin/console doctrine:migrations:migrate --no-interaction
 
-# Load initial data (if available)
-php bin/console doctrine:fixtures:load --no-interaction
+# 4) Confirm the schema is in sync with the entity mappings.
+php bin/console doctrine:schema:validate
+
+# 5) (optional) Warm the dynamic api_routes cache so the first request is
+#    instant.
+php bin/console cache:clear-api-routes
 ```
+
+The baseline migration deliberately refuses to run on a database that already
+has the canonical `pages` table — if you need to re-create from scratch, drop
+the database first.
+
+### Canonical naming rules
+
+The new schema is enforced under strict `lowercase_snake_case`:
+
+
+| What                    | Pattern                                                |
+| ----------------------- | ------------------------------------------------------ |
+| Tables                  | plural snake_case (`pages`, `scheduled_jobs`)          |
+| Primary key             | `id`                                                   |
+| Foreign keys            | `id_<target_table_name>` (`id_users`, `id_page_types`) |
+| Self-references         | explicit (`id_parent_page`, `id_child_section`)        |
+| Pure relation tables    | `rel_<a>_<b>` in alphabetical order                    |
+| Promoted join tables    | first-class names (`page_acl_groups`,                  |
+|                         | `validation_code_groups`)                              |
+| Indexes / FKs / uniques | `pk_*`, `fk_*`, `idx_*`, `uq_*`                        |
+
+
+Adding a new table, column, or API route post-baseline → create a new
+Doctrine migration on top of the canonical baseline. Do not edit the baseline
+migration or any seed migration in place once they have been applied.
 
 ## Create Admin User
 
+The migrations seed the `admin` group, the `admin` role, and the lookups but
+intentionally ship NO human users. After the migrations are applied, run this
+once to create a validated, password-set admin you can immediately log in with:
+
 ```bash
-# Create initial admin user
+# Interactive (prompts for a hidden password)
 php bin/console app:create-admin-user your.email@example.com "Admin Name"
+
+# Non-interactive (pipe the password in)
+php bin/console app:create-admin-user your.email@example.com "Admin Name" \
+    --password='S3cret!' --name=admin
 ```
+
+The created user is `status=active`, `blocked=0`, `intern=0`, in the `admin`
+group and bound to the `admin` role. Re-running the command with the same
+email updates the password and re-asserts the admin membership, so the same
+command doubles as a password-reset for the bootstrap admin.
 
 ## Real-time push (Mercure)
 
-The backend uses [Mercure](https://mercure.rocks) (Caddy + the Mercure module) to push live `acl-changed` events to the frontend the moment a user's effective permission set changes — no polling, no PHP-FPM workers held open. The flow is:
+The backend uses [Mercure](https://mercure.rocks) (Caddy + the Mercure module) to push live `acl-changed` events to clients the moment a user's effective permission set changes — no polling, no PHP-FPM workers held open. The flow is:
 
 1. `User::bumpAclVersion()` is called somewhere in a service (group/role mutation, async job grant, profile edit, etc.).
 2. `App\EventListener\AclVersionMercurePublisher` fires on Doctrine `postFlush`, sees `acl_version` in the changeset, and publishes an `acl-changed` update to the user's private topic on the hub.
-3. The Next.js BFF (`/api/auth/events`) holds a single upstream Mercure subscription per browser tab and pipes the events back to the browser as same-origin SSE.
+3. The Next.js frontend subscribes through its BFF (`/api/auth/events`). Expo native iOS/Android subscribes directly with a bearer token after calling `GET /cms-api/v1/auth/events`, while Expo Web preview can request `transport=cookie` and subscribe with browser-native `EventSource`.
 
 ### Setup (Docker)
 
-A ready-to-use Caddy/Mercure container is provided in `docker-compose.mercure.yml`. The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`).
+A ready-to-use Caddy/Mercure container is provided in `docker-compose.mercure.yml`. The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`) and allow browser subscribers from the local Next.js dev server, the local Expo Web dev server, and a stable Expo Web preview host (`https://mobile-preview.example.com`).
 
 ```bash
 # 1. Generate (or pick) a strong secret and write it to .env.local — the
@@ -234,14 +290,16 @@ docker run -d --name selfhelp_mercure --rm \
   -e SERVER_NAME=":80" \
   -e MERCURE_PUBLISHER_JWT_KEY="$MERCURE_JWT_SECRET" \
   -e MERCURE_SUBSCRIBER_JWT_KEY="$MERCURE_JWT_SECRET" \
-  -e MERCURE_EXTRA_DIRECTIVES=$'cors_origins http://localhost:3000 http://127.0.0.1:3000\nanonymous false\npublish_origins http://localhost http://127.0.0.1\nsubscriptions' \
+  -e MERCURE_EXTRA_DIRECTIVES=$'cors_origins http://localhost:3000 http://127.0.0.1:3000 http://localhost:8081 http://127.0.0.1:8081 https://mobile-preview.example.com\nanonymous false\npublish_origins http://localhost http://127.0.0.1\nsubscriptions' \
   dunglas/mercure:v0.16
 ```
 
 ### Production notes
 
-- Put the hub behind your reverse proxy on the **same domain** as the application (e.g. `https://app.example.com/.well-known/mercure`) so the browser can subscribe directly without cross-origin cookie issues. Update `MERCURE_PUBLIC_URL` accordingly; `MERCURE_URL` (used by Symfony) can stay on the internal network.
-- Replace `cors_origins` and `publish_origins` in `MERCURE_EXTRA_DIRECTIVES` with your real frontend / backend hostnames.
+- Put the hub behind your reverse proxy on the **same host/domain** as the application (e.g. `https://app.example.com/.well-known/mercure`) so browser cookie-based subscriptions work cleanly. Update `MERCURE_PUBLIC_URL` accordingly; `MERCURE_URL` (used by Symfony) can stay on the internal network.
+- Set `CORS_ALLOW_ORIGIN` to include every browser origin that talks to the Symfony API directly, including any stable Expo Web preview host.
+- Set `MERCURE_CORS_ORIGINS` / `cors_origins` to include every browser origin that subscribes to the hub directly. Expo native apps do not need this because they do not send an `Origin` header.
+- Replace `publish_origins` in `MERCURE_EXTRA_DIRECTIVES` with your real backend hostnames.
 - Issue the publisher and subscriber JWT secrets separately (do **not** reuse `MERCURE_JWT_SECRET` for both) for stronger isolation. Update `config/packages/mercure.yaml` accordingly.
 - For HA, point the hub at a Redis backend instead of the default in-memory transport — see [the Mercure docs](https://mercure.rocks/docs/hub/cluster).
 
@@ -622,24 +680,34 @@ sudo chmod -R 777 var/cache/ var/log/ var/sessions/
 
 ### Admin Account Setup
 
-After successful installation, create your first admin user:
+After successful installation, create your first admin user. The command
+prompts for a hidden password by default, or accepts `--password=` for
+unattended CI/staging boots:
 
 ```bash
-# Create admin user (replace with your email and name)
+# Interactive (hidden password prompt)
 php bin/console app:create-admin-user your.email@example.com "Your Admin Name"
+
+# Non-interactive
+php bin/console app:create-admin-user your.email@example.com "Your Admin Name" \
+    --password='S3cret!' --name=admin
 ```
 
 This command will:
-- Create a new user account
-- Assign admin role with full permissions
-- Send an account validation email
+
+- Create (or update if it already exists) a user account with `status=active`,
+  `blocked=0`, and the supplied password already hashed and saved.
+- Attach the user to the `admin` group (`rel_groups_users`) and the
+  `admin` role (`rel_roles_users`).
+- Skip the validation-email flow entirely so the account is immediately
+  usable for the very first login on a fresh install.
 
 ### Initial Configuration
 
 1. **Access the Application**: Navigate to `https://your-domain.com`
-2. **Complete Registration**: Check your email for the validation link
-3. **First Login**: Use your email and the password from the validation email
-4. **CMS Access**: Navigate to `/admin` to access the CMS interface
+2. **First Login**: Use the email + password you just set with
+   `app:create-admin-user`.
+3. **CMS Access**: Navigate to `/admin` to access the CMS interface
 
 ### Environment-Specific Setup
 
@@ -689,10 +757,12 @@ sudo certbot renew --dry-run
 ### Monitoring and Maintenance
 
 #### Log Files
+
 - Application logs: `var/log/prod.log` (production) or `var/log/dev.log` (development)
 - Web server logs: Check Apache/Nginx log directories configured above
 
 #### Cache Management
+
 ```bash
 # Clear Symfony cache
 php bin/console cache:clear
@@ -704,6 +774,7 @@ php bin/console doctrine:cache:clear-result
 ```
 
 #### Database Maintenance
+
 ```bash
 # Create backup
 mysqldump -u username -p database_name > backup_$(date +%Y%m%d_%H%M%S).sql
@@ -717,6 +788,7 @@ php bin/console doctrine:query:sql "SHOW PROCESSLIST"
 ### Code Quality & Testing
 
 #### Static Analysis
+
 ```bash
 # Run PHPStan for static analysis
 vendor/bin/phpstan analyse src --level=8
@@ -729,6 +801,7 @@ vendor/bin/php-cs-fixer fix
 ```
 
 #### Testing
+
 ```bash
 # Run PHPUnit tests
 vendor/bin/phpunit
@@ -741,14 +814,16 @@ vendor/bin/phpunit --testsuite=unit
 ```
 
 #### Code Quality Tools
+
 - **[PHPStan](https://phpstan.org)**: Static analysis for PHP
-- **[PHP CS Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer)**: Code style fixing
+- **[PHP CS Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer)**: Code style fixingcrea
 - **[PHPUnit](https://phpunit.de)**: Unit testing framework
 - **[Psalm](https://psalm.dev)**: Alternative static analysis (optional)
 
 ### Asset Management
 
 #### Development Assets
+
 ```bash
 # Install dependencies
 npm install
@@ -766,6 +841,7 @@ npm run dev
 ### Symfony Console Commands
 
 #### Common Commands
+
 ```bash
 # List all available commands
 php bin/console list
@@ -787,6 +863,7 @@ php bin/console doctrine:migrations:migrate
 ```
 
 #### Debug Commands
+
 ```bash
 # Debug routes
 php bin/console debug:router
@@ -804,12 +881,14 @@ php bin/console config:dump framework
 ### API Documentation
 
 The REST API is documented using OpenAPI/Swagger. Access the documentation at:
+
 - Development: `https://your-domain.com/api/doc`
 - Production: Check your API documentation endpoint
 
 ### Performance Optimization
 
 #### Production Optimizations
+
 ```bash
 # Enable OPcache (already configured in PHP 8.3)
 php -m | grep opcache
@@ -823,6 +902,7 @@ echo "SESSION_HANDLER=redis" >> .env
 ```
 
 #### Monitoring
+
 ```bash
 # Enable Symfony profiler in development
 echo "APP_DEBUG=1" >> .env
@@ -839,6 +919,7 @@ composer require --dev symfony/web-profiler-bundle
 ### Common Issues
 
 #### Permission Issues
+
 ```bash
 # Fix var directory permissions
 sudo chown -R www-data:www-data var/
@@ -847,6 +928,7 @@ sudo chmod -R 777 var/cache/ var/log/ var/sessions/
 ```
 
 #### Database Connection Issues
+
 ```bash
 # Test database connection
 php bin/console doctrine:query:sql "SELECT 1"
@@ -856,6 +938,7 @@ php bin/console config:dump doctrine
 ```
 
 #### Cache Issues
+
 ```bash
 # Clear all caches
 php bin/console cache:clear
@@ -864,6 +947,7 @@ php bin/console cache:warmup
 ```
 
 #### Composer Issues
+
 ```bash
 # Clear Composer cache
 composer clear-cache
@@ -876,6 +960,7 @@ composer install
 ### Support
 
 For support and bug reports:
+
 - Check the [CHANGELOG](CHANGELOG.md) for recent changes
 - Review [ARCHITECTURE](ARCHITECTURE.md) for detailed technical documentation
 - Create issues at: `https://github.com/humdek-unibe-ch/sh-selfhelp/issues`
@@ -890,4 +975,40 @@ For support and bug reports:
 
 ### License
 
-This project is licensed under the terms specified in the LICENSE file.
+Licensed under the [Mozilla Public License 2.0](LICENSE). Copyright (c) 2026 Humdek, University of Bern.
+
+#### SPDX headers
+
+Every PHP source file should carry a two-line SPDX header in a block comment placed immediately after the opening `<?php` tag:
+
+```php
+<?php
+
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+namespace App\...;
+```
+
+The header text lives in `[header.txt](header.txt)`. Header insertion / verification / removal is automated with a small native PHP script — no Composer dev dependency required.
+
+```bash
+# Add the SPDX header to every .php file under src/, tests/, public/,
+# config/, migrations/, scripts/. Skips files that already contain
+# `SPDX-License-Identifier:` so it is safe to run repeatedly.
+composer headers:add
+# (or directly: php scripts/add-license-headers.php)
+
+# Verify (CI-friendly: exits 1 if any file is missing the header).
+composer headers:check
+
+# Strip the SPDX block (rarely needed; e.g. before re-licensing).
+composer headers:remove
+
+# Preview without writing.
+php scripts/add-license-headers.php --dry-run
+```
+
+The script never touches `vendor/`, `var/`, `cache/`, `node_modules/`, or `.git/`. Detection is by literal `SPDX-License-Identifier:` token, so any pre-existing manually-written SPDX header is preserved.

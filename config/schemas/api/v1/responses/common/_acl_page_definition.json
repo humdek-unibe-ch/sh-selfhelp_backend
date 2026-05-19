@@ -19,12 +19,12 @@
                 "acl_delete": { "type": "integer", "enum": [0, 1] },
                 "keyword": { "type": "string" },
                 "url": { "type": ["string", "null"] },
-                "parent": { "type": ["integer", "null"] },
+                "id_parent_page": { "type": ["integer", "null"] },
                 "is_headless": { "type": "integer", "enum": [0, 1] },
                 "nav_position": { "type": ["integer", "null"] },
                 "footer_position": { "type": ["integer", "null"] },
-                "id_type": { "type": "integer" },
-                "id_pageAccessTypes": { "type": "integer" },
+                "id_page_types": { "type": "integer" },
+                "id_page_access_types": { "type": "integer" },
                 "is_system": { "type": "integer", "enum": [0, 1] },
                 "title": { "type": ["string", "null"] },
                 "description": { "type": ["string", "null"] },
@@ -35,8 +35,8 @@
             },
             "required": [
                 "id_users", "id_pages", "acl_select", "acl_insert", "acl_update", "acl_delete",
-                "keyword", "url", "parent", "is_headless", "nav_position", "footer_position",
-                "id_type", "id_pageAccessTypes", "is_system", "title", "description", "children"
+                "keyword", "url", "id_parent_page", "is_headless", "nav_position", "footer_position",
+                "id_page_types", "id_page_access_types", "is_system", "title", "description", "children"
             ]
         }
     },

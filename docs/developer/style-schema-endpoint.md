@@ -49,7 +49,7 @@ allowed parent / child relationships.
 The schema is loaded once per request through `StyleSchemaService`, which
 wraps a single join query (`StyleRepository::findAllStylesWithFields()`)
 with `CacheService::CATEGORY_STYLES` (TTL: 4 h). After any DB change to
-`styles`, `fields`, `styles_fields`, or `styles_allowed_relationships`,
+`styles`, `fields`, `rel_fields_styles`, or `rel_styles_allowed_relationships`,
 invalidate the category directly:
 
 ```php
@@ -132,7 +132,7 @@ Used by the admin UI's *Copy AI prompt* button in `AddSectionModal`.
 | `src/Controller/Api/V1/Admin/AdminStyleController.php`                 | Hosts the two endpoints                                          |
 | `src/Command/BuildPromptTemplateCommand.php`                           | Optional offline snapshot dumper (NOT used at runtime)           |
 | `config/schemas/api/v1/responses/style/stylesSchema.json`              | Response JSON schema                                             |
-| `migrations/Version20260424120000.php`                                 | Registers the two new `api_routes` rows                          |
+| `migrations/Version20260601000300.php` (`seedMissingRoutes()`)         | Registers the two new `api_routes` rows                          |
 | `<ai_prompt_template_dir>/prompt_template_base.md`                     | **Committed, hand-authored, loaded per request** (default `docs/ai/...`) |
 | `<ai_prompt_template_dir>/ai_section_generation_prompt.md`             | Gitignored offline snapshot — never read at runtime              |
 | `../sh-selfhelp_frontend/scripts/gen-styles-types.mjs`                 | FE codegen script (consumes the schema endpoint)                 |

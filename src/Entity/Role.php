@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use App\Entity\Permission;
@@ -11,6 +17,7 @@ use Doctrine\DBAL\Types\Types;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'roles')]
+#[ORM\UniqueConstraint(name: 'uq_roles_name', columns: ['name'])]
 class Role
 {
     #[ORM\Id]
@@ -18,7 +25,7 @@ class Role
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: Types::STRING, length: 50, unique: true)]
+    #[ORM\Column(name: 'name', type: Types::STRING, length: 50)]
     private string $name;
 
     #[ORM\Column(name: 'description', type: Types::STRING, length: 255, nullable: true)]

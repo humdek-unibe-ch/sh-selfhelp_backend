@@ -5,8 +5,8 @@
   "additionalProperties": false,
   "properties": {
     "name": { "type": "string" },
-    "id_actionTriggerTypes": { "type": ["integer", "null"] },
-    "id_dataTables": { "type": ["integer", "null"] },
+    "id_action_trigger_types": { "type": ["integer", "null"] },
+    "id_data_tables": { "type": ["integer", "null"] },
     "config": {
       "description": "Arbitrary action configuration; validated in UI, stored as-is.",
       "type": ["object", "string", "null"]

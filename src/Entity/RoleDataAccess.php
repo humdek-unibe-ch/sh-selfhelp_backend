@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\DBAL\Types\Types;
@@ -13,11 +19,11 @@ use Doctrine\ORM\Mapping as ORM;
  */
 #[ORM\Entity]
 #[ORM\Table(name: 'role_data_access')]
-#[ORM\Index(name: 'IDX_role_data_access_roles', columns: ['id_roles'])]
-#[ORM\Index(name: 'IDX_role_data_access_resource_types', columns: ['id_resourceTypes'])]
-#[ORM\Index(name: 'IDX_role_data_access_resource_id', columns: ['resource_id'])]
-#[ORM\Index(name: 'IDX_role_data_access_permissions', columns: ['crud_permissions'])]
-#[ORM\UniqueConstraint(name: 'unique_role_resource', columns: ['id_roles', 'id_resourceTypes', 'resource_id'])]
+#[ORM\Index(name: 'idx_role_data_access_id_roles', columns: ['id_roles'])]
+#[ORM\Index(name: 'idx_role_data_access_id_resource_types', columns: ['id_resource_types'])]
+#[ORM\Index(name: 'idx_role_data_access_resource_id', columns: ['resource_id'])]
+#[ORM\Index(name: 'idx_role_data_access_crud_permissions', columns: ['crud_permissions'])]
+#[ORM\UniqueConstraint(name: 'uq_role_data_access_role_resource', columns: ['id_roles', 'id_resource_types', 'resource_id'])]
 class RoleDataAccess
 {
     #[ORM\Id]
@@ -28,7 +34,7 @@ class RoleDataAccess
     #[ORM\Column(name: 'id_roles', type: Types::INTEGER)]
     private int $idRoles;
 
-    #[ORM\Column(name: 'id_resourceTypes', type: Types::INTEGER)]
+    #[ORM\Column(name: 'id_resource_types', type: Types::INTEGER)]
     private int $idResourceTypes;
 
     #[ORM\Column(name: 'resource_id', type: Types::INTEGER)]
@@ -49,7 +55,7 @@ class RoleDataAccess
     private Role $role;
 
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_resourceTypes', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[ORM\JoinColumn(name: 'id_resource_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private Lookup $resourceType;
 
     public function __construct()

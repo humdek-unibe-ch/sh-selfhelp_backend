@@ -1,11 +1,18 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Entity;
 
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
-#[ORM\Table(name: 'pages_sections')]
+#[ORM\Table(name: 'rel_pages_sections')]
+#[ORM\Index(name: 'idx_rel_pages_sections_id_sections', columns: ['id_sections'])]
 class PagesSection
 {
 

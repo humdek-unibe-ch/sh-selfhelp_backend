@@ -1,5 +1,11 @@
 <?php
 
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+
 namespace App\Repository;
 
 use Doctrine\DBAL\Connection;
@@ -44,7 +50,7 @@ class AuthRepository
     {
         $sql = "SELECT SUM(g.requires_2fa) AS requires_2fa
                 FROM users u
-                INNER JOIN users_groups ug ON (ug.id_users = u.id)
+                INNER JOIN rel_groups_users ug ON (ug.id_users = u.id)
                 INNER JOIN `groups` g ON (ug.id_groups = g.id)
                 WHERE u.id = :user_id";
         $result = $this->connection->fetchAssociative($sql, ['user_id' => $userId]);
