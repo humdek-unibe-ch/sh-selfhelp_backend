@@ -36,7 +36,7 @@ final class Version20260601000900 extends AbstractMigration
                 'sh-mail-config',
                 NULL,
                 NULL,
-                '0',
+                '0', 
                 NULL,
                 NULL,
                 '12',
@@ -80,26 +80,26 @@ final class Version20260601000900 extends AbstractMigration
             INSERT IGNORE INTO rel_fields_page_types (id_page_types, id_fields, title, help) VALUES
 
             -- Global config
-            (13, (SELECT id FROM fields WHERE name = 'mail_from_email' LIMIT 1), 'Mail: From Email',   'Email address used as sender'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_from_name'  LIMIT 1), 'Mail: From Name',    'Display name used as sender'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_reply_to'   LIMIT 1), 'Mail: Reply-To',     'Reply-To email address'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_is_html'    LIMIT 1), 'Mail: HTML Enabled', 'Defines whether emails are sent as HTML'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_from_email' LIMIT 1), 'Mail: From Email',   'Email address used as sender'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_from_name'  LIMIT 1), 'Mail: From Name',    'Display name used as sender'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_reply_to'   LIMIT 1), 'Mail: Reply-To',     'Reply-To email address'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_is_html'    LIMIT 1), 'Mail: HTML Enabled', 'Defines whether emails are sent as HTML'),
 
             -- 2FA
-            (13, (SELECT id FROM fields WHERE name = 'mail_2fa_subject' LIMIT 1), '2FA: Subject', 'Subject line for 2FA code email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_2fa_body'    LIMIT 1), '2FA: Body',    'Email body content for 2FA'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_2fa_subject' LIMIT 1), '2FA: Subject', 'Subject line for 2FA code email'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_2fa_body'    LIMIT 1), '2FA: Body',    'Email body content for 2FA'),
 
             -- Confirmation
-            (13, (SELECT id FROM fields WHERE name = 'mail_confirm_subject' LIMIT 1), 'Confirmation: Subject', 'Subject line for account confirmation email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_confirm_body'    LIMIT 1), 'Confirmation: Body',    'Email body for account confirmation'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_confirm_subject' LIMIT 1), 'Confirmation: Subject', 'Subject line for account confirmation email'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_confirm_body'    LIMIT 1), 'Confirmation: Body',    'Email body for account confirmation'),
 
             -- Recovery
-            (13, (SELECT id FROM fields WHERE name = 'mail_recovery_subject' LIMIT 1), 'Recovery: Subject', 'Subject line for password recovery email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_recovery_body'    LIMIT 1), 'Recovery: Body',    'Email body for password recovery'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_recovery_subject' LIMIT 1), 'Recovery: Subject', 'Subject line for password recovery email'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_recovery_body'    LIMIT 1), 'Recovery: Body',    'Email body for password recovery'),
 
             -- Welcome
-            (13, (SELECT id FROM fields WHERE name = 'mail_welcome_subject' LIMIT 1), 'Welcome: Subject', 'Subject line for welcome email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_welcome_body'    LIMIT 1), 'Welcome: Body',    'Email body for welcome email')
+            (12, (SELECT id FROM fields WHERE name = 'mail_welcome_subject' LIMIT 1), 'Welcome: Subject', 'Subject line for welcome email'),
+            (12, (SELECT id FROM fields WHERE name = 'mail_welcome_body'    LIMIT 1), 'Welcome: Body',    'Email body for welcome email')
         ");
     }
 
@@ -107,7 +107,7 @@ final class Version20260601000900 extends AbstractMigration
     {
         $this->addSql("
             DELETE FROM rel_fields_page_types 
-            WHERE id_page_types = 13
+            WHERE id_page_types = 12
             AND id_fields IN (
                 (SELECT id FROM fields WHERE name = 'mail_from_email'      LIMIT 1),
                 (SELECT id FROM fields WHERE name = 'mail_from_name'       LIMIT 1),
