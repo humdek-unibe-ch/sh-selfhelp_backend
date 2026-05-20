@@ -345,12 +345,11 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         // Step 2: Fetch the page of users together with their collections (safe, no LIMIT)
         $qb = $this->getEntityManager()->createQueryBuilder()
-            ->select('u', 'ug', 'g', 'ur', 'ua', 'vc', 'us', 'ut')
+            ->select('u', 'ug', 'g', 'ur', 'vc', 'us', 'ut')
             ->from(User::class, 'u')
             ->leftJoin('u.usersGroups', 'ug')
             ->leftJoin('ug.group', 'g')
             ->leftJoin('u.roles', 'ur')
-            ->leftJoin('u.userActivities', 'ua')
             ->leftJoin('u.validationCodes', 'vc')
             ->leftJoin('u.status', 'us')
             ->leftJoin('u.userType', 'ut')
@@ -424,13 +423,12 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         // Step 2: Fetch the page of users together with their collections.
         // No setMaxResults here, so fetch-joins are safe.
         $qb = $this->getEntityManager()->createQueryBuilder()
-            ->select('u', 'ut', 'ug', 'g', 'ua', 'vc', 'ur', 'us')
+            ->select('u', 'ut', 'ug', 'g', 'vc', 'ur', 'us')
             ->from(User::class, 'u')
             ->leftJoin('u.usersGroups', 'ug')
             ->leftJoin('u.roles', 'ur')
             ->leftJoin('u.userType', 'ut')
             ->leftJoin('ug.group', 'g')
-            ->leftJoin('u.userActivities', 'ua')
             ->leftJoin('u.validationCodes', 'vc')
             ->leftJoin('u.status', 'us')
             ->where('u.id IN (:ids)')
@@ -723,7 +721,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             'blocked' => $user->isBlocked(),
             'code' => $validationCode,
             'groups' => implode('; ', $groups),
-            'user_activity' => $user->getUserActivities()->count(),
+            'user_activity' => $user->getTransactions()->count(),
             'user_type_code' => $user->getUserType()?->getLookupCode(),
             'user_type' => $user->getUserType()?->getLookupValue(),
             'roles' => implode('; ', $roles),

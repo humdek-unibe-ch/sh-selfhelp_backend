@@ -985,7 +985,7 @@ class AdminUserService extends BaseService
             'blocked' => $user->isBlocked(),
             'code' => $validationCode,
             'groups' => implode('; ', $groups),
-            'user_activity' => $user->getUserActivities()->count(),
+            'user_activity' => $user->getTransactions()->count(),
             'user_type_code' => $user->getUserType()?->getLookupCode(),
             'user_type' => $user->getUserType()?->getLookupValue(),
             'roles' => implode('; ', $roles)
