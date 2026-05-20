@@ -41,9 +41,9 @@ use Doctrine\Migrations\AbstractMigration;
  * What this migration does NOT do:
  *   - It does not seed reference data, lookups, languages, fields,
  *     styles, system pages, api_routes, permissions or default groups —
- *     those rows are added by the four `Version20260601000100`,
- *     `Version20260601000200`, `Version20260601000300` and
- *     `Version20260601000400` seed migrations.
+ *     those rows are added by the four `Version20260501000100`,
+ *     `Version20260501000200`, `Version20260501000300` and
+ *     `Version20260501000400` seed migrations.
  *   - It does not preserve the legacy mixed-case schema. Pre-release
  *     breaking change: there is no in-place rename of an existing
  *     `db/new_create_db.sql` install; that flow is gone.
@@ -53,7 +53,7 @@ use Doctrine\Migrations\AbstractMigration;
  *
  * @see db/legacy/README.md for the deprecated bootstrap files.
  */
-final class Version20260601000000 extends AbstractMigration
+final class Version20260501000000 extends AbstractMigration
 {
     public function getDescription(): string
     {

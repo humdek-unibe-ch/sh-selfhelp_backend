@@ -49,7 +49,7 @@ use Doctrine\Migrations\AbstractMigration;
  * confirmed they should disappear from the catalogue and any future
  * migration can recreate them via the standard install seed).
  */
-final class Version20260601000800 extends AbstractMigration
+final class Version20260501000800 extends AbstractMigration
 {
     /**
      * Pages that need to be reachable without an authenticated session

@@ -68,7 +68,7 @@ use Doctrine\Migrations\AbstractMigration;
  * not cascade-deleted by the page (they live in their own table) so `down()`
  * also does an explicit `DELETE FROM sections WHERE name LIKE 'privacy-%'`.
  */
-final class Version20260601000500 extends AbstractMigration
+final class Version20260501000500 extends AbstractMigration
 {
     private const PAGE_KEYWORD = 'privacy';
     private const PAGE_URL = '/privacy';
