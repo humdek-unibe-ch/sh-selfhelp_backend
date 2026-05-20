@@ -126,7 +126,7 @@ class MailTemplateService
             'from_email' => $this->fetchField($pageId, 'mail_from_email', $languageId),
             'from_name'  => $this->fetchField($pageId, 'mail_from_name', $languageId),
             'reply_to'   => $this->fetchField($pageId, 'mail_reply_to', $languageId),
-            'is_html' => $isHtmlRaw !== null ? $isHtmlRaw === '1' : null,
+            'is_html' => $isHtmlRaw !== null ? ($isHtmlRaw === '1' || $isHtmlRaw === 'true') : null,
         ];
     }
 

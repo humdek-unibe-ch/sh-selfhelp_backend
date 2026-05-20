@@ -86,7 +86,7 @@ final class Version20260601000900 extends AbstractMigration
             (13, (SELECT id FROM fields WHERE name = 'mail_from_email' LIMIT 1), 'Mail: From Email',   'Email address used as sender'),
             (13, (SELECT id FROM fields WHERE name = 'mail_from_name'  LIMIT 1), 'Mail: From Name',    'Display name used as sender'),
             (13, (SELECT id FROM fields WHERE name = 'mail_reply_to'   LIMIT 1), 'Mail: Reply-To',     'Reply-To email address'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_is_html'    LIMIT 1), 'Mail: HTML Enabled', 'Defines whether emails are sent as HTML'),
+            (13, (SELECT id FROM fields WHERE name = 'mail_is_html'    LIMIT 1), 'Mail: HTML Enabled', 'If unchecked, all HTML will be sent in the email.'),
 
             -- 2FA
             (13, (SELECT id FROM fields WHERE name = 'mail_2fa_subject' LIMIT 1), '2FA: Subject', 'Subject line for 2FA code email'),
@@ -103,6 +103,19 @@ final class Version20260601000900 extends AbstractMigration
             -- Welcome
             (13, (SELECT id FROM fields WHERE name = 'mail_welcome_subject' LIMIT 1), 'Welcome: Subject', 'Subject line for welcome email'),
             (13, (SELECT id FROM fields WHERE name = 'mail_welcome_body'    LIMIT 1), 'Welcome: Body',    'Email body for welcome email')
+        ");
+
+        // =====================================
+        // 5. Default value for mail_is_html (true)
+        // =====================================
+        $this->addSql("
+        INSERT IGNORE INTO pages_fields_translation (id_pages, id_fields, id_languages, content)
+        VALUES (
+            (SELECT id_pages FROM pages WHERE keyword = 'sh-mail-config' LIMIT 1),
+            (SELECT id FROM fields WHERE name = 'mail_is_html' LIMIT 1),
+            1,
+            'true'
+        )
         ");
     }
 
@@ -125,6 +138,13 @@ final class Version20260601000900 extends AbstractMigration
                 (SELECT id FROM fields WHERE name = 'mail_welcome_subject' LIMIT 1),
                 (SELECT id FROM fields WHERE name = 'mail_welcome_body'    LIMIT 1)
             )
+        ");
+
+        $this->addSql("
+        DELETE FROM pages_fields_translation
+        WHERE id_pages = (SELECT id_pages FROM pages WHERE keyword = 'sh-mail-config' LIMIT 1)
+        AND id_fields = (SELECT id FROM fields WHERE name = 'mail_is_html' LIMIT 1)
+        AND id_languages = 1
         ");
     }
 }
