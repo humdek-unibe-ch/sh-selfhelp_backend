@@ -20,7 +20,7 @@ final class Version20260601000900 extends AbstractMigration
         // 1. Create mail template page
         // =====================================
         $this->addSql("
-            INSERT IGNORE INTO `selfhelp2`.`pages` (
+            INSERT IGNORE INTO pages (
                 `keyword`,
                 `url`,
                 `id_parent_page`,
@@ -39,7 +39,7 @@ final class Version20260601000900 extends AbstractMigration
                 '0',
                 NULL,
                 NULL,
-                '13',
+                '12',
                 '63',
                 '0',
                 '0',
