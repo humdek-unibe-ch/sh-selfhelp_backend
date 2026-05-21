@@ -61,7 +61,7 @@
                         }
                     },
                     "required": [
-                        "id", "keyword", "url", "is_headless", "title", "description", "should_fallback", "sections"
+                        "id", "keyword", "url", "is_headless", "title", "description", "sections"
                     ]
                 }
             },
