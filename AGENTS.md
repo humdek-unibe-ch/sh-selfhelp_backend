@@ -193,7 +193,7 @@ When making changes, explain:
 ## Common Tasks
 - Add endpoint: add/update controller action, JSON schemas, a new Doctrine migration that inserts the row into `api_routes` and the matching links into `rel_api_routes_permissions`, permissions, service logic, tests, and route cache notes.
 - Add service: place it under the matching `src/Service` domain, inject dependencies via constructor, keep transactions/cache invalidation explicit.
-- Add migration: inspect schema first, create a Doctrine migration, update relevant SQL scripts if required, and do not run migrations automatically.
+- Add migration: inspect schema first, create the migration with the Symfony/Doctrine generate command so the timestamp-based file/class name is automatic, update relevant SQL scripts if required, and do not run migrations automatically.
 - Add frontend page behavior: inspect `PageService`, section/field processing, interpolation, conditions, ACL, and cache effects.
 - Add permission-sensitive feature: update route permissions and verify `ApiSecurityListener`, `UserPermissionService`, ACL, and data-access rules.
 - Update tests: prefer focused PHPUnit tests and keep fixtures/test database assumptions explicit.
