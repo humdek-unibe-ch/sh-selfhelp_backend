@@ -31,7 +31,7 @@ require_once __DIR__ . '/LegacySeedTrait.php';
  *     wire them together.
  *   - page_types must exist before pages are inserted (next seed).
  */
-final class Version20260601000100 extends AbstractMigration
+final class Version20260501000100 extends AbstractMigration
 {
     use LegacySeedTrait;
 

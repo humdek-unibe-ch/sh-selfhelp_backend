@@ -15,6 +15,7 @@ use App\Repository\AuthRepository;
 use App\Service\Auth\JWTService;
 use App\Service\Auth\LoginService;
 use App\Service\Auth\UserDataService;
+use App\Service\Auth\UserValidationService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,7 +48,8 @@ class AuthController extends AbstractController
         private readonly AuthRepository $authRepository,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserDataService $userDataService,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly UserValidationService $userValidationService,
     ) {
     }
 
@@ -94,9 +96,16 @@ class AuthController extends AbstractController
                 );
             }
 
-            // If the user is found check if 2fa is required
+            // If the user is found check if 2FA is required
             if ($user->isTwoFactorRequired()) {
-                $this->authRepository->generateAndStore2faCode($user->getId()); // Ensure code is generated when 2FA is required
+                $code = $this->authRepository->generateAndStore2faCode($user->getId());
+                $emailSent = $this->userValidationService->send2faEmail($user->getId(), $code);
+                if (!$emailSent) {
+                    return $this->responseFormatter->formatError(
+                        'Failed to send 2FA email.',
+                        Response::HTTP_INTERNAL_SERVER_ERROR
+                    );
+                }
                 return $this->responseFormatter->formatSuccess([
                     'requires_2fa' => true,
                     'id_users' => $user->getId()
@@ -150,7 +159,6 @@ class AuthController extends AbstractController
         try {
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/2fa_verify', $this->jsonSchemaValidationService);
-
             $code = $data['code'] ?? null; // Schema ensures 'code' exists
             $userId = $data['id_users'] ?? null; // Schema ensures 'id_users' exists
 

@@ -173,7 +173,7 @@ class AdminUserService extends BaseService
      */
     public function createUser(array $userData): array
     {
-        return $this->executeInTransaction(function () use ($userData) {
+        $created = $this->executeInTransaction(function () use ($userData) {
             $this->validateUserData($userData, true);
 
             $user = $this->buildUserFromData(new User(), $userData);
@@ -210,8 +210,32 @@ class AdminUserService extends BaseService
             // Invalidate caches
             $this->invalidateUserCaches($user->getId());
 
-            return $result;
+            return [
+                'user' => $result,
+                'validation' => $validationResult,
+            ];
         });
+
+        $result = $created['user'];
+        $validationResult = $created['validation'] ?? null;
+
+        if ($validationResult && isset($validationResult['job_id'])) {
+            $emailSent = $this->userValidationService->executeScheduledValidationEmail((int) $validationResult['job_id']);
+
+            if ($emailSent) {
+                $validationResult['message'] = 'Validation email sent successfully.';
+            } else {
+                $validationResult['message'] = 'Validation email queued, but immediate send failed. You can resend it from the admin user actions.';
+                $this->logger->warning('Immediate validation email send failed after user creation', [
+                    'userId' => $result['id'] ?? null,
+                    'jobId' => $validationResult['job_id'],
+                ]);
+            }
+
+            $result['validation'] = $this->formatValidationResult($validationResult);
+        }
+
+        return $result;
     }
 
     /**
@@ -985,7 +1009,7 @@ class AdminUserService extends BaseService
             'blocked' => $user->isBlocked(),
             'code' => $validationCode,
             'groups' => implode('; ', $groups),
-            'user_activity' => $user->getUserActivities()->count(),
+            'user_activity' => $user->getTransactions()->count(),
             'user_type_code' => $user->getUserType()?->getLookupCode(),
             'user_type' => $user->getUserType()?->getLookupValue(),
             'roles' => implode('; ', $roles)

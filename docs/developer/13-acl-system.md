@@ -220,9 +220,10 @@ leaked tokens age out quickly.
 #### Setup
 
 The hub runs as a separate container — see README "Real-time push
-(Mercure)" for the dockerised setup (`docker-compose.mercure.yml`,
-publisher/subscriber JWT secret coordination, API CORS configuration,
-and Mercure browser-origin allow-listing). The shared HMAC key is
+(Mercure)" for the dockerised setup (the `mercure` service in the root
+`docker-compose.yml`, publisher/subscriber JWT secret coordination, API
+CORS configuration, and Mercure browser-origin allow-listing). The
+shared HMAC key is
 `MERCURE_JWT_SECRET`; it must match the
 `MERCURE_PUBLISHER_JWT_KEY` / `MERCURE_SUBSCRIBER_JWT_KEY` baked into
 the hub container.

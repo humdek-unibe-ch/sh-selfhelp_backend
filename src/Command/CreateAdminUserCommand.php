@@ -14,6 +14,8 @@ use App\Entity\Group;
 use App\Entity\Lookup;
 use App\Entity\Role;
 use App\Entity\User;
+use App\Entity\ValidationCode;
+use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -64,6 +66,7 @@ class CreateAdminUserCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly UserPasswordHasherInterface $passwordHasher,
+        private readonly CacheService $cache,
     ) {
         parent::__construct();
     }
@@ -179,13 +182,58 @@ class CreateAdminUserCommand extends Command
             }
         }
 
+        $validationCode = $this->ensureActiveValidationCode($user);
+
+        $user->bumpAclVersion();
         $em->flush();
+        $this->invalidateUserCaches($user->getId());
 
         $io->success(($isNew ? 'Created' : 'Updated') . " admin user #{$user->getId()} <{$email}>.");
         $io->writeln('You can now log in with:');
         $io->writeln('  email:    ' . $email);
         $io->writeln('  password: (the one you just set)');
+        $io->writeln('  user code: ' . $validationCode);
 
         return Command::SUCCESS;
+    }
+
+    private function ensureActiveValidationCode(User $user): string
+    {
+        foreach ($user->getValidationCodes() as $existingCode) {
+            if ($existingCode->getConsumed() === null) {
+                return (string) $existingCode->getCode();
+            }
+        }
+
+        $validationCode = new ValidationCode();
+        $validationCode->setCode($this->generateUniqueValidationCode());
+        $validationCode->setUser($user);
+        $this->entityManager->persist($validationCode);
+
+        return (string) $validationCode->getCode();
+    }
+
+    private function generateUniqueValidationCode(): string
+    {
+        do {
+            $code = strtoupper(bin2hex(random_bytes(8)));
+        } while ($this->entityManager->getRepository(ValidationCode::class)->find($code) instanceof ValidationCode);
+
+        return $code;
+    }
+
+    private function invalidateUserCaches(int $userId): void
+    {
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateAllListsInCategory();
+
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_USERS)
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->invalidateAllListsInCategory();
     }
 }

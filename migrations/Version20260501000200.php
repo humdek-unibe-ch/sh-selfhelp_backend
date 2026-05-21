@@ -27,10 +27,10 @@ require_once __DIR__ . '/LegacySeedTrait.php';
  * `rel_styles_allowed_relationships`, `rel_fields_page_types` tables.
  *
  * Depends on:
- *   - Version20260601000000_CanonicalBaseline (schema)
- *   - Version20260601000100_SeedReferenceData (field_types, style_groups, page_types)
+ *   - Version20260501000000_CanonicalBaseline (schema)
+ *   - Version20260501000100_SeedReferenceData (field_types, style_groups, page_types)
  */
-final class Version20260601000200 extends AbstractMigration
+final class Version20260501000200 extends AbstractMigration
 {
     use LegacySeedTrait;
 

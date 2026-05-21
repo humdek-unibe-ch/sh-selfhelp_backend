@@ -12,6 +12,7 @@ use Doctrine\DBAL\Connection;
 use App\Repository\User2faCodeRepository;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use App\Service\Core\JobSchedulerService;
 use DateTime;
 use Exception;
 
@@ -21,17 +22,21 @@ class AuthRepository
     private User2faCodeRepository $user2faCodeRepository;
     private UserRepository $userRepository;
     private EntityManagerInterface $entityManager;
+    private JobSchedulerService $jobSchedulerService; 
+
 
     public function __construct(
         Connection $connection,
         User2faCodeRepository $user2faCodeRepository,
         UserRepository $userRepository,
         EntityManagerInterface $entityManager,
+        JobSchedulerService $jobSchedulerService  
     ) {
         $this->connection = $connection;
         $this->user2faCodeRepository = $user2faCodeRepository;
         $this->userRepository = $userRepository;
         $this->entityManager = $entityManager;
+        $this->jobSchedulerService = $jobSchedulerService;
     }
 
     /**
@@ -56,16 +61,18 @@ class AuthRepository
      * Generates and stores a 2FA code for the user.
      *
      * @param int $userId
-     * @return void
+     * @return int
      * @throws \Doctrine\DBAL\Exception
      * @throws Exception // For random_int
      */
-    public function generateAndStore2faCode(int $userId): void
+    public function generateAndStore2faCode(int $userId): int
     {
         $code = random_int(100000, 999999);
         $expiresAt = (new DateTime())->modify('+10 minutes');
 
         $this->user2faCodeRepository->insert($userId, (string)$code, $expiresAt);
+
+        return $code;
     }
 
     public function verify2faCode(int $userId, string $code): bool

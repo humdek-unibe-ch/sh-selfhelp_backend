@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+declare(strict_types=1);
 
 namespace App\Service\Auth;
 
@@ -18,131 +19,125 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Service responsible for user account validation
- * 
- * This service handles:
- * - Token validation and account activation
- * - Scheduling welcome emails after successful validation
- * - Validation email scheduling and resending
+ * Service responsible for user account validation flows.
+ *
+ * Handles:
+ *   - Token validation and account activation.
+ *   - Validation email scheduling and resending.
+ *   - Welcome email after successful validation.
+ *   - 2FA verification-code emails on login.
+ *
+ * Email content is resolved by {@see MailTemplateService}; this service only
+ * supplies runtime variables (`user_name`, `code`, `validation_url`, etc.) and
+ * the recipient address. All hardcoded sender/template defaults live in
+ * {@see MailTemplateDefaults} — never inline here.
  */
 class UserValidationService extends BaseService
 {
-
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly TransactionService $transactionService,
         private readonly LoggerInterface $logger,
-        private readonly LookupService $lookupService
+        private readonly LookupService $lookupService,
+        private readonly MailTemplateService $mailTemplateService,
+        private readonly string $frontendBaseUrl,
     ) {
     }
 
     /**
-     * Setup validation for an existing user (generates token and schedules email)
-     * This is called after user creation to add validation functionality
-     * 
-     * @param User $user The user entity
-     * @param array $emailConfig Optional email configuration overrides
-     * @return array Result with token and job ID
+     * Setup validation for an existing user (generates token and schedules email).
+     *
+     * @param User                 $user        The user entity.
+     * @param array<string, mixed> $emailConfig Optional email configuration overrides.
+     * @return array<string, mixed> Result with token and job ID.
      */
     public function setupUserValidation(User $user, array $emailConfig = []): array
     {
         try {
-            // Generate validation token and store in user entity
             $token = $this->generateValidationToken();
             $user->setToken($token);
-            
-            // Set user status to invited and block the user until validation (unless already set)
+
             $status = $this->lookupService->findByTypeAndCode(LookupService::USER_STATUS, LookupService::USER_STATUS_INVITED);
             $user->setStatus($status);
-            // Only set blocked if not already explicitly set
-            if ($user->isBlocked() === null) {
-                $user->setBlocked(true); // User needs to be blocked until validated
-            }
-            
-            // Don't flush here - let the calling service handle transaction management
-            // $this->entityManager->flush();
 
-            // Schedule validation email
+            if ($user->isBlocked() === null) {
+                $user->setBlocked(true);
+            }
+
             $job = $this->scheduleValidationEmail($user->getId(), $token, $emailConfig);
 
             if (!$job) {
-                throw new \Exception('Failed to schedule validation email');
+                throw new \RuntimeException('Failed to schedule validation email');
             }
 
             return [
                 'success' => true,
                 'token' => $token,
                 'job_id' => $job->getId(),
-                'validation_url' => "validate/{$user->getId()}/{$token}",
-                'message' => 'Validation email has been sent.'
+                'validation_url' => $this->buildValidationUrl($user->getId(), $token),
+                'message' => 'Validation email has been queued.',
             ];
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->error('Failed to setup user validation', [
                 'error' => $e->getMessage(),
-                'userId' => $user->getId()
+                'userId' => $user->getId(),
             ]);
-            
+
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
 
     /**
-     * Validate a token and activate user account
-     * 
-     * @param int $userId User ID
-     * @param string $token Validation token
-     * @return array Result of validation
+     * Validate a token and activate the user account.
+     *
+     * @param int    $userId User ID.
+     * @param string $token  Validation token.
+     * @return array<string, mixed> Result of validation.
      */
     public function validateToken(int $userId, string $token): array
     {
         try {
             $this->entityManager->beginTransaction();
 
-            // Find the user
             $user = $this->entityManager->getRepository(User::class)->find($userId);
             if (!$user) {
+                $this->entityManager->rollback();
                 return [
                     'success' => false,
-                    'error' => 'User not found'
+                    'error' => 'User not found',
                 ];
             }
 
-            // Check if token matches
             if ($user->getToken() !== $token) {
+                $this->entityManager->rollback();
                 return [
                     'success' => false,
-                    'error' => 'Invalid validation token'
+                    'error' => 'Invalid validation token',
                 ];
             }
 
-            // Activate the user account
             $user->setBlocked(false);
-            
-            // Clear the token after successful validation
             $user->setToken(null);
 
             $this->entityManager->flush();
 
-            // Schedule immediate welcome email
             $welcomeJobId = $this->scheduleWelcomeEmail($userId);
 
-            // Log the validation
             $this->transactionService->logTransaction(
                 'update',
                 LookupService::TRANSACTION_BY_BY_USER,
                 'users',
                 $userId,
                 false,
-                json_encode([ 
+                json_encode([
                     'action' => 'account_validated',
                     'token' => $token,
                     'email' => $user->getEmail(),
-                    'welcome_job_id' => $welcomeJobId
+                    'welcome_job_id' => $welcomeJobId,
                 ])
             );
 
@@ -152,55 +147,66 @@ class UserValidationService extends BaseService
                 'success' => true,
                 'message' => 'Account successfully validated',
                 'user_id' => $userId,
-                'welcome_job_id' => $welcomeJobId
+                'welcome_job_id' => $welcomeJobId,
             ];
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->entityManager->rollback();
             $this->logger->error('Failed to validate token', [
                 'userId' => $userId,
                 'token' => $token,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => 'Validation failed due to system error'
+                'error' => 'Validation failed due to system error',
             ];
         }
     }
 
     /**
-     * Resend validation email for a user
-     * 
-     * @param int $userId User ID
-     * @param array $emailConfig Email configuration overrides
-     * @return array Result of resend operation
+     * Resend validation email for a user.
+     *
+     * @param int                  $userId      User ID.
+     * @param array<string, mixed> $emailConfig Caller-supplied email config overrides (win over CMS).
+     * @return array<string, mixed> Result of resend operation.
      */
     public function resendValidationEmail(int $userId, array $emailConfig = []): array
     {
         try {
-            // Check if user exists and is not validated
             $user = $this->entityManager->getRepository(User::class)->find($userId);
             if (!$user) {
                 return [
                     'success' => false,
-                    'error' => 'User not found'
+                    'error' => 'User not found',
                 ];
             }
 
-            // Generate new token
             $token = $this->generateValidationToken();
             $user->setToken($token);
             $this->entityManager->flush();
 
-            // Schedule new validation email
             $job = $this->scheduleValidationEmail($userId, $token, $emailConfig);
-
             if (!$job) {
                 return [
                     'success' => false,
-                    'error' => 'Failed to schedule validation email'
+                    'error' => 'Failed to schedule validation email',
+                ];
+            }
+
+            $executed = $this->jobSchedulerService->executeJob(
+                $job->getId(),
+                LookupService::TRANSACTION_BY_BY_SYSTEM
+            );
+
+            if ($executed === false) {
+                $this->logger->error('Failed to execute validation email job', [
+                    'userId' => $userId,
+                    'jobId' => $job->getId(),
+                ]);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to send validation email',
                 ];
             }
 
@@ -209,103 +215,129 @@ class UserValidationService extends BaseService
                 'message' => 'Validation email resent successfully',
                 'token' => $token,
                 'job_id' => $job->getId(),
-                'validation_url' => "validate/{$userId}/{$token}"
+                'validation_url' => $this->buildValidationUrl($userId, $token),
             ];
-
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->error('Failed to resend validation email', [
                 'userId' => $userId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => 'Failed to resend validation email'
+                'error' => 'Failed to resend validation email',
             ];
         }
     }
 
     /**
-     * Generate a validation token
-     * 
-     * @return string The generated token (32 character hex string)
+     * Schedule and immediately send a 2FA verification-code email.
+     *
+     * @return bool True if the email was sent successfully, false otherwise.
      */
+    public function send2faEmail(int $userId, int $code): bool
+    {
+        $user = $this->entityManager->getRepository(User::class)->find($userId);
+        if (!$user) {
+            $this->logger->error('User not found for 2FA email', ['userId' => $userId]);
+            return false;
+        }
+
+        $emailConfig = $this->mailTemplateService->buildEmailConfig(
+            MailTemplateDefaults::TYPE_2FA,
+            [
+                'user_name' => $user->getName() ?: $user->getEmail(),
+                'code'      => (string) $code,
+            ],
+            [
+                'recipient_emails' => $user->getEmail(),
+            ],
+            $this->resolveUserMailLocale($user)
+        );
+
+        $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(
+            $emailConfig,
+            new \DateTime('now', new \DateTimeZone('UTC')),
+            $userId
+        );
+
+        if (!$jobId) {
+            $this->logger->error('Failed to schedule 2FA email', ['userId' => $userId]);
+            return false;
+        }
+
+        return $this->jobSchedulerService->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM) !== false;
+    }
+
+    public function executeScheduledValidationEmail(int $jobId): bool
+    {
+        return $this->jobSchedulerService->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM) !== false;
+    }
+
     private function generateValidationToken(): string
     {
-        // Generate a secure random token
-        return bin2hex(random_bytes(16)); // 32 character hex string
+        return bin2hex(random_bytes(16));
     }
 
     /**
-     * Schedule a validation email for a user
-     * 
-     * @param int $userId User ID
-     * @param string $token Validation token
-     * @param array $emailConfig Email configuration overrides
-     * @return int|false Job ID if successful, false on failure
+     * Schedule a validation email for a user.
+     *
+     * @param array<string, mixed> $emailConfig Caller overrides (win over CMS template).
      */
     private function scheduleValidationEmail(int $userId, string $token, array $emailConfig = []): ScheduledJob|false
     {
-        // Get user information for email personalization
         $user = $this->entityManager->getRepository(User::class)->find($userId);
         if (!$user) {
             $this->logger->error('User not found for validation email', ['userId' => $userId]);
             return false;
         }
 
-        // Prepare email configuration
-        $defaultConfig = [
-            'from_email' => 'noreply@selfhelp.com',
-            'from_name' => 'SelfHelp Platform',
-            'reply_to' => 'noreply@selfhelp.com',
-            'subject' => 'Please validate your account',
-            'recipient_emails' => $user->getEmail(),
-            'body' => $this->generateValidationEmailBody($user, $token),
-            'is_html' => true
-        ];
+        $resolved = $this->mailTemplateService->buildEmailConfig(
+            MailTemplateDefaults::TYPE_CONFIRM,
+            [
+                'user_name'       => $user->getName() ?: $user->getEmail(),
+                'validation_url'  => $this->buildValidationUrl($userId, $token),
+            ],
+            array_merge(
+                ['recipient_emails' => $user->getEmail()],
+                $emailConfig
+            ),
+            $this->resolveUserMailLocale($user)
+        );
 
-        // Merge with provided configuration
-        $emailConfig = array_merge($defaultConfig, $emailConfig);
-
-        // Schedule the email job
-        return $this->jobSchedulerService->scheduleUserValidationEmail($userId, $token, $emailConfig);
+        return $this->jobSchedulerService->scheduleUserValidationEmail($userId, $token, $resolved);
     }
 
     /**
-     * Schedule immediate welcome email after successful validation
-     * 
-     * @param int $userId User ID
-     * @param array $emailConfig Email configuration overrides
-     * @return int|false Job ID if successful, false on failure
+     * Schedule an immediate welcome email after successful validation.
+     *
+     * @param array<string, mixed> $emailConfig Caller overrides (win over CMS template).
      */
     private function scheduleWelcomeEmail(int $userId, array $emailConfig = []): int|false
     {
-        // Get user information for email personalization
         $user = $this->entityManager->getRepository(User::class)->find($userId);
         if (!$user) {
             $this->logger->error('User not found for welcome email', ['userId' => $userId]);
             return false;
         }
 
-        // Prepare welcome email configuration
-        $defaultConfig = [
-            'from_email' => 'noreply@selfhelp.com',
-            'from_name' => 'SelfHelp Platform',
-            'reply_to' => 'support@selfhelp.com',
-            'subject' => 'Welcome to SelfHelp Platform - Your account is now active!',
-            'recipient_emails' => $user->getEmail(),
-            'body' => $this->generateWelcomeEmailBody($user),
-            'is_html' => true
-        ];
+        $resolved = $this->mailTemplateService->buildEmailConfig(
+            MailTemplateDefaults::TYPE_WELCOME,
+            [
+                'user_name'    => $user->getName() ?: $user->getEmail(),
+                'platform_url' => $this->buildPlatformUrl(),
+            ],
+            array_merge(
+                ['recipient_emails' => $user->getEmail()],
+                $emailConfig
+            ),
+            $this->resolveUserMailLocale($user)
+        );
 
-        // Merge with provided configuration
-        $emailConfig = array_merge($defaultConfig, $emailConfig);
-
-        // Schedule the email job to be sent immediately
         try {
             $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(
-                $emailConfig,
-                new \DateTime(), // Send immediately
+                $resolved,
+                new \DateTime('now', new \DateTimeZone('UTC')),
                 $userId
             );
 
@@ -313,121 +345,51 @@ class UserValidationService extends BaseService
                 $this->logger->info('Welcome email scheduled successfully', [
                     'userId' => $userId,
                     'jobId' => $jobId,
-                    'email' => $user->getEmail()
+                    'email' => $user->getEmail(),
                 ]);
             }
 
             return $jobId;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->error('Failed to schedule welcome email', [
                 'userId' => $userId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             return false;
         }
     }
 
-    /**
-     * Generate the HTML body for validation email
-     */
-    private function generateValidationEmailBody(User $user, string $token): string
+    private function buildValidationUrl(int $userId, string $token): string
     {
-        $validationUrl = "validate/{$user->getId()}/{$token}";
-        $userName = $user->getName() ?: $user->getEmail();
-        
-        return "
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <title>Account Validation</title>
-        </head>
-        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
-            <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                <h2 style='color: #2c3e50;'>Welcome to SelfHelp Platform!</h2>
-                
-                <p>Hello {$userName},</p>
-                
-                <p>Thank you for registering with our platform. To complete your registration and activate your account, please click the validation link below:</p>
-                
-                <div style='text-align: center; margin: 30px 0;'>
-                    <a href='{$validationUrl}' 
-                       style='background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;'>
-                        Validate Your Account
-                    </a>
-                </div>
-                
-                <p>Alternatively, you can copy and paste this URL into your browser:</p>
-                <p style='word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 3px;'>
-                    {$validationUrl}
-                </p>
-                
-                <p><strong>Important:</strong> This validation link will expire in 24 hours for security reasons.</p>
-                
-                <p>If you did not create this account, please ignore this email and the account will remain inactive.</p>
-                
-                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0;'>
-                
-                <p style='font-size: 12px; color: #666;'>
-                    This is an automated message from the SelfHelp Platform. Please do not reply to this email.
-                </p>
-            </div>
-        </body>
-        </html>
-        ";
+        return $this->buildFrontendUrl(sprintf('/validate/%d/%s', $userId, $token));
     }
 
-    /**
-     * Generate the HTML body for welcome email
-     */
-    private function generateWelcomeEmailBody(User $user): string
+    private function resolveUserMailLocale(User $user): ?string
     {
-        $userName = $user->getName() ?: $user->getEmail();
-        
-        return "
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <title>Welcome to SelfHelp Platform</title>
-        </head>
-        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
-            <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                <h2 style='color: #2c3e50;'>Welcome to SelfHelp Platform!</h2>
-                
-                <p>Hello {$userName},</p>
-                
-                <p><strong>Congratulations!</strong> Your account has been successfully validated and is now active.</p>
-                
-                <p>You can now access all the features of our platform:</p>
-                
-                <ul style='margin: 20px 0; padding-left: 30px;'>
-                    <li>Access your personalized dashboard</li>
-                    <li>Connect with our community</li>
-                    <li>Explore available resources and tools</li>
-                    <li>Participate in discussions and activities</li>
-                </ul>
-                
-                <div style='text-align: center; margin: 30px 0;'>
-                    <a href='/' 
-                       style='background-color: #27ae60; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;'>
-                        Get Started
-                    </a>
-                </div>
-                
-                <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-                
-                <p>Thank you for joining us, and welcome aboard!</p>
-                
-                <hr style='border: none; border-top: 1px solid #eee; margin: 30px 0;'>
-                
-                <p style='font-size: 12px; color: #666;'>
-                    This is an automated message from the SelfHelp Platform. 
-                    If you need help, please contact us at support@selfhelp.com
-                </p>
-            </div>
-        </body>
-        </html>
-        ";
+        $locale = $user->getLanguage()?->getLocale();
+        if (!is_string($locale)) {
+            return null;
+        }
+
+        $locale = trim($locale);
+
+        return $locale !== '' ? $locale : null;
     }
-} 
+
+    private function buildPlatformUrl(): string
+    {
+        return $this->buildFrontendUrl('/');
+    }
+
+    private function buildFrontendUrl(string $path): string
+    {
+        $baseUrl = rtrim($this->frontendBaseUrl, '/');
+        $normalizedPath = '/' . ltrim($path, '/');
+
+        if ($normalizedPath === '/') {
+            return $baseUrl . '/';
+        }
+
+        return $baseUrl . $normalizedPath;
+    }
+}

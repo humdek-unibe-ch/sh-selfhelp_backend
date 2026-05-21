@@ -29,10 +29,10 @@ require_once __DIR__ . '/LegacySeedTrait.php';
  * `db/legacy/new_create_db.sql`.
  *
  * Depends on:
- *   - Version20260601000000_CanonicalBaseline (schema)
- *   - Version20260601000100_SeedReferenceData (permissions)
+ *   - Version20260501000000_CanonicalBaseline (schema)
+ *   - Version20260501000100_SeedReferenceData (permissions)
  */
-final class Version20260601000300 extends AbstractMigration
+final class Version20260501000300 extends AbstractMigration
 {
     use LegacySeedTrait;
 

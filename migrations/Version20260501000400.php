@@ -32,12 +32,12 @@ require_once __DIR__ . '/LegacySeedTrait.php';
  * post-migration state of those rows.
  *
  * Depends on:
- *   - Version20260601000000_CanonicalBaseline (schema)
- *   - Version20260601000100_SeedReferenceData (page_types, groups)
- *   - Version20260601000200_SeedFieldsAndStyles (fields, styles, rel_fields_styles)
- *   - Version20260601000300_SeedApiRoutes (no direct dep, but ordering is convention)
+ *   - Version20260501000000_CanonicalBaseline (schema)
+ *   - Version20260501000100_SeedReferenceData (page_types, groups)
+ *   - Version20260501000200_SeedFieldsAndStyles (fields, styles, rel_fields_styles)
+ *   - Version20260501000300_SeedApiRoutes (no direct dep, but ordering is convention)
  */
-final class Version20260601000400 extends AbstractMigration
+final class Version20260501000400 extends AbstractMigration
 {
     use LegacySeedTrait;
 

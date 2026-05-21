@@ -46,7 +46,7 @@ use Doctrine\Migrations\AbstractMigration;
  * follow-up migration (`Version20260425100100`) so they can be reverted
  * independently of the seeding work.
  */
-final class Version20260601000600 extends AbstractMigration
+final class Version20260501000600 extends AbstractMigration
 {
     /**
      * Locale → human label, used for the page-level title + description
