@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Konto-Bestätigung</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2c3e50;">Willkommen bei der SelfHelp-Plattform!</h2>
+
+        <p>Hallo {{user_name}},</p>
+
+        <p>Vielen Dank für Ihre Registrierung. Um Ihre Registrierung abzuschliessen und Ihr Konto zu aktivieren, klicken Sie bitte auf den folgenden Bestätigungslink:</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{validation_url}}"
+               style="background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                Konto bestätigen
+            </a>
+        </div>
+
+        <p>Alternativ können Sie diese URL in Ihren Browser kopieren:</p>
+        <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 3px;">
+            {{validation_url}}
+        </p>
+
+        <p><strong>Wichtig:</strong> Dieser Bestätigungslink läuft aus Sicherheitsgründen in 24 Stunden ab.</p>
+
+        <p>Falls Sie dieses Konto nicht erstellt haben, ignorieren Sie diese E-Mail bitte – das Konto bleibt dann inaktiv.</p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+
+        <p style="font-size: 12px; color: #666;">
+            Dies ist eine automatisch generierte Nachricht der SelfHelp-Plattform. Bitte antworten Sie nicht auf diese E-Mail.
+        </p>
+    </div>
+</body>
+</html>

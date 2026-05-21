@@ -518,8 +518,9 @@ Three moving parts:
    (mirrored in `db/update_scripts/api_routes.sql`) and authenticates
    manually via `UserContextService` (no `rel_api_routes_permissions` row).
 
-3. **Hub: `dunglas/mercure` container** (see `docker-compose.mercure.yml` and
-   the README "Real-time push (Mercure)" section). Holds the long-lived SSE
+3. **Hub: `dunglas/mercure` container** (the `mercure` service in the root
+   `docker-compose.yml`; see the README "Real-time push (Mercure)" section).
+   Holds the long-lived SSE
    connection on behalf of every subscriber. Shared HMAC key
    (`MERCURE_JWT_SECRET`) signs both publisher tokens (used by
    `mercure-bundle` when Symfony POSTs publishes) and subscriber tokens

@@ -482,6 +482,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->assertArrayHasKey('token', $result);
         $this->assertArrayHasKey('job_id', $result);
         $this->assertArrayHasKey('validation_url', $result);
+        $this->assertStringStartsWith('http://localhost:3000/validate/', $result['validation_url']);
 
         // Cleanup
         $this->adminUserService->deleteUser(1, $userId);

@@ -14,6 +14,7 @@ use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
 use App\Entity\ScheduledJobReminder;
 use App\Entity\User;
+use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Auth\UserDataService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
@@ -131,16 +132,19 @@ class JobSchedulerService extends BaseService
      */
     public function scheduleUserValidationEmail(int $userId, string $token, array $emailConfig = []): ScheduledJob|false
     {
-        $defaultConfig = [
-            'from_email' => $emailConfig['from_email'] ?? 'noreply@example.com',
-            'from_name' => $emailConfig['from_name'] ?? 'System',
-            'reply_to' => $emailConfig['reply_to'] ?? 'noreply@example.com',
-            'recipient_emails' => $emailConfig['recipient_emails'] ?? null,
-            'subject' => $emailConfig['subject'] ?? 'Account Validation Required',
-            'body' => $emailConfig['body'] ?? $this->getDefaultValidationEmailBody($userId, $token),
-            'is_html' => $emailConfig['is_html'] ?? true,
-            'attachments' => $emailConfig['attachments'] ?? [],
-        ];
+        $defaultConfig = array_merge(
+            [
+                'from_email'       => MailTemplateDefaults::FROM_EMAIL,
+                'from_name'        => MailTemplateDefaults::FROM_NAME,
+                'reply_to'         => MailTemplateDefaults::REPLY_TO,
+                'recipient_emails' => null,
+                'subject'          => MailTemplateDefaults::getSubject(MailTemplateDefaults::TYPE_CONFIRM, 'en-GB'),
+                'body'             => MailTemplateDefaults::getBody(MailTemplateDefaults::TYPE_CONFIRM, 'en-GB'),
+                'is_html'          => MailTemplateDefaults::IS_HTML,
+                'attachments'      => [],
+            ],
+            $emailConfig
+        );
 
         $jobData = [
             'type' => LookupService::JOB_TYPES_EMAIL,
@@ -355,8 +359,8 @@ class JobSchedulerService extends BaseService
      *
      * @param array<string, mixed> $emailConfig
      *   The email payload to persist on the job.
-     * @param \DateTime|null $dateToExecute
-     *   Optional execution date; defaults to now.
+     * @param \DateTimeInterface|null $dateToExecute
+     *   Optional execution date; defaults to now (UTC).
      * @param int|null $userId
      *   Optional user id owning the email job.
      *
@@ -365,7 +369,7 @@ class JobSchedulerService extends BaseService
      */
     public function scheduleDirectEmailJob(
         array $emailConfig,
-        ?\DateTime $dateToExecute = null,
+        ?\DateTimeInterface $dateToExecute = null,
         ?int $userId = null
     ): int|false {
         $jobData = [
@@ -437,8 +441,10 @@ class JobSchedulerService extends BaseService
 
             return $scheduledJob;
         } catch (\Throwable $e) {
-            dd($e->getMessage());
-            $this->logger->error('Failed to create scheduled job', ['error' => $e->getMessage()]);
+            $this->logger->error('Failed to create scheduled job', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return false;
         }
     }
@@ -600,10 +606,10 @@ class JobSchedulerService extends BaseService
 
         $subject = (string) ($emailConfig['subject'] ?? '');
         $body = (string) ($emailConfig['body'] ?? '');
-        $fromEmail = (string) ($emailConfig['from_email'] ?? 'noreply@example.com');
-        $fromName = (string) ($emailConfig['from_name'] ?? 'SelfHelp');
+        $fromEmail = (string) ($emailConfig['from_email'] ?? MailTemplateDefaults::FROM_EMAIL);
+        $fromName = (string) ($emailConfig['from_name'] ?? MailTemplateDefaults::FROM_NAME);
         $replyTo = (string) ($emailConfig['reply_to'] ?? $fromEmail);
-        $isHtml = (bool) ($emailConfig['is_html'] ?? true);
+        $isHtml = (bool) ($emailConfig['is_html'] ?? MailTemplateDefaults::IS_HTML);
         $attachments = is_array($emailConfig['attachments'] ?? null) ? $emailConfig['attachments'] : [];
 
         try {
@@ -745,64 +751,6 @@ class JobSchedulerService extends BaseService
     private function executeTaskJob(ScheduledJob $job, string $transactionBy): bool
     {
         return $this->taskJobExecutorService->execute($job, $transactionBy);
-    }
-
-    /**
-     * @param array<int, array<string, string>> $attachments
-     *   Attachment descriptors containing `filename` and `path`.
-     * @return array{0: string, 1: string}
-     *   Mail headers and message body ready for PHP `mail()`.
-     * @deprecated We now use mailtip, we dont need this helper function anymore.
-     */
-    private function buildEmailPayload(
-        string $fromEmail,
-        string $fromName,
-        string $replyTo,
-        string $body,
-        bool $isHtml,
-        array $attachments
-    ): array {
-        $encodedFromName = sprintf('=?UTF-8?B?%s?=', base64_encode($fromName));
-        $headers = [
-            'MIME-Version: 1.0',
-            sprintf('From: %s <%s>', $encodedFromName, $fromEmail),
-            sprintf('Reply-To: %s', $replyTo),
-        ];
-
-        if ($attachments === []) {
-            $headers[] = 'Content-Type: ' . ($isHtml ? 'text/html' : 'text/plain') . '; charset=UTF-8';
-            return [implode("\r\n", $headers), $body];
-        }
-
-        $boundary = 'b1_' . bin2hex(random_bytes(12));
-        $headers[] = sprintf('Content-Type: multipart/mixed; boundary="%s"', $boundary);
-
-        $messageParts = [
-            '--' . $boundary,
-            'Content-Type: ' . ($isHtml ? 'text/html' : 'text/plain') . '; charset=UTF-8',
-            'Content-Transfer-Encoding: 8bit',
-            '',
-            $body,
-        ];
-
-        foreach ($attachments as $attachment) {
-            $path = $attachment['path'] ?? '';
-            if (!is_string($path) || $path === '' || !is_file($path)) {
-                continue;
-            }
-
-            $filename = (string) ($attachment['filename'] ?? basename($path));
-            $messageParts[] = '--' . $boundary;
-            $messageParts[] = sprintf('Content-Type: application/octet-stream; name="%s"', $filename);
-            $messageParts[] = 'Content-Transfer-Encoding: base64';
-            $messageParts[] = sprintf('Content-Disposition: attachment; filename="%s"', $filename);
-            $messageParts[] = '';
-            $messageParts[] = chunk_split(base64_encode((string) file_get_contents($path)));
-        }
-
-        $messageParts[] = '--' . $boundary . '--';
-
-        return [implode("\r\n", $headers), implode("\r\n", $messageParts)];
     }
 
     /**
@@ -970,26 +918,4 @@ class JobSchedulerService extends BaseService
             ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SCHEDULED_JOB, $jobId);
     }
 
-    /**
-     * Build the fallback HTML body for built-in validation emails.
-     *
-     * @param int $userId
-     *   The user id used in the validation URL.
-     * @param string $token
-     *   The validation token used in the validation URL.
-     *
-     * @return string
-     *   The default HTML email body.
-     */
-    private function getDefaultValidationEmailBody(int $userId, string $token): string
-    {
-        $validationUrl = "validate/{$userId}/{$token}";
-
-        return "
-        <h2>Account Validation Required</h2>
-        <p>Thank you for registering! Please click the link below to validate your account:</p>
-        <p><a href=\"{$validationUrl}\">{$validationUrl}</a></p>
-        <p>If you did not create this account, please ignore this email.</p>
-        ";
-    }
 }
