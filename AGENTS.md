@@ -51,6 +51,15 @@ When code, docs, editor rules, or generated files disagree, use this priority or
 
 If documentation conflicts with implementation, flag the conflict instead of assuming the docs are correct.
 
+## Implementation Principles
+- State assumptions explicitly when they affect the change or verification.
+- If multiple interpretations exist, note the relevant options briefly and choose the simplest safe path.
+- Ask questions only when ambiguity materially changes implementation or creates hidden risk.
+- Implement only what was requested. Avoid premature abstractions, single-use helpers, or extra configurability unless the task requires them.
+- Prefer the simplest solution that preserves correctness and fits existing repository patterns.
+- Change only what is necessary, match the surrounding style, and remove code only when your change makes it unused.
+- Mention unrelated issues separately instead of fixing them opportunistically.
+
 ## Recommended Workflow For Changes
 1. Inspect related controllers, services, schemas, entities, repositories, SQL/update scripts, routes, and tests first.
 2. Search for existing patterns before introducing new structures.
@@ -60,6 +69,13 @@ If documentation conflicts with implementation, flag the conflict instead of ass
 6. Update JSON schemas, route permissions, SQL route records, migrations, tests, cache invalidation, and docs when applicable.
 7. Run focused relevant tests/static analysis when the environment supports it; otherwise state what was not run.
 8. Summarize architectural, API, cache, permission, migration, and testing impact in the final response.
+
+## Multi-Repository Changes
+When implementing features that affect multiple repositories:
+- Read the `AGENTS.md` of every affected repository.
+- Follow repository-specific rules even when they differ.
+- Keep changes isolated to the repository being modified.
+- Do not apply conventions from one repository to another unless explicitly documented.
 
 ## Architecture Rules
 - Inspect existing controllers, services, schemas, routes, SQL, and docs before changing behavior.
@@ -106,6 +122,9 @@ Prefer consistency with surrounding code over a newer or cleaner pattern that is
 - Do not run destructive git commands. Do not push unless explicitly requested.
 - Do not rewrite working legacy patterns only for modernization or architectural purity.
 - Large refactors require explicit approval.
+- Establish clear verification criteria before changing code.
+- For bug fixes: reproduce when possible, identify the minimal cause, implement the smallest reasonable fix, verify it, then stop.
+- For features: define success criteria, implement minimally, verify behavior, then stop.
 
 ## AI Change Response Expectations
 When making changes, explain:
