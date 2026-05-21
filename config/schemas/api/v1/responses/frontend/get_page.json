@@ -48,6 +48,10 @@
                             "type": ["string", "null"],
                             "description": "Translated page description for the requested language (used for <meta name=\"description\"> / OpenGraph)"
                         },
+                        "should_fallback": {
+                            "type": "boolean",
+                            "description": "True when the page has no section whose style name matches the page keyword (e.g. login page with no login-style section). Frontend should fall back to its hardcoded route."
+                        },
                         "sections": {
                             "type": "array",
                             "description": "Array of sections that make up the page content",
@@ -57,7 +61,7 @@
                         }
                     },
                     "required": [
-                        "id", "keyword", "url", "is_headless", "title", "description", "sections"
+                        "id", "keyword", "url", "is_headless", "title", "description", "should_fallback", "sections"
                     ]
                 }
             },

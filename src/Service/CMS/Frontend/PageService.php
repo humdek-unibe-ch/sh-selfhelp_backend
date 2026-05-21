@@ -359,6 +359,8 @@ class PageService extends BaseService
             $seo = $this->resolvePageSeoFields($page_id, $languageId);
             $hydrated['page']['title'] = $seo['title'];
             $hydrated['page']['description'] = $seo['description'];
+            $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
+            $hydrated['page']['should_fallback'] = $this->shouldFallback($flatSections, $page->getKeyword());
         }
 
         return $hydrated;
@@ -485,7 +487,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page) {
+        return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page, $flatSections) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -503,6 +505,7 @@ class PageService extends BaseService
                     'footer_position' => $page->getFooterPosition(),
                     'title' => $seo['title'],
                     'description' => $seo['description'],
+                    'should_fallback' => $this->shouldFallback($flatSections, $page->getKeyword()),
                     'sections' => $this->getPageSections($page->getId(), $languageId)
                 ]
             ];
@@ -549,6 +552,21 @@ class PageService extends BaseService
      * @param int $pageId The page ID for caching key
      * @return array Associative array with data table IDs as keys and config info as values
      */
+    /**
+     * True when no section on the page has a style matching the page keyword.
+     * Convention: login page should have a 'login'-style section, profile page
+     * a 'profile'-style section, etc. Missing = fall back to the hardcoded route.
+     */
+    private function shouldFallback(array $flatSections, string $keyword): bool
+    {
+        foreach ($flatSections as $row) {
+            if (($row['style_name'] ?? null) === $keyword) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private function extractDataTableDependencies(array $flatSections, int $pageId): array
     {
         $cacheKey = "page_data_table_deps_{$pageId}";
