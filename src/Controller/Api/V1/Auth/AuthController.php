@@ -161,7 +161,6 @@ class AuthController extends AbstractController
         try {
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/2fa_verify', $this->jsonSchemaValidationService);
-
             $code = $data['code'] ?? null; // Schema ensures 'code' exists
             $userId = $data['id_users'] ?? null; // Schema ensures 'id_users' exists
 

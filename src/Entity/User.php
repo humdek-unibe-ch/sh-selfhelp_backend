@@ -124,7 +124,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $id_languages = null;
 
-    #[ORM\Column(type: 'date', nullable: true)]
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeInterface $last_login = null;
 
     #[ORM\Column(type: 'string', length: 200, nullable: true)]
@@ -265,12 +265,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
 
 
-    public function getLastLogin(): ?\DateTime
+    public function getLastLogin(): ?\DateTimeInterface
     {
         return $this->last_login;
     }
 
-    public function setLastLogin(?\DateTimeImmutable $last_login): static
+    public function setLastLogin(?\DateTimeInterface $last_login): static
     {
         $this->last_login = $last_login;
 
