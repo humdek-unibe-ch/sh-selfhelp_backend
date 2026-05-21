@@ -20,14 +20,16 @@ final class Version20260520093222 extends AbstractMigration
     public function up(Schema $schema): void
     {
         $this->addSql("
-            UPDATE fields SET display = 0 WHERE id IN (238, 236, 239, 237)
+            UPDATE fields SET display = 0
+            WHERE name IN ('mail_from_email', 'mail_from_name', 'mail_reply_to', 'mail_is_html')
         ");
     }
 
     public function down(Schema $schema): void
     {
         $this->addSql("
-            UPDATE fields SET display = 1 WHERE id IN (238, 236, 239, 237)
+            UPDATE fields SET display = 1
+            WHERE name IN ('mail_from_email', 'mail_from_name', 'mail_reply_to', 'mail_is_html')
         ");
     }
 }

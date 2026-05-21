@@ -17,7 +17,7 @@ final class Version20260501000900 extends AbstractMigration
     public function up(Schema $schema): void
     {
         $this->addSql("
-        INSERT INTO page_types (id, name) VALUES (13, 'mail_config')
+        INSERT IGNORE INTO page_types (name) VALUES ('mail_config')
         ");
         // =====================================
         // 1. Create mail template page
@@ -39,11 +39,11 @@ final class Version20260501000900 extends AbstractMigration
                 'sh-mail-config',
                 NULL,
                 NULL,
-                '0', 
+                '0',
                 NULL,
                 NULL,
-                '13',
-                '63',
+                (SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1),
+                (SELECT id FROM lookups WHERE type_code = 'pageAccessTypes' AND lookup_code = 'mobile_and_web' LIMIT 1),
                 '0',
                 '0',
                 NULL
@@ -77,32 +77,32 @@ final class Version20260501000900 extends AbstractMigration
         ");
 
         // =====================================
-        // 4. PageType mapping (Email templates = 13)
+        // 4. PageType mapping
         // =====================================
         $this->addSql("
             INSERT IGNORE INTO rel_fields_page_types (id_page_types, id_fields, title, help) VALUES
 
             -- Global config
-            (13, (SELECT id FROM fields WHERE name = 'mail_from_email' LIMIT 1), 'Mail: From Email',   'Email address used as sender'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_from_name'  LIMIT 1), 'Mail: From Name',    'Display name used as sender'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_reply_to'   LIMIT 1), 'Mail: Reply-To',     'Reply-To email address'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_is_html'    LIMIT 1), 'Mail: HTML Enabled', 'If unchecked, all HTML will be sent in the email.'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_from_email' LIMIT 1), 'Mail: From Email',   'Email address used as sender'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_from_name'  LIMIT 1), 'Mail: From Name',    'Display name used as sender'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_reply_to'   LIMIT 1), 'Mail: Reply-To',     'Reply-To email address'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_is_html'    LIMIT 1), 'Mail: HTML Enabled', 'If unchecked, all HTML will be sent in the email.'),
 
             -- 2FA
-            (13, (SELECT id FROM fields WHERE name = 'mail_2fa_subject' LIMIT 1), '2FA: Subject', 'Subject line for 2FA code email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_2fa_body'    LIMIT 1), '2FA: Body',    'Email body content for 2FA'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_2fa_subject' LIMIT 1), '2FA: Subject', 'Subject line for 2FA code email'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_2fa_body'    LIMIT 1), '2FA: Body',    'Email body content for 2FA'),
 
             -- Confirmation
-            (13, (SELECT id FROM fields WHERE name = 'mail_confirm_subject' LIMIT 1), 'Confirmation: Subject', 'Subject line for account confirmation email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_confirm_body'    LIMIT 1), 'Confirmation: Body',    'Email body for account confirmation'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_confirm_subject' LIMIT 1), 'Confirmation: Subject', 'Subject line for account confirmation email'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_confirm_body'    LIMIT 1), 'Confirmation: Body',    'Email body for account confirmation'),
 
             -- Recovery
-            (13, (SELECT id FROM fields WHERE name = 'mail_recovery_subject' LIMIT 1), 'Recovery: Subject', 'Subject line for password recovery email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_recovery_body'    LIMIT 1), 'Recovery: Body',    'Email body for password recovery'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_recovery_subject' LIMIT 1), 'Recovery: Subject', 'Subject line for password recovery email'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_recovery_body'    LIMIT 1), 'Recovery: Body',    'Email body for password recovery'),
 
             -- Welcome
-            (13, (SELECT id FROM fields WHERE name = 'mail_welcome_subject' LIMIT 1), 'Welcome: Subject', 'Subject line for welcome email'),
-            (13, (SELECT id FROM fields WHERE name = 'mail_welcome_body'    LIMIT 1), 'Welcome: Body',    'Email body for welcome email')
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_welcome_subject' LIMIT 1), 'Welcome: Subject', 'Subject line for welcome email'),
+            ((SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1), (SELECT id FROM fields WHERE name = 'mail_welcome_body'    LIMIT 1), 'Welcome: Body',    'Email body for welcome email')
         ");
 
         // =====================================
@@ -113,7 +113,7 @@ final class Version20260501000900 extends AbstractMigration
         VALUES (
             (SELECT id_pages FROM pages WHERE keyword = 'sh-mail-config' LIMIT 1),
             (SELECT id FROM fields WHERE name = 'mail_is_html' LIMIT 1),
-            1,
+            (SELECT id FROM languages WHERE locale = 'en-GB' LIMIT 1),
             'true'
         )
         ");
@@ -122,8 +122,8 @@ final class Version20260501000900 extends AbstractMigration
     public function down(Schema $schema): void
     {
         $this->addSql("
-            DELETE FROM rel_fields_page_types 
-            WHERE id_page_types = 13
+            DELETE FROM rel_fields_page_types
+            WHERE id_page_types = (SELECT id FROM page_types WHERE name = 'mail_config' LIMIT 1)
             AND id_fields IN (
                 (SELECT id FROM fields WHERE name = 'mail_from_email'      LIMIT 1),
                 (SELECT id FROM fields WHERE name = 'mail_from_name'       LIMIT 1),
@@ -144,7 +144,7 @@ final class Version20260501000900 extends AbstractMigration
         DELETE FROM pages_fields_translation
         WHERE id_pages = (SELECT id_pages FROM pages WHERE keyword = 'sh-mail-config' LIMIT 1)
         AND id_fields = (SELECT id FROM fields WHERE name = 'mail_is_html' LIMIT 1)
-        AND id_languages = 1
+        AND id_languages = (SELECT id FROM languages WHERE locale = 'en-GB' LIMIT 1)
         ");
     }
 }
