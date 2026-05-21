@@ -15,7 +15,7 @@ use App\Repository\AuthRepository;
 use App\Service\Auth\JWTService;
 use App\Service\Auth\LoginService;
 use App\Service\Auth\UserDataService;
-use App\Service\CMS\Admin\AdminUserService;
+use App\Service\Auth\UserValidationService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -26,7 +26,6 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
-use App\Service\Auth\UserValidationService;
 
 /**
  * API V1 Auth Controller
@@ -50,7 +49,6 @@ class AuthController extends AbstractController
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserDataService $userDataService,
         private readonly LoggerInterface $logger,
-        private readonly AdminUserService $userService,
         private readonly UserValidationService $userValidationService,
     ) {
     }
