@@ -137,10 +137,10 @@ When making changes, explain:
 - Use appropriate HTTP status codes through service exceptions and formatter helpers.
 
 ## Database Rules
-- The canonical schema lives in the Doctrine migrations under `migrations/`. The `Version20260601000000` baseline plus the four `Version20260601000100..400` seed migrations are the **only** install source — fresh installs do not load `db/legacy/new_create_db.sql` or any other SQL dump.
+- The canonical schema lives in the Doctrine migrations under `migrations/`. The `Version20260501000000` baseline plus the four `Version20260501000100..000400` seed migrations are the **only** install source — fresh installs do not load `db/legacy/new_create_db.sql` or any other SQL dump.
 - `db/legacy/` is deprecated reference / history (`new_create_db.sql`, `structure_db.sql`, `update_scripts/*.sql`). Do not treat it as authoritative; do not edit it for new features. See `db/legacy/README.md`.
 - Symfony/Doctrine migration classes in `migrations` are the primary and only migration mechanism. Schema changes need a new Doctrine migration class added **after** the canonical baseline, not edits to the baseline or seed migrations.
-- For new API routes, add the route row to `migrations/Version20260601000300.php` only if you are still iterating on the baseline; otherwise add a new follow-up migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do not rely on `db/legacy/update_scripts/api_routes.sql` to populate fresh installs.
+- For new API routes, add the route row to `migrations/Version20260501000300.php` only if you are still iterating on the baseline; otherwise add a new follow-up migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do not rely on `db/legacy/update_scripts/api_routes.sql` to populate fresh installs.
 - Existing editor rules say not to run Doctrine migrations automatically; create migration files and let the team run them.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
 - Be careful with legacy table naming and casing.
@@ -188,7 +188,7 @@ When making changes, explain:
 - Clear API route cache: `php bin/console cache:clear-api-routes`.
 - Run due scheduled jobs: `php bin/console app:scheduled-jobs:execute-due --limit=50`.
 - Generate CSS class asset if needed: `node scripts/generate-css-classes.js`.
-- Start Mercure locally: `docker compose -f docker-compose.mercure.yml up -d`.
+- Start the local docker stack (Mercure + Mailpit + Redis): `docker compose up -d`.
 
 ## Common Tasks
 - Add endpoint: add/update controller action, JSON schemas, a new Doctrine migration that inserts the row into `api_routes` and the matching links into `rel_api_routes_permissions`, permissions, service logic, tests, and route cache notes.
