@@ -140,6 +140,7 @@ When making changes, explain:
 - The canonical schema lives in the Doctrine migrations under `migrations/`. The `Version20260601000000` baseline plus the four `Version20260601000100..400` seed migrations are the **only** install source — fresh installs do not load `db/legacy/new_create_db.sql` or any other SQL dump.
 - `db/legacy/` is deprecated reference / history (`new_create_db.sql`, `structure_db.sql`, `update_scripts/*.sql`). Do not treat it as authoritative; do not edit it for new features. See `db/legacy/README.md`.
 - Symfony/Doctrine migration classes in `migrations` are the primary and only migration mechanism. Schema changes need a new Doctrine migration class added **after** the canonical baseline, not edits to the baseline or seed migrations.
+- Create new Symfony/Doctrine migration files with the migration generate command so the timestamp-based class/file name is created automatically. Do not manually name migration files or classes.
 - For new API routes, add the route row to `migrations/Version20260601000300.php` only if you are still iterating on the baseline; otherwise add a new follow-up migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do not rely on `db/legacy/update_scripts/api_routes.sql` to populate fresh installs.
 - Existing editor rules say not to run Doctrine migrations automatically; create migration files and let the team run them.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
@@ -193,7 +194,7 @@ When making changes, explain:
 ## Common Tasks
 - Add endpoint: add/update controller action, JSON schemas, a new Doctrine migration that inserts the row into `api_routes` and the matching links into `rel_api_routes_permissions`, permissions, service logic, tests, and route cache notes.
 - Add service: place it under the matching `src/Service` domain, inject dependencies via constructor, keep transactions/cache invalidation explicit.
-- Add migration: inspect schema first, create a Doctrine migration, update relevant SQL scripts if required, and do not run migrations automatically.
+- Add migration: inspect schema first, create the migration with the Symfony/Doctrine generate command so the timestamp-based file/class name is automatic, update relevant SQL scripts if required, and do not run migrations automatically.
 - Add frontend page behavior: inspect `PageService`, section/field processing, interpolation, conditions, ACL, and cache effects.
 - Add permission-sensitive feature: update route permissions and verify `ApiSecurityListener`, `UserPermissionService`, ACL, and data-access rules.
 - Update tests: prefer focused PHPUnit tests and keep fixtures/test database assumptions explicit.
