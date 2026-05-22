@@ -125,8 +125,8 @@ final class PluginCapabilityValidator
 
         $lookupExtensions = $manifest->getLookupExtensions();
         foreach ($lookupExtensions as $extension) {
-            $policy = isset($extension['policy']) ? (string) $extension['policy'] : 'plugin_extendable';
-            if ($policy === 'plugin_owned') {
+            $ownership = isset($extension['ownership']) ? (string) $extension['ownership'] : (isset($extension['policy']) ? (string) $extension['policy'] : 'plugin_extendable');
+            if ($ownership === 'plugin_owned') {
                 $must(CapabilityCatalog::CAP_LOOKUP_OWN_GROUP, 'manifest declares a plugin-owned lookup group');
             } else {
                 $must(CapabilityCatalog::CAP_LOOKUP_EXTEND, 'manifest extends a core lookup group');
