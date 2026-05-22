@@ -4,6 +4,9 @@ This document describes how operators install, update, disable, and remove SelfH
 
 Audience: operators / DevOps. Plugin authors should read `developer-guide.md` first.
 
+> **Looking for a step-by-step guide for a specific plugin?**
+> Each plugin ships its own `docs/install.md` with three concrete recipes (UI registry, UI local paste, terminal one-liner) and explains exactly what the host does on each click. Example: [`sh2-shp-survey-js/docs/install.md`](https://github.com/humdek-unibe-ch/sh2-shp-survey-js/blob/main/docs/install.md).
+
 ## 1. Installation modes
 
 Pick a mode per environment.
@@ -26,6 +29,53 @@ The default is `managed`. Override via the `SELFHELP_PLUGIN_INSTALL_MODE` env va
   - `PLUGIN_LOCK_DSN` (default `flock`) — distributed setups should set to `redis://…`.
   - `SELFHELP_PLUGIN_PRIVATE_REGISTRY_TOKEN` — only if using a private registry.
   - `SELFHELP_PLUGIN_SIGNATURE_KEYS` — comma-separated Ed25519 public keys for trust verification.
+
+## 2.1 Install paths visible in the admin UI
+
+The admin "Plugins" page exposes three install tabs:
+
+| Tab            | What it does                                                                                                                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Installed**  | Lists currently installed plugins, their status, compatibility, and per-row actions (enable / disable / uninstall / purge).                                                                |
+| **Available**  | Walks every enabled **Source** and lists registry-advertised plugins. Each row has a one-click **Install** button (calls `POST /admin/plugins` then `POST /admin/plugins/{id}/finalize-install`). |
+| **Sources**    | CRUD over `PluginSource` rows. The seeded `humdek-public` source (system, read-only) points at the official Humdek registry; admins can add private/staging sources alongside it.          |
+
+The active tab is **persisted to the URL** (`?tab=available`,
+`?tab=sources`) so a page refresh or shared link lands on the same
+tab.
+
+Plus an **Install plugin** button at the top-right that opens a
+modal supporting three input methods:
+
+- **Drag &amp; drop** a `plugin.json` file directly on the Dropzone.
+- **Choose file…** button that opens the native file picker.
+- **Paste JSON** into the embedded Monaco editor (with JSON syntax
+  validation).
+
+The first two methods auto-format the manifest into the Monaco
+editor; the editor remains the source of truth for the
+`POST /admin/plugins` request body.
+
+### Default source: `humdek-public`
+
+Every install ships with a system-managed plugin source named
+`humdek-public` pointing at
+<https://humdek-unibe-ch.github.io/sh2-plugin-registry/>. It is
+seeded by Doctrine migration `Version20260522110723` with
+`trust_level = official`, `enabled = 1`, and `is_system = 1`. The
+admin API rejects edits/deletes against system rows; only the
+`enabled` flag can be toggled. Disable the row to hide the official
+catalogue without deleting it.
+
+API surface:
+
+| Endpoint                                  | Verb | Purpose                                                                |
+| ----------------------------------------- | ---- | ---------------------------------------------------------------------- |
+| `/cms-api/v1/admin/plugins`               | GET  | List installed plugins with install mode + safe-mode flags.            |
+| `/cms-api/v1/admin/plugins/available`     | GET  | List registry-advertised plugins not yet installed.                    |
+| `/cms-api/v1/admin/plugins`               | POST | Request a staged install (mostly used by the Available + paste flows). |
+| `/cms-api/v1/admin/plugins/{id}/finalize-install` | POST | Finalize a staged install in-process (development/trusted mode).       |
+| `/cms-api/v1/admin/plugins/sources`       | GET / POST | CRUD over registries the host trusts.                              |
 
 ## 3. Install a plugin (development mode)
 
@@ -68,9 +118,69 @@ eas build --profile production-default
 
 `plugins:sync` writes `selfhelp.plugins.mobile.lock.json` per EAS profile and regenerates `components/styles/registered.ts` so only the plugin packages opted into that profile are bundled.
 
+### 3.1 Local sibling checkout (`plugins/<plugin-id>`)
+
+When the plugin lives in the same workspace as the host repos, for
+example:
+
+```text
+<workspace>/
+├── sh-selfhelp_backend
+├── sh-selfhelp_frontend
+└── plugins/
+    └── sh2-shp-survey-js/
+```
+
+there is one important current-code detail:
+
+- The admin UI validates and stages the manifest, but it does not
+  itself make a local checkout available to Composer or npm.
+- The "Sources" tab is optional for this flow. It is for registries and
+  remote package sources, not for pasting a local `plugin.json`.
+
+Use this runbook:
+
+1. Make the backend package resolvable by Composer. A typical local-dev
+   setup is a path repository pointing at
+   `../plugins/sh2-shp-survey-js/backend`, then `composer require
+   humdek/sh2-shp-survey-js`.
+2. Build the plugin frontend package once from the plugin repo:
+
+   ```bash
+   cd ../plugins/sh2-shp-survey-js/frontend
+   npm install
+   npm run build
+   ```
+
+3. In the backend admin UI open `Plugins -> Install plugin`, paste the
+   plugin's `plugin.json`, click `Request install`, then click
+   `Finalize`.
+4. In the frontend repo run:
+
+   ```bash
+   npm run plugins:sync -- --backend http://localhost:8000
+   npm install
+   npm link ../plugins/sh2-shp-survey-js/frontend
+   ```
+
+   `plugins:sync` updates the host manifest/lock state, while
+   `npm link` makes the host load the local checkout instead of waiting
+   for a published npm package.
+5. Start or restart the frontend dev server.
+
+If you skip step 1 or step 4, the plugin may appear installed in the
+host database but still fail to boot in the backend or frontend because
+the local package code is not actually resolvable yet.
+
 ## 4. Install a plugin (managed mode)
 
 The admin UI never invokes Composer / npm in this mode. Operators run the package install themselves.
+
+Current UI note: the admin screen shows a paste-manifest flow
+(`Request install` -> `Finalize`). That flow still assumes the package
+work happened outside the UI. Finalizing records the plugin in the host
+and regenerates lock/bundle metadata; it does not replace the external
+Composer/npm step.
 
 1. The admin presses **Request install** in `Admin → Plugins → Available`.
 2. The host records a `plugin_operations` row with status `awaiting_external_install`. Mercure event lands in the admin UI.

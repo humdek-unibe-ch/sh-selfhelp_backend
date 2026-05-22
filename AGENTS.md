@@ -195,6 +195,39 @@ When making changes, explain:
 - Name indexes and constraints consistently in `lowercase_snake_case`: use `pk_<table>`, `fk_<table>_<column>`, `idx_<table>_<column>`, and `uq_<table>_<column_or_columns>` where practical.
 - Keep Doctrine mappings aligned with these naming rules. If legacy tables do not follow them yet, preserve compatibility intentionally and document the exception in the migration or related service comments.
 
+## Plugin Registry Rules
+
+- Every SelfHelp install ships with a seeded **default plugin source**
+  named `humdek-public` pointing to
+  `https://humdek-unibe-ch.github.io/sh2-plugin-registry/`. It is the
+  official public catalogue and is created by
+  `migrations/Version20260522110723.php`.
+- The `plugin_sources.is_system` boolean marks host-managed rows.
+  System sources are **read-only via the admin API** — only the
+  `enabled` flag can be toggled. `PluginAdminService::updateSource()`
+  and `deleteSource()` enforce this with `throwForbidden`.
+- The frontend `IAdminPluginSource.isSystem` flag drives the UI lock:
+  delete buttons are disabled, every field except `Enabled` is shown
+  read-only.
+- Never edit the seeded `humdek-public` row from a follow-up
+  migration without a clear governance reason. Adding additional
+  trusted sources is fine — set `is_system = 1` on them too.
+- Plugin authors publish to the official registry via
+  `scripts/publish-to-registry.{ps1,sh}` shipped with their plugin
+  (see the SurveyJS plugin for the reference implementation). Every
+  plugin we own MUST ship such a script plus a matching
+  `.github/workflows/publish-to-registry.yml` that fires on `v*`
+  tags.
+- Publishing flow at a glance:
+  1. Plugin's CI builds + validates the manifest.
+  2. The publish script copies `plugin.json` to
+     `<registry>/manifests/<plugin-id>-<version>.json` and updates
+     `<registry>/registry.json`.
+  3. The registry repo's own workflow republishes the static site to
+     GitHub Pages.
+  4. Hosts pick up the new entry on the next refresh of the
+     **Available** tab.
+
 ## Migration Safety
 
 - Avoid destructive migrations unless explicitly requested and reviewed.

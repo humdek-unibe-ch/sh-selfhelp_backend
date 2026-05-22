@@ -1,5 +1,54 @@
 # v8.0.0 (Not released yet)
 
+### Docs: align plugin installation guide
+
+- `docs/plugins/installation.md` now documents the URL-persisted
+  tabs on `Admin → Plugins`, the new drag-and-drop / file-picker /
+  Monaco-editor install modal, and a dedicated section describing
+  the seeded `humdek-public` system source.
+
+### Plugin manifest endpoint: cache key fix
+
+- `PluginRegistryService::CACHE_KEY_ALL` / `CACHE_KEY_ENABLED` no
+  longer use `:` as a separator (PSR-6 reserves `:`, and the SelfHelp
+  cache layer rejects keys containing it with
+  `contains reserved characters "{}()/\@:"`). Both constants now use
+  `_` (`plugins_all`, `plugins_enabled`) so `GET /cms-api/v1/plugins/manifest`
+  returns a proper envelope instead of an internal 500.
+
+### Plugin sources: system-managed flag + seeded humdek-public registry
+
+- Added `plugin_sources.is_system` (TINYINT(1)) column via the new
+  Doctrine migration `Version20260522110723`. Rows with `is_system = 1`
+  are seeded by host migrations and are **read-only via the admin
+  API** — `PluginAdminService::updateSource()` and `deleteSource()`
+  now `throwForbidden` for every field except `enabled`.
+- The same migration seeds the default `humdek-public` plugin source
+  pointing to `https://humdek-unibe-ch.github.io/sh2-plugin-registry/`
+  (trust level: `official`). Every fresh install ships with the
+  official Humdek registry pre-configured and visible under
+  `Admin → Plugins → Available`.
+- `PluginSource` entity gains `isSystem` getter/setter and the
+  formatter exposes it as `isSystem` in the admin API response so
+  the frontend can lock the relevant UI controls.
+- `AGENTS.md` now documents the registry rules + the publish workflow
+  every plugin we own must ship.
+
+### Plugin manager: new "Available" tab + registry endpoint
+
+- Added `GET /cms-api/v1/admin/plugins/available` (route registered by
+  migration `Version20260522102136`). The endpoint walks every enabled
+  `PluginSource`, calls `RegistryClient::fetchAllIndexes()`, filters
+  out plugins that are already installed, and returns the remaining
+  registry entries (sourceName + manifest reference) for the admin UI.
+- `PluginAdminService::listAvailableFromRegistries()` powers the new
+  endpoint and re-uses the existing `PluginRepository` and
+  `RegistryClient` so no new caching surface was introduced.
+- The new endpoint is gated by the existing `admin.plugins.manage`
+  permission.
+- Docs: `docs/plugins/installation.md` now documents the three tabs
+  (Installed / Available / Sources) plus a quick endpoint matrix.
+
 ### Database bootstrap rebuilt — migrations-only, canonical naming
 
 - **Pre-release breaking cutover.** The old hybrid bootstrap (load
