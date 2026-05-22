@@ -70,6 +70,17 @@ class PluginSource
     #[ORM\Column(name: 'enabled', type: Types::BOOLEAN, options: ['default' => 1])]
     private bool $enabled = true;
 
+    /**
+     * Marks the source as host-managed. System sources are seeded by
+     * Doctrine migrations (e.g. the default `humdek-public` registry)
+     * and the admin API rejects update/delete requests against them so
+     * an operator cannot accidentally break the install pipeline. The
+     * UI still allows toggling `enabled` on a system source — operators
+     * may disable the upstream feed without removing the row.
+     */
+    #[ORM\Column(name: 'is_system', type: Types::BOOLEAN, options: ['default' => 0, 'comment' => 'Host-managed source; read-only via admin API.'])]
+    private bool $isSystem = false;
+
     #[ORM\Column(name: 'last_synced_at', type: Types::DATETIME_IMMUTABLE, nullable: true)]
     private ?\DateTimeImmutable $lastSyncedAt = null;
 
@@ -179,6 +190,17 @@ class PluginSource
     public function setEnabled(bool $enabled): self
     {
         $this->enabled = $enabled;
+        return $this;
+    }
+
+    public function isSystem(): bool
+    {
+        return $this->isSystem;
+    }
+
+    public function setIsSystem(bool $isSystem): self
+    {
+        $this->isSystem = $isSystem;
         return $this;
     }
 

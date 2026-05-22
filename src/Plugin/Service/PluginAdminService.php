@@ -253,6 +253,24 @@ final class PluginAdminService extends BaseService
         }
         /** @var PluginSource $source */
 
+        if ($source->isSystem()) {
+            // Host-managed sources are seeded by Doctrine migrations
+            // (e.g. the default `humdek-public` registry). Only the
+            // `enabled` flag may be toggled; every other field is
+            // immutable to prevent admins from accidentally pointing
+            // the official channel at an attacker-controlled URL.
+            $mutableFields = ['enabled'];
+            foreach (array_keys($data) as $field) {
+                if (!in_array($field, $mutableFields, true)) {
+                    $this->throwForbidden(sprintf(
+                        'Plugin source "%s" is system-managed; field "%s" cannot be modified. Only "enabled" may be toggled.',
+                        $source->getName(),
+                        (string) $field,
+                    ));
+                }
+            }
+        }
+
         if (array_key_exists('name', $data)) {
             $source->setName((string) $data['name']);
         }
@@ -287,6 +305,13 @@ final class PluginAdminService extends BaseService
         $source = $this->sources->find($sourceId);
         if (!$source instanceof PluginSource) {
             $this->throwNotFound(sprintf('Plugin source #%d not found.', $sourceId));
+        }
+        /** @var PluginSource $source */
+        if ($source->isSystem()) {
+            $this->throwForbidden(sprintf(
+                'Plugin source "%s" is system-managed and cannot be deleted. Disable it instead if you do not want to use it.',
+                $source->getName(),
+            ));
         }
         $this->em->remove($source);
         $this->em->flush();
@@ -446,6 +471,7 @@ final class PluginAdminService extends BaseService
             'channel' => $source->getChannel(),
             'trustLevel' => $source->getTrustLevel(),
             'enabled' => $source->isEnabled(),
+            'isSystem' => $source->isSystem(),
             'lastSyncedAt' => $source->getLastSyncedAt()?->format(DATE_ATOM),
             'createdAt' => $source->getCreatedAt()->format(DATE_ATOM),
             'updatedAt' => $source->getUpdatedAt()->format(DATE_ATOM),
