@@ -26,8 +26,10 @@ use App\Service\Cache\Core\CacheService;
  */
 final class PluginRegistryService
 {
-    private const CACHE_KEY_ALL = 'plugins:all';
-    private const CACHE_KEY_ENABLED = 'plugins:enabled';
+    private const CACHE_KEY_ALL = 'plugins_all';
+    // Underscore separator: PSR-6 reserves `:` and the SelfHelp cache
+    // layer rejects keys containing it ("contains reserved characters …").
+    private const CACHE_KEY_ENABLED = 'plugins_enabled';
 
     public function __construct(
         private readonly PluginRepository $plugins,
