@@ -18,8 +18,11 @@ use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginOperationRepository;
 use App\Repository\Plugin\PluginRepository;
+use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Mercure\HubInterface;
+use Symfony\Component\Process\Process;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Aggregates plugin health information.
@@ -48,6 +51,10 @@ final class PluginHealthService
         private readonly PluginCompatibilityValidator $compatibility,
         private readonly iterable $pluginChecks = [],
         private readonly ?HubInterface $mercureHub = null,
+        private readonly ?HttpClientInterface $httpClient = null,
+        private readonly ?string $mercureHubUrl = null,
+        private readonly ?string $frontendHostDir = null,
+        private readonly ?string $mobileHostDir = null,
     ) {
     }
 
@@ -95,6 +102,31 @@ final class PluginHealthService
             $this->operations->findByPluginId($pluginId, 5),
         );
 
+        $endpointCheck = $this->probePluginHealthEndpoint($manifest);
+
+        // Surface every check the admin UI expects:
+        //   - compatibility (semver vs host/sdk)
+        //   - the optional in-process `PluginHealthCheckInterface` result
+        //   - the plugin's HTTP healthEndpoint (when declared in the manifest)
+        $checks = [];
+        $checks[] = [
+            'name' => 'Compatibility',
+            'status' => $compat['severity'] === 'ok' ? 'ok' : ($compat['severity'] === 'warning' ? 'warning' : 'error'),
+            'message' => $compat['reasons'] === [] ? 'Compatible with host/SDK.' : implode('; ', $compat['reasons']),
+        ];
+        if ($pluginCustom !== null) {
+            foreach ($pluginCustom['subchecks'] as $sub) {
+                $checks[] = [
+                    'name' => 'plugin:' . $sub['name'],
+                    'status' => $this->normalizeStatus($sub['status']),
+                    'message' => $sub['message'],
+                ];
+            }
+        }
+        if ($endpointCheck !== null) {
+            $checks[] = $endpointCheck;
+        }
+
         return [
             'pluginId' => $pluginId,
             'version' => $plugin->getVersion(),
@@ -104,6 +136,7 @@ final class PluginHealthService
             'compatibility' => $compat,
             'recentOperations' => $recentOps,
             'pluginCheck' => $pluginCustom,
+            'checks' => $checks,
         ];
     }
 
@@ -122,8 +155,11 @@ final class PluginHealthService
                 'message' => $safeModeOn ? 'Safe mode is enabled (plugins are not loaded at boot).' : 'Safe mode is disabled.',
             ],
             'lockFile' => $this->checkLockFile($plugins),
-            'mercure' => $this->checkMercure(),
+            'lockVersionParity' => $this->checkLockVersionParity($plugins),
+            'mercure' => $this->checkMercureReachable(),
             'failedOperations' => $this->checkFailedOperations(),
+            'frontendPackages' => $this->checkNpmPackagesInstalled($plugins, $this->frontendHostDir, 'frontend'),
+            'mobilePackages' => $this->checkNpmPackagesInstalled($plugins, $this->mobileHostDir, 'mobile'),
         ];
 
         $pluginReports = [];
@@ -152,8 +188,13 @@ final class PluginHealthService
             return ['name' => 'Lock file', 'status' => 'warning', 'message' => 'Lock file missing while plugins are installed; run selfhelp:plugin:repair.'];
         }
 
-        $lockIds = array_map(static fn(array $entry): string => isset($entry['id']) ? (string) $entry['id'] : '', $lock->plugins);
-        $lockIds = array_filter($lockIds);
+        $lockIds = [];
+        foreach ($lock->plugins as $entry) {
+            $id = $entry['id'] ?? null;
+            if (is_string($id) && $id !== '') {
+                $lockIds[] = $id;
+            }
+        }
         $dbIds = array_map(static fn(Plugin $p): string => $p->getPluginId(), $plugins);
         $missingInLock = array_diff($dbIds, $lockIds);
         $extraInLock = array_diff($lockIds, $dbIds);
@@ -173,14 +214,223 @@ final class PluginHealthService
     }
 
     /**
+     * Probes the configured Mercure hub URL with a short-timeout HTTP GET.
+     * The Mercure hub responds with 200 (or 401 when the request is
+     * unauthenticated, which still proves the hub is reachable). A
+     * network error / timeout / 5xx is reported as an "error" because
+     * realtime updates would silently fail.
+     *
      * @return array<string,mixed>
      */
-    private function checkMercure(): array
+    private function checkMercureReachable(): array
     {
         if ($this->mercureHub === null) {
             return ['name' => 'Mercure hub', 'status' => 'warning', 'message' => 'Mercure hub not configured; realtime updates disabled.'];
         }
-        return ['name' => 'Mercure hub', 'status' => 'ok', 'message' => 'Mercure hub is wired into the plugin layer.'];
+        if ($this->httpClient === null || !$this->mercureHubUrl) {
+            return ['name' => 'Mercure hub', 'status' => 'ok', 'message' => 'Mercure hub is wired into the plugin layer (URL probe skipped).'];
+        }
+        try {
+            $resp = $this->httpClient->request('GET', $this->mercureHubUrl, ['timeout' => 3]);
+            $status = $resp->getStatusCode();
+            if ($status < 500) {
+                return [
+                    'name' => 'Mercure hub',
+                    'status' => 'ok',
+                    'message' => sprintf('Hub responded with HTTP %d at %s.', $status, $this->mercureHubUrl),
+                ];
+            }
+            return [
+                'name' => 'Mercure hub',
+                'status' => 'error',
+                'message' => sprintf('Hub returned HTTP %d at %s.', $status, $this->mercureHubUrl),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'name' => 'Mercure hub',
+                'status' => 'error',
+                'message' => sprintf('Hub probe failed: %s', $e->getMessage()),
+            ];
+        }
+    }
+
+    /**
+     * Compares each installed plugin's version against the lock-file
+     * entry for the same plugin id. Drift means the lock file says one
+     * thing and the DB says another — usually caused by a manually
+     * edited lock file or a half-applied update.
+     *
+     * @param list<Plugin> $plugins
+     * @return array<string,mixed>
+     */
+    private function checkLockVersionParity(array $plugins): array
+    {
+        $lock = $this->lockFileReader->read();
+        if ($lock === null) {
+            return ['name' => 'Lock version parity', 'status' => 'ok', 'message' => 'No lock file present; parity check skipped.'];
+        }
+        $lockIndex = [];
+        foreach ($lock->plugins as $entry) {
+            $id = $entry['id'] ?? null;
+            if (!is_string($id) || $id === '') {
+                continue;
+            }
+            $version = $entry['version'] ?? null;
+            $lockIndex[$id] = is_string($version) ? $version : '';
+        }
+        $drift = [];
+        foreach ($plugins as $plugin) {
+            $lockVersion = $lockIndex[$plugin->getPluginId()] ?? null;
+            if ($lockVersion === null || $lockVersion === '') {
+                $drift[] = sprintf('%s: missing from lock', $plugin->getPluginId());
+                continue;
+            }
+            if ($lockVersion !== $plugin->getVersion()) {
+                $drift[] = sprintf('%s: lock=%s db=%s', $plugin->getPluginId(), $lockVersion, $plugin->getVersion());
+            }
+        }
+        if ($drift === []) {
+            return ['name' => 'Lock version parity', 'status' => 'ok', 'message' => 'Lock-file versions match the plugins table.'];
+        }
+        return [
+            'name' => 'Lock version parity',
+            'status' => 'warning',
+            'message' => sprintf('Version drift detected: %s', implode('; ', $drift)),
+        ];
+    }
+
+    /**
+     * Shells out `npm ls <package>` in the configured frontend/mobile
+     * host directory to confirm the plugin's package is installed in
+     * the right node_modules. Plugins without a frontend/mobile
+     * package are reported as "skipped".
+     *
+     * The check is intentionally best-effort: when the host directory
+     * is not configured (e.g. a CI environment that does not check out
+     * the frontend), the check reports as "ok" with a message rather
+     * than failing the doctor.
+     *
+     * @param list<Plugin> $plugins
+     * @return array<string,mixed>
+     */
+    private function checkNpmPackagesInstalled(array $plugins, ?string $hostDir, string $kind): array
+    {
+        if ($hostDir === null || !is_dir($hostDir)) {
+            return [
+                'name' => sprintf('%s npm packages', ucfirst($kind)),
+                'status' => 'ok',
+                'message' => sprintf('Host %s directory not configured; npm ls skipped.', $kind),
+            ];
+        }
+        $missing = [];
+        $checked = 0;
+        foreach ($plugins as $plugin) {
+            $manifest = new PluginManifest($plugin->getManifestJson());
+            $packageName = $kind === 'frontend' ? $manifest->getFrontendPackage() : $manifest->getMobilePackage();
+            if ($packageName === null || $packageName === '') continue;
+            $checked++;
+            $process = new Process(['npm', 'ls', '--json', $packageName], $hostDir);
+            $process->setTimeout(15);
+            try {
+                $process->run();
+                if (!$process->isSuccessful()) {
+                    $missing[] = $packageName;
+                    continue;
+                }
+                $output = trim($process->getOutput());
+                if ($output === '') {
+                    $missing[] = $packageName;
+                    continue;
+                }
+                $parsed = json_decode($output, true);
+                $deps = is_array($parsed) ? ($parsed['dependencies'] ?? null) : null;
+                if (!is_array($deps) || !isset($deps[$packageName])) {
+                    $missing[] = $packageName;
+                }
+            } catch (\Throwable $e) {
+                $missing[] = sprintf('%s (npm ls failed: %s)', $packageName, $e->getMessage());
+            }
+        }
+        if ($checked === 0) {
+            return [
+                'name' => sprintf('%s npm packages', ucfirst($kind)),
+                'status' => 'ok',
+                'message' => sprintf('No installed plugins declare a %s package.', $kind),
+            ];
+        }
+        if ($missing === []) {
+            return [
+                'name' => sprintf('%s npm packages', ucfirst($kind)),
+                'status' => 'ok',
+                'message' => sprintf('All %d plugin %s package(s) are installed in %s.', $checked, $kind, $hostDir),
+            ];
+        }
+        return [
+            'name' => sprintf('%s npm packages', ucfirst($kind)),
+            'status' => 'warning',
+            'message' => sprintf('Missing %s packages: %s', $kind, implode(', ', $missing)),
+        ];
+    }
+
+    /**
+     * If the manifest declares `healthEndpoint`, HTTP GET it with a
+     * short timeout. Returns a check row or `null` when no endpoint is
+     * declared. The endpoint contract:
+     *
+     *   { "status": "ok|warning|error", "message": "..." }
+     *
+     * @return array<string,mixed>|null
+     */
+    private function probePluginHealthEndpoint(PluginManifest $manifest): ?array
+    {
+        $endpoint = $manifest->getHealthEndpoint();
+        if ($endpoint === null || $endpoint === '') return null;
+        if ($this->httpClient === null) {
+            return [
+                'name' => 'Health endpoint',
+                'status' => 'warning',
+                'message' => sprintf('Cannot probe %s: HTTP client not wired.', $endpoint),
+            ];
+        }
+        try {
+            $resp = $this->httpClient->request('GET', $endpoint, ['timeout' => 3]);
+            $status = $resp->getStatusCode();
+            if ($status >= 500) {
+                return [
+                    'name' => 'Health endpoint',
+                    'status' => 'error',
+                    'message' => sprintf('%s returned HTTP %d.', $endpoint, $status),
+                ];
+            }
+            $body = $resp->toArray(false);
+            $reportedStatus = $this->normalizeStatus($body['status'] ?? 'ok');
+            $rawMessage = $body['message'] ?? null;
+            $message = is_string($rawMessage) && $rawMessage !== ''
+                ? $rawMessage
+                : sprintf('Endpoint responded with HTTP %d.', $status);
+            return [
+                'name' => 'Health endpoint',
+                'status' => $reportedStatus,
+                'message' => $message,
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'name' => 'Health endpoint',
+                'status' => 'warning',
+                'message' => sprintf('Probe failed: %s', $e->getMessage()),
+            ];
+        }
+    }
+
+    private function normalizeStatus(mixed $raw): string
+    {
+        if (!is_string($raw) && !is_int($raw) && !is_bool($raw) && !is_float($raw) && !($raw instanceof \Stringable)) {
+            return 'error';
+        }
+        $s = strtolower((string) $raw);
+        if ($s === 'ok' || $s === 'pass' || $s === 'success') return 'ok';
+        if ($s === 'warn' || $s === 'warning') return 'warning';
+        return 'error';
     }
 
     /**

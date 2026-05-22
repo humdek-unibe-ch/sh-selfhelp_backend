@@ -203,6 +203,17 @@ final class PluginManifest
         return is_array($access) ? $access : [];
     }
 
+    /**
+     * Optional health endpoint URL — when present, the doctor command
+     * HTTP-GETs this URL and surfaces its `status`/`message` response.
+     * Keep absolute (https://...) so the host doesn't have to guess
+     * the base URL.
+     */
+    public function getHealthEndpoint(): ?string
+    {
+        return isset($this->data['healthEndpoint']) ? (string) $this->data['healthEndpoint'] : null;
+    }
+
     /** @return RawManifest */
     public function toArray(): array
     {

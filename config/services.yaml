@@ -114,6 +114,21 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    # Plugin health service — full §17 doctor coverage.
+    # The four optional args (`httpClient`, `mercureHubUrl`,
+    # `frontendHostDir`, `mobileHostDir`) wire the live probes:
+    # Mercure reachability, per-plugin health endpoint HTTP GET, and
+    # `npm ls` of the plugin's frontend/mobile package in the host
+    # node_modules. Leave any of them empty to disable that probe in
+    # environments where the dependency is not present.
+    App\Plugin\Health\PluginHealthService:
+        arguments:
+            $pluginChecks: !tagged_iterator selfhelp.plugin.health_check
+            $httpClient: '@http_client'
+            $mercureHubUrl: '%env(default::MERCURE_PUBLIC_URL)%'
+            $frontendHostDir: '%env(default::SELFHELP_FRONTEND_HOST_DIR)%'
+            $mobileHostDir: '%env(default::SELFHELP_MOBILE_HOST_DIR)%'
+
     App\Plugin\Lifecycle\PluginLockFileWriter:
         arguments:
             $projectDir: '%kernel.project_dir%'
