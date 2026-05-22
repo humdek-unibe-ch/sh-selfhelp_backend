@@ -255,29 +255,29 @@ The backend uses [Mercure](https://mercure.rocks) (Caddy + the Mercure module) t
 
 ### Setup (Docker)
 
-A ready-to-use Caddy/Mercure container is provided in `docker-compose.mercure.yml`. The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`) and allow browser subscribers from the local Next.js dev server, the local Expo Web dev server, and a stable Expo Web preview host (`https://mobile-preview.example.com`).
+A ready-to-use Caddy/Mercure container is provided as the `mercure` service in the root `docker-compose.yml` (alongside Mailpit and Redis). The defaults match the values shipped in `.env` / `.env.dev` (`MERCURE_URL=http://127.0.0.1:3001/.well-known/mercure`) and allow browser subscribers from the local Next.js dev server, the local Expo Web dev server, and a stable Expo Web preview host (`https://mobile-preview.example.com`).
 
 ```bash
 # 1. Generate (or pick) a strong secret and write it to .env.local — the
 #    same value MUST be present when you start the hub container.
 echo "MERCURE_JWT_SECRET=\"$(openssl rand -base64 48)\"" >> .env.local
 
-# 2. Start the hub. The compose file reads MERCURE_JWT_SECRET from the
+# 2. Start the stack. The compose file reads MERCURE_JWT_SECRET from the
 #    environment (or .env in your shell) so both Symfony and the hub end
 #    up with the same shared HMAC key.
-docker compose -f docker-compose.mercure.yml up -d
+docker compose up -d
 
 # 3. Verify the hub is running and reachable.
 curl -sS http://127.0.0.1:3001/healthz   # → "ok"
-docker compose -f docker-compose.mercure.yml ps
+docker compose ps
 
 # 4. Tail the hub logs while you exercise the app (helpful when debugging
 #    "no events received" issues — every publish/subscribe is logged).
-docker compose -f docker-compose.mercure.yml logs -f mercure
+docker compose logs -f mercure
 
 # 5. Stop / clean up when done. Add `--volumes` to also drop the in-memory
 #    history ring buffer.
-docker compose -f docker-compose.mercure.yml down
+docker compose down
 ```
 
 ### One-shot `docker run` alternative
@@ -307,19 +307,29 @@ For the algorithm and on-the-wire payload details, see `docs/developer/13-acl-sy
 
 ## Mail Template System
 
-The mail template system is driven by a CMS page with keyword `sh-mail-config`. It centralises all email sender settings and per-email-type templates, with a three-layer resolution order.
+The mail template system is driven by a CMS page with keyword `sh-mail-config`. It centralises all email sender settings and per-email-type templates, with a four-layer resolution order.
 
 ### Overview
 
 ```
-fallback (caller hardcodes) → global CMS config → per-type template override
+MailTemplateDefaults (hardcoded) → CMS global config → CMS per-type template → caller overrides
 ```
 
-`MailTemplateService::buildEmailConfig(string $type, array $fallback)` merges these three layers and returns a complete email config array ready for the job scheduler.
+Each subsequent layer overrides the previous one. The hardcoded defaults in `MailTemplateDefaults` (constants + the `templates/emails/<type>.<locale>.html` files) guarantee that mail still works if an admin deletes every row in the CMS.
+
+```php
+public function buildEmailConfig(
+    string $type,
+    array $vars = [],       // {{placeholder}} values for subject + body interpolation
+    array $overrides = []   // last-wins overrides (e.g. recipient_emails)
+): array
+```
+
+The method returns a complete email config array (`from_email`, `from_name`, `reply_to`, `is_html`, `subject`, `body`, plus any keys passed in `$overrides`) ready for `JobSchedulerService::scheduleDirectEmailJob()`.
 
 ### Global configuration fields
 
-These fields live on the `sh-mail-config` page and apply to every email type. They are stored as page **properties** (always `id_languages = 1`), not translated content.
+These fields live on the `sh-mail-config` page and apply to every email type. They are stored as page **properties** in the `'all'` language row (`id_languages = 1` in the seeded database), not as translated content.
 
 | CMS field name   | Key in email config | Description                              |
 |------------------|---------------------|------------------------------------------|
@@ -335,42 +345,58 @@ These fields live on the `sh-mail-config` page and apply to every email type. Th
 | `1`       | `true`        | `$email->html($body)` | `text/html`   |
 | `0` / unset | `false`     | `$email->text($body)` | `text/plain`  |
 
-The mailer in `JobSchedulerService` applies this directly:
+The mailer in `JobSchedulerService::executeEmailJob()` applies this directly:
 
 ```php
 $isHtml ? $email->html($body) : $email->text($body);
 ```
 
-> **Debugging note:** If HTML renders as raw markup or plain text renders as escaped HTML, the bug is in the mailer's `is_html` handling — check `JobSchedulerService::executeEmailJob()` around line 601 — not in how the CMS stores the value.
+> **Debugging note:** If HTML renders as raw markup or plain text renders as escaped HTML, the bug is in the mailer's `is_html` handling inside `JobSchedulerService::executeEmailJob()` — not in how the CMS stores the value.
 
 ### Email types and template fields
 
-Each type has a `_subject` and `_body` field. Both are optional; when absent the hardcoded caller fallback is used unchanged.
+Each type has a `_subject` and `_body` field. Both are optional; when absent the runtime falls back to the matching constant / template file in `MailTemplateDefaults` (English when no localized default exists).
 
 | Type             | Subject field              | Body field              | Triggered by                  |
 |------------------|---------------------------|-------------------------|-------------------------------|
-| `mail_2fa`       | `mail_2fa_subject`        | `mail_2fa_body`         | 2FA code delivery             |
+| `mail_2fa`       | `mail_2fa_subject`        | `mail_2fa_body`         | 2FA code delivery on login    |
 | `mail_confirm`   | `mail_confirm_subject`    | `mail_confirm_body`     | Account email confirmation    |
 | `mail_welcome`   | `mail_welcome_subject`    | `mail_welcome_body`     | Post-validation welcome       |
-| `mail_recovery`  | `mail_recovery_subject`   | `mail_recovery_body`    | Password recovery (reserved)  |
+| `mail_recovery`  | `mail_recovery_subject`   | `mail_recovery_body`    | Password recovery (reserved — fields are seeded but no runtime sender exists yet) |
 
-Template fields are translated content (resolved with the CMS default language). Subject fields are always stripped of HTML tags before use; body fields are returned as-is.
+Template fields are translated content (resolved using the CMS default language returned by `CmsPreferenceService::getDefaultLanguageId()`, falling back to `en-GB`). Subject fields are always stripped of HTML tags before use; body fields are returned as-is and rendered as HTML or plain text according to `mail_is_html`.
+
+`{{placeholder}}` interpolation in both subject and body is performed by `InterpolationService` using the `$vars` argument.
 
 ### Configuration resolution
 
 ```php
-// Example: 2FA email with CMS overrides
-$config = $mailTemplateService->buildEmailConfig('mail_2fa', [
-    'from_email'       => 'noreply@example.com',
-    'from_name'        => 'SelfHelp',
-    'subject'          => 'Your verification code',   // overridden if CMS has mail_2fa_subject
-    'body'             => $generatedBody,              // overridden if CMS has mail_2fa_body
-    'is_html'          => true,                       // overridden by global mail_is_html
-    'recipient_emails' => $user->getEmail(),
-]);
+// Example: 2FA email — $vars feeds the interpolator,
+// $overrides supplies last-wins runtime values like the recipient.
+$config = $mailTemplateService->buildEmailConfig(
+    MailTemplateDefaults::TYPE_2FA,
+    [
+        'user_name' => $user->getName() ?: $user->getEmail(),
+        'code'      => (string) $code,
+    ],
+    [
+        'recipient_emails' => $user->getEmail(),
+    ]
+);
 ```
 
-`array_merge($fallback, $cmsGlobal, $cmsType)` — keys absent from the CMS pass through unchanged from `$fallback`.
+The merge is effectively `array_merge($resolvedConfig, $overrides)` where `$resolvedConfig` is built as:
+
+| Key          | Source priority (low → high)                                          |
+|--------------|------------------------------------------------------------------------|
+| `from_email` | `MailTemplateDefaults::FROM_EMAIL` → `mail_from_email` CMS prop        |
+| `from_name`  | `MailTemplateDefaults::FROM_NAME` → `mail_from_name` CMS prop          |
+| `reply_to`   | `MailTemplateDefaults::REPLY_TO` → `mail_reply_to` CMS prop            |
+| `is_html`    | `MailTemplateDefaults::IS_HTML` → `mail_is_html` CMS prop              |
+| `subject`    | `MailTemplateDefaults::getSubject($type, $locale)` → `<type>_subject` CMS translation (HTML-stripped) |
+| `body`       | `MailTemplateDefaults::getBody($type, $locale)` → `<type>_body` CMS translation |
+
+Anything passed in `$overrides` (e.g. `recipient_emails`, an ad-hoc `subject`/`body`, or an attachment list) wins last and is returned in the final array verbatim.
 
 ---
 
@@ -385,7 +411,7 @@ The flow is:
 
 ### Setup (Docker)
 
-Mailpit is included in `docker-compose.mercure.yml` alongside Mercure and Redis.
+Mailpit is included in the root `docker-compose.yml` alongside Mercure and Redis.
 
 ```bash
 # 1. Point Symfony at the local SMTP server.
@@ -393,17 +419,17 @@ Mailpit is included in `docker-compose.mercure.yml` alongside Mercure and Redis.
 echo 'MAILER_DSN=smtp://localhost:1025' >> .env.local
 
 # 2. Start the containers (starts Mailpit, Redis, and Mercure together).
-docker compose -f docker-compose.mercure.yml up -d
+docker compose up -d
 
 # 3. Open the web inbox.
 open http://localhost:8025        # macOS
 xdg-open http://localhost:8025   # Linux
 
 # 4. Tail Mailpit logs if an email never shows up.
-docker compose -f docker-compose.mercure.yml logs -f mailpit
+docker compose logs -f mailpit
 
 # 5. Stop when done.
-docker compose -f docker-compose.mercure.yml down
+docker compose down
 ```
 
 ### Gmail alternative (production / staging)
@@ -433,14 +459,14 @@ The application uses [Redis](https://redis.io) as the backing store for all Symf
 
 ### Setup (Docker)
 
-Redis is included in `docker-compose.mercure.yml` alongside Mercure and Mailpit.
+Redis is included in the root `docker-compose.yml` alongside Mercure and Mailpit.
 
 ```bash
 # 1. Start the containers (starts Redis, Mailpit, and Mercure together).
-docker compose -f docker-compose.mercure.yml up -d
+docker compose up -d
 
 # 2. Verify Redis is responding.
-docker compose -f docker-compose.mercure.yml exec redis redis-cli ping   # → PONG
+docker compose exec redis redis-cli ping   # → PONG
 # or, if redis-cli is installed locally:
 redis-cli ping   # → PONG
 
@@ -451,8 +477,8 @@ php bin/console cache:pool:clear cache.user_frontend
 php bin/console cache:clear
 
 # 4. Stop / clean up. Add `--volumes` to wipe persisted data.
-docker compose -f docker-compose.mercure.yml down
-docker compose -f docker-compose.mercure.yml down --volumes
+docker compose down
+docker compose down --volumes
 ```
 
 ### Environment variable

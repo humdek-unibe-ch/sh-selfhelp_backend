@@ -20,6 +20,11 @@ parameters:
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'
 
+    # Public frontend base URL used when building absolute links for emails
+    # (account validation, welcome, password recovery, etc.).
+    frontend_base_url: '%env(default:default_frontend_base_url:FRONTEND_BASE_URL)%'
+    default_frontend_base_url: 'http://localhost:3000'
+
     # Directory that hosts the AI section-generation prompt templates
     # (base + generated). Relative paths are resolved against
     # `%kernel.project_dir%` inside BuildPromptTemplateCommand and
@@ -97,6 +102,10 @@ services:
     App\Service\Core\ApiResponseFormatter:
         arguments:
             $validateResponseSchema: '%validate_response_schema%'
+
+    App\Service\Auth\UserValidationService:
+        arguments:
+            $frontendBaseUrl: '%frontend_base_url%'
 
     # Mercure topic resolver — single source of truth for topic IRIs used
     # by both publishers (AclVersionMercurePublisher) and the subscriber
