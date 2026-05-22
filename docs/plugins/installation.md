@@ -67,6 +67,15 @@ admin API rejects edits/deletes against system rows; only the
 `enabled` flag can be toggled. Disable the row to hide the official
 catalogue without deleting it.
 
+Current runtime detail: the canonical list of sources still lives in
+the `plugin_sources` table and is exposed via
+`/cms-api/v1/admin/plugins/sources`. If you need the seeded official
+source to point somewhere else, set
+`SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL` in the backend env. That env var
+overrides the effective URL of the system-managed `humdek-public`
+source without replacing the DB-backed source model for custom/private
+registries.
+
 API surface:
 
 | Endpoint                                  | Verb | Purpose                                                                |
