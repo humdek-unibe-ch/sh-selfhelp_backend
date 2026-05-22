@@ -192,6 +192,16 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
+                "ownedTables": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+                    "description": "Tables the plugin fully owns (purge will drop them). Must match host AGENTS.md DB naming: plural lowercase_snake_case."
+                },
+                "ownedDataTablePrefix": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*_$",
+                    "description": "Optional prefix the plugin uses when creating dynamic data_tables rows; purge scopes by this prefix in addition to id_plugins."
+                },
                 "read": {"type": "array", "items": {"type": "string"}},
                 "write": {"type": "array", "items": {"type": "string"}},
                 "delete": {"type": "array", "items": {"type": "string"}}

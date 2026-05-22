@@ -1,0 +1,175 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/plugin-registry.schema.json",
+    "title": "SelfHelp Plugin Registry Index",
+    "description": "Schema for the `registry.json` document a public or private plugin registry exposes. See docs/plugins/architecture.md (section: registries).",
+    "type": "object",
+    "required": ["registryVersion", "name", "plugins"],
+    "additionalProperties": false,
+    "properties": {
+        "registryVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Schema generation. Bumped only on breaking registry-document changes."
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1
+        },
+        "homepage": {
+            "type": "string",
+            "format": "uri"
+        },
+        "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "trustKey": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "algo": {"type": "string", "enum": ["ed25519"]},
+                "publicKeyId": {"type": "string", "minLength": 1},
+                "publicKey": {"type": "string", "minLength": 1, "description": "Base64-encoded public key used to verify per-version signatures."}
+            },
+            "required": ["algo", "publicKeyId", "publicKey"]
+        },
+        "channels": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["stable", "beta", "alpha", "nightly"]},
+            "uniqueItems": true
+        },
+        "plugins": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/registryPlugin"}
+        }
+    },
+    "$defs": {
+        "registryPlugin": {
+            "type": "object",
+            "required": ["id", "name", "trustLevel", "versions"],
+            "additionalProperties": false,
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "description": {"type": "string"},
+                "homepage": {"type": "string", "format": "uri"},
+                "repository": {"type": "string", "format": "uri"},
+                "trustLevel": {
+                    "type": "string",
+                    "enum": ["official", "reviewed", "untrusted"]
+                },
+                "category": {"type": "string"},
+                "maintainers": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["name"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "name": {"type": "string"},
+                            "email": {"type": "string", "format": "email"},
+                            "url": {"type": "string", "format": "uri"}
+                        }
+                    }
+                },
+                "versions": {
+                    "type": "array",
+                    "items": {"$ref": "#/$defs/registryVersion"}
+                },
+                "deprecated": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "at": {"type": "string", "format": "date-time"},
+                        "replaceWith": {"type": "string"},
+                        "reason": {"type": "string"}
+                    }
+                }
+            }
+        },
+        "registryVersion": {
+            "type": "object",
+            "required": ["version", "channel", "compatibility", "checksum"],
+            "additionalProperties": false,
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+                },
+                "channel": {
+                    "type": "string",
+                    "enum": ["stable", "beta", "alpha", "nightly"]
+                },
+                "publishedAt": {"type": "string", "format": "date-time"},
+                "manifestUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Absolute URL to the `plugin.json` for this version (registries SHOULD pin to an immutable commit/tag)."
+                },
+                "changelog": {"type": "string"},
+                "breaking": {"type": "boolean", "default": false},
+                "migrationImpact": {
+                    "type": "string",
+                    "enum": ["none", "patch", "minor", "major"],
+                    "description": "Encodes the version semantics: patch=no DB change, minor=DB change, major=breaking."
+                },
+                "buildImpact": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "rebuildFrontend": {"type": "boolean", "default": false},
+                        "rebuildMobile": {"type": "boolean", "default": false}
+                    }
+                },
+                "compatibility": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "selfhelp": {"type": "string"},
+                        "pluginApiVersion": {"type": "string"},
+                        "php": {"type": "string"},
+                        "symfony": {"type": "string"},
+                        "node": {"type": "string"},
+                        "react": {"type": "string"},
+                        "nextjs": {"type": "string"},
+                        "reactNative": {"type": "string"},
+                        "expo": {"type": "string"}
+                    }
+                },
+                "checksum": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "manifest": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                        "composer": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                        "npmFrontend": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                        "npmMobile": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"}
+                    }
+                },
+                "signature": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "algo": {"type": "string", "enum": ["ed25519"]},
+                        "publicKeyId": {"type": "string"},
+                        "sig": {"type": "string"}
+                    }
+                },
+                "yanked": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "at": {"type": "string", "format": "date-time"},
+                        "reason": {"type": "string"}
+                    }
+                }
+            }
+        }
+    }
+}
