@@ -45,7 +45,7 @@ class Plugin
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'plugin_id', type: Types::STRING, length: 100)]
+    #[ORM\Column(name: 'plugin_id', type: Types::STRING, length: 100, options: ['comment' => 'Plugin manifest id, e.g. sh2-shp-survey-js'])]
     private string $pluginId;
 
     #[ORM\Column(name: 'name', type: Types::STRING, length: 255)]
@@ -60,13 +60,13 @@ class Plugin
     #[ORM\Column(name: 'plugin_api_version', type: Types::STRING, length: 20)]
     private string $pluginApiVersion;
 
-    #[ORM\Column(name: 'trust_level', type: Types::STRING, length: 20, options: ['default' => 'untrusted'])]
+    #[ORM\Column(name: 'trust_level', type: Types::STRING, length: 20, options: ['default' => 'untrusted', 'comment' => 'official | reviewed | untrusted'])]
     private string $trustLevel = self::TRUST_UNTRUSTED;
 
     #[ORM\Column(name: 'enabled', type: Types::BOOLEAN, options: ['default' => 0])]
     private bool $enabled = false;
 
-    #[ORM\Column(name: 'install_mode', type: Types::STRING, length: 20, options: ['default' => 'managed'])]
+    #[ORM\Column(name: 'install_mode', type: Types::STRING, length: 20, options: ['default' => 'managed', 'comment' => 'development | managed | trusted'])]
     private string $installMode = self::INSTALL_MODE_MANAGED;
 
     #[ORM\Column(name: 'backend_package', type: Types::STRING, length: 255, nullable: true)]
@@ -88,11 +88,11 @@ class Plugin
     private ?string $mobilePackageVersion = null;
 
     /** @var array<string,mixed> */
-    #[ORM\Column(name: 'manifest_json', type: Types::JSON)]
+    #[ORM\Column(name: 'manifest_json', type: Types::JSON, options: ['comment' => 'Cached full plugin.json'])]
     private array $manifestJson = [];
 
     /** @var array<int,string> */
-    #[ORM\Column(name: 'capabilities_json', type: Types::JSON)]
+    #[ORM\Column(name: 'capabilities_json', type: Types::JSON, options: ['comment' => 'Granted capabilities at install time'])]
     private array $capabilitiesJson = [];
 
     #[ORM\Column(name: 'checksum_sha256', type: Types::STRING, length: 128, nullable: true)]

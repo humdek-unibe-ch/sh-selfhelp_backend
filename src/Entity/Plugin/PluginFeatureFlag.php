@@ -32,6 +32,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: PluginFeatureFlagRepository::class)]
 #[ORM\Table(name: 'plugin_feature_flags')]
 #[ORM\Index(name: 'idx_plugin_feature_flags_flag_key', columns: ['flag_key'])]
+#[ORM\Index(name: 'fk_plugin_feature_flags_id_updated_by_users', columns: ['id_updated_by_users'])]
 class PluginFeatureFlag
 {
     public const SCOPE_GLOBAL = 'global';
@@ -49,11 +50,11 @@ class PluginFeatureFlag
     private string $flagKey;
 
     #[ORM\Id]
-    #[ORM\Column(name: 'scope', type: Types::STRING, length: 20, options: ['default' => 'global'])]
+    #[ORM\Column(name: 'scope', type: Types::STRING, length: 20, options: ['default' => 'global', 'comment' => 'global | role | user | group'])]
     private string $scope = self::SCOPE_GLOBAL;
 
     #[ORM\Id]
-    #[ORM\Column(name: 'scope_value', type: Types::STRING, length: 64, options: ['default' => ''])]
+    #[ORM\Column(name: 'scope_value', type: Types::STRING, length: 64, options: ['default' => '', 'comment' => 'Empty string for global scope'])]
     private string $scopeValue = '';
 
     #[ORM\Column(name: 'enabled', type: Types::BOOLEAN, options: ['default' => 0])]

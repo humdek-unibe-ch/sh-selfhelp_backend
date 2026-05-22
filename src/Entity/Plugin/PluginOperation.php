@@ -28,6 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_plugin_operations_plugin_id', columns: ['plugin_id'])]
 #[ORM\Index(name: 'idx_plugin_operations_status', columns: ['status'])]
 #[ORM\Index(name: 'idx_plugin_operations_created_at', columns: ['created_at'])]
+#[ORM\Index(name: 'fk_plugin_operations_id_requested_by_users', columns: ['id_requested_by_users'])]
 class PluginOperation
 {
     public const TYPE_INSTALL = 'install';
@@ -62,10 +63,10 @@ class PluginOperation
     #[ORM\Column(name: 'plugin_id', type: Types::STRING, length: 100)]
     private string $pluginId;
 
-    #[ORM\Column(name: 'type', type: Types::STRING, length: 30)]
+    #[ORM\Column(name: 'type', type: Types::STRING, length: 30, options: ['comment' => 'install | update | disable | enable | uninstall | purge | rollback | repair'])]
     private string $type;
 
-    #[ORM\Column(name: 'status', type: Types::STRING, length: 20, options: ['default' => 'requested'])]
+    #[ORM\Column(name: 'status', type: Types::STRING, length: 20, options: ['default' => 'requested', 'comment' => 'requested | running | succeeded | failed | cancelled | rolled_back'])]
     private string $status = self::STATUS_REQUESTED;
 
     #[ORM\Column(name: 'requested_version', type: Types::STRING, length: 50, nullable: true)]
@@ -85,15 +86,15 @@ class PluginOperation
     private string $installMode = Plugin::INSTALL_MODE_MANAGED;
 
     /** @var array<string,mixed>|null */
-    #[ORM\Column(name: 'snapshots_json', type: Types::JSON, nullable: true)]
+    #[ORM\Column(name: 'snapshots_json', type: Types::JSON, nullable: true, options: ['comment' => 'Pre/post snapshots of plugin-owned rows'])]
     private ?array $snapshotsJson = null;
 
     /** @var array<string,mixed>|null */
-    #[ORM\Column(name: 'rollback_plan_json', type: Types::JSON, nullable: true)]
+    #[ORM\Column(name: 'rollback_plan_json', type: Types::JSON, nullable: true, options: ['comment' => 'Planned rollback actions'])]
     private ?array $rollbackPlanJson = null;
 
     /** @var array<int,array<string,mixed>>|null */
-    #[ORM\Column(name: 'logs_json', type: Types::JSON, nullable: true)]
+    #[ORM\Column(name: 'logs_json', type: Types::JSON, nullable: true, options: ['comment' => 'Array of log entries'])]
     private ?array $logsJson = null;
 
     #[ORM\Column(name: 'error_summary', type: Types::TEXT, nullable: true)]

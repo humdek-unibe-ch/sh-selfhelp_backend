@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'styles')]
 #[ORM\UniqueConstraint(name: 'uq_styles_name', columns: ['name'])]
 #[ORM\Index(name: 'idx_styles_id_style_groups', columns: ['id_style_groups'])]
+#[ORM\Index(name: 'idx_styles_id_plugins', columns: ['id_plugins'])]
 class Style
 {
     public function __construct()
@@ -49,6 +50,16 @@ class Style
 
     #[ORM\OneToMany(mappedBy: 'childStyle', targetEntity: StylesAllowedRelationship::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $allowedParentsRelationships;
+
+    /**
+     * Plugin that owns this style row. NULL = core-owned (the default).
+     * `ON DELETE SET NULL` is intentional - dropping a plugin record
+     * must not silently delete CMS content. The PluginPurger is the
+     * only code path that actually deletes plugin-owned rows.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
     public function getId(): ?int
     {
@@ -113,6 +124,18 @@ class Style
     public function setGroup(?StyleGroup $group): static
     {
         $this->group = $group;
+
+        return $this;
+    }
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
 
         return $this;
     }

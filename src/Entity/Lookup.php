@@ -15,6 +15,7 @@ use Doctrine\Common\Collections\Collection;
 #[ORM\Entity(repositoryClass: "App\Repository\LookupRepository")]
 #[ORM\Table(name: 'lookups')]
 #[ORM\UniqueConstraint(name: 'uq_lookups_type_code_lookup_code', columns: ['type_code', 'lookup_code'])]
+#[ORM\Index(name: 'idx_lookups_id_plugins', columns: ['id_plugins'])]
 class Lookup
 {
     #[ORM\Id]
@@ -33,6 +34,15 @@ class Lookup
 
     #[ORM\Column(name: 'lookup_description', type: 'string', length: 500, nullable: true)]
     private ?string $lookupDescription = null;
+
+    /**
+     * Plugin that owns this lookup row. NULL = core-owned.
+     * The lookup-extension policy (closed / plugin_extendable /
+     * plugin_owned) is enforced by LookupExtensionPolicy.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
 
 
@@ -86,6 +96,17 @@ class Lookup
     public function setLookupDescription(?string $lookupDescription): static
     {
         $this->lookupDescription = $lookupDescription;
+        return $this;
+    }
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
         return $this;
     }
 }

@@ -46,25 +46,25 @@ class PluginSource
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
-    #[ORM\Column(name: 'name', type: Types::STRING, length: 100)]
+    #[ORM\Column(name: 'name', type: Types::STRING, length: 100, options: ['comment' => 'Friendly source name'])]
     private string $name;
 
-    #[ORM\Column(name: 'kind', type: Types::STRING, length: 20)]
+    #[ORM\Column(name: 'kind', type: Types::STRING, length: 20, options: ['comment' => 'public-registry | private-registry | git | local'])]
     private string $kind;
 
     #[ORM\Column(name: 'url', type: Types::STRING, length: 1000)]
     private string $url;
 
-    #[ORM\Column(name: 'auth_header_name', type: Types::STRING, length: 100, nullable: true)]
+    #[ORM\Column(name: 'auth_header_name', type: Types::STRING, length: 100, nullable: true, options: ['comment' => 'e.g. Authorization or X-Token'])]
     private ?string $authHeaderName = null;
 
-    #[ORM\Column(name: 'auth_secret_env_var', type: Types::STRING, length: 100, nullable: true)]
+    #[ORM\Column(name: 'auth_secret_env_var', type: Types::STRING, length: 100, nullable: true, options: ['comment' => 'Env var name holding the secret (never the secret itself)'])]
     private ?string $authSecretEnvVar = null;
 
-    #[ORM\Column(name: 'channel', type: Types::STRING, length: 20, options: ['default' => 'stable'])]
+    #[ORM\Column(name: 'channel', type: Types::STRING, length: 20, options: ['default' => 'stable', 'comment' => 'stable | beta | alpha | nightly'])]
     private string $channel = self::CHANNEL_STABLE;
 
-    #[ORM\Column(name: 'trust_level', type: Types::STRING, length: 20, options: ['default' => 'untrusted'])]
+    #[ORM\Column(name: 'trust_level', type: Types::STRING, length: 20, options: ['default' => 'untrusted', 'comment' => 'official | reviewed | untrusted'])]
     private string $trustLevel = Plugin::TRUST_UNTRUSTED;
 
     #[ORM\Column(name: 'enabled', type: Types::BOOLEAN, options: ['default' => 1])]
