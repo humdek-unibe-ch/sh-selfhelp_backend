@@ -88,6 +88,11 @@ final class PluginAdminService extends BaseService
             $installedIds[$p->getPluginId()] = true;
         }
 
+        $sourceBaseUrls = [];
+        foreach ($this->sources->findEnabled() as $source) {
+            $sourceBaseUrls[$source->getName()] = rtrim($this->sourceUrlResolver->resolve($source), '/') . '/';
+        }
+
         $aggregated = $this->registryClient->fetchAllIndexes();
         $available = [];
         foreach ($aggregated as $pluginId => $entriesBySource) {
@@ -104,7 +109,10 @@ final class PluginAdminService extends BaseService
                     'trustLevel' => isset($entry['trustLevel']) && is_string($entry['trustLevel']) ? $entry['trustLevel'] : 'untrusted',
                     'homepage' => isset($entry['homepage']) && is_string($entry['homepage']) ? $entry['homepage'] : null,
                     'manifest' => isset($entry['manifest']) && is_array($entry['manifest']) ? $entry['manifest'] : null,
-                    'manifestUrl' => isset($entry['manifestUrl']) && is_string($entry['manifestUrl']) ? $entry['manifestUrl'] : null,
+                    'manifestUrl' => $this->resolveManifestUrl(
+                        $entry['manifestUrl'] ?? null,
+                        $sourceBaseUrls[$sourceName] ?? null,
+                    ),
                 ];
             }
         }
@@ -493,5 +501,22 @@ final class PluginAdminService extends BaseService
             'scopeValue' => $flag->getScopeValue(),
             'updatedAt' => $flag->getUpdatedAt()->format(DATE_ATOM),
         ];
+    }
+
+    private function resolveManifestUrl(mixed $manifestUrl, ?string $sourceBaseUrl): ?string
+    {
+        if (!is_string($manifestUrl) || $manifestUrl === '') {
+            return null;
+        }
+
+        if (preg_match('#^https?://#i', $manifestUrl) === 1) {
+            return $manifestUrl;
+        }
+
+        if ($sourceBaseUrl === null) {
+            return $manifestUrl;
+        }
+
+        return $sourceBaseUrl . ltrim($manifestUrl, '/');
     }
 }

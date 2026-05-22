@@ -111,6 +111,9 @@ final class RegistryClient
         }
 
         $body = $response->getContent(false);
+        // Some static hosts serve UTF-8 JSON files with a BOM. Strip it
+        // before decoding so registry fetches remain robust.
+        $body = preg_replace('/^\xEF\xBB\xBF/', '', $body) ?? $body;
         $decoded = json_decode($body, true);
         if (!is_array($decoded)) {
             throw new \RuntimeException(sprintf('Registry %s returned invalid JSON.', $url));
