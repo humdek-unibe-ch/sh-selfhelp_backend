@@ -9,24 +9,35 @@
 namespace App\Routing;
 
 use App\Entity\Permission;
+use App\Plugin\Event\ApiRouteRegistryEvent;
 use App\Repository\ApiRouteRepository;
 use App\Service\Cache\Core\CacheService;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Config\Loader\Loader;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouteCollection;
 use Symfony\Contracts\Cache\ItemInterface;
 
 /**
- * Custom route loader that loads routes from database
+ * Custom route loader that loads routes from database.
+ *
+ * Plugins contribute additional API routes through
+ * `App\Plugin\Event\ApiRouteRegistryEvent`. The event fires after the
+ * DB-backed routes have been built so plugin routes appear last but
+ * before the collection is cached. Plugin routes are version-prefixed
+ * under `/cms-api/{version}/plugins/{pluginId}/...` (enforced by the
+ * event itself).
  */
 class ApiRouteLoader extends Loader
 {
     protected bool $isLoaded = false;
-    
+
     public function __construct(
         private ApiRouteRepository $apiRouteRepository,
         private CacheService $cache,
-        protected ?string $env
+        protected ?string $env,
+        private ?EventDispatcherInterface $eventDispatcher = null,
+        private string $cmsVersion = 'dev'
     ) {
         // The parent Loader doesn't need any arguments
         parent::__construct();
@@ -111,7 +122,50 @@ class ApiRouteLoader extends Loader
             $routes->add($routeData['route_name'] . '_' . $version, $route);
         }
 
+        $this->appendPluginRoutes($routes);
+
         return $routes;
+    }
+
+    /**
+     * Dispatch the plugin route-registry event and merge contributed
+     * routes into the collection. Routes are namespaced under
+     * `/cms-api/{version}/plugins/{pluginId}/...`; the event enforces
+     * the path/name conventions.
+     */
+    private function appendPluginRoutes(RouteCollection $routes): void
+    {
+        if ($this->eventDispatcher === null) {
+            return;
+        }
+
+        $event = new ApiRouteRegistryEvent($this->cmsVersion);
+        $this->eventDispatcher->dispatch($event);
+
+        foreach ($event->getRoutes() as $pluginRoute) {
+            $version = $pluginRoute['version'] ?: 'v1';
+            $path = '/' . $version . $pluginRoute['path'];
+            $controller = $this->mapControllerToVersionedNamespace($pluginRoute['controller'], $version);
+
+            $defaults = [
+                '_controller' => $controller,
+                '_version' => $version,
+                '_plugin_id' => $pluginRoute['pluginId'],
+                '_params' => [],
+            ];
+
+            $route = new Route(
+                $path,
+                $defaults,
+                $pluginRoute['requirements'] ?? [],
+                ['permissions' => $pluginRoute['permissions'] ?? []],
+                '',
+                [],
+                $pluginRoute['methods']
+            );
+
+            $routes->add($pluginRoute['name'] . '_' . $version, $route);
+        }
     }
     
     /**

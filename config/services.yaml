@@ -46,6 +46,32 @@ parameters:
     mercure_subscriber_ttl: '%env(int:default:default_mercure_subscriber_ttl:MERCURE_SUBSCRIBER_TTL)%'
     default_mercure_subscriber_ttl: '3600'
 
+    # CMS version surfaced to plugins (semver compatibility checks). The
+    # parameter is fetched by `ApiRouteRegistryEvent` and the plugin
+    # SDK helpers. Override with `SELFHELP_CMS_VERSION` to match the
+    # deployed application version.
+    selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
+    selfhelp_cms_version_default: '8.0.0-dev'
+
+    # Plugin SDK contract version exposed to plugin compatibility
+    # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
+    selfhelp.plugin_api_version: '%env(default:selfhelp_plugin_api_version_default:SELFHELP_PLUGIN_API_VERSION)%'
+    selfhelp_plugin_api_version_default: '1.0'
+
+    # Plugin signature verification mode (strict|lenient). Production
+    # defaults to strict. Override with SELFHELP_PLUGIN_SIGNATURE_MODE.
+    selfhelp_plugin_signature_mode_default: 'strict'
+
+    # Plugin release channels admins are allowed to install from.
+    selfhelp.plugin_allowed_channels:
+        - 'stable'
+
+    # Default lock DSNs (in-process flock). Production deployments
+    # override with `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`
+    # so the lock is cluster-safe.
+    default_lock_dsn: 'flock'
+    default_plugin_lock_dsn: 'flock'
+
 services:
     # default configuration for services in *this* file
     _defaults:
@@ -68,6 +94,89 @@ services:
         tags: [routing.loader]
         arguments:
             $env: '%kernel.environment%'
+            $cmsVersion: '%selfhelp.cms_version%'
+
+    # Plugin layer realtime publisher — wraps the Mercure hub.
+    App\Plugin\Realtime\PluginRealtimePublisher:
+        arguments:
+            $topicPrefix: '%mercure_topic_prefix%'
+
+    App\Plugin\Realtime\PluginRealtimePublisherInterface:
+        alias: App\Plugin\Realtime\PluginRealtimePublisher
+
+    # Plugin manifest validator — schema path is project-relative.
+    App\Plugin\Manifest\PluginManifestValidator:
+        arguments:
+            $schemaPath: '%kernel.project_dir%/docs/plugins/plugin-manifest.schema.json'
+
+    # Plugin lock-file IO is project-dir-bound.
+    App\Plugin\Lifecycle\PluginLockFileReader:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Plugin\Lifecycle\PluginLockFileWriter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Plugin bundles file writer — atomically generates config/selfhelp_plugin_bundles.php.
+    App\Plugin\Bundle\PluginBundlesFileWriter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Persistent plugin safe-mode toggle.
+    App\Plugin\Lifecycle\PluginSafeMode:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Install-mode resolver — env-driven, with safe defaults for production.
+    App\Plugin\Lifecycle\InstallModeResolver:
+        arguments:
+            $appEnv: '%kernel.environment%'
+            $installModeEnv: '%env(default::SELFHELP_PLUGIN_INSTALL_MODE)%'
+            $allowWebPluginInstall: '%env(bool:default::SELFHELP_ALLOW_WEB_PLUGIN_INSTALL)%'
+
+    # Plugin operation lock — wraps the Symfony Lock factory created
+    # by `framework.lock.plugin_operation` so concurrent installs
+    # across multiple app servers cannot race.
+    App\Plugin\Lifecycle\PluginOperationLock:
+        arguments:
+            $lockFactory: '@lock.plugin_operation.factory'
+
+    # Composer / npm wrapper used by orchestrators for dry-runs +
+    # development/trusted-mode real installs. Managed-mode CI runs
+    # composer/npm directly, never via this PHP wrapper.
+    App\Plugin\PackageManager\PackageManagerRunner:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Default no-op backup hook. Operators may override by tagging
+    # `selfhelp.plugin.backup_hook` on a service implementing
+    # PluginBackupHookInterface.
+    App\Plugin\Backup\NoopPluginBackupHook: ~
+    App\Plugin\Backup\PluginBackupHookInterface:
+        alias: App\Plugin\Backup\NoopPluginBackupHook
+
+    # Plugin signature verifier — strict in production, lenient elsewhere.
+    App\Plugin\Security\PluginSignatureVerifier:
+        arguments:
+            $mode: '%env(default:selfhelp_plugin_signature_mode_default:SELFHELP_PLUGIN_SIGNATURE_MODE)%'
+            $publicKeyBase64: '%env(default::SELFHELP_PLUGIN_SIGNATURE_PUBLIC_KEY)%'
+
+    # Plugin compatibility validator — checks plugin manifests against
+    # the current CMS + SDK version.
+    App\Plugin\Versioning\PluginCompatibilityValidator:
+        arguments:
+            $cmsVersion: '%selfhelp.cms_version%'
+            $sdkApiVersion: '%selfhelp.plugin_api_version%'
+
+    # Plugin registry client — uses the optional auth header from
+    # PluginSource and reads its secret from the environment.
+    App\Plugin\Registry\RegistryClient: ~
+
+    # Plugin version resolver — channel filter comes from the env.
+    App\Plugin\Registry\VersionResolver:
+        arguments:
+            $allowedChannels: '%selfhelp.plugin_allowed_channels%'
     
     # API Request Logger Services
     App\Service\Core\ApiRequestLoggerService:
