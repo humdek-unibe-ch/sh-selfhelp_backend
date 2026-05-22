@@ -66,6 +66,26 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
+     * Returns the plugins that are advertised by every enabled
+     * `PluginSource` but are not yet installed in this host. Used by
+     * the admin UI's "Available" tab to offer one-click registry
+     * installs.
+     *
+     * @route /admin/plugins/available
+     * @method GET
+     */
+    public function listAvailable(): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess([
+                'plugins' => $this->pluginAdminService->listAvailableFromRegistries(),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->respondWithError($e);
+        }
+    }
+
+    /**
      * @route /admin/plugins/{pluginId}
      * @method GET
      */

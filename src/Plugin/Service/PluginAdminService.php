@@ -26,6 +26,7 @@ use App\Plugin\Lifecycle\PluginSafeMode;
 use App\Plugin\Lifecycle\PluginUninstaller;
 use App\Plugin\Lifecycle\PluginUpdater;
 use App\Plugin\Manifest\PluginManifest;
+use App\Plugin\Registry\RegistryClient;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginFeatureFlagRepository;
 use App\Repository\Plugin\PluginOperationRepository;
@@ -63,7 +64,49 @@ final class PluginAdminService extends BaseService
         private readonly PluginLockFileReader $lockFileReader,
         private readonly PluginCompatibilityValidator $compatibility,
         private readonly InstallModeResolver $installModeResolver,
+        private readonly RegistryClient $registryClient,
     ) {
+    }
+
+    /**
+     * Browse every enabled `PluginSource` and return a flat list of
+     * available plugin entries. Used by the admin UI's "Available"
+     * tab so admins can install registry-listed plugins with a single
+     * click (the entry already contains a `manifest` field).
+     *
+     * Already-installed plugins are filtered out so admins do not
+     * re-install something that is already managed.
+     *
+     * @return array<int, array<string,mixed>>
+     */
+    public function listAvailableFromRegistries(): array
+    {
+        $installedIds = [];
+        foreach ($this->plugins->findAll() as $p) {
+            $installedIds[$p->getPluginId()] = true;
+        }
+
+        $aggregated = $this->registryClient->fetchAllIndexes();
+        $available = [];
+        foreach ($aggregated as $pluginId => $entriesBySource) {
+            if (isset($installedIds[$pluginId])) {
+                continue;
+            }
+            foreach ($entriesBySource as $sourceName => $entry) {
+                $available[] = [
+                    'sourceName' => $sourceName,
+                    'pluginId' => (string) $pluginId,
+                    'name' => isset($entry['name']) && is_string($entry['name']) ? $entry['name'] : (string) $pluginId,
+                    'description' => isset($entry['description']) && is_string($entry['description']) ? $entry['description'] : null,
+                    'version' => isset($entry['version']) && is_string($entry['version']) ? $entry['version'] : '0.0.0',
+                    'trustLevel' => isset($entry['trustLevel']) && is_string($entry['trustLevel']) ? $entry['trustLevel'] : 'untrusted',
+                    'homepage' => isset($entry['homepage']) && is_string($entry['homepage']) ? $entry['homepage'] : null,
+                    'manifest' => isset($entry['manifest']) && is_array($entry['manifest']) ? $entry['manifest'] : null,
+                    'manifestUrl' => isset($entry['manifestUrl']) && is_string($entry['manifestUrl']) ? $entry['manifestUrl'] : null,
+                ];
+            }
+        }
+        return $available;
     }
 
     /** @return array<int, array<string,mixed>> */
