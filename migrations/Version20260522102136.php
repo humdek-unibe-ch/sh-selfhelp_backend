@@ -23,9 +23,6 @@ use Doctrine\Migrations\AbstractMigration;
  */
 final class Version20260522102136 extends AbstractMigration
 {
-    private const ROUTE_NAME = 'admin_plugins_available';
-    private const PERMISSION = 'admin.plugins.manage';
-
     public function getDescription(): string
     {
         return 'Plugin manager: register GET /admin/plugins/available route.';
@@ -33,11 +30,14 @@ final class Version20260522102136 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
+        $routeName = 'admin_plugins_available';
+        $permission = 'admin.plugins.manage';
+
         $this->addSql(<<<SQL
             INSERT IGNORE INTO `api_routes`
                 (`route_name`, `version`, `methods`, `path`, `controller`, `requirements`, `params`)
             VALUES (
-                'admin_plugins_available',
+                '{$routeName}',
                 'v1',
                 'GET',
                 '/admin/plugins/available',
@@ -51,8 +51,8 @@ final class Version20260522102136 extends AbstractMigration
             INSERT IGNORE INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`)
                 SELECT ar.id, p.id
                 FROM `api_routes` ar
-                JOIN `permissions` p ON p.name = 'admin.plugins.manage'
-                WHERE ar.route_name = 'admin_plugins_available' AND ar.version = 'v1'
+                JOIN `permissions` p ON p.name = '{$permission}'
+                WHERE ar.route_name = '{$routeName}' AND ar.version = 'v1'
         SQL);
     }
 
