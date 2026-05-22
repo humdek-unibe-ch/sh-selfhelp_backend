@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Finalize Plugin Install Request",
+  "description": "Called by the CLI runner (or in-process worker in development mode) after composer/npm + migrations succeed.",
+  "additionalProperties": false,
+  "required": ["operationId", "manifest"],
+  "properties": {
+    "operationId": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "ID of the plugin_operations row created by the install request."
+    },
+    "manifest": {
+      "type": "object",
+      "description": "Manifest used for the install (must match the original request)."
+    }
+  }
+}

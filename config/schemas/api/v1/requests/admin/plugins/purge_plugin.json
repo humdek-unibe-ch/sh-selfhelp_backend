@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Plugin Purge Request",
+  "description": "Destructive operation. Requires confirmedPluginId to match the plugin id exactly (double-typing rule on the admin UI).",
+  "additionalProperties": false,
+  "required": ["confirmedPluginId"],
+  "properties": {
+    "confirmedPluginId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plugin id retyped by the admin to confirm the destructive intent."
+    }
+  }
+}
