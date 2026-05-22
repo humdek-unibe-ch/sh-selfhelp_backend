@@ -1,244 +1,58 @@
-🎯 Dynamic PHP Proxy Hook System with ProxyManager and DB Configuration
-1. Composer Install
-bash
-Copy
-Edit
-composer require ocramius/proxy-manager
-2. Database Schema
-Define a table to describe proxy hooks (extend as needed):
+# Deprecated — Dynamic PHP Proxy Hook System
 
-id	class_name	method_name	hook_type	plugin_service_id	plugin_method	priority
-1	App\Service\Foo	getBar	before	my_plugin.svc	beforeBar	10
-2	App\Service\Foo	getBar	after	my_plugin.svc	afterBar	0
-3	App\Service\Foo	getBar	around	my_plugin.svc	aroundBar	0
-4	App\Service\Foo	getBar	shortcircuit	my_plugin.svc	scBar	100
+> **Status:** This document is retained for historical reference only.
+> The dynamic PHP proxy hook system it describes was a proposal and was
+> **never implemented**. It has been **intentionally retired** in
+> favour of the manifest + Symfony events + tagged services
+> architecture documented under `docs/plugins/`.
+>
+> If you arrived here looking for the plugin extension surface, read:
+>
+> - [`docs/plugins/architecture.md`](plugins/architecture.md) — system-level overview.
+> - [`docs/plugins/developer-guide.md`](plugins/developer-guide.md) — how to build a plugin.
+> - [`docs/plugins/installation.md`](plugins/installation.md) — install / update / remove.
+> - [`docs/plugins/surveyjs-plugin.md`](plugins/surveyjs-plugin.md) — reference plugin.
+> - [`docs/plugins/multi-repo-agents-md.md`](plugins/multi-repo-agents-md.md) — multi-repo AI agent rule.
+> - [`docs/plugins/plugin-manifest.schema.json`](plugins/plugin-manifest.schema.json) — machine-readable manifest schema.
 
-hook_type: before, after, around, shortcircuit
+## Why retired
 
-plugin_service_id: Symfony service ID of the plugin to run
+The proposal below pre-dated the SurveyJS / plugin-ecosystem work. The
+final design uses explicit extension points instead of a runtime
+proxy interceptor:
 
-plugin_method: Method to call in the plugin
+| Concern                                | Proposal (this doc)             | Final design                                              |
+| -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| Hooking core methods (`before/after`)  | Runtime proxy via `ProxyManager`| Symfony events under `App\Plugin\Event\*`                 |
+| Replacing core return values           | Around / shortcircuit hooks     | Tagged services (`selfhelp.plugin.field_renderer`, …)     |
+| Discovering plugin entry points        | DB-backed `hooks` table         | Manifest `plugin.json` validated by the host schema       |
+| Auditability                           | Implicit                        | Every install/update writes `plugin_operations` snapshots |
 
-priority: For hook execution order
+Reasons the proxy approach was dropped:
 
-3. Hook Registry Service
-A Symfony service that loads hook config from the DB and resolves plugin services:
+1. Runtime proxies hide where behavior is contributed and are hard to
+   audit.
+2. They survive Symfony cache compilation poorly.
+3. They can accidentally short-circuit core behavior in production.
+4. They conflict with the manifest-as-source-of-truth principle the
+   rest of the ecosystem relies on.
 
-php
-Copy
-Edit
-// src/Proxy/HookRegistry.php
+## What you should do instead
 
-namespace App\Proxy;
+Need to react to a core action? **Dispatch / subscribe to a Symfony event.**
 
-class HookRegistry
-{
-    private $entityManager;
-    private $container;
+Need to replace a piece of UI? **Contribute a tagged service or an
+`IStyleDefinition` / `IAdminPageDefinition` via the SDK.**
 
-    public function __construct($entityManager, $container)
-    {
-        $this->entityManager = $entityManager;
-        $this->container = $container;
-    }
+Need to add an API route? **Declare it in `plugin.json`** under
+`apiRoutes`; the host's `ApiRouteLoader` picks it up.
 
-    /**
-     * Get all hooks for a given class/method, sorted by priority DESC
-     */
-    public function getHooks(string $class, string $method): array
-    {
-        // Replace with your real query logic, e.g. Doctrine repository
-        $conn = $this->entityManager->getConnection();
-        $sql = 'SELECT * FROM proxy_hooks WHERE class_name = :class AND method_name = :method ORDER BY priority DESC';
-        $stmt = $conn->prepare($sql);
-        $stmt->execute(['class' => $class, 'method' => $method]);
-        $hooks = $stmt->fetchAll();
+Need to add a permission, lookup, feature flag, or realtime topic?
+**Declare it in `plugin.json`** and seed it in your plugin's
+migration.
 
-        // Map plugin service/method
-        foreach ($hooks as &$hook) {
-            $hook['service'] = $this->container->get($hook['plugin_service_id']);
-        }
-        return $hooks;
-    }
-}
-4. Proxy Factory
-Creates proxies for target services according to the loaded hooks.
+## Removing this document
 
-php
-Copy
-Edit
-// src/Proxy/DynamicProxyFactory.php
-
-namespace App\Proxy;
-
-use ProxyManager\Factory\AccessInterceptorValueHolderFactory;
-
-class DynamicProxyFactory
-{
-    private $hookRegistry;
-    private $proxyFactory;
-
-    public function __construct(HookRegistry $hookRegistry)
-    {
-        $this->hookRegistry = $hookRegistry;
-        $this->proxyFactory = new AccessInterceptorValueHolderFactory();
-    }
-
-    public function createProxy($instance)
-    {
-        $class = get_class($instance);
-        $methods = get_class_methods($instance);
-
-        $prefixInterceptors = [];
-        $suffixInterceptors = [];
-
-        foreach ($methods as $method) {
-            $hooks = $this->hookRegistry->getHooks($class, $method);
-
-            // Collect hooks by type
-            foreach ($hooks as $hook) {
-                // SHORTCIRCUIT: replace method entirely if condition is met
-                if ($hook['hook_type'] === 'shortcircuit') {
-                    $prefixInterceptors[$method] = function ($proxy, $instance, $method, $params, &$returnEarly) use ($hook) {
-                        $res = $hook['service']->{$hook['plugin_method']}($params);
-                        if ($res['shouldShortcircuit'] ?? false) {
-                            $returnEarly = true;
-                            return $res['returnValue'] ?? null;
-                        }
-                    };
-                }
-
-                // AROUND: can replace, or modify args/return
-                if ($hook['hook_type'] === 'around') {
-                    $prefixInterceptors[$method] = function ($proxy, $instance, $method, $params, &$returnEarly) use ($hook) {
-                        $res = $hook['service']->{$hook['plugin_method']}($params, $proxy, $instance, $method);
-                        if ($res['handled'] ?? false) {
-                            $returnEarly = true;
-                            return $res['returnValue'] ?? null;
-                        }
-                    };
-                }
-
-                // BEFORE: run before the method
-                if ($hook['hook_type'] === 'before') {
-                    $prefixInterceptors[$method] = function ($proxy, $instance, $method, $params, &$returnEarly) use ($hook) {
-                        $hook['service']->{$hook['plugin_method']}($params, $proxy, $instance, $method);
-                    };
-                }
-
-                // AFTER: run after the method
-                if ($hook['hook_type'] === 'after') {
-                    $suffixInterceptors[$method] = function ($proxy, $instance, $method, $params, $returnValue, &$returnEarly) use ($hook) {
-                        $modified = $hook['service']->{$hook['plugin_method']}($params, $returnValue, $proxy, $instance, $method);
-                        if (isset($modified)) {
-                            return $modified; // allows plugins to override return value
-                        }
-                        return $returnValue;
-                    };
-                }
-            }
-        }
-
-        return $this->proxyFactory->createProxy($instance, $prefixInterceptors, $suffixInterceptors);
-    }
-}
-5. Example Plugin Service
-php
-Copy
-Edit
-namespace App\Plugin;
-
-class MyPlugin
-{
-    public function beforeBar($params, $proxy, $instance, $method)
-    {
-        // Log, modify params by reference, etc.
-    }
-
-    public function afterBar($params, $returnValue, $proxy, $instance, $method)
-    {
-        // Optionally modify $returnValue and return new value
-    }
-
-    public function aroundBar($params, $proxy, $instance, $method)
-    {
-        // Completely replace method call
-        // If you want to call original:
-        // $origValue = $instance->$method(...$params);
-        // return [ 'handled' => true, 'returnValue' => $origValue . ' - changed' ];
-        return [ 'handled' => true, 'returnValue' => 'Handled by plugin!' ];
-    }
-
-    public function scBar($params)
-    {
-        if (/* your logic */) {
-            return ['shouldShortcircuit' => true, 'returnValue' => 'Skipped core!'];
-        }
-        return ['shouldShortcircuit' => false];
-    }
-}
-6. Wiring in Symfony
-Replace your original service definition with a factory for the proxy:
-
-yaml
-Copy
-Edit
-services:
-    App\Service\Foo:
-        factory: ['@App\Proxy\DynamicProxyFactory', 'createProxy']
-        arguments: ['@App\Service\Foo.inner']
-
-    App\Service\Foo.inner:
-        class: App\Service\Foo
-        arguments: [...] # as normal
-Or, you can do this at runtime for specific services.
-
-7. Example Flow
-Admin (or plugin) adds a hook row to DB for App\Service\Foo::getBar with hook_type=around, plugin_service_id=my_plugin.svc, etc.
-
-DynamicProxyFactory wraps the original service when created or injected.
-
-When you call $foo->getBar():
-
-Proxy checks DB-defined hooks:
-
-Runs before hooks first (if any)
-
-Checks for shortcircuit or around hooks, which may skip original method and return value directly
-
-Otherwise, calls original method
-
-Runs after hooks, possibly modifying the return value
-
-8. Notes
-Priorities: Sort and run hooks by priority field as needed.
-
-Multiple hooks: Chain all relevant hooks, if desired, for a single method (e.g., run all before, then first shortcircuit/around, then all after).
-
-Performance: Cache your hook registry per request/container build.
-
-Safety: Ensure only trusted plugin services can be registered/executed.
-
-9. Further Reading
-ProxyManager: AccessInterceptorValueHolderFactory
-
-Symfony: Service Factories
-
-Dynamic method interception: Blog
-
-✅ Summary Checklist (For Your TODOs)
- Design DB schema for hook config
-
- Build HookRegistry service to load and resolve plugin hooks
-
- Implement DynamicProxyFactory for wrapping/proxying services
-
- Implement sample plugin services with various hook methods
-
- Replace/inject proxies for desired services in Symfony config
-
- Document how admins/plugins can add new hooks via DB
-
- Add tests for before/after/around/shortcircuit behavior
-
- Review security—ensure only trusted services/methods are registered
+We keep the file (rather than deleting it) so external links keep
+working. Once the broader documentation is more discoverable, this
+file may be deleted entirely. Do not extend it.
