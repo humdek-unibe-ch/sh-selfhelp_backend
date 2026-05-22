@@ -40,12 +40,12 @@ This project lives inside the multi-repository SelfHelp ecosystem. Always obey t
 
 When editing files in this plugin repo, also re-read:
 
-- the host backend `AGENTS.md` at `D:\TPF\SelfHelp\sh-selfhelp_backend\AGENTS.md` before changing anything in `backend/`;
-- the host frontend `AGENTS.md` at `D:\TPF\SelfHelp\sh-selfhelp_frontend\AGENTS.md` before changing anything in `frontend/`;
-- the shared package `AGENTS.md` at `D:\TPF\SelfHelp\sh-selfhelp_shared\AGENTS.md` before changing anything that imports from `@selfhelp/shared`;
-- the mobile `AGENTS.md` at `D:\TPF\SelfHelp\sh-selfhelp_mobile\AGENTS.md` before changing anything in `mobile/`.
+- the host backend `AGENTS.md` (`sh-selfhelp_backend/AGENTS.md`) before changing anything in `backend/`;
+- the host frontend `AGENTS.md` (`sh-selfhelp_frontend/AGENTS.md`) before changing anything in `frontend/`;
+- the shared package `AGENTS.md` (`sh-selfhelp_shared/AGENTS.md`) before changing anything that imports from `@selfhelp/shared`;
+- the mobile `AGENTS.md` (`sh-selfhelp_mobile/AGENTS.md`) before changing anything in `mobile/`.
 
-The canonical Multi-Repository AGENTS.md Rule lives at `D:\TPF\SelfHelp\sh-selfhelp_backend\docs\plugins\multi-repo-agents-md.md`.
+The canonical Multi-Repository AGENTS.md Rule lives at `sh-selfhelp_backend/docs/plugins/multi-repo-agents-md.md`. All paths are repository-relative inside the operator's workspace; never hard-code absolute paths.
 
 ## Extension points only
 

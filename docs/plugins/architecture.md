@@ -3,12 +3,36 @@
 This document is the system-level overview of the SelfHelp plugin
 ecosystem. It complements:
 
-- `developer-guide.md` — how to build a plugin (audience: plugin authors).
-- `installation.md` — how to install / update / remove plugins (audience: operators).
-- `multi-repo-agents-md.md` — the AGENTS.md coordination rule across repos.
-- `plugin-repo-agents-md-template.md` — drop-in AGENTS.md for plugin repos.
-- `plugin-manifest.schema.json` — machine-readable manifest schema.
-- `surveyjs-plugin.md` — first-reference plugin design.
+**Audience: operators**
+- [`installation.md`](./installation.md) — how to install / update / remove plugins.
+- [`install-modes.md`](./install-modes.md) — development / managed / trusted modes.
+- [`lock-file.md`](./lock-file.md) — `selfhelp.plugins.lock.json` contract.
+- [`registry-and-channels.md`](./registry-and-channels.md) — sources + release channels.
+- [`trust-levels.md`](./trust-levels.md) — official / reviewed / untrusted.
+- [`plugin-operations-and-rollback.md`](./plugin-operations-and-rollback.md) — operation lifecycle.
+- [`ci-workflows.md`](./ci-workflows.md) — host & plugin CI pipelines.
+
+**Audience: plugin authors**
+- [`developer-guide.md`](./developer-guide.md) — how to build a plugin.
+- [`capabilities.md`](./capabilities.md) — capability allow-list reference.
+- [`versioning-and-compatibility.md`](./versioning-and-compatibility.md) — SemVer + host compatibility.
+- [`mobile-plugins.md`](./mobile-plugins.md) — Expo mobile target rules.
+- [`realtime-and-no-polling.md`](./realtime-and-no-polling.md) — Mercure topics + the no-polling rule.
+- [`lookups.md`](./lookups.md) — extending the host enum store.
+- [`feature-flags.md`](./feature-flags.md) — runtime feature flags.
+- [`testing-matrix.md`](./testing-matrix.md) — required tests per plugin.
+- [`surveyjs-plugin.md`](./surveyjs-plugin.md) — first-reference plugin design.
+- [`plugin-repo-agents-md-template.md`](./plugin-repo-agents-md-template.md) — drop-in AGENTS.md.
+
+**Audience: security & data-protection officers**
+- [`security-model.md`](./security-model.md) — threat model, signatures, capability enforcement.
+- [`gdpr-and-data-ownership.md`](./gdpr-and-data-ownership.md) — ownership rule, export & erasure.
+
+**Audience: tooling**
+- [`multi-repo-agents-md.md`](./multi-repo-agents-md.md) — AGENTS.md coordination across repos.
+- [`plugin-manifest.schema.json`](./plugin-manifest.schema.json) — manifest schema.
+- [`plugin-lock.schema.json`](./plugin-lock.schema.json) — lock-file schema.
+- [`plugin-registry.schema.json`](./plugin-registry.schema.json) — registry-source schema.
 
 ## 1. Goal
 

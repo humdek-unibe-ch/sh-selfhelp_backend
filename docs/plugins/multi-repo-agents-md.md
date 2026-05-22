@@ -15,12 +15,16 @@ This project is multi-repository. The AI agent must always obey the `AGENTS.md` 
 
 The SelfHelp plugin ecosystem touches at least these repositories:
 
-- Symfony backend: `D:\TPF\SelfHelp\sh-selfhelp_backend` → [AGENTS.md](../../AGENTS.md)
-- Next.js frontend: `D:\TPF\SelfHelp\sh-selfhelp_frontend` → `AGENTS.md`
-- Shared package: `D:\TPF\SelfHelp\sh-selfhelp_shared` → `AGENTS.md`
-- Expo mobile app: `D:\TPF\SelfHelp\sh-selfhelp_mobile` → `AGENTS.md`
-- Old CMS reference repo (read-only research): `D:\TPF\SelfHelp\sh-selfhelp`
-- Future plugin repos under `D:\TPF\SelfHelp\plugins\` (first one: `sh2-shp-survey-js`).
+| Repository                  | Role                          | Location                                                        |
+|-----------------------------|-------------------------------|-----------------------------------------------------------------|
+| `sh-selfhelp_backend`       | Symfony backend host          | `<workspace>/sh-selfhelp_backend` ([AGENTS.md](../../AGENTS.md)) |
+| `sh-selfhelp_frontend`      | Next.js frontend host         | `<workspace>/sh-selfhelp_frontend` (`AGENTS.md`)                |
+| `sh-selfhelp_shared`        | Shared TypeScript SDK         | `<workspace>/sh-selfhelp_shared` (`AGENTS.md`)                  |
+| `sh-selfhelp_mobile`        | Expo / React Native mobile    | `<workspace>/sh-selfhelp_mobile` (`AGENTS.md`)                  |
+| `sh-selfhelp` (deprecated)  | Old PHP CMS, read-only        | optional sibling checkout                                       |
+| `plugins/<plugin-id>/`      | Individual plugin repositories | sibling sub-folder under `<workspace>/plugins/` (first one: `sh2-shp-survey-js`) |
+
+`<workspace>` is the directory the operator clones the repositories into. Do not encode an absolute path — the layout works the same on any developer machine, CI runner, or container that follows this sibling-folder convention. Operators may override the paths in the git-ignored `AGENTS.local.md` file inside each repo if they need to record machine-specific locations.
 
 ## Mandatory rules
 
@@ -52,8 +56,10 @@ Run through this list every phase and every PR that touches more than one repo:
 
 A task to add a CMS style to the SurveyJS v2 plugin's frontend bundle requires editing:
 
-- `D:\TPF\SelfHelp\plugins\sh2-shp-survey-js\frontend\src\styles\Surveyjs.tsx` — read the plugin repo's `AGENTS.md`.
-- `D:\TPF\SelfHelp\sh-selfhelp_shared\src\registry\styles.registry.ts` — re-read the shared package `AGENTS.md` before editing.
-- `D:\TPF\SelfHelp\sh-selfhelp_frontend\src\app\components\frontend\styles\BasicStyle.tsx` (only if the host dispatcher signature changes) — re-read the frontend `AGENTS.md`.
+- `plugins/sh2-shp-survey-js/frontend/src/styles/Surveyjs.tsx` — read the plugin repo's `AGENTS.md`.
+- `sh-selfhelp_shared/src/registry/styles.registry.ts` — re-read the shared package `AGENTS.md` before editing.
+- `sh-selfhelp_frontend/src/app/components/frontend/styles/BasicStyle.tsx` (only if the host dispatcher signature changes) — re-read the frontend `AGENTS.md`.
 
 The mobile repo is not touched in this example, so its `AGENTS.md` does not need to be re-read.
+
+All paths above are repository-relative (within `<workspace>`). Never hard-code absolute paths in committed documentation, scripts, or code.
