@@ -106,6 +106,19 @@ sequenceDiagram
 - **Domain Events**: Business logic triggers
 - **Cross-Cutting Concerns**: Security, logging, caching
 
+### 4. **Plugin Layer**
+
+The CMS is extended through a manifest-driven plugin ecosystem implemented under `src/Plugin/`. Plugins live in their own repositories and ship up to three packages each: a Symfony bundle (Composer), a frontend npm package, and an optional mobile npm package.
+
+- **Manifest as source of truth.** Every plugin ships a `plugin.json` validated against `docs/plugins/plugin-manifest.schema.json`. Permissions, lookups, API routes, realtime topics, feature flags, capabilities, and trust levels are declared there.
+- **Bundles loaded dynamically.** Installed plugins are listed in `config/selfhelp_plugin_bundles.php`, which is regenerated atomically by the installer. The default `config/bundles.php` includes that file.
+- **Extension points only.** Plugins contribute through documented Symfony events (under `App\Plugin\Event\*`) and tagged services. The legacy `docs/plugin_hooks.md` proxy proposal is retired.
+- **Distributed locking.** `App\Plugin\Lifecycle\PluginOperationLock` ensures a single in-flight install/update/uninstall operation per plugin and cluster-wide.
+- **Deterministic builds.** `selfhelp.plugins.lock.json` at the repository root pins versions, capabilities, signatures, migrations, and styles per installed plugin. Frontend and mobile hosts derive their dependencies from the same lock through their `plugins:sync` scripts.
+- **Realtime-only.** Plugin state changes publish on the `selfhelp/plugins/state` Mercure topic; the admin UI never polls.
+
+Full plugin documentation lives under `docs/plugins/` — `architecture.md` (system overview), `developer-guide.md` (plugin authors), `installation.md` (operators), `surveyjs-plugin.md` (reference plugin), `plugin-manifest.schema.json` (machine-readable schema), `multi-repo-agents-md.md` (AI agent rule), and `plugin-repo-agents-md-template.md` (drop-in `AGENTS.md` for new plugin repos).
+
 ## 📁 Directory Structure
 
 ```

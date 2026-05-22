@@ -1,0 +1,355 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/plugin-manifest.schema.json",
+    "title": "SelfHelp Plugin Manifest",
+    "description": "Schema for `plugin.json` at the root of every SelfHelp plugin repository. See docs/plugins/architecture.md.",
+    "type": "object",
+    "required": ["id", "name", "version", "pluginApiVersion", "compatibility", "security"],
+    "additionalProperties": false,
+    "properties": {
+        "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Plugin identifier (kebab-case)."
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "description": {
+            "type": "string"
+        },
+        "version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$",
+            "description": "Plugin SemVer version."
+        },
+        "pluginApiVersion": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+$",
+            "description": "SDK contract version this plugin targets (e.g. \"1.0\")."
+        },
+        "author": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "email": {"type": "string", "format": "email"},
+                "url": {"type": "string", "format": "uri"}
+            },
+            "required": ["name"],
+            "additionalProperties": false
+        },
+        "license": {"type": "string"},
+        "homepage": {"type": "string", "format": "uri"},
+        "compatibility": {
+            "type": "object",
+            "required": ["selfhelp"],
+            "additionalProperties": false,
+            "properties": {
+                "selfhelp": {"type": "string"},
+                "php": {"type": "string"},
+                "node": {"type": "string"},
+                "react": {"type": "string"},
+                "reactNative": {"type": "string"},
+                "expoSdk": {"type": "string"}
+            }
+        },
+        "dependencies": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["pluginId", "version", "required"],
+                "additionalProperties": false,
+                "properties": {
+                    "pluginId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+                    "version": {"type": "string"},
+                    "required": {"type": "boolean"},
+                    "featureFlag": {"type": "string"}
+                }
+            }
+        },
+        "conflicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["pluginId", "version", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                    "pluginId": {"type": "string"},
+                    "version": {"type": "string"},
+                    "reason": {"type": "string"}
+                }
+            }
+        },
+        "backend": {
+            "type": "object",
+            "required": ["package", "bundleClass"],
+            "additionalProperties": false,
+            "properties": {
+                "package": {"type": "string"},
+                "bundleClass": {"type": "string"},
+                "migrationsNamespace": {"type": "string"}
+            }
+        },
+        "frontend": {
+            "type": "object",
+            "required": ["package", "version"],
+            "additionalProperties": false,
+            "properties": {
+                "package": {"type": "string"},
+                "version": {"type": "string"}
+            }
+        },
+        "mobile": {
+            "type": "object",
+            "required": ["package", "version"],
+            "additionalProperties": false,
+            "properties": {
+                "package": {"type": "string"},
+                "version": {"type": "string"},
+                "readonly": {"type": "boolean"}
+            }
+        },
+        "security": {
+            "type": "object",
+            "required": ["trustLevel", "capabilities"],
+            "additionalProperties": false,
+            "properties": {
+                "trustLevel": {
+                    "type": "string",
+                    "enum": ["official", "reviewed", "untrusted"]
+                },
+                "capabilities": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "backendBundle",
+                            "databaseMigrations",
+                            "readUsers",
+                            "writeUsers",
+                            "deleteUsers",
+                            "readDataTables",
+                            "writeDataTables",
+                            "deleteDataTables",
+                            "externalNetworkAccess",
+                            "scheduledJobs",
+                            "publicCallbacks",
+                            "adminPages",
+                            "frontendStyles",
+                            "mobileStyles",
+                            "realtimePublish",
+                            "fileUploads",
+                            "secretAccess"
+                        ]
+                    }
+                },
+                "cspRules": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                },
+                "externalHosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["host", "type", "reason"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "host": {"type": "string"},
+                            "type": {
+                                "type": "string",
+                                "enum": ["script", "style", "font", "image", "iframe", "fetch"]
+                            },
+                            "reason": {"type": "string"}
+                        }
+                    }
+                },
+                "signaturePath": {"type": "string"}
+            }
+        },
+        "permissions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "description"],
+                "additionalProperties": false,
+                "properties": {
+                    "key": {"type": "string"},
+                    "description": {"type": "string"},
+                    "defaultRoles": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                }
+            }
+        },
+        "dataAccess": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "read": {"type": "array", "items": {"type": "string"}},
+                "write": {"type": "array", "items": {"type": "string"}},
+                "delete": {"type": "array", "items": {"type": "string"}}
+            }
+        },
+        "realtimeTopics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "description"],
+                "additionalProperties": false,
+                "properties": {
+                    "key": {"type": "string"},
+                    "description": {"type": "string"},
+                    "requiredPermission": {"type": "string"},
+                    "payloadSchemaPath": {"type": "string"}
+                }
+            }
+        },
+        "featureFlags": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "description", "defaultEnabled"],
+                "additionalProperties": false,
+                "properties": {
+                    "key": {"type": "string"},
+                    "description": {"type": "string"},
+                    "defaultEnabled": {"type": "boolean"},
+                    "capability": {"type": "string"}
+                }
+            }
+        },
+        "lookups": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "extends": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["typeCode", "ownership", "entries"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "typeCode": {"type": "string"},
+                            "ownership": {
+                                "type": "string",
+                                "enum": ["plugin_extendable", "plugin_owned"]
+                            },
+                            "entries": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["code", "value"],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "code": {"type": "string"},
+                                        "value": {"type": "string"},
+                                        "description": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "styles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "description", "canHaveChildren"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "canHaveChildren": {"type": "boolean"},
+                    "capability": {"type": "string"}
+                }
+            }
+        },
+        "adminPages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["slug", "label", "permission"],
+                "additionalProperties": false,
+                "properties": {
+                    "slug": {"type": "string"},
+                    "label": {"type": "string"},
+                    "permission": {"type": "string"},
+                    "icon": {"type": "string"}
+                }
+            }
+        },
+        "apiRoutes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "path", "methods"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {"type": "string"},
+                    "path": {"type": "string"},
+                    "methods": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                        }
+                    },
+                    "permission": {"type": "string"}
+                }
+            }
+        },
+        "scheduledJobs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["type", "description", "capability"],
+                "additionalProperties": false,
+                "properties": {
+                    "type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "capability": {
+                        "type": "string",
+                        "enum": ["scheduledJobs"]
+                    }
+                }
+            }
+        },
+        "assets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["src", "dest", "type"],
+                "additionalProperties": false,
+                "properties": {
+                    "src": {"type": "string"},
+                    "dest": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "enum": ["script", "style", "font", "image", "other"]
+                    }
+                }
+            }
+        },
+        "health": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "endpoint": {"type": "string"},
+                "serviceId": {"type": "string"}
+            }
+        },
+        "labels": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+        }
+    }
+}
