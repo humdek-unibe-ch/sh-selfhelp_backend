@@ -34,6 +34,7 @@ final class RegistryClient
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly PluginSourceRepository $sources,
+        private readonly PluginSourceUrlResolver $sourceUrlResolver,
         private readonly LoggerInterface $logger = new NullLogger(),
         /** @var array<string,string> */
         private readonly array $envOverrides = [],
@@ -55,7 +56,7 @@ final class RegistryClient
             } catch (\Throwable $e) {
                 $this->logger->warning('Plugin registry fetch failed', [
                     'source' => $source->getName(),
-                    'url' => $source->getUrl(),
+                    'url' => $this->sourceUrlResolver->resolve($source),
                     'exception' => $e->getMessage(),
                 ]);
                 continue;
@@ -120,7 +121,7 @@ final class RegistryClient
     private function resolveIndexUrl(PluginSource $source): string
     {
         $kind = $source->getKind();
-        $url = rtrim($source->getUrl(), '/');
+        $url = rtrim($this->sourceUrlResolver->resolve($source), '/');
         return match ($kind) {
             PluginSource::KIND_PUBLIC_REGISTRY,
             PluginSource::KIND_PRIVATE_REGISTRY => $url . '/registry.json',

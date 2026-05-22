@@ -27,6 +27,7 @@ use App\Plugin\Lifecycle\PluginUninstaller;
 use App\Plugin\Lifecycle\PluginUpdater;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Registry\RegistryClient;
+use App\Plugin\Registry\PluginSourceUrlResolver;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginFeatureFlagRepository;
 use App\Repository\Plugin\PluginOperationRepository;
@@ -65,6 +66,7 @@ final class PluginAdminService extends BaseService
         private readonly PluginCompatibilityValidator $compatibility,
         private readonly InstallModeResolver $installModeResolver,
         private readonly RegistryClient $registryClient,
+        private readonly PluginSourceUrlResolver $sourceUrlResolver,
     ) {
     }
 
@@ -465,7 +467,7 @@ final class PluginAdminService extends BaseService
             'id' => $source->getId(),
             'name' => $source->getName(),
             'kind' => $source->getKind(),
-            'url' => $source->getUrl(),
+            'url' => $this->sourceUrlResolver->resolve($source),
             'authHeaderName' => $source->getAuthHeaderName(),
             'authSecretEnvVar' => $source->getAuthSecretEnvVar(),
             'channel' => $source->getChannel(),

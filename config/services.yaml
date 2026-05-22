@@ -57,6 +57,12 @@ parameters:
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
     selfhelp.plugin_api_version: '%env(default:selfhelp_plugin_api_version_default:SELFHELP_PLUGIN_API_VERSION)%'
     selfhelp_plugin_api_version_default: '1.0'
+    # Default official plugin registry URL. Plugin sources remain
+    # DB-backed via `plugin_sources`; this env var only overrides the
+    # seeded system source `humdek-public` so an operator can point the
+    # official catalogue at a mirror without editing a protected row.
+    selfhelp.plugin_default_registry_url: '%env(default:selfhelp_plugin_default_registry_url_default:SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL)%'
+    selfhelp_plugin_default_registry_url_default: 'https://humdek-unibe-ch.github.io/sh2-plugin-registry/'
 
     # Plugin signature verification mode (strict|lenient). Production
     # defaults to strict. Override with SELFHELP_PLUGIN_SIGNATURE_MODE.
@@ -186,6 +192,10 @@ services:
 
     # Plugin registry client — uses the optional auth header from
     # PluginSource and reads its secret from the environment.
+    App\Plugin\Registry\PluginSourceUrlResolver:
+        arguments:
+            $defaultRegistryUrl: '%selfhelp.plugin_default_registry_url%'
+
     App\Plugin\Registry\RegistryClient: ~
 
     # Plugin version resolver — channel filter comes from the env.
