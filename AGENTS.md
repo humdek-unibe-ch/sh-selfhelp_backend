@@ -363,6 +363,17 @@ Codify in every plugin's `plugin.json` and respect when reviewing plugin migrati
 - Generated bundles file: `config/selfhelp_plugin_bundles.php`. `config/bundles.php` includes it once; it is regenerated atomically by the install/update/uninstall workers. NEVER edited at runtime from DB.
 - Emergency safe mode: `SELFHELP_DISABLE_PLUGINS=true` or `php bin/console selfhelp:plugin:safe-mode --enable` short-circuits `config/bundles.php` and boots with core bundles only.
 
+### Plugin Composer root (`var/plugin-composer/`)
+
+- Plugin packages live in `var/plugin-composer/vendor/<package>/`. The host's `composer.json` / `composer.lock` / `vendor/` are NEVER touched by plugin install / update / uninstall.
+- `var/plugin-composer/composer.json` is generated on first install by `App\Plugin\PackageManager\PluginComposerRoot::ensure()`. It seeds `provide` from the host's `vendor/composer/installed.json` for the host-provided package families (`symfony/*`, `doctrine/*`, `psr/*`, `humdek/sh-selfhelp-*`) at the host's resolved versions, plus `config.platform` mirroring the host's PHP + `ext-*` matrix. Plugin `require` constraints satisfy against this `provide` block — no duplicate vendor tree is fetched. Do NOT edit the file by hand; let the helper rewrite it.
+- A SECONDARY `Composer\Autoload\ClassLoader` is registered immediately after the host autoloader at boot. The boot helper `App\Plugin\PackageManager\PluginAutoloaderBootstrap::register()` is called from `public/index.php`, `bin/console`, and `tests/bootstrap.php`. The plugin loader is APPENDED (not prepended) so on namespace collision the host's classes win — the plugin loader only resolves classes the host loader could not.
+- `App\Plugin\PackageManager\PluginAutoloaderRegistry` stashes the loader instance so `PackageManagerRunner::refreshComposerAutoloader()` can merge regenerated PSR-4 / classmap maps into it after `composer require` completes (without restarting the worker).
+- `PackageManagerRunner` invokes Composer with `cwd = var/plugin-composer/` and `COMPOSER=composer.json` env so a stray ambient `COMPOSER` cannot redirect plugin operations at the host root.
+- `PluginPurger` only cleans plugin-owned artefacts (`var/plugins/<id>-<ver>/`, `public/plugin-artifacts/<id>-<ver>/`, plugin-tagged DB rows). It NEVER removes `var/plugin-composer/`. Recovery from a half-written plugin Composer root is `rm -rf var/plugin-composer/{vendor,composer.lock}` followed by a reinstall.
+- Dependency policy: plugin packages SHOULD declare host-provided packages (`symfony/*`, `doctrine/*`, `psr/*`, `humdek/sh-selfhelp-*`) in their `require` block normally, with constraints that match the host's resolved version. Adding a host-provided package to the plugin Composer root as a real (non-`provide`) dependency is forbidden — it would download a duplicate copy and risk dual-class-loading. `App\Plugin\Security\PluginDependencyPolicy` runs a soft check during install for standalone archive sources and surfaces drift to the operation log.
+- Hosts that already have a plugin Composer package installed in the host vendor (from before this isolation refactor) clean up with one one-shot command: `composer remove humdek/<plugin-package> --no-plugins --no-scripts`. Plugin DB rows + lock-file entries + plugin data are preserved; the next `.shplugin` install lands under `var/plugin-composer/`.
+
 ### Plugin install pipeline (Messenger-driven)
 
 Every install / update / uninstall flows through the **same path**:

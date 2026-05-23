@@ -17,6 +17,7 @@ use App\Plugin\Lifecycle\PluginOperationRecorder;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\PackageManager\PackageManagerRunner;
+use App\Plugin\Security\PluginDependencyPolicy;
 use App\Repository\Plugin\PluginOperationRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -56,6 +57,7 @@ final class InstallPluginHandler
         private readonly PackageManagerRunner $packageManager,
         private readonly PluginArchivePromoter $archivePromoter,
         private readonly InstallModeResolver $installModeResolver,
+        private readonly PluginDependencyPolicy $dependencyPolicy,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -133,6 +135,16 @@ final class InstallPluginHandler
             }
 
             $repository = $this->resolveComposerRepository($composer, $resolved, $promotedBackendDir);
+
+            // Soft check — for standalone archives the package's
+            // composer.json is on disk in the promoted backend dir, so
+            // we can surface host-vs-plugin dependency drift to the
+            // operation log BEFORE composer fires. Connected / non-
+            // archive sources skip the check; Composer's solver will
+            // surface the same drift at solve-time.
+            if ($promotedBackendDir !== null) {
+                $this->logDependencyPolicyReport($operation, $promotedBackendDir);
+            }
 
             $this->recorder->appendLog($operation, 'composer-require:start', [
                 'package' => $package,
@@ -213,6 +225,52 @@ final class InstallPluginHandler
         $this->recorder->appendLog($operation, 'managed-runbook', ['runbook' => $runbook], 25);
         // Operation intentionally stays running — it is waiting for the
         // operator. finalize() will move it to succeeded/failed.
+    }
+
+    /**
+     * Reads the package's `composer.json` from the promoted backend
+     * dir, runs it through {@see PluginDependencyPolicy::inspect()},
+     * and writes the report to the operation log. Soft check: never
+     * fails the install — Composer's solver runs immediately after
+     * and is the authoritative gate. The log entry exists so
+     * operators auditing a failed install can see the drift at a
+     * glance.
+     */
+    private function logDependencyPolicyReport(PluginOperation $operation, string $promotedBackendDir): void
+    {
+        $composerPath = $promotedBackendDir . DIRECTORY_SEPARATOR . 'composer.json';
+        if (!is_file($composerPath)) {
+            return;
+        }
+        $raw = @file_get_contents($composerPath);
+        if (!is_string($raw) || $raw === '') {
+            return;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data)) {
+            return;
+        }
+        $require = $data['require'] ?? [];
+        if (!is_array($require) || $require === []) {
+            return;
+        }
+        $stringKeyed = [];
+        foreach ($require as $key => $value) {
+            if (is_string($key)) {
+                $stringKeyed[$key] = $value;
+            }
+        }
+        if ($stringKeyed === []) {
+            return;
+        }
+        $report = $this->dependencyPolicy->inspect($stringKeyed);
+        if ($report['warnings'] === [] && $report['violations'] === []) {
+            return;
+        }
+        $this->recorder->appendLog($operation, 'dependency-policy:report', [
+            'warnings' => $report['warnings'],
+            'violations' => $report['violations'],
+        ], 18);
     }
 
     /**

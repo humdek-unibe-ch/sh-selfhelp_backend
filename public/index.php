@@ -19,6 +19,14 @@ if (\PHP_SAPI !== 'cli') {
 
 require_once dirname(__DIR__).'/vendor/autoload_runtime.php';
 
+// Plugin Composer root lives under `var/plugin-composer/` and is
+// resolved by a SECONDARY ClassLoader appended to the SPL chain. This
+// keeps host `composer.json` / `composer.lock` / `vendor/` untouched
+// by plugin install/update/uninstall. See
+// `App\Plugin\PackageManager\PluginAutoloaderBootstrap` and
+// `docs/plugins/architecture.md`.
+\App\Plugin\PackageManager\PluginAutoloaderBootstrap::register(dirname(__DIR__));
+
 return static function (array $context) {
     return new Kernel($context['APP_ENV'], (bool) $context['APP_DEBUG']);
 };

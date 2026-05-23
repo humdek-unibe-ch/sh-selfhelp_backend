@@ -547,7 +547,8 @@ files/folders/DB rows regardless of source. The full breakdown lives in
 
 | Location                                            | What lands there                                                                                         |
 |-----------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| `vendor/humdek/<id>/`                               | `composer require` result. Owned by Composer; reproducible.                                              |
+| `var/plugin-composer/composer.json` + `composer.lock` | Plugin-only Composer root. Auto-managed by `PluginComposerRoot::ensure()` on first install. **Never edit by hand.** |
+| `var/plugin-composer/vendor/<package>/`             | `composer require` result for plugin packages. Resolved by a SECONDARY autoloader registered at boot.    |
 | `var/plugins/<id>-<ver>/staging/<random>/`          | `.shplugin` uploads land here first. Deleted on success; TTL-purged on failure.                          |
 | `var/plugins/<id>-<ver>/installed/`                 | Promoted from staging; canonical artefact location for `.shplugin` installs.                             |
 | `public/plugin-artifacts/<id>-<ver>/`               | Web-served runtime ESM + CSS. The frontend loads `/plugin-artifacts/...` at request time (no rebuild).   |
@@ -560,6 +561,13 @@ files/folders/DB rows regardless of source. The full breakdown lives in
 | `lookups` + `styles` + `styles_fields`              | Plugin contributions tagged with `id_plugins`. Cleared on uninstall (styles) / purge (lookups).          |
 | Plugin-owned tables (`survey_runs`, …)              | Created by plugin migrations. Survive uninstall; cleared by purge only.                                  |
 
+> **Important:** The host's own `composer.json`, `composer.lock`, and
+> `vendor/` are NEVER touched by plugin install/update/uninstall.
+> Plugin packages live in `var/plugin-composer/vendor/<package>/` and
+> are resolved through a secondary `Composer\Autoload\ClassLoader`
+> registered immediately after the host autoloader at boot. See §15
+> below.
+
 The matching `.gitignore` entries on the host (already in place) are:
 
 ```gitignore
@@ -569,6 +577,132 @@ The matching `.gitignore` entries on the host (already in place) are:
 /selfhelp.plugins.lock.json*
 /config/selfhelp_plugin_bundles.php
 ```
+
+`/var/` already covers `var/plugin-composer/` — nothing leaks into host VCS.
+
+## 15. Plugin Composer root (`var/plugin-composer/`)
+
+Plugin packages live in an isolated Composer root under
+`var/plugin-composer/`. The host's `composer.json` / `composer.lock` /
+`vendor/` are read-only with respect to plugins.
+
+### 15.1 Layout
+
+```
+var/plugin-composer/
+├── composer.json     # generated on first install; do NOT edit
+├── composer.lock     # written by Composer
+└── vendor/
+    ├── autoload.php  # secondary ClassLoader, registered at boot
+    └── <package>/    # one dir per plugin package
+```
+
+### 15.2 Boot wiring
+
+`public/index.php`, `bin/console`, and `tests/bootstrap.php` each call
+
+```php
+\App\Plugin\PackageManager\PluginAutoloaderBootstrap::register(dirname(__DIR__));
+```
+
+immediately after the host's `vendor/autoload_runtime.php` (or
+`vendor/autoload.php`). The helper:
+
+1. checks for `var/plugin-composer/vendor/autoload.php`;
+2. requires it (Composer's autoload returns the `ClassLoader`);
+3. **unregisters and re-registers the loader with `prepend=false`**, so
+   the host's autoloader resolves first on namespace collision;
+4. stashes the loader in `PluginAutoloaderRegistry` so
+   `PackageManagerRunner` can refresh it after `composer require`.
+
+A missing `var/plugin-composer/vendor/autoload.php` is a no-op — fresh
+hosts boot cleanly with no plugins installed.
+
+### 15.3 Dependency policy: host-provided packages stay host-provided
+
+The seeded `var/plugin-composer/composer.json` materialises:
+
+- `provide` — every package under `symfony/*`, `doctrine/*`, `psr/*`,
+  and `humdek/sh-selfhelp-*` from the host's
+  `vendor/composer/installed.json` at the host's resolved version;
+- `config.platform` — the host's PHP version + every loaded `ext-*`.
+
+Plugin packages may declare these in their `require` block normally;
+Composer's solver checks the constraint against the `provide` block
+and never downloads a duplicate vendor tree. Because the secondary
+`ClassLoader` is appended (not prepended), if a plugin somehow ships
+its own copy of a host-provided class the host's class still wins on
+collision.
+
+`PluginDependencyPolicy` runs a soft check during install for
+standalone archive sources: it inspects the package's
+`composer.json#require`, compares each host-provided entry to the
+host's resolved version, and writes a `dependency-policy:report`
+entry to `plugin_operations.logs_json` so operators see drift before
+Composer's solver does.
+
+### 15.4 Migration from a pre-isolated host
+
+Hosts that already have a plugin Composer package mixed into the host
+`vendor/` (for example because they were installed before this
+isolation refactor) need a one-shot cleanup. The plugin's `plugins`
+table row, `selfhelp.plugins.lock.json` entry, and any plugin data
+are preserved across the migration; only the Composer location moves.
+
+Because the host's `config/selfhelp_plugin_bundles.php` still
+references the bundle class after `composer remove`, you must enable
+safe-mode first so the kernel can still boot. Recommended order:
+
+```bash
+# 1. Enable plugin safe-mode (writes var/plugin_safe_mode.lock; checked
+#    by config/bundles.php BEFORE the generated bundles file is loaded,
+#    so kernel boot is safe even if a plugin bundle class is missing).
+touch var/plugin_safe_mode.lock
+#    (Equivalent to `php bin/console selfhelp:plugin:safe-mode --enable`
+#    once the kernel can boot again.)
+
+# 2. Remove the plugin from the HOST Composer root.
+composer remove humdek/<plugin-package> --no-plugins --no-scripts
+
+# 3. Reinstall via the admin UI: drag-and-drop the `.shplugin` file.
+#    The install lands in var/plugin-composer/vendor/<package>/.
+#    selfhelp.plugins.lock.json + config/selfhelp_plugin_bundles.php
+#    are regenerated by the worker.
+
+# 4. Disable safe-mode so the freshly registered plugin bundle is loaded.
+rm var/plugin_safe_mode.lock
+#    (Or `php bin/console selfhelp:plugin:safe-mode --disable`.)
+```
+
+`--no-plugins` keeps Symfony Flex from rewriting `config/bundles.php`;
+`--no-scripts` keeps any host composer scripts from running.
+
+Verify the migration worked:
+
+```bash
+composer show humdek/<plugin-package>          # 'Package not found' against the host root
+ls var/plugin-composer/vendor/humdek/          # plugin package is here
+ls vendor/humdek/                              # plugin is gone from the host vendor
+```
+
+### 15.5 Recovery / reset
+
+If `var/plugin-composer/` ends up in a broken state (e.g. half-written
+`composer.lock` after a SIGKILL):
+
+```bash
+rm -rf var/plugin-composer/vendor var/plugin-composer/composer.lock
+```
+
+The next `composer require` (issued through a plugin install) will
+re-create the directory + lock from the seeded `composer.json`.
+`selfhelp.plugins.lock.json`, `config/selfhelp_plugin_bundles.php`,
+the `plugins` table, and the rest of the install state are not
+touched.
+
+> Do not delete `var/plugin-composer/composer.json`. It carries the
+> host-provided `provide` block + `config.platform` matrix that lets
+> plugin dependencies resolve against the host's framework versions.
 
 ## 14. Archive maintenance CLI
 

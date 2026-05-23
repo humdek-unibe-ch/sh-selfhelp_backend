@@ -100,12 +100,17 @@ sh-selfhelp_backend/
 │   │                     ResolvedSource (DTO)
 │   ├── Messenger/        InstallPluginMessage/Handler, UpdatePluginMessage/Handler,
 │   │                     UninstallPluginMessage/Handler
-│   ├── PackageManager/   PackageManagerRunner (composer require / remove, streams output)
+│   ├── PackageManager/   PackageManagerRunner (composer require / remove, streams output;
+│   │                     cwd = var/plugin-composer/), PluginComposerRoot (seeds the
+│   │                     plugin Composer root with `provide` + `config.platform`),
+│   │                     PluginAutoloaderRegistry, PluginAutoloaderBootstrap (registers
+│   │                     the secondary ClassLoader at boot)
 │   ├── Realtime/         PluginRealtimePublisher (Mercure-backed)
 │   ├── Registry/         RegistryClient (private + public sources with auth headers),
 │   │                     PluginSourceUrlResolver
 │   ├── Security/         PluginCapabilityValidator, PluginCapabilityViolationException,
 │   │                     PluginDataAccessGuard, PluginMigrationGuard,
+│   │                     PluginDependencyPolicy (host-provided drift soft-check),
 │   │                     PluginSignatureVerifier (Ed25519), SignedPayloadBuilder,
 │   │                     PluginSignatureException
 │   ├── Service/          PluginAdminService (facade)
@@ -117,8 +122,51 @@ sh-selfhelp_backend/
 │   ├── selfhelp_plugin_bundles.php   ← regenerated atomically by the installer / uninstaller
 │   ├── packages/messenger.yaml       ← `plugin_ops` transport (MESSENGER_PLUGIN_OPS_DSN)
 │   └── packages/lock.yaml            ← distributed lock for plugin operations
+├── var/plugin-composer/   ← isolated Composer root for plugin packages (see §4.1).
+│                            composer.json + composer.lock + vendor/. Host's own
+│                            composer.json / composer.lock / vendor/ are NEVER touched
+│                            by plugin install/update/uninstall.
 └── migrations/Version*.php                plugin-layer install and API-surface migrations
 ```
+
+### 4.1 Plugin Composer root and dependency policy
+
+Plugin packages live in `var/plugin-composer/vendor/<package>/`. The
+host's `composer.json`, `composer.lock`, and `vendor/` are read-only
+with respect to plugin lifecycle operations.
+
+`PluginComposerRoot::ensure()` materialises `var/plugin-composer/composer.json`
+on first install. The seed contains:
+
+- a `provide` block that mirrors every host-provided package
+  (`symfony/*`, `doctrine/*`, `psr/*`, `humdek/sh-selfhelp-*`) at the
+  host's resolved version, so plugin `require` constraints satisfy
+  against the host without downloading a duplicate vendor tree;
+- a `config.platform` block that mirrors the host's PHP version + every
+  loaded `ext-*`, so the plugin Composer root resolves against the
+  host's platform matrix.
+
+A SECONDARY `Composer\Autoload\ClassLoader` is registered immediately
+after the host loader at boot (see
+`PluginAutoloaderBootstrap::register()` invoked from `public/index.php`,
+`bin/console`, and `tests/bootstrap.php`). The plugin loader is APPENDED
+on the SPL chain — on namespace collision the host loader resolves
+first; the plugin loader only handles classes the host could not. This
+protects against accidental dual-loading of `Symfony\Component\…` /
+`Doctrine\…` / `Psr\…` classes from two vendor trees should a
+misconfigured manifest sneak past the `provide` policy.
+
+Future design note: a more robust dependency-resolution v2 would
+replace the synthetic `provide` block with a Composer **path
+repository** pointing at the host's `vendor/composer/installed.json`
+so the plugin root sees host packages as concrete installed entries,
+plus shared platform constraints auto-derived from `composer show
+--platform`. The current refactor only sets the foundation
+(host-provided list + appended secondary loader); upgrading to a path
+repository is non-breaking on top of it.
+
+Operational details (cleanup commands, migration from a pre-isolation
+host) live in [`installation.md` §15](./installation.md#15-plugin-composer-root-varplugin-composer).
 
 ## 5. Frontend layout (host)
 

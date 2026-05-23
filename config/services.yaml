@@ -197,6 +197,14 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    # Plugin dependency policy — surfaces drift between a plugin
+    # package's composer.json#require and the host-provided packages
+    # exposed via var/plugin-composer/composer.json#provide. Soft check;
+    # Composer's solver remains the authoritative gate at install time.
+    App\Plugin\Security\PluginDependencyPolicy:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     # .shplugin archive pipeline. Extractor extracts the upload to
     # `var/plugins/<id>-<ver>/staging/`, validator verifies signature +
     # checksums, promoter copies to `installed/` + `public/plugin-artifacts/`,

@@ -14,6 +14,12 @@ if (!is_file(dirname(__DIR__).'/vendor/autoload_runtime.php')) {
 
 require_once dirname(__DIR__).'/vendor/autoload_runtime.php';
 
+// Plugin Composer root lives under `var/plugin-composer/` and is
+// resolved by a SECONDARY ClassLoader appended to the SPL chain. See
+// `App\Plugin\PackageManager\PluginAutoloaderBootstrap` and
+// `docs/plugins/architecture.md`.
+\App\Plugin\PackageManager\PluginAutoloaderBootstrap::register(dirname(__DIR__));
+
 return function (array $context) {
     $kernel = new Kernel($context['APP_ENV'], (bool) $context['APP_DEBUG']);
 

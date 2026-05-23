@@ -33,17 +33,26 @@ use Symfony\Component\Process\Process;
  *   - `removeComposerPackage($package, ?$onLine)` — `composer remove`
  *     used by `PluginUninstaller`.
  *
- * All commands run in the project root, time-limited to 10 minutes by
- * default, and return a structured `PackageManagerResult`.
+ * Every command runs with `cwd = var/plugin-composer/` and the
+ * `COMPOSER` env pinned to `composer.json` so the host root is never
+ * touched. After a successful `composer require` the freshly
+ * regenerated PSR-4 / classmap is merged into the SECONDARY
+ * `Composer\Autoload\ClassLoader` registered by
+ * {@see PluginAutoloaderBootstrap} so `PluginInstaller::finalize()`'s
+ * `class_exists($bundleClass)` gate succeeds without restarting the
+ * worker.
  */
 final class PackageManagerRunner
 {
     private const DEFAULT_TIMEOUT = 600;
 
+    private readonly PluginComposerRoot $composerRoot;
+
     public function __construct(
         private readonly string $projectDir,
         private readonly int $timeoutSeconds = self::DEFAULT_TIMEOUT,
     ) {
+        $this->composerRoot = new PluginComposerRoot($projectDir);
     }
 
     /**
@@ -179,31 +188,35 @@ final class PackageManagerRunner
     }
 
     /**
-     * After a successful `composer require`, Composer rewrites
-     * `vendor/composer/autoload_classmap.php`, `autoload_psr4.php`, and
-     * `autoload_namespaces.php` on disk, but the long-running Messenger
-     * worker is still using the in-memory `Composer\Autoload\ClassLoader`
-     * registered at process boot. Symfony's
+     * After a successful `composer require`, Composer rewrites the
+     * plugin root's autoload maps
+     * (`var/plugin-composer/vendor/composer/autoload_*.php`), but the
+     * long-running Messenger worker is still using the SECONDARY
+     * in-memory `Composer\Autoload\ClassLoader` registered at process
+     * boot by {@see PluginAutoloaderBootstrap}. Symfony's
      * `PluginInstaller::finalize()` calls `class_exists($bundleClass)`
      * immediately after `composer require`, and without this refresh
      * step the call returns `false` for the newly installed bundle —
      * even though the autoload files on disk are correct.
      *
-     * This method re-includes the regenerated autoload maps and merges
-     * them into the active classloader so the worker can resolve
-     * newly installed classes without restarting. It is intentionally
-     * defensive: missing autoload files or a stale loader simply
-     * short-circuits with a `false` return; the install flow's
-     * `class_exists` check will still report a clear error if the
-     * underlying composer step actually failed.
+     * This method re-includes the regenerated autoload maps from the
+     * plugin vendor and merges them into the secondary classloader so
+     * the worker can resolve newly installed plugin classes without
+     * restarting. The host's primary autoloader is never touched.
+     *
+     * On the very first install the boot helper found no
+     * `vendor/autoload.php` to require (the plugin root was empty).
+     * In that case we lazily require the freshly generated autoload
+     * here and stash the loader in the registry so subsequent installs
+     * within the same worker process refresh the same instance.
      */
     private function refreshComposerAutoloader(): bool
     {
-        $loader = $this->findComposerClassLoader();
+        $loader = $this->resolvePluginClassLoader();
         if ($loader === null) {
             return false;
         }
-        $vendorDir = $this->projectDir . '/vendor';
+        $vendorDir = $this->composerRoot->vendorDir();
         $classmapPath = $vendorDir . '/composer/autoload_classmap.php';
         if (is_file($classmapPath)) {
             $classmap = require $classmapPath;
@@ -256,6 +269,36 @@ final class PackageManagerRunner
     }
 
     /**
+     * Returns the secondary plugin `ClassLoader` from
+     * {@see PluginAutoloaderRegistry}. If the registry is empty (very
+     * first install — the plugin vendor did not exist at boot), this
+     * method requires the freshly generated `autoload.php`, registers
+     * the returned loader at the tail of the SPL chain, and stashes
+     * it for subsequent calls.
+     */
+    private function resolvePluginClassLoader(): ?\Composer\Autoload\ClassLoader
+    {
+        $loader = PluginAutoloaderRegistry::get();
+        if ($loader !== null) {
+            return $loader;
+        }
+        $autoloadPath = $this->composerRoot->autoloadPath();
+        if (!is_file($autoloadPath)) {
+            return null;
+        }
+        $maybeLoader = require $autoloadPath;
+        if (!$maybeLoader instanceof \Composer\Autoload\ClassLoader) {
+            return null;
+        }
+        // `autoload.php` already calls register() with prepend=true.
+        // Re-register at the tail so host classes win on collision.
+        $maybeLoader->unregister();
+        $maybeLoader->register(false);
+        PluginAutoloaderRegistry::set($maybeLoader);
+        return $maybeLoader;
+    }
+
+    /**
      * Builds the env block passed to every composer subprocess.
      *
      * Symfony's `Process` defaults `$env` to `null` which is documented as
@@ -299,46 +342,15 @@ final class PackageManagerRunner
             $env['COMPOSER_HOME'] = $fallbackHome;
         }
 
-        return $env;
-    }
+        // Pin the manifest filename Composer reads. Without this an
+        // ambient `COMPOSER` env from the parent process could
+        // redirect plugin operations to a different file (e.g. the
+        // host's `composer.json` if someone exported it). The cwd
+        // already points at the plugin root, so the bare filename is
+        // resolved against the plugin root.
+        $env['COMPOSER'] = 'composer.json';
 
-    private function findComposerClassLoader(): ?\Composer\Autoload\ClassLoader
-    {
-        foreach (spl_autoload_functions() ?: [] as $registered) {
-            if (!is_array($registered) || !isset($registered[0])) {
-                continue;
-            }
-            $owner = $registered[0];
-            if ($owner instanceof \Composer\Autoload\ClassLoader) {
-                return $owner;
-            }
-            // In Symfony dev / debug mode `DebugClassLoader::enable()`
-            // wraps the original Composer `ClassLoader` so
-            // `spl_autoload_functions()` only exposes
-            // `[DebugClassLoader, 'loadClass']`. Unwrap it via the
-            // documented `getClassLoader()` accessor — without this the
-            // refresh silently no-ops, `class_exists()` in
-            // `PluginInstaller::finalize()` returns false for the
-            // freshly installed bundle, and the operation aborts with a
-            // 412 even though composer require succeeded.
-            if (
-                is_object($owner)
-                && method_exists($owner, 'getClassLoader')
-            ) {
-                try {
-                    $wrapped = $owner->getClassLoader();
-                } catch (\Throwable) {
-                    $wrapped = null;
-                }
-                if (is_array($wrapped) && isset($wrapped[0]) && $wrapped[0] instanceof \Composer\Autoload\ClassLoader) {
-                    return $wrapped[0];
-                }
-                if ($wrapped instanceof \Composer\Autoload\ClassLoader) {
-                    return $wrapped;
-                }
-            }
-        }
-        return null;
+        return $env;
     }
 
     /**
@@ -347,7 +359,10 @@ final class PackageManagerRunner
      */
     private function run(array $cmd, ?callable $onLine = null): PackageManagerResult
     {
-        $process = new Process($cmd, $this->projectDir, $this->resolveSubprocessEnv(), null, $this->timeoutSeconds);
+        // Make sure the plugin Composer root + seeded composer.json
+        // exist before every invocation. Idempotent.
+        $this->composerRoot->ensure();
+        $process = new Process($cmd, $this->composerRoot->rootDir(), $this->resolveSubprocessEnv(), null, $this->timeoutSeconds);
         $stdout = '';
         $stderr = '';
         try {
