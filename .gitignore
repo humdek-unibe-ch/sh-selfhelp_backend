@@ -35,3 +35,4 @@ phpstan.neon
 ###< phpstan/phpstan ###
 
 AGENTS.local.md
+/config/selfhelp_plugin_bundles.php
