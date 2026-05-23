@@ -12,12 +12,14 @@ namespace App\Plugin\Health;
 
 use App\Entity\Plugin\Plugin;
 use App\Exception\ServiceException;
+use App\Plugin\Event\PluginRealtimeTopicRegistryEvent;
 use App\Plugin\Lifecycle\PluginLockFileReader;
 use App\Plugin\Lifecycle\PluginSafeMode;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginOperationRepository;
 use App\Repository\Plugin\PluginRepository;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Mercure\HubInterface;
@@ -49,6 +51,7 @@ final class PluginHealthService
         private readonly PluginLockFileReader $lockFileReader,
         private readonly PluginSafeMode $safeMode,
         private readonly PluginCompatibilityValidator $compatibility,
+        private readonly EventDispatcherInterface $eventDispatcher,
         private readonly iterable $pluginChecks = [],
         private readonly ?HubInterface $mercureHub = null,
         private readonly ?HttpClientInterface $httpClient = null,
@@ -56,6 +59,26 @@ final class PluginHealthService
         private readonly ?string $frontendHostDir = null,
         private readonly ?string $mobileHostDir = null,
     ) {
+    }
+
+    /**
+     * Returns the catalog of plugin realtime topics, built by
+     * dispatching `PluginRealtimeTopicRegistryEvent`. Used by the
+     * admin "Realtime topics" tab, the doctor command, and by
+     * deployment scripts that want to validate the JWT scopes.
+     *
+     * @return array<int, array{
+     *   pluginId: string,
+     *   key: string,
+     *   description: string,
+     *   requiredPermission: string|null,
+     *   payloadSchemaPath: string|null,
+     * }>
+     */
+    public function getRealtimeTopicCatalog(): array
+    {
+        $event = $this->eventDispatcher->dispatch(new PluginRealtimeTopicRegistryEvent());
+        return $event->getTopics();
     }
 
     /**
@@ -157,6 +180,7 @@ final class PluginHealthService
             'lockFile' => $this->checkLockFile($plugins),
             'lockVersionParity' => $this->checkLockVersionParity($plugins),
             'mercure' => $this->checkMercureReachable(),
+            'realtimeTopics' => $this->checkRealtimeTopicCatalog($plugins),
             'failedOperations' => $this->checkFailedOperations(),
             'frontendPackages' => $this->checkNpmPackagesInstalled($plugins, $this->frontendHostDir, 'frontend'),
             'mobilePackages' => $this->checkNpmPackagesInstalled($plugins, $this->mobileHostDir, 'mobile'),
@@ -170,7 +194,63 @@ final class PluginHealthService
         return [
             'generatedAt' => (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format(DATE_ATOM),
             'siteChecks' => $checks,
+            'realtimeTopicCatalog' => $this->getRealtimeTopicCatalog(),
             'plugins' => $pluginReports,
+        ];
+    }
+
+    /**
+     * Compares the runtime topic registrations against the manifest
+     * declarations. Detects two kinds of drift:
+     *   - manifest declares a topic that no listener registered at runtime
+     *     (the plugin shipped a topic without wiring its subscriber).
+     *   - runtime listener registers a topic that the plugin's manifest
+     *     does not advertise (un-documented capability).
+     *
+     * @param list<Plugin> $plugins
+     * @return array<string,mixed>
+     */
+    private function checkRealtimeTopicCatalog(array $plugins): array
+    {
+        $registered = [];
+        foreach ($this->getRealtimeTopicCatalog() as $topic) {
+            $registered[$topic['pluginId']][] = $topic['key'];
+        }
+
+        $drift = [];
+        foreach ($plugins as $plugin) {
+            $manifest = new PluginManifest($plugin->getManifestJson());
+            $declared = array_map(
+                static fn(array $t): string => (string) ($t['key'] ?? ''),
+                $manifest->getRealtimeTopics(),
+            );
+            $declared = array_values(array_filter($declared, static fn(string $k): bool => $k !== ''));
+            $runtime = $registered[$plugin->getPluginId()] ?? [];
+
+            $missingRuntime = array_diff($declared, $runtime);
+            $undeclared = array_diff($runtime, $declared);
+            if ($missingRuntime !== [] || $undeclared !== []) {
+                $drift[] = sprintf(
+                    '%s (declared but no subscriber: %s; subscriber but not declared: %s)',
+                    $plugin->getPluginId(),
+                    implode(',', $missingRuntime) ?: 'none',
+                    implode(',', $undeclared) ?: 'none',
+                );
+            }
+        }
+
+        if ($drift === []) {
+            return [
+                'name' => 'Realtime topics',
+                'status' => 'ok',
+                'message' => 'Manifest realtime topics match runtime subscribers.',
+            ];
+        }
+
+        return [
+            'name' => 'Realtime topics',
+            'status' => 'warning',
+            'message' => sprintf('Drift detected: %s.', implode('; ', $drift)),
         ];
     }
 
