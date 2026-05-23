@@ -11,6 +11,7 @@ namespace App\Service\CMS\Admin;
 use App\Entity\ScheduledJob;
 use App\Entity\Lookup;
 
+use App\Plugin\Event\ScheduledJobTypeEvent;
 use App\Repository\ScheduledJobRepository;
 use App\Repository\UserRepository;
 use App\Repository\TransactionRepository;
@@ -24,6 +25,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Auth\UserContextService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
 use App\Service\Core\JobSchedulerService;
 use Psr\Log\LoggerInterface;
@@ -49,8 +51,51 @@ class AdminScheduledJobService extends BaseService
         private readonly CacheService $cache,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly AdminActionTranslationService $adminActionTranslationService,
+        private readonly EventDispatcherInterface $eventDispatcher,
         private readonly LoggerInterface $logger
     ) {
+    }
+
+    /**
+     * Build the catalog of all known scheduled-job types (core lookups
+     * + plugin contributions). Plugins register their own types by
+     * subscribing to `ScheduledJobTypeEvent`; the contributions are
+     * tagged with the plugin id so the admin UI can show a "from plugin"
+     * badge in the job-type picker.
+     *
+     * @return array<int, array{
+     *   type: string,
+     *   description: string,
+     *   handlerServiceId: string|null,
+     *   pluginId: string|null,
+     *   configSchemaPath: string|null,
+     * }>
+     */
+    public function getJobTypeCatalog(): array
+    {
+        $catalog = [];
+        foreach ($this->lookupService->getLookups(LookupService::JOB_TYPES) as $lookup) {
+            $catalog[] = [
+                'type' => (string) ($lookup->getLookupCode() ?? ''),
+                'description' => (string) ($lookup->getLookupValue() ?? ''),
+                'handlerServiceId' => null,
+                'pluginId' => null,
+                'configSchemaPath' => null,
+            ];
+        }
+
+        $event = $this->eventDispatcher->dispatch(new ScheduledJobTypeEvent());
+        foreach ($event->getJobTypes() as $contribution) {
+            $catalog[] = [
+                'type' => $contribution['type'],
+                'description' => $contribution['description'],
+                'handlerServiceId' => $contribution['handlerServiceId'],
+                'pluginId' => $contribution['pluginId'],
+                'configSchemaPath' => $contribution['configSchemaPath'],
+            ];
+        }
+
+        return $catalog;
     }
 
     /**

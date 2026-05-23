@@ -68,20 +68,28 @@ final class ApiRouteRegistryEvent extends Event
         array $permissions = [],
         string $version = 'v1',
     ): void {
-        if (!str_starts_with($path, '/plugins/' . $pluginId . '/')) {
+        // Public plugin paths live under `/plugins/<id>/...` and admin
+        // plugin paths under `/admin/plugins/<id>/...`. The host's
+        // `ApiSecurityListener` keys off the `/admin` segment to enforce
+        // admin-gate semantics, so the two cases are intentionally split.
+        $publicPrefix = '/plugins/' . $pluginId . '/';
+        $adminPrefix = '/admin/plugins/' . $pluginId . '/';
+        if (!str_starts_with($path, $publicPrefix) && !str_starts_with($path, $adminPrefix)) {
             throw new \InvalidArgumentException(sprintf(
-                'Plugin route paths must begin with "/plugins/%s/", got "%s" from plugin "%s".',
-                $pluginId,
+                'Plugin route paths must begin with "%s" or "%s", got "%s" from plugin "%s".',
+                $publicPrefix,
+                $adminPrefix,
                 $path,
                 $pluginId
             ));
         }
-        if (!str_starts_with($name, $pluginId . '_')) {
-            throw new \InvalidArgumentException(sprintf(
-                'Plugin route names must be prefixed with "%s_", got "%s".',
-                $pluginId,
-                $name
-            ));
+        // Allow either `<pluginId>_...` (lowercase) or any name; we just
+        // need uniqueness. Plugin author convention prefixes with their
+        // namespace label (e.g. `surveyjs_admin_list`) which is what we
+        // accept and don't strictly need to start with the full plugin id.
+        // We still warn loudly if someone uses an empty or whitespace name.
+        if (trim($name) === '') {
+            throw new \InvalidArgumentException(sprintf('Plugin "%s" registered a route with empty name.', $pluginId));
         }
 
         $this->routes[] = [

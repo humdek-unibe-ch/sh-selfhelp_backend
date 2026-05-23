@@ -9,8 +9,10 @@
 namespace App\Service\Core;
 
 use App\Entity\Lookup;
+use App\Plugin\Event\LookupRegistryEvent;
 use App\Repository\LookupRepository;
 use App\Service\Cache\Core\CacheService;
+use Psr\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Lookup service providing access to lookup data and constants.
@@ -168,7 +170,8 @@ final class LookupService
 
     public function __construct(
         private readonly LookupRepository $lookupRepository,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -185,12 +188,20 @@ final class LookupService
     /**
      * Get all lookups for a given type.
      *
+     * Plugin-contributed entries for `plugin_extendable` and
+     * `plugin_owned` type codes are appended to the cached DB result
+     * if they are not already present (matched by `lookup_code`). This
+     * lets fully-virtual lookup overlays — declared only in PHP via
+     * `LookupRegistryEvent` — surface in admin pickers before the
+     * plugin's install migration has persisted them. Persisted rows
+     * always win.
+     *
      * @param string $typeCode
      * @return Lookup[]
      */
     public function getLookups(string $typeCode): array
     {
-        return $this->cache
+        $persisted = $this->cache
             ->withCategory(CacheService::CATEGORY_LOOKUPS)
             ->getItem(
                 "lookups_{$typeCode}",
@@ -198,6 +209,48 @@ final class LookupService
                     return $this->lookupRepository->getLookups($typeCode);
                 }
             );
+
+        return $this->mergePluginLookupContributions($typeCode, $persisted);
+    }
+
+    /**
+     * Append plugin-contributed lookup entries to the persisted result.
+     *
+     * @param Lookup[] $persisted
+     * @return Lookup[]
+     */
+    private function mergePluginLookupContributions(string $typeCode, array $persisted): array
+    {
+        $event = $this->eventDispatcher->dispatch(new LookupRegistryEvent($typeCode));
+        $contributions = $event->getContributions();
+        if ($contributions === []) {
+            return $persisted;
+        }
+
+        $existingCodes = [];
+        foreach ($persisted as $row) {
+            $code = $row->getLookupCode();
+            if ($code !== null) {
+                $existingCodes[$code] = true;
+            }
+        }
+
+        foreach ($contributions as $contribution) {
+            foreach ($contribution['entries'] as $entry) {
+                if (isset($existingCodes[$entry['code']])) {
+                    continue;
+                }
+                $virtual = (new Lookup())
+                    ->setTypeCode($contribution['typeCode'])
+                    ->setLookupCode($entry['code'])
+                    ->setLookupValue($entry['value'])
+                    ->setLookupDescription($entry['description'] ?? null);
+                $persisted[] = $virtual;
+                $existingCodes[$entry['code']] = true;
+            }
+        }
+
+        return $persisted;
     }
 
     /**
