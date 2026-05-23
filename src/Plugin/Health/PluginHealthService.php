@@ -56,7 +56,6 @@ final class PluginHealthService
         private readonly ?HubInterface $mercureHub = null,
         private readonly ?HttpClientInterface $httpClient = null,
         private readonly ?string $mercureHubUrl = null,
-        private readonly ?string $frontendHostDir = null,
         private readonly ?string $mobileHostDir = null,
     ) {
     }
@@ -182,7 +181,10 @@ final class PluginHealthService
             'mercure' => $this->checkMercureReachable(),
             'realtimeTopics' => $this->checkRealtimeTopicCatalog($plugins),
             'failedOperations' => $this->checkFailedOperations(),
-            'frontendPackages' => $this->checkNpmPackagesInstalled($plugins, $this->frontendHostDir, 'frontend'),
+            // Frontend plugins are runtime ESM bundles served from
+            // `public/plugin-artifacts/<id>-<ver>/`; no npm check needed.
+            // Mobile plugins are still resolved through the EAS-built JS
+            // bundle, so we keep the npm probe for the mobile host dir.
             'mobilePackages' => $this->checkNpmPackagesInstalled($plugins, $this->mobileHostDir, 'mobile'),
         ];
 
@@ -406,7 +408,7 @@ final class PluginHealthService
         $checked = 0;
         foreach ($plugins as $plugin) {
             $manifest = new PluginManifest($plugin->getManifestJson());
-            $packageName = $kind === 'frontend' ? $manifest->getFrontendPackage() : $manifest->getMobilePackage();
+            $packageName = $manifest->getMobilePackage();
             if ($packageName === null || $packageName === '') continue;
             $checked++;
             $process = new Process(['npm', 'ls', '--json', $packageName], $hostDir);

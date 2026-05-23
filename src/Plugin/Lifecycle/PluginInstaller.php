@@ -12,17 +12,17 @@ namespace App\Plugin\Lifecycle;
 
 use App\Entity\Plugin\Plugin;
 use App\Entity\Plugin\PluginOperation;
+use App\Exception\ServiceException;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Event\Lifecycle\PluginInstalledEvent;
 use App\Plugin\Manifest\PluginManifest;
-use App\Plugin\PackageManager\PackageManagerRunner;
+use App\Plugin\Manifest\ResolvedSource;
+use App\Plugin\Messenger\InstallPluginMessage;
 use App\Plugin\Registry\PluginRegistryService;
 use App\Plugin\Security\PluginCapabilityValidator;
 use App\Plugin\Security\PluginCapabilityViolationException;
 use App\Plugin\Security\PluginMigrationGuard;
 use App\Plugin\Security\PluginMigrationGuardException;
-use App\Plugin\Security\PluginSignatureException;
-use App\Plugin\Security\PluginSignatureVerifier;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginRepository;
 use App\Service\Core\LookupService;
@@ -32,31 +32,25 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Symfony\Component\HttpFoundation\Response;
-use App\Exception\ServiceException;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Orchestrates installation of a plugin.
  *
- * The installer:
+ * Flow:
  *
- *   1. Acquires the global + per-plugin operation lock.
- *   2. Records a `plugin_operations` row in `requested` state.
- *   3. Validates capability matrix + compatibility against the host
- *      CMS version.
- *   4. Snapshots the relevant files (`composer.lock`,
- *      `package.json`, generated bundles file, lock file) into the
- *      operation row.
- *   5. In `managed` install mode it returns the CLI command and ends
- *      the operation in `requested` state — the actual install runs
- *      via `selfhelp:plugin:run-operation`.
- *   6. In `development` / `trusted` modes the orchestrator may run
- *      composer / npm via the `PackageManagerRunner`; that path is
- *      implemented in the CLI runner so the same code path applies
- *      everywhere.
+ *   1. `request()` validates compatibility + capabilities + dispatches
+ *      the `InstallPluginMessage` via the `plugin_ops` Messenger
+ *      transport, then returns the queued `PluginOperation`.
+ *   2. The Messenger worker (`InstallPluginHandler`) runs Composer,
+ *      promotes archive artifacts, and calls `finalize()` below.
+ *   3. `finalize()` persists the `plugins` row, regenerates the
+ *      bundles file, updates the lock file, and dispatches
+ *      `PluginInstalledEvent`.
  *
- * Once the package work is done by the CLI runner, the installer
- * persists the `plugins` row, regenerates the bundles file, and
- * dispatches `PluginInstalledEvent`.
+ * Signature verification happens upstream in `ManifestResolver` /
+ * `PluginArchiveValidator` BEFORE the manifest reaches the installer.
+ * The installer assumes its inputs are already trusted.
  */
 final class PluginInstaller
 {
@@ -72,24 +66,20 @@ final class PluginInstaller
         private readonly PluginLockFileReader $lockFileReader,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginBundlesFileWriter $bundlesWriter,
-        private readonly PluginSignatureVerifier $signatureVerifier,
         private readonly PluginMigrationGuard $migrationGuard,
-        private readonly PackageManagerRunner $packageManagerRunner,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
+        private readonly MessageBusInterface $messageBus,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
 
     /**
-     * Stage 1 — request installation. Returns the `PluginOperation`
-     * row that orchestrates the rest of the work.
-     *
-     * @param array<string,mixed>|null $registryEntry Optional registry
-     *                                                payload (checksum,
-     *                                                signature, source).
+     * Stage 1 — validate the manifest, persist a `plugin_operations`
+     * row, and dispatch the `InstallPluginMessage` to the worker.
+     * Returns immediately; the worker streams progress over Mercure.
      */
-    public function request(PluginManifest $manifest, ?array $registryEntry = null): PluginOperation
+    public function request(PluginManifest $manifest, ResolvedSource $resolved): PluginOperation
     {
         $this->lock->assertCanStart($manifest->getPluginId());
 
@@ -111,30 +101,11 @@ final class PluginInstaller
             }
 
             try {
-                $capabilities = $this->capabilityValidator->validate($manifest);
+                $capabilities = $this->capabilityValidator->validate($manifest, $resolved);
             } catch (PluginCapabilityViolationException $e) {
                 throw new ServiceException($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY, null);
             }
 
-            // Refuse installs whose registry-side checksums/signature
-            // cannot be verified. In strict mode (production default)
-            // this aborts with `PluginSignatureException`; in lenient
-            // mode it logs and continues so dev installs from untrusted
-            // sources still work.
-            try {
-                $this->signatureVerifier->verify(
-                    $this->extractExpectedChecksums($registryEntry),
-                    $this->extractActualChecksums($registryEntry, $manifest),
-                    $this->extractSignature($registryEntry),
-                    $this->extractSignedPayload($registryEntry),
-                );
-            } catch (PluginSignatureException $e) {
-                throw new ServiceException($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY, null);
-            }
-
-            // Static-scan plugin migration files for protected-table
-            // operations. Plugins that target protected tables must
-            // either own them or be ALTERed under `--allow-destructive`.
             $migrationScan = $this->scanPluginMigrations($manifest);
 
             $installMode = $this->installModeResolver->resolve();
@@ -149,10 +120,18 @@ final class PluginInstaller
                 'manifest' => $manifest->toArray(),
                 'compatibility' => $compatibility,
                 'capabilities' => $capabilities,
-                'registryEntry' => $registryEntry,
+                'resolvedSource' => [
+                    'kind' => $resolved->kind,
+                    'sourceName' => $resolved->sourceName,
+                    'manifestUrl' => $resolved->manifestUrl,
+                    'keyId' => $resolved->keyId,
+                    'signature' => $resolved->signature,
+                    'expectedChecksums' => $resolved->expectedChecksums,
+                    'composer' => $resolved->composer,
+                    'archiveStagingDir' => $resolved->archiveStagingDir,
+                ],
                 'lockFileBefore' => $this->lockFileReader->readRaw(),
                 'migrationScan' => $migrationScan,
-                'packageDryRun' => $this->collectPackageDryRunResults($manifest),
             ]);
 
             $this->recorder->setRollbackPlan($operation, [
@@ -166,12 +145,19 @@ final class PluginInstaller
                 'plugins',
                 null,
                 false,
-                sprintf('Plugin install requested: %s@%s (mode=%s)', $manifest->getPluginId(), $manifest->getVersion(), $installMode)
+                sprintf('Plugin install requested: %s@%s (mode=%s, source=%s)', $manifest->getPluginId(), $manifest->getVersion(), $installMode, $resolved->kind)
             );
 
-            // Lock stays held until `finalize()` (success or failure)
-            // so a concurrent finalize for the same plugin id cannot
-            // start.
+            $opId = $operation->getId();
+            if (!is_int($opId)) {
+                throw new \LogicException('PluginOperation id was not generated.');
+            }
+            $this->messageBus->dispatch(new InstallPluginMessage(
+                operationId: $opId,
+                manifestArray: $manifest->toArray(),
+                resolvedSource: $resolved,
+            ));
+
             return $operation;
         } catch (\Throwable $e) {
             $this->lock->release($manifest->getPluginId());
@@ -180,9 +166,8 @@ final class PluginInstaller
     }
 
     /**
-     * Stage 2 — finalize installation after package + migration work
-     * has finished (called by `selfhelp:plugin:run-operation` or the
-     * direct-execution worker).
+     * Stage 2 — finalize installation after the Messenger worker has
+     * finished its composer + migration work.
      */
     public function finalize(PluginOperation $operation, PluginManifest $manifest): Plugin
     {
@@ -192,21 +177,18 @@ final class PluginInstaller
         // regenerate `config/selfhelp_plugin_bundles.php`. If the bundle
         // class is not autoloadable yet (because composer never ran),
         // `kernel->registerBundles()` will fatal-error on the next
-        // request. Fail fast with a helpful message instead — the
-        // operation stays in `running` state and the operator can
-        // recover with the local-install script or a managed-mode
-        // composer step. See docs/plugins/installation.md.
+        // request. This is now a defensive assert — the Messenger
+        // worker should have run composer require before getting here.
         $bundleClass = $manifest->getBackendBundleClass();
         if ($bundleClass !== null && $bundleClass !== '' && !class_exists($bundleClass)) {
             $packageHint = $manifest->getBackendPackage() ?? $manifest->getPluginId();
             $error = new ServiceException(sprintf(
-                'Backend bundle class "%s" is not autoloadable. The composer package "%s" must be installed before finalizing. ' .
-                'Run `composer require %s:%s` (or use the plugin\'s `scripts/install-local.{ps1,sh}` helper) and click Finalize again.',
+                'Backend bundle class "%s" is not autoloadable after composer require. The Messenger worker reported success but the bundle did not register; check composer.json + autoload-dump.',
                 $bundleClass,
-                $packageHint,
-                $packageHint,
-                $manifest->getVersion(),
-            ), Response::HTTP_PRECONDITION_FAILED);
+            ), Response::HTTP_PRECONDITION_FAILED, [
+                'package' => $packageHint,
+                'version' => $manifest->getVersion(),
+            ]);
             $this->recorder->fail($operation, $error, 'finalize:bundle-missing');
             $this->lock->release($manifest->getPluginId());
             throw $error;
@@ -226,13 +208,16 @@ final class PluginInstaller
                 $plugin->setInstallMode($operation->getInstallMode());
                 $plugin->setBackendPackage($manifest->getBackendPackage());
                 $plugin->setBackendBundleClass($manifest->getBackendBundleClass());
-                $plugin->setFrontendPackage($manifest->getFrontendPackage());
-                $plugin->setFrontendPackageVersion($manifest->getFrontendPackageVersion());
+                $plugin->setFrontendRuntimeUrl($manifest->getFrontendRuntimeEntrypoint());
+                $plugin->setFrontendRuntimeStylesheetUrl($manifest->getFrontendRuntimeStylesheet());
+                $plugin->setFrontendRuntimeIntegrity($manifest->getFrontendRuntimeIntegrity());
+                $plugin->setFrontendRuntimeFormat($manifest->getFrontendRuntimeFormat());
                 $plugin->setMobilePackage($manifest->getMobilePackage());
                 $plugin->setMobilePackageVersion($manifest->getMobilePackageVersion());
                 $plugin->setManifestJson($manifest->toArray());
                 $plugin->setCapabilitiesJson($this->capabilityValidator->validate($manifest));
                 $plugin->setEnabled(false);
+                $this->applySigningMetadata($plugin, $operation);
 
                 $this->em->persist($plugin);
                 $this->em->flush();
@@ -263,74 +248,29 @@ final class PluginInstaller
     }
 
     /**
-     * @param array<string,mixed>|null $registryEntry
-     * @return array{composer?: string|null, frontend?: string|null, mobile?: string|null}
+     * Lift the signing keyId + signature out of the operation's
+     * `resolvedSource` snapshot (written by `request()`) and pin them
+     * on the new `Plugin` entity so the lock file can render them and
+     * doctor queries can spot drift.
      */
-    private function extractExpectedChecksums(?array $registryEntry): array
+    private function applySigningMetadata(Plugin $plugin, PluginOperation $operation): void
     {
-        if (!is_array($registryEntry)) {
-            return [];
+        $snapshots = $operation->getSnapshotsJson() ?? [];
+        $resolved = $snapshots['resolvedSource'] ?? null;
+        if (!is_array($resolved)) {
+            return;
         }
-        $checksums = $registryEntry['checksums'] ?? null;
-        if (!is_array($checksums)) {
-            return [];
-        }
-        $out = [];
-        foreach (['composer', 'frontend', 'mobile'] as $key) {
-            if (isset($checksums[$key]) && is_string($checksums[$key])) {
-                $out[$key] = $checksums[$key];
-            }
-        }
-        return $out;
-    }
-
-    /**
-     * The host has no way to compute artifact checksums at request-time
-     * — the artifacts have not been downloaded yet. We forward whatever
-     * the registry advertised so the verifier can at least confirm
-     * format/length parity (or no-op in lenient mode). The CLI runner
-     * re-runs `verify()` on the downloaded artifacts before finalize.
-     *
-     * @param array<string,mixed>|null $registryEntry
-     * @return array{files: array<string,string>}
-     */
-    private function extractActualChecksums(?array $registryEntry, PluginManifest $manifest): array
-    {
-        $expected = $this->extractExpectedChecksums($registryEntry);
-        $files = [];
-        foreach ($expected as $artifact => $value) {
-            $files[$artifact] = $value;
-        }
-        return ['files' => $files];
-    }
-
-    /**
-     * @param array<string,mixed>|null $registryEntry
-     */
-    private function extractSignature(?array $registryEntry): ?string
-    {
-        $sig = is_array($registryEntry) ? ($registryEntry['signature'] ?? null) : null;
-        return is_string($sig) && $sig !== '' ? $sig : null;
-    }
-
-    /**
-     * @param array<string,mixed>|null $registryEntry
-     */
-    private function extractSignedPayload(?array $registryEntry): ?string
-    {
-        $payload = is_array($registryEntry) ? ($registryEntry['signedPayload'] ?? null) : null;
-        return is_string($payload) && $payload !== '' ? $payload : null;
+        $keyId = $resolved['keyId'] ?? null;
+        $signature = $resolved['signature'] ?? null;
+        $plugin->setSigningKeyId(is_string($keyId) && $keyId !== '' ? $keyId : null);
+        $plugin->setSignatureEd25519(is_string($signature) && $signature !== '' ? $signature : null);
     }
 
     /**
      * Scans the plugin's migration directory for destructive operations
-     * on protected core tables. Returns a per-file report so the
-     * operation snapshot has a clear paper trail of what was scanned.
+     * on protected core tables.
      *
-     * @return array{
-     *   scanned: int,
-     *   files: list<array{file: string, violations: list<string>}>,
-     * }
+     * @return array{scanned:int,files:list<array{file:string,violations:list<string>}>}
      */
     private function scanPluginMigrations(PluginManifest $manifest): array
     {
@@ -369,11 +309,6 @@ final class PluginInstaller
     }
 
     /**
-     * Naive extractor for SQL strings inside a PHP migration. Picks up
-     * single-quoted, double-quoted and heredoc/nowdoc literals that
-     * contain SQL-like keywords. Good enough for the runtime safety
-     * net; the strict review happens at release time.
-     *
      * @return list<string>
      */
     private function extractStringLiterals(string $php): array
@@ -398,31 +333,5 @@ final class PluginInstaller
             $matches,
             static fn(string $s): bool => preg_match('/\b(drop|truncate|alter|delete\s+from)\b/i', $s) === 1,
         ));
-    }
-
-    /**
-     * Run composer/npm in dry-run mode to surface dependency conflicts
-     * before the CLI runner does the real install. The result is
-     * stored in the operation snapshot so admins can review the
-     * planned changes from the UI before approving the operation.
-     *
-     * @return array<string,mixed>
-     */
-    private function collectPackageDryRunResults(PluginManifest $manifest): array
-    {
-        $out = [];
-        $composerPackage = $manifest->getBackendPackage();
-        if ($composerPackage !== null && $composerPackage !== '') {
-            $out['composer'] = $this->packageManagerRunner->dryRunComposer($composerPackage, $manifest->getVersion())->toArray();
-        }
-        $frontendPackage = $manifest->getFrontendPackage();
-        if ($frontendPackage !== null && $frontendPackage !== '') {
-            $out['npm_frontend'] = $this->packageManagerRunner->dryRunNpm($frontendPackage, $manifest->getFrontendPackageVersion() ?? $manifest->getVersion())->toArray();
-        }
-        $mobilePackage = $manifest->getMobilePackage();
-        if ($mobilePackage !== null && $mobilePackage !== '') {
-            $out['npm_mobile'] = $this->packageManagerRunner->dryRunNpm($mobilePackage, $manifest->getMobilePackageVersion() ?? $manifest->getVersion())->toArray();
-        }
-        return $out;
     }
 }

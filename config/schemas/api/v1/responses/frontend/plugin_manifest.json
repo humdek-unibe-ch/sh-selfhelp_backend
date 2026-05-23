@@ -28,8 +28,10 @@
                             "capabilities": { "type": "array", "items": { "type": "string" } },
                             "featureFlags": { "type": "object", "additionalProperties": { "type": "boolean" } },
                             "manifest": { "type": ["object", "null"], "additionalProperties": true },
-                            "frontendPackage": { "type": ["string", "null"] },
-                            "frontendPackageVersion": { "type": ["string", "null"] },
+                            "frontendRuntimeUrl": { "type": ["string", "null"] },
+                            "frontendRuntimeStylesheetUrl": { "type": ["string", "null"] },
+                            "frontendRuntimeIntegrity": { "type": ["string", "null"] },
+                            "frontendRuntimeFormat": { "type": ["string", "null"] },
                             "mobilePackage": { "type": ["string", "null"] },
                             "mobilePackageVersion": { "type": ["string", "null"] }
                         },

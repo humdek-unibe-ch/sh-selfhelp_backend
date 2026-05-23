@@ -5,7 +5,6 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
-
 declare(strict_types=1);
 
 namespace App\Plugin\Security;
@@ -14,127 +13,219 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
 /**
- * Verifies plugin checksums and Ed25519 signatures.
+ * Verifies CI-signed plugin payloads (Ed25519) against the host's
+ * trusted key set.
  *
- * The verifier supports two operating modes selected by config:
+ * The publisher (CI) builds a canonical `signedPayload` via
+ * `App\Plugin\Security\SignedPayloadBuilder` / the cross-impl
+ * `sh2-plugin-registry/scripts/sign.mjs`, signs it with the release
+ * private key, and writes `{keyId, signature, signedPayload}` into
+ * `registry.json` entries and into `.shplugin#signature.json`. The
+ * host loads the matching public key from the
+ * `SELFHELP_PLUGIN_TRUSTED_KEYS` env (`keyId1=base64pubkey;keyId2=base64pubkey`)
+ * and verifies the detached signature with
+ * `sodium_crypto_sign_verify_detached`.
  *
- *   - `strict`: refuse install when any expected signature/checksum is
- *     missing or invalid. Used in production for `official` and
- *     `reviewed` plugins.
- *   - `lenient`: log signature failures but do not abort. Used in
- *     development and for `untrusted` plugins where only frontend
- *     code ships and signatures may not be available.
+ * Rules:
  *
- * The public key for verification is supplied at construction time
- * (base64-encoded). When the key is empty the verifier degrades to
- * checksum-only mode and logs a warning per call.
+ *   - `official` / `reviewed` plugins MUST be signed and verifiable.
+ *     A missing signature, an unknown `keyId`, or a payload-canonical
+ *     mismatch are all blocking errors.
+ *   - `untrusted` plugins MAY skip signing, but only when
+ *     `SELFHELP_PLUGIN_REQUIRE_SIGNATURE != true`. In production we
+ *     default to `true`, so even untrusted plugins ship signed.
+ *   - When the host has no trusted keys configured AND the env
+ *     explicitly opts-in (`SELFHELP_PLUGIN_REQUIRE_SIGNATURE=false`),
+ *     verification is skipped with a logged warning. This is only
+ *     intended for first-boot dev environments.
  *
- * The plugin manifest exposes the expected checksums and signature
- * under `security.checksums` and `security.signature`; the install
- * orchestrator passes them in via {@see verify()}.
+ * The actual canonical-payload re-computation (i.e. "does
+ * `signedPayload` still match the manifest the host is about to
+ * install?") lives in `PluginArchiveValidator` for archives and in
+ * `ManifestResolver` for registry/URL sources, both of which call
+ * `verify()` with the on-disk `signedPayload`. This class is the pure
+ * cryptographic verifier — it does not parse the manifest.
  */
 final class PluginSignatureVerifier
 {
-    public const MODE_STRICT = 'strict';
-    public const MODE_LENIENT = 'lenient';
+    /** @var array<string,string> keyId => base64-encoded 32-byte public key */
+    private readonly array $trustedKeys;
 
+    /**
+     * @param array<string,string> $trustedKeys keyId => base64 public key
+     */
     public function __construct(
-        private readonly string $mode = self::MODE_STRICT,
-        private readonly ?string $publicKeyBase64 = null,
+        array $trustedKeys = [],
+        private readonly bool $requireSignature = true,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
+        $this->trustedKeys = $trustedKeys;
     }
 
     /**
-     * @param array{
-     *   composer?: string|null,
-     *   frontend?: string|null,
-     *   mobile?: string|null,
-     * } $expectedChecksums Expected `sha256:<hex>` checksums per artifact.
-     * @param array{
-     *   files: array<string,string>,
-     * } $actualChecksums Computed checksums of the downloaded artifacts.
-     * @param string|null $signatureBase64 Ed25519 signature of the
-     *                                     canonical checksum manifest, if any.
-     * @param string|null $signedPayload   The canonical bytes that
-     *                                     were signed.
-     *
-     * @throws PluginSignatureException when verification fails in strict mode.
+     * Factory that parses `SELFHELP_PLUGIN_TRUSTED_KEYS` (semicolon-
+     * separated `keyId=base64pubkey` pairs). Whitespace around tokens
+     * is tolerated; empty entries are skipped.
      */
-    public function verify(
-        array $expectedChecksums,
-        array $actualChecksums,
-        ?string $signatureBase64 = null,
-        ?string $signedPayload = null,
-    ): void {
-        foreach ($expectedChecksums as $artifact => $expected) {
-            if ($expected === null || $expected === '') {
-                continue;
-            }
-            $actual = $actualChecksums['files'][$artifact] ?? null;
-            if ($actual === null) {
-                $this->fail(sprintf('Missing checksum for artifact "%s".', $artifact));
-                continue;
-            }
-            if (!hash_equals($this->canonicalChecksum($expected), $this->canonicalChecksum($actual))) {
-                $this->fail(sprintf(
-                    'Checksum mismatch for artifact "%s" (expected %s, got %s).',
-                    $artifact,
-                    $expected,
-                    $actual
-                ));
-            }
-        }
-
-        if ($signatureBase64 !== null && $signatureBase64 !== '') {
-            $this->verifySignature($signatureBase64, $signedPayload ?? '');
-        } elseif ($this->mode === self::MODE_STRICT && $this->publicKeyBase64 !== null && $this->publicKeyBase64 !== '') {
-            $this->fail('Missing plugin signature; strict mode requires a signed release.');
-        }
+    public static function fromEnvString(
+        string $trustedKeysEnv,
+        bool $requireSignature = true,
+        LoggerInterface $logger = new NullLogger(),
+    ): self {
+        $parsed = self::parseTrustedKeys($trustedKeysEnv);
+        return new self($parsed, $requireSignature, $logger);
     }
 
-    private function verifySignature(string $signatureBase64, string $signedPayload): void
+    /**
+     * @return array<string,string>
+     */
+    public static function parseTrustedKeys(string $env): array
     {
-        if ($this->publicKeyBase64 === null || $this->publicKeyBase64 === '') {
-            $this->logger->warning('Plugin signature verification skipped: no public key configured.');
-            return;
+        $out = [];
+        foreach (preg_split('/[;\n]/', $env) ?: [] as $token) {
+            $token = trim((string) $token);
+            if ($token === '') {
+                continue;
+            }
+            $eq = strpos($token, '=');
+            if ($eq === false) {
+                continue;
+            }
+            $keyId = trim(substr($token, 0, $eq));
+            $key = trim(substr($token, $eq + 1));
+            if ($keyId === '' || $key === '') {
+                continue;
+            }
+            $out[$keyId] = $key;
         }
+        return $out;
+    }
+
+    /**
+     * Verify a `{keyId, signature, signedPayload}` triple plus the
+     * declared `trustLevel` from the manifest.
+     *
+     * Optional `manifestPolicy` lets a plugin author tighten host
+     * defaults via `security.signing` in `plugin.json`:
+     *
+     *   - `requireSignature` — when true, missing signatures are
+     *     rejected even for untrusted plugins / dev hosts.
+     *   - `acceptedKeyIds`   — list of keyIds the plugin will accept;
+     *     a signature from a key outside this list is rejected even
+     *     when the host trusts the key.
+     *
+     * The string `"dev"` keyId is treated as a development-only marker
+     * and is refused outright for `official`/`reviewed` plugins so a
+     * scratch key cannot accidentally ship to production.
+     *
+     * @param array{requireSignature?: bool, acceptedKeyIds?: list<string>} $manifestPolicy
+     *
+     * @throws PluginSignatureException on any verification failure.
+     */
+    public function verify(
+        string $trustLevel,
+        ?string $keyId,
+        ?string $signatureBase64,
+        ?string $signedPayload,
+        array $manifestPolicy = [],
+    ): void {
+        $isUntrusted = $trustLevel === 'untrusted';
+        $missing = $keyId === null || $keyId === ''
+            || $signatureBase64 === null || $signatureBase64 === ''
+            || $signedPayload === null || $signedPayload === '';
+        $pluginRequiresSignature = !empty($manifestPolicy['requireSignature']);
+        $acceptedKeyIds = array_values(array_filter(
+            $manifestPolicy['acceptedKeyIds'] ?? [],
+            'is_string',
+        ));
+
+        if ($missing) {
+            if (!$this->requireSignature && !$pluginRequiresSignature && $isUntrusted) {
+                $this->logger->warning(
+                    'Plugin signature missing; allowed because SELFHELP_PLUGIN_REQUIRE_SIGNATURE=false and trustLevel=untrusted.',
+                );
+                return;
+            }
+            throw new PluginSignatureException(sprintf(
+                'Plugin signature missing (keyId/signature/signedPayload required for trustLevel="%s"%s).',
+                $trustLevel,
+                $pluginRequiresSignature ? ' and the plugin manifest declares security.signing.required=true' : '',
+            ));
+        }
+
+        // Reject the conventional dev/test key for non-untrusted plugins.
+        if (strtolower((string) $keyId) === 'dev' && !$isUntrusted) {
+            throw new PluginSignatureException(sprintf(
+                'Plugin signature keyId "dev" is reserved for local development and is not allowed for trustLevel="%s". Publish with a real CI key.',
+                $trustLevel,
+            ));
+        }
+
         if (!function_exists('sodium_crypto_sign_verify_detached')) {
-            $this->logger->warning('Plugin signature verification skipped: libsodium not available.');
-            return;
+            throw new PluginSignatureException(
+                'libsodium is not available on this host; cannot verify plugin signatures. Install ext-sodium.',
+            );
         }
 
+        if ($this->trustedKeys === []) {
+            if (!$this->requireSignature && !$pluginRequiresSignature && $isUntrusted) {
+                $this->logger->warning(
+                    'No SELFHELP_PLUGIN_TRUSTED_KEYS configured; skipping signature verification (untrusted plugin, requireSignature=false).',
+                );
+                return;
+            }
+            throw new PluginSignatureException(
+                'No SELFHELP_PLUGIN_TRUSTED_KEYS configured; refusing to install a signed plugin without a key to verify against.',
+            );
+        }
+
+        $publicKeyB64 = $this->trustedKeys[$keyId] ?? null;
+        if ($publicKeyB64 === null) {
+            throw new PluginSignatureException(sprintf(
+                'Plugin signature keyId "%s" is not in SELFHELP_PLUGIN_TRUSTED_KEYS. Add the publisher\'s public key (keyId=base64pubkey) to the env.',
+                $keyId,
+            ));
+        }
+
+        if ($acceptedKeyIds !== [] && !in_array($keyId, $acceptedKeyIds, true)) {
+            throw new PluginSignatureException(sprintf(
+                'Plugin signature keyId "%s" is not in the manifest\'s security.signing.acceptedKeyIds list (%s).',
+                $keyId,
+                implode(', ', $acceptedKeyIds),
+            ));
+        }
+
+        $publicKey = base64_decode($publicKeyB64, true);
         $signature = base64_decode($signatureBase64, true);
-        $publicKey = base64_decode($this->publicKeyBase64, true);
-        if ($signature === false || $publicKey === false) {
-            $this->fail('Plugin signature or public key is not valid base64.');
-            return;
+        if ($publicKey === false || $signature === false) {
+            throw new PluginSignatureException('Plugin signature or trusted-key is not valid base64.');
+        }
+        if (strlen($publicKey) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES) {
+            throw new PluginSignatureException(sprintf(
+                'Trusted public key for "%s" is %d bytes (expected %d).',
+                $keyId,
+                strlen($publicKey),
+                SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES,
+            ));
+        }
+        if (strlen($signature) !== SODIUM_CRYPTO_SIGN_BYTES) {
+            throw new PluginSignatureException(sprintf(
+                'Plugin signature is %d bytes (expected %d).',
+                strlen($signature),
+                SODIUM_CRYPTO_SIGN_BYTES,
+            ));
         }
 
-        $ok = false;
         try {
             $ok = sodium_crypto_sign_verify_detached($signature, $signedPayload, $publicKey);
         } catch (\SodiumException $e) {
-            $this->fail('Plugin signature verification raised: ' . $e->getMessage());
-            return;
+            throw new PluginSignatureException('Plugin signature verification raised: ' . $e->getMessage(), 0, $e);
         }
-
         if (!$ok) {
-            $this->fail('Plugin signature does not match the SelfHelp release public key.');
+            throw new PluginSignatureException(sprintf(
+                'Plugin signature does not match the trusted key for keyId "%s".',
+                $keyId,
+            ));
         }
-    }
-
-    private function canonicalChecksum(string $value): string
-    {
-        $value = strtolower(trim($value));
-        return str_starts_with($value, 'sha256:') ? $value : 'sha256:' . $value;
-    }
-
-    private function fail(string $message): void
-    {
-        if ($this->mode === self::MODE_STRICT) {
-            throw new PluginSignatureException($message);
-        }
-        $this->logger->warning('Plugin signature verification (lenient): ' . $message);
     }
 }

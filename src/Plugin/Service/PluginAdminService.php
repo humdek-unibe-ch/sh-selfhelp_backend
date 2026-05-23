@@ -15,6 +15,7 @@ use App\Entity\Plugin\PluginFeatureFlag;
 use App\Entity\Plugin\PluginOperation;
 use App\Entity\Plugin\PluginSource;
 use App\Exception\ServiceException;
+use App\Plugin\Archive\PluginArchiveInspectionService;
 use App\Plugin\Lifecycle\InstallModeResolver;
 use App\Plugin\Lifecycle\PluginEnabler;
 use App\Plugin\Lifecycle\PluginInstaller;
@@ -25,9 +26,12 @@ use App\Plugin\Lifecycle\PluginRollbacker;
 use App\Plugin\Lifecycle\PluginSafeMode;
 use App\Plugin\Lifecycle\PluginUninstaller;
 use App\Plugin\Lifecycle\PluginUpdater;
+use App\Plugin\Manifest\ManifestResolver;
 use App\Plugin\Manifest\PluginManifest;
+use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\Registry\RegistryClient;
 use App\Plugin\Registry\PluginSourceUrlResolver;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
@@ -69,6 +73,8 @@ final class PluginAdminService extends BaseService
         private readonly InstallModeResolver $installModeResolver,
         private readonly RegistryClient $registryClient,
         private readonly PluginSourceUrlResolver $sourceUrlResolver,
+        private readonly ManifestResolver $manifestResolver,
+        private readonly PluginArchiveInspectionService $archiveInspectionService,
         private readonly HttpClientInterface $httpClient,
         private readonly string $cmsVersion,
         private readonly string $sdkApiVersion,
@@ -179,6 +185,57 @@ final class PluginAdminService extends BaseService
         );
     }
 
+    /**
+     * Cross-reference installed plugins against the registry index to
+     * surface available updates. Returns one row per installed plugin
+     * that has a strictly-newer entry in any enabled registry source.
+     *
+     * @return array<int, array<string,mixed>>
+     */
+    public function listAvailableUpdates(): array
+    {
+        $aggregated = $this->registryClient->fetchAllIndexes();
+        $rows = [];
+        foreach ($this->plugins->findAllOrderedByName() as $installed) {
+            $pluginId = $installed->getPluginId();
+            $entriesBySource = $aggregated[$pluginId] ?? [];
+            if ($entriesBySource === []) {
+                continue;
+            }
+            $best = null;
+            $bestSource = null;
+            foreach ($entriesBySource as $sourceName => $entry) {
+                $candidateVersion = is_string($entry['version'] ?? null) ? (string) $entry['version'] : null;
+                if ($candidateVersion === null || $candidateVersion === '') {
+                    continue;
+                }
+                if (\App\Plugin\Versioning\SemverHelper::compare($candidateVersion, $installed->getVersion()) <= 0) {
+                    continue;
+                }
+                if ($best === null || \App\Plugin\Versioning\SemverHelper::compare($candidateVersion, (string) ($best['version'] ?? '0.0.0')) > 0) {
+                    $best = $entry;
+                    $bestSource = $sourceName;
+                }
+            }
+            if ($best === null) {
+                continue;
+            }
+            $rows[] = [
+                'pluginId' => $pluginId,
+                'name' => $installed->getName(),
+                'installedVersion' => $installed->getVersion(),
+                'availableVersion' => (string) $best['version'],
+                'diffKind' => \App\Plugin\Versioning\SemverHelper::diffKind($installed->getVersion(), (string) $best['version']),
+                'sourceName' => $bestSource,
+                'trustLevel' => is_string($best['trustLevel'] ?? null) ? $best['trustLevel'] : $installed->getTrustLevel(),
+                'manifestUrl' => is_string($best['manifestUrl'] ?? null) ? $best['manifestUrl'] : null,
+                'manifest' => is_array($best['manifest'] ?? null) ? $best['manifest'] : null,
+                'registryEntry' => $best,
+            ];
+        }
+        return $rows;
+    }
+
     /** @return array<string,mixed> */
     public function getPlugin(string $pluginId): array
     {
@@ -186,15 +243,37 @@ final class PluginAdminService extends BaseService
         return $this->formatPlugin($plugin, deep: true);
     }
 
-    /** @return array<string,mixed> */
-    public function requestInstall(array $manifestData, ?array $registryEntry = null): array
+    /**
+     * Single entrypoint for every install source. Resolves the source
+     * (registry / url / paste / archive) into a `PluginManifest` +
+     * `ResolvedSource`, performs the synchronous compatibility checks,
+     * and dispatches the async `InstallPluginMessage`.
+     *
+     * Returns the freshly-created `plugin_operations` row so the UI
+     * can subscribe to its Mercure topic.
+     *
+     * @param array{
+     *   source: 'registry'|'url'|'paste'|'archive',
+     *   registryEntry?: array<string,mixed>,
+     *   sourceName?: string,
+     *   manifestUrl?: string,
+     *   manifest?: array<string,mixed>,
+     * } $input
+     * @return array<string,mixed>
+     */
+    public function install(array $input, ?UploadedFile $archive = null): array
     {
-        $manifest = new PluginManifest($manifestData);
-        $operation = $this->installer->request($manifest, $registryEntry);
+        $resolved = $this->resolveSource($input, $archive);
+        $operation = $this->installer->request($resolved['manifest'], $resolved['resolved']);
         return $this->formatOperation($operation);
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * Internal-only — invoked by the `selfhelp:plugin:run-operation`
+     * CLI command after a managed-mode operator has executed composer
+     * by hand. The Messenger worker calls `PluginInstaller::finalize()`
+     * directly without going through this method.
+     */
     public function finalizeInstall(int $operationId, array $manifestData): array
     {
         $op = $this->mustFindOperation($operationId);
@@ -203,31 +282,127 @@ final class PluginAdminService extends BaseService
     }
 
     /**
-     * @param array<string,mixed>|null $registryEntry Optional registry payload
-     *                                                (checksums, signature, source URL).
+     * Single update entrypoint. Mirrors `install()`. The
+     * `expectedPluginId` field is set by `AdminPluginController::update()`
+     * from the URL-pinned plugin id; if the resolved manifest declares
+     * a different id we reject the operation. This stops an admin from
+     * accidentally (or maliciously) updating plugin A with the manifest
+     * of plugin B by changing the URL path while keeping the body.
+     *
+     * @param array{
+     *   source: 'registry'|'url'|'paste'|'archive',
+     *   registryEntry?: array<string,mixed>,
+     *   sourceName?: string,
+     *   manifestUrl?: string,
+     *   manifest?: array<string,mixed>,
+     *   forceMajor?: bool,
+     *   backupBefore?: bool,
+     *   expectedPluginId?: string,
+     * } $input
      * @return array<string,mixed>
      */
-    public function requestUpdate(
-        array $manifestData,
-        bool $forceMajor = false,
-        ?array $registryEntry = null,
-        bool $backupBefore = false,
-    ): array {
+    public function update(array $input, ?UploadedFile $archive = null): array
+    {
+        $resolved = $this->resolveSource($input, $archive);
+        $expectedPluginId = isset($input['expectedPluginId']) ? (string) $input['expectedPluginId'] : null;
+        if ($expectedPluginId !== null && $expectedPluginId !== '') {
+            $actual = $resolved['manifest']->getPluginId();
+            if ($actual !== $expectedPluginId) {
+                $this->throwValidationError(sprintf(
+                    'Plugin id mismatch: URL says "%s" but the resolved manifest declares "%s". Refusing to update plugin "%s" with a manifest for "%s".',
+                    $expectedPluginId,
+                    $actual,
+                    $expectedPluginId,
+                    $actual,
+                ));
+            }
+        }
         $operation = $this->updater->request(
-            new PluginManifest($manifestData),
-            $forceMajor,
-            $registryEntry,
-            $backupBefore,
+            $resolved['manifest'],
+            $resolved['resolved'],
+            (bool) ($input['forceMajor'] ?? false),
+            (bool) ($input['backupBefore'] ?? false),
         );
         return $this->formatOperation($operation);
     }
 
-    /** @return array<string,mixed> */
+    /** Internal-only finalize for managed-mode workers. */
     public function finalizeUpdate(int $operationId, array $manifestData): array
     {
         $op = $this->mustFindOperation($operationId);
         $plugin = $this->updater->finalize($op, new PluginManifest($manifestData));
         return $this->formatPlugin($plugin, deep: true);
+    }
+
+    /**
+     * Pre-install inspection for `.shplugin` uploads. Extracts +
+     * validates the archive without dispatching any operation so the
+     * frontend can show a preview card (manifest, compatibility,
+     * capabilities, signatureStatus, errors).
+     *
+     * Returns structured data even when validation fails so the UI can
+     * show a "cannot install — here is why" panel without surfacing a
+     * generic 500. Hard, non-recoverable failures (e.g. the upload is
+     * not a .shplugin archive at all, or the staging dir cannot be
+     * created) propagate as exceptions so the existing API error
+     * envelope catches them.
+     *
+     * @return array{
+     *     ok: bool,
+     *     signatureStatus: 'verified'|'invalid'|'unsigned'|'unverifiable',
+     *     errors: list<string>,
+     *     warnings: list<string>,
+     *     manifest: array<string,mixed>|null,
+     *     compatibility: array<string,mixed>|null,
+     *     capabilities: list<string>,
+     *     resolvedSource: array<string,mixed>|null,
+     * }
+     */
+    public function inspectArchive(UploadedFile $archive): array
+    {
+        return $this->archiveInspectionService->inspect($archive);
+    }
+
+    /**
+     * @param array<string,mixed> $input
+     * @return array{manifest: PluginManifest, resolved: ResolvedSource}
+     */
+    private function resolveSource(array $input, ?UploadedFile $archive): array
+    {
+        $source = (string) ($input['source'] ?? '');
+        switch ($source) {
+            case ResolvedSource::KIND_REGISTRY:
+                if (!isset($input['registryEntry']) || !is_array($input['registryEntry'])) {
+                    $this->throwValidationError('install.source=registry requires a `registryEntry` object.');
+                }
+                $sourceName = isset($input['sourceName']) ? (string) $input['sourceName'] : 'registry';
+                return $this->manifestResolver->resolveRegistry($input['registryEntry'], $sourceName);
+
+            case ResolvedSource::KIND_URL:
+                if (!isset($input['manifestUrl']) || !is_string($input['manifestUrl']) || $input['manifestUrl'] === '') {
+                    $this->throwValidationError('install.source=url requires a `manifestUrl`.');
+                }
+                $registryEntry = isset($input['registryEntry']) && is_array($input['registryEntry']) ? $input['registryEntry'] : null;
+                return $this->manifestResolver->resolveUrl((string) $input['manifestUrl'], $registryEntry);
+
+            case ResolvedSource::KIND_PASTE:
+                if (!isset($input['manifest']) || !is_array($input['manifest'])) {
+                    $this->throwValidationError('install.source=paste requires a `manifest` object.');
+                }
+                $registryEntry = isset($input['registryEntry']) && is_array($input['registryEntry']) ? $input['registryEntry'] : null;
+                return $this->manifestResolver->resolvePaste($input['manifest'], $registryEntry);
+
+            case ResolvedSource::KIND_ARCHIVE:
+                if (!$archive instanceof UploadedFile) {
+                    $this->throwValidationError('install.source=archive requires a multipart `archive` file part.');
+                }
+                return $this->manifestResolver->resolveArchive($archive);
+
+            default:
+                $this->throwValidationError(sprintf('Unknown install source "%s". Expected registry|url|paste|archive.', $source));
+        }
+        // unreachable
+        throw new \LogicException('resolveSource fell through');
     }
 
     /** @return array<string,mixed> */
@@ -242,9 +417,27 @@ final class PluginAdminService extends BaseService
         return $this->formatPlugin($this->enabler->disable($pluginId), deep: true);
     }
 
-    public function uninstall(string $pluginId): void
+    /**
+     * Single uninstall entrypoint. Creates the `plugin_operations` row
+     * and dispatches the asynchronous `UninstallPluginMessage`; the
+     * Messenger worker handles `composer remove` and the lock-file +
+     * bundles regeneration via `PluginUninstaller::finalize()`.
+     *
+     * @return array<string,mixed>
+     */
+    public function uninstall(string $pluginId): array
     {
-        $this->uninstaller->uninstall($pluginId);
+        return $this->formatOperation($this->uninstaller->request($pluginId));
+    }
+
+    /**
+     * Internal-only — invoked by `selfhelp:plugin:run-operation` after
+     * a managed-mode operator has executed `composer remove`.
+     */
+    public function finalizeUninstall(int $operationId): void
+    {
+        $op = $this->mustFindOperation($operationId);
+        $this->uninstaller->finalize($op);
     }
 
     public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void
@@ -503,10 +696,14 @@ final class PluginAdminService extends BaseService
             'installMode' => $plugin->getInstallMode(),
             'backendPackage' => $plugin->getBackendPackage(),
             'backendBundleClass' => $plugin->getBackendBundleClass(),
-            'frontendPackage' => $plugin->getFrontendPackage(),
-            'frontendPackageVersion' => $plugin->getFrontendPackageVersion(),
+            'frontendRuntimeUrl' => $plugin->getFrontendRuntimeUrl(),
+            'frontendRuntimeStylesheetUrl' => $plugin->getFrontendRuntimeStylesheetUrl(),
+            'frontendRuntimeIntegrity' => $plugin->getFrontendRuntimeIntegrity(),
+            'frontendRuntimeFormat' => $plugin->getFrontendRuntimeFormat(),
             'mobilePackage' => $plugin->getMobilePackage(),
             'mobilePackageVersion' => $plugin->getMobilePackageVersion(),
+            'signingKeyId' => $plugin->getSigningKeyId(),
+            'signature' => $plugin->getSignatureEd25519(),
             'installedAt' => $plugin->getInstalledAt()->format(DATE_ATOM),
             'updatedAt' => $plugin->getUpdatedAt()->format(DATE_ATOM),
             'enabledAt' => $plugin->getEnabledAt()?->format(DATE_ATOM),

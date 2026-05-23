@@ -25,17 +25,17 @@ use Symfony\Component\HttpFoundation\Response;
  * Endpoints:
  *
  *   GET    /cms-api/v1/admin/plugins                          list plugins
+ *   GET    /cms-api/v1/admin/plugins/available                discover from sources
  *   GET    /cms-api/v1/admin/plugins/{pluginId}               plugin detail
- *   POST   /cms-api/v1/admin/plugins                          request install
- *   POST   /cms-api/v1/admin/plugins/{pluginId}/finalize-install
- *   POST   /cms-api/v1/admin/plugins/{pluginId}/request-update
- *   POST   /cms-api/v1/admin/plugins/{pluginId}/finalize-update
+ *   POST   /cms-api/v1/admin/plugins/install                  unified install (registry|url|paste|archive)
+ *   POST   /cms-api/v1/admin/plugins/inspect-archive          preview a .shplugin upload
+ *   POST   /cms-api/v1/admin/plugins/{pluginId}/update        unified update
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/enable        enable
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/disable       disable
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/uninstall     uninstall
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/purge         purge (destructive)
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/repair        repair single
- *   POST   /cms-api/v1/admin/plugins/repair                    repair all
+ *   POST   /cms-api/v1/admin/plugins/repair                   repair all
  */
 final class AdminPluginController extends AbstractController
 {
@@ -86,6 +86,27 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
+     * Lists installed plugins that have a strictly-newer entry in any
+     * enabled `PluginSource`. Powers the admin "Updates" tab — one row
+     * per upgradeable plugin with `installedVersion`,
+     * `availableVersion`, and the resolved registry entry for one-click
+     * update dispatch.
+     *
+     * @route /admin/plugins/updates
+     * @method GET
+     */
+    public function listUpdates(): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess([
+                'updates' => $this->pluginAdminService->listAvailableUpdates(),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->respondWithError($e);
+        }
+    }
+
+    /**
      * @route /admin/plugins/{pluginId}
      * @method GET
      */
@@ -102,17 +123,20 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
-     * @route /admin/plugins
+     * Unified install endpoint. Accepts JSON for `source ∈
+     * {registry, url, paste}` and `multipart/form-data` for `source=archive`
+     * (with a `.shplugin` file under `archive`). Dispatches a single
+     * `InstallPluginMessage` regardless of source.
+     *
+     * @route /admin/plugins/install
      * @method POST
      */
-    public function requestInstall(Request $request): JsonResponse
+    public function install(Request $request): JsonResponse
     {
         try {
-            $payload = $this->validateRequest($request, 'requests/admin/plugins/install_plugin', $this->jsonSchemaValidationService);
-            $manifest = $payload['manifest'];
-            $registryEntry = $payload['registryEntry'] ?? null;
+            [$input, $archive] = $this->extractInstallInput($request);
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->requestInstall($manifest, $registryEntry),
+                $this->pluginAdminService->install($input, $archive),
                 'responses/admin/plugins/plugin_operation',
                 Response::HTTP_ACCEPTED,
             );
@@ -122,20 +146,27 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
-     * @route /admin/plugins/{pluginId}/finalize-install
+     * Pre-install inspection for `.shplugin` uploads. Extracts the
+     * archive, verifies its signature + checksums, and returns the
+     * manifest + compatibility report for the UI preview. Does NOT
+     * dispatch an install operation.
+     *
+     * @route /admin/plugins/inspect-archive
      * @method POST
      */
-    public function finalizeInstall(string $pluginId, Request $request): JsonResponse
+    public function inspectArchive(Request $request): JsonResponse
     {
         try {
-            $payload = $this->validateRequest($request, 'requests/admin/plugins/finalize_install', $this->jsonSchemaValidationService);
-            $manifest = $payload['manifest'];
-            if (($manifest['id'] ?? null) !== $pluginId) {
-                return $this->responseFormatter->formatError('Manifest id does not match URL.', Response::HTTP_BAD_REQUEST);
+            $archive = $request->files->get('archive');
+            if (!$archive instanceof \Symfony\Component\HttpFoundation\File\UploadedFile) {
+                return $this->responseFormatter->formatError(
+                    'inspect-archive requires a multipart `archive` file part.',
+                    Response::HTTP_BAD_REQUEST,
+                );
             }
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->finalizeInstall((int) $payload['operationId'], $manifest),
-                'responses/admin/plugins/plugin_operation'
+                $this->pluginAdminService->inspectArchive($archive),
+                null,
             );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
@@ -143,20 +174,19 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
-     * @route /admin/plugins/{pluginId}/request-update
+     * Unified update endpoint. Same shape as `install`.
+     *
+     * @route /admin/plugins/{pluginId}/update
      * @method POST
      */
-    public function requestUpdate(string $pluginId, Request $request): JsonResponse
+    public function update(string $pluginId, Request $request): JsonResponse
     {
         try {
-            $payload = $this->validateRequest($request, 'requests/admin/plugins/update_plugin', $this->jsonSchemaValidationService);
-            $manifest = $payload['manifest'];
-            if (($manifest['id'] ?? null) !== $pluginId) {
-                return $this->responseFormatter->formatError('Manifest id does not match URL.', Response::HTTP_BAD_REQUEST);
-            }
-            $force = (bool) ($payload['forceMajor'] ?? false);
+            [$input, $archive] = $this->extractInstallInput($request);
+            // Lock the URL-pinned plugin id against the resolved manifest in the service layer.
+            $input['expectedPluginId'] = $pluginId;
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->requestUpdate($manifest, $force),
+                $this->pluginAdminService->update($input, $archive),
                 'responses/admin/plugins/plugin_operation',
                 Response::HTTP_ACCEPTED,
             );
@@ -166,24 +196,32 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
-     * @route /admin/plugins/{pluginId}/finalize-update
-     * @method POST
+     * @return array{0: array<string,mixed>, 1: \Symfony\Component\HttpFoundation\File\UploadedFile|null}
      */
-    public function finalizeUpdate(string $pluginId, Request $request): JsonResponse
+    private function extractInstallInput(Request $request): array
     {
-        try {
-            $payload = $this->validateRequest($request, 'requests/admin/plugins/finalize_install', $this->jsonSchemaValidationService);
-            $manifest = $payload['manifest'];
-            if (($manifest['id'] ?? null) !== $pluginId) {
-                return $this->responseFormatter->formatError('Manifest id does not match URL.', Response::HTTP_BAD_REQUEST);
-            }
-            return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->finalizeUpdate((int) $payload['operationId'], $manifest),
-                'responses/admin/plugins/plugin_operation'
-            );
-        } catch (\Throwable $e) {
-            return $this->respondWithError($e);
+        $contentType = (string) $request->headers->get('Content-Type', '');
+        $isMultipart = stripos($contentType, 'multipart/form-data') !== false;
+        if ($isMultipart) {
+            $source = $request->request->get('source', 'archive');
+            $forceMajor = filter_var($request->request->get('forceMajor', false), FILTER_VALIDATE_BOOLEAN);
+            $backupBefore = filter_var($request->request->get('backupBefore', false), FILTER_VALIDATE_BOOLEAN);
+            $archive = $request->files->get('archive');
+            return [
+                [
+                    'source' => $source,
+                    'forceMajor' => $forceMajor,
+                    'backupBefore' => $backupBefore,
+                ],
+                $archive instanceof \Symfony\Component\HttpFoundation\File\UploadedFile ? $archive : null,
+            ];
         }
+        $raw = (string) $request->getContent();
+        $payload = $raw === '' ? [] : json_decode($raw, true);
+        if (!is_array($payload)) {
+            $payload = [];
+        }
+        return [$payload, null];
     }
 
     /**
@@ -225,8 +263,11 @@ final class AdminPluginController extends AbstractController
     public function uninstall(string $pluginId): JsonResponse
     {
         try {
-            $this->pluginAdminService->uninstall($pluginId);
-            return $this->responseFormatter->formatSuccess(['pluginId' => $pluginId, 'status' => 'uninstalled']);
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->uninstall($pluginId),
+                'responses/admin/plugins/plugin_operation',
+                Response::HTTP_ACCEPTED,
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

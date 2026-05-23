@@ -80,8 +80,10 @@ final class PluginManifestController extends AbstractController
                     'capabilities' => $capabilities,
                     'featureFlags' => $featureFlagDefaults,
                     'manifest' => $manifest,
-                    'frontendPackage' => $plugin->getFrontendPackage(),
-                    'frontendPackageVersion' => $plugin->getFrontendPackageVersion(),
+                    'frontendRuntimeUrl' => $plugin->getFrontendRuntimeUrl(),
+                    'frontendRuntimeStylesheetUrl' => $plugin->getFrontendRuntimeStylesheetUrl(),
+                    'frontendRuntimeIntegrity' => $plugin->getFrontendRuntimeIntegrity(),
+                    'frontendRuntimeFormat' => $plugin->getFrontendRuntimeFormat(),
                     'mobilePackage' => $plugin->getMobilePackage(),
                     'mobilePackageVersion' => $plugin->getMobilePackageVersion(),
                 ];

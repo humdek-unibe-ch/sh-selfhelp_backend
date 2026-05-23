@@ -75,11 +75,17 @@ class Plugin
     #[ORM\Column(name: 'backend_bundle_class', type: Types::STRING, length: 255, nullable: true)]
     private ?string $backendBundleClass = null;
 
-    #[ORM\Column(name: 'frontend_package', type: Types::STRING, length: 255, nullable: true)]
-    private ?string $frontendPackage = null;
+    #[ORM\Column(name: 'frontend_runtime_url', type: Types::STRING, length: 1024, nullable: true, options: ['comment' => 'ESM entrypoint URL or host-relative path served from public/plugin-artifacts'])]
+    private ?string $frontendRuntimeUrl = null;
 
-    #[ORM\Column(name: 'frontend_package_version', type: Types::STRING, length: 50, nullable: true)]
-    private ?string $frontendPackageVersion = null;
+    #[ORM\Column(name: 'frontend_runtime_stylesheet_url', type: Types::STRING, length: 1024, nullable: true)]
+    private ?string $frontendRuntimeStylesheetUrl = null;
+
+    #[ORM\Column(name: 'frontend_runtime_integrity', type: Types::STRING, length: 255, nullable: true, options: ['comment' => 'Subresource integrity hash for the runtime entrypoint'])]
+    private ?string $frontendRuntimeIntegrity = null;
+
+    #[ORM\Column(name: 'frontend_runtime_format', type: Types::STRING, length: 16, options: ['default' => 'esm'])]
+    private string $frontendRuntimeFormat = 'esm';
 
     #[ORM\Column(name: 'mobile_package', type: Types::STRING, length: 255, nullable: true)]
     private ?string $mobilePackage = null;
@@ -98,7 +104,10 @@ class Plugin
     #[ORM\Column(name: 'checksum_sha256', type: Types::STRING, length: 128, nullable: true)]
     private ?string $checksumSha256 = null;
 
-    #[ORM\Column(name: 'signature_ed25519', type: Types::STRING, length: 512, nullable: true)]
+    #[ORM\Column(name: 'signing_key_id', type: Types::STRING, length: 64, nullable: true, options: ['comment' => 'Ed25519 keyId from the resolved source that signed the plugin'])]
+    private ?string $signingKeyId = null;
+
+    #[ORM\Column(name: 'signature_ed25519', type: Types::STRING, length: 512, nullable: true, options: ['comment' => 'Base64 Ed25519 detached signature of the canonical signedPayload'])]
     private ?string $signatureEd25519 = null;
 
     #[ORM\Column(name: 'installed_at', type: Types::DATETIME_IMMUTABLE)]
@@ -236,25 +245,47 @@ class Plugin
         return $this;
     }
 
-    public function getFrontendPackage(): ?string
+    public function getFrontendRuntimeUrl(): ?string
     {
-        return $this->frontendPackage;
+        return $this->frontendRuntimeUrl;
     }
 
-    public function setFrontendPackage(?string $frontendPackage): self
+    public function setFrontendRuntimeUrl(?string $frontendRuntimeUrl): self
     {
-        $this->frontendPackage = $frontendPackage;
+        $this->frontendRuntimeUrl = $frontendRuntimeUrl;
         return $this;
     }
 
-    public function getFrontendPackageVersion(): ?string
+    public function getFrontendRuntimeStylesheetUrl(): ?string
     {
-        return $this->frontendPackageVersion;
+        return $this->frontendRuntimeStylesheetUrl;
     }
 
-    public function setFrontendPackageVersion(?string $frontendPackageVersion): self
+    public function setFrontendRuntimeStylesheetUrl(?string $frontendRuntimeStylesheetUrl): self
     {
-        $this->frontendPackageVersion = $frontendPackageVersion;
+        $this->frontendRuntimeStylesheetUrl = $frontendRuntimeStylesheetUrl;
+        return $this;
+    }
+
+    public function getFrontendRuntimeIntegrity(): ?string
+    {
+        return $this->frontendRuntimeIntegrity;
+    }
+
+    public function setFrontendRuntimeIntegrity(?string $frontendRuntimeIntegrity): self
+    {
+        $this->frontendRuntimeIntegrity = $frontendRuntimeIntegrity;
+        return $this;
+    }
+
+    public function getFrontendRuntimeFormat(): string
+    {
+        return $this->frontendRuntimeFormat;
+    }
+
+    public function setFrontendRuntimeFormat(string $frontendRuntimeFormat): self
+    {
+        $this->frontendRuntimeFormat = $frontendRuntimeFormat ?: 'esm';
         return $this;
     }
 
@@ -325,6 +356,17 @@ class Plugin
     public function setSignatureEd25519(?string $signatureEd25519): self
     {
         $this->signatureEd25519 = $signatureEd25519;
+        return $this;
+    }
+
+    public function getSigningKeyId(): ?string
+    {
+        return $this->signingKeyId;
+    }
+
+    public function setSigningKeyId(?string $signingKeyId): self
+    {
+        $this->signingKeyId = $signingKeyId;
         return $this;
     }
 

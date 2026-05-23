@@ -73,7 +73,7 @@ final class PluginLockFileWriter
     {
         $reader = new PluginLockFileReader($this->projectDir);
         $existing = $reader->read();
-        $plugins = $existing?->plugins ?? [];
+        $plugins = $existing !== null ? $existing->plugins : [];
 
         $found = false;
         foreach ($plugins as $index => $entry) {
@@ -162,8 +162,10 @@ final class PluginLockFileWriter
                 'bundleClass' => $plugin->getBackendBundleClass(),
             ],
             'frontend' => [
-                'package' => $plugin->getFrontendPackage(),
-                'version' => $plugin->getFrontendPackageVersion(),
+                'runtimeUrl' => $plugin->getFrontendRuntimeUrl(),
+                'stylesheetUrl' => $plugin->getFrontendRuntimeStylesheetUrl(),
+                'integrity' => $plugin->getFrontendRuntimeIntegrity(),
+                'format' => $plugin->getFrontendRuntimeFormat(),
             ],
             'mobile' => [
                 'package' => $plugin->getMobilePackage(),
@@ -171,11 +173,53 @@ final class PluginLockFileWriter
             ],
             'capabilities' => $plugin->getCapabilitiesJson(),
             'checksum' => $plugin->getChecksumSha256(),
-            'signature' => $plugin->getSignatureEd25519(),
+            'signing' => [
+                'keyId' => $plugin->getSigningKeyId(),
+                'signature' => $plugin->getSignatureEd25519(),
+            ],
             'compatibility' => [
                 'selfhelp' => $manifest->getCmsCompatibilityRange(),
             ],
+            'migrations' => $this->collectMigrationHashes($manifest),
             'updatedAt' => $plugin->getUpdatedAt()->format(DATE_ATOM),
         ];
+    }
+
+    /**
+     * Walks the plugin bundle's `Migrations/` folder and records the
+     * SHA-256 of every migration file so the lock can be diffed against
+     * a later host that should boot with the same migration set. We
+     * intentionally read files lazily (only when the bundle class is
+     * autoloadable) so frontend-only plugins return an empty array
+     * without surprising the writer.
+     *
+     * @return list<array{file:string,sha256:string}>
+     */
+    private function collectMigrationHashes(PluginManifest $manifest): array
+    {
+        $bundleClass = $manifest->getBackendBundleClass();
+        if ($bundleClass === null || $bundleClass === '' || !class_exists($bundleClass)) {
+            return [];
+        }
+        $reflection = new \ReflectionClass($bundleClass);
+        $bundleFile = $reflection->getFileName();
+        if (!is_string($bundleFile)) {
+            return [];
+        }
+        $migrationsDir = dirname($bundleFile) . '/Migrations';
+        if (!is_dir($migrationsDir)) {
+            return [];
+        }
+        $entries = glob($migrationsDir . '/*.php') ?: [];
+        sort($entries);
+        $out = [];
+        foreach ($entries as $file) {
+            $hash = hash_file('sha256', $file);
+            if ($hash === false) {
+                continue;
+            }
+            $out[] = ['file' => basename($file), 'sha256' => $hash];
+        }
+        return $out;
     }
 }

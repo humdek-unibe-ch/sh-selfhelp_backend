@@ -15,6 +15,7 @@ use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Event\Lifecycle\PluginUninstalledEvent;
+use App\Plugin\Messenger\UninstallPluginMessage;
 use App\Plugin\Registry\PluginRegistryService;
 use App\Repository\Plugin\PluginRepository;
 use App\Service\Cache\Core\CacheService;
@@ -23,21 +24,28 @@ use App\Service\Core\TransactionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Removes plugin packages while preserving plugin-owned data.
  *
- * After uninstall:
- *   - the plugin row is deleted from `plugins`,
- *   - `config/selfhelp_plugin_bundles.php` is regenerated,
- *   - `selfhelp.plugins.lock.json` is updated,
- *   - plugin-owned tables stay in place,
- *   - rows tagged with `id_plugins` keep the FK NULL (ON DELETE SET NULL),
- *   - caches are invalidated,
- *   - `PluginUninstalledEvent` fires.
+ * Mirrors {@see PluginInstaller}/{@see PluginUpdater}:
  *
- * Re-installing the plugin reconnects the existing data via the
- * manifest's `dataAccess.ownedTables` declaration.
+ *   1. `request()` creates the `plugin_operations` row, takes the
+ *      per-plugin lock, and dispatches `UninstallPluginMessage` onto
+ *      the `plugin_ops` Messenger transport. Returns immediately so
+ *      the UI can subscribe to the Mercure progress topic.
+ *   2. The worker (`UninstallPluginHandler`) executes
+ *      `composer remove`, streams its output into
+ *      `plugin_operations.logs_json`, then calls `finalize()` below.
+ *   3. `finalize()` deletes the `plugins` row, regenerates the
+ *      bundles file, updates the lock file, dispatches
+ *      `PluginUninstalledEvent`, and releases the lock.
+ *
+ * Plugin-owned tables stay in place and rows tagged with `id_plugins`
+ * keep their FK NULL (ON DELETE SET NULL). Re-installing the plugin
+ * reconnects the existing data via the manifest's
+ * `dataAccess.ownedTables` declaration.
  */
 final class PluginUninstaller
 {
@@ -53,10 +61,15 @@ final class PluginUninstaller
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly CacheService $cache,
+        private readonly MessageBusInterface $messageBus,
     ) {
     }
 
-    public function uninstall(string $pluginId): void
+    /**
+     * Stage 1 — record + dispatch. The Messenger worker takes it from
+     * here and calls {@see finalize()}.
+     */
+    public function request(string $pluginId): PluginOperation
     {
         $this->lock->assertCanStart($pluginId);
 
@@ -74,12 +87,44 @@ final class PluginUninstaller
                 null,
                 $plugin->getVersion(),
             );
-            $this->recorder->markRunning($operation, 'Uninstalling plugin');
+
+            $opId = $operation->getId();
+            if (!is_int($opId)) {
+                throw new \LogicException('PluginOperation id was not generated.');
+            }
+            $this->messageBus->dispatch(new UninstallPluginMessage(
+                operationId: $opId,
+                pluginId: $pluginId,
+            ));
+
+            return $operation;
+        } catch (\Throwable $e) {
+            $this->lock->release($pluginId);
+            throw $e;
+        }
+    }
+
+    /**
+     * Stage 2 — invoked by the Messenger worker after composer remove
+     * succeeded. Deletes the plugin row, regenerates artefacts, fires
+     * the lifecycle event, releases the lock.
+     */
+    public function finalize(PluginOperation $operation): void
+    {
+        $pluginId = $operation->getPluginId();
+        try {
+            $plugin = $this->plugins->findOneByPluginId($pluginId);
+            if (!$plugin instanceof Plugin) {
+                // Idempotent: already deleted by a previous failed attempt.
+                $this->recorder->succeed($operation, 'Plugin already uninstalled');
+                return;
+            }
+
+            $this->recorder->markRunning($operation, 'Finalizing plugin uninstall');
 
             $this->em->beginTransaction();
             try {
-                $pluginRecord = $plugin;
-                $this->em->remove($pluginRecord);
+                $this->em->remove($plugin);
                 $this->em->flush();
                 $this->em->commit();
             } catch (\Throwable $e) {
@@ -91,7 +136,7 @@ final class PluginUninstaller
             $this->registry->invalidate();
             $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
             $this->bundlesWriter->regenerate();
-            $this->lockFileWriter->removePlugin($pluginId, $installMode);
+            $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());
 
             $this->transactions->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,

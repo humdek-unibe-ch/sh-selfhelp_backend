@@ -17,13 +17,12 @@ use App\Plugin\Backup\PluginBackupHookInterface;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Event\Lifecycle\PluginUpdatedEvent;
 use App\Plugin\Manifest\PluginManifest;
-use App\Plugin\PackageManager\PackageManagerRunner;
+use App\Plugin\Manifest\ResolvedSource;
+use App\Plugin\Messenger\UpdatePluginMessage;
 use App\Plugin\Registry\PluginRegistryService;
 use App\Plugin\Security\PluginCapabilityValidator;
 use App\Plugin\Security\PluginMigrationGuard;
 use App\Plugin\Security\PluginMigrationGuardException;
-use App\Plugin\Security\PluginSignatureException;
-use App\Plugin\Security\PluginSignatureVerifier;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Plugin\Versioning\SemverHelper;
 use App\Repository\Plugin\PluginRepository;
@@ -32,20 +31,22 @@ use App\Service\Core\TransactionService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * Updates an installed plugin to a new manifest version.
  *
- * Versioning semantics (codified in every host AGENTS.md):
+ * Mirrors `PluginInstaller`:
+ *   - `request()` validates compatibility/version-diff/capabilities and
+ *     dispatches `UpdatePluginMessage` so the Messenger worker can run
+ *     `composer require <package>:<newVersion>` and promote any new
+ *     `.shplugin` artifacts.
+ *   - `finalize()` persists the updated plugin row, regenerates the
+ *     bundles file, refreshes the lock file, and dispatches
+ *     `PluginUpdatedEvent`.
  *
- *   - `patch` → code change without DB change. Migrations skipped.
- *   - `minor` → always carries a DB change.
- *   - `major` → breaking change. Requires `--force-major` from caller.
- *
- * Like `PluginInstaller`, the updater is split into `request()` (set
- * up the operation row + validations) and `finalize()` (commit the
- * new plugin record after the CLI runner has done the package + DB
- * work).
+ * Signature verification of the incoming source happens upstream in
+ * `ManifestResolver` / `PluginArchiveValidator`.
  */
 final class PluginUpdater
 {
@@ -62,18 +63,17 @@ final class PluginUpdater
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginRegistryService $registry,
-        private readonly PluginSignatureVerifier $signatureVerifier,
         private readonly PluginMigrationGuard $migrationGuard,
-        private readonly PackageManagerRunner $packageManagerRunner,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
+        private readonly MessageBusInterface $messageBus,
     ) {
     }
 
     public function request(
         PluginManifest $newManifest,
+        ResolvedSource $resolved,
         bool $forceMajor = false,
-        ?array $registryEntry = null,
         bool $backupBefore = false,
     ): PluginOperation {
         $pluginId = $newManifest->getPluginId();
@@ -122,23 +122,10 @@ final class PluginUpdater
                 );
             }
 
-            $capabilities = $this->capabilityValidator->validate($newManifest);
-
-            try {
-                $this->signatureVerifier->verify(
-                    $this->extractExpectedChecksums($registryEntry),
-                    $this->extractActualChecksums($registryEntry),
-                    $this->extractSignature($registryEntry),
-                    $this->extractSignedPayload($registryEntry),
-                );
-            } catch (PluginSignatureException $e) {
-                throw new ServiceException($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY, null);
-            }
-
+            $capabilities = $this->capabilityValidator->validate($newManifest, $resolved);
             $migrationScan = $this->scanPluginMigrations($newManifest);
-            $dryRun = $this->collectPackageDryRunResults($newManifest);
-
             $installMode = $this->installModeResolver->resolve();
+
             $operation = $this->recorder->start(
                 $pluginId,
                 PluginOperation::TYPE_UPDATE,
@@ -148,10 +135,7 @@ final class PluginUpdater
             );
 
             // Backup is requested either by `--backup-before` (CLI) or
-            // any time the diff kind implies destructive schema work
-            // (major versions). The hook itself decides what to do —
-            // the default NoopPluginBackupHook returns a suggested
-            // `mysqldump` command for the operator to run manually.
+            // whenever the diff implies destructive schema work.
             $shouldBackup = $backupBefore || $diff === 'major' || $diff === 'minor';
             $backup = $shouldBackup
                 ? $this->backupHook->beforeDestructive(
@@ -169,9 +153,17 @@ final class PluginUpdater
                 'lockFileBefore' => $this->lockFileReader->readRaw(),
                 'diffKind' => $diff,
                 'backup' => $backup,
-                'registryEntry' => $registryEntry,
+                'resolvedSource' => [
+                    'kind' => $resolved->kind,
+                    'sourceName' => $resolved->sourceName,
+                    'manifestUrl' => $resolved->manifestUrl,
+                    'keyId' => $resolved->keyId,
+                    'signature' => $resolved->signature,
+                    'expectedChecksums' => $resolved->expectedChecksums,
+                    'composer' => $resolved->composer,
+                    'archiveStagingDir' => $resolved->archiveStagingDir,
+                ],
                 'migrationScan' => $migrationScan,
-                'packageDryRun' => $dryRun,
             ]);
 
             $this->recorder->setRollbackPlan($operation, [
@@ -186,8 +178,18 @@ final class PluginUpdater
                 'plugins',
                 $existing->getId(),
                 false,
-                sprintf('Plugin update requested: %s %s → %s (mode=%s)', $pluginId, $existing->getVersion(), $newManifest->getVersion(), $installMode)
+                sprintf('Plugin update requested: %s %s → %s (mode=%s, source=%s)', $pluginId, $existing->getVersion(), $newManifest->getVersion(), $installMode, $resolved->kind)
             );
+
+            $opId = $operation->getId();
+            if (!is_int($opId)) {
+                throw new \LogicException('PluginOperation id was not generated.');
+            }
+            $this->messageBus->dispatch(new UpdatePluginMessage(
+                operationId: $opId,
+                manifestArray: $newManifest->toArray(),
+                resolvedSource: $resolved,
+            ));
 
             return $operation;
         } catch (\Throwable $e) {
@@ -205,17 +207,12 @@ final class PluginUpdater
 
         $this->recorder->markRunning($operation, 'Finalizing plugin update');
 
-        // Mirrors PluginInstaller::finalize(): refuse to regenerate the
-        // bundles file with a class the autoloader cannot resolve. The
-        // operator must run composer for the new version first.
         $bundleClass = $newManifest->getBackendBundleClass();
         if ($bundleClass !== null && $bundleClass !== '' && !class_exists($bundleClass)) {
             $packageHint = $newManifest->getBackendPackage() ?? $newManifest->getPluginId();
             $error = new ServiceException(sprintf(
-                'Backend bundle class "%s" is not autoloadable. The composer package "%s" must be installed before finalizing. ' .
-                'Run `composer require %s:%s` (or use the plugin\'s `scripts/install-local.{ps1,sh}` helper) and click Finalize again.',
+                'Backend bundle class "%s" is not autoloadable after composer require. The Messenger worker reported success but the bundle did not register; check composer.json + autoload-dump for package "%s" at version "%s".',
                 $bundleClass,
-                $packageHint,
                 $packageHint,
                 $newManifest->getVersion(),
             ), Response::HTTP_PRECONDITION_FAILED);
@@ -232,14 +229,17 @@ final class PluginUpdater
                 $plugin->setTrustLevel($newManifest->getTrustLevel());
                 $plugin->setBackendPackage($newManifest->getBackendPackage());
                 $plugin->setBackendBundleClass($newManifest->getBackendBundleClass());
-                $plugin->setFrontendPackage($newManifest->getFrontendPackage());
-                $plugin->setFrontendPackageVersion($newManifest->getFrontendPackageVersion());
+                $plugin->setFrontendRuntimeUrl($newManifest->getFrontendRuntimeEntrypoint());
+                $plugin->setFrontendRuntimeStylesheetUrl($newManifest->getFrontendRuntimeStylesheet());
+                $plugin->setFrontendRuntimeIntegrity($newManifest->getFrontendRuntimeIntegrity());
+                $plugin->setFrontendRuntimeFormat($newManifest->getFrontendRuntimeFormat());
                 $plugin->setMobilePackage($newManifest->getMobilePackage());
                 $plugin->setMobilePackageVersion($newManifest->getMobilePackageVersion());
                 $plugin->setManifestJson($newManifest->toArray());
                 $plugin->setCapabilitiesJson($this->capabilityValidator->validate($newManifest));
                 $plugin->setDescription($newManifest->getDescription());
                 $plugin->setName($newManifest->getName());
+                $this->applySigningMetadata($plugin, $operation);
                 $plugin->touchUpdatedAt();
                 $this->em->flush();
                 $this->em->commit();
@@ -268,6 +268,24 @@ final class PluginUpdater
     }
 
     /**
+     * Lift the signing keyId + signature out of the operation's
+     * `resolvedSource` snapshot (written by `request()`) and pin them
+     * on the `Plugin` entity so the lock file can render them.
+     */
+    private function applySigningMetadata(Plugin $plugin, PluginOperation $operation): void
+    {
+        $snapshots = $operation->getSnapshotsJson() ?? [];
+        $resolved = $snapshots['resolvedSource'] ?? null;
+        if (!is_array($resolved)) {
+            return;
+        }
+        $keyId = $resolved['keyId'] ?? null;
+        $signature = $resolved['signature'] ?? null;
+        $plugin->setSigningKeyId(is_string($keyId) && $keyId !== '' ? $keyId : null);
+        $plugin->setSignatureEd25519(is_string($signature) && $signature !== '' ? $signature : null);
+    }
+
+    /**
      * @return list<string>
      */
     private function affectedTables(Plugin $plugin): array
@@ -278,59 +296,7 @@ final class PluginUpdater
     }
 
     /**
-     * @param array<string,mixed>|null $registryEntry
-     * @return array{composer?: string|null, frontend?: string|null, mobile?: string|null}
-     */
-    private function extractExpectedChecksums(?array $registryEntry): array
-    {
-        if (!is_array($registryEntry)) {
-            return [];
-        }
-        $checksums = $registryEntry['checksums'] ?? null;
-        if (!is_array($checksums)) {
-            return [];
-        }
-        $out = [];
-        foreach (['composer', 'frontend', 'mobile'] as $key) {
-            if (isset($checksums[$key]) && is_string($checksums[$key])) {
-                $out[$key] = $checksums[$key];
-            }
-        }
-        return $out;
-    }
-
-    /**
-     * @param array<string,mixed>|null $registryEntry
-     * @return array{files: array<string,string>}
-     */
-    private function extractActualChecksums(?array $registryEntry): array
-    {
-        return ['files' => $this->extractExpectedChecksums($registryEntry)];
-    }
-
-    /**
-     * @param array<string,mixed>|null $registryEntry
-     */
-    private function extractSignature(?array $registryEntry): ?string
-    {
-        $sig = is_array($registryEntry) ? ($registryEntry['signature'] ?? null) : null;
-        return is_string($sig) && $sig !== '' ? $sig : null;
-    }
-
-    /**
-     * @param array<string,mixed>|null $registryEntry
-     */
-    private function extractSignedPayload(?array $registryEntry): ?string
-    {
-        $payload = is_array($registryEntry) ? ($registryEntry['signedPayload'] ?? null) : null;
-        return is_string($payload) && $payload !== '' ? $payload : null;
-    }
-
-    /**
-     * @return array{
-     *   scanned: int,
-     *   files: list<array{file: string, violations: list<string>}>,
-     * }
+     * @return array{scanned:int,files:list<array{file:string,violations:list<string>}>}
      */
     private function scanPluginMigrations(PluginManifest $manifest): array
     {
@@ -393,26 +359,5 @@ final class PluginUpdater
             $matches,
             static fn(string $s): bool => preg_match('/\b(drop|truncate|alter|delete\s+from)\b/i', $s) === 1,
         ));
-    }
-
-    /**
-     * @return array<string,mixed>
-     */
-    private function collectPackageDryRunResults(PluginManifest $manifest): array
-    {
-        $out = [];
-        $composerPackage = $manifest->getBackendPackage();
-        if ($composerPackage !== null && $composerPackage !== '') {
-            $out['composer'] = $this->packageManagerRunner->dryRunComposer($composerPackage, $manifest->getVersion())->toArray();
-        }
-        $frontendPackage = $manifest->getFrontendPackage();
-        if ($frontendPackage !== null && $frontendPackage !== '') {
-            $out['npm_frontend'] = $this->packageManagerRunner->dryRunNpm($frontendPackage, $manifest->getFrontendPackageVersion() ?? $manifest->getVersion())->toArray();
-        }
-        $mobilePackage = $manifest->getMobilePackage();
-        if ($mobilePackage !== null && $mobilePackage !== '') {
-            $out['npm_mobile'] = $this->packageManagerRunner->dryRunNpm($mobilePackage, $manifest->getMobilePackageVersion() ?? $manifest->getVersion())->toArray();
-        }
-        return $out;
     }
 }

@@ -1,0 +1,45 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin install request",
+    "description": "Unified install request. Used by POST /admin/plugins/install and /admin/plugins/{id}/update when Content-Type is application/json. The `archive` source is handled via multipart/form-data and does NOT use this schema.",
+    "type": "object",
+    "required": ["source"],
+    "oneOf": [
+        {
+            "type": "object",
+            "required": ["source", "registryEntry"],
+            "properties": {
+                "source": { "const": "registry" },
+                "sourceName": { "type": "string" },
+                "registryEntry": { "type": "object", "additionalProperties": true },
+                "forceMajor": { "type": "boolean" },
+                "backupBefore": { "type": "boolean" }
+            },
+            "additionalProperties": false
+        },
+        {
+            "type": "object",
+            "required": ["source", "manifestUrl"],
+            "properties": {
+                "source": { "const": "url" },
+                "manifestUrl": { "type": "string", "format": "uri" },
+                "registryEntry": { "type": ["object", "null"], "additionalProperties": true },
+                "forceMajor": { "type": "boolean" },
+                "backupBefore": { "type": "boolean" }
+            },
+            "additionalProperties": false
+        },
+        {
+            "type": "object",
+            "required": ["source", "manifest"],
+            "properties": {
+                "source": { "const": "paste" },
+                "manifest": { "type": "object", "additionalProperties": true },
+                "registryEntry": { "type": ["object", "null"], "additionalProperties": true },
+                "forceMajor": { "type": "boolean" },
+                "backupBefore": { "type": "boolean" }
+            },
+            "additionalProperties": false
+        }
+    ]
+}

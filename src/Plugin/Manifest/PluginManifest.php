@@ -94,9 +94,43 @@ final class PluginManifest
         return is_array($conflicts) ? array_values($conflicts) : [];
     }
 
+    /**
+     * Composer package name from `backend.composer.package`.
+     */
     public function getBackendPackage(): ?string
     {
-        return isset($this->data['backend']['package']) ? (string) $this->data['backend']['package'] : null;
+        $pkg = $this->data['backend']['composer']['package'] ?? null;
+        return is_string($pkg) && $pkg !== '' ? $pkg : null;
+    }
+
+    /**
+     * Composer version constraint from `backend.composer.version`.
+     */
+    public function getBackendComposerVersion(): ?string
+    {
+        $v = $this->data['backend']['composer']['version'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    /**
+     * @return array{type:string,url:string,reference?:string}|null
+     */
+    public function getBackendComposerRepository(): ?array
+    {
+        $repo = $this->data['backend']['composer']['repository'] ?? null;
+        if (!is_array($repo)) {
+            return null;
+        }
+        $type = $repo['type'] ?? null;
+        $url = $repo['url'] ?? null;
+        if (!is_string($type) || $type === '' || !is_string($url) || $url === '') {
+            return null;
+        }
+        $out = ['type' => $type, 'url' => $url];
+        if (isset($repo['reference']) && is_string($repo['reference']) && $repo['reference'] !== '') {
+            $out['reference'] = $repo['reference'];
+        }
+        return $out;
     }
 
     public function getBackendBundleClass(): ?string
@@ -104,14 +138,46 @@ final class PluginManifest
         return isset($this->data['backend']['bundleClass']) ? (string) $this->data['backend']['bundleClass'] : null;
     }
 
-    public function getFrontendPackage(): ?string
+    /**
+     * Runtime ESM entrypoint path / URL. After the host has promoted a
+     * `.shplugin` to `public/plugin-artifacts/<id>-<ver>/`, this returns
+     * the rewritten `/plugin-artifacts/...` URL. For registry installs
+     * this returns the canonical https URL.
+     */
+    public function getFrontendRuntimeEntrypoint(): ?string
     {
-        return isset($this->data['frontend']['package']) ? (string) $this->data['frontend']['package'] : null;
+        $v = $this->data['frontend']['runtime']['entrypoint'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
     }
 
-    public function getFrontendPackageVersion(): ?string
+    public function getFrontendRuntimeStylesheet(): ?string
     {
-        return isset($this->data['frontend']['version']) ? (string) $this->data['frontend']['version'] : null;
+        $v = $this->data['frontend']['runtime']['stylesheet'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    public function getFrontendRuntimeFormat(): string
+    {
+        $v = $this->data['frontend']['runtime']['format'] ?? null;
+        return is_string($v) && $v !== '' ? $v : 'esm';
+    }
+
+    public function getFrontendRuntimeIntegrity(): ?string
+    {
+        $v = $this->data['frontend']['runtime']['integrity'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    public function getFrontendRuntimeStylesheetIntegrity(): ?string
+    {
+        $v = $this->data['frontend']['runtime']['stylesheetIntegrity'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    public function getFrontendDevEntrypointUrl(): ?string
+    {
+        $v = $this->data['frontend']['runtime']['devEntrypointUrl'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
     }
 
     public function getMobilePackage(): ?string
@@ -122,6 +188,26 @@ final class PluginManifest
     public function getMobilePackageVersion(): ?string
     {
         return isset($this->data['mobile']['version']) ? (string) $this->data['mobile']['version'] : null;
+    }
+
+    /**
+     * Whether the manifest declares signing as REQUIRED. The host
+     * always enforces `SELFHELP_PLUGIN_REQUIRE_SIGNATURE` first; this
+     * additional plugin-side opt-in lets a publisher demand stricter
+     * verification.
+     */
+    public function getSigningRequired(): bool
+    {
+        return (bool) ($this->data['security']['signing']['required'] ?? false);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getSigningAcceptedKeyIds(): array
+    {
+        $ids = $this->data['security']['signing']['acceptedKeyIds'] ?? [];
+        return is_array($ids) ? array_values(array_map('strval', $ids)) : [];
     }
 
     /** @return array<int, array<string,mixed>> */
