@@ -76,7 +76,37 @@ class ApiRouteLoader extends Loader
         
         // Use optimized single-query method to get all routes with permissions
         $allRoutesData = $this->apiRouteRepository->findAllRoutesWithPermissionsAsArray();
-        
+
+        // Sort routes so static paths (no `{` placeholder) are added to
+        // the collection BEFORE dynamic paths. Symfony's UrlMatcher tries
+        // routes in collection order and the first match wins, so without
+        // this sort a dynamic route registered earlier (e.g. baseline
+        // `/admin/plugins/{pluginId}`) would shadow a later static
+        // sibling (e.g. `/admin/plugins/updates` introduced in a
+        // follow-up migration). We keep the existing version + id order
+        // as the tie-breaker so the relative order within each bucket
+        // remains stable and idempotent.
+        usort($allRoutesData, static function ($a, $b): int {
+            $aArr = is_array($a) ? $a : [];
+            $bArr = is_array($b) ? $b : [];
+            $aVersion = isset($aArr['version']) && is_string($aArr['version']) ? $aArr['version'] : '';
+            $bVersion = isset($bArr['version']) && is_string($bArr['version']) ? $bArr['version'] : '';
+            $versionCmp = strcmp($aVersion, $bVersion);
+            if ($versionCmp !== 0) {
+                return $versionCmp;
+            }
+            $aPath = isset($aArr['path']) && is_string($aArr['path']) ? $aArr['path'] : '';
+            $bPath = isset($bArr['path']) && is_string($bArr['path']) ? $bArr['path'] : '';
+            $aDynamic = str_contains($aPath, '{') ? 1 : 0;
+            $bDynamic = str_contains($bPath, '{') ? 1 : 0;
+            if ($aDynamic !== $bDynamic) {
+                return $aDynamic - $bDynamic;
+            }
+            $aId = isset($aArr['id']) && is_int($aArr['id']) ? $aArr['id'] : 0;
+            $bId = isset($bArr['id']) && is_int($bArr['id']) ? $bArr['id'] : 0;
+            return $aId - $bId;
+        });
+
         foreach ($allRoutesData as $routeData) {
             $version = $routeData['version'];
             
