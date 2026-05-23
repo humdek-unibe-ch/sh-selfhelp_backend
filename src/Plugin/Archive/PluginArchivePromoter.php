@@ -129,6 +129,40 @@ final class PluginArchivePromoter
         }
     }
 
+    /**
+     * Removes the promoted artifacts for a `<pluginId>-<version>` pair:
+     *
+     *   - `var/plugins/<id>-<ver>/`           (full staging + installed copy)
+     *   - `public/plugin-artifacts/<id>-<ver>/` (web-served runtime artifacts)
+     *
+     * Best-effort: missing dirs are silently ignored, IO errors are
+     * collected and returned so the lifecycle orchestrator can surface
+     * them in the operation log without aborting the rest of cleanup.
+     *
+     * @return list<string> error messages (empty list = clean removal)
+     */
+    public function cleanupArtifacts(string $pluginId, string $version): array
+    {
+        $errors = [];
+        $pluginRoot = rtrim($this->projectDir, '/\\')
+            . DIRECTORY_SEPARATOR . 'var'
+            . DIRECTORY_SEPARATOR . 'plugins'
+            . DIRECTORY_SEPARATOR . $pluginId . '-' . $version;
+        $publicDir = $this->publicDir($pluginId, $version);
+
+        foreach ([$pluginRoot, $publicDir] as $dir) {
+            if ($this->filesystem->exists($dir)) {
+                try {
+                    $this->filesystem->remove($dir);
+                } catch (\Throwable $e) {
+                    $errors[] = sprintf('Failed to remove "%s": %s', $dir, $e->getMessage());
+                }
+            }
+        }
+
+        return $errors;
+    }
+
     public function installedDir(string $pluginId, string $version): string
     {
         return rtrim($this->projectDir, '/\\')

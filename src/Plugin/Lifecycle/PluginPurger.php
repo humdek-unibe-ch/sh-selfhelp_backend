@@ -13,6 +13,7 @@ namespace App\Plugin\Lifecycle;
 use App\Entity\Plugin\Plugin;
 use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
+use App\Plugin\Archive\PluginArchivePromoter;
 use App\Plugin\Backup\PluginBackupHookInterface;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Event\Lifecycle\PluginPurgedEvent;
@@ -57,6 +58,7 @@ final class PluginPurger
         private readonly PluginRegistryService $registry,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
+        private readonly PluginArchivePromoter $archivePromoter,
         private readonly PluginBackupHookInterface $backupHook,
         private readonly InstallModeResolver $installModeResolver,
         private readonly TransactionService $transactions,
@@ -141,6 +143,18 @@ final class PluginPurger
             $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $installMode);
+
+            // Purge is destructive by definition — wipe the promoted
+            // artefacts in `public/plugin-artifacts/<id>-<ver>/` and the
+            // staged copy in `var/plugins/<id>-<ver>/`. Best-effort: any
+            // IO error is recorded but does not abort the purge (the
+            // plugins row + plugin-tagged data are already gone).
+            $cleanupErrors = $this->archivePromoter->cleanupArtifacts($pluginId, $plugin->getVersion());
+            $this->recorder->appendLog($operation, 'cleanup-artifacts', [
+                'pluginId' => $pluginId,
+                'version' => $plugin->getVersion(),
+                'errors' => $cleanupErrors,
+            ], 95);
 
             $this->transactions->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,

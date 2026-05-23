@@ -13,6 +13,7 @@ namespace App\Plugin\Lifecycle;
 use App\Entity\Plugin\Plugin;
 use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
+use App\Plugin\Archive\PluginArchivePromoter;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Event\Lifecycle\PluginUninstalledEvent;
 use App\Plugin\Messenger\UninstallPluginMessage;
@@ -57,6 +58,7 @@ final class PluginUninstaller
         private readonly PluginRegistryService $registry,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
+        private readonly PluginArchivePromoter $archivePromoter,
         private readonly InstallModeResolver $installModeResolver,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
@@ -121,6 +123,7 @@ final class PluginUninstaller
             }
 
             $this->recorder->markRunning($operation, 'Finalizing plugin uninstall');
+            $pluginVersion = $plugin->getVersion();
 
             $this->em->beginTransaction();
             try {
@@ -137,6 +140,19 @@ final class PluginUninstaller
             $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());
+
+            // Remove the promoted artefacts so `public/plugin-artifacts/`
+            // does not keep serving the ESM bundle of an uninstalled
+            // plugin and `var/plugins/<id>-<ver>/` does not pile up
+            // stale staging/installed copies. Best-effort: cleanup
+            // errors are recorded into the operation log but do not
+            // fail the uninstall (the DB row is already gone).
+            $cleanupErrors = $this->archivePromoter->cleanupArtifacts($pluginId, $pluginVersion);
+            $this->recorder->appendLog($operation, 'cleanup-artifacts', [
+                'pluginId' => $pluginId,
+                'version' => $pluginVersion,
+                'errors' => $cleanupErrors,
+            ], 90);
 
             $this->transactions->logTransaction(
                 LookupService::TRANSACTION_TYPES_DELETE,
