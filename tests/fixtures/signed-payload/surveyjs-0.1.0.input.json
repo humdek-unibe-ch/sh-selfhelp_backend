@@ -1,0 +1,31 @@
+{
+    "pluginId": "sh2-shp-survey-js",
+    "version": "0.1.0",
+    "manifestUrl": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/manifests/sh2-shp-survey-js-0.1.0.json",
+    "composer": {
+        "package": "humdek/sh2-shp-survey-js",
+        "version": "0.1.0",
+        "repository": {
+            "type": "vcs",
+            "url": "https://github.com/humdek-unibe-ch/sh2-shp-survey-js"
+        }
+    },
+    "runtime": {
+        "entrypointUrl": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/artifacts/sh2-shp-survey-js-0.1.0/plugin.esm.js",
+        "stylesheetUrl": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/artifacts/sh2-shp-survey-js-0.1.0/plugin.css",
+        "format": "esm",
+        "integrity": "sha384-AAAA"
+    },
+    "checksums": {
+        "frontendEsm": "sha256-9f3cabc",
+        "frontendCss": "sha256-2ab1def"
+    },
+    "compatibility": {
+        "selfhelp": ">=8.0.0-dev <9.0.0",
+        "php": "^8.4",
+        "node": "^22",
+        "react": "^19",
+        "reactNative": "^0.83",
+        "expoSdk": "^55"
+    }
+}

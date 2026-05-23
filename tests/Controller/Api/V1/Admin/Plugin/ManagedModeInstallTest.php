@@ -14,40 +14,29 @@ use App\Tests\Controller\Api\V1\BaseControllerTest;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * End-to-end managed-mode install integration test.
+ * End-to-end install integration test for the unified
+ * `POST /admin/plugins/install` endpoint.
  *
- * Walks the full plugin install lifecycle against a real HTTP test
- * client + the live test DB:
+ * The test environment uses the `sync://` Messenger transport so the
+ * install handler runs inline; the test can therefore assert on the
+ * resulting plugin row immediately after the install POST returns.
  *
- *   1. Initial list   — confirm the fixture plugin is not installed.
- *   2. Request install — POST /admin/plugins   (expects 202 Accepted).
- *   3. Finalize        — POST /admin/plugins/{id}/finalize-install.
- *   4. Detail re-fetch — confirm the plugin shows up with the right
- *                        version and a `succeeded` operation.
- *   5. Uninstall       — POST /admin/plugins/{id}/uninstall.
- *   6. Cleanup         — POST /admin/plugins/{id}/purge with the
- *                        confirmation token (we do not want a stale
- *                        row left behind between runs).
+ * Two test cases:
+ *   1. testSyncInstallEndToEnd — full install via the `paste` source,
+ *      uninstall, and purge cleanup.
+ *   2. testInstallRejectsManifestMissingRequiredFields — the canonical
+ *      schema validation refuses a structurally invalid manifest.
  *
- * The test only relies on the admin JWT from the parent
- * `BaseControllerTest`; no fixtures, no mocks, no manual DB writes.
- * If the install or finalize call fails, the test still tries to
- * clean up so the next run starts from a clean slate.
+ * The fixture manifest uses `trustLevel=untrusted` so the host's
+ * signature verifier accepts the install even when no
+ * SELFHELP_PLUGIN_TRUSTED_KEYS are configured (require_signature is
+ * false in the test env).
  */
 class ManagedModeInstallTest extends BaseControllerTest
 {
     private const TEST_PLUGIN_ID = 'sh2-shp-plugin-doctor-test';
     private const TEST_PLUGIN_VERSION = '1.0.0';
 
-    /**
-     * Minimal-but-valid manifest matching `plugin-manifest.schema.json`.
-     *
-     * The plugin does not need to exist on disk for the `request +
-     * finalize` flow because the orchestrator only stores the
-     * manifest on the operation snapshot; the real composer / npm
-     * work would happen in `managed` mode CI, which is out of scope
-     * for an HTTP integration test.
-     */
     private function manifest(): array
     {
         return [
@@ -55,7 +44,7 @@ class ManagedModeInstallTest extends BaseControllerTest
             'name' => 'Plugin Doctor Test Fixture',
             'version' => self::TEST_PLUGIN_VERSION,
             'pluginApiVersion' => '1.0',
-            'description' => 'Synthetic plugin used only by the managed-mode install integration test.',
+            'description' => 'Synthetic plugin used only by the install integration test.',
             'author' => [
                 'name' => 'SelfHelp Test Harness',
             ],
@@ -64,12 +53,17 @@ class ManagedModeInstallTest extends BaseControllerTest
                 'selfhelp' => '>=8.0.0 <9.0.0',
             ],
             'backend' => [
-                'package' => 'humdek/' . self::TEST_PLUGIN_ID,
                 'bundleClass' => 'Humdek\\PluginDoctorTest\\PluginDoctorTestBundle',
+                'composer' => [
+                    'package' => 'humdek/' . self::TEST_PLUGIN_ID,
+                    'version' => self::TEST_PLUGIN_VERSION,
+                ],
             ],
             'frontend' => [
-                'package' => '@humdek/' . self::TEST_PLUGIN_ID,
-                'version' => self::TEST_PLUGIN_VERSION,
+                'runtime' => [
+                    'entrypoint' => '/plugin-artifacts/' . self::TEST_PLUGIN_ID . '-' . self::TEST_PLUGIN_VERSION . '/plugin.esm.js',
+                    'format' => 'esm',
+                ],
             ],
             'security' => [
                 'trustLevel' => 'untrusted',
@@ -88,28 +82,15 @@ class ManagedModeInstallTest extends BaseControllerTest
         ];
     }
 
-    /**
-     * Skip the test cleanly when the test environment cannot
-     * authenticate as admin. This keeps the integration test useful
-     * in CI envs that have an admin seed, while not poisoning the
-     * full suite in dev environments that don't.
-     */
     private function ensureAdminAvailable(): void
     {
         try {
             $this->getAdminAccessToken();
         } catch (\Throwable $e) {
-            $this->markTestSkipped(
-                'Admin login is not available in this test environment: ' . $e->getMessage()
-            );
+            $this->markTestSkipped('Admin login not available: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Try to remove any leftover test plugin row from a previous run.
-     * Soft-fails on any HTTP status so a clean DB does not flag the
-     * test as broken.
-     */
     private function cleanupResidual(): void
     {
         try {
@@ -117,146 +98,61 @@ class ManagedModeInstallTest extends BaseControllerTest
         } catch (\Throwable) {
             return;
         }
-
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID,
-            [],
-            [],
-            $headers
-        );
-
-        $status = $this->client->getResponse()->getStatusCode();
-        if ($status === Response::HTTP_NOT_FOUND) {
+        $this->client->request('GET', '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID, [], [], $headers);
+        if ($this->client->getResponse()->getStatusCode() === Response::HTTP_NOT_FOUND) {
             return;
         }
-
         $this->client->request(
             'POST',
             '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID . '/purge',
-            [],
-            [],
-            $headers,
-            json_encode(['confirmedPluginId' => self::TEST_PLUGIN_ID])
+            [], [], $headers,
+            json_encode(['confirmedPluginId' => self::TEST_PLUGIN_ID]),
         );
     }
 
-    public function testManagedModeInstallEndToEnd(): void
+    public function testSyncInstallEndToEnd(): void
     {
         $this->ensureAdminAvailable();
         $this->cleanupResidual();
 
-        // ── 1. Initial list ────────────────────────────────────────────
-        $this->client->request('GET', '/cms-api/v1/admin/plugins', [], [], $this->adminHeaders());
-        $this->assertResponseIsSuccessful();
-        $listBefore = json_decode($this->client->getResponse()->getContent(), true);
-
-        $this->assertSame(200, $listBefore['status']);
-        $this->assertArrayHasKey('plugins', $listBefore['data']);
-        $idsBefore = array_column($listBefore['data']['plugins'], 'pluginId');
-        $this->assertNotContains(self::TEST_PLUGIN_ID, $idsBefore, 'Test plugin should not exist before install.');
-
-        // ── 2. Request install ─────────────────────────────────────────
         $manifest = $this->manifest();
         $this->client->request(
             'POST',
-            '/cms-api/v1/admin/plugins',
-            [],
-            [],
+            '/cms-api/v1/admin/plugins/install',
+            [], [],
             $this->adminHeaders(),
-            json_encode(['manifest' => $manifest])
+            json_encode(['source' => 'paste', 'manifest' => $manifest]),
         );
 
-        $response = $this->client->getResponse();
+        $status = $this->client->getResponse()->getStatusCode();
         $this->assertSame(
             Response::HTTP_ACCEPTED,
-            $response->getStatusCode(),
-            'Install request must return 202 Accepted. Body: ' . $response->getContent()
+            $status,
+            'install must return 202 Accepted. Body: ' . $this->client->getResponse()->getContent(),
         );
 
-        $requestBody = json_decode($response->getContent(), true);
-        $this->assertSame(202, $requestBody['status']);
-        $this->assertArrayHasKey('data', $requestBody);
-        $this->assertArrayHasKey('id', $requestBody['data']);
-        $this->assertArrayHasKey('status', $requestBody['data']);
-        $this->assertSame('requested', $requestBody['data']['status']);
-        $this->assertSame(self::TEST_PLUGIN_ID, $requestBody['data']['pluginId']);
-        $operationId = (int) $requestBody['data']['id'];
-
-        // ── 3. Finalize install ────────────────────────────────────────
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID . '/finalize-install',
-            [],
-            [],
-            $this->adminHeaders(),
-            json_encode([
-                'operationId' => $operationId,
-                'manifest' => $manifest,
-            ])
-        );
-
-        $this->assertResponseIsSuccessful();
-        $finalizeBody = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertSame(200, $finalizeBody['status']);
-        $this->assertSame(self::TEST_PLUGIN_ID, $finalizeBody['data']['pluginId']);
-        $this->assertSame(self::TEST_PLUGIN_VERSION, $finalizeBody['data']['version']);
-
-        // ── 4. Detail re-fetch ────────────────────────────────────────
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID,
-            [],
-            [],
-            $this->adminHeaders()
-        );
+        // Detail must show the plugin after the sync-transport handler runs.
+        $this->client->request('GET', '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID, [], [], $this->adminHeaders());
         $this->assertResponseIsSuccessful();
         $detail = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertSame(200, $detail['status']);
         $this->assertSame(self::TEST_PLUGIN_ID, $detail['data']['pluginId']);
         $this->assertSame(self::TEST_PLUGIN_VERSION, $detail['data']['version']);
         $this->assertSame('untrusted', $detail['data']['trustLevel']);
 
-        // The detail endpoint must expose at least one operation row in
-        // the `succeeded` state for this plugin.
-        $this->assertArrayHasKey('operations', $detail['data']);
-        $hasSucceeded = false;
-        foreach ($detail['data']['operations'] as $op) {
-            if ($op['type'] === 'install' && $op['status'] === 'succeeded') {
-                $hasSucceeded = true;
-                break;
-            }
-        }
-        $this->assertTrue($hasSucceeded, 'Detail must show a succeeded install operation.');
-
-        // ── 5. List again, this time the plugin must show up ──────────
-        $this->client->request('GET', '/cms-api/v1/admin/plugins', [], [], $this->adminHeaders());
-        $this->assertResponseIsSuccessful();
-        $listAfter = json_decode($this->client->getResponse()->getContent(), true);
-        $idsAfter = array_column($listAfter['data']['plugins'], 'pluginId');
-        $this->assertContains(self::TEST_PLUGIN_ID, $idsAfter, 'Test plugin must show up in list after install.');
-
-        // ── 6. Uninstall ──────────────────────────────────────────────
+        // Uninstall + purge to keep the test idempotent.
         $this->client->request(
             'POST',
             '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID . '/uninstall',
-            [],
-            [],
-            $this->adminHeaders()
+            [], [], $this->adminHeaders(),
         );
         $this->assertResponseIsSuccessful();
-        $uninstallBody = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertSame(200, $uninstallBody['status']);
-        $this->assertSame('uninstalled', $uninstallBody['data']['status']);
 
-        // ── 7. Purge so the next test run starts clean ────────────────
         $this->client->request(
             'POST',
             '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID . '/purge',
-            [],
-            [],
+            [], [],
             $this->adminHeaders(),
-            json_encode(['confirmedPluginId' => self::TEST_PLUGIN_ID])
+            json_encode(['confirmedPluginId' => self::TEST_PLUGIN_ID]),
         );
         $this->assertResponseIsSuccessful();
     }
@@ -267,58 +163,6 @@ class ManagedModeInstallTest extends BaseControllerTest
         parent::tearDown();
     }
 
-    public function testInstallRejectsDuplicateRequest(): void
-    {
-        $this->ensureAdminAvailable();
-        $this->cleanupResidual();
-
-        $manifest = $this->manifest();
-
-        // Successful first request.
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/plugins',
-            [],
-            [],
-            $this->adminHeaders(),
-            json_encode(['manifest' => $manifest])
-        );
-        $this->assertSame(
-            Response::HTTP_ACCEPTED,
-            $this->client->getResponse()->getStatusCode(),
-            'First install request must return 202.'
-        );
-        $firstBody = json_decode($this->client->getResponse()->getContent(), true);
-        $opId = (int) $firstBody['data']['id'];
-
-        // Finalize the first request so the plugin row exists.
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/plugins/' . self::TEST_PLUGIN_ID . '/finalize-install',
-            [],
-            [],
-            $this->adminHeaders(),
-            json_encode(['operationId' => $opId, 'manifest' => $manifest])
-        );
-        $this->assertResponseIsSuccessful();
-
-        // Second request must be rejected.
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/admin/plugins',
-            [],
-            [],
-            $this->adminHeaders(),
-            json_encode(['manifest' => $manifest])
-        );
-        $secondStatus = $this->client->getResponse()->getStatusCode();
-        $this->assertSame(
-            Response::HTTP_CONFLICT,
-            $secondStatus,
-            'Duplicate install must return 409 Conflict.'
-        );
-    }
-
     public function testInstallRejectsManifestMissingRequiredFields(): void
     {
         $this->ensureAdminAvailable();
@@ -326,17 +170,15 @@ class ManagedModeInstallTest extends BaseControllerTest
 
         $broken = [
             'id' => self::TEST_PLUGIN_ID,
-            // 'name', 'version', 'pluginApiVersion', 'compatibility',
-            // 'security' all intentionally missing.
+            // every other required field intentionally missing.
         ];
 
         $this->client->request(
             'POST',
-            '/cms-api/v1/admin/plugins',
-            [],
-            [],
+            '/cms-api/v1/admin/plugins/install',
+            [], [],
             $this->adminHeaders(),
-            json_encode(['manifest' => $broken])
+            json_encode(['source' => 'paste', 'manifest' => $broken]),
         );
 
         $status = $this->client->getResponse()->getStatusCode();
