@@ -104,6 +104,27 @@ Plugin progress, dashboards, chat, collaborative editing, file upload status, an
 - `mobile/` — optional npm package. Package name `@humdek/<plugin-id>-mobile`.
 - `docs/` — plugin-specific docs.
 - `.github/workflows/validate-plugin.yml` — CI validation.
+- `.github/workflows/publish-to-registry.yml` — tag-triggered registry publish.
+- `scripts/build-shplugin.mjs` — builds + signs the `.shplugin` archive.
+- `scripts/publish-to-registry.{sh,ps1}` — publishes a new version to the public registry repo.
+- `scripts/install-local.{sh,ps1}` — local dev install (symlink fast-path or `.shplugin` upload).
+
+## `.gitignore` (mandatory)
+
+Every plugin repo MUST gitignore: `node_modules/`, `backend/vendor/`,
+`frontend/dist/`, `mobile/dist/`, `dist/`, `*.shplugin`,
+`.signing-keys/`, `*.ed25519`, `*.priv`, `*.pem`, `.env`, `.env.local`,
+`coverage/`, `.phpunit.result.cache`. See
+`docs/plugins/publishing-workflow.md` §1.2 for the canonical template.
+
+NEVER commit private Ed25519 signing keys. Use GitHub Actions
+repository secrets:
+
+- `SELFHELP_PLUGIN_SIGNING_KEY` — Ed25519 secret key (base64).
+- `SELFHELP_PLUGIN_SIGNING_KEY_ID` — must match a host
+  `SELFHELP_PLUGIN_TRUSTED_KEYS` entry.
+- `REGISTRY_PUSH_TOKEN` — PAT with `contents:write` on
+  `humdek-unibe-ch/sh2-plugin-registry`.
 
 ## Coding style
 

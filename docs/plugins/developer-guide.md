@@ -75,9 +75,19 @@ A minimal manifest looks like this:
     "trustLevel": "reviewed",
     "capabilities": ["frontendStyles"]
   },
+  "backend": {
+    "bundleClass": "SelfHelp\\ExampleBundle\\SelfHelpExampleBundle",
+    "composer": {
+      "package": "selfhelp/sh-shp-example",
+      "version": "1.0.0"
+    }
+  },
   "frontend": {
-    "package": "@selfhelp/sh-shp-example",
-    "version": "1.0.0"
+    "runtime": {
+      "entrypoint": "dist/plugin.esm.js",
+      "stylesheet": "dist/plugin.css",
+      "format": "esm"
+    }
   },
   "styles": [
     {
@@ -275,11 +285,12 @@ The plugin's migration files live in
 standard `bin/console doctrine:migrations:generate` command (do **not**
 hand-name migration files).
 
-The host invokes migrations **only** during the `finalizeInstall` /
-`finalizeUpdate` step, after Composer has installed the new code, and
-within the plugin operation transaction. If a migration fails, the
-operation is recorded as `failed` and the plugin is left in its
-previous state.
+The host invokes migrations **only** inside the Messenger
+`InstallPluginHandler` / `UpdatePluginHandler`, after Composer has
+installed the new code, and within the plugin operation transaction.
+If a migration fails the operation is recorded as `failed`, any
+artifacts promoted to `public/plugin-artifacts/` are rolled back, and
+the plugin is left in its previous state.
 
 ---
 
@@ -288,17 +299,16 @@ previous state.
 The CMS supports three install modes; each plugin install records the
 mode that produced it in the lock file.
 
-| Mode          | Composer / npm   | Admin UI runs       | When to use                                                       |
-| ------------- | ---------------- | ------------------- | ----------------------------------------------------------------- |
-| `development` | runs in-process  | full UI             | Local dev only. Disabled in CI.                                   |
-| `managed`     | runs externally  | request-only UI     | Production. CLI / CD does the package install; admin UI finalizes. |
-| `trusted`     | runs in-process  | full UI, audited    | Air-gapped on-prem installs with a verified registry mirror.      |
+| Mode          | Composer                     | When to use                                                       |
+| ------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `development` | run by the Messenger worker  | Local dev only. Disabled in CI.                                   |
+| `managed`     | run by the operator manually | Production. The worker writes a runbook entry into `plugin_operations.logs_json`; the operator finalizes with `selfhelp:plugin:run-operation`. |
+| `trusted`     | run by the Messenger worker  | Air-gapped on-prem installs where signed archives are pre-vetted. |
 
-The admin UI never shells out to `composer` or `npm` in `managed`
-mode. Instead it records a `plugin_operations` row and shows a
-"awaiting external package install" status. Once the operator runs the
-external commands and `selfhelp:plugin:run-operation <id>`, the
-operation is finalized.
+Frontend bundles are runtime ESM. The host serves
+`/plugin-artifacts/<id>-<ver>/plugin.esm.js` directly out of
+`public/plugin-artifacts/`, so plugin updates never require an npm
+install or Next.js rebuild on the host frontend.
 
 ---
 
@@ -409,35 +419,46 @@ Health checks show up:
 
 ## 11. Plugin Lifecycle (operator side)
 
-The CMS installer flows:
+The CMS installer flow is **one HTTP request → one Messenger message**:
 
-1. **Request install** — operator (UI or CLI) submits the manifest +
-   optional registry entry. The installer creates a `plugin_operations`
-   row in state `pending` with snapshots.
-2. **External package install** — in `managed` mode only. The operator
-   runs `composer require <package>` / `npm install <package>`. In
-   `development` and `trusted` mode the host runs them in-process.
-3. **Finalize install** — the host runs the plugin's migrations, seeds
-   permissions/feature flags/lookups, registers API routes, regenerates
-   the bundles file, writes the lock file, then commits the
-   `plugin_operations` row as `success`.
-4. **Enable / disable** — toggles the `enabled` flag, regenerates the
-   bundles file, invalidates relevant caches. Non-destructive.
-5. **Uninstall** — unregisters routes, bundles, menus, styles, feature
-   flags; keeps plugin-owned tables for forensics.
-6. **Purge** — removes plugin-owned tables. Requires explicit
-   confirmation in the admin UI (`confirmedPluginId` body field) or
-   `--confirm-purge` on CLI.
-7. **Update** — same flow as install with `force-major` opt-in.
-   `assertPluginVersionSemantics` runs first.
-8. **Repair / sync-lock** — recomputes the lock file and bundles file
+1. **Install / update** — the admin sends `POST /admin/plugins/install`
+   or `POST /admin/plugins/{pluginId}/update` (JSON for
+   `source ∈ {registry, url, paste}`, multipart for
+   `source=archive`). The service validates compatibility +
+   capabilities + signature + (on update) `expectedPluginId`, persists
+   a `plugin_operations` row, and dispatches
+   `InstallPluginMessage` / `UpdatePluginMessage` on the `plugin_ops`
+   transport. The response is `202 Accepted` with the operation id.
+2. **Worker run** — the Messenger worker
+   (`php bin/console messenger:consume plugin_ops`) runs `composer
+   require`, optionally promotes a `.shplugin` archive, runs the
+   plugin's Doctrine migrations, regenerates
+   `config/selfhelp_plugin_bundles.php`, writes the lock file, then
+   dispatches the matching `Plugin{Installed,Updated}Event`. Progress
+   is streamed to the `selfhelp/plugins/state` Mercure topic.
+3. **Managed mode** — in `managed` mode the worker stops after writing
+   a runbook entry into `plugin_operations.logs_json`. The operator
+   runs the composer step + deploys + calls
+   `selfhelp:plugin:run-operation <opId>` which invokes the same
+   `finalize()`. No browser finalize step exists.
+4. **Enable / disable** — synchronous; toggles the `enabled` flag,
+   regenerates the bundles file, invalidates relevant caches.
+5. **Uninstall** — `POST /admin/plugins/{pluginId}/uninstall` mirrors
+   the install/update flow: persists an operation row, dispatches
+   `UninstallPluginMessage`. The worker runs `composer remove`, then
+   `PluginUninstaller::finalize()` deletes the `plugins` row and
+   regenerates the lock + bundles files. Plugin-owned tables stay in
+   place.
+6. **Purge** — destructive. Drops plugin-owned tables and removes
+   `id_plugins`-tagged rows. Requires `confirmedPluginId` in the
+   request body and `--confirm` on CLI.
+7. **Repair / sync-lock** — recomputes the lock file and bundles file
    from the DB state. Idempotent.
-9. **Run-operation** — finalizes a `pending` operation (used by CI/CD
-   after `managed` mode external installs).
 
-Every operation creates a row in the `plugin_operations` table with
-type, before/after manifest snapshots, the bundles file checksum, the
-lock file checksum, and a rollback descriptor.
+Every operation creates a `plugin_operations` row with type,
+before/after manifest snapshots, bundles + lock file checksums,
+migration scan, signing metadata (keyId + signature), and a rollback
+descriptor.
 
 ---
 
@@ -502,27 +523,33 @@ Run the host CMS in development install mode:
 
 ```bash
 APP_ENV=dev composer install
-APP_ENV=dev npm install
-# wire the plugin via `composer link` / `npm link` or via a private dev
-# registry, then:
+# Start the Messenger worker that processes plugin operations:
+php bin/console messenger:consume plugin_ops --time-limit=3600
+# In another shell, install a plugin from a local manifest or .shplugin:
 php bin/console selfhelp:plugin:install path/to/plugin.json
+# or
+php bin/console selfhelp:plugin:validate-archive path/to/plugin-1.0.0.shplugin
 ```
 
 Useful CLI commands:
 
 | Command                                          | Purpose                                            |
 | ------------------------------------------------ | -------------------------------------------------- |
-| `selfhelp:plugin:install <manifest>`             | Request + finalize an install                      |
-| `selfhelp:plugin:update <manifest>`              | Request + finalize an update                       |
+| `selfhelp:plugin:install <manifest>`             | Dispatch an install operation                      |
+| `selfhelp:plugin:update <manifest>`              | Dispatch an update operation                       |
 | `selfhelp:plugin:enable <id>`                    | Enable a plugin                                    |
 | `selfhelp:plugin:disable <id>`                   | Disable a plugin                                   |
-| `selfhelp:plugin:uninstall <id>`                 | Uninstall (keeps data)                             |
-| `selfhelp:plugin:purge <id> --confirm-purge=<id>`| Drop plugin-owned tables                           |
+| `selfhelp:plugin:uninstall <id>`                 | Dispatch an uninstall (keeps data)                 |
+| `selfhelp:plugin:purge <id> --confirm`           | Drop plugin-owned tables                           |
 | `selfhelp:plugin:sync-lock`                      | Regenerate lock + bundles file from DB state       |
 | `selfhelp:plugin:check-compatibility`            | Per-plugin compatibility report                    |
+| `selfhelp:plugin:check-updates`                  | Cross-reference installed plugins vs registries    |
 | `selfhelp:plugin:doctor [--ci] [--json]`         | Global plugin health report                        |
 | `selfhelp:plugin:safe-mode --enable|--disable`   | Emergency safe-mode (no plugin bundles)            |
 | `selfhelp:plugin:run-operation <id>`             | Finalize a `managed` mode operation                |
+| `selfhelp:plugin:validate-archive <path>`        | Run the inspect-archive pipeline on a local file   |
+| `selfhelp:plugin:cleanup-archives`               | Reap orphaned `.shplugin` staging dirs             |
+| `selfhelp:plugin:purge-staging <id> [--all]`     | Force-delete staging dirs for one or all plugins   |
 
 ---
 

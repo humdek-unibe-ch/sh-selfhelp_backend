@@ -27,34 +27,48 @@ The default is `managed`. Override via the `SELFHELP_PLUGIN_INSTALL_MODE` env va
 - Backend env vars:
   - `LOCK_DSN` (default `flock`) — single-machine setups.
   - `PLUGIN_LOCK_DSN` (default `flock`) — distributed setups should set to `redis://…`.
-  - `SELFHELP_PLUGIN_PRIVATE_REGISTRY_TOKEN` — only if using a private registry.
-  - `SELFHELP_PLUGIN_SIGNATURE_KEYS` — comma-separated Ed25519 public keys for trust verification.
+  - `MESSENGER_PLUGIN_OPS_DSN` (default `doctrine://default?queue_name=plugin_ops&auto_setup=true`) — transport for the `plugin_ops` queue. Production may swap to `redis://…?stream=plugin_ops`.
+  - `SELFHELP_PLUGIN_INSTALL_MODE` (`development` / `managed` / `trusted`) — defaults to `managed`.
+  - `SELFHELP_ALLOW_WEB_PLUGIN_INSTALL=true` + `APP_ENV=dev` — required to expose direct-install via the web UI (otherwise only the CLI / Messenger worker can install).
+  - `SELFHELP_PLUGIN_TRUSTED_KEYS` — `keyId=base64pubkey;keyId2=…` Ed25519 public keys for signature verification. See `docs/plugins/trusted-keys.md`.
+  - `SELFHELP_PLUGIN_REQUIRE_SIGNATURE` (default `true`) — set to `false` only for first-boot dev when installing untrusted plugins.
+  - `SELFHELP_PLUGIN_ARCHIVE_MAX_BYTES` (default 20 MB) — max `.shplugin` upload size.
+  - `SELFHELP_PLUGIN_ARCHIVE_RETENTION_DAYS` (default 7) — staging-dir retention used by `selfhelp:plugin:cleanup-archives`.
+  - `SELFHELP_PLUGIN_PRIVATE_REGISTRY_TOKEN` — only if you add a private registry source.
 
 ## 2.1 Install paths visible in the admin UI
 
-The admin "Plugins" page exposes three install tabs:
+The admin "Plugins" page exposes four tabs:
 
-| Tab            | What it does                                                                                                                                                                              |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Installed**  | Lists currently installed plugins, their status, compatibility, and per-row actions (enable / disable / uninstall / purge).                                                                |
-| **Available**  | Walks every enabled **Source** and lists registry-advertised plugins. Each row has a one-click **Install** button (calls `POST /admin/plugins` then `POST /admin/plugins/{id}/finalize-install`). |
-| **Sources**    | CRUD over `PluginSource` rows. The seeded `humdek-public` source (system, read-only) points at the official Humdek registry; admins can add private/staging sources alongside it.          |
+| Tab            | What it does                                                                                                                                                                                                                                                                                  |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Installed**  | Lists currently installed plugins, their status, compatibility, and per-row actions (enable / disable / uninstall / purge).                                                                                                                                                                    |
+| **Available**  | Walks every enabled **Source** and lists registry-advertised plugins. Each row has a one-click **Install** button (calls `POST /admin/plugins/install` with `source=registry`).                                                                                                                |
+| **Updates**    | Cross-references installed plugins against every enabled source and surfaces upgradeable rows. Single **Update** button per row dispatches `POST /admin/plugins/{id}/update`. Major upgrades require a force-update click.                                                                     |
+| **Sources**    | CRUD over `PluginSource` rows. The seeded `humdek-public` source (system, read-only) points at the official Humdek registry; admins can add private/staging sources alongside it.                                                                                                              |
 
 The active tab is **persisted to the URL** (`?tab=available`,
-`?tab=sources`) so a page refresh or shared link lands on the same
-tab.
+`?tab=updates`, `?tab=sources`) so a page refresh or shared link lands
+on the same tab.
 
-Plus an **Install plugin** button at the top-right that opens a
-modal supporting three input methods:
+Plus an **Install plugin** button at the top-right that opens a modal
+with four source tabs (priority order):
 
-- **Drag &amp; drop** a `plugin.json` file directly on the Dropzone.
-- **Choose file…** button that opens the native file picker.
-- **Paste JSON** into the embedded Monaco editor (with JSON syntax
-  validation).
+1. **From registry** — pointer to the Available tab.
+2. **From URL** — paste a published `plugin.json` URL.
+3. **Upload .shplugin** — drag-and-drop / file picker, the **main
+   manual install path**. The host pre-validates via
+   `POST /admin/plugins/inspect-archive` before showing the Install
+   button, so the admin sees compatibility + capability + signature
+   status before dispatching.
+4. **Paste JSON / Developer mode** — Monaco editor, explicitly
+   labelled "Developer / debugging only". Skips signature verification
+   for hand-crafted manifests.
 
-The first two methods auto-format the manifest into the Monaco
-editor; the editor remains the source of truth for the
-`POST /admin/plugins` request body.
+All four tabs POST to `/admin/plugins/install` and dispatch a single
+`InstallPluginMessage` on the `plugin_ops` Symfony Messenger
+transport. There is no chained finalize request; the worker streams
+progress over Mercure.
 
 ### Default source: `humdek-public`
 
@@ -78,54 +92,61 @@ registries.
 
 API surface:
 
-| Endpoint                                  | Verb | Purpose                                                                |
-| ----------------------------------------- | ---- | ---------------------------------------------------------------------- |
-| `/cms-api/v1/admin/plugins`               | GET  | List installed plugins with install mode + safe-mode flags.            |
-| `/cms-api/v1/admin/plugins/available`     | GET  | List registry-advertised plugins not yet installed.                    |
-| `/cms-api/v1/admin/plugins`               | POST | Request a staged install (mostly used by the Available + paste flows). |
-| `/cms-api/v1/admin/plugins/{id}/finalize-install` | POST | Finalize a staged install in-process (development/trusted mode).       |
-| `/cms-api/v1/admin/plugins/sources`       | GET / POST | CRUD over registries the host trusts.                              |
+| Endpoint                                                   | Verb       | Purpose                                                                                                                                |
+| ---------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `/cms-api/v1/admin/plugins`                                | GET        | List installed plugins with install mode + safe-mode flags.                                                                            |
+| `/cms-api/v1/admin/plugins/available`                      | GET        | List registry-advertised plugins not yet installed.                                                                                    |
+| `/cms-api/v1/admin/plugins/updates`                        | GET        | List installed plugins with a strictly-newer version in any enabled source.                                                            |
+| `/cms-api/v1/admin/plugins/install`                        | POST       | Unified install. JSON body for `source ∈ {registry,url,paste}`; multipart `archive=<file>` for `source=archive` (.shplugin upload).    |
+| `/cms-api/v1/admin/plugins/inspect-archive`                | POST       | Validate an uploaded `.shplugin` without installing. Returns `{manifest, compatibility, capabilities, signatureStatus}`.               |
+| `/cms-api/v1/admin/plugins/{id}/update`                    | POST       | Unified update. Same source shapes as `install`.                                                                                       |
+| `/cms-api/v1/admin/plugins/sources`                        | GET / POST | CRUD over registries the host trusts.                                                                                                  |
+
+All install / update endpoints respond `202 Accepted` with the
+`plugin_operations` row id and immediately dispatch an
+`InstallPluginMessage` / `UpdatePluginMessage` on the `plugin_ops`
+Symfony Messenger transport. Progress is published to Mercure on the
+`selfhelp/plugins/state` topic; there is no chained finalize step
+exposed to the browser. The internal `selfhelp:plugin:run-operation`
+CLI command is the documented escape hatch for managed-mode workers
+that need to finalise an operation outside the worker process.
 
 ## 3. Install a plugin (development mode)
 
-1. Place / clone the plugin repo somewhere reachable by Composer + npm. For local work, symlink or use `path` Composer / npm `file:` references.
+The Messenger worker runs everything in-process — no operator handoff.
+
+1. Place / clone the plugin repo somewhere reachable by Composer (path
+   repository, packagist, or private packagist mirror).
 2. From the backend repo:
 
 ```bash
 php bin/console selfhelp:plugin:install /abs/path/to/plugin.json
 ```
 
-The installer:
+The single command dispatches `InstallPluginMessage` and returns
+immediately. The Messenger worker:
 
 - validates the manifest against `docs/plugins/plugin-manifest.schema.json`,
-- checks `compatibility.*` ranges,
-- runs `composer require` for the backend package,
-- runs `npm install` (if relevant) for the frontend / mobile packages,
-- enables the bundle by updating `config/selfhelp_plugin_bundles.php`,
-- runs the plugin's Doctrine migrations,
-- seeds permissions / lookups / feature flags,
-- writes a `plugin_operations` row + updates `selfhelp.plugins.lock.json`,
-- publishes a Mercure event so the admin UI updates without polling.
+- checks `compatibility.*` ranges and capabilities,
+- recomputes + verifies the canonical signed payload + Ed25519 signature,
+- runs `composer require <backend.composer.package>:<version>` (with an
+  optional one-off `composer config repositories.<slug>` entry if the
+  manifest declares a custom repo),
+- streams every line of composer output into
+  `plugin_operations.logs_json` so Mercure subscribers see live progress,
+- for `.shplugin` uploads: copies the validated archive into
+  `var/plugins/<id>-<ver>/installed/` and atomically replaces
+  `public/plugin-artifacts/<id>-<ver>/` with the runtime bundles,
+- runs the plugin's Doctrine migrations (still gated by
+  `PluginMigrationGuard`),
+- regenerates `config/selfhelp_plugin_bundles.php`,
+- updates `selfhelp.plugins.lock.json` (with signing.keyId + signature),
+- dispatches `PluginInstalledEvent`.
 
-3. From the frontend repo:
-
-```bash
-npm run plugins:sync -- --backend http://localhost:8000
-npm install
-npm run dev
-```
-
-`plugins:sync` regenerates the frontend lock + extends `package.json` so the plugin's frontend npm package becomes a real dependency.
-
-4. From the mobile repo (optional):
-
-```bash
-SELFHELP_API_TOKEN=… npm run plugins:sync -- production-default --backend https://cms.example.com
-npm install
-eas build --profile production-default
-```
-
-`plugins:sync` writes `selfhelp.plugins.mobile.lock.json` per EAS profile and regenerates `components/styles/registered.ts` so only the plugin packages opted into that profile are bundled.
+No frontend rebuild is needed: the host loads the plugin's ESM runtime
+bundle at request time from the same `/plugin-artifacts/...` path that
+the promoter wrote. The mobile app still uses `plugins:sync` when
+building per EAS profile.
 
 ### 3.1 Local sibling checkout (`plugins/<plugin-id>`)
 
@@ -140,80 +161,65 @@ example:
     └── sh2-shp-survey-js/
 ```
 
-there is one important current-code detail:
+the recommended workflow is:
 
-- The admin UI validates and stages the manifest, but it does not
-  itself make a local checkout available to Composer or npm.
-- The "Sources" tab is optional for this flow. It is for registries and
-  remote package sources, not for pasting a local `plugin.json`.
+1. Make the backend package resolvable by Composer. The plugin's
+   `scripts/install-local.{ps1,sh}` adds a `path` repository entry to
+   `composer.json`, then runs `composer require`. The same script can
+   build the plugin's `.shplugin` archive locally if you want to
+   simulate a registry install.
+2. Either:
+   - run `php bin/console selfhelp:plugin:install path/to/plugin.json`
+     from the backend (development mode dispatches and finalizes
+     in-process), **or**
+   - upload the local `.shplugin` from
+     `Admin → Plugins → Install plugin → Upload .shplugin`. The host
+     calls `POST /admin/plugins/inspect-archive` first to show
+     manifest + compatibility + signature preview, then dispatches
+     `InstallPluginMessage` with `source=archive`.
 
-Use this runbook:
-
-1. Make the backend package resolvable by Composer. A typical local-dev
-   setup is a path repository pointing at
-   `../plugins/sh2-shp-survey-js/backend`, then `composer require
-   humdek/sh2-shp-survey-js`.
-2. Build the plugin frontend package once from the plugin repo:
-
-   ```bash
-   cd ../plugins/sh2-shp-survey-js/frontend
-   npm install
-   npm run build
-   ```
-
-3. In the backend admin UI open `Plugins -> Install plugin`, paste the
-   plugin's `plugin.json`, click `Request install`, then click
-   `Finalize`.
-4. In the frontend repo run:
-
-   ```bash
-   npm run plugins:sync -- --backend http://localhost:8000
-   npm install
-   npm link ../plugins/sh2-shp-survey-js/frontend
-   ```
-
-   `plugins:sync` updates the host manifest/lock state, while
-   `npm link` makes the host load the local checkout instead of waiting
-   for a published npm package.
-5. Start or restart the frontend dev server.
-
-If you skip step 1 or step 4, the plugin may appear installed in the
-host database but still fail to boot in the backend or frontend because
-the local package code is not actually resolvable yet.
+The frontend Next.js server does not need to restart — runtime ESM
+bundles are loaded from `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
+Mobile builds still consume `selfhelp.plugins.mobile.lock.json` per
+EAS profile.
 
 ## 4. Install a plugin (managed mode)
 
-The admin UI never invokes Composer / npm in this mode. Operators run the package install themselves.
+The admin UI never invokes Composer / npm in this mode. The Messenger
+worker emits a runbook into `plugin_operations.logs_json` and stops at
+that point. A CLI/CD operator then runs the composer step + finalize.
 
-Current UI note: the admin screen shows a paste-manifest flow
-(`Request install` -> `Finalize`). That flow still assumes the package
-work happened outside the UI. Finalizing records the plugin in the host
-and regenerates lock/bundle metadata; it does not replace the external
-Composer/npm step.
-
-1. The admin presses **Request install** in `Admin → Plugins → Available`.
-2. The host records a `plugin_operations` row with status `requested`. A Mercure event lands in the admin UI.
-3. The host produces a runbook (visible on the operation detail page) similar to:
+1. The admin clicks **Install** (registry / URL / paste / archive). The
+   backend resolves the source, validates compatibility + capabilities
+   + signature, persists a `plugin_operations` row with status
+   `requested`, and dispatches `InstallPluginMessage`. Mercure
+   publishes the request immediately.
+2. The Messenger worker picks up the message, marks the operation
+   `running`, and writes a runbook entry into `logs_json` like:
 
 ```bash
-# 1. Backend: pin the package version in composer.json
-composer require humdek/sh2-shp-survey-js:^1.0
-# 2. Frontend: pin the package version in package.json
-npm install @humdek/sh2-shp-survey-js@^1.0
-# 3. Mobile (if applicable): pin the package version per profile
-npm install --prefix mobile @humdek/sh2-shp-survey-js-mobile@^1.0
-# 4. Commit + deploy
-# 5. Tell the backend the install is complete:
+# 1. Backend: pin the package version (the runbook prints the exact line)
+composer require humdek/sh2-shp-survey-js:0.1.0 --no-interaction --no-scripts
+# 2. Commit + deploy
+# 3. Tell the backend the install is complete:
 php bin/console selfhelp:plugin:run-operation <operationId>
 ```
 
-4. The operator runs the steps and then triggers `selfhelp:plugin:run-operation <id>` from the deployed backend. The host:
-   - cross-checks the installed package versions against the manifest,
-   - enables the bundle (writes `selfhelp_plugin_bundles.php`),
-   - runs the plugin's Doctrine migrations,
-   - finalizes the operation (`status=succeeded`).
+3. After deployment, the operator runs
+   `php bin/console selfhelp:plugin:run-operation <id>` which calls
+   `PluginInstaller::finalize()`. The host:
+   - asserts the bundle class is autoloadable,
+   - regenerates `config/selfhelp_plugin_bundles.php`,
+   - runs plugin Doctrine migrations within the operation transaction,
+   - updates the lock file (with `signing.keyId` + `signature` +
+     `migrations[].sha256`),
+   - finalizes the operation (`status=succeeded`),
+   - dispatches `PluginInstalledEvent` so subscribers can refresh
+     caches.
 
-If any step fails, the operation is marked `failed` and the previous lock-file checksum is restored.
+If any step fails, the operation is recorded as `failed` and the
+previous lock-file snapshot in `plugin_operations.snapshots_json` is
+available for `selfhelp:plugin:rollback <opId>` to restore.
 
 ### 4.1 Bundle-class autoload gate
 
@@ -225,17 +231,14 @@ verify that the manifest's `backend.bundleClass` is autoloadable via
 `PRECONDITION_FAILED` error and the bundles file is left untouched. The
 admin UI surfaces the message:
 
-> Backend bundle class "…\HumdekSurveyJsBundle" is not autoloadable.
-> The composer package "humdek/sh2-shp-survey-js" must be installed
-> before finalizing. Run `composer require humdek/sh2-shp-survey-js:0.1.0`
-> (or use the plugin's `scripts/install-local.{ps1,sh}` helper) and
-> click Finalize again.
+> Backend bundle class "…\HumdekSurveyJsBundle" is not autoloadable
+> after composer require. The Messenger worker reported success but the
+> bundle did not register; check composer.json + autoload-dump.
 
 This guard exists because a previous shape of the installer would
 unconditionally write the missing class into the generated bundles
 file, after which `kernel->registerBundles()` died on every
-subsequent request. The recovery procedure for installs that
-predate the guard is in §10 and §11.
+subsequent request. The recovery procedure is in §10 and §11.
 
 ## 5. Update a plugin
 
@@ -243,14 +246,22 @@ predate the guard is in §10 and §11.
 php bin/console selfhelp:plugin:update /abs/path/to/plugin.json
 ```
 
-The update runs:
+Or via the admin UI: `Admin → Plugins → Updates → Update`.
 
-1. Snapshot current manifest + lock checksum.
-2. Run incremental Doctrine migrations.
-3. Update the lock file.
-4. Trigger the `PluginUpdatedEvent`.
+The update flow:
 
-Frontend / mobile updates work the same way as install — re-run `plugins:sync` and your package manager.
+1. The service compares the resolved manifest's `id` against the
+   URL-pinned plugin id (`expectedPluginId`). A mismatch is refused
+   with a 422 — this prevents accidentally updating plugin A with the
+   manifest of plugin B.
+2. SemVer diff is computed; major updates require `--force-major`.
+3. Snapshots the current lock file + manifest into
+   `plugin_operations.snapshots_json` for rollback.
+4. Dispatches `UpdatePluginMessage`. The worker runs
+   `composer require <package>:<newVersion>`, promotes any new
+   `.shplugin` archive, then calls `PluginUpdater::finalize()` which
+   runs incremental Doctrine migrations and rewrites the lock file.
+5. Dispatches `PluginUpdatedEvent`.
 
 ## 6. Disable / re-enable
 
@@ -272,10 +283,10 @@ Removes the bundle, deletes the plugin row, and clears feature flags. Does NOT d
 ## 8. Purge (destructive)
 
 ```bash
-php bin/console selfhelp:plugin:purge sh2-shp-survey-js --confirm-purge=sh2-shp-survey-js
+php bin/console selfhelp:plugin:purge sh2-shp-survey-js --confirm
 ```
 
-Drops plugin-owned tables, deletes the plugin's lookup contributions, and removes the lock entry. The `--confirm-purge=<id>` guard prevents accidental purges.
+Drops plugin-owned tables, deletes the plugin's lookup contributions, and removes the lock entry. The `--confirm` flag is mandatory; when run interactively the operator must additionally re-type the plugin id when prompted.
 
 ## 9. Doctor
 
@@ -359,18 +370,24 @@ the install can be re-attempted from the admin UI or
 ## 12. Operator runbook for a fresh install
 
 ```bash
-# Backend
+# Backend (one-time)
 composer install
 php bin/console doctrine:migrations:migrate -n
+# Start the plugin operations Messenger worker (one per host)
+php bin/console messenger:consume plugin_ops --time-limit=3600
+
+# Backend (per plugin)
 php bin/console selfhelp:plugin:install /abs/path/to/plugin.json
+# or, for a packaged release:
+# upload the .shplugin archive in Admin → Plugins → Install plugin
 
 # Frontend
 cd ../sh-selfhelp_frontend
 npm ci
-npm run plugins:sync -- --backend http://localhost:8000
-npm install
 npm run build
 npm start
+# No per-plugin step: the host streams /plugin-artifacts/<id>-<ver>/plugin.esm.js
+# directly from the backend at request time.
 
 # Mobile (optional, per EAS profile)
 cd ../sh-selfhelp_mobile
@@ -379,3 +396,44 @@ SELFHELP_API_TOKEN=… npm run plugins:sync -- production-default --backend http
 npm install
 eas build --profile production-default
 ```
+
+## 13. What gets created where during install
+
+Quick reference for operators. The unified pipeline writes the same
+files/folders/DB rows regardless of source. The full breakdown lives in
+[`publishing-workflow.md` §7](./publishing-workflow.md#7-what-happens-on-the-host-when-admin-clicks-install).
+
+| Location                                            | What lands there                                                                                         |
+|-----------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| `vendor/humdek/<id>/`                               | `composer require` result. Owned by Composer; reproducible.                                              |
+| `var/plugins/<id>-<ver>/staging/<random>/`          | `.shplugin` uploads land here first. Deleted on success; TTL-purged on failure.                          |
+| `var/plugins/<id>-<ver>/installed/`                 | Promoted from staging; canonical artefact location for `.shplugin` installs.                             |
+| `public/plugin-artifacts/<id>-<ver>/`               | Web-served runtime ESM + CSS. The frontend loads `/plugin-artifacts/...` at request time (no rebuild).   |
+| `config/selfhelp_plugin_bundles.php`                | GENERATED. Registers the plugin's Symfony bundle. Atomically rewritten on every install/update/uninstall.|
+| `selfhelp.plugins.lock.json`                        | GENERATED. Authoritative lock with `keyId`, `signature`, migration hashes, capabilities, runtime URLs.   |
+| `plugins` table                                     | One row per installed plugin.                                                                            |
+| `plugin_operations` table                           | One row per lifecycle operation (audit + rollback descriptor).                                           |
+| `plugin_feature_flags` table                        | One row per declared feature flag.                                                                       |
+| `api_routes` + `rel_api_routes_permissions`         | Plugin-declared routes. Cleared on uninstall.                                                            |
+| `lookups` + `styles` + `styles_fields`              | Plugin contributions tagged with `id_plugins`. Cleared on uninstall (styles) / purge (lookups).          |
+| Plugin-owned tables (`survey_runs`, …)              | Created by plugin migrations. Survive uninstall; cleared by purge only.                                  |
+
+The matching `.gitignore` entries on the host (already in place) are:
+
+```gitignore
+/vendor/
+/var/
+/public/plugin-artifacts/
+/selfhelp.plugins.lock.json*
+/config/selfhelp_plugin_bundles.php
+```
+
+## 14. Archive maintenance CLI
+
+Three CLI commands ship for managing `.shplugin` artefacts:
+
+| Command | Purpose |
+|---------|---------|
+| `selfhelp:plugin:validate-archive <path> [--json]` | Run the same `inspect-archive` pipeline against a local file. Returns exit code 1 when validation reports any error. Use in plugin CI before publishing. |
+| `selfhelp:plugin:cleanup-archives` | Reap orphan `var/plugins/<id>-<ver>/staging/` dirs older than `SELFHELP_PLUGIN_ARCHIVE_RETENTION_DAYS` (default 7). Wire into cron / scheduled jobs. |
+| `selfhelp:plugin:purge-staging <pluginId> [--all] [--confirm]` | Force-delete staging dirs for one plugin (or all). Dry-run by default; pass `--confirm` to actually delete. Never touches `installed/` or `public/plugin-artifacts/...`. |

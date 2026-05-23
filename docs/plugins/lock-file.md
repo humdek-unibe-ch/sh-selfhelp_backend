@@ -27,18 +27,38 @@ The canonical JSON Schema lives at
       "trustLevel": "untrusted",
       "installMode": "managed",
       "backendPackage": "humdek/sh2-shp-survey-js",
-      "frontendPackage": "@humdek/sh2-shp-survey-js",
-      "frontendPackageVersion": "1.0.0",
+      "frontend": {
+        "runtimeUrl": "/plugin-artifacts/sh2-shp-survey-js-1.0.0/plugin.esm.js",
+        "stylesheetUrl": "/plugin-artifacts/sh2-shp-survey-js-1.0.0/plugin.css",
+        "integrity": "sha384-...",
+        "format": "esm"
+      },
       "mobilePackage": null,
       "mobilePackageVersion": null,
       "checksum": "sha256:...",
-      "signature": "ed25519:...",
+      "signing": {
+        "keyId": "humdek-2026-01",
+        "signature": "base64-ed25519-detached-signature"
+      },
       "capabilities": ["plugin.styles.contribute", "plugin.api-routes.contribute"],
-      "migrations": ["Version20260522063620"]
+      "migrations": [
+        {
+          "file": "Version20260522063620.php",
+          "sha256": "9d3f…"
+        }
+      ]
     }
   }
 }
 ```
+
+`signing.keyId` and `signing.signature` are populated from the
+canonical `signedPayload`: when the install succeeded against an
+Ed25519-signed source, they record the keyId/signature that was
+verified. `migrations[]` lists every Doctrine migration shipped in
+the plugin's bundle directory, each annotated with its SHA-256 — a
+host with the same lock can therefore detect that the plugin's
+migration set has drifted (e.g. a class was rewritten after publish).
 
 ## Drift detection
 

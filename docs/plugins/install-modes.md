@@ -21,49 +21,62 @@ The active mode for an operation is resolved by
 ## `development`
 
 - **Who**: a single developer running `composer dev` locally.
-- **What happens**: `PluginInstaller` invokes
-  [`PackageManagerRunner`](../../src/Plugin/PackageManager/PackageManagerRunner.php)
-  which shells out to `composer require` / `npm install` directly in
-  the web request. The orchestrator then writes the migration, the
-  `plugins` row, and the lock file.
+- **What happens**: `PluginInstaller` still dispatches the
+  `InstallPluginMessage`, but Symfony Messenger is configured with
+  the `sync://` transport in development. The handler runs in-process,
+  shelling out to `composer require` via
+  [`PackageManagerRunner`](../../src/Plugin/PackageManager/PackageManagerRunner.php),
+  promoting any `.shplugin` artifacts under `public/plugin-artifacts/`,
+  running the plugin's Doctrine migrations, and finalising in a single
+  request. **The frontend is never asked to run `npm install` or
+  rebuild Next.js** — plugin UI is an ESM runtime bundle loaded from
+  `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
 - **Guard-rails**: every capability is granted; the signature verifier
-  is set to `lenient`; the operation log includes raw composer/npm
-  stdout.
-- **When to use**: local feature work, integration tests on a developer
-  machine, and the test database in CI.
-- **When NOT to use**: production. Web-process composer installs are
-  slow and lose stdout on timeout; CI-driven `managed` mode is the
-  production path.
+  is set to `lenient`; the operation log includes raw composer stdout.
+- **When to use**: local feature work and the test database in CI.
+- **When NOT to use**: production. The web request would block until
+  composer finished; `managed` mode is the production path.
 
 ## `managed`
 
-- **Who**: a CI pipeline (GitHub Actions, GitLab CI, etc.).
+- **Who**: a Symfony Messenger worker (`plugin_ops` transport),
+  optionally fronted by a CI pipeline.
 - **What happens**:
-  1. Admin clicks "Request install" → backend creates a `requested`
-     `plugin_operations` row, validates the manifest, and writes the
-     intended package set.
-  2. CI watches the operation row (poll or webhook), runs
-     `composer install` + `npm install --workspaces` on a build host,
-     builds the artefact, and deploys it.
-  3. Admin clicks "Finalize" → backend re-reads the deployed lock
-     file, runs migrations, and flips the operation to `succeeded`.
+  1. Admin clicks **Install** on any source tab → the API endpoint
+     persists a `requested` `plugin_operations` row, validates the
+     manifest + signature, and **dispatches `InstallPluginMessage`**
+     on the `plugin_ops` Messenger transport. The API responds
+     `202 Accepted` immediately.
+  2. A long-running `php bin/console messenger:consume plugin_ops`
+     worker picks up the message. It runs `composer require` against
+     the manifest's coordinates, promotes any `.shplugin` artifacts
+     under `public/plugin-artifacts/`, runs the plugin's Doctrine
+     migrations, flips the row to `succeeded`, and publishes a
+     Mercure event on `selfhelp/plugins/state`.
+  3. The admin UI re-fetches the plugin list on the Mercure event.
+     There is **no browser-side "Finalize" step**; the
+     `selfhelp:plugin:run-operation` CLI command is the operator
+     escape-hatch if a worker dies mid-install and the operation
+     needs manual completion.
 - **Guard-rails**: every capability is checked against the granted
   capability set; the signature verifier is `strict`; the web process
   never executes `composer` or `npm`.
-- **When to use**: every production environment, every shared
-  staging environment.
+- **When to use**: every production environment, every shared staging
+  environment.
 
 ## `trusted`
 
 - **Who**: an operator with deep trust who wants the "one click
   installs" UX without going through CI.
-- **What happens**: behaves like `development` (web process runs
-  composer/npm) but with the `strict` signature verifier active and
-  all capabilities enforced.
+- **What happens**: behaves like `development` (the messenger handler
+  runs composer in-process via the `sync://` transport) but with the
+  `strict` signature verifier active and all capabilities enforced.
+  Frontend plugin UI is still loaded as an ESM runtime bundle; there
+  is never an `npm install` step.
 - **When to use**: single-server installs, on-prem appliances, or
   controlled-VM deployments where there is no CI to drive `managed`
-  mode and where the operator accepts the risk of running package
-  managers in the web request.
+  mode and where the operator accepts the risk of running composer
+  in the web request.
 - **When NOT to use**: multi-tenant SaaS, anywhere with a real
   attacker model.
 

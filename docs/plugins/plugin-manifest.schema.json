@@ -1,8 +1,8 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "https://selfhelp.app/schemas/plugin-manifest.schema.json",
-    "title": "SelfHelp Plugin Manifest",
-    "description": "Schema for `plugin.json` at the root of every SelfHelp plugin repository. See docs/plugins/architecture.md.",
+    "title": "SelfHelp Plugin Manifest (canonical v1.0)",
+    "description": "Canonical schema for `plugin.json` at the root of every SelfHelp plugin repository. One schema for every install source (registry, direct URL, .shplugin archive, pasted JSON). See docs/plugins/installation.md and docs/plugins/distribution.md.",
     "type": "object",
     "required": ["id", "name", "version", "pluginApiVersion", "compatibility", "security"],
     "additionalProperties": false,
@@ -84,26 +84,96 @@
         },
         "backend": {
             "type": "object",
-            "required": ["package", "bundleClass"],
+            "description": "Backend bundle declaration. The host orchestrates Composer; the admin never runs composer require manually.",
+            "required": ["bundleClass", "composer"],
             "additionalProperties": false,
             "properties": {
-                "package": {"type": "string"},
-                "bundleClass": {"type": "string"},
-                "migrationsNamespace": {"type": "string"}
+                "bundleClass": {
+                    "type": "string",
+                    "description": "Fully qualified Symfony bundle class, e.g. \"Humdek\\\\SurveyJsBundle\\\\HumdekSurveyJsBundle\"."
+                },
+                "migrationsNamespace": {
+                    "type": "string",
+                    "description": "Doctrine migrations namespace shipped with the plugin bundle."
+                },
+                "composer": {
+                    "type": "object",
+                    "description": "Composer coordinates resolved by the Messenger worker via `composer require`.",
+                    "required": ["package", "version"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "package": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]?|-{0,2})[a-z0-9]+)*$",
+                            "description": "Composer package name (vendor/name)."
+                        },
+                        "version": {
+                            "type": "string",
+                            "description": "Composer version constraint. May be an exact version, range, or `@dev` for path repos."
+                        },
+                        "repository": {
+                            "type": "object",
+                            "description": "Optional non-Packagist repository to register before `composer require`.",
+                            "required": ["type", "url"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["vcs", "path", "composer", "git"]
+                                },
+                                "url": {"type": "string"},
+                                "reference": {
+                                    "type": "string",
+                                    "description": "Optional git ref / commit SHA to pin to."
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         "frontend": {
             "type": "object",
-            "required": ["package", "version"],
+            "description": "Runtime ESM frontend bundle declaration. The host frontend loads the entrypoint via `import(runtimeUrl)` at runtime — no Next.js rebuild required.",
+            "required": ["runtime"],
             "additionalProperties": false,
             "properties": {
-                "package": {"type": "string"},
-                "version": {"type": "string"}
+                "runtime": {
+                    "type": "object",
+                    "required": ["entrypoint", "format"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "entrypoint": {
+                            "type": "string",
+                            "description": "Repo-relative path to the built ESM entrypoint, e.g. \"dist/plugin.esm.js\". CI / .shplugin builds copy this into artifacts/plugin.esm.js."
+                        },
+                        "stylesheet": {
+                            "type": "string",
+                            "description": "Repo-relative path to the optional plugin CSS, e.g. \"dist/plugin.css\". Injected by the host runtime with integrity + crossorigin attributes."
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["esm"],
+                            "description": "Module format. v1 supports `esm` only."
+                        },
+                        "integrity": {
+                            "type": "string",
+                            "description": "Subresource Integrity for the entrypoint, e.g. \"sha384-...\". The signed canonical payload pins this value."
+                        },
+                        "stylesheetIntegrity": {
+                            "type": "string",
+                            "description": "Subresource Integrity for the stylesheet."
+                        },
+                        "devEntrypointUrl": {
+                            "type": "string",
+                            "description": "Optional dev-server URL used in development install mode (e.g. http://localhost:5174/sh2-shp-survey-js/plugin.esm.js)."
+                        }
+                    }
+                }
             }
         },
         "mobile": {
             "type": "object",
-            "required": ["package", "version"],
             "additionalProperties": false,
             "properties": {
                 "package": {"type": "string"},
@@ -171,7 +241,22 @@
                         }
                     }
                 },
-                "signaturePath": {"type": "string"}
+                "signing": {
+                    "type": "object",
+                    "description": "Plugin signing policy declared by the author. The host always enforces signature verification according to SELFHELP_PLUGIN_REQUIRE_SIGNATURE + trustLevel; this block exists so the plugin can request a stricter policy than the default.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "required": {
+                            "type": "boolean",
+                            "description": "When true, the host refuses to install this plugin without a verified Ed25519 signature."
+                        },
+                        "acceptedKeyIds": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "When non-empty, the host requires the registry/archive signature to be issued by one of these keyIds."
+                        }
+                    }
+                }
             }
         },
         "permissions": {
@@ -196,13 +281,11 @@
             "properties": {
                 "ownedTables": {
                     "type": "array",
-                    "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-                    "description": "Tables the plugin fully owns (purge will drop them). Must match host AGENTS.md DB naming: plural lowercase_snake_case."
+                    "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
                 },
                 "ownedDataTablePrefix": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]*_$",
-                    "description": "Optional prefix the plugin uses when creating dynamic data_tables rows; purge scopes by this prefix in addition to id_plugins."
+                    "pattern": "^[a-z][a-z0-9_]*_$"
                 },
                 "read": {"type": "array", "items": {"type": "string"}},
                 "write": {"type": "array", "items": {"type": "string"}},
@@ -362,6 +445,11 @@
         "labels": {
             "type": "object",
             "additionalProperties": {"type": "string"}
+        },
+        "changelogUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional URL pointing at the plugin's CHANGELOG.md for this version."
         }
     }
 }

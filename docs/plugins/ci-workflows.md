@@ -220,7 +220,7 @@ Plugin repo:
   - commit + push to registry main
             │
             ▼  build-registry.yml (in sh2-plugin-registry)
-  - validate registry.json against registry.schema.json
+  - validate registry.json against plugin-registry.schema.json
   - validate every manifest in manifests/ against plugin-manifest.schema.json
   - publish to GitHub Pages (https://humdek-unibe-ch.github.io/sh2-plugin-registry/)
             │

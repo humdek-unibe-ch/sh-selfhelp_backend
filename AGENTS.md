@@ -358,10 +358,45 @@ Codify in every plugin's `plugin.json` and respect when reviewing plugin migrati
 
 ### Install modes, lock file, generated bundles file
 
-- Default production install mode is `managed`. The admin UI orchestrates, but a CLI/CI worker performs the real install. `SELFHELP_PLUGIN_INSTALL_MODE=development|managed|trusted`. Direct-install via the web UI requires `SELFHELP_ALLOW_WEB_PLUGIN_INSTALL=true` and `APP_ENV=dev`.
-- Lock file: `selfhelp.plugins.lock.json` at the project root. Single source of truth for installed plugin versions, checksums, signatures, migration hashes, capabilities, owned styles/topics/lookups. Written atomically by the install command.
-- Generated bundles file: `config/selfhelp_plugin_bundles.php`. `config/bundles.php` includes it once; it is regenerated atomically by the install/uninstall commands. NEVER edited at runtime from DB.
+- Default production install mode is `managed`. The admin API persists the operation and dispatches a Messenger message; the worker performs composer + finalize. `SELFHELP_PLUGIN_INSTALL_MODE=development|managed|trusted`. Direct in-process composer via the web request path requires `SELFHELP_ALLOW_WEB_PLUGIN_INSTALL=true` and `APP_ENV=dev`.
+- Lock file: `selfhelp.plugins.lock.json` at the project root. Single source of truth for installed plugin versions, checksums, signatures (`signing.keyId` + `signing.signature`), migration hashes, capabilities, owned styles/topics/lookups. Written atomically by the install command via tmp file + rename (with `.bak` fallback).
+- Generated bundles file: `config/selfhelp_plugin_bundles.php`. `config/bundles.php` includes it once; it is regenerated atomically by the install/update/uninstall workers. NEVER edited at runtime from DB.
 - Emergency safe mode: `SELFHELP_DISABLE_PLUGINS=true` or `php bin/console selfhelp:plugin:safe-mode --enable` short-circuits `config/bundles.php` and boots with core bundles only.
+
+### Plugin install pipeline (Messenger-driven)
+
+Every install / update / uninstall flows through the **same path**:
+
+1. The admin API endpoint validates input + JSON schema (`/admin/plugins/install`, `/admin/plugins/{id}/update`, `/admin/plugins/{id}/uninstall`).
+2. `PluginAdminService` routes to `ManifestResolver`, the single normaliser for the four install sources:
+   - `registry` — embedded registry entry from the aggregated index;
+   - `url` — direct `plugin.json` URL fetch;
+   - `paste` — raw pasted JSON (developer/debug only);
+   - `archive` — uploaded `.shplugin` file (the main manual path).
+3. The resolver runs signature verification (`PluginSignatureVerifier`) + canonical-payload re-hash via `SignedPayloadBuilder`. Manifest-level signing policy (`security.signing.required` + `security.signing.acceptedKeyIds`) is honoured on top of the host-wide policy; `keyId="dev"` is refused outright for `official`/`reviewed` trust levels.
+4. `PluginInstaller|Updater|Uninstaller::request()` persists a `plugin_operations` row, takes the per-plugin lock, snapshots the resolved source (including `keyId` + `signature`), and dispatches `InstallPluginMessage|UpdatePluginMessage|UninstallPluginMessage` onto the `plugin_ops` Messenger transport.
+5. The Messenger worker (`messenger:consume plugin_ops`) runs `composer require|remove`, streams output into `plugin_operations.logs_json`, for archive sources atomically promotes artefacts via `PluginArchivePromoter` (copy-to-temp + rename), then calls the matching `finalize()`.
+6. `finalize()` regenerates `config/selfhelp_plugin_bundles.php`, runs the plugin's Doctrine migrations, updates `selfhelp.plugins.lock.json`, persists `signing_key_id` + `signature_ed25519` on the `Plugin` entity, and dispatches `Plugin{Installed,Updated,Uninstalled}Event`. Mercure publishes progress on `selfhelp/plugins/state`.
+
+There is **no browser-side finalize-install flow** anymore. The single canonical endpoints are `/admin/plugins/install` and `/admin/plugins/{id}/update`; both return `202 Accepted` with the operation id.
+
+### Frontend runtime: ESM only
+
+- The frontend never depends on plugin npm packages. Every plugin ships an ESM runtime bundle (`plugin.esm.js`) plus an optional `plugin.css`, hosted at `/plugin-artifacts/<id>-<ver>/...`.
+- `.shplugin` archives are extracted to `var/plugins/<id>-<ver>/staging/`, validated (SHA256SUMS + canonical payload + Ed25519), then promoted to `installed/` + `public/plugin-artifacts/<id>-<ver>/`.
+- For registry / URL sources, the canonical `runtime.entrypointUrl` is taken from the signed payload directly. Frontend code never loads plugin packages by npm name.
+- `frontend.runtime.entrypoint` MUST be HTTPS for `official`/`reviewed` plugins from registry/url sources. `.shplugin` archives, host-relative paths, paste source, untrusted plugins, and `APP_ENV=dev` are exempt — enforced by `PluginCapabilityValidator`.
+
+### Plugin archive CLI
+
+- `selfhelp:plugin:validate-archive <path>` — run the inspect-archive pipeline on a local file (signature + checksums + manifest); exit 1 on errors.
+- `selfhelp:plugin:cleanup-archives` — reap orphaned `var/plugins/<id>-<ver>/staging/` dirs older than `SELFHELP_PLUGIN_ARCHIVE_RETENTION_DAYS` (default 7). Wire into cron / scheduled jobs.
+- `selfhelp:plugin:purge-staging <id> [--all] [--confirm]` — dry-run by default; deletes staging dirs only. Never touches `installed/` or `public/plugin-artifacts/...`.
+
+### Messenger transport env
+
+- `MESSENGER_PLUGIN_OPS_DSN` is the single transport env (default `doctrine://default?queue_name=plugin_ops&auto_setup=true`). Production may swap to `redis://…?stream=plugin_ops`.
+- Do not introduce parallel `MESSENGER_TRANSPORT_DSN` aliases for the plugin transport.
 
 ### plugin_operations table is the audit trail
 

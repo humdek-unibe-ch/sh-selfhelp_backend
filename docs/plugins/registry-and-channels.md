@@ -83,6 +83,39 @@ curl -X POST $API/cms-api/v1/admin/plugins/sources \
   }'
 ```
 
+## Registry entry shape (v1.0)
+
+Every `pluginEntry` in `registry.json` is validated against the
+canonical schema at
+[`docs/plugins/plugin-registry.schema.json`](./plugin-registry.schema.json).
+The `sh2-plugin-registry` repo pins to this file so the registry +
+backend share a single source of truth. Required fields:
+
+| Field           | Description                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| `id`            | Kebab-case plugin id.                                                                                |
+| `name`          | Display name.                                                                                        |
+| `version`       | SemVer version (`MAJOR.MINOR.PATCH[-prerelease]`).                                                   |
+| `trustLevel`    | `official` / `reviewed` / `untrusted`.                                                               |
+| `composer`      | `{package, version, repository?}`. The host runs `composer require <package>:<version>` against this. |
+| `runtime`       | `{entrypointUrl, format='esm', stylesheetUrl?, integrity?, stylesheetIntegrity?}`. The host loads the entrypoint via `import()`. |
+| `checksums`     | `{frontendEsm, frontendCss?}` hex SHA-256.                                                           |
+| `signature`     | Base64 Ed25519 detached signature of `signedPayload`.                                                |
+| `signedPayload` | Canonical JSON document (see [`signing.md`](./signing.md)). Byte-identical between PHP + Node impls.|
+| `keyId`         | Publisher key id resolved via `SELFHELP_PLUGIN_TRUSTED_KEYS`.                                       |
+
+Optional helpers: `channel`, `homepage`, `description`,
+`manifestUrl` (path to the full canonical `plugin.json`),
+`changelogUrl`, `compatibility` (forwarded to the compatibility
+check), and the registry's top-level `publisher` block.
+
+Plugin authors do **not** edit `registry.json` by hand. The
+`scripts/publish-to-registry.{ps1,sh}` script in every plugin repo
+calls `selfhelp-plugin-build-registry-entry` (shipped by the
+registry repo) to compose a signed entry from the canonical signed
+payload that the `.shplugin` was signed with — one signing event per
+release.
+
 ## Channel promotion workflow
 
 The recommended promotion path:

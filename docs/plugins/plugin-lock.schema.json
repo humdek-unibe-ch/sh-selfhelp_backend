@@ -86,7 +86,7 @@
                     }
                 },
                 "backend": {"$ref": "#/$defs/packageRef"},
-                "frontend": {"$ref": "#/$defs/packageRef"},
+                "frontend": {"$ref": "#/$defs/runtimeRef"},
                 "mobile": {"$ref": "#/$defs/packageRef"},
                 "migrations": {
                     "type": "object",
@@ -154,6 +154,18 @@
             "properties": {
                 "package": {"type": "string"},
                 "version": {"type": "string"}
+            }
+        },
+        "runtimeRef": {
+            "type": "object",
+            "description": "Runtime ESM frontend bundle pin. The host loads runtimeUrl via dynamic import().",
+            "required": ["runtimeUrl", "format"],
+            "additionalProperties": false,
+            "properties": {
+                "runtimeUrl": {"type": "string"},
+                "stylesheetUrl": {"type": ["string", "null"]},
+                "integrity": {"type": ["string", "null"]},
+                "format": {"type": "string", "enum": ["esm"]}
             }
         },
         "migrationRecord": {

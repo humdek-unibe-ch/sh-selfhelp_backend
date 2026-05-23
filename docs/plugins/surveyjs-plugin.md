@@ -166,15 +166,16 @@ php bin/console selfhelp:plugin:install /abs/path/to/plugins/sh2-shp-survey-js/p
 # Frontend
 cd ../sh-selfhelp_frontend
 npm ci
-npm run plugins:sync -- --backend http://localhost:8000
-npm install
 npm run dev
+# No per-plugin step on the frontend: the surveyjs UI is loaded as an
+# ESM runtime bundle from /plugin-artifacts/sh2-shp-survey-js-<ver>/plugin.esm.js.
 
 # Mobile (optional)
 cd ../sh-selfhelp_mobile
 npm ci
 SELFHELP_API_TOKEN=… npm run plugins:sync -- production-default --backend https://cms.example.com
 npm install
+eas build --profile production-default
 ```
 
 Now visit `/admin/plugins-host/sh2-shp-survey-js/surveys` to create a survey, then publish a page using the `surveyjs` style with the survey's `key_slug` to embed it.
