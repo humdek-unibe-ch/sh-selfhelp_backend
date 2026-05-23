@@ -34,6 +34,30 @@ when@test:
                 # assert on the resulting plugin row immediately.
                 plugin_ops: 'sync://'
 
+when@dev:
+    framework:
+        messenger:
+            transports:
+                # In development we default to a sync transport for plugin
+                # lifecycle operations so install/uninstall/update/purge
+                # actually happen during the HTTP request — no separate
+                # `messenger:consume plugin_ops` worker required. The
+                # admin UI still receives the 202 envelope, but the
+                # finalize work (composer require/remove, lock-file +
+                # bundles regeneration, lifecycle events) runs inline.
+                #
+                # If a developer needs the async path locally to exercise
+                # the production worker contract, set in `.env.local`:
+                #   MESSENGER_PLUGIN_OPS_DSN=doctrine://default?queue_name=plugin_ops&auto_setup=true
+                # and run `php bin/console messenger:consume plugin_ops`.
+                plugin_ops: '%env(default:messenger_plugin_ops_dev_default:MESSENGER_PLUGIN_OPS_DSN)%'
+
+    parameters:
+        # Default to inline (sync) processing in `dev` so plugin
+        # operations don't get stranded in the queue when no worker is
+        # running. Overridable via MESSENGER_PLUGIN_OPS_DSN.
+        messenger_plugin_ops_dev_default: 'sync://'
+
 parameters:
     # Default Doctrine messenger DSN; overridable via env.
     messenger_plugin_ops_dsn_default: 'doctrine://default?queue_name=plugin_ops&auto_setup=true'

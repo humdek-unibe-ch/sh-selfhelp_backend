@@ -52,7 +52,7 @@ final class PackageManagerRunner
     public function requireComposerPackage(string $package, string $constraint, ?callable $onLine = null): PackageManagerResult
     {
         $result = $this->run(
-            ['composer', 'require', sprintf('%s:%s', $package, $constraint), '--no-interaction', '--no-scripts'],
+            ['composer', 'require', sprintf('%s:%s', $package, $constraint), '--no-interaction', '--no-scripts', '--no-plugins'],
             $onLine,
         );
         if ($result->success) {
@@ -149,7 +149,7 @@ final class PackageManagerRunner
         }
 
         $requireResult = $this->run(
-            ['composer', 'require', sprintf('%s:%s', $package, $constraintToUse), '--no-interaction', '--no-scripts'],
+            ['composer', 'require', sprintf('%s:%s', $package, $constraintToUse), '--no-interaction', '--no-scripts', '--no-plugins'],
             $onLine,
         );
 
@@ -171,7 +171,7 @@ final class PackageManagerRunner
      */
     public function removeComposerPackage(string $package, ?callable $onLine = null): PackageManagerResult
     {
-        $result = $this->run(['composer', 'remove', $package, '--no-interaction', '--no-scripts'], $onLine);
+        $result = $this->run(['composer', 'remove', $package, '--no-interaction', '--no-scripts', '--no-plugins'], $onLine);
         // No autoloader refresh on remove: the classes already loaded by
         // the worker would still be reachable from PHP's class table even
         // after vendor/ is updated. Refreshing would not unload them.
@@ -255,11 +255,87 @@ final class PackageManagerRunner
         return true;
     }
 
+    /**
+     * Builds the env block passed to every composer subprocess.
+     *
+     * Symfony's `Process` defaults `$env` to `null` which is documented as
+     * "inherit parent env" — but on Windows that inheritance is unreliable
+     * once the PHP process was spawned by the built-in dev server / Symfony
+     * CLI / a Messenger worker that lost its console env. Composer then
+     * fatals with "The APPDATA or COMPOSER_HOME environment variable must
+     * be set", killing every install/uninstall before the `plugins` row is
+     * touched. We explicitly forward the variables Composer needs (and
+     * fall back to a project-local Composer home when the host has neither
+     * `APPDATA` nor `COMPOSER_HOME` available) so plugin install/uninstall
+     * works regardless of how PHP was launched.
+     *
+     * @return array<string,string>
+     */
+    private function resolveSubprocessEnv(): array
+    {
+        $passthrough = [
+            'APPDATA', 'LOCALAPPDATA', 'COMPOSER_HOME', 'COMPOSER_CACHE_DIR',
+            'HOME', 'USERPROFILE', 'PATH', 'Path', 'SystemRoot', 'SYSTEMROOT',
+            'TEMP', 'TMP', 'COMSPEC', 'PATHEXT', 'PROCESSOR_ARCHITECTURE',
+        ];
+        $env = [];
+        foreach ($passthrough as $var) {
+            $value = getenv($var);
+            if ($value === false || $value === '') {
+                $value = $_SERVER[$var] ?? null;
+            }
+            if (is_string($value) && $value !== '') {
+                $env[$var] = $value;
+            }
+        }
+
+        if (!isset($env['APPDATA']) && !isset($env['COMPOSER_HOME'])) {
+            $fallbackHome = $this->projectDir
+                . DIRECTORY_SEPARATOR . 'var'
+                . DIRECTORY_SEPARATOR . 'composer-home';
+            if (!is_dir($fallbackHome)) {
+                @mkdir($fallbackHome, 0775, true);
+            }
+            $env['COMPOSER_HOME'] = $fallbackHome;
+        }
+
+        return $env;
+    }
+
     private function findComposerClassLoader(): ?\Composer\Autoload\ClassLoader
     {
         foreach (spl_autoload_functions() ?: [] as $registered) {
-            if (is_array($registered) && isset($registered[0]) && $registered[0] instanceof \Composer\Autoload\ClassLoader) {
-                return $registered[0];
+            if (!is_array($registered) || !isset($registered[0])) {
+                continue;
+            }
+            $owner = $registered[0];
+            if ($owner instanceof \Composer\Autoload\ClassLoader) {
+                return $owner;
+            }
+            // In Symfony dev / debug mode `DebugClassLoader::enable()`
+            // wraps the original Composer `ClassLoader` so
+            // `spl_autoload_functions()` only exposes
+            // `[DebugClassLoader, 'loadClass']`. Unwrap it via the
+            // documented `getClassLoader()` accessor — without this the
+            // refresh silently no-ops, `class_exists()` in
+            // `PluginInstaller::finalize()` returns false for the
+            // freshly installed bundle, and the operation aborts with a
+            // 412 even though composer require succeeded.
+            if (
+                is_object($owner)
+                && method_exists($owner, 'getClassLoader')
+            ) {
+                try {
+                    $wrapped = $owner->getClassLoader();
+                } catch (\Throwable) {
+                    $wrapped = null;
+                }
+                if (is_array($wrapped) && isset($wrapped[0]) && $wrapped[0] instanceof \Composer\Autoload\ClassLoader) {
+                    return $wrapped[0];
+                }
+                if ($wrapped instanceof \Composer\Autoload\ClassLoader) {
+                    return $wrapped;
+                }
             }
         }
         return null;
@@ -271,7 +347,7 @@ final class PackageManagerRunner
      */
     private function run(array $cmd, ?callable $onLine = null): PackageManagerResult
     {
-        $process = new Process($cmd, $this->projectDir, null, null, $this->timeoutSeconds);
+        $process = new Process($cmd, $this->projectDir, $this->resolveSubprocessEnv(), null, $this->timeoutSeconds);
         $stdout = '';
         $stderr = '';
         try {

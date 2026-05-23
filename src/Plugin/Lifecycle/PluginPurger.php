@@ -103,26 +103,36 @@ final class PluginPurger
             ]);
             $this->recorder->markRunning($operation, 'Purging plugin');
 
-            $this->em->beginTransaction();
+            // MySQL implicitly COMMITs the active transaction the moment a
+            // DDL statement runs (DROP TABLE, ALTER TABLE, ...). Wrapping
+            // the purge in `em->beginTransaction()` therefore breaks every
+            // subsequent recorder->appendLog() / em->rollback() call — the
+            // ORM thinks it is still in transaction `nesting=1`, but the
+            // connection has nothing to commit/rollback any more. The
+            // original visible symptom was "There is no active transaction"
+            // from the rollback path, which hid whatever caused the catch
+            // in the first place and left the operation row stuck in
+            // `running`. Run each step as its own autocommitted statement
+            // instead — DDL has no rollback guarantee anyway.
             try {
-                foreach ($ownedTables as $table) {
-                    $this->dropOwnedTable($table);
-                    $this->recorder->appendLog($operation, 'Dropped plugin-owned table', ['table' => $table]);
-                }
-
                 // Plugin-tagged rows on shared tables are removed via the
                 // FK ON DELETE SET NULL on `id_plugins` when the plugin row
                 // is removed. We additionally hard-delete rows whose
                 // existence only makes sense for this plugin (styles /
                 // api_routes / fields / permissions / lookups created by
-                // the plugin and tagged with id_plugins).
+                // the plugin and tagged with id_plugins). Doing this BEFORE
+                // any DDL keeps the data deletes inside one happy autocommit
+                // window.
                 $this->deletePluginTaggedRows($plugin->getId());
+
+                foreach ($ownedTables as $table) {
+                    $this->dropOwnedTable($table);
+                    $this->recorder->appendLog($operation, 'Dropped plugin-owned table', ['table' => $table]);
+                }
 
                 $this->em->remove($plugin);
                 $this->em->flush();
-                $this->em->commit();
             } catch (\Throwable $e) {
-                $this->em->rollback();
                 $this->recorder->fail($operation, $e, 'purge');
                 throw $e;
             }
