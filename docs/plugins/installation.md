@@ -192,7 +192,7 @@ and regenerates lock/bundle metadata; it does not replace the external
 Composer/npm step.
 
 1. The admin presses **Request install** in `Admin → Plugins → Available`.
-2. The host records a `plugin_operations` row with status `awaiting_external_install`. Mercure event lands in the admin UI.
+2. The host records a `plugin_operations` row with status `requested`. A Mercure event lands in the admin UI.
 3. The host produces a runbook (visible on the operation detail page) similar to:
 
 ```bash
@@ -214,6 +214,28 @@ php bin/console selfhelp:plugin:run-operation <operationId>
    - finalizes the operation (`status=succeeded`).
 
 If any step fails, the operation is marked `failed` and the previous lock-file checksum is restored.
+
+### 4.1 Bundle-class autoload gate
+
+Before regenerating `config/selfhelp_plugin_bundles.php`,
+[`PluginInstaller::finalize()`](../../src/Plugin/Lifecycle/PluginInstaller.php)
+and [`PluginUpdater::finalize()`](../../src/Plugin/Lifecycle/PluginUpdater.php)
+verify that the manifest's `backend.bundleClass` is autoloadable via
+`class_exists()`. If it is not, the operation is marked `failed` with a
+`PRECONDITION_FAILED` error and the bundles file is left untouched. The
+admin UI surfaces the message:
+
+> Backend bundle class "…\HumdekSurveyJsBundle" is not autoloadable.
+> The composer package "humdek/sh2-shp-survey-js" must be installed
+> before finalizing. Run `composer require humdek/sh2-shp-survey-js:0.1.0`
+> (or use the plugin's `scripts/install-local.{ps1,sh}` helper) and
+> click Finalize again.
+
+This guard exists because a previous shape of the installer would
+unconditionally write the missing class into the generated bundles
+file, after which `kernel->registerBundles()` died on every
+subsequent request. The recovery procedure for installs that
+predate the guard is in §10 and §11.
 
 ## 5. Update a plugin
 
@@ -274,6 +296,15 @@ php bin/console selfhelp:plugin:safe-mode --disable
 
 Boots the backend with `config/selfhelp_plugin_bundles.php` ignored. Useful when a plugin's bundle crashes the kernel.
 
+There are also two emergency switches when the CLI itself cannot boot:
+
+| Mechanism | How to set | When |
+|-----------|------------|------|
+| `SELFHELP_DISABLE_PLUGINS=true` env var | Add to `.env.local` | Use when even the safe-mode command cannot run because the kernel is dead. Skips the include of `selfhelp_plugin_bundles.php` regardless of the lock file. |
+| `var/plugin_safe_mode.lock` file       | Created by the `--enable` command above (or `touch var/plugin_safe_mode.lock` by hand) | Persistent across restarts without editing `.env`. Removed by `--disable`. |
+
+The boot-time short circuit is documented in `config/bundles.php`.
+
 ## 11. Lock file recovery
 
 If the lock file goes out of sync with the database:
@@ -282,7 +313,48 @@ If the lock file goes out of sync with the database:
 php bin/console selfhelp:plugin:sync-lock
 ```
 
-The command writes a fresh `selfhelp.plugins.lock.json` from the `plugins` + `plugin_operations` tables.
+The command rebuilds `selfhelp.plugins.lock.json` from the `plugins`
+table and **also drops stale entries** whose plugin id is no longer in
+the table — so a plugin row deleted by hand, by purge, or by the recovery
+procedure below disappears from the lock file too. The bundles file is
+regenerated from the same DB snapshot.
+
+### 11.1 Recovery from a half-written install (kernel won't boot)
+
+If a finalize predating the §4.1 autoload gate left the bundles file
+referencing a class the autoloader cannot resolve, `kernel->registerBundles()`
+raises `Class "…HumdekSurveyJsBundle" not found` on every request. The
+recovery is:
+
+```bash
+# 1. Take the kernel back. Either env-disable plugins:
+echo 'SELFHELP_DISABLE_PLUGINS=true' >> .env.local
+# or write the lock file directly:
+touch var/plugin_safe_mode.lock
+php bin/console cache:clear --env=dev --no-warmup
+
+# 2. Inspect the failed operation + plugin row:
+php bin/console selfhelp:plugin:status
+
+# 3. Cancel any stale `requested`/`running` operations. Either purge:
+php bin/console selfhelp:plugin:purge <pluginId> --confirm --i-understand-this-is-irreversible
+# or delete by hand if `purge` itself fails (shouldn't on the new code path):
+#   UPDATE plugin_operations SET status='cancelled', finished_at=NOW()
+#     WHERE plugin_id='<pluginId>' AND status IN ('requested','running');
+#   DELETE FROM plugins WHERE plugin_id='<pluginId>';
+
+# 4. Resync the artefacts (bundles file + lock file):
+php bin/console selfhelp:plugin:sync-lock
+
+# 5. Disable safe mode and re-clear cache:
+php bin/console selfhelp:plugin:safe-mode --disable
+php bin/console cache:clear --env=dev --no-warmup
+```
+
+Once the operator has fixed the underlying composer/npm gap (typically
+by running `scripts/install-local.{ps1,sh}` from the plugin checkout)
+the install can be re-attempted from the admin UI or
+`selfhelp:plugin:install`.
 
 ## 12. Operator runbook for a fresh install
 

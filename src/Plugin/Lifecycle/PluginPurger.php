@@ -65,7 +65,7 @@ final class PluginPurger
     ) {
     }
 
-    public function purge(string $pluginId, string $confirmedPluginId): void
+    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void
     {
         if ($pluginId !== $confirmedPluginId) {
             throw new ServiceException(
@@ -99,6 +99,7 @@ final class PluginPurger
                 'ownedTables' => $ownedTables,
                 'manifestAtPurge' => $manifestData,
                 'backup' => $backup,
+                'backupRequested' => $backupBefore,
             ]);
             $this->recorder->markRunning($operation, 'Purging plugin');
 

@@ -40,6 +40,12 @@ final class PluginUpdateCommand extends Command
         $this->addArgument('manifest', InputArgument::REQUIRED, 'Path to the new plugin.json manifest file.');
         $this->addOption('force-major', null, InputOption::VALUE_NONE, 'Acknowledge a major version bump (otherwise refused).');
         $this->addOption('finalize', null, InputOption::VALUE_NONE, 'Finalize the operation after composer/npm + migrations have run.');
+        $this->addOption(
+            'backup-before',
+            null,
+            InputOption::VALUE_NONE,
+            'Run the configured PluginBackupHook before staging the update so plugin-owned tables can be restored on failure. Combine with a DB dump in production.'
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -59,10 +65,16 @@ final class PluginUpdateCommand extends Command
         }
 
         $force = (bool) $input->getOption('force-major');
+        $backupBefore = (bool) $input->getOption('backup-before');
         $mode = $this->installModeResolver->resolve();
 
         try {
-            $result = $this->pluginAdminService->requestUpdate($manifest->toArray(), $force);
+            $result = $this->pluginAdminService->requestUpdate(
+                $manifest->toArray(),
+                $force,
+                null,
+                $backupBefore,
+            );
             $operationId = (int) $result['id'];
             $io->success(sprintf(
                 'Update operation requested. Operation id #%d, mode=%s.',

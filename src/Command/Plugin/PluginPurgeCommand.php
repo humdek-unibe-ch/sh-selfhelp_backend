@@ -38,6 +38,12 @@ final class PluginPurgeCommand extends Command
         $this->addArgument('pluginId', InputArgument::REQUIRED, 'Plugin id to purge.');
         $this->addOption('confirm', null, InputOption::VALUE_NONE, 'Required to proceed non-interactively.');
         $this->addOption('i-understand-this-is-irreversible', null, InputOption::VALUE_NONE, 'Second confirmation flag (interactive only).');
+        $this->addOption(
+            'backup-before',
+            null,
+            InputOption::VALUE_NONE,
+            'Run the configured PluginBackupHook before purging so plugin-owned tables can be restored if needed.'
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -66,7 +72,7 @@ final class PluginPurgeCommand extends Command
         }
 
         try {
-            $this->pluginAdminService->purge($pluginId, $pluginId);
+            $this->pluginAdminService->purge($pluginId, $pluginId, (bool) $input->getOption('backup-before'));
         } catch (\Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
