@@ -12,6 +12,7 @@ namespace App\Plugin\Lifecycle;
 
 use App\Entity\Plugin\PluginOperation;
 use App\Repository\Plugin\PluginOperationRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Lock\LockFactory;
 use Symfony\Component\Lock\LockInterface;
 
@@ -21,15 +22,20 @@ use Symfony\Component\Lock\LockInterface;
  * Rules:
  *   1. Only one operation may be in `running` status per CMS instance.
  *      Concurrent operations are rejected, not queued.
- *   2. Only one operation per plugin id may exist in `requested` or
- *      `running` status at the same time.
+ *   2. A `requested` operation for the same plugin id is treated as
+ *      orphaned (the previous web request never reached `finalize()`)
+ *      and is silently superseded — the row is marked `cancelled`
+ *      with a `superseded` log entry and the new operation proceeds.
+ *      Operators recover from "I closed the modal" without having to
+ *      run a manual purge first.
  *
  * The guard enforces these invariants at two layers:
  *
  *   - **DB layer (primary):** reads `plugin_operations` to refuse a
- *     new operation when an active one already exists. This is the
- *     fail-safe invariant; it stays in place even if the distributed
- *     lock is bypassed.
+ *     new operation when one is RUNNING, and to supersede stale
+ *     `requested` rows for the same plugin. This is the fail-safe
+ *     invariant; it stays in place even if the distributed lock is
+ *     bypassed.
  *   - **Symfony Lock (optional, recommended):** when a `LockFactory`
  *     is injected via the `framework.lock.plugin_operation` resource,
  *     the guard acquires a non-blocking distributed lock keyed on
@@ -50,17 +56,22 @@ final class PluginOperationLock
 
     public function __construct(
         private readonly PluginOperationRepository $operations,
+        private readonly EntityManagerInterface $em,
         private readonly ?LockFactory $lockFactory = null,
     ) {
     }
 
     /**
-     * @throws PluginOperationLockedException when an operation is
-     *                                         already running.
+     * @throws PluginOperationLockedException when another plugin
+     *                                         operation is currently
+     *                                         RUNNING (any plugin) or
+     *                                         when the distributed
+     *                                         lock cannot be acquired.
      */
     public function assertCanStart(string $pluginId): void
     {
         $active = $this->operations->findActive();
+        $toSupersede = [];
         foreach ($active as $operation) {
             if ($operation->getStatus() === PluginOperation::STATUS_RUNNING) {
                 throw new PluginOperationLockedException(sprintf(
@@ -70,15 +81,16 @@ final class PluginOperationLock
                     $operation->getType()
                 ));
             }
+            // STATUS_REQUESTED — orphaned request from a previous web
+            // session that never reached finalize(). Supersede so the
+            // user can retry. Other plugins' REQUESTED rows are left
+            // alone (they coexist; only RUNNING is mutually exclusive).
             if ($operation->getPluginId() === $pluginId) {
-                throw new PluginOperationLockedException(sprintf(
-                    'Plugin "%s" already has an active operation (id=%d, status=%s, type=%s).',
-                    $pluginId,
-                    (int) $operation->getId(),
-                    $operation->getStatus(),
-                    $operation->getType()
-                ));
+                $toSupersede[] = $operation;
             }
+        }
+        foreach ($toSupersede as $stale) {
+            $this->supersede($stale);
         }
 
         if ($this->lockFactory === null) {
@@ -113,5 +125,27 @@ final class PluginOperationLock
                 unset($this->heldLocks[$key]);
             }
         }
+    }
+
+    /**
+     * Mark a stale `requested` operation as cancelled with a
+     * `superseded` log entry. Used when a new request comes in for the
+     * same plugin id — the previous request never reached finalize,
+     * so the user is implicitly asking for a fresh attempt.
+     */
+    private function supersede(PluginOperation $operation): void
+    {
+        $operation->setStatus(PluginOperation::STATUS_CANCELLED);
+        $operation->setFinishedAt(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+        $operation->appendLog([
+            'event' => 'superseded',
+            'message' => sprintf(
+                'Operation superseded by a new request for plugin "%s" (previous %s operation never reached finalize).',
+                $operation->getPluginId(),
+                $operation->getType()
+            ),
+        ]);
+        $this->em->persist($operation);
+        $this->em->flush();
     }
 }
