@@ -28,6 +28,12 @@ use Symfony\Component\Lock\LockInterface;
  *      with a `superseded` log entry and the new operation proceeds.
  *      Operators recover from "I closed the modal" without having to
  *      run a manual purge first.
+ *   3. A `running` operation older than {@see TTL_SECONDS} is treated
+ *      as stale (the worker / web request died without finalising) and
+ *      is auto-superseded the same way as orphan `requested` rows.
+ *      This mirrors the Symfony Lock TTL: any process that legitimately
+ *      took longer than 15 minutes would already have lost its
+ *      distributed lock, so reclaiming the DB row is safe.
  *
  * The guard enforces these invariants at two layers:
  *
@@ -72,8 +78,19 @@ final class PluginOperationLock
     {
         $active = $this->operations->findActive();
         $toSupersede = [];
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $staleBefore = $now->sub(new \DateInterval('PT' . self::TTL_SECONDS . 'S'));
         foreach ($active as $operation) {
             if ($operation->getStatus() === PluginOperation::STATUS_RUNNING) {
+                // A RUNNING row whose startedAt is older than TTL is
+                // assumed orphaned (worker / web request died without
+                // finalising). The Symfony distributed lock has already
+                // expired by then so reclaiming the DB row is safe.
+                $startedAt = $operation->getStartedAt() ?? $operation->getCreatedAt();
+                if ($startedAt < $staleBefore) {
+                    $toSupersede[] = $operation;
+                    continue;
+                }
                 throw new PluginOperationLockedException(sprintf(
                     'Another plugin operation is currently running (id=%d, plugin=%s, type=%s). Wait for it to finish before starting a new one.',
                     (int) $operation->getId(),
@@ -128,22 +145,34 @@ final class PluginOperationLock
     }
 
     /**
-     * Mark a stale `requested` operation as cancelled with a
-     * `superseded` log entry. Used when a new request comes in for the
-     * same plugin id — the previous request never reached finalize,
-     * so the user is implicitly asking for a fresh attempt.
+     * Mark a stale `requested` or stuck `running` operation as
+     * cancelled with a `superseded` log entry. Used when:
+     *
+     *   - A new request comes in for the same plugin id and the previous
+     *     request never reached finalize.
+     *   - A `running` row is older than {@see TTL_SECONDS} (orphaned by
+     *     a crashed worker / web request).
      */
     private function supersede(PluginOperation $operation): void
     {
+        $previousStatus = $operation->getStatus();
         $operation->setStatus(PluginOperation::STATUS_CANCELLED);
         $operation->setFinishedAt(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
-        $operation->appendLog([
-            'event' => 'superseded',
-            'message' => sprintf(
+        $reason = $previousStatus === PluginOperation::STATUS_RUNNING
+            ? sprintf(
+                'Operation auto-superseded: previous %s operation was stuck in "running" state for plugin "%s" (older than %d seconds; worker or web request likely died without finalising).',
+                $operation->getType(),
+                $operation->getPluginId(),
+                self::TTL_SECONDS
+            )
+            : sprintf(
                 'Operation superseded by a new request for plugin "%s" (previous %s operation never reached finalize).',
                 $operation->getPluginId(),
                 $operation->getType()
-            ),
+            );
+        $operation->appendLog([
+            'event' => 'superseded',
+            'message' => $reason,
         ]);
         $this->em->persist($operation);
         $this->em->flush();
