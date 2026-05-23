@@ -40,12 +40,28 @@ final class PluginUninstallCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $pluginId = (string) $input->getArgument('pluginId');
         try {
-            $this->pluginAdminService->uninstall($pluginId);
+            $operation = $this->pluginAdminService->uninstall($pluginId);
         } catch (\Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
-        $io->success(sprintf('Plugin "%s" uninstalled. Data preserved; reinstall to reconnect.', $pluginId));
+        $io->success(sprintf(
+            'Uninstall requested for "%s". Operation #%d (mode=%s) dispatched to the Messenger worker.',
+            $pluginId,
+            (int) $operation['id'],
+            (string) $operation['installMode'],
+        ));
+        if (($operation['installMode'] ?? null) === 'managed') {
+            $io->note(sprintf(
+                'Managed mode: the worker recorded a runbook (composer remove). After the operator deploys the change, call selfhelp:plugin:run-operation %d to delete the plugin row + regenerate the lock file.',
+                (int) $operation['id'],
+            ));
+        } else {
+            $io->note(sprintf(
+                'The Messenger worker is now running composer remove + finalize for operation #%d. Monitor selfhelp:plugin:operations:list or the Mercure stream.',
+                (int) $operation['id'],
+            ));
+        }
         return Command::SUCCESS;
     }
 }

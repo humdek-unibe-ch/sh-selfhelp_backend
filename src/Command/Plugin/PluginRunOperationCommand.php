@@ -63,19 +63,27 @@ final class PluginRunOperationCommand extends Command
         }
 
         $snapshots = $operation->getSnapshotsJson() ?? [];
-        $manifestData = $snapshots['manifest'] ?? $snapshots['newManifest'] ?? null;
-        if (!is_array($manifestData)) {
-            $io->error('Operation snapshot is missing the manifest payload; cannot finalize.');
-            return Command::FAILURE;
-        }
 
         try {
             switch ($operation->getType()) {
                 case PluginOperation::TYPE_INSTALL:
+                    $manifestData = $snapshots['manifest'] ?? null;
+                    if (!is_array($manifestData)) {
+                        $io->error('Operation snapshot is missing the manifest payload; cannot finalize install.');
+                        return Command::FAILURE;
+                    }
                     $this->pluginAdminService->finalizeInstall($opId, $manifestData);
                     break;
                 case PluginOperation::TYPE_UPDATE:
+                    $manifestData = $snapshots['newManifest'] ?? $snapshots['manifest'] ?? null;
+                    if (!is_array($manifestData)) {
+                        $io->error('Operation snapshot is missing the new manifest payload; cannot finalize update.');
+                        return Command::FAILURE;
+                    }
                     $this->pluginAdminService->finalizeUpdate($opId, $manifestData);
+                    break;
+                case PluginOperation::TYPE_UNINSTALL:
+                    $this->pluginAdminService->finalizeUninstall($opId);
                     break;
                 default:
                     $io->error(sprintf('Operation type "%s" cannot be finalized by run-operation.', $operation->getType()));

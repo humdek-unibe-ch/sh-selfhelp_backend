@@ -69,25 +69,31 @@ final class PluginUpdateCommand extends Command
         $mode = $this->installModeResolver->resolve();
 
         try {
-            $result = $this->pluginAdminService->requestUpdate(
-                $manifest->toArray(),
-                $force,
-                null,
-                $backupBefore,
-            );
+            $result = $this->pluginAdminService->update([
+                'source' => 'paste',
+                'manifest' => $manifest->toArray(),
+                'forceMajor' => $force,
+                'backupBefore' => $backupBefore,
+            ]);
             $operationId = (int) $result['id'];
             $io->success(sprintf(
-                'Update operation requested. Operation id #%d, mode=%s.',
+                'Update operation requested. Operation id #%d, mode=%s — dispatched to the Messenger worker.',
                 $operationId,
                 $mode,
             ));
 
-            if (in_array($mode, ['development', 'trusted'], true) || $input->getOption('finalize')) {
+            if ($input->getOption('finalize')) {
+                // Operator wants to inline-finalize after running composer themselves.
                 $plugin = $this->pluginAdminService->finalizeUpdate($operationId, $manifest->toArray());
                 $io->success(sprintf('Plugin "%s" updated to %s.', $plugin['pluginId'], $plugin['version']));
+            } elseif ($mode === 'managed') {
+                $io->note(sprintf(
+                    'Managed mode: run composer + migrations from the recorded runbook, then call selfhelp:plugin:run-operation %d.',
+                    $operationId,
+                ));
             } else {
                 $io->note(sprintf(
-                    'Managed mode: run composer/npm + migrations and then call selfhelp:plugin:run-operation %d.',
+                    'The Messenger worker is now running composer + finalize for operation #%d.',
                     $operationId,
                 ));
             }

@@ -55,31 +55,31 @@ final class PluginInstallCommand extends Command
         }
 
         try {
-            $operation = $this->pluginAdminService->requestInstall($manifest->toArray());
+            $operation = $this->pluginAdminService->install([
+                'source' => 'paste',
+                'manifest' => $manifest->toArray(),
+            ]);
         } catch (\Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
 
         $io->success(sprintf(
-            'Install requested for "%s" v%s. Operation #%d (mode=%s).',
+            'Install requested for "%s" v%s. Operation #%d (mode=%s) dispatched to the Messenger worker.',
             $manifest->getPluginId(),
             $manifest->getVersion(),
             (int) $operation['id'],
             $operation['installMode'],
         ));
 
-        if (in_array($operation['installMode'], ['development', 'trusted'], true)) {
-            try {
-                $plugin = $this->pluginAdminService->finalizeInstall((int) $operation['id'], $manifest->toArray());
-            } catch (\Throwable $e) {
-                $io->error('Finalize failed: ' . $e->getMessage());
-                return Command::FAILURE;
-            }
-            $io->success(sprintf('Plugin "%s" finalized at version %s.', $plugin['pluginId'], $plugin['version']));
+        if ($operation['installMode'] === 'managed') {
+            $io->note(sprintf(
+                'Managed mode: the worker recorded a runbook. Run composer + migrations from the runbook, then call selfhelp:plugin:run-operation %d.',
+                (int) $operation['id'],
+            ));
         } else {
             $io->note(sprintf(
-                'Managed mode: run composer/npm + migrations and then call selfhelp:plugin:run-operation %d.',
+                'The Messenger worker is now running composer + finalize for operation #%d. Monitor selfhelp:plugin:operations:list or the Mercure stream.',
                 (int) $operation['id'],
             ));
         }
