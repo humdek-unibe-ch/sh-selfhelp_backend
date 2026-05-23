@@ -179,8 +179,33 @@ final class PluginAdminService extends BaseService
     /** @return array<int, array<string,mixed>> */
     public function listPlugins(): array
     {
+        // Cross-reference installed plugins against the registry index
+        // ONCE and merge the result into each row as `availableUpdate`.
+        // The admin "Installed" tab uses this to render an inline
+        // "Update available" badge + Update button per row, so there is
+        // no need for a separate `/admin/plugins/updates` round-trip.
+        $updatesByPluginId = [];
+        try {
+            foreach ($this->listAvailableUpdates() as $update) {
+                if (!isset($update['pluginId']) || !is_string($update['pluginId'])) {
+                    continue;
+                }
+                $updatesByPluginId[$update['pluginId']] = $update;
+            }
+        } catch (\Throwable) {
+            // Registry lookup must never break the installed-plugins
+            // list. A flaky registry (timeout / DNS / 5xx / parse error)
+            // simply means "no updates surfaced this call"; the rest of
+            // the admin page renders normally.
+            $updatesByPluginId = [];
+        }
+
         return array_map(
-            fn(Plugin $p) => $this->formatPlugin($p),
+            function (Plugin $p) use ($updatesByPluginId): array {
+                $row = $this->formatPlugin($p);
+                $row['availableUpdate'] = $updatesByPluginId[$p->getPluginId()] ?? null;
+                return $row;
+            },
             $this->plugins->findAllOrderedByName()
         );
     }
