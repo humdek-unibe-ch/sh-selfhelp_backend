@@ -203,7 +203,7 @@ or a manual `workflow_dispatch` (with a channel input).
 | Checkout plugin + registry | Clones the plugin repo and the `humdek-unibe-ch/sh2-plugin-registry` repo using the `REGISTRY_PUSH_TOKEN` PAT. | Without the secret the job still builds + validates but skips the push, so a fresh fork can dry-run the workflow. |
 | Validate manifest | Runs `ajv` against the vendored `docs/plugins/plugin-manifest.schema.json`. | Tag must reflect a manifest that the host can install. |
 | Build frontend / mobile | `npm install --legacy-peer-deps && npm run build` in `frontend/` and `mobile/`. | Build regression — the registry never advertises an unbuildable version. |
-| `scripts/publish-to-registry.sh --skip-build --push` | Copies the plugin's `plugin.json` to `<registry>/manifests/<id>-<version>.json`, upserts the entry in `<registry>/registry.json`, commits, and pushes. | The registry repo's own `build-registry.yml` workflow (see below) takes over to publish to GitHub Pages. |
+| `node scripts/publish-to-registry.mjs --skip-build --push` | Copies the plugin's `plugin.json` to `<registry>/manifests/<id>-<version>.json`, upserts the entry in `<registry>/registry.json`, commits, and pushes. | The registry repo's own `build-registry.yml` workflow (see below) takes over to publish to GitHub Pages. |
 
 **The flow end-to-end**:
 
@@ -235,18 +235,30 @@ Plugin repo:
 |--------|----------|
 | `REGISTRY_PUSH_TOKEN` | Personal Access Token with `contents:write` on `humdek-unibe-ch/sh2-plugin-registry`. Without it the job runs in dry-run mode and prints a warning to the workflow summary. |
 
-**Optional flags** when running `scripts/publish-to-registry.{sh,ps1}` locally:
+**Optional flags** when running `scripts/publish-to-registry.mjs`
+locally (single cross-platform Node script — works on PowerShell,
+Git Bash, WSL, macOS, and Linux):
 
 ```bash
 # Dry-run (does not commit anything)
-bash scripts/publish-to-registry.sh --dry-run
+node scripts/publish-to-registry.mjs --dry-run
 
 # Different release channel (default is 'stable')
-bash scripts/publish-to-registry.sh --channel beta --push
+node scripts/publish-to-registry.mjs --channel beta --push
 
-# Auto-publish the npm packages too (needs NPM_TOKEN in env)
-bash scripts/publish-to-registry.sh --publish-npm --push
+# Auto-publish the npm packages too (needs NPM_TOKEN in env or .env)
+node scripts/publish-to-registry.mjs --publish-npm --push
+
+# Cut a GitHub Release (uses `gh` CLI, attaches the .shplugin)
+node scripts/publish-to-registry.mjs --release --push
 ```
+
+The script auto-loads `<plugin>/.env`, so
+`SELFHELP_PLUGIN_SIGNING_KEY` /
+`SELFHELP_PLUGIN_SIGNING_KEY_ID` /
+`SELFHELP_REGISTRY_PATH` / `NPM_TOKEN` can live in a single gitignored
+file next to `plugin.json`. Real `process.env` values still win, so
+secrets injected by the GitHub Action override the file automatically.
 
 The current GitHub Actions workflow does **not** pass `--publish-npm`.
 Plugin authors who want the same tag to push to npm can either add an

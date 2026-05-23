@@ -56,12 +56,21 @@ sh2-shp-<plugin-id>/
 │   └── src/index.ts                  # exports registerMobile(api)
 ├── docs/
 │   └── install.md                    # per-plugin install recipes
+├── .env.example                  # documents SELFHELP_PLUGIN_*_SIGNING_KEY, SELFHELP_ADMIN_TOKEN, etc.
 └── scripts/
-    ├── build-shplugin.mjs            # builds + signs the .shplugin
-    ├── publish-to-registry.sh        # POSIX publish script
-    ├── publish-to-registry.ps1       # PowerShell publish script
-    └── install-local.{sh,ps1}        # symlink + composer path-repo wiring
+    ├── build-shplugin.mjs            # canonical Node builder + signer
+    ├── publish-to-registry.mjs       # canonical Node publisher (registry + GH release)
+    └── install-local.mjs             # canonical Node local installer (.shplugin upload + symlink fast-path)
 ```
+
+Every script under `scripts/` is a single cross-platform Node `.mjs`
+file. There are **no** `.ps1` / `.sh` wrappers — PowerShell, Git
+Bash, WSL, macOS, and Linux all run the same code path. Each script
+auto-loads `<plugin-root>/.env` via Node 22's `process.loadEnvFile`,
+so the signing key + admin token + host paths can live next to
+`plugin.json` instead of being exported in every shell. Real
+`process.env` values always win over `.env`, which keeps CI secrets
+dominant.
 
 Each side (`backend/`, `frontend/`, `mobile/`) is optional. Backend-only
 or frontend-only plugins are normal; the manifest declares which slots
@@ -130,7 +139,15 @@ Required protected keys (read [`signing.md`](./signing.md)):
 - `SELFHELP_PLUGIN_SIGNING_KEY_ID` — publisher key id matching one of
   the host's `SELFHELP_PLUGIN_TRUSTED_KEYS`.
 - `SELFHELP_PLUGIN_DEV_SIGNING_KEY` — local-dev fallback. The host
-  refuses dev-signed plugins on `official` / `reviewed` trust levels.
+  refuses dev-signed plugins on `official` / `reviewed` trust levels
+  outside `APP_ENV=dev`.
+
+Locally, drop these (and `SELFHELP_ADMIN_TOKEN` for `install-local.mjs`)
+into a gitignored `<plugin>/.env` so every `node scripts/*.mjs`
+invocation picks them up automatically. Each plugin ships a
+`.env.example` template documenting the full set. Real `process.env`
+values still win — CI secrets injected into a workflow override the
+file automatically.
 
 ### 1.3 First `plugin.json`
 
@@ -155,8 +172,8 @@ Two supported modes:
 ### 2.1 Symlink fast path (recommended for iteration)
 
 ```bash
-# From the plugin repo
-bash scripts/install-local.sh --symlink --backend ../../sh-selfhelp_backend
+# From the plugin repo (works on every OS)
+node scripts/install-local.mjs --symlink --backend ../../sh-selfhelp_backend
 ```
 
 What the script does:
@@ -210,7 +227,10 @@ repo. The script:
    Produces `frontend/dist/plugin.esm.js` (+ optional `plugin.css`).
 2. **Stages files** under `dist/shplugin/<id>-<version>/`:
    - `plugin.json` (root)
-   - `artifacts/plugin.esm.js`, `artifacts/plugin.css`
+   - `artifacts/plugin.esm.js` (always)
+   - `artifacts/plugin.css` (only if the build emitted one — plugins
+     whose CSS is inlined into the JS bundle, or admin-only / headless
+     plugins, ship without a stylesheet and that is fully supported)
 3. **Computes SHA-256** for every file under `artifacts/` and writes
    sorted `artifacts/SHA256SUMS`.
 4. **Builds the canonical signed payload** via
@@ -284,7 +304,7 @@ Plugin repo:
   - scripts/build-shplugin.mjs → dist/<id>-<ver>.shplugin
   - sign canonical payload (Ed25519, SELFHELP_PLUGIN_SIGNING_KEY)
   - create GitHub Release for v0.2.0, attach the .shplugin
-  - scripts/publish-to-registry.sh --skip-build --push
+  - node scripts/publish-to-registry.mjs --skip-build --push
             │
             ▼  sh2-plugin-registry repo (humdek-unibe-ch/sh2-plugin-registry)
   - manifests/<id>-<ver>.json              ← copy of plugin.json
@@ -310,6 +330,21 @@ Required GitHub Actions secrets on the plugin repo:
 | `SELFHELP_PLUGIN_SIGNING_KEY`   | Ed25519 base64 secret. Used by `sign.mjs sign`. Never committed.                           |
 | `SELFHELP_PLUGIN_SIGNING_KEY_ID`| Matches a `keyId=…` in the host's `SELFHELP_PLUGIN_TRUSTED_KEYS`.                          |
 | `REGISTRY_PUSH_TOKEN`           | PAT with `contents:write` on `humdek-unibe-ch/sh2-plugin-registry`. Missing → dry-run mode.|
+
+Per-plugin step-by-step (Ed25519 generation, GitHub UI navigation,
+host `SELFHELP_PLUGIN_TRUSTED_KEYS` wiring) is documented in each
+plugin's `docs/secrets-setup.md`. See
+[`sh2-shp-survey-js/docs/secrets-setup.md`](https://github.com/humdek-unibe-ch/sh2-shp-survey-js/blob/main/docs/secrets-setup.md)
+for the reference walkthrough — every other plugin should copy it
+verbatim and tweak the keyId.
+
+> **Local-only development?** Set
+> `SELFHELP_PLUGIN_DEV_SIGNING_KEY=<base64-64-bytes>` instead of the
+> production secret. `scripts/sign.mjs` falls back to it and stamps
+> `keyId="dev"`. The host accepts `keyId="dev"` only when
+> `APP_ENV=dev` (and refuses it on `official`/`reviewed` trust
+> levels regardless). No GitHub secrets are required for local
+> iteration.
 
 The registry repo's own `build-registry.yml` workflow publishes the
 static `registry.json` to GitHub Pages. The plugin author's workflow

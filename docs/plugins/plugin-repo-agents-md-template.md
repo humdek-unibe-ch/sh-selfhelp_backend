@@ -105,9 +105,20 @@ Plugin progress, dashboards, chat, collaborative editing, file upload status, an
 - `docs/` — plugin-specific docs.
 - `.github/workflows/validate-plugin.yml` — CI validation.
 - `.github/workflows/publish-to-registry.yml` — tag-triggered registry publish.
-- `scripts/build-shplugin.mjs` — builds + signs the `.shplugin` archive.
-- `scripts/publish-to-registry.{sh,ps1}` — publishes a new version to the public registry repo.
-- `scripts/install-local.{sh,ps1}` — local dev install (symlink fast-path or `.shplugin` upload).
+- `scripts/build-shplugin.mjs` — Node-based, cross-platform `.shplugin` builder + signer. Writes `artifacts/SHA256SUMS` with archive-root-relative paths (`<hash>  artifacts/<file>`).
+- `scripts/publish-to-registry.mjs` — Node-based, cross-platform publisher. Updates `<registry>/manifests/`, upserts `<registry>/registry.json`, optionally `git commit && git push`, and (with `--release`) creates a GH Release that attaches the `.shplugin`.
+- `scripts/install-local.mjs` — Node-based, cross-platform local dev installer. Default mode builds the `.shplugin` and uploads it to `POST /admin/plugins/install`; `--symlink` switches to a Composer path repo + Vite dev-server fast path.
+
+**No `.sh` / `.ps1` wrappers** — every script under `scripts/` is a
+single `.mjs` file that runs identically on PowerShell, Git Bash,
+WSL, macOS, and Linux. Each script auto-loads `<plugin>/.env` via
+Node 22's `process.loadEnvFile`, so `SELFHELP_PLUGIN_SIGNING_KEY`,
+`SELFHELP_ADMIN_TOKEN`, `SELFHELP_API_BASE`, `SELFHELP_BACKEND_PATH`,
+`SELFHELP_REGISTRY_PATH`, etc. can live next to `plugin.json` without
+being exported in every shell. Real `process.env` values still win
+over `.env`, so CI secrets dominate. Each plugin must ship a
+gitignored `.env` and a checked-in `.env.example` documenting the
+full set.
 
 ## `.gitignore` (mandatory)
 

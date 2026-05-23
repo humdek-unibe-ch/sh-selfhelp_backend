@@ -110,11 +110,11 @@ Optional helpers: `channel`, `homepage`, `description`,
 check), and the registry's top-level `publisher` block.
 
 Plugin authors do **not** edit `registry.json` by hand. The
-`scripts/publish-to-registry.{ps1,sh}` script in every plugin repo
-calls `selfhelp-plugin-build-registry-entry` (shipped by the
-registry repo) to compose a signed entry from the canonical signed
-payload that the `.shplugin` was signed with — one signing event per
-release.
+`scripts/publish-to-registry.mjs` script in every plugin repo (single
+cross-platform Node script — no `.sh` / `.ps1` wrappers) calls
+`selfhelp-plugin-build-registry-entry` (shipped by the registry repo)
+to compose a signed entry from the canonical signed payload that the
+`.shplugin` was signed with — one signing event per release.
 
 ## Channel promotion workflow
 
