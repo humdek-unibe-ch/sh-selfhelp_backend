@@ -27,7 +27,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * `PluginSource::getAuthSecretEnvVar()`.
  *
  * The client never persists registry contents — the caller (typically
- * `VersionResolver` or the installer) chooses what to cache.
+ * the installer or `PluginAdminService`) chooses what to cache.
  */
 final class RegistryClient
 {

@@ -68,9 +68,12 @@ parameters:
     # defaults to strict. Override with SELFHELP_PLUGIN_SIGNATURE_MODE.
     selfhelp_plugin_signature_mode_default: 'strict'
 
-    # Plugin release channels admins are allowed to install from.
-    selfhelp.plugin_allowed_channels:
-        - 'stable'
+    # Plugin Doctrine write-guard toggle. Defaults to true; set to false
+    # (SELFHELP_PLUGIN_DATA_ACCESS_GUARD=false) only for transient
+    # diagnostics. The guard intercepts entity writes from plugin-origin
+    # code and refuses access to protected core tables not declared in
+    # plugin.json#dataAccess.write.
+    selfhelp_plugin_data_access_guard_default: true
 
     # Default lock DSNs (in-process flock). Production deployments
     # override with `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`
@@ -183,6 +186,13 @@ services:
             $mode: '%env(default:selfhelp_plugin_signature_mode_default:SELFHELP_PLUGIN_SIGNATURE_MODE)%'
             $publicKeyBase64: '%env(default::SELFHELP_PLUGIN_SIGNATURE_PUBLIC_KEY)%'
 
+    # Plugin Doctrine write-guard. Refuses entity writes against protected
+    # core tables for plugin-origin callers. Toggle off only for diagnostics
+    # via SELFHELP_PLUGIN_DATA_ACCESS_GUARD=false.
+    App\Plugin\Security\PluginDataAccessGuard:
+        arguments:
+            $enabled: '%env(default:selfhelp_plugin_data_access_guard_default:bool:SELFHELP_PLUGIN_DATA_ACCESS_GUARD)%'
+
     # Plugin compatibility validator — checks plugin manifests against
     # the current CMS + SDK version.
     App\Plugin\Versioning\PluginCompatibilityValidator:
@@ -198,11 +208,6 @@ services:
 
     App\Plugin\Registry\RegistryClient: ~
 
-    # Plugin version resolver — channel filter comes from the env.
-    App\Plugin\Registry\VersionResolver:
-        arguments:
-            $allowedChannels: '%selfhelp.plugin_allowed_channels%'
-    
     # API Request Logger Services
     App\Service\Core\ApiRequestLoggerService:
         arguments:

@@ -204,6 +204,71 @@ final class PluginManifest
     }
 
     /**
+     * @return list<string>
+     */
+    public function getDataAccessRead(): array
+    {
+        $access = $this->getDataAccess();
+        $list = $access['read'] ?? [];
+        return is_array($list) ? array_values(array_map('strval', $list)) : [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getDataAccessWrite(): array
+    {
+        $access = $this->getDataAccess();
+        $list = $access['write'] ?? [];
+        return is_array($list) ? array_values(array_map('strval', $list)) : [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getOwnedTables(): array
+    {
+        $access = $this->getDataAccess();
+        $list = $access['ownedTables'] ?? [];
+        return is_array($list) ? array_values(array_map('strval', $list)) : [];
+    }
+
+    /**
+     * Optional prefix for plugin-owned rows in `data_tables`
+     * (e.g. `sh2_surveyjs_`). The host's data-access guard treats
+     * tables matching this prefix as plugin-owned for write purposes.
+     */
+    public function getOwnedDataTablePrefix(): ?string
+    {
+        $access = $this->getDataAccess();
+        $prefix = $access['ownedDataTablePrefix'] ?? null;
+        return is_string($prefix) && $prefix !== '' ? $prefix : null;
+    }
+
+    /**
+     * Alias for `getBackendBundleClass()` kept for symmetry with
+     * `PluginDataAccessGuard` and other plugin-layer code that thinks
+     * of "the plugin's bundle class" rather than "the backend bundle
+     * class" (the manifest only declares backend bundles today).
+     */
+    public function getBundleClass(): ?string
+    {
+        return $this->getBackendBundleClass();
+    }
+
+    /**
+     * Raw manifest JSON. The host treats the manifest as opaque after
+     * load; the registry uses this for round-tripping and for the
+     * `Plugin.manifestJson` column.
+     *
+     * @return RawManifest
+     */
+    public function getManifestJson(): array
+    {
+        return $this->data;
+    }
+
+    /**
      * Optional health endpoint URL — when present, the doctor command
      * HTTP-GETs this URL and surfaces its `status`/`message` response.
      * Keep absolute (https://...) so the host doesn't have to guess
