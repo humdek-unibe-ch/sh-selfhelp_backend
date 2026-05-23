@@ -36,6 +36,7 @@ final class PluginRepairer
         private readonly PluginRepository $plugins,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
+        private readonly PluginLockFileReader $lockFileReader,
         private readonly PluginRegistryService $registry,
         private readonly CacheService $cache,
     ) {
@@ -52,12 +53,20 @@ final class PluginRepairer
     {
         $bundlesPath = $this->bundlesWriter->regenerate();
 
+        // The lock file is rebuilt as a full replacement of the
+        // current state — `upsertPlugin()` alone cannot drop stale
+        // entries left behind by direct DB cleanup, so a sync-lock
+        // call after manual recovery would otherwise keep the broken
+        // entries forever.
+        $dbPluginIds = [];
         $touched = [];
         foreach ($this->plugins->findAllOrderedByName() as $plugin) {
             $manifest = new PluginManifest($plugin->getManifestJson());
             $this->lockFileWriter->upsertPlugin($plugin, $manifest);
+            $dbPluginIds[$plugin->getPluginId()] = true;
             $touched[] = $plugin->getPluginId();
         }
+        $this->dropStaleLockEntries($dbPluginIds);
 
         $this->registry->invalidate();
         $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
@@ -67,6 +76,31 @@ final class PluginRepairer
             'bundlesFile' => $bundlesPath,
             'lockFileUpdated' => true,
         ];
+    }
+
+    /**
+     * Remove any lock-file entry whose plugin id is no longer present
+     * in the `plugins` table. Intentionally minimal: we do not rewrite
+     * surviving entries here (those are kept fresh by `upsertPlugin`
+     * above).
+     *
+     * @param array<string,bool> $dbPluginIds
+     */
+    private function dropStaleLockEntries(array $dbPluginIds): void
+    {
+        $existing = $this->lockFileReader->read();
+        if ($existing === null) {
+            return;
+        }
+        foreach ($existing->plugins as $entry) {
+            $rawId = $entry['id'] ?? null;
+            if (!is_string($rawId) || $rawId === '' || isset($dbPluginIds[$rawId])) {
+                continue;
+            }
+            $rawMode = $entry['installMode'] ?? null;
+            $installMode = is_string($rawMode) && $rawMode !== '' ? $rawMode : Plugin::INSTALL_MODE_MANAGED;
+            $this->lockFileWriter->removePlugin($rawId, $installMode);
+        }
     }
 
     public function repairSingle(string $pluginId): Plugin

@@ -66,9 +66,18 @@ final class PluginOperationRecorder
             $operation->setFromVersion($fromVersion);
         }
 
+        // The User instance returned by UserContextService comes from the
+        // security token, which JWTTokenAuthenticator caches via CacheService
+        // — so it is *detached* from this EntityManager. Setting a detached
+        // entity on the relationship makes Doctrine think it's a new entity
+        // and demand cascade persist. Resolve a managed reference by id
+        // instead, mirroring the pattern in TransactionService /
+        // DataAccessSecurityService.
         $currentUser = $this->userContext->getCurrentUser();
-        if ($currentUser instanceof User) {
-            $operation->setRequestedBy($currentUser);
+        if ($currentUser instanceof User && $currentUser->getId() !== null) {
+            $operation->setRequestedBy(
+                $this->em->getReference(User::class, $currentUser->getId())
+            );
         }
 
         $this->em->persist($operation);
