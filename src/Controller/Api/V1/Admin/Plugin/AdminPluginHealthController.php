@@ -39,7 +39,10 @@ final class AdminPluginHealthController extends AbstractController
     public function pluginHealth(string $pluginId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->healthService->runForPlugin($pluginId));
+            return $this->responseFormatter->formatSuccess(
+                $this->healthService->runForPlugin($pluginId),
+                'responses/admin/plugins/plugin_health'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -52,7 +55,10 @@ final class AdminPluginHealthController extends AbstractController
     public function doctor(): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->healthService->runGlobalDoctor());
+            return $this->responseFormatter->formatSuccess(
+                $this->healthService->runGlobalDoctor(),
+                'responses/admin/plugins/plugin_doctor'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

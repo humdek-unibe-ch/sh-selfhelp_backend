@@ -59,7 +59,7 @@ final class AdminPluginController extends AbstractController
                 'plugins' => $this->pluginAdminService->listPlugins(),
                 'installMode' => $this->pluginAdminService->getInstallMode(),
                 'safeMode' => $this->pluginAdminService->isSafeModeOn(),
-            ]);
+            ], 'responses/admin/plugins/plugins_list');
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -79,7 +79,7 @@ final class AdminPluginController extends AbstractController
         try {
             return $this->responseFormatter->formatSuccess([
                 'plugins' => $this->pluginAdminService->listAvailableFromRegistries(),
-            ]);
+            ], 'responses/admin/plugins/plugins_list');
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -92,7 +92,10 @@ final class AdminPluginController extends AbstractController
     public function getPlugin(string $pluginId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->getPlugin($pluginId));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->getPlugin($pluginId),
+                'responses/admin/plugins/plugin_envelope'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -110,7 +113,7 @@ final class AdminPluginController extends AbstractController
             $registryEntry = $payload['registryEntry'] ?? null;
             return $this->responseFormatter->formatSuccess(
                 $this->pluginAdminService->requestInstall($manifest, $registryEntry),
-                null,
+                'responses/admin/plugins/plugin_operation',
                 Response::HTTP_ACCEPTED,
             );
         } catch (\Throwable $e) {
@@ -130,7 +133,10 @@ final class AdminPluginController extends AbstractController
             if (($manifest['id'] ?? null) !== $pluginId) {
                 return $this->responseFormatter->formatError('Manifest id does not match URL.', Response::HTTP_BAD_REQUEST);
             }
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->finalizeInstall((int) $payload['operationId'], $manifest));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->finalizeInstall((int) $payload['operationId'], $manifest),
+                'responses/admin/plugins/plugin_operation'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -151,7 +157,7 @@ final class AdminPluginController extends AbstractController
             $force = (bool) ($payload['forceMajor'] ?? false);
             return $this->responseFormatter->formatSuccess(
                 $this->pluginAdminService->requestUpdate($manifest, $force),
-                null,
+                'responses/admin/plugins/plugin_operation',
                 Response::HTTP_ACCEPTED,
             );
         } catch (\Throwable $e) {
@@ -171,7 +177,10 @@ final class AdminPluginController extends AbstractController
             if (($manifest['id'] ?? null) !== $pluginId) {
                 return $this->responseFormatter->formatError('Manifest id does not match URL.', Response::HTTP_BAD_REQUEST);
             }
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->finalizeUpdate((int) $payload['operationId'], $manifest));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->finalizeUpdate((int) $payload['operationId'], $manifest),
+                'responses/admin/plugins/plugin_operation'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -184,7 +193,10 @@ final class AdminPluginController extends AbstractController
     public function enable(string $pluginId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->enable($pluginId));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->enable($pluginId),
+                'responses/admin/plugins/plugin_envelope'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -197,7 +209,10 @@ final class AdminPluginController extends AbstractController
     public function disable(string $pluginId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->disable($pluginId));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->disable($pluginId),
+                'responses/admin/plugins/plugin_envelope'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

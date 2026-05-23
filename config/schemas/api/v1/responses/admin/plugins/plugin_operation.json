@@ -1,0 +1,31 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin operation envelope",
+    "description": "Response from /cms-api/v1/admin/plugins/operations/{id} and from any install/update/finalize endpoint. plugin_operations row formatted for the admin UI.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "pluginId": { "type": "string" },
+                "type": { "type": "string", "enum": ["install", "update", "disable", "enable", "uninstall", "purge", "rollback", "repair"] },
+                "status": { "type": "string", "enum": ["requested", "running", "succeeded", "failed", "rolled-back"] },
+                "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
+                "fromVersion": { "type": ["string", "null"] },
+                "toVersion": { "type": ["string", "null"] },
+                "createdAt": { "type": "string", "format": "date-time" },
+                "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+                "errorSummary": { "type": ["string", "null"] },
+                "snapshots": { "type": ["object", "null"], "additionalProperties": true },
+                "rollbackPlan": { "type": ["object", "null"], "additionalProperties": true },
+                "logs": { "type": ["array", "null"], "items": { "type": "object", "additionalProperties": true } }
+            },
+            "required": ["id", "pluginId", "type", "status"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

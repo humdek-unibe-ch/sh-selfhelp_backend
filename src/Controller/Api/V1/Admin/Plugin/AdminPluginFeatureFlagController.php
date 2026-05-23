@@ -41,7 +41,10 @@ final class AdminPluginFeatureFlagController extends AbstractController
     public function listFlags(string $pluginId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->listFeatureFlags($pluginId));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->listFeatureFlags($pluginId),
+                'responses/admin/plugins/plugin_feature_flags'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -55,7 +58,10 @@ final class AdminPluginFeatureFlagController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/plugins/set_feature_flag', $this->jsonSchemaValidationService);
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->setFeatureFlag($pluginId, $data));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->setFeatureFlag($pluginId, $data),
+                'responses/admin/plugins/plugin_feature_flags'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

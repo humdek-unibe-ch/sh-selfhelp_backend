@@ -42,7 +42,8 @@ final class AdminPluginOperationController extends AbstractController
             $pluginId = $request->query->get('pluginId');
             $limit = (int) $request->query->get('limit', 100);
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->listOperations(is_string($pluginId) && $pluginId !== '' ? $pluginId : null, $limit)
+                $this->pluginAdminService->listOperations(is_string($pluginId) && $pluginId !== '' ? $pluginId : null, $limit),
+                'responses/admin/plugins/plugin_operations_list'
             );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
@@ -56,7 +57,10 @@ final class AdminPluginOperationController extends AbstractController
     public function getOperation(int $operationId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->getOperation($operationId));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->getOperation($operationId),
+                'responses/admin/plugins/plugin_operation'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -69,7 +73,10 @@ final class AdminPluginOperationController extends AbstractController
     public function rollback(int $operationId): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->rollback($operationId));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->rollback($operationId),
+                'responses/admin/plugins/plugin_operation'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

@@ -200,6 +200,14 @@ services:
             $cmsVersion: '%selfhelp.cms_version%'
             $sdkApiVersion: '%selfhelp.plugin_api_version%'
 
+    # Admin-facing plugin service. Pinned cmsVersion + sdkApiVersion
+    # so the public manifest endpoint can advertise the values the
+    # PluginRuntime expects for drift detection.
+    App\Plugin\Service\PluginAdminService:
+        arguments:
+            $cmsVersion: '%selfhelp.cms_version%'
+            $sdkApiVersion: '%selfhelp.plugin_api_version%'
+
     # Plugin registry client — uses the optional auth header from
     # PluginSource and reads its secret from the environment.
     App\Plugin\Registry\PluginSourceUrlResolver:

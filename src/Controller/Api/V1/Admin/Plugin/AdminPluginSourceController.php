@@ -45,7 +45,10 @@ final class AdminPluginSourceController extends AbstractController
     public function listSources(): JsonResponse
     {
         try {
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->listSources());
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->listSources(),
+                'responses/admin/plugins/plugin_sources_list'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -59,7 +62,11 @@ final class AdminPluginSourceController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/plugins/create_source', $this->jsonSchemaValidationService);
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->createSource($data), null, Response::HTTP_CREATED);
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->createSource($data),
+                'responses/admin/plugins/plugin_source',
+                Response::HTTP_CREATED,
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
@@ -73,7 +80,10 @@ final class AdminPluginSourceController extends AbstractController
     {
         try {
             $data = $this->validateRequest($request, 'requests/admin/plugins/update_source', $this->jsonSchemaValidationService);
-            return $this->responseFormatter->formatSuccess($this->pluginAdminService->updateSource($sourceId, $data));
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->updateSource($sourceId, $data),
+                'responses/admin/plugins/plugin_source'
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

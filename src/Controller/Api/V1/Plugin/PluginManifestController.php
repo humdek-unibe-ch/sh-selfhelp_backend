@@ -50,12 +50,35 @@ final class PluginManifestController extends AbstractController
             $plugins = [];
             foreach ($this->pluginRegistry->getEnabled() as $plugin) {
                 $manifest = $plugin->getManifestJson();
+                $manifestArray = is_array($manifest) ? $manifest : [];
+                $featureFlagDefaults = [];
+                foreach ($manifestArray['featureFlags'] ?? [] as $flag) {
+                    if (!is_array($flag) || !isset($flag['key'])) continue;
+                    $featureFlagDefaults[(string) $flag['key']] = (bool) ($flag['defaultEnabled'] ?? false);
+                }
+                $capabilities = [];
+                $security = $manifestArray['security'] ?? null;
+                if (is_array($security) && isset($security['capabilities']) && is_array($security['capabilities'])) {
+                    foreach ($security['capabilities'] as $cap) {
+                        if (is_string($cap)) {
+                            $capabilities[] = $cap;
+                        }
+                    }
+                }
                 $plugins[] = [
+                    // Plugin id is shipped under BOTH `id` and `pluginId`:
+                    // `id` keeps the legacy script consumers happy,
+                    // `pluginId` matches the frontend `IPluginManifestEntry`
+                    // contract (`PluginRuntime.ts`) and the admin types.
                     'id' => $plugin->getPluginId(),
+                    'pluginId' => $plugin->getPluginId(),
                     'name' => $plugin->getName(),
                     'version' => $plugin->getVersion(),
                     'pluginApiVersion' => $plugin->getPluginApiVersion(),
                     'trustLevel' => $plugin->getTrustLevel(),
+                    'enabled' => $plugin->isEnabled(),
+                    'capabilities' => $capabilities,
+                    'featureFlags' => $featureFlagDefaults,
                     'manifest' => $manifest,
                     'frontendPackage' => $plugin->getFrontendPackage(),
                     'frontendPackageVersion' => $plugin->getFrontendPackageVersion(),
@@ -64,11 +87,16 @@ final class PluginManifestController extends AbstractController
                 ];
             }
 
-            return $this->responseFormatter->formatSuccess([
-                'plugins' => $plugins,
-                'lockfileSnapshot' => $this->pluginAdminService->getLockFileSnapshot(),
-                'safeMode' => $this->pluginAdminService->isSafeModeOn(),
-            ]);
+            return $this->responseFormatter->formatSuccess(
+                [
+                    'cmsVersion' => $this->pluginAdminService->getCmsVersion(),
+                    'sdkApiVersion' => $this->pluginAdminService->getSdkApiVersion(),
+                    'plugins' => $plugins,
+                    'lockfileSnapshot' => $this->pluginAdminService->getLockFileSnapshot(),
+                    'safeMode' => $this->pluginAdminService->isSafeModeOn(),
+                ],
+                'responses/frontend/plugin_manifest'
+            );
         } catch (\Throwable $e) {
             $status = $e->getCode();
             if (!is_int($status) || $status < 100 || $status > 599) {

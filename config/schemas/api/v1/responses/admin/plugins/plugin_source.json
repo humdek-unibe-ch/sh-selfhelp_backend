@@ -1,0 +1,28 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin source envelope",
+    "description": "Response from /cms-api/v1/admin/plugins/sources/{id}. plugin_sources row.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "kind": { "type": "string", "enum": ["registry", "git", "local"] },
+                "url": { "type": "string" },
+                "channel": { "type": ["string", "null"] },
+                "trustLevel": { "type": "string", "enum": ["official", "reviewed", "untrusted"] },
+                "enabled": { "type": "boolean" },
+                "isSystem": { "type": "boolean" },
+                "authHeader": { "type": ["string", "null"] },
+                "gitSha": { "type": ["string", "null"] }
+            },
+            "required": ["id", "name", "kind", "url", "trustLevel", "enabled", "isSystem"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

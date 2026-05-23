@@ -28,6 +28,8 @@ use App\Plugin\Lifecycle\PluginUpdater;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Registry\RegistryClient;
 use App\Plugin\Registry\PluginSourceUrlResolver;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginFeatureFlagRepository;
 use App\Repository\Plugin\PluginOperationRepository;
@@ -67,6 +69,9 @@ final class PluginAdminService extends BaseService
         private readonly InstallModeResolver $installModeResolver,
         private readonly RegistryClient $registryClient,
         private readonly PluginSourceUrlResolver $sourceUrlResolver,
+        private readonly HttpClientInterface $httpClient,
+        private readonly string $cmsVersion,
+        private readonly string $sdkApiVersion,
     ) {
     }
 
@@ -100,6 +105,21 @@ final class PluginAdminService extends BaseService
                 continue;
             }
             foreach ($entriesBySource as $sourceName => $entry) {
+                $resolvedManifestUrl = $this->resolveManifestUrl(
+                    $entry['manifestUrl'] ?? null,
+                    $sourceBaseUrls[$sourceName] ?? null,
+                );
+
+                // Resolve the manifest body server-side when the
+                // registry entry only points at a `manifestUrl`. This
+                // avoids CORS issues for browsers fetching static
+                // hosts (GitHub Pages, S3, etc.) and means the UI
+                // gets a ready-to-install manifest in one round-trip.
+                $manifest = isset($entry['manifest']) && is_array($entry['manifest']) ? $entry['manifest'] : null;
+                if ($manifest === null && is_string($resolvedManifestUrl) && $resolvedManifestUrl !== '') {
+                    $manifest = $this->tryFetchManifest($resolvedManifestUrl);
+                }
+
                 $available[] = [
                     'sourceName' => $sourceName,
                     'pluginId' => (string) $pluginId,
@@ -108,15 +128,46 @@ final class PluginAdminService extends BaseService
                     'version' => isset($entry['version']) && is_string($entry['version']) ? $entry['version'] : '0.0.0',
                     'trustLevel' => isset($entry['trustLevel']) && is_string($entry['trustLevel']) ? $entry['trustLevel'] : 'untrusted',
                     'homepage' => isset($entry['homepage']) && is_string($entry['homepage']) ? $entry['homepage'] : null,
-                    'manifest' => isset($entry['manifest']) && is_array($entry['manifest']) ? $entry['manifest'] : null,
-                    'manifestUrl' => $this->resolveManifestUrl(
-                        $entry['manifestUrl'] ?? null,
-                        $sourceBaseUrls[$sourceName] ?? null,
-                    ),
+                    'manifest' => $manifest,
+                    'manifestUrl' => $resolvedManifestUrl,
                 ];
             }
         }
         return $available;
+    }
+
+    /**
+     * Best-effort server-side fetch of a plugin manifest referenced
+     * by a registry `manifestUrl`. Returns `null` on any error so the
+     * UI degrades gracefully back to its client-side fetch path. Used
+     * to bypass static-host CORS issues and to keep the
+     * `available_plugins` payload self-contained.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function tryFetchManifest(string $url): ?array
+    {
+        try {
+            $response = $this->httpClient->request('GET', $url, [
+                'headers' => [
+                    'Accept' => 'application/json',
+                    'User-Agent' => 'SelfHelp-Plugin-Manager/1.0',
+                ],
+                'timeout' => 10,
+            ]);
+            $status = $response->getStatusCode();
+            if ($status < 200 || $status >= 300) {
+                return null;
+            }
+            $body = $response->getContent(false);
+            $body = preg_replace('/^\xEF\xBB\xBF/', '', $body) ?? $body;
+            $decoded = json_decode($body, true);
+            return is_array($decoded) ? $decoded : null;
+        } catch (TransportExceptionInterface) {
+            return null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** @return array<int, array<string,mixed>> */
@@ -151,10 +202,23 @@ final class PluginAdminService extends BaseService
         return $this->formatPlugin($plugin, deep: true);
     }
 
-    /** @return array<string,mixed> */
-    public function requestUpdate(array $manifestData, bool $forceMajor = false): array
-    {
-        $operation = $this->updater->request(new PluginManifest($manifestData), $forceMajor);
+    /**
+     * @param array<string,mixed>|null $registryEntry Optional registry payload
+     *                                                (checksums, signature, source URL).
+     * @return array<string,mixed>
+     */
+    public function requestUpdate(
+        array $manifestData,
+        bool $forceMajor = false,
+        ?array $registryEntry = null,
+        bool $backupBefore = false,
+    ): array {
+        $operation = $this->updater->request(
+            new PluginManifest($manifestData),
+            $forceMajor,
+            $registryEntry,
+            $backupBefore,
+        );
         return $this->formatOperation($operation);
     }
 
@@ -183,9 +247,9 @@ final class PluginAdminService extends BaseService
         $this->uninstaller->uninstall($pluginId);
     }
 
-    public function purge(string $pluginId, string $confirmedPluginId): void
+    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void
     {
-        $this->purger->purge($pluginId, $confirmedPluginId);
+        $this->purger->purge($pluginId, $confirmedPluginId, $backupBefore);
     }
 
     /** @return array<string,mixed> */
@@ -379,6 +443,29 @@ final class PluginAdminService extends BaseService
     public function getLockFileSnapshot(): ?array
     {
         return $this->lockFileReader->readRaw();
+    }
+
+    /**
+     * SemVer of the host CMS. Sourced from the `selfhelp.cms_version`
+     * Symfony parameter, which itself reads `SELFHELP_CMS_VERSION`
+     * (default `8.0.0-dev`). Used by the plugin compatibility check
+     * and exposed on the public manifest endpoint so the frontend
+     * runtime can show drift warnings.
+     */
+    public function getCmsVersion(): string
+    {
+        return $this->cmsVersion;
+    }
+
+    /**
+     * Host plugin API version. Counterpart to a plugin's
+     * `pluginApiVersion` in `plugin.json`. Bumped in lock step with
+     * the shared `@selfhelp/shared/plugin-sdk#PLUGIN_API_VERSION`
+     * constant whenever the SDK ships a breaking change.
+     */
+    public function getSdkApiVersion(): string
+    {
+        return $this->sdkApiVersion;
     }
 
     private function mustFindPlugin(string $pluginId): Plugin

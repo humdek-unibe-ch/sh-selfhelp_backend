@@ -1,0 +1,35 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Single plugin envelope",
+    "description": "Response from /cms-api/v1/admin/plugins/{pluginId}. Wraps the formatted plugin metadata, manifest, and capability set.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "pluginId": { "type": "string" },
+                "name": { "type": "string" },
+                "description": { "type": ["string", "null"] },
+                "version": { "type": "string" },
+                "pluginApiVersion": { "type": "string" },
+                "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
+                "trustLevel": { "type": "string", "enum": ["official", "reviewed", "untrusted"] },
+                "enabled": { "type": "boolean" },
+                "backendPackage": { "type": ["string", "null"] },
+                "backendBundleClass": { "type": ["string", "null"] },
+                "frontendPackage": { "type": ["string", "null"] },
+                "frontendPackageVersion": { "type": ["string", "null"] },
+                "mobilePackage": { "type": ["string", "null"] },
+                "mobilePackageVersion": { "type": ["string", "null"] },
+                "manifest": { "type": "object", "additionalProperties": true },
+                "capabilities": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["pluginId", "name", "version", "pluginApiVersion", "enabled"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}
