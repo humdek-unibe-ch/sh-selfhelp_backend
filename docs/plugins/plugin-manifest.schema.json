@@ -450,6 +450,41 @@
             "type": "string",
             "format": "uri",
             "description": "Optional URL pointing at the plugin's CHANGELOG.md for this version."
+        },
+        "archive": {
+            "type": "object",
+            "description": "Optional metadata describing how this manifest's `.shplugin` archive bundles the plugin. Absent / `mode=connected` means the backend Composer package is resolved from Packagist / the configured Composer repository (Phase 1). `mode=standalone` means the `.shplugin` carries the plugin backend package under `backend/package/` and the host installs it via a Composer path repository (Phase 2a). Note: standalone archives still resolve third-party Composer dependencies (symfony/*, doctrine/*, …) via Composer at install time; only the plugin's own backend bundle is inlined.",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["connected", "standalone"],
+                    "description": "How the host should install the plugin's backend bundle. `connected` (default) → `composer require` from Packagist / VCS. `standalone` → register a Composer path repository pointing at the staged `backend/package/` and require from there."
+                },
+                "backend": {
+                    "type": "object",
+                    "description": "Required when `mode=standalone`. Describes the backend slot inside the archive. Phase 2a accepts a single `installMode` (`composer-path-repository`).",
+                    "additionalProperties": false,
+                    "required": ["included", "path", "installMode"],
+                    "properties": {
+                        "included": {
+                            "type": "boolean",
+                            "description": "Must be `true` for standalone archives. The validator rejects archives whose `backend/` slot is empty when this flag is set."
+                        },
+                        "path": {
+                            "type": "string",
+                            "const": "backend/package",
+                            "description": "Archive-root-relative path to the staged backend package. Hard-coded to `backend/package` so the host's archive-root prefix check stays static."
+                        },
+                        "installMode": {
+                            "type": "string",
+                            "enum": ["composer-path-repository"],
+                            "description": "How the host installs the staged backend package. Phase 2a only supports `composer-path-repository` (Composer path repo pointing at the promoted install dir)."
+                        }
+                    }
+                }
+            }
         }
     }
 }

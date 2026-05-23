@@ -95,15 +95,52 @@ final class InstallPluginHandler
                 return;
             }
 
+            // Phase 2a — for standalone archives we promote the
+            // staging dir to its durable location BEFORE running
+            // composer require. The Composer path repo must point at
+            // the promoted backend/package/ (under var/plugins/<id>-
+            // <ver>/installed/) rather than the transient staging dir,
+            // otherwise the symlink/copy would dangle the moment the
+            // staging dir is cleaned up.
+            $isStandaloneArchive = (
+                $resolved->kind === ResolvedSource::KIND_ARCHIVE
+                && $resolved->archiveMode === ResolvedSource::ARCHIVE_MODE_STANDALONE
+                && $resolved->archiveStagingDir !== null
+            );
+            $promotedBackendDir = null;
+            if ($isStandaloneArchive) {
+                $this->recorder->appendLog($operation, 'archive-promote:start', ['mode' => 'standalone'], 15);
+                $manifestArray = $this->archivePromoter->promote(
+                    (string) $resolved->archiveStagingDir,
+                    $manifestArray,
+                );
+                $promotedBackendDir = $this->archivePromoter->installedDir(
+                    (string) ($manifestArray['id'] ?? ''),
+                    (string) ($manifestArray['version'] ?? ''),
+                ) . DIRECTORY_SEPARATOR . 'backend' . DIRECTORY_SEPARATOR . 'package';
+                if (!is_dir($promotedBackendDir)) {
+                    $this->recorder->fail(
+                        $operation,
+                        new \RuntimeException(sprintf(
+                            'Standalone archive: backend/package/ was not promoted to "%s".',
+                            $promotedBackendDir,
+                        )),
+                        'archive-promote',
+                    );
+                    return;
+                }
+                $this->recorder->appendLog($operation, 'archive-promote:done', ['mode' => 'standalone', 'backendDir' => $promotedBackendDir], 18);
+            }
+
+            $repository = $this->resolveComposerRepository($composer, $resolved, $promotedBackendDir);
+
             $this->recorder->appendLog($operation, 'composer-require:start', [
                 'package' => $package,
                 'version' => $version,
-                'repository' => $composer['repository'] ?? null,
+                'repository' => $repository,
+                'archiveMode' => $resolved->kind === ResolvedSource::KIND_ARCHIVE ? $resolved->archiveMode : null,
             ], 20);
 
-            $repository = (isset($composer['repository']) && is_array($composer['repository']))
-                ? $composer['repository']
-                : null;
             $result = $this->packageManager->requireComposerPackageFromRepository(
                 $package,
                 $version,
@@ -129,13 +166,17 @@ final class InstallPluginHandler
             }
             $this->recorder->appendLog($operation, 'composer-require:done', ['exitCode' => $result->exitCode], 60);
 
-            if ($resolved->kind === ResolvedSource::KIND_ARCHIVE && $resolved->archiveStagingDir !== null) {
-                $this->recorder->appendLog($operation, 'archive-promote:start', null, 65);
+            // Connected archives still promote AFTER composer require —
+            // the install dir is only needed to serve the runtime ESM,
+            // so the order doesn't matter. Standalone archives already
+            // promoted above; skip the second promote.
+            if (!$isStandaloneArchive && $resolved->kind === ResolvedSource::KIND_ARCHIVE && $resolved->archiveStagingDir !== null) {
+                $this->recorder->appendLog($operation, 'archive-promote:start', ['mode' => 'connected'], 65);
                 $manifestArray = $this->archivePromoter->promote(
                     $resolved->archiveStagingDir,
                     $manifestArray,
                 );
-                $this->recorder->appendLog($operation, 'archive-promote:done', null, 70);
+                $this->recorder->appendLog($operation, 'archive-promote:done', ['mode' => 'connected'], 70);
             }
 
             $manifest = new PluginManifest($manifestArray);
@@ -165,10 +206,53 @@ final class InstallPluginHandler
             'finalize' => sprintf('php bin/console selfhelp:plugin:run-operation %d', $operation->getId()),
             'repository' => $resolved->composer['repository'] ?? null,
             'archiveStagingDir' => $resolved->archiveStagingDir,
-            'note' => 'Managed install mode: a CI/CD operator must run the composer command, deploy, then call selfhelp:plugin:run-operation. Operation will stay in "running" state until finalize is called.',
+            'archiveMode' => $resolved->kind === ResolvedSource::KIND_ARCHIVE ? $resolved->archiveMode : null,
+            'archiveBackendDir' => $resolved->archiveBackendDir,
+            'note' => 'Managed install mode: a CI/CD operator must run the composer command, deploy, then call selfhelp:plugin:run-operation. Operation will stay in "running" state until finalize is called. For standalone archives the operator must first register a path repo pointing at archiveBackendDir before running composer require.',
         ];
         $this->recorder->appendLog($operation, 'managed-runbook', ['runbook' => $runbook], 25);
         // Operation intentionally stays running — it is waiting for the
         // operator. finalize() will move it to succeeded/failed.
+    }
+
+    /**
+     * Picks the right Composer repository descriptor for the operation:
+     *
+     *   - For standalone archives (Phase 2a): a synthetic `type: "path"`
+     *     repo pointing at the promoted backend/package/ dir with
+     *     `options.symlink: false` so vendor/ holds a real copy rather
+     *     than a fragile symlink. Any `repository` declared in
+     *     plugin.json is intentionally IGNORED here — the archive's
+     *     own backend package wins over the manifest's published
+     *     repository pointer.
+     *
+     *   - For connected archives and every non-archive source: the
+     *     repository declared in `backend.composer.repository`
+     *     (Packagist when absent). Phase-1 behaviour preserved.
+     *
+     * @param array<string,mixed> $composer plugin.json#backend.composer (from ResolvedSource)
+     * @return array{type:string,url:string,reference?:string,options?:array<string,bool|int|string>}|null
+     */
+    private function resolveComposerRepository(array $composer, ResolvedSource $resolved, ?string $promotedBackendDir): ?array
+    {
+        if (
+            $resolved->kind === ResolvedSource::KIND_ARCHIVE
+            && $resolved->archiveMode === ResolvedSource::ARCHIVE_MODE_STANDALONE
+            && $promotedBackendDir !== null
+        ) {
+            return [
+                'type' => 'path',
+                'url' => $promotedBackendDir,
+                'options' => [
+                    'symlink' => false,
+                ],
+            ];
+        }
+        if (isset($composer['repository']) && is_array($composer['repository'])) {
+            /** @var array{type:string,url:string,reference?:string,options?:array<string,bool|int|string>} $repo */
+            $repo = $composer['repository'];
+            return $repo;
+        }
+        return null;
     }
 }

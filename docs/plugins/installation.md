@@ -34,6 +34,7 @@ The default is `managed`. Override via the `SELFHELP_PLUGIN_INSTALL_MODE` env va
   - `SELFHELP_PLUGIN_REQUIRE_SIGNATURE` (default `true`) — set to `false` only for first-boot dev when installing untrusted plugins.
   - `SELFHELP_PLUGIN_ARCHIVE_MAX_BYTES` (default 20 MB) — max `.shplugin` upload size.
   - `SELFHELP_PLUGIN_ARCHIVE_RETENTION_DAYS` (default 7) — staging-dir retention used by `selfhelp:plugin:cleanup-archives`.
+  - `SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS` (default `false`) — accept standalone archives whose `backend/package/composer.json` declares a `scripts` block. The Messenger worker always passes `--no-scripts` to `composer require`, so toggling this only relaxes the manifest-time rejection; useful for local developer ergonomics where the plugin keeps dev-only `phpstan`/`phpunit` scripts. Production hosts should leave this off.
   - `SELFHELP_PLUGIN_PRIVATE_REGISTRY_TOKEN` — only if you add a private registry source.
 
 ## 2.1 Install paths visible in the admin UI
@@ -60,7 +61,25 @@ with four source tabs (priority order):
    manual install path**. The host pre-validates via
    `POST /admin/plugins/inspect-archive` before showing the Install
    button, so the admin sees compatibility + capability + signature
-   status before dispatching.
+   status before dispatching. The preview also surfaces the
+   `.shplugin`'s `archive.mode` (`connected` vs `standalone`),
+   whether the backend Composer package is bundled, and the
+   resulting Composer install mode (`composer-packagist` for
+   connected, `composer-path-repository` for standalone). Both modes
+   still require Composer to reach a package source for the plugin's
+   third-party PHP dependencies at install time — `.shplugin` is not
+   a fully offline install bundle. See
+   [`shplugin-archive.md`](./shplugin-archive.md#archive-modes-phase-2a)
+   for the mode semantics.
+
+   When the upload is signed by a publisher key that is not yet in
+   `SELFHELP_PLUGIN_TRUSTED_KEYS`, the inspect response surfaces an
+   `Unknown publisher key` panel inside the preview. Pasting the
+   matching base64 Ed25519 public key and clicking **Re-test** runs
+   verification with that key for the current request only — neither
+   env nor lock files are mutated. See
+   [`trusted-keys.md`](./trusted-keys.md#per-request-trust-helper-admin-ui)
+   for the full operator playbook.
 4. **Paste JSON / Developer mode** — Monaco editor, explicitly
    labelled "Developer / debugging only". Skips signature verification
    for hand-crafted manifests.
@@ -115,9 +134,65 @@ that need to finalise an operation outside the worker process.
 
 The Messenger worker runs everything in-process — no operator handoff.
 
+### 3.0 Local backend env wiring
+
+`config/services.yaml` reads the install flags through Symfony's env
+processors, so they must live in a real env file (Dotenv) instead of
+being exported in your shell — `getenv()` returns `false` for shell
+exports under `usePutenv(false)`. The repository ships sane dev
+defaults in `.env.dev` and recognises overrides in `.env.local`:
+
+```ini
+# .env.dev (committed)
+SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS=1
+SELFHELP_PLUGIN_INSTALL_MODE=development
+SELFHELP_ALLOW_WEB_PLUGIN_INSTALL=true
+
+# .env.local (gitignored, per-developer overrides)
+SELFHELP_PLUGIN_TRUSTED_KEYS="dev=JJwrsNLigXbDOyE0Ifj6W8dOFuiGTZ/BP0TiVmrjyLY="
+```
+
+`SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS=1` makes the validator accept
+`.shplugin` archives whose bundled `backend/package/composer.json`
+carries dev-only `scripts` (`phpstan`, `phpunit`). The Messenger worker
+still calls `composer require --no-scripts`, so the flag only relaxes
+the manifest-time rejection — it does not allow scripts to execute.
+Leave it at the default `0` in any non-dev environment.
+
+`SELFHELP_PLUGIN_INSTALL_MODE=development` flips the install pipeline
+to in-process composer + finalize; `managed` is the production default
+where the admin API persists the operation but a human runs composer.
+`SELFHELP_ALLOW_WEB_PLUGIN_INSTALL=true` is the explicit opt-in for
+the web-triggered install path; combined with `APP_ENV=dev` it lets the
+admin UI's **Install** button drive the full pipeline without a CLI.
+
+After editing env files, restart both the PHP dev server and the
+Messenger worker — Symfony only loads Dotenv on process start.
+
+### 3.1 Install via the admin UI
+
 1. Place / clone the plugin repo somewhere reachable by Composer (path
-   repository, packagist, or private packagist mirror).
-2. From the backend repo:
+   repository, packagist, or private packagist mirror). For `.shplugin`
+   archives this step is skipped — the uploaded archive carries its own
+   composer path repository pointer.
+2. From the backend repo run a Messenger worker so it can consume the
+   `plugin_ops` transport:
+
+```bash
+APP_ENV=dev php bin/console messenger:consume plugin_ops -vv
+```
+
+3. Open `http://localhost:3000/admin/plugins → Install plugin →
+   Upload .shplugin`, drop the archive, and click **Install**. The host
+   pre-validates via `POST /admin/plugins/inspect-archive` so you see
+   the manifest + capability + signature preview before dispatch.
+4. Once the worker reports success, click **Enable** on the plugin row.
+   The host regenerates `config/selfhelp_plugin_bundles.php` and the
+   bundle becomes part of the kernel on the next request.
+
+### 3.2 Install via the CLI
+
+Equivalent to the UI path but useful for scripted setups:
 
 ```bash
 php bin/console selfhelp:plugin:install /abs/path/to/plugin.json
@@ -148,7 +223,7 @@ bundle at request time from the same `/plugin-artifacts/...` path that
 the promoter wrote. The mobile app still uses `plugins:sync` when
 building per EAS profile.
 
-### 3.1 Local sibling checkout (`plugins/<plugin-id>`)
+### 3.3 Local sibling checkout (`plugins/<plugin-id>`)
 
 When the plugin lives in the same workspace as the host repos, for
 example:
@@ -164,10 +239,14 @@ example:
 the recommended workflow is:
 
 1. Make the backend package resolvable by Composer. The plugin's
-   `scripts/install-local.{ps1,sh}` adds a `path` repository entry to
-   `composer.json`, then runs `composer require`. The same script can
-   build the plugin's `.shplugin` archive locally if you want to
-   simulate a registry install.
+   `scripts/install-local.mjs` (single cross-platform Node script —
+   no `.ps1` / `.sh` wrappers) adds a `path` repository entry to
+   `composer.json`, then runs `composer require`. The same script
+   defaults to building the plugin's `.shplugin` archive and posting
+   it to `POST /admin/plugins/install` so a localhost host runs the
+   real Messenger pipeline; `--symlink` switches it to the path-repo
+   fast path. It auto-loads `<plugin>/.env`, so `SELFHELP_ADMIN_TOKEN`
+   and `SELFHELP_API_BASE` can live next to `plugin.json`.
 2. Either:
    - run `php bin/console selfhelp:plugin:install path/to/plugin.json`
      from the backend (development mode dispatches and finalizes
@@ -182,6 +261,69 @@ The frontend Next.js server does not need to restart — runtime ESM
 bundles are loaded from `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
 Mobile builds still consume `selfhelp.plugins.mobile.lock.json` per
 EAS profile.
+
+### 3.4 Private plugin distributed as a `.shplugin`
+
+When a plugin's backend bundle is intentionally not on Packagist
+(internal / private orgs, deterministic publishing snapshots) the
+publisher ships a standalone `.shplugin` plus the matching publisher
+public key out of band. The end-to-end recipe:
+
+1. **Plugin author builds a standalone archive.** From the plugin
+   checkout:
+
+```bash
+node scripts/build-shplugin.mjs --mode standalone
+# → dist/<id>-<version>.shplugin
+```
+
+   The author shares both the `.shplugin` file AND the matching
+   base64 Ed25519 public key + `keyId` out of band — email, SFTP, an
+   internal package portal, whatever the org already uses for vetted
+   secrets. The keypair was generated with the registry's
+   `npm run keygen` helper and the publisher signed the archive in
+   their CI.
+
+2. **Operator drops the archive in the admin UI.** From a host
+   browser:
+
+   **Admin → Plugins → Install plugin → Upload .shplugin.** Drag
+   the file in. The host POSTs it to
+   `/cms-api/v1/admin/plugins/inspect-archive` and shows a preview
+   card — manifest, compatibility, capabilities, signature status,
+   archive mode (`standalone`), backend package + version.
+
+3. **If the keyId is unknown, paste the publisher key.** The first
+   inspect response carries `signature.unknownKey.keyId=<id>`
+   because the new key is not in `SELFHELP_PLUGIN_TRUSTED_KEYS` yet.
+   A yellow **Unknown publisher key** panel appears inside the
+   preview. Paste the publisher's base64 public key into the
+   textarea and click **Re-test with this key**. The host runs
+   verification with that key merged on top of the env-resolved
+   trusted-keys set for the current request only — neither env nor
+   lock files are mutated. The preview flips to
+   `signatureStatus=verified` and the **Install** button enables.
+
+4. **Click Install.** The host queues `InstallPluginMessage` on the
+   `plugin_ops` Messenger transport. The worker runs
+   `composer require <package>:<version>` against the staged
+   `backend/package/` Composer path repository; Composer pulls the
+   plugin's third-party PHP dependencies (`symfony/*`, `doctrine/*`,
+   …) from Packagist or the host's configured private mirror. The
+   plugin lands once `finalize()` completes (lock-file written,
+   bundles file regenerated, migrations executed).
+
+5. **(Optional) Make the trust persistent.** Click **Copy env line**
+   in the trust-helper panel. The host puts
+   `SELFHELP_PLUGIN_TRUSTED_KEYS=<keyId>=<base64>` on the clipboard.
+   Paste it into `.env.local` (merge with existing keys using the
+   `;`-separator format) and restart the host process. Subsequent
+   inspect / install calls trust the publisher's key without the
+   per-request override.
+
+The trust helper is intentionally minimal — it never persists a key
+on its own. See [`trusted-keys.md`](./trusted-keys.md#per-request-trust-helper-admin-ui)
+for the full operator playbook.
 
 ## 4. Install a plugin (managed mode)
 
@@ -363,7 +505,7 @@ php bin/console cache:clear --env=dev --no-warmup
 ```
 
 Once the operator has fixed the underlying composer/npm gap (typically
-by running `scripts/install-local.{ps1,sh}` from the plugin checkout)
+by running `node scripts/install-local.mjs` from the plugin checkout)
 the install can be re-attempted from the admin UI or
 `selfhelp:plugin:install`.
 

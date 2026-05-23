@@ -33,6 +33,13 @@ namespace App\Plugin\Security;
  *   - runtime         ({entrypointUrl, stylesheetUrl?, format, integrity?, stylesheetIntegrity?})
  *   - checksums       ({frontendEsm, frontendCss?})
  *   - compatibility   ({selfhelp, php?, node?, react?, reactNative?, expoSdk?})
+ *   - archive         (optional; Phase 2a)
+ *                     ({mode: "connected"|"standalone",
+ *                       backend?: {included: bool, path: string, installMode: string, packageHash: "sha256-..."}})
+ *                     Phase-1 (connected) inputs omit this key entirely — the canonical output
+ *                     stays byte-identical to existing fixtures. Phase-2a (standalone) inputs
+ *                     include the full block; the `packageHash` covers every file under
+ *                     `backend/package/` so a tampered backend tree fails recomputation.
  *
  * The cross-impl test (tests/Plugin/Security/SignedPayloadBuilderTest.php
  * + tests/fixtures/signed-payload/*.json) feeds the same input through
@@ -135,6 +142,64 @@ final class SignedPayloadBuilder
             }
         }
         $out['compatibility'] = $compatOut;
+
+        // Optional `archive` block (Phase 2a). Phase-1 callers omit this
+        // key entirely; the canonical output stays byte-identical to
+        // pre-Phase-2 fixtures. `mode=connected` with no `backend`
+        // sub-block is allowed (publishers may explicitly mark a
+        // connected archive). `mode=standalone` REQUIRES the `backend`
+        // sub-block so the recomputed payload pins the backend
+        // packageHash that the validator re-derives from disk.
+        if (isset($input['archive']) && is_array($input['archive'])) {
+            $out['archive'] = $this->normaliseArchive($input['archive']);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $archive
+     * @return array<string,mixed>
+     */
+    private function normaliseArchive(array $archive): array
+    {
+        $mode = $this->requireString($archive, 'mode', 'archive.mode');
+        if ($mode !== 'connected' && $mode !== 'standalone') {
+            throw new \InvalidArgumentException(sprintf(
+                'SignedPayloadBuilder: archive.mode must be "connected" or "standalone" (got "%s").',
+                $mode,
+            ));
+        }
+        $out = ['mode' => $mode];
+
+        if (isset($archive['backend']) && is_array($archive['backend'])) {
+            $backend = $archive['backend'];
+            $included = $backend['included'] ?? null;
+            if (!is_bool($included)) {
+                throw new \InvalidArgumentException('SignedPayloadBuilder: archive.backend.included must be a boolean.');
+            }
+            $backendOut = [
+                'included' => $included,
+                'path' => $this->requireString($backend, 'path', 'archive.backend.path'),
+                'installMode' => $this->requireString($backend, 'installMode', 'archive.backend.installMode'),
+            ];
+            if (isset($backend['packageHash']) && is_string($backend['packageHash']) && $backend['packageHash'] !== '') {
+                $backendOut['packageHash'] = $backend['packageHash'];
+            }
+            $out['backend'] = $backendOut;
+        }
+
+        if ($mode === 'standalone') {
+            if (!isset($out['backend'])) {
+                throw new \InvalidArgumentException('SignedPayloadBuilder: archive.backend is required when archive.mode="standalone".');
+            }
+            if ($out['backend']['included'] !== true) {
+                throw new \InvalidArgumentException('SignedPayloadBuilder: archive.backend.included must be true when archive.mode="standalone".');
+            }
+            if (!isset($out['backend']['packageHash'])) {
+                throw new \InvalidArgumentException('SignedPayloadBuilder: archive.backend.packageHash is required when archive.mode="standalone".');
+            }
+        }
 
         return $out;
     }

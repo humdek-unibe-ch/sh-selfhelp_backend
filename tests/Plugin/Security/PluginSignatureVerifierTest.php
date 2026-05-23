@@ -100,4 +100,31 @@ final class PluginSignatureVerifierTest extends TestCase
         $verifier->verify('official', 'k1', $signature, $payload);
         self::assertTrue(true);
     }
+
+    public function testRejectsDevKeyOnOfficialInProd(): void
+    {
+        $payload = 'payload';
+        $signature = base64_encode(sodium_crypto_sign_detached($payload, $this->keyPair['privateKey']));
+        $verifier = new PluginSignatureVerifier(
+            trustedKeys: ['dev' => $this->keyPair['publicKey']],
+            appEnv: 'prod',
+        );
+
+        $this->expectException(PluginSignatureException::class);
+        $this->expectExceptionMessageMatches('/reserved for local development/');
+        $verifier->verify('official', 'dev', $signature, $payload);
+    }
+
+    public function testAllowsDevKeyOnOfficialInDev(): void
+    {
+        $payload = 'payload';
+        $signature = base64_encode(sodium_crypto_sign_detached($payload, $this->keyPair['privateKey']));
+        $verifier = new PluginSignatureVerifier(
+            trustedKeys: ['dev' => $this->keyPair['publicKey']],
+            appEnv: 'dev',
+        );
+
+        $verifier->verify('official', 'dev', $signature, $payload);
+        self::assertTrue(true);
+    }
 }

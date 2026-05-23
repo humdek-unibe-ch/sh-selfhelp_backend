@@ -151,6 +151,20 @@ final class AdminPluginController extends AbstractController
      * manifest + compatibility report for the UI preview. Does NOT
      * dispatch an install operation.
      *
+     * Optional multipart fields:
+     *
+     *   - `trustedKeyId`     — keyId the operator wants to add as a
+     *                          per-request trusted key.
+     *   - `trustedKeyBase64` — base64-encoded 32-byte Ed25519 public
+     *                          key matching that keyId.
+     *
+     * Both must be supplied together or both omitted. The trust
+     * override is per-request only; the env-resolved trusted-keys set
+     * is left untouched and env keys win on duplicate keyIds. The
+     * trust-helper UI in `Admin → Plugins → Install plugin → Upload
+     * .shplugin` populates these fields when the previous inspect
+     * call returned `signature.unknownKey`.
+     *
      * @route /admin/plugins/inspect-archive
      * @method POST
      */
@@ -164,13 +178,61 @@ final class AdminPluginController extends AbstractController
                     Response::HTTP_BAD_REQUEST,
                 );
             }
+            $trustOverride = $this->extractTrustedKeyOverride($request);
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->inspectArchive($archive),
+                $this->pluginAdminService->inspectArchive($archive, $trustOverride),
                 null,
             );
+        } catch (\InvalidArgumentException $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }
+    }
+
+    /**
+     * Reads + validates the optional `trustedKeyId` / `trustedKeyBase64`
+     * multipart fields used by the inspect-archive trust-helper. Returns
+     * `null` when both are absent (the common case). Throws
+     * `\InvalidArgumentException` for half-supplied / malformed input
+     * — the controller catches that and turns it into a 400 with a
+     * precise message before any signature-verification work runs.
+     *
+     * @return array{keyId:string,publicKeyBase64:string}|null
+     */
+    private function extractTrustedKeyOverride(Request $request): ?array
+    {
+        $rawKeyId = $request->request->get('trustedKeyId');
+        $rawKeyB64 = $request->request->get('trustedKeyBase64');
+
+        $keyId = is_string($rawKeyId) ? trim($rawKeyId) : '';
+        $keyB64 = is_string($rawKeyB64) ? trim($rawKeyB64) : '';
+
+        if ($keyId === '' && $keyB64 === '') {
+            return null;
+        }
+        if ($keyId === '' || $keyB64 === '') {
+            throw new \InvalidArgumentException(
+                'trustedKeyId and trustedKeyBase64 must be provided together (or both omitted).',
+            );
+        }
+
+        $decoded = base64_decode($keyB64, true);
+        if ($decoded === false) {
+            throw new \InvalidArgumentException(
+                'trustedKeyBase64 is not valid base64. Paste the publisher\'s 32-byte Ed25519 public key as base64.',
+            );
+        }
+        $expectedLen = defined('SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES') ? SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES : 32;
+        if (strlen($decoded) !== $expectedLen) {
+            throw new \InvalidArgumentException(sprintf(
+                'trustedKeyBase64 decodes to %d bytes; an Ed25519 public key must be %d bytes.',
+                strlen($decoded),
+                $expectedLen,
+            ));
+        }
+
+        return ['keyId' => $keyId, 'publicKeyBase64' => $keyB64];
     }
 
     /**

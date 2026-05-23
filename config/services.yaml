@@ -88,6 +88,16 @@ parameters:
     # plugin.json#dataAccess.write.
     selfhelp_plugin_data_access_guard_default: true
 
+    # Allow a standalone `.shplugin` archive to ship a `composer.json#scripts`
+    # block. Defaults to false (production-safe). The Messenger worker
+    # already passes `--no-scripts` to every `composer require`, so the
+    # rejection is defence-in-depth — set to `true` only for local
+    # developer ergonomics where the plugin's own composer.json carries
+    # dev-only scripts (`phpstan`, `phpunit`, …) you want to keep. See
+    # docs/plugins/installation.md §2 and docs/plugins/shplugin-archive.md
+    # under "Failure modes".
+    selfhelp_plugin_allow_composer_scripts_default: false
+
     # Default lock DSNs (in-process flock). Production deployments
     # override with `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`
     # so the lock is cluster-safe.
@@ -196,7 +206,13 @@ services:
             $projectDir: '%kernel.project_dir%'
             $maxBytes: '%env(int:default:selfhelp_plugin_archive_max_bytes_default:SELFHELP_PLUGIN_ARCHIVE_MAX_BYTES)%'
 
-    App\Plugin\Archive\PluginArchiveValidator: ~
+    # Archive validator — wires the composer-scripts allow flag from
+    # SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS. Symfony's Dotenv only
+    # populates $_ENV / $_SERVER, so injecting via DI is the only
+    # reliable way to pick the value up at runtime.
+    App\Plugin\Archive\PluginArchiveValidator:
+        arguments:
+            $allowComposerScripts: '%env(bool:default:selfhelp_plugin_allow_composer_scripts_default:SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS)%'
 
     App\Plugin\Archive\PluginArchivePromoter:
         arguments:
@@ -234,6 +250,7 @@ services:
             $trustedKeysEnv: '%env(default:selfhelp_plugin_trusted_keys_default:SELFHELP_PLUGIN_TRUSTED_KEYS)%'
             $requireSignature: '%env(bool:default:selfhelp_plugin_require_signature_default:SELFHELP_PLUGIN_REQUIRE_SIGNATURE)%'
             $logger: '@logger'
+            $appEnv: '%kernel.environment%'
 
     # Plugin Doctrine write-guard. Refuses entity writes against protected
     # core tables for plugin-origin callers. Toggle off only for diagnostics

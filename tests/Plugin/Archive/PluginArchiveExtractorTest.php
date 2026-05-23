@@ -105,6 +105,29 @@ final class PluginArchiveExtractorTest extends TestCase
         (new PluginArchiveExtractor($this->projectDir))->extract($upload);
     }
 
+    public function testAcceptsArchiveWithoutCssFile(): void
+    {
+        // Plugins whose Vite build does not emit a `plugin.css`
+        // (admin-only UI, headless services, runtime that imports CSS
+        // inline into the JS bundle) are valid. The extractor must NOT
+        // require `artifacts/plugin.css`.
+        $entries = $this->validEntries();
+        unset($entries['artifacts/plugin.css']);
+        $entries['artifacts/SHA256SUMS'] = sprintf(
+            "%s  plugin.esm.js\n",
+            hash('sha256', $entries['artifacts/plugin.esm.js']),
+        );
+        $archive = $this->buildArchive($entries);
+        $upload = $this->upload($archive, 'sh-test-1.0.0.shplugin');
+
+        $extractor = new PluginArchiveExtractor($this->projectDir);
+        $result = $extractor->extract($upload);
+
+        self::assertDirectoryExists($result['stagingDir']);
+        self::assertFileExists($result['stagingDir'] . '/artifacts/plugin.esm.js');
+        self::assertFileDoesNotExist($result['stagingDir'] . '/artifacts/plugin.css');
+    }
+
     public function testRejectsZipSlipPath(): void
     {
         $entries = $this->validEntries();

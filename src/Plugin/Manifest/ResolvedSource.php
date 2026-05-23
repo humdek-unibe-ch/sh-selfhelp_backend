@@ -31,6 +31,15 @@ namespace App\Plugin\Manifest;
  *                         who forget to align the two)
  *   - `runtime`           runtime URL block from canonical payload
  *   - `archiveStagingDir` extracted .shplugin staging dir or null
+ *   - `archiveMode`       Phase 2a — "connected" (default) or
+ *                         "standalone". Standalone archives carry the
+ *                         backend Composer package under backend/package/
+ *                         and the install handler resolves it via a
+ *                         Composer path repository instead of Packagist.
+ *   - `archiveBackendDir` absolute path to the staged backend/package/
+ *                         dir when archiveMode=standalone; null otherwise.
+ *                         Promoted by PluginArchivePromoter into the
+ *                         durable installed/ location at install time.
  *
  * Backwards compatibility: there is no fallback shape. Sources that
  * cannot produce a full `ResolvedSource` are rejected at the resolver
@@ -42,6 +51,9 @@ final class ResolvedSource
     public const KIND_URL = 'url';
     public const KIND_PASTE = 'paste';
     public const KIND_ARCHIVE = 'archive';
+
+    public const ARCHIVE_MODE_CONNECTED = 'connected';
+    public const ARCHIVE_MODE_STANDALONE = 'standalone';
 
     /**
      * @param array<string,string> $expectedChecksums
@@ -59,6 +71,8 @@ final class ResolvedSource
         public readonly array $composer,
         public readonly array $runtime,
         public readonly ?string $archiveStagingDir = null,
+        public readonly string $archiveMode = self::ARCHIVE_MODE_CONNECTED,
+        public readonly ?string $archiveBackendDir = null,
     ) {
     }
 }

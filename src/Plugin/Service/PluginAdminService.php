@@ -372,9 +372,21 @@ final class PluginAdminService extends BaseService
      * created) propagate as exceptions so the existing API error
      * envelope catches them.
      *
+     * @param array{keyId:string,publicKeyBase64:string}|null $trustedKeyOverride
+     *      Optional per-request override forwarded from the controller's
+     *      `trustedKeyId` + `trustedKeyBase64` multipart fields. Lets
+     *      an operator inspect an archive signed by a publisher whose
+     *      key isn't in `SELFHELP_PLUGIN_TRUSTED_KEYS` yet, without
+     *      mutating env / lock files. Env keys win on duplicate keyIds.
+     *
      * @return array{
      *     ok: bool,
      *     signatureStatus: 'verified'|'invalid'|'unsigned'|'unverifiable',
+     *     signature: array{
+     *         status: 'verified'|'invalid'|'unsigned'|'unverifiable',
+     *         keyId: string|null,
+     *         unknownKey: array{keyId:string,envSnippet:string}|null,
+     *     },
      *     errors: list<string>,
      *     warnings: list<string>,
      *     manifest: array<string,mixed>|null,
@@ -383,9 +395,9 @@ final class PluginAdminService extends BaseService
      *     resolvedSource: array<string,mixed>|null,
      * }
      */
-    public function inspectArchive(UploadedFile $archive): array
+    public function inspectArchive(UploadedFile $archive, ?array $trustedKeyOverride = null): array
     {
-        return $this->archiveInspectionService->inspect($archive);
+        return $this->archiveInspectionService->inspect($archive, $trustedKeyOverride);
     }
 
     /**

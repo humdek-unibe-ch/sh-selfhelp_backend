@@ -53,11 +53,16 @@ final class PluginSignatureVerifier
 
     /**
      * @param array<string,string> $trustedKeys keyId => base64 public key
+     * @param string $appEnv Symfony APP_ENV. `dev` opts in to the
+     *                       `keyId="dev"` development bypass for any
+     *                       trust level; `prod`/`test` keep the strict
+     *                       refusal.
      */
     public function __construct(
         array $trustedKeys = [],
         private readonly bool $requireSignature = true,
         private readonly LoggerInterface $logger = new NullLogger(),
+        private readonly string $appEnv = 'prod',
     ) {
         $this->trustedKeys = $trustedKeys;
     }
@@ -71,9 +76,10 @@ final class PluginSignatureVerifier
         string $trustedKeysEnv,
         bool $requireSignature = true,
         LoggerInterface $logger = new NullLogger(),
+        string $appEnv = 'prod',
     ): self {
         $parsed = self::parseTrustedKeys($trustedKeysEnv);
-        return new self($parsed, $requireSignature, $logger);
+        return new self($parsed, $requireSignature, $logger, $appEnv);
     }
 
     /**
@@ -102,6 +108,51 @@ final class PluginSignatureVerifier
     }
 
     /**
+     * Returns a clone of this verifier whose trusted-key map has been
+     * augmented with one extra `(keyId, base64PublicKey)` pair. Used by
+     * the inspect-archive trust-helper flow so an operator can pass a
+     * publisher's public key as a per-request override without
+     * mutating the env-resolved baseline.
+     *
+     * Semantics:
+     *
+     *   - The original verifier instance is left untouched (the
+     *     property is `readonly`); a fresh `PluginSignatureVerifier`
+     *     is returned.
+     *   - Env-resolved keys win on duplicate `keyId`. An operator
+     *     should not be able to shadow an env-pinned production key
+     *     via a single inspect-archive request — otherwise a
+     *     compromised admin session could silently swap in a forged
+     *     publisher key. When the override carries a `keyId` already
+     *     present in the env-resolved set, the override is dropped
+     *     and a `warning`-level log line records the attempt.
+     *
+     * The base64 / 32-byte sanity-checks live in the controller layer
+     * (so we can return a precise 400 before even building this
+     * verifier). We accept the base64 string as-is here — the actual
+     * `sodium_crypto_sign_verify_detached` call later still rejects
+     * malformed material.
+     */
+    public function withAdditionalTrustedKey(string $keyId, string $publicKeyBase64): self
+    {
+        $merged = $this->trustedKeys;
+        if (array_key_exists($keyId, $merged)) {
+            $this->logger->warning(
+                'Per-request trust-helper override for keyId "{keyId}" was ignored because the env-resolved trusted-keys set already contains an entry for it. Env keys win on duplicate keyIds.',
+                ['keyId' => $keyId],
+            );
+        } else {
+            $merged[$keyId] = $publicKeyBase64;
+        }
+        return new self(
+            trustedKeys: $merged,
+            requireSignature: $this->requireSignature,
+            logger: $this->logger,
+            appEnv: $this->appEnv,
+        );
+    }
+
+    /**
      * Verify a `{keyId, signature, signedPayload}` triple plus the
      * declared `trustLevel` from the manifest.
      *
@@ -115,8 +166,11 @@ final class PluginSignatureVerifier
      *     when the host trusts the key.
      *
      * The string `"dev"` keyId is treated as a development-only marker
-     * and is refused outright for `official`/`reviewed` plugins so a
-     * scratch key cannot accidentally ship to production.
+     * and is refused outright for `official`/`reviewed` plugins on
+     * `prod` / `test` hosts so a scratch key cannot accidentally ship
+     * to production. On `APP_ENV=dev` the bypass is allowed for any
+     * trust level so plugin authors can self-install a development
+     * build without setting up a real CI keypair.
      *
      * @param array{requireSignature?: bool, acceptedKeyIds?: list<string>} $manifestPolicy
      *
@@ -153,11 +207,17 @@ final class PluginSignatureVerifier
             ));
         }
 
-        // Reject the conventional dev/test key for non-untrusted plugins.
-        if (strtolower((string) $keyId) === 'dev' && !$isUntrusted) {
+        // Reject the conventional dev/test key for non-untrusted
+        // plugins on production / test hosts. APP_ENV=dev relaxes this
+        // so plugin authors can self-install a development build of an
+        // `official`/`reviewed` plugin without provisioning a real CI
+        // keypair — the host still verifies the signature against the
+        // `dev` public key in `SELFHELP_PLUGIN_TRUSTED_KEYS`.
+        if (strtolower((string) $keyId) === 'dev' && !$isUntrusted && $this->appEnv !== 'dev') {
             throw new PluginSignatureException(sprintf(
-                'Plugin signature keyId "dev" is reserved for local development and is not allowed for trustLevel="%s". Publish with a real CI key.',
+                'Plugin signature keyId "dev" is reserved for local development and is not allowed for trustLevel="%s" on APP_ENV="%s". Publish with a real CI key, or develop the plugin on a host running APP_ENV=dev.',
                 $trustLevel,
+                $this->appEnv,
             ));
         }
 

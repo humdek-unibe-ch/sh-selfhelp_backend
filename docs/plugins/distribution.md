@@ -46,12 +46,37 @@ preview card before the actual install. See
 [`shplugin-archive.md`](./shplugin-archive.md) for the full layout
 and pipeline.
 
+A `.shplugin` ships in one of two modes (Phase 2a):
+
+- **connected** (default) — backend Composer package resolved by the
+  host from Packagist / the configured Composer repository. Smallest
+  archive, fastest publish loop, ideal for public plugins.
+- **standalone** — the plugin's own backend Composer package is
+  bundled inside the archive at `backend/package/`; the host installs
+  it via a Composer path repository. Use this when the plugin's own
+  Symfony bundle is not published to Packagist (private plugins,
+  internal distribution, deterministic publishing snapshots). Third-
+  party PHP dependencies (`symfony/*`, `doctrine/*`, …) are still
+  resolved by Composer at install time.
+
+> A `.shplugin` is not a fully air-gap installable bundle in either
+> mode. Composer still talks to Packagist (or the host's configured
+> mirror) for the plugin's transitive PHP dependencies — the archive
+> only carries the plugin's own code. Hosts without outbound HTTPS
+> need a private Composer mirror.
+
+The admin UI's inspect preview surfaces the archive mode + backend
+inclusion + Composer install mode as badges so an operator can tell
+at a glance which Composer route the upload will take.
+
 Use this for:
 
-- Air-gapped hosts with no outbound HTTPS to the registry.
 - One-off installs of a custom plugin not published in any registry.
-- Offline-first installs where the runtime ESM + CSS must live on the
-  same origin as the CMS shell.
+- Internal / private plugins whose backend bundle is intentionally
+  kept off Packagist.
+- Offline-first installs where the runtime ESM + CSS must live on
+  the same origin as the CMS shell (the frontend artifacts in the
+  archive are fully bundled and self-served).
 
 ## 4. Paste JSON (Developer / debugging only)
 
@@ -62,17 +87,26 @@ recommended production install path.
 
 ## Publishing flow
 
-Plugin authors publish through the canonical script trio shipped in
-every plugin repo:
+Plugin authors publish through the canonical Node script trio shipped
+in every plugin repo. Every script is a single `.mjs` file — no
+`.ps1` / `.sh` duplicates — and runs identically on PowerShell, Git
+Bash, WSL, macOS, and Linux:
 
-| Script                                  | Role                                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| `scripts/build-shplugin.{ps1,sh,mjs}`   | Build + sign the `.shplugin`.                                                 |
-| `scripts/publish-to-registry.{ps1,sh}`  | Reuse the signed payload to update `registry.json`, copy the manifest +       |
-|                                         | runtime artifacts under `artifacts/<id>-<version>/`, and create a GitHub      |
-|                                         | Release with the `.shplugin` attached.                                        |
-| `scripts/install-local.{ps1,sh}`        | Local-dev convenience: upload the `.shplugin` to a localhost host, or the    |
-|                                         | `--symlink` fast-path that wires a Composer path repo and a Vite dev server. |
+| Script                              | Role                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| `scripts/build-shplugin.mjs`        | Build + sign the `.shplugin`. Writes `artifacts/SHA256SUMS` with archive-root-relative paths (`<hash>  artifacts/<file>` and, for standalone archives, `<hash>  backend/package/<file>`). Supports `--mode <connected\|standalone>`; default is `connected`. |
+| `scripts/publish-to-registry.mjs`   | Reuse the signed payload to update `registry.json`, copy the manifest + runtime artifacts under `artifacts/<id>-<version>/`, and (with `--release`) create a GitHub Release with the `.shplugin` attached. |
+| `scripts/install-local.mjs`         | Local-dev convenience: upload the `.shplugin` to a localhost host (default), or the `--symlink` fast-path that wires a Composer path repo and the Vite dev server. |
+
+Every script auto-loads `<plugin-root>/.env` via Node 22's
+`process.loadEnvFile`, so the
+`SELFHELP_PLUGIN_*_SIGNING_KEY` / `SELFHELP_PLUGIN_*_SIGNING_KEY_ID` /
+`SELFHELP_ADMIN_TOKEN` / `SELFHELP_API_BASE` / `SELFHELP_BACKEND_PATH`
+/ `SELFHELP_REGISTRY_PATH` env can live next to `plugin.json` instead
+of being exported in every shell. Real `process.env` values always
+win over `.env`, so CI secrets injected into a workflow run override
+the file automatically. Each plugin must ship a `.env.example`
+documenting these variables; `.env` itself is gitignored.
 
 The GitHub Actions workflow `.github/workflows/publish-to-registry.yml`
 runs on `v*` tags: build → sign → upload artifact → register in the

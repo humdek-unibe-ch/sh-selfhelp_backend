@@ -517,7 +517,139 @@ shape.
 
 ---
 
-## 15. Testing
+## 15. What belongs inside a `.shplugin` (and what doesn't)
+
+A `.shplugin` archive is a thin packaging container, not a full
+self-contained install bundle. Its job is to carry the plugin's own
+compiled artifacts (frontend ESM + optional CSS) plus, in
+`standalone` mode, the plugin's own backend Composer package source.
+Everything else — third-party PHP dependencies, host singletons,
+Node tooling — is the host's responsibility, owned by Composer at
+install time and by the host's existing Next.js bundle at runtime.
+
+The publisher's CI workflow, the build script, and the host's
+validator all enforce these rules. Ignoring them produces archives
+that the host rejects up-front (signed-payload mismatch, validator
+errors) or, worse, corrupts the running host (duplicate React copies,
+shadowed Composer locks).
+
+### 15.1 Frontend rules
+
+- **Bundle every plugin-owned JS dependency** directly into
+  `plugin.esm.js` via Vite library mode. "Plugin-owned" means
+  packages that are NOT part of the host singleton set. Examples for
+  the SurveyJS plugin: `survey-core`, `survey-react-ui`,
+  `survey-creator-react`, `@tiptap/*` (when used only by the
+  plugin), `leaflet` (when used only by the plugin).
+- **Externalise the host singletons** so the plugin's bundle does
+  NOT contain a second copy. Loading two copies of React breaks the
+  reconciler; loading two copies of `@tanstack/react-query` breaks
+  the host's cache invariants. The current host singleton list is:
+  - `react`
+  - `react-dom` (+ `react/jsx-runtime`, `react-dom/client`)
+  - `@mantine/core`, `@mantine/hooks`, `@mantine/notifications`
+    (+ any `@mantine/*` package the host ships)
+  - `@selfhelp/shared` (+ `@selfhelp/shared/plugin-sdk`)
+  - `@tanstack/react-query` (the host owns the singleton
+    `QueryClient`; bundling a second copy would shadow it)
+- The plugin's Vite config carries an `EXTERNAL_PEERS` array that is
+  the authoritative externalise list. The reference implementation
+  lives at
+  [`plugins/sh2-shp-survey-js/frontend/vite.config.ts`](../../plugins/sh2-shp-survey-js/frontend/vite.config.ts);
+  extend that list with `@tanstack/react-query` once the host
+  exposes the singleton through the plugin SDK contract.
+- **CSS** may be inlined into the JS bundle (Vite's default with
+  `cssCodeSplit: false`) or emitted as a sibling `plugin.css`. Both
+  are supported; the validator and the canonical signed payload
+  handle the no-CSS case correctly.
+
+### 15.2 Backend rules
+
+- **Ship only the plugin's own PHP source** under `backend/package/`
+  in a `standalone` archive: `composer.json` + `src/` + optional
+  `config/`, `migrations/`, `Resources/`. The publisher contract
+  enforces `backend/package/composer.json#{name,version}` equal to
+  `plugin.json#backend.composer.package` + `plugin.json#version`;
+  the host's `PluginArchiveValidator` re-checks this and rejects
+  mismatches.
+- **Declare third-party PHP dependencies the normal Composer way**
+  inside `backend/package/composer.json#require`. The host installs
+  them via `composer require <pkg>:<ver>` at install time, against
+  Packagist or the host's configured private mirror.
+- **Never** ship `backend/vendor/`. The current validator does not
+  forbid it explicitly, but it would (a) redistribute code that is
+  not the plugin author's, and (b) defeat Composer's dependency
+  resolver, security advisories, and update path. The build script's
+  `copyTreeFiltered()` already excludes `vendor/` from the staged
+  backend package — keep it that way.
+- **Never** ship third-party PHP package zips alongside the bundle
+  (no `backend/packages/`, no Composer artifact repository slot).
+  The validator's `ALLOWED_TOP_LEVEL_PREFIXES` deliberately lists
+  only `artifacts/` and `backend/`; the only sanctioned subtree
+  under `backend/` is `backend/package/`.
+- **Never** ship `composer.lock` inside the archive. Lockfile
+  pinning is the host's concern; shipping one would shadow the
+  host's transitive resolution. The build script excludes it.
+- Composer scripts inside `backend/package/composer.json` are
+  rejected by the validator unless
+  `SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS=1` is explicitly set.
+  Keep `composer.json#scripts` empty. In particular: **do not** add
+  a `post-install-cmd` that runs `npm install` or `npm run build`.
+  The host has no Node / npm requirement for plugin installation,
+  and adding one would defeat the runtime ESM model. Frontend
+  artifacts MUST be built by the plugin publisher / CI before
+  distribution.
+
+### 15.3 Host runtime requirements during plugin install
+
+- **PHP 8.4 + Composer 2** (already required by the host itself).
+- **Network reachable to Packagist OR a private Composer mirror**
+  configured via the host's `composer.json#repositories` block.
+- **No Node, no npm, no Yarn, no `nvm`.** Adding any of these as
+  install-time prerequisites would defeat the runtime ESM model;
+  the host neither runs them nor expects them on `composer require`.
+
+### 15.4 Post-install runtime behaviour
+
+What the host does, in order, after the operator clicks **Install**
+on a valid `.shplugin`:
+
+1. The backend Messenger worker (`plugin_ops` transport) runs
+   `composer require <pkg>:<ver> --no-interaction --no-scripts`.
+   Composer downloads and installs the plugin's third-party PHP
+   dependencies from Packagist or the configured mirror.
+2. The backend promotes the frontend artifacts:
+   `staging/artifacts/*` → `public/plugin-artifacts/<id>-<ver>/*`.
+   Atomic copy-then-rename so the previous artifacts keep serving
+   until the swap.
+3. The backend runs the plugin's Doctrine migrations.
+4. The backend regenerates `config/selfhelp_plugin_bundles.php`
+   (adds the plugin's bundle class).
+5. The backend updates `selfhelp.plugins.lock.json` with
+   `signing.keyId`, `signature`, and per-migration `sha256`.
+6. The backend dispatches `PluginInstalledEvent` and publishes a
+   Mercure event on `selfhelp/plugins/manifest`.
+7. The frontend
+   ([`PluginsProvider.tsx`](../../../sh-selfhelp_frontend/src/app/components/frontend/plugin-runtime/PluginsProvider.tsx))
+   sees the Mercure event (once the wiring described in the file's
+   `useAdminPluginsRealtime` Phase 3 follow-up is in place),
+   refetches `/cms-api/v1/plugins/manifest`, and dynamically imports
+   the new plugin's `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
+8. If live registration is unsafe (e.g. the plugin contributes new
+   admin routes that require a fresh `RouterProvider` mount), the
+   admin UI shows a non-blocking notification: **"Plugin installed.
+   Reload the page to activate it."** Clicking the notification
+   reloads the SPA. The plugin's data is already on the server;
+   only the runtime registration needs the reload. The reload is
+   never silent / automatic — it is always an opt-in click.
+9. **No Next.js rebuild.** The host's Next.js bundle is unchanged
+   by plugin install / update / uninstall. The frontend continues
+   serving from the same compiled bundle; only the runtime ESM
+   contributions are added or removed.
+
+---
+
+## 16. Testing
 
 Run the host CMS in development install mode:
 
@@ -553,7 +685,7 @@ Useful CLI commands:
 
 ---
 
-## 16. Open Questions / Roadmap
+## 17. Open Questions / Roadmap
 
 - Mobile plugin packaging through EAS profile-specific lock entries
   is still being finalized (Phase 5).

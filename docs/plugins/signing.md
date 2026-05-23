@@ -27,9 +27,16 @@ checksums + compatibility) was approved by the publisher's CI.
   production releases. The publish workflow pulls
   `SELFHELP_PLUGIN_SIGNING_KEY` and `SELFHELP_PLUGIN_SIGNING_KEY_ID`
   from GitHub Actions secrets and runs `scripts/build-shplugin.mjs`
-  + `scripts/publish-to-registry.sh`. Local dev uses
-  `SELFHELP_PLUGIN_DEV_SIGNING_KEY` which always emits `keyId=dev`;
+  + `scripts/publish-to-registry.mjs` (single cross-platform Node
+  scripts; no `.sh` / `.ps1` wrappers). Local dev uses
+  `SELFHELP_PLUGIN_DEV_SIGNING_KEY`, which always emits `keyId=dev`;
   the host rejects `keyId=dev` on the `official` channel.
+- **Local `.env` files**: every plugin ships a gitignored
+  `<plugin>/.env` plus a checked-in `.env.example`. The Node scripts
+  auto-load `.env` via `process.loadEnvFile`, so the dev key /
+  production key (when explicitly set for a controlled local rebuild)
+  / admin token / host paths can live in one file. Real `process.env`
+  values always win over `.env`.
 
 ## Canonical signed payload
 
@@ -38,6 +45,15 @@ containing:
 
 ```json
 {
+  "archive": {                                      // optional, Phase 2a
+    "mode": "connected|standalone",
+    "backend": {                                    // required when mode=standalone
+      "included": true,
+      "installMode": "composer-path-repository",
+      "packageHash": "sha256-<hex>",
+      "path": "backend/package"
+    }
+  },
   "checksums": {
     "frontendEsm": "<sha256-hex>",
     "frontendCss": "<sha256-hex>?"      // optional
@@ -70,6 +86,16 @@ Rules:
   never `""`).
 - The output has **no surrounding whitespace** and uses minimal
   JSON syntax (no pretty printing).
+- `archive` is **omitted** for legacy Phase-1 inputs that do not pass
+  the block — this keeps the canonical bytes byte-identical to the
+  pre-Phase-2 fixtures (the cross-impl fixture
+  `surveyjs-0.1.0.expected.txt` still verifies). When present and
+  `mode=connected`, the block contains only `mode`. When
+  `mode=standalone` the `backend` sub-block is REQUIRED and the
+  `packageHash` is a sha256 over the sorted `<hex>  <archive-root
+  path>` lines for every file under `backend/package/`. Tampering
+  with a single byte under `backend/package/` after signing changes
+  the recomputed hash and rejects the archive at validate time.
 
 The PHP implementation (`src/Plugin/Security/SignedPayloadBuilder.php`)
 and the Node implementation (`sh2-plugin-registry/scripts/sign.mjs
@@ -120,8 +146,9 @@ A plugin may pin its expected signing posture in
 
 | Scenario                                         | Action                                                                                     |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| First-time host setup                            | Seed `SELFHELP_PLUGIN_TRUSTED_KEYS=humdek-prod;<base64-public-key>` from the registry repo.|
-| Rotate signing key                               | Add new `keyId;<base64>` entry. Switch CI secret. After 30 days, remove old entry.        |
+| First-time host setup                            | Seed `SELFHELP_PLUGIN_TRUSTED_KEYS=humdek-prod=<base64-public-key>` from the registry repo.|
+| Rotate signing key                               | Add new `keyId=<base64>` entry. Switch CI secret. After 30 days, remove old entry.        |
 | Allow developer-mode unsigned installs           | Set `SELFHELP_PLUGIN_REQUIRE_SIGNATURE=0` + use `paste` source. Never do this in prod.    |
 | Build a `.shplugin` locally (dev key)            | `export SELFHELP_PLUGIN_DEV_SIGNING_KEY=<base64>` then `node scripts/build-shplugin.mjs`. |
+| Install a dev-signed `.shplugin` on an `official` plugin | The host accepts `keyId="dev"` for any trust level **only** when `APP_ENV=dev`. Add `dev=<base64-public>` to `SELFHELP_PLUGIN_TRUSTED_KEYS` first. `APP_ENV=prod`/`test` always refuse `keyId="dev"` on `official`/`reviewed` plugins. |
 | Generate a new keypair                           | `cd sh2-plugin-registry && npm run keygen`. Store the private key as a GH secret.         |

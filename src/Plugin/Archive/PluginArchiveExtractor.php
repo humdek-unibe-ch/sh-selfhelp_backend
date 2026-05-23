@@ -24,20 +24,65 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  *     in zip entries are rejected.
  *   - Pre-validates the presence of every required archive member
  *     (`plugin.json`, `signature.json`, `artifacts/SHA256SUMS`,
- *     `artifacts/plugin.esm.js`, `artifacts/plugin.css`).
+ *     `artifacts/plugin.esm.js`). `artifacts/plugin.css` is OPTIONAL —
+ *     plugins without a stylesheet (admin-only UI, headless services)
+ *     don't ship one and `sign.mjs` omits the corresponding fields
+ *     from the canonical payload.
+ *   - When the manifest declares `archive.mode = "standalone"`
+ *     (Phase 2a), additionally requires `backend/package/composer.json`
+ *     so downstream validation can read the staged Composer package.
+ *     Connected archives (`archive.mode` absent or `"connected"`) keep
+ *     the Phase-1 required-files list unchanged.
  *
- * The extractor does not parse the manifest or verify signatures —
- * that lives in `PluginArchiveValidator`. It returns the staging
- * directory path for downstream callers.
+ * The extractor does not parse the manifest beyond `id`, `version`,
+ * and `archive.mode`, and never verifies signatures — that lives in
+ * `PluginArchiveValidator`. It returns the staging directory path
+ * for downstream callers.
  */
 final class PluginArchiveExtractor
 {
+    // `artifacts/plugin.css` is intentionally OPTIONAL. Plenty of
+    // plugins (admin-only UI extensions, headless service plugins,
+    // anything whose Vite build does not emit a CSS file) ship without
+    // a stylesheet. The canonical payload mirrors that — `sign.mjs`
+    // omits `stylesheetUrl` + `frontendCss` when there is no CSS file
+    // to hash. The host's `PluginArchiveValidator` consults the actual
+    // staging dir for CSS presence and recomputes the canonical
+    // payload identically either way.
     public const REQUIRED_FILES = [
         'plugin.json',
         'signature.json',
         'artifacts/SHA256SUMS',
         'artifacts/plugin.esm.js',
-        'artifacts/plugin.css',
+    ];
+
+    // Phase 2a — additional files required when the manifest declares
+    // `archive.mode = "standalone"`. `composer.json` is the anchor:
+    // every other file under `backend/package/` is described by
+    // `composer.json#autoload` and hashed via SHA256SUMS. If
+    // `composer.json` is missing the validator can't even tell what
+    // the package name is, so we hard-require it at extraction time
+    // to fail fast.
+    public const STANDALONE_REQUIRED_FILES = [
+        'backend/package/composer.json',
+    ];
+
+    // Top-level archive prefixes that the extractor + validator
+    // recognise. Anything else is rejected at extraction time to
+    // keep the surface area small (every signed artifact lives
+    // under one of these prefixes).
+    private const ALLOWED_TOP_LEVEL_PREFIXES = [
+        'artifacts/',
+        'backend/',
+    ];
+
+    // Top-level files (not directories) the extractor accepts.
+    private const ALLOWED_TOP_LEVEL_FILES = [
+        'plugin.json',
+        'signature.json',
+        'README.md',
+        'LICENSE',
+        'CHANGELOG.md',
     ];
 
     public function __construct(
@@ -66,7 +111,7 @@ final class PluginArchiveExtractor
         }
 
         try {
-            $this->assertRequiredEntries($zip);
+            $this->assertRequiredEntries($zip, self::REQUIRED_FILES);
 
             $manifestRaw = $zip->getFromName('plugin.json');
             if ($manifestRaw === false) {
@@ -79,13 +124,21 @@ final class PluginArchiveExtractor
             $pluginId = $this->requireManifestString($manifest, 'id');
             $version = $this->requireManifestString($manifest, 'version');
 
+            $archiveMode = $this->readArchiveMode($manifest);
+            if ($archiveMode === 'standalone') {
+                $this->assertRequiredEntries($zip, self::STANDALONE_REQUIRED_FILES);
+            }
+
             $stagingDir = $this->stagingDir($pluginId, $version);
             if ($this->filesystem->exists($stagingDir)) {
                 $this->filesystem->remove($stagingDir);
             }
             $this->filesystem->mkdir($stagingDir, 0775);
 
-            // Extract every entry, guarding against zip-slip.
+            // Extract every entry, guarding against zip-slip and rejecting
+            // any path that does not live under one of the recognised
+            // top-level prefixes (artifacts/, backend/) or the allow-listed
+            // top-level files (plugin.json, signature.json, README, …).
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $name = $zip->getNameIndex($i);
                 if ($name === false || $name === '') {
@@ -163,12 +216,15 @@ final class PluginArchiveExtractor
         }
     }
 
-    private function assertRequiredEntries(\ZipArchive $zip): void
+    /**
+     * @param list<string> $required
+     */
+    private function assertRequiredEntries(\ZipArchive $zip, array $required): void
     {
         $missing = [];
-        foreach (self::REQUIRED_FILES as $required) {
-            if ($zip->locateName($required) === false) {
-                $missing[] = $required;
+        foreach ($required as $entry) {
+            if ($zip->locateName($entry) === false) {
+                $missing[] = $entry;
             }
         }
         if ($missing !== []) {
@@ -190,6 +246,25 @@ final class PluginArchiveExtractor
         if (preg_match('#^[A-Za-z]:#', $name) === 1) {
             throw new PluginArchiveException(sprintf('Archive entry "%s" uses a Windows drive prefix.', $name));
         }
+        // Restrict to the allow-listed top-level layout. Directory
+        // entries (paths ending with `/`) must start with an allowed
+        // prefix; file entries may either start with an allowed prefix
+        // OR be one of the explicitly allow-listed top-level files.
+        $isDirectory = str_ends_with($name, '/');
+        foreach (self::ALLOWED_TOP_LEVEL_PREFIXES as $prefix) {
+            if (str_starts_with($name, $prefix)) {
+                return;
+            }
+        }
+        if (!$isDirectory && in_array($name, self::ALLOWED_TOP_LEVEL_FILES, true)) {
+            return;
+        }
+        throw new PluginArchiveException(sprintf(
+            'Archive entry "%s" is outside the supported .shplugin layout. '
+            . 'Files must live under artifacts/ or backend/ (or be one of: %s).',
+            $name,
+            implode(', ', self::ALLOWED_TOP_LEVEL_FILES),
+        ));
     }
 
     /**
@@ -202,5 +277,31 @@ final class PluginArchiveExtractor
             throw new PluginArchiveException(sprintf('plugin.json in archive is missing "%s".', $key));
         }
         return $value;
+    }
+
+    /**
+     * Reads `archive.mode` from the manifest, defaulting to
+     * `connected`. The schema enforces the enum; here we only need to
+     * tolerate a manifest without the optional `archive` block.
+     *
+     * @param array<string,mixed> $manifest
+     */
+    private function readArchiveMode(array $manifest): string
+    {
+        $archive = $manifest['archive'] ?? null;
+        if (!is_array($archive)) {
+            return 'connected';
+        }
+        $mode = $archive['mode'] ?? null;
+        if (!is_string($mode) || $mode === '') {
+            return 'connected';
+        }
+        if ($mode !== 'connected' && $mode !== 'standalone') {
+            throw new PluginArchiveException(sprintf(
+                'plugin.json in archive has unsupported archive.mode "%s". Expected "connected" or "standalone".',
+                $mode,
+            ));
+        }
+        return $mode;
     }
 }

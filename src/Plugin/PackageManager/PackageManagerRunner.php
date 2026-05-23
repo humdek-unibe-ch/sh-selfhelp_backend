@@ -51,10 +51,14 @@ final class PackageManagerRunner
      */
     public function requireComposerPackage(string $package, string $constraint, ?callable $onLine = null): PackageManagerResult
     {
-        return $this->run(
+        $result = $this->run(
             ['composer', 'require', sprintf('%s:%s', $package, $constraint), '--no-interaction', '--no-scripts'],
             $onLine,
         );
+        if ($result->success) {
+            $this->refreshComposerAutoloader();
+        }
+        return $result;
     }
 
     /**
@@ -63,7 +67,24 @@ final class PackageManagerRunner
      * failure so a half-completed install does not leave a stale repo
      * pointer in composer.json.
      *
-     * @param array{type:string,url:string,reference?:string}|null $repository
+     * Repository shape (Phase 1):
+     *   ['type' => 'vcs'|'path'|'composer'|'git', 'url' => '<url>',
+     *    'reference' => '<git-ref>'(optional)]
+     *
+     * Phase 2a adds an `options` map serialised via Composer's JSON
+     * repository form. The primary use case is `path` repos for
+     * standalone .shplugin installs, where we want
+     * `{"symlink": false}` to copy the package into vendor/ rather
+     * than symlink it — symlinks are fragile across the promoter's
+     * atomic-rename cycle and can leave Composer pointing at a deleted
+     * staging dir after a failed promotion.
+     *
+     * @param array{
+     *     type:string,
+     *     url:string,
+     *     reference?:string,
+     *     options?:array<string,bool|int|string>
+     * }|null $repository
      * @param (callable(string,string):void)|null                   $onLine
      */
     public function requireComposerPackageFromRepository(
@@ -88,7 +109,33 @@ final class PackageManagerRunner
             }
 
             $repoSlug = 'plugin-' . preg_replace('/[^a-z0-9.-]+/i', '-', $package);
-            $configArgs = ['composer', 'config', 'repositories.' . $repoSlug, $type, $url];
+            $options = (isset($repository['options']) && is_array($repository['options']))
+                ? $repository['options']
+                : [];
+
+            if ($options !== []) {
+                // Composer's JSON repo form lets us pass arbitrary
+                // options (most notably {symlink:false} for path repos
+                // and {ssh2:{...}} for VCS auth). Encode the whole
+                // descriptor as a single JSON arg and use
+                // `composer config --json repositories.<slug> '<json>'`.
+                $json = json_encode(
+                    array_merge(['type' => $type, 'url' => $url], ['options' => $options]),
+                    JSON_UNESCAPED_SLASHES,
+                );
+                if ($json === false) {
+                    return new PackageManagerResult(
+                        command: 'composer config repositories.' . $repoSlug,
+                        exitCode: -1,
+                        stdout: '',
+                        stderr: 'Failed to JSON-encode composer repository descriptor.',
+                        success: false,
+                    );
+                }
+                $configArgs = ['composer', 'config', '--json', 'repositories.' . $repoSlug, $json];
+            } else {
+                $configArgs = ['composer', 'config', 'repositories.' . $repoSlug, $type, $url];
+            }
             $configResult = $this->run($configArgs, $onLine);
             if (!$configResult->success) {
                 return $configResult;
@@ -112,6 +159,10 @@ final class PackageManagerRunner
             $this->run(['composer', 'config', '--unset', 'repositories.' . $repoSlug], null);
         }
 
+        if ($requireResult->success) {
+            $this->refreshComposerAutoloader();
+        }
+
         return $requireResult;
     }
 
@@ -120,7 +171,98 @@ final class PackageManagerRunner
      */
     public function removeComposerPackage(string $package, ?callable $onLine = null): PackageManagerResult
     {
-        return $this->run(['composer', 'remove', $package, '--no-interaction', '--no-scripts'], $onLine);
+        $result = $this->run(['composer', 'remove', $package, '--no-interaction', '--no-scripts'], $onLine);
+        // No autoloader refresh on remove: the classes already loaded by
+        // the worker would still be reachable from PHP's class table even
+        // after vendor/ is updated. Refreshing would not unload them.
+        return $result;
+    }
+
+    /**
+     * After a successful `composer require`, Composer rewrites
+     * `vendor/composer/autoload_classmap.php`, `autoload_psr4.php`, and
+     * `autoload_namespaces.php` on disk, but the long-running Messenger
+     * worker is still using the in-memory `Composer\Autoload\ClassLoader`
+     * registered at process boot. Symfony's
+     * `PluginInstaller::finalize()` calls `class_exists($bundleClass)`
+     * immediately after `composer require`, and without this refresh
+     * step the call returns `false` for the newly installed bundle —
+     * even though the autoload files on disk are correct.
+     *
+     * This method re-includes the regenerated autoload maps and merges
+     * them into the active classloader so the worker can resolve
+     * newly installed classes without restarting. It is intentionally
+     * defensive: missing autoload files or a stale loader simply
+     * short-circuits with a `false` return; the install flow's
+     * `class_exists` check will still report a clear error if the
+     * underlying composer step actually failed.
+     */
+    private function refreshComposerAutoloader(): bool
+    {
+        $loader = $this->findComposerClassLoader();
+        if ($loader === null) {
+            return false;
+        }
+        $vendorDir = $this->projectDir . '/vendor';
+        $classmapPath = $vendorDir . '/composer/autoload_classmap.php';
+        if (is_file($classmapPath)) {
+            $classmap = require $classmapPath;
+            if (is_array($classmap)) {
+                /** @var array<string, string> $typedClassmap */
+                $typedClassmap = array_filter(
+                    $classmap,
+                    static fn ($value, $key): bool => is_string($key) && is_string($value),
+                    ARRAY_FILTER_USE_BOTH,
+                );
+                $loader->addClassMap($typedClassmap);
+            }
+        }
+        $psr4Path = $vendorDir . '/composer/autoload_psr4.php';
+        if (is_file($psr4Path)) {
+            $psr4 = require $psr4Path;
+            if (is_array($psr4)) {
+                foreach ($psr4 as $prefix => $paths) {
+                    if (is_string($prefix) && (is_string($paths) || is_array($paths))) {
+                        /** @var list<string>|string $paths */
+                        $loader->setPsr4($prefix, $paths);
+                    }
+                }
+            }
+        }
+        $namespacesPath = $vendorDir . '/composer/autoload_namespaces.php';
+        if (is_file($namespacesPath)) {
+            $namespaces = require $namespacesPath;
+            if (is_array($namespaces)) {
+                foreach ($namespaces as $prefix => $paths) {
+                    if (is_string($prefix) && (is_string($paths) || is_array($paths))) {
+                        /** @var list<string>|string $paths */
+                        $loader->set($prefix, $paths);
+                    }
+                }
+            }
+        }
+        $filesPath = $vendorDir . '/composer/autoload_files.php';
+        if (is_file($filesPath)) {
+            $files = require $filesPath;
+            if (is_array($files)) {
+                foreach ($files as $file) {
+                    if (is_string($file) && is_file($file)) {
+                        require_once $file;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private function findComposerClassLoader(): ?\Composer\Autoload\ClassLoader
+    {
+        foreach (spl_autoload_functions() ?: [] as $registered) {
+            if (is_array($registered) && isset($registered[0]) && $registered[0] instanceof \Composer\Autoload\ClassLoader) {
+                return $registered[0];
+            }
+        }
+        return null;
     }
 
     /**
