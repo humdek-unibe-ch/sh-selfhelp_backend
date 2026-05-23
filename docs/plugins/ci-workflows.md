@@ -14,7 +14,7 @@ Each repository in the ecosystem has its own workflow. They share a common struc
 - never depend on a live database or live Mercure hub;
 - fail fast on anything that would silently degrade the contract between hosts and plugins.
 
-There are five workflows in total — one per repository touched by the plan.
+There are seven workflows in total — five validation gates plus two registry pipelines.
 
 | # | Workflow file | Repository | Owner of the contract |
 |---|---------------|------------|------------------------|
@@ -22,9 +22,9 @@ There are five workflows in total — one per repository touched by the plan.
 | 2 | `.github/workflows/plugin-runtime-check.yml`   | `sh-selfhelp_frontend`       | Frontend host: PluginRuntime, host singletons, Next.js build |
 | 3 | `.github/workflows/plugin-sdk-check.yml`       | `sh-selfhelp_shared`         | Shared SDK: TS types ↔ JSON schemas, build, hook export |
 | 4 | `.github/workflows/plugin-mobile-check.yml`    | `sh-selfhelp_mobile`         | Mobile host: registry parity, plugins:sync, web export |
-| 5 | `.github/workflows/validate-plugin.yml`        | every `plugins/<plugin-id>/` | Per-plugin gate: manifest, DB-naming, builds, host-singleton policy |
-
-A sixth workflow — `validate-registry.yml` in a future registry repository — is described in §21.5 of the plan and is out of scope until a registry repository exists.
+| 5 | `.github/workflows/validate-plugin.yml`        | every `plugins/<plugin-id>/` | Per-plugin gate (every PR / push to main): manifest, DB-naming, builds, host-singleton policy |
+| 6 | `.github/workflows/publish-to-registry.yml`    | every `plugins/<plugin-id>/` | Tag-triggered publish: pushes a manifest entry to `sh2-plugin-registry`. |
+| 7 | `.github/workflows/build-registry.yml`         | `sh2-plugin-registry`        | Validates the registry contents and publishes them to GitHub Pages. |
 
 ## How they work together
 
@@ -186,12 +186,85 @@ The workflows are zero-config out of the box, but two optional inputs unlock the
 
 When both inputs are configured the workflow asserts the plugin lock file + `package.json` + the per-EAS registered file are exactly what `plugins:sync --dry-run` would write — failing if the repo's committed copy is stale. This is how the plan's "deterministic plugin pinning" contract is enforced in CI.
 
+## 6. `publish-to-registry.yml` (per-plugin)
+
+**Repository**: every `plugins/<plugin-id>/` — the SurveyJS plugin is the reference.
+
+**Purpose**: ship a tagged plugin version to the public
+`humdek-unibe-ch/sh2-plugin-registry` repository so every host that has
+the seeded `humdek-public` source picks it up automatically on the next
+"Available" tab open.
+
+**Trigger**: push of a `v*` tag (e.g. `git tag v0.2.0 && git push --tags`)
+or a manual `workflow_dispatch` (with a channel input).
+
+| Job step | What it does | Failure means |
+|----------|--------------|---------------|
+| Checkout plugin + registry | Clones the plugin repo and the `humdek-unibe-ch/sh2-plugin-registry` repo using the `REGISTRY_PUSH_TOKEN` PAT. | Without the secret the job still builds + validates but skips the push, so a fresh fork can dry-run the workflow. |
+| Validate manifest | Runs `ajv` against the vendored `docs/plugins/plugin-manifest.schema.json`. | Tag must reflect a manifest that the host can install. |
+| Build frontend / mobile | `npm install --legacy-peer-deps && npm run build` in `frontend/` and `mobile/`. | Build regression — the registry never advertises an unbuildable version. |
+| `scripts/publish-to-registry.sh --skip-build --push` | Copies the plugin's `plugin.json` to `<registry>/manifests/<id>-<version>.json`, upserts the entry in `<registry>/registry.json`, commits, and pushes. | The registry repo's own `build-registry.yml` workflow (see below) takes over to publish to GitHub Pages. |
+
+**The flow end-to-end**:
+
+```text
+Plugin repo:
+  git tag v0.2.0
+  git push --tags
+            │
+            ▼  publish-to-registry.yml
+  - validate manifest
+  - build frontend + mobile
+  - copy manifest to sh2-plugin-registry/manifests/
+  - update registry.json (sorted by id; previous entries for same id are replaced)
+  - commit + push to registry main
+            │
+            ▼  build-registry.yml (in sh2-plugin-registry)
+  - validate registry.json against registry.schema.json
+  - validate every manifest in manifests/ against plugin-manifest.schema.json
+  - publish to GitHub Pages (https://humdek-unibe-ch.github.io/sh2-plugin-registry/)
+            │
+            ▼  Hosts with `humdek-public` source enabled
+  - the next "Available" tab open shows v0.2.0
+  - admins click Install → Request → composer/npm → Finalize
+```
+
+**Required secrets / variables** on the plugin repo:
+
+| Secret | Used for |
+|--------|----------|
+| `REGISTRY_PUSH_TOKEN` | Personal Access Token with `contents:write` on `humdek-unibe-ch/sh2-plugin-registry`. Without it the job runs in dry-run mode and prints a warning to the workflow summary. |
+
+**Optional flags** when running `scripts/publish-to-registry.{sh,ps1}` locally:
+
+```bash
+# Dry-run (does not commit anything)
+bash scripts/publish-to-registry.sh --dry-run
+
+# Different release channel (default is 'stable')
+bash scripts/publish-to-registry.sh --channel beta --push
+
+# Auto-publish the npm packages too (needs NPM_TOKEN in env)
+bash scripts/publish-to-registry.sh --publish-npm --push
+```
+
+The current GitHub Actions workflow does **not** pass `--publish-npm`.
+Plugin authors who want the same tag to push to npm can either add an
+explicit `npm publish` step before the `Publish to registry` step, or
+extend the workflow with an `NPM_TOKEN` secret and a custom flag. The
+registry only advertises the version + manifest; it does not bundle
+the npm artefact.
+
 ## Adding a new plugin
 
-1. Copy `plugins/sh2-shp-survey-js/.github/workflows/validate-plugin.yml` into the new plugin repository.
+1. Copy `plugins/sh2-shp-survey-js/.github/workflows/validate-plugin.yml`
+   **and** `publish-to-registry.yml` into the new plugin repository.
 2. Verify the `backend/`, `frontend/`, and `mobile/` directory names match the new plugin's layout (or adjust the workflow accordingly).
 3. Make sure the plugin's `plugin.json` declares `dataAccess.ownedTables` correctly — the `manifest` job will compare it to your migration file.
-4. The first push will run all five jobs; if any DB-naming gate trips, fix the entity / migration before publishing the plugin to the registry.
+4. The first push will run all five validation jobs; if any DB-naming gate trips, fix the entity / migration before publishing the plugin to the registry.
+5. Add `REGISTRY_PUSH_TOKEN` to the new repo's secrets (Settings → Secrets and variables → Actions). Without it the publish workflow runs in dry-run mode.
+6. Tag the first release: `git tag v0.1.0 && git push --tags`.
+7. Confirm the registry workflow appended a manifest under `sh2-plugin-registry/manifests/<id>-<version>.json`. If GitHub Pages is the source for the registry repo, the new version is visible at `https://humdek-unibe-ch.github.io/sh2-plugin-registry/registry.json` within a minute.
 
 ## When a check is too strict
 

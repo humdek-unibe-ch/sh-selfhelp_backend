@@ -142,7 +142,9 @@
                             "mobileStyles",
                             "realtimePublish",
                             "fileUploads",
-                            "secretAccess"
+                            "secretAccess",
+                            "lookupExtend",
+                            "lookupOwnGroup"
                         ]
                     }
                 },
