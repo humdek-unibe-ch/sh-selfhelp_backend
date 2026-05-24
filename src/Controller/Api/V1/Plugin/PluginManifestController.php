@@ -75,11 +75,11 @@ final class PluginManifestController extends AbstractController
                     }
                 }
                 $plugins[] = [
-                    // Plugin id is shipped under BOTH `id` and `pluginId`:
-                    // `id` keeps the legacy script consumers happy,
-                    // `pluginId` matches the frontend `IPluginManifestEntry`
-                    // contract (`PluginRuntime.ts`) and the admin types.
-                    'id' => $plugin->getPluginId(),
+                    // Plugin id is shipped under `pluginId` only — it
+                    // matches the frontend `IPluginManifestEntry`
+                    // contract (`PluginRuntime.ts`) and the admin
+                    // types. Sync scripts (frontend + mobile) read
+                    // `pluginId` directly.
                     'pluginId' => $plugin->getPluginId(),
                     'name' => $plugin->getName(),
                     'version' => $plugin->getVersion(),
