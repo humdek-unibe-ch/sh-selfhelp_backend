@@ -323,7 +323,7 @@ Canonical document: `docs/plugins/multi-repo-agents-md.md`. Plugin repo `AGENTS.
 Plugins may only extend SelfHelp through these documented extension points:
 
 - Symfony events (the events listed in `docs/plugins/developer-guide.md`).
-- Tagged services (`selfhelp.plugin.scheduled_job_type`, `selfhelp.plugin.realtime_topic`, `selfhelp.plugin.backup_hook`, etc.).
+- Tagged services consumed by the host today: `selfhelp.plugin.health_check` (collected by `App\Plugin\Health\PluginHealthService`) and `selfhelp.plugin.scheduled_job_handler` (collected by `App\Plugin\ScheduledJob\PluginScheduledJobRegistry` and dispatched from `JobSchedulerService::executeByType`). Realtime topics use events (`PluginRealtimeTopicRegistryEvent` + `PluginRealtimePermissionEvent`); backup hooks use the singleton alias on `App\Plugin\Backup\PluginBackupHookInterface`. Do not introduce new tag names that the host does not consume.
 - Manifest-declared API routes (under `/cms-api/v1/plugins/{pluginId}/...`).
 - Style registry entries.
 - Admin pages (mounted under `/admin/plugins-host/{pluginId}/...` on the frontend).

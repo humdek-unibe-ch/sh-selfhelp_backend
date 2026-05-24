@@ -160,6 +160,17 @@ services:
             $mercureHubUrl: '%env(default::MERCURE_PUBLIC_URL)%'
             $mobileHostDir: '%env(default::SELFHELP_MOBILE_HOST_DIR)%'
 
+    # Plugin scheduled-job dispatcher — wires the tagged iterator
+    # for `selfhelp.plugin.scheduled_job_handler` so plugins can
+    # register runtime executors for new `jobTypes` lookup codes
+    # (declared via the manifest + `ScheduledJobTypeEvent`). Without
+    # this, `JobSchedulerService::executeByType` had no way to invoke
+    # plugin-contributed job types — they showed up in the admin
+    # catalog but always returned `false` at execution time.
+    App\Plugin\ScheduledJob\PluginScheduledJobRegistry:
+        arguments:
+            $handlers: !tagged_iterator selfhelp.plugin.scheduled_job_handler
+
     App\Plugin\Lifecycle\PluginLockFileWriter:
         arguments:
             $projectDir: '%kernel.project_dir%'

@@ -285,9 +285,30 @@ runtime, and never write to config outside the installer.
 
 ### Tagged services (host → plugin runtime)
 
-- `selfhelp.plugin.field_renderer` — custom CMS field edit/view widgets.
-- `selfhelp.plugin.scheduled_job` — scheduled job handlers.
-- `selfhelp.plugin.health_check` — health checks shown in the doctor command.
+Only these tags are consumed by the host today. Anything else
+documented historically (`selfhelp.plugin.field_renderer`,
+`selfhelp.plugin.scheduled_job_type`, `selfhelp.plugin.realtime_topic`)
+was never wired up — use the matching event (above) instead.
+
+- `selfhelp.plugin.health_check` — health checks shown in the doctor
+  command. Consumed by `App\Plugin\Health\PluginHealthService`.
+- `selfhelp.plugin.scheduled_job_handler` — runtime executor for a
+  scheduled-job type declared via `ScheduledJobTypeEvent` /
+  `plugin.json#scheduledJobs`. Plugins implement
+  `App\Plugin\ScheduledJob\PluginScheduledJobHandlerInterface`
+  (auto-tagged via `#[AutoconfigureTag]`); the host indexes them by
+  `getSupportedJobType()` and dispatches from
+  `JobSchedulerService::executeByType()`.
+
+### Backup hooks
+
+Backup hooks use Symfony's singleton alias mechanism rather than a
+tagged iterator (there is only ever one host-level backup
+implementation): override
+`App\Plugin\Backup\PluginBackupHookInterface` in the host's
+`services.yaml`. The default implementation
+(`NoopPluginBackupHook`) just writes a recommendation into the
+operation log so admins see a clear "no backup taken" banner.
 
 ### Frontend extension surface
 
