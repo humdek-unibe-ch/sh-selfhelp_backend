@@ -294,19 +294,6 @@ final class PluginAdminService extends BaseService
     }
 
     /**
-     * Internal-only — invoked by the `selfhelp:plugin:run-operation`
-     * CLI command after a managed-mode operator has executed composer
-     * by hand. The Messenger worker calls `PluginInstaller::finalize()`
-     * directly without going through this method.
-     */
-    public function finalizeInstall(int $operationId, array $manifestData): array
-    {
-        $op = $this->mustFindOperation($operationId);
-        $plugin = $this->installer->finalize($op, new PluginManifest($manifestData));
-        return $this->formatPlugin($plugin, deep: true);
-    }
-
-    /**
      * Single update entrypoint. Mirrors `install()`. The
      * `expectedPluginId` field is set by `AdminPluginController::update()`
      * from the URL-pinned plugin id; if the resolved manifest declares
@@ -349,14 +336,6 @@ final class PluginAdminService extends BaseService
             (bool) ($input['backupBefore'] ?? false),
         );
         return $this->formatOperation($operation);
-    }
-
-    /** Internal-only finalize for managed-mode workers. */
-    public function finalizeUpdate(int $operationId, array $manifestData): array
-    {
-        $op = $this->mustFindOperation($operationId);
-        $plugin = $this->updater->finalize($op, new PluginManifest($manifestData));
-        return $this->formatPlugin($plugin, deep: true);
     }
 
     /**
@@ -464,16 +443,6 @@ final class PluginAdminService extends BaseService
     public function uninstall(string $pluginId): array
     {
         return $this->formatOperation($this->uninstaller->request($pluginId));
-    }
-
-    /**
-     * Internal-only — invoked by `selfhelp:plugin:run-operation` after
-     * a managed-mode operator has executed `composer remove`.
-     */
-    public function finalizeUninstall(int $operationId): void
-    {
-        $op = $this->mustFindOperation($operationId);
-        $this->uninstaller->finalize($op);
     }
 
     public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void

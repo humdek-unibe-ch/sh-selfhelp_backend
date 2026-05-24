@@ -39,7 +39,6 @@ final class PluginUpdateCommand extends Command
     {
         $this->addArgument('manifest', InputArgument::REQUIRED, 'Path to the new plugin.json manifest file.');
         $this->addOption('force-major', null, InputOption::VALUE_NONE, 'Acknowledge a major version bump (otherwise refused).');
-        $this->addOption('finalize', null, InputOption::VALUE_NONE, 'Finalize the operation after composer/npm + migrations have run.');
         $this->addOption(
             'backup-before',
             null,
@@ -82,11 +81,7 @@ final class PluginUpdateCommand extends Command
                 $mode,
             ));
 
-            if ($input->getOption('finalize')) {
-                // Operator wants to inline-finalize after running composer themselves.
-                $plugin = $this->pluginAdminService->finalizeUpdate($operationId, $manifest->toArray());
-                $io->success(sprintf('Plugin "%s" updated to %s.', $plugin['pluginId'], $plugin['version']));
-            } elseif ($mode === 'managed') {
+            if ($mode === 'managed') {
                 $io->note(sprintf(
                     'Managed mode: run composer + migrations from the recorded runbook, then call selfhelp:plugin:run-operation %d.',
                     $operationId,

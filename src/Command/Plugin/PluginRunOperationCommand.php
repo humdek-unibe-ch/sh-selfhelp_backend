@@ -11,7 +11,7 @@ declare(strict_types=1);
 namespace App\Command\Plugin;
 
 use App\Entity\Plugin\PluginOperation;
-use App\Plugin\Service\PluginAdminService;
+use App\Plugin\Service\PluginCliFinalizer;
 use App\Repository\Plugin\PluginOperationRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -27,11 +27,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * a CLI command. The CI / CLI worker then runs this command with the
  * operation id; it inspects the operation type, runs composer/npm and
  * Doctrine migrations as appropriate, and calls the matching
- * `finalize-*` method on `PluginAdminService`.
+ * `finalize-*` method on `PluginCliFinalizer`.
  *
  * The actual composer / npm invocations are out-of-scope for the
  * command itself — they are deployment-specific scripts. Here we
- * simply finalize the install when the operator has already run the
+ * simply finalize the operation once the operator has run the
  * external package work.
  */
 #[AsCommand(
@@ -41,7 +41,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class PluginRunOperationCommand extends Command
 {
     public function __construct(
-        private readonly PluginAdminService $pluginAdminService,
+        private readonly PluginCliFinalizer $finalizer,
         private readonly PluginOperationRepository $operations,
     ) {
         parent::__construct();
@@ -72,7 +72,7 @@ final class PluginRunOperationCommand extends Command
                         $io->error('Operation snapshot is missing the manifest payload; cannot finalize install.');
                         return Command::FAILURE;
                     }
-                    $this->pluginAdminService->finalizeInstall($opId, $manifestData);
+                    $this->finalizer->finalizeInstall($opId, $manifestData);
                     break;
                 case PluginOperation::TYPE_UPDATE:
                     $manifestData = $snapshots['newManifest'] ?? $snapshots['manifest'] ?? null;
@@ -80,10 +80,10 @@ final class PluginRunOperationCommand extends Command
                         $io->error('Operation snapshot is missing the new manifest payload; cannot finalize update.');
                         return Command::FAILURE;
                     }
-                    $this->pluginAdminService->finalizeUpdate($opId, $manifestData);
+                    $this->finalizer->finalizeUpdate($opId, $manifestData);
                     break;
                 case PluginOperation::TYPE_UNINSTALL:
-                    $this->pluginAdminService->finalizeUninstall($opId);
+                    $this->finalizer->finalizeUninstall($opId);
                     break;
                 default:
                     $io->error(sprintf('Operation type "%s" cannot be finalized by run-operation.', $operation->getType()));
