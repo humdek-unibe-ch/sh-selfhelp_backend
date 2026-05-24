@@ -17,6 +17,7 @@ use App\Plugin\Archive\PluginArchivePromoter;
 use App\Plugin\Backup\PluginBackupHookInterface;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Event\Lifecycle\PluginPurgedEvent;
+use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Registry\PluginRegistryService;
 use App\Plugin\Security\ProtectedTablesPolicy;
 use App\Repository\Plugin\PluginRepository;
@@ -40,6 +41,12 @@ use Symfony\Component\HttpFoundation\Response;
  *     `scheduled_jobs` row that referenced them (via the existing
  *     `ON DELETE CASCADE` FKs), so the "data tables stay orphaned"
  *     regression is gone,
+ *   - rows in `doctrine_migration_versions` whose `version` column
+ *     starts with the plugin's `backend.migrationsNamespace` —
+ *     without this the next install would skip every migration as
+ *     "already applied" and never re-create the plugin's schema or
+ *     CMS surface registrations (see
+ *     {@see deletePluginMigrationVersions()}),
  *   - the plugin's row from `plugins`,
  *   - its operation history is preserved for audit.
  *
@@ -154,6 +161,23 @@ final class PluginPurger
                     $this->dropOwnedTable($table);
                     $this->recorder->appendLog($operation, 'Dropped plugin-owned table', ['table' => $table]);
                 }
+
+                // Forget every applied migration that belongs to this
+                // plugin's `backend.migrationsNamespace`. Without this
+                // step the rows persist in `doctrine_migration_versions`
+                // even though we just dropped every table they created
+                // and deleted every row they seeded — so the very next
+                // install would log
+                // `skippedReason: all-migrations-already-applied` from
+                // PluginMigrationsRunner::migrate() and the CMS surface
+                // (styles, fields, permissions, lookups) would never be
+                // re-registered. The plugin would appear installed but
+                // be completely inert.
+                $manifest = new PluginManifest($manifestData);
+                $this->deletePluginMigrationVersions(
+                    $manifest->getBackendMigrationsNamespace(),
+                    $operation
+                );
 
                 $this->em->remove($plugin);
                 $this->em->flush();
@@ -298,6 +322,60 @@ final class PluginPurger
                 'constraint' => $constraintName,
             ]);
         }
+    }
+
+    /**
+     * Forget every applied migration that belongs to this plugin's
+     * `backend.migrationsNamespace`.
+     *
+     * Plugin migrations land in the SHARED `doctrine_migration_versions`
+     * table (see {@see PluginMigrationsRunner}'s class docblock). The
+     * `version` column stores the migration FQCN, so every row for a
+     * given plugin shares a common namespace prefix —
+     * e.g. `Humdek\SurveyJsBundle\Migrations\Version20260522063620`
+     * for the SurveyJS plugin's
+     * `backend.migrationsNamespace = Humdek\SurveyJsBundle\Migrations`.
+     *
+     * If we leave those rows behind after the purge, the next install
+     * of the same plugin id will hit
+     * `Doctrine\Migrations\Exception\NoMigrationsToExecute` in
+     * {@see PluginMigrationsRunner::migrate()}, return
+     * `skipped: true, skippedReason: 'all-migrations-already-applied'`,
+     * and never re-create the plugin's tables / re-seed its CMS
+     * surface registrations. The plugin row would be present in
+     * `plugins` but the entire schema + styles/fields/permissions/
+     * lookups would be missing — the exact "install ran but nothing
+     * shows up" symptom reported in the field.
+     *
+     * Implementation notes:
+     *   - The match is anchored at the start of the version string via
+     *     `LOCATE(prefix, version) = 1`, which sidesteps MySQL `LIKE`'s
+     *     backslash escape rules entirely (Doctrine FQCNs are full of
+     *     `\` separators).
+     *   - The trailing `\` is appended to the namespace so a plugin
+     *     namespaced `Humdek\Foo` never matches another plugin
+     *     namespaced `Humdek\FooBar`.
+     *   - No-op when the manifest declares no
+     *     `backend.migrationsNamespace` — plugins without backend
+     *     migrations have nothing to forget.
+     */
+    private function deletePluginMigrationVersions(?string $namespace, PluginOperation $operation): void
+    {
+        if ($namespace === null || $namespace === '') {
+            return;
+        }
+
+        $prefix = rtrim($namespace, '\\') . '\\';
+
+        $affected = $this->connection->executeStatement(
+            'DELETE FROM `doctrine_migration_versions` WHERE LOCATE(:prefix, `version`) = 1',
+            ['prefix' => $prefix]
+        );
+
+        $this->recorder->appendLog($operation, 'Cleared doctrine_migration_versions', [
+            'namespacePrefix' => $prefix,
+            'rowsDeleted' => (int) $affected,
+        ]);
     }
 
     /**
