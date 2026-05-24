@@ -37,8 +37,10 @@ class Lookup
 
     /**
      * Plugin that owns this lookup row. NULL = core-owned.
-     * The lookup-extension policy (closed / plugin_extendable /
-     * plugin_owned) is enforced by LookupExtensionPolicy.
+     * The host-level extension policy per type code lives in
+     * {@see \App\Plugin\Lookup\LookupPolicyRegistry}; the contribution
+     * runtime enforcement is in
+     * {@see \App\Service\Core\LookupService::mergePluginLookupContributions()}.
      */
     #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
     #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
