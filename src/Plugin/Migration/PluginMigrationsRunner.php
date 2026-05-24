@@ -101,7 +101,17 @@ final class PluginMigrationsRunner
 
         $configuration = new Configuration();
         $configuration->addMigrationsDirectory($namespace, $directory);
-        $configuration->setAllOrNothing(true);
+        // Plugin migrations almost always ship DDL (CREATE TABLE,
+        // ALTER TABLE). On MySQL DDL triggers an implicit COMMIT that
+        // silently kills any outer transaction Doctrine has opened —
+        // including the one `allOrNothing=true` would open here. The
+        // resulting nesting-level drift breaks the very next ORM flush
+        // with "SAVEPOINT DOCTRINE_n does not exist", which in turn
+        // closes the EntityManager and leaves the half-installed plugin
+        // row committed (architecture rules forbid the orphan). Keep
+        // each migration responsible for its own transactional scope
+        // (the migration class's own `isTransactional()`).
+        $configuration->setAllOrNothing(false);
         $configuration->setCheckDatabasePlatform(false);
 
         $factory = DependencyFactory::fromConnection(
@@ -152,10 +162,27 @@ final class PluginMigrationsRunner
         }
 
         $migratorConfiguration = (new MigratorConfiguration())
-            ->setAllOrNothing(true)
+            ->setAllOrNothing(false)
             ->setTimeAllQueries(false);
 
-        $factory->getMigrator()->migrate($plan, $migratorConfiguration);
+        try {
+            $factory->getMigrator()->migrate($plan, $migratorConfiguration);
+        } finally {
+            // Defensive cleanup against MySQL's implicit-commit-on-DDL
+            // behaviour: even with `allOrNothing=false` an individual
+            // migration whose `isTransactional()` defaults to `true`
+            // still opens a transaction before running its CREATE/ALTER
+            // TABLE, the DDL silently commits it on the driver side, and
+            // the Doctrine wrapper's nesting counter is left at >0 with
+            // no actual transaction underneath. Closing the connection
+            // here resets the counter to 0 and lets the next query
+            // lazy-reconnect with a clean state, so the caller's next
+            // `em->flush()` does not blow up with
+            // "SAVEPOINT DOCTRINE_n does not exist".
+            if ($this->connection->getTransactionNestingLevel() > 0) {
+                $this->connection->close();
+            }
+        }
 
         $applied = [];
         foreach ($plan->getItems() as $planItem) {
