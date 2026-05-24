@@ -32,44 +32,20 @@ use Psr\Log\LoggerInterface;
  * bundle namespaces. Core writes — issued from `App\…` services —
  * always bypass the guard.
  *
- * Protected tables list is the same set declared in the project's
- * `AGENTS.md` ("Plugin Ecosystem Rules → deny-by-default"); the table
- * names match the actual schema (snake_case).
+ * The protected-tables list is delegated to {@see ProtectedTablesPolicy}
+ * so the migration-runner guard ({@see PluginMigrationGuard}), the
+ * runtime entity guard (this class) and the purger
+ * ({@see \App\Plugin\Lifecycle\PluginPurger}) all agree on what
+ * counts as protected.
  *
  * NOTE: this is the entity-write path. Raw DBAL queries that bypass
  * Doctrine's UnitOfWork (rare in the new codebase but possible in
- * legacy services) are *not* covered. The matching deny-list also
- * exists at the migration-runner level (`PluginMigrationGuard`) so
- * destructive migrations cannot smuggle in `DROP`/`TRUNCATE`.
+ * legacy services) are *not* covered. The matching deny-list at the
+ * migration-runner level catches destructive DDL on those tables.
  */
 #[AsDoctrineListener(event: Events::onFlush)]
 final class PluginDataAccessGuard
 {
-    /**
-     * Tables that no plugin may write to, regardless of declared
-     * `dataAccess.write` — unless the plugin is `official`-trust and
-     * has explicitly declared the table.
-     *
-     * @var list<string>
-     */
-    public const PROTECTED_TABLES = [
-        'users',
-        'roles',
-        'permissions',
-        'groups',
-        'rel_users_groups',
-        'plugins',
-        'plugin_operations',
-        'plugin_sources',
-        'plugin_feature_flags',
-        'rel_groups_acl',
-        'rel_roles_permissions',
-        'rel_users_roles',
-        'lookups',
-        'api_routes',
-        'rel_api_routes_permissions',
-    ];
-
     public function __construct(
         private readonly PluginRegistryService $plugins,
         private readonly LoggerInterface $logger,
@@ -127,7 +103,7 @@ final class PluginDataAccessGuard
             return;
         }
 
-        if (in_array($table, self::PROTECTED_TABLES, true)) {
+        if (ProtectedTablesPolicy::isProtected($table)) {
             // Protected tables require explicit grant on top of being
             // listed in dataAccess.write.
             if (!in_array($table, $allowedWrites, true)) {
