@@ -82,7 +82,7 @@ class ApiRouteLoader extends Loader
         // routes in collection order and the first match wins, so without
         // this sort a dynamic route registered earlier (e.g. baseline
         // `/admin/plugins/{pluginId}`) would shadow a later static
-        // sibling (e.g. `/admin/plugins/updates` introduced in a
+        // sibling (e.g. `/admin/plugins/available` introduced in a
         // follow-up migration). We keep the existing version + id order
         // as the tie-breaker so the relative order within each bucket
         // remains stable and idempotent.

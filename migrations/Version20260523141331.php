@@ -28,9 +28,14 @@ use Doctrine\Migrations\AbstractMigration;
  * API-route changes:
  *   - register the single-step routes
  *     `admin_plugins_install`, `admin_plugins_inspect_archive`,
- *     `admin_plugins_update`, `admin_plugins_available`,
- *     `admin_plugins_updates`,
+ *     `admin_plugins_update`,
  *     `admin_plugins_operations_cancel`.
+ *
+ * `admin_plugins_available` is registered by the dedicated earlier
+ * migration `Version20260522102136.php`; it is intentionally not
+ * re-inserted here. There is no separate `/admin/plugins/updates`
+ * endpoint — the admin "Installed" tab embeds `availableUpdate`
+ * inline through `PluginAdminService::listPlugins()`.
  *
  * The previous legacy two-step routes (`admin_plugins_request_install`,
  * `admin_plugins_finalize_install`, `admin_plugins_request_update`,
@@ -44,8 +49,7 @@ use Doctrine\Migrations\AbstractMigration;
  * `selfhelp:plugin:run-operation` for managed mode.
  *
  * Permissions:
- *   - read-only routes (`available`, `updates`, `inspect-archive`)
- *     require `admin.plugins.manage`,
+ *   - read-only routes (`inspect-archive`) require `admin.plugins.manage`,
  *   - state-changing routes (`install`, `update`, `cancel`) require
  *     `admin.plugins.execute`. `inspect-archive` does NOT request
  *     `.execute` because it never persists state — it only validates
@@ -93,22 +97,6 @@ final class Version20260523141331 extends AbstractMigration
                 'permission' => 'admin.plugins.execute',
             ],
             [
-                'route_name' => 'admin_plugins_available',
-                'methods' => 'GET',
-                'path' => '/admin/plugins/available',
-                'controller' => 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::listAvailable',
-                'requirements' => null,
-                'permission' => 'admin.plugins.manage',
-            ],
-            [
-                'route_name' => 'admin_plugins_updates',
-                'methods' => 'GET',
-                'path' => '/admin/plugins/updates',
-                'controller' => 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::listUpdates',
-                'requirements' => null,
-                'permission' => 'admin.plugins.manage',
-            ],
-            [
                 'route_name' => 'admin_plugins_operations_cancel',
                 'methods' => 'POST',
                 'path' => '/admin/plugins/operations/{operationId}/cancel',
@@ -145,8 +133,6 @@ final class Version20260523141331 extends AbstractMigration
             'admin_plugins_install',
             'admin_plugins_inspect_archive',
             'admin_plugins_update',
-            'admin_plugins_available',
-            'admin_plugins_updates',
             'admin_plugins_operations_cancel',
         ];
         $newList = implode(',', array_map(static fn(string $n): string => "'" . $n . "'", $newRoutes));

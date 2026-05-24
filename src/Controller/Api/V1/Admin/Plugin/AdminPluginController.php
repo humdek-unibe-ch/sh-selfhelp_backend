@@ -86,27 +86,6 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
-     * Lists installed plugins that have a strictly-newer entry in any
-     * enabled `PluginSource`. Powers the admin "Updates" tab — one row
-     * per upgradeable plugin with `installedVersion`,
-     * `availableVersion`, and the resolved registry entry for one-click
-     * update dispatch.
-     *
-     * @route /admin/plugins/updates
-     * @method GET
-     */
-    public function listUpdates(): JsonResponse
-    {
-        try {
-            return $this->responseFormatter->formatSuccess([
-                'updates' => $this->pluginAdminService->listAvailableUpdates(),
-            ]);
-        } catch (\Throwable $e) {
-            return $this->respondWithError($e);
-        }
-    }
-
-    /**
      * @route /admin/plugins/{pluginId}
      * @method GET
      */

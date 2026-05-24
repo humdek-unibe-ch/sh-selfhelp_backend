@@ -12,7 +12,7 @@
                 "id": { "type": "integer" },
                 "pluginId": { "type": "string" },
                 "type": { "type": "string", "enum": ["install", "update", "disable", "enable", "uninstall", "purge", "rollback", "repair"] },
-                "status": { "type": "string", "enum": ["requested", "running", "succeeded", "failed", "rolled-back"] },
+                "status": { "type": "string", "enum": ["requested", "running", "succeeded", "failed", "cancelled", "rolled_back"] },
                 "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
                 "fromVersion": { "type": ["string", "null"] },
                 "toVersion": { "type": ["string", "null"] },
