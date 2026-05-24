@@ -514,6 +514,42 @@ final class PluginAdminService extends BaseService
         return $this->formatOperation($this->mustFindOperation($operationId));
     }
 
+    /**
+     * Force-cancel a stuck plugin operation. Mirrors
+     * `selfhelp:plugin:cancel-operation` so admins do not have to
+     * drop to a shell when a Messenger worker died mid-operation.
+     *
+     * Only operations in REQUESTED or RUNNING are eligible — any
+     * other status is a no-op (idempotent for the UI).
+     *
+     * @return array<string,mixed>
+     */
+    public function cancelOperation(int $operationId): array
+    {
+        $op = $this->mustFindOperation($operationId);
+        $status = $op->getStatus();
+        if (!in_array($status, [PluginOperation::STATUS_REQUESTED, PluginOperation::STATUS_RUNNING], true)) {
+            return $this->formatOperation($op);
+        }
+
+        $op->setStatus(PluginOperation::STATUS_CANCELLED);
+        $op->setFinishedAt(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+        $op->appendLog([
+            'event' => 'cancelled-by-operator',
+            'message' => sprintf(
+                'Operation #%d (%s/%s) force-cancelled via admin API. Previous status: %s.',
+                $operationId,
+                $op->getPluginId(),
+                $op->getType(),
+                $status
+            ),
+        ]);
+        $this->em->persist($op);
+        $this->em->flush();
+
+        return $this->formatOperation($op);
+    }
+
     /** @return array<int, array<string,mixed>> */
     public function listSources(): array
     {

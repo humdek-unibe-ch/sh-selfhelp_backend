@@ -14,15 +14,18 @@ use App\Plugin\Service\PluginAdminService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * List + inspect plugin operations.
+ * Admin plugin operations controller — endpoints that act on a
+ * `plugin_operations` row directly (rather than on a plugin).
  *
- *   GET  /admin/plugins/operations
- *   GET  /admin/plugins/operations/{operationId}
- *   POST /admin/plugins/operations/{operationId}/rollback
+ *   POST   /cms-api/v1/admin/plugins/operations/{operationId}/cancel
+ *
+ * Mirrors the `selfhelp:plugin:cancel-operation` CLI command so
+ * admins can clear a stuck operation row from the UI without
+ * dropping to a shell. Wired by `Version20260523141331.php` to the
+ * `admin.plugins.execute` permission (state-changing operation).
  */
 final class AdminPluginOperationController extends AbstractController
 {
@@ -33,61 +36,22 @@ final class AdminPluginOperationController extends AbstractController
     }
 
     /**
-     * @route /admin/plugins/operations
-     * @method GET
-     */
-    public function listOperations(Request $request): JsonResponse
-    {
-        try {
-            $pluginId = $request->query->get('pluginId');
-            $limit = (int) $request->query->get('limit', 100);
-            return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->listOperations(is_string($pluginId) && $pluginId !== '' ? $pluginId : null, $limit),
-                'responses/admin/plugins/plugin_operations_list'
-            );
-        } catch (\Throwable $e) {
-            return $this->respondWithError($e);
-        }
-    }
-
-    /**
-     * @route /admin/plugins/operations/{operationId}
-     * @method GET
-     */
-    public function getOperation(int $operationId): JsonResponse
-    {
-        try {
-            return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->getOperation($operationId),
-                'responses/admin/plugins/plugin_operation'
-            );
-        } catch (\Throwable $e) {
-            return $this->respondWithError($e);
-        }
-    }
-
-    /**
-     * @route /admin/plugins/operations/{operationId}/rollback
+     * @route /admin/plugins/operations/{operationId}/cancel
      * @method POST
      */
-    public function rollback(int $operationId): JsonResponse
+    public function cancel(int $operationId): JsonResponse
     {
         try {
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->rollback($operationId),
-                'responses/admin/plugins/plugin_operation'
+                $this->pluginAdminService->cancelOperation($operationId),
+                'responses/admin/plugins/plugin_operation',
             );
         } catch (\Throwable $e) {
-            return $this->respondWithError($e);
+            $status = $e->getCode();
+            if (!is_int($status) || $status < Response::HTTP_BAD_REQUEST || $status >= 600) {
+                $status = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
+            return $this->responseFormatter->formatError($e->getMessage(), $status);
         }
-    }
-
-    private function respondWithError(\Throwable $e): JsonResponse
-    {
-        $status = $e->getCode();
-        if (!is_int($status) || $status < 100 || $status > 599) {
-            $status = Response::HTTP_INTERNAL_SERVER_ERROR;
-        }
-        return $this->responseFormatter->formatError($e->getMessage(), $status);
     }
 }

@@ -10,9 +10,8 @@ declare(strict_types=1);
 
 namespace App\Command\Plugin;
 
-use App\Entity\Plugin\PluginOperation;
-use App\Repository\Plugin\PluginOperationRepository;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Exception\ServiceException;
+use App\Plugin\Service\PluginAdminService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -46,8 +45,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 final class PluginCancelOperationCommand extends Command
 {
     public function __construct(
-        private readonly PluginOperationRepository $operations,
-        private readonly EntityManagerInterface $em,
+        private readonly PluginAdminService $adminService,
     ) {
         parent::__construct();
     }
@@ -61,43 +59,32 @@ final class PluginCancelOperationCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $opId = (int) $input->getArgument('operationId');
-        $operation = $this->operations->find($opId);
-        if (!$operation instanceof PluginOperation) {
-            $io->error(sprintf('Plugin operation #%d not found.', $opId));
+        try {
+            $result = $this->adminService->cancelOperation($opId);
+        } catch (ServiceException $e) {
+            $io->error($e->getMessage());
             return Command::FAILURE;
         }
 
-        $status = $operation->getStatus();
-        if (!in_array($status, [PluginOperation::STATUS_REQUESTED, PluginOperation::STATUS_RUNNING], true)) {
+        $status = (string) ($result['status'] ?? 'unknown');
+        $pluginId = (string) ($result['pluginId'] ?? '');
+        $type = (string) ($result['type'] ?? '');
+        if ($status !== 'cancelled') {
             $io->warning(sprintf(
-                'Operation #%d is in "%s" status; nothing to cancel (only REQUESTED or RUNNING operations can be cancelled).',
+                'Operation #%d (%s/%s) was not cancellable; current status is "%s".',
                 $opId,
+                $pluginId,
+                $type,
                 $status
             ));
             return Command::SUCCESS;
         }
 
-        $operation->setStatus(PluginOperation::STATUS_CANCELLED);
-        $operation->setFinishedAt(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
-        $operation->appendLog([
-            'event' => 'cancelled-by-operator',
-            'message' => sprintf(
-                'Operation #%d (%s/%s) force-cancelled via selfhelp:plugin:cancel-operation. Previous status: %s.',
-                $opId,
-                $operation->getPluginId(),
-                $operation->getType(),
-                $status
-            ),
-        ]);
-        $this->em->persist($operation);
-        $this->em->flush();
-
         $io->success(sprintf(
-            'Operation #%d (%s/%s) cancelled. Previous status: %s. Subsequent plugin operations can now proceed.',
+            'Operation #%d (%s/%s) cancelled. Subsequent plugin operations can now proceed.',
             $opId,
-            $operation->getPluginId(),
-            $operation->getType(),
-            $status
+            $pluginId,
+            $type
         ));
         return Command::SUCCESS;
     }

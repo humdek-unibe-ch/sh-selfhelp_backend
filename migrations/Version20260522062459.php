@@ -69,11 +69,14 @@ final class Version20260522062459 extends AbstractMigration
             // Plugin list + detail
             $r('admin_plugins_list', 'GET', '/admin/plugins', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::listPlugins'),
             $r('admin_plugins_get', 'GET', '/admin/plugins/{pluginId}', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::getPlugin', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')"),
-            // Install / update lifecycle
-            $r('admin_plugins_request_install', 'POST', '/admin/plugins', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::requestInstall', null, null, ['admin.plugins.execute']),
-            $r('admin_plugins_finalize_install', 'POST', '/admin/plugins/{pluginId}/finalize-install', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::finalizeInstall', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')", null, ['admin.plugins.execute']),
-            $r('admin_plugins_request_update', 'POST', '/admin/plugins/{pluginId}/request-update', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::requestUpdate', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')", null, ['admin.plugins.execute']),
-            $r('admin_plugins_finalize_update', 'POST', '/admin/plugins/{pluginId}/finalize-update', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::finalizeUpdate', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')", null, ['admin.plugins.execute']),
+            // Install / update lifecycle — the unified install/update
+            // routes are registered by `Version20260523141331.php`.
+            // The legacy `request*`/`finalize*` routes were briefly
+            // listed here but pointed at controller methods that
+            // never existed (`requestInstall`, `finalizeInstall`,
+            // `requestUpdate`, `finalizeUpdate`). They have been
+            // dropped pre-release rather than carrying a no-op
+            // cleanup over to the next migration.
             $r('admin_plugins_enable', 'POST', '/admin/plugins/{pluginId}/enable', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::enable', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')", null, ['admin.plugins.execute']),
             $r('admin_plugins_disable', 'POST', '/admin/plugins/{pluginId}/disable', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::disable', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')", null, ['admin.plugins.execute']),
             $r('admin_plugins_uninstall', 'POST', '/admin/plugins/{pluginId}/uninstall', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\Plugin\\\\AdminPluginController::uninstall', "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')", null, ['admin.plugins.execute']),
@@ -114,6 +117,21 @@ final class Version20260522062459 extends AbstractMigration
                 "INSERT IGNORE INTO `permissions` (`name`, `description`) VALUES ('%s', '%s')",
                 addslashes($name),
                 addslashes($desc),
+            ));
+        }
+
+        // Grant the admin role every admin.plugins.* permission so a
+        // fresh install lets the bundled admin actually use the
+        // plugin manager. Without this, the admin role is created
+        // from the legacy seed `roles_permissions` (Version20260501000100)
+        // which only knows about the original 54 permissions and has
+        // no knowledge of the plugin-layer permissions added here.
+        // `INSERT IGNORE` keeps re-runs idempotent.
+        foreach (self::PERMISSIONS as $perm) {
+            $this->addSql(sprintf(
+                "INSERT IGNORE INTO `rel_permissions_roles` (`id_permissions`, `id_roles`) "
+                . "SELECT p.id, r.id FROM `permissions` p JOIN `roles` r ON r.name = 'admin' WHERE p.name = '%s'",
+                addslashes($perm['name']),
             ));
         }
 
@@ -164,7 +182,16 @@ final class Version20260522062459 extends AbstractMigration
         $this->addSql("DELETE rap FROM `rel_api_routes_permissions` rap JOIN `api_routes` ar ON ar.id = rap.id_api_routes WHERE ar.route_name IN ({$list})");
         $this->addSql("DELETE FROM `api_routes` WHERE `route_name` IN ({$list})");
 
+        // `rel_permissions_roles.id_permissions` cascades on the
+        // permissions DELETE below, but being explicit here is
+        // friendlier to operators reading the migration log.
         foreach (self::PERMISSIONS as $perm) {
+            $this->addSql(sprintf(
+                "DELETE rpr FROM `rel_permissions_roles` rpr "
+                . "JOIN `permissions` p ON p.id = rpr.id_permissions "
+                . "WHERE p.name = '%s'",
+                addslashes($perm['name']),
+            ));
             $this->addSql("DELETE FROM `permissions` WHERE `name` = '" . addslashes($perm['name']) . "'");
         }
     }
