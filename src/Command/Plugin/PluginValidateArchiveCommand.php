@@ -28,7 +28,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  * compatibility all line up against the host's trusted-keys env.
  *
  * Exit codes:
- *   0 — archive validates cleanly (signatureStatus=verified).
+ *   0 — archive validates cleanly (signature.status=verified).
  *   1 — validation reported errors (signature invalid / unsigned /
  *       capability violation / compatibility blocking).
  */
@@ -73,7 +73,9 @@ final class PluginValidateArchiveCommand extends Command
         $version = isset($manifest['version']) && is_string($manifest['version']) ? $manifest['version'] : '(unknown)';
 
         $io->section(sprintf('Plugin: %s @ %s', $pluginId, $version));
-        $io->writeln(sprintf('Signature status: <info>%s</info>', $result['signatureStatus']));
+        $signature = is_array($result['signature']) ? $result['signature'] : [];
+        $signatureStatus = isset($signature['status']) && is_string($signature['status']) ? $signature['status'] : 'unverifiable';
+        $io->writeln(sprintf('Signature status: <info>%s</info>', $signatureStatus));
         $io->writeln(sprintf('Capabilities: %s', $result['capabilities'] === [] ? '(none)' : implode(', ', $result['capabilities'])));
 
         $compat = $result['compatibility'] ?? null;

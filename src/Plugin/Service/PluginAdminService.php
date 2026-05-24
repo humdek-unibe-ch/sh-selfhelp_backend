@@ -363,7 +363,7 @@ final class PluginAdminService extends BaseService
      * Pre-install inspection for `.shplugin` uploads. Extracts +
      * validates the archive without dispatching any operation so the
      * frontend can show a preview card (manifest, compatibility,
-     * capabilities, signatureStatus, errors).
+     * capabilities, signature, errors).
      *
      * Returns structured data even when validation fails so the UI can
      * show a "cannot install — here is why" panel without surfacing a
@@ -381,7 +381,6 @@ final class PluginAdminService extends BaseService
      *
      * @return array{
      *     ok: bool,
-     *     signatureStatus: 'verified'|'invalid'|'unsigned'|'unverifiable',
      *     signature: array{
      *         status: 'verified'|'invalid'|'unsigned'|'unverifiable',
      *         keyId: string|null,

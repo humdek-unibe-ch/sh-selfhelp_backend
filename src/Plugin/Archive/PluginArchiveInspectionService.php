@@ -24,7 +24,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  *
  * Extracts the upload, runs each stage of the validator pipeline
  * defensively, and converts failures into structured `errors[]`
- * entries with a precise `signatureStatus` ("verified" | "invalid" |
+ * entries with a precise `signature.status` ("verified" | "invalid" |
  * "unsigned" | "unverifiable"). The frontend uses the result to render
  * a preview card *before* the admin clicks Install — they need to see
  * exactly why an install would fail without triggering an operation.
@@ -59,7 +59,6 @@ final class PluginArchiveInspectionService
      *
      * @return array{
      *     ok: bool,
-     *     signatureStatus: 'verified'|'invalid'|'unsigned'|'unverifiable',
      *     signature: array{
      *         status: 'verified'|'invalid'|'unsigned'|'unverifiable',
      *         keyId: string|null,
@@ -422,7 +421,6 @@ final class PluginArchiveInspectionService
      * @param array{mode:'connected'|'standalone',backendIncluded:bool,backendPackage:string|null,backendVersion:string|null,installMode:'composer-path-repository'|'composer-packagist'} $archive
      * @return array{
      *     ok: bool,
-     *     signatureStatus: 'verified'|'invalid'|'unsigned'|'unverifiable',
      *     signature: array{
      *         status: 'verified'|'invalid'|'unsigned'|'unverifiable',
      *         keyId: string|null,
@@ -474,10 +472,6 @@ final class PluginArchiveInspectionService
 
         return [
             'ok' => $ok,
-            // Top-level signatureStatus is kept for backward
-            // compatibility with frontend consumers that already
-            // branch on it. New consumers should read `signature.*`.
-            'signatureStatus' => $status,
             'signature' => [
                 'status' => $status,
                 'keyId' => $signatureKeyId,
