@@ -24,10 +24,19 @@ use Symfony\Component\HttpFoundation\Response;
  *   - Mobile `plugins:sync` script (same, per EAS profile).
  *   - Admin UI for live manifest viewing.
  *
- * The endpoint is public read-only: it returns only enabled plugins
- * and only the manifest data (no secrets, no checksums, no operation
- * history). Authenticated callers see the same payload as anonymous
- * — sensitive data lives under `/admin/plugins/...`.
+ * The endpoint is public read-only: it returns only the fields the
+ * frontend `PluginRuntime` consumes from `IPluginManifestEntry`. It
+ * deliberately does NOT include:
+ *   - the raw `manifest` blob (would leak `security.signing.acceptedKeyIds`,
+ *     `security.externalHosts`, `backend.composer.repository` URLs +
+ *     credentials hints),
+ *   - the lock-file snapshot (signatures + keyIds for every installed
+ *     plugin),
+ *   - operation history, secrets, or checksums.
+ *
+ * Anything that needs the full manifest or the lock-file (admin UI
+ * detail pages, doctor command) goes through the authenticated
+ * `/admin/plugins/...` endpoints instead.
  *
  *   GET /cms-api/v1/plugins/manifest
  */
@@ -79,7 +88,6 @@ final class PluginManifestController extends AbstractController
                     'enabled' => $plugin->isEnabled(),
                     'capabilities' => $capabilities,
                     'featureFlags' => $featureFlagDefaults,
-                    'manifest' => $manifest,
                     'frontendRuntimeUrl' => $plugin->getFrontendRuntimeUrl(),
                     'frontendRuntimeStylesheetUrl' => $plugin->getFrontendRuntimeStylesheetUrl(),
                     'frontendRuntimeIntegrity' => $plugin->getFrontendRuntimeIntegrity(),
@@ -94,7 +102,6 @@ final class PluginManifestController extends AbstractController
                     'cmsVersion' => $this->pluginAdminService->getCmsVersion(),
                     'sdkApiVersion' => $this->pluginAdminService->getSdkApiVersion(),
                     'plugins' => $plugins,
-                    'lockfileSnapshot' => $this->pluginAdminService->getLockFileSnapshot(),
                     'safeMode' => $this->pluginAdminService->isSafeModeOn(),
                 ],
                 'responses/frontend/plugin_manifest'
