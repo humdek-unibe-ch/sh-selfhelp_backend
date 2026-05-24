@@ -86,7 +86,7 @@ When implementing features that affect multiple repositories:
 - Log data-changing operations through `TransactionService` where existing services do so.
 - Invalidate relevant caches after writes, especially page, section, user, role, permission, lookup, API route, and frontend caches.
 - Preserve the recursive frontend page/section processing order unless intentionally changing frontend rendering behavior.
-- The plugin ecosystem is the manifest + Symfony events + tagged services system documented under `docs/plugins/` (`architecture.md`, `developer-guide.md`, `installation.md`, `surveyjs-plugin.md`). The legacy `docs/plugin_hooks.md` proxy/hook proposal is retired — do not extend it.
+- The plugin ecosystem is the manifest + Symfony events + tagged services system documented under `docs/plugins/` (`architecture.md`, `developer-guide.md`, `installation.md`, `surveyjs-plugin.md`). No runtime proxy / method-interception hook system exists; new extension surfaces must be added as explicit events or tagged services that the host actually consumes.
 - Do not introduce new architectural patterns without checking whether the repository already has an established approach.
 
 ## Existing Patterns First
@@ -278,7 +278,7 @@ When making changes, explain:
 - Do not skip cache invalidation after data writes.
 - Do not store local-time datetimes in the database.
 - Do not expose or copy secrets into docs, tests, logs, or examples.
-- Do not rely on the retired `docs/plugin_hooks.md` proxy/hook proposal — the live extension surface is documented under `docs/plugins/`.
+- Do not invent a runtime proxy / method-interception hook system; the live extension surface is the manifest plus the events and tagged services listed under `docs/plugins/`.
 - Do not hand-edit generated files such as `config/reference.php` unless the task specifically requires it.
 - Do not create parallel abstractions when an existing service, trait, validator, cache category, or permission pattern already fits.
 - Do not modernize broad areas opportunistically; keep legacy-compatible patterns unless a refactor is explicitly requested.

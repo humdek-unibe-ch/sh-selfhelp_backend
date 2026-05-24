@@ -252,9 +252,11 @@ services:
     # Unified resolver for registry / url / paste / archive install sources.
     App\Plugin\Manifest\ManifestResolver: ~
 
-    # Default no-op backup hook. Operators may override by tagging
-    # `selfhelp.plugin.backup_hook` on a service implementing
-    # PluginBackupHookInterface.
+    # Default no-op backup hook. Operators or plugins may override by
+    # re-aliasing `App\Plugin\Backup\PluginBackupHookInterface` in
+    # their own `services.yaml`. There is no tagged iterator: the host
+    # uses exactly one backup hook at a time, injected as a singleton
+    # into `PluginUpdater` / `PluginPurger`.
     App\Plugin\Backup\NoopPluginBackupHook: ~
     App\Plugin\Backup\PluginBackupHookInterface:
         alias: App\Plugin\Backup\NoopPluginBackupHook

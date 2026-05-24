@@ -285,10 +285,10 @@ runtime, and never write to config outside the installer.
 
 ### Tagged services (host → plugin runtime)
 
-Only these tags are consumed by the host today. Anything else
-documented historically (`selfhelp.plugin.field_renderer`,
-`selfhelp.plugin.scheduled_job_type`, `selfhelp.plugin.realtime_topic`)
-was never wired up — use the matching event (above) instead.
+Only these tags are consumed by the host today. Tag names that have
+appeared in earlier proposals (for example `field_renderer`,
+`scheduled_job_type`, `realtime_topic`) are **not** collected
+anywhere; use the matching event (above) instead.
 
 - `selfhelp.plugin.health_check` — health checks shown in the doctor
   command. Consumed by `App\Plugin\Health\PluginHealthService`.
@@ -345,15 +345,15 @@ operation log so admins see a clear "no backup taken" banner.
 
 ## 11. Why no plugin proxy hooks
 
-The legacy `docs/plugin_hooks.md` proposal described a runtime proxy
-system based on `ocramius/proxy-manager`. That approach is **not
-implemented** and is intentionally retired in favor of explicit
-Symfony events and tagged services. Reasons:
+An early design considered a runtime proxy system based on
+`ocramius/proxy-manager` that would let plugins intercept arbitrary
+core methods. That approach is **not implemented**: explicit Symfony
+events and tagged services were chosen instead because they are:
 
-- Explicit subscriber registrations are auditable.
-- They survive Symfony cache compilation.
-- They cannot accidentally short-circuit core behavior.
-- They line up with the manifest-as-source-of-truth principle.
+- Auditable — every subscriber registration is grep-able in the host.
+- Compatible with Symfony cache compilation.
+- Unable to silently short-circuit core behavior.
+- Aligned with the manifest-as-source-of-truth principle.
 
 If a future plugin really needs to intercept a core method, propose a
 new event in the host (`App\Plugin\Event\*`) instead.

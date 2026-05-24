@@ -365,25 +365,60 @@ for survey definitions and pattern 3 for survey responses.
 
 ## 9. CMS Extension Points
 
-The host exposes Symfony event subscribers and tagged services for the
-common extension points. Plugins should always extend via these,
-**never** by editing core files.
+The host exposes Symfony events and tagged services for the
+extension surfaces it actually consumes today. Plugins extend the
+CMS via these only; new tags or events that the host does not
+collect have no effect at runtime.
 
-- **Sensible page lifecycle**: subscribe to
-  `App\Plugin\Event\Page\PageContextEvent` to inject plugin styles into
-  the page tree at render time.
-- **Custom CMS field renderers**: register a tagged service for
-  `selfhelp.plugin.field_renderer` to provide a custom edit/view widget
-  for a manifest-declared field.
-- **CSP rules**: declare `security.cspRules` in the manifest. The
+Events the host dispatches:
+
+- **API routes** — subscribe to `App\Plugin\Event\ApiRouteRegistryEvent`
+  to contribute additional routes loaded by `App\Routing\ApiRouteLoader`.
+- **Styles** — subscribe to `App\Plugin\Event\StyleRegistryEvent` to
+  add styles to the schema returned by `AdminStyleController`.
+- **Lookups** — subscribe to `App\Plugin\Event\LookupRegistryEvent` to
+  extend `plugin_extendable` lookup groups (or to own a new
+  `plugin_owned` group) when `LookupService` first loads them.
+- **Scheduled job types** — subscribe to
+  `App\Plugin\Event\ScheduledJobTypeEvent` to advertise job types in
+  the admin schema; pair with a `selfhelp.plugin.scheduled_job_handler`
+  tagged service to actually execute the job.
+- **Realtime topics** — subscribe to
+  `App\Plugin\Event\PluginRealtimeTopicRegistryEvent` to advertise a
+  Mercure topic and to `App\Plugin\Event\PluginRealtimePermissionEvent`
+  to grant subscribers access at JWT-mint time.
+- **Lifecycle events** — react to `PluginInstalledEvent`,
+  `PluginEnabledEvent`, `PluginDisabledEvent`, `PluginUpdatedEvent`,
+  `PluginUninstalledEvent`, `PluginPurgedEvent`, and
+  `PluginOperationProgressEvent` for plugin-specific bootstrap or
+  cleanup work.
+
+Tagged services the host collects today:
+
+- **`selfhelp.plugin.health_check`** — gathered by
+  `App\Plugin\Health\PluginHealthService` for the admin diagnostics
+  surface.
+- **`selfhelp.plugin.scheduled_job_handler`** — collected by
+  `App\Plugin\ScheduledJob\PluginScheduledJobRegistry` and dispatched
+  by `JobSchedulerService::executeByType` when a scheduled job whose
+  `jobType` matches the handler's `JOB_TYPE` is due.
+
+Singleton aliases on interfaces (`PluginBackupHookInterface`,
+`PluginRealtimePublisherInterface`) provide additional extension
+points; see [`architecture.md`](./architecture.md) for the full list.
+
+Manifest-driven surfaces consumed without tags or events:
+
+- **CSP rules** — declare `security.cspRules` in the manifest; the
   installer merges them into the global CSP on enable / disable.
-- **Lookup registry**: declare `lookups.extends[]` in the manifest. The
-  installer reconciles the rows on each install / update.
-- **Scheduled jobs**: declare `scheduledJobs[]` in the manifest and
-  register a tagged job handler (`selfhelp.plugin.scheduled_job`) in
-  your bundle.
-- **Realtime topics**: declared in manifest, published via
-  `IPluginRealtimePublisher`.
+- **Lookups** — declare `lookups.extends[]` / `lookups.owned[]` in
+  the manifest as a static alternative to subscribing to
+  `LookupRegistryEvent`.
+
+Field renderers, page-lifecycle hooks, and other surfaces from
+earlier proposals are **not** consumed by the host. Do not register
+tags such as `selfhelp.plugin.field_renderer` — nothing iterates
+over them and the bundle compile pass will not complain about it.
 
 ---
 
@@ -467,6 +502,40 @@ descriptor.
 The host uses Mercure for all dynamic updates. Plugins **must** use the
 host realtime publisher; running an own Mercure client is forbidden
 and will be blocked at install time.
+
+Inject the host contract directly:
+
+```php
+use App\Plugin\Realtime\PluginRealtimePublisherInterface;
+
+final class MyPluginRealtimePublisher
+{
+    public function __construct(
+        private readonly PluginRealtimePublisherInterface $host,
+    ) {}
+}
+```
+
+The host aliases `App\Plugin\Realtime\PluginRealtimePublisherInterface`
+to its concrete `App\Plugin\Realtime\PluginRealtimePublisher` in
+`config/services.yaml`. Symfony's autowiring resolves the dependency
+without any extra configuration in the plugin's `services.php`.
+
+Anti-patterns to avoid:
+
+- Do **NOT** redeclare a plugin-local interface named
+  `PluginRealtimePublisherInterface` inside the plugin namespace and
+  rely on the host to alias it — the host only aliases its own
+  interface, never plugin-local copies. If you ever shipped such a
+  pattern, migrate to importing the host interface directly.
+- Do **NOT** ship a production no-op publisher
+  (`NullPluginRealtimePublisher`-style) as the default DI binding.
+  Realtime is mandatory; if Mercure is unavailable in a given
+  environment, that is a host configuration problem, not something
+  the plugin should silently mask.
+- Test fakes are fine, but they belong **only** in test config
+  (`config/services_test.php`) — never in the production service
+  wiring.
 
 Frontend plugins subscribe to topics through the host's React Query
 key invalidation: the `usePluginRuntime()` snapshot lists declared
