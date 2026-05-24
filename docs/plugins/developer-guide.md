@@ -7,7 +7,7 @@ the SelfHelp Symfony backend (CMS host). This document is the canonical
 - `docs/plugins/plugin-manifest.schema.json` (machine-readable manifest schema)
 - `docs/plugins/multi-repo-agents-md.md` (AGENTS.md rules across repos)
 - `docs/plugins/plugin-repo-agents-md-template.md` (drop-in AGENTS.md for plugin repos)
-- `docs/plugins/architecture.md` (system-level architecture overview, see Phase 7)
+- `docs/plugins/architecture.md` (system-level architecture overview)
 
 > SelfHelp CMS lives in `sh-selfhelp_backend` (Symfony 7.4 + PHP 8.4). The
 > frontend lives in `sh-selfhelp_frontend` (Next.js + Mantine). The
@@ -487,8 +487,8 @@ The CMS installer flow is **one HTTP request → one Messenger message**:
 6. **Purge** — destructive. Drops plugin-owned tables and removes
    `id_plugins`-tagged rows. Requires `confirmedPluginId` in the
    request body and `--confirm` on CLI.
-7. **Repair / sync-lock** — recomputes the lock file and bundles file
-   from the DB state. Idempotent.
+7. **Repair** — recomputes the lock file and bundles file from the DB
+   state. Idempotent. Exposed as `selfhelp:plugin:repair` on the CLI.
 
 Every operation creates a `plugin_operations` row with type,
 before/after manifest snapshots, bundles + lock file checksums,
@@ -700,8 +700,9 @@ on a valid `.shplugin`:
    Mercure event on `selfhelp/plugins/manifest`.
 7. The frontend
    ([`PluginsProvider.tsx`](../../../sh-selfhelp_frontend/src/app/components/frontend/plugin-runtime/PluginsProvider.tsx))
-   sees the Mercure event (once the wiring described in the file's
-   `useAdminPluginsRealtime` Phase 3 follow-up is in place),
+   sees the Mercure event over the `useAdminPluginsRealtime` SSE
+   subscription (registered globally in
+   [`providers.tsx`](../../../sh-selfhelp_frontend/src/providers/providers.tsx)),
    refetches `/cms-api/v1/plugins/manifest`, and dynamically imports
    the new plugin's `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
 8. If live registration is unsafe (e.g. the plugin contributes new
@@ -742,12 +743,15 @@ Useful CLI commands:
 | `selfhelp:plugin:disable <id>`                   | Disable a plugin                                   |
 | `selfhelp:plugin:uninstall <id>`                 | Dispatch an uninstall (keeps data)                 |
 | `selfhelp:plugin:purge <id> --confirm`           | Drop plugin-owned tables                           |
-| `selfhelp:plugin:sync-lock`                      | Regenerate lock + bundles file from DB state       |
+| `selfhelp:plugin:repair [pluginId]`              | Regenerate lock + bundles file from DB state       |
 | `selfhelp:plugin:check-compatibility`            | Per-plugin compatibility report                    |
 | `selfhelp:plugin:check-updates`                  | Cross-reference installed plugins vs registries    |
 | `selfhelp:plugin:doctor [--ci] [--json]`         | Global plugin health report                        |
 | `selfhelp:plugin:safe-mode --enable|--disable`   | Emergency safe-mode (no plugin bundles)            |
 | `selfhelp:plugin:run-operation <id>`             | Finalize a `managed` mode operation                |
+| `selfhelp:plugin:rollback <operationId>`         | Replay an operation's `rollbackPlan`               |
+| `selfhelp:plugin:status [pluginId]`              | List installed plugins / inspect operation history |
+| `selfhelp:plugin:cancel-operation <operationId>` | Cancel a queued or in-flight operation             |
 | `selfhelp:plugin:validate-archive <path>`        | Run the inspect-archive pipeline on a local file   |
 | `selfhelp:plugin:cleanup-archives`               | Reap orphaned `.shplugin` staging dirs             |
 | `selfhelp:plugin:purge-staging <id> [--all]`     | Force-delete staging dirs for one or all plugins   |
@@ -757,9 +761,14 @@ Useful CLI commands:
 ## 17. Open Questions / Roadmap
 
 - Mobile plugin packaging through EAS profile-specific lock entries
-  is still being finalized (Phase 5).
-- The SurveyJS plugin (Phase 6) is the first reference plugin and
-  drives most of the SDK 1.0 surface validation.
-- The plugin proxy / hook system described in `docs/plugin_hooks.md`
-  is **proposal only** and will be retired in Phase 7 once the
-  current event-based extension points cover all real-world cases.
+  is still being finalised — see `docs/plugins/multi-repo-agents-md.md`
+  for the cross-repo hand-off contract.
+- The SurveyJS plugin (`plugins/sh2-shp-survey-js/`) is the first
+  reference plugin and drives most of the SDK 1.0 surface validation.
+  When in doubt, mirror its layout and `plugin.json`.
+- A runtime proxy / method-interception hook system is **explicitly
+  out of scope**. Any new extension surface must be added either as
+  a documented Symfony event (see §3) or a tagged service that the
+  host actually consumes (see §3 + the manifest extension points in
+  §4). The retired proposal lived in `docs/plugin_hooks.md`; that
+  file has been removed.

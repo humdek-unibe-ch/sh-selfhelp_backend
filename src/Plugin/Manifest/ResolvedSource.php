@@ -31,10 +31,10 @@ namespace App\Plugin\Manifest;
  *                         who forget to align the two)
  *   - `runtime`           runtime URL block from canonical payload
  *   - `archiveStagingDir` extracted .shplugin staging dir or null
- *   - `archiveMode`       Phase 2a — "connected" (default) or
- *                         "standalone". Standalone archives carry the
- *                         backend Composer package under backend/package/
- *                         and the install handler resolves it via a
+ *   - `archiveMode`       "connected" (default) or "standalone".
+ *                         Standalone archives carry the backend
+ *                         Composer package under backend/package/ and
+ *                         the install handler resolves it via a
  *                         Composer path repository instead of Packagist.
  *   - `archiveBackendDir` absolute path to the staged backend/package/
  *                         dir when archiveMode=standalone; null otherwise.

@@ -55,8 +55,8 @@ final class PluginRepairer
 
         // The lock file is rebuilt as a full replacement of the
         // current state — `upsertPlugin()` alone cannot drop stale
-        // entries left behind by direct DB cleanup, so a sync-lock
-        // call after manual recovery would otherwise keep the broken
+        // entries left behind by direct DB cleanup, so a repair call
+        // after manual recovery would otherwise keep the broken
         // entries forever.
         $dbPluginIds = [];
         $touched = [];

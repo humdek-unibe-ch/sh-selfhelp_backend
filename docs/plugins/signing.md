@@ -45,7 +45,7 @@ containing:
 
 ```json
 {
-  "archive": {                                      // optional, Phase 2a
+  "archive": {                                      // required
     "mode": "connected|standalone",
     "backend": {                                    // required when mode=standalone
       "included": true,
@@ -86,12 +86,9 @@ Rules:
   never `""`).
 - The output has **no surrounding whitespace** and uses minimal
   JSON syntax (no pretty printing).
-- `archive` is **omitted** for legacy Phase-1 inputs that do not pass
-  the block — this keeps the canonical bytes byte-identical to the
-  pre-Phase-2 fixtures (the cross-impl fixture
-  `surveyjs-0.1.0.expected.txt` still verifies). When present and
-  `mode=connected`, the block contains only `mode`. When
-  `mode=standalone` the `backend` sub-block is REQUIRED and the
+- `archive` is **required**. When `mode=connected` the block
+  contains only `mode`. When `mode=standalone` the `backend`
+  sub-block is REQUIRED and the
   `packageHash` is a sha256 over the sorted `<hex>  <archive-root
   path>` lines for every file under `backend/package/`. Tampering
   with a single byte under `backend/package/` after signing changes

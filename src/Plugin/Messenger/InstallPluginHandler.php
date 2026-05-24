@@ -38,8 +38,8 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
  *      URLs on the manifest array before finalize.
  *   5. Call `PluginInstaller::finalize($op, $manifest)`.
  *
- * The Phase-2a standalone-archive flow (promote BEFORE composer +
- * synthetic path repo + dependency-policy report) is shared with
+ * The standalone-archive flow (promote BEFORE composer + synthetic
+ * path repo + dependency-policy report) is shared with
  * {@see UpdatePluginHandler} via {@see StandaloneArchiveComposerHelper}.
  *
  * Failure handling: any throwable inside the worker marks the
@@ -98,13 +98,13 @@ final class InstallPluginHandler
                 return;
             }
 
-            // Phase 2a — for standalone archives we promote the
-            // staging dir to its durable location BEFORE running
-            // composer require. The Composer path repo must point at
-            // the promoted backend/package/ (under var/plugins/<id>-
-            // <ver>/installed/) rather than the transient staging dir,
-            // otherwise the symlink/copy would dangle the moment the
-            // staging dir is cleaned up.
+            // For standalone archives we promote the staging dir to
+            // its durable location BEFORE running composer require.
+            // The Composer path repo must point at the promoted
+            // backend/package/ (under var/plugins/<id>-<ver>/installed/)
+            // rather than the transient staging dir, otherwise the
+            // symlink/copy would dangle the moment the staging dir is
+            // cleaned up.
             $promotedBackendDir = null;
             $isStandaloneArchive = $this->standaloneHelper->isStandaloneArchive($resolved);
             if ($isStandaloneArchive) {

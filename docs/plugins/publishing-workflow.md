@@ -506,7 +506,7 @@ The operator should **gitignore** on the host:
   [`.gitignore`](../../.gitignore)).
 - `selfhelp.plugins.lock.json*` (added by the plugin refactor — the
   authoritative lock file is regenerated from the DB by
-  `selfhelp:plugin:sync-lock`).
+  `selfhelp:plugin:repair`).
 - `config/selfhelp_plugin_bundles.php` (already ignored — generated).
 
 ---

@@ -72,7 +72,7 @@ a `signature.unknownKey.keyId` field and the preview shows a yellow
    `inspect-archive` with the override. Verification uses an
    in-memory `PluginSignatureVerifier` that merges the pasted key
    on top of the env-resolved trusted set. If the signature
-   validates, the preview flips to `signatureStatus=verified` and
+   validates, the preview flips to `signature.status=verified` and
    the **Install** button enables.
 3. (Optional) Click **Copy env line** to put the canonical
    `SELFHELP_PLUGIN_TRUSTED_KEYS=<keyId>=<base64>` snippet on the
@@ -95,7 +95,7 @@ The override is intentionally limited:
   env-pinned production key by submitting a different public key
   for the same `keyId` via a single request. The host logs the
   ignored override at warning level.
-- The override is only useful for `signatureStatus=invalid` failures
+- The override is only useful for `signature.status=invalid` failures
   whose root cause is "keyId not in the trusted set". Tampering,
   payload mismatch, malformed signatures, missing `signature.json`,
   etc. still fail with `signature.unknownKey: null` and the helper

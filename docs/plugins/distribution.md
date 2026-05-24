@@ -46,7 +46,7 @@ preview card before the actual install. See
 [`shplugin-archive.md`](./shplugin-archive.md) for the full layout
 and pipeline.
 
-A `.shplugin` ships in one of two modes (Phase 2a):
+A `.shplugin` ships in one of two modes:
 
 - **connected** (default) — backend Composer package resolved by the
   host from Packagist / the configured Composer repository. Smallest
@@ -142,7 +142,9 @@ Entries without a `composer`, `runtime`, `checksums`, `signature`,
 | minor (`1.0.x` → `1.1.0`)   | Yes (required)              | One-click update. The handler runs `doctrine:migrate`. |
 | major (`1.x` → `2.0`)       | Allowed                     | UI flags as "Force update", explicit confirm required. |
 
-The Updates tab cross-references installed plugins against every
-enabled source and surfaces upgradeable rows; the Update button
-dispatches the same `UpdatePluginMessage` regardless of the diff
-kind, with `forceMajor=true` set for breaking upgrades.
+The admin "Installed" tab cross-references installed plugins against
+every enabled source and surfaces upgradeable rows inline through the
+`availableUpdate` field embedded by `PluginAdminService::listPlugins()`.
+There is no separate "Updates" tab. The Update button dispatches the
+same `UpdatePluginMessage` regardless of the diff kind, with
+`forceMajor=true` set for breaking upgrades.

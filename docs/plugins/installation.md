@@ -39,18 +39,17 @@ The default is `managed`. Override via the `SELFHELP_PLUGIN_INSTALL_MODE` env va
 
 ## 2.1 Install paths visible in the admin UI
 
-The admin "Plugins" page exposes four tabs:
+The admin "Plugins" page exposes three tabs:
 
 | Tab            | What it does                                                                                                                                                                                                                                                                                  |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Installed**  | Lists currently installed plugins, their status, compatibility, and per-row actions (enable / disable / uninstall / purge).                                                                                                                                                                    |
+| **Installed**  | Lists currently installed plugins, their status, compatibility, and per-row actions (enable / disable / uninstall / purge). Rows whose installed version is older than any registry-advertised version render an inline **Update available** badge plus a one-click **Update** button — there is no separate "Updates" tab, the listing endpoint embeds `availableUpdate` directly. |
 | **Available**  | Walks every enabled **Source** and lists registry-advertised plugins. Each row has a one-click **Install** button (calls `POST /admin/plugins/install` with `source=registry`).                                                                                                                |
-| **Updates**    | Cross-references installed plugins against every enabled source and surfaces upgradeable rows. Single **Update** button per row dispatches `POST /admin/plugins/{id}/update`. Major upgrades require a force-update click.                                                                     |
 | **Sources**    | CRUD over `PluginSource` rows. The seeded `humdek-public` source (system, read-only) points at the official Humdek registry; admins can add private/staging sources alongside it.                                                                                                              |
 
 The active tab is **persisted to the URL** (`?tab=available`,
-`?tab=updates`, `?tab=sources`) so a page refresh or shared link lands
-on the same tab.
+`?tab=sources`) so a page refresh or shared link lands on the same
+tab.
 
 Plus an **Install plugin** button at the top-right that opens a modal
 with four source tabs (priority order):
@@ -84,8 +83,8 @@ with four source tabs (priority order):
    labelled "Developer / debugging only". Skips signature verification
    for hand-crafted manifests.
 
-All four tabs POST to `/admin/plugins/install` and dispatch a single
-`InstallPluginMessage` on the `plugin_ops` Symfony Messenger
+All four source tabs POST to `/admin/plugins/install` and dispatch a
+single `InstallPluginMessage` on the `plugin_ops` Symfony Messenger
 transport. There is no chained finalize request; the worker streams
 progress over Mercure.
 
@@ -113,11 +112,10 @@ API surface:
 
 | Endpoint                                                   | Verb       | Purpose                                                                                                                                |
 | ---------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `/cms-api/v1/admin/plugins`                                | GET        | List installed plugins with install mode + safe-mode flags.                                                                            |
+| `/cms-api/v1/admin/plugins`                                | GET        | List installed plugins with install mode + safe-mode flags. Each row embeds `availableUpdate` when a strictly-newer version exists in an enabled source. |
 | `/cms-api/v1/admin/plugins/available`                      | GET        | List registry-advertised plugins not yet installed.                                                                                    |
-| `/cms-api/v1/admin/plugins/updates`                        | GET        | List installed plugins with a strictly-newer version in any enabled source.                                                            |
 | `/cms-api/v1/admin/plugins/install`                        | POST       | Unified install. JSON body for `source ∈ {registry,url,paste}`; multipart `archive=<file>` for `source=archive` (.shplugin upload).    |
-| `/cms-api/v1/admin/plugins/inspect-archive`                | POST       | Validate an uploaded `.shplugin` without installing. Returns `{manifest, compatibility, capabilities, signatureStatus}`.               |
+| `/cms-api/v1/admin/plugins/inspect-archive`                | POST       | Validate an uploaded `.shplugin` without installing. Returns `{manifest, compatibility, capabilities, signature, archive}` (with `signature.status ∈ {verified,unsigned,untrusted-key,invalid}`). |
 | `/cms-api/v1/admin/plugins/{id}/update`                    | POST       | Unified update. Same source shapes as `install`.                                                                                       |
 | `/cms-api/v1/admin/plugins/sources`                        | GET / POST | CRUD over registries the host trusts.                                                                                                  |
 
@@ -302,7 +300,7 @@ node scripts/build-shplugin.mjs --mode standalone
    verification with that key merged on top of the env-resolved
    trusted-keys set for the current request only — neither env nor
    lock files are mutated. The preview flips to
-   `signatureStatus=verified` and the **Install** button enables.
+   `signature.status=verified` and the **Install** button enables.
 
 4. **Click Install.** The host queues `InstallPluginMessage` on the
    `plugin_ops` Messenger transport. The worker runs
@@ -463,7 +461,7 @@ The boot-time short circuit is documented in `config/bundles.php`.
 If the lock file goes out of sync with the database:
 
 ```bash
-php bin/console selfhelp:plugin:sync-lock
+php bin/console selfhelp:plugin:repair
 ```
 
 The command rebuilds `selfhelp.plugins.lock.json` from the `plugins`
@@ -497,7 +495,7 @@ php bin/console selfhelp:plugin:purge <pluginId> --confirm --i-understand-this-i
 #   DELETE FROM plugins WHERE plugin_id='<pluginId>';
 
 # 4. Resync the artefacts (bundles file + lock file):
-php bin/console selfhelp:plugin:sync-lock
+php bin/console selfhelp:plugin:repair
 
 # 5. Disable safe mode and re-clear cache:
 php bin/console selfhelp:plugin:safe-mode --disable

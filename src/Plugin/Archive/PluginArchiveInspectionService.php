@@ -274,7 +274,7 @@ final class PluginArchiveInspectionService
     /**
      * Default `archive` summary returned when the upload fails before
      * we can read plugin.json. Conservative defaults: connected mode
-     * means the host falls back to Phase-1 behaviour.
+     * means the host pulls the backend package from Packagist / VCS.
      *
      * @return array{mode:'connected'|'standalone',backendIncluded:bool,backendPackage:string|null,backendVersion:string|null,installMode:'composer-path-repository'|'composer-packagist'}
      */

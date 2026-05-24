@@ -2,7 +2,7 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "$id": "https://selfhelp.app/schemas/plugin-manifest.schema.json",
     "title": "SelfHelp Plugin Manifest (canonical v1.0)",
-    "description": "Canonical schema for `plugin.json` at the root of every SelfHelp plugin repository. One schema for every install source (registry, direct URL, .shplugin archive, pasted JSON). See docs/plugins/installation.md and docs/plugins/distribution.md.",
+    "description": "Canonical schema for `plugin.json` at the root of every SelfHelp plugin repository. One schema for every install source (registry, direct URL, .shplugin archive, pasted JSON). The CANONICAL copy lives at sh-selfhelp_backend/docs/plugins/plugin-manifest.schema.json — every other copy in the ecosystem (sh2-plugin-registry/, plugin repos under plugins/) MUST be byte-identical. The registry's build workflow re-fetches the host copy and rejects drift. See docs/plugins/installation.md and docs/plugins/distribution.md.",
     "type": "object",
     "required": ["id", "name", "version", "pluginApiVersion", "compatibility", "security"],
     "additionalProperties": false,
@@ -453,7 +453,7 @@
         },
         "archive": {
             "type": "object",
-            "description": "Optional metadata describing how this manifest's `.shplugin` archive bundles the plugin. Absent / `mode=connected` means the backend Composer package is resolved from Packagist / the configured Composer repository (Phase 1). `mode=standalone` means the `.shplugin` carries the plugin backend package under `backend/package/` and the host installs it via a Composer path repository (Phase 2a). Note: standalone archives still resolve third-party Composer dependencies (symfony/*, doctrine/*, …) via Composer at install time; only the plugin's own backend bundle is inlined.",
+            "description": "Required metadata describing how this manifest's `.shplugin` archive bundles the plugin. `mode=connected` means the backend Composer package is resolved from Packagist / the configured Composer repository; the archive ships only the frontend artifacts. `mode=standalone` means the `.shplugin` carries the plugin backend package under `backend/package/` and the host installs it via a Composer path repository. Note: standalone archives still resolve third-party Composer dependencies (symfony/*, doctrine/*, …) via Composer at install time; only the plugin's own backend bundle is inlined.",
             "additionalProperties": false,
             "required": ["mode"],
             "properties": {
@@ -464,7 +464,7 @@
                 },
                 "backend": {
                     "type": "object",
-                    "description": "Required when `mode=standalone`. Describes the backend slot inside the archive. Phase 2a accepts a single `installMode` (`composer-path-repository`).",
+                    "description": "Required when `mode=standalone`. Describes the backend slot inside the archive. Currently a single `installMode` (`composer-path-repository`) is supported.",
                     "additionalProperties": false,
                     "required": ["included", "path", "installMode"],
                     "properties": {
@@ -480,7 +480,7 @@
                         "installMode": {
                             "type": "string",
                             "enum": ["composer-path-repository"],
-                            "description": "How the host installs the staged backend package. Phase 2a only supports `composer-path-repository` (Composer path repo pointing at the promoted install dir)."
+                            "description": "How the host installs the staged backend package. Currently only `composer-path-repository` (Composer path repo pointing at the promoted install dir) is supported."
                         }
                     }
                 }

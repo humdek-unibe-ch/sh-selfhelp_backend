@@ -19,8 +19,8 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\Filesystem\Filesystem;
 
 /**
- * Phase 2a — end-to-end happy-path test for a standalone .shplugin
- * staging directory.
+ * End-to-end happy-path test for a standalone .shplugin staging
+ * directory.
  *
  * Builds a tiny archive on disk:
  *

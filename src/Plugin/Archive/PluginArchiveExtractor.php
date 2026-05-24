@@ -28,11 +28,11 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  *     plugins without a stylesheet (admin-only UI, headless services)
  *     don't ship one and `sign.mjs` omits the corresponding fields
  *     from the canonical payload.
- *   - When the manifest declares `archive.mode = "standalone"`
- *     (Phase 2a), additionally requires `backend/package/composer.json`
- *     so downstream validation can read the staged Composer package.
- *     Connected archives (`archive.mode` absent or `"connected"`) keep
- *     the Phase-1 required-files list unchanged.
+ *   - When the manifest declares `archive.mode = "standalone"`,
+ *     additionally requires `backend/package/composer.json` so
+ *     downstream validation can read the staged Composer package.
+ *     Connected archives (`archive.mode = "connected"`) only need
+ *     the base required-files list.
  *
  * The extractor does not parse the manifest beyond `id`, `version`,
  * and `archive.mode`, and never verifies signatures — that lives in
@@ -56,7 +56,7 @@ final class PluginArchiveExtractor
         'artifacts/plugin.esm.js',
     ];
 
-    // Phase 2a — additional files required when the manifest declares
+    // Additional files required when the manifest declares
     // `archive.mode = "standalone"`. `composer.json` is the anchor:
     // every other file under `backend/package/` is described by
     // `composer.json#autoload` and hashed via SHA256SUMS. If

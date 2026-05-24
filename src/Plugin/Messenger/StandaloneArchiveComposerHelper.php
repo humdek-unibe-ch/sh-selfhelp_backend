@@ -17,7 +17,7 @@ use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\Security\PluginDependencyPolicy;
 
 /**
- * Shared helper for the Phase-2a "standalone .shplugin archive" flow.
+ * Shared helper for the "standalone .shplugin archive" flow.
  *
  * A standalone archive carries its own backend Composer package under
  * `backend/package/`. Both install AND update workers must:
@@ -49,7 +49,8 @@ final class StandaloneArchiveComposerHelper
 
     /**
      * True when the resolved source is a standalone `.shplugin` archive
-     * with a staging dir on disk (the only case where Phase-2a applies).
+     * with a staging dir on disk (the only case where the standalone
+     * promotion flow applies).
      */
     public function isStandaloneArchive(ResolvedSource $resolved): bool
     {
@@ -111,7 +112,7 @@ final class StandaloneArchiveComposerHelper
      *
      *   - Connected archives + every non-archive source: the repository
      *     declared in `backend.composer.repository` (Packagist when
-     *     absent). Phase-1 behaviour preserved.
+     *     absent).
      *
      * @param array<string,mixed> $composer  plugin.json#backend.composer (from ResolvedSource)
      * @return array{type:string,url:string,reference?:string,options?:array<string,bool|int|string>}|null

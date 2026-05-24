@@ -22,6 +22,7 @@ The SelfHelp plugin ecosystem touches at least these repositories:
 | `sh-selfhelp_shared`        | Shared TypeScript SDK         | `<workspace>/sh-selfhelp_shared` (`AGENTS.md`)                  |
 | `sh-selfhelp_mobile`        | Expo / React Native mobile    | `<workspace>/sh-selfhelp_mobile` (`AGENTS.md`)                  |
 | `sh-selfhelp` (deprecated)  | Old PHP CMS, read-only        | optional sibling checkout                                       |
+| `plugins/sh2-plugin-registry` | Static `humdek-public` plugin registry served via GitHub Pages | `<workspace>/plugins/sh2-plugin-registry` (`AGENTS.md`) |
 | `plugins/<plugin-id>/`      | Individual plugin repositories | sibling sub-folder under `<workspace>/plugins/` (first one: `sh2-shp-survey-js`) |
 
 `<workspace>` is the directory the operator clones the repositories into. Do not encode an absolute path — the layout works the same on any developer machine, CI runner, or container that follows this sibling-folder convention. Operators may override the paths in the git-ignored `AGENTS.local.md` file inside each repo if they need to record machine-specific locations.

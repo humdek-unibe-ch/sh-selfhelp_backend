@@ -31,7 +31,7 @@ Goals:
 > Composer access need a private Composer mirror; that is out of
 > scope for this document.
 
-## Archive modes (Phase 2a)
+## Archive modes
 
 A `.shplugin` declares its install mode via the top-level
 `archive.mode` field in `plugin.json`:
@@ -175,9 +175,11 @@ dominant.
 2. Drag-and-drop or click-to-browse the `.shplugin` file.
 3. The frontend POSTs the file to `POST /admin/plugins/inspect-archive`.
    The host extracts to a scratch dir and runs every validator, then
-   returns `{manifest, compatibility, capabilities, signatureStatus,
-   errors[]}`. The UI shows a preview card with the plugin name,
-   version, trust level, capability list, and signature status.
+   returns `{manifest, compatibility, capabilities, signature,
+   archive, errors[]}` where `signature.status ∈ {verified, unsigned,
+   untrusted-key, invalid}`. The UI shows a preview card with the
+   plugin name, version, trust level, capability list, and signature
+   status.
 4. Click **Install** to POST the same file to
    `POST /admin/plugins/install` with `source=archive`. The host
    queues an `InstallPluginMessage` on the `plugin_ops` Messenger
@@ -287,20 +289,20 @@ handler inline; in production a dedicated worker stays running.
 | Compat or capability rejection           | 409 `plugin <id> rejected: <reason>`. Staging dir kept for diagnostics, purged on TTL. |
 | Composer / migration error during finalise | `plugin_operations.status='failed'`, archive promotion rolled back, staging kept.   |
 
-## Phase 2a — standalone backend bundling (shipped, final)
+## Standalone backend bundling
 
-Phase 2a adds `archive.mode=standalone` to the manifest schema and
-the build script's `--mode standalone` flag. Standalone archives
-inline the plugin's own backend Composer package under
-`backend/package/`; the host installs it via a Composer path
-repository instead of `composer require` against Packagist.
+`archive.mode=standalone` (set in `plugin.json` or via the build
+script's `--mode standalone` flag) inlines the plugin's own backend
+Composer package under `backend/package/`; the host installs it via
+a Composer path repository instead of `composer require` against
+Packagist.
 
-This is the final shape — there is no Phase 2b that bundles
-third-party Composer dependencies. Composer remains the single owner
-of dependency resolution, security advisories, and updates for every
-non-plugin PHP package. Hosts without outbound Composer access need
-to provide their own private Composer mirror; configuring such a
-mirror is outside the scope of this document.
+The standalone mode never bundles third-party Composer dependencies.
+Composer remains the single owner of dependency resolution, security
+advisories, and updates for every non-plugin PHP package. Hosts
+without outbound Composer access need to provide their own private
+Composer mirror; configuring such a mirror is outside the scope of
+this document.
 
 Out of scope for `.shplugin` archives:
 

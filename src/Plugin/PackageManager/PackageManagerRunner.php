@@ -76,17 +76,18 @@ final class PackageManagerRunner
      * failure so a half-completed install does not leave a stale repo
      * pointer in composer.json.
      *
-     * Repository shape (Phase 1):
+     * Repository shape:
      *   ['type' => 'vcs'|'path'|'composer'|'git', 'url' => '<url>',
-     *    'reference' => '<git-ref>'(optional)]
+     *    'reference' => '<git-ref>'(optional),
+     *    'options' => ['symlink' => false, ...](optional)]
      *
-     * Phase 2a adds an `options` map serialised via Composer's JSON
-     * repository form. The primary use case is `path` repos for
-     * standalone .shplugin installs, where we want
-     * `{"symlink": false}` to copy the package into vendor/ rather
-     * than symlink it — symlinks are fragile across the promoter's
-     * atomic-rename cycle and can leave Composer pointing at a deleted
-     * staging dir after a failed promotion.
+     * The `options` map is serialised via Composer's JSON repository
+     * form. The primary use case is `path` repos for standalone
+     * .shplugin installs, where we want `{"symlink": false}` to copy
+     * the package into vendor/ rather than symlink it — symlinks are
+     * fragile across the promoter's atomic-rename cycle and can leave
+     * Composer pointing at a deleted staging dir after a failed
+     * promotion.
      *
      * @param array{
      *     type:string,

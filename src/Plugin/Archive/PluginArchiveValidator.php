@@ -102,11 +102,13 @@ final class PluginArchiveValidator
             throw new PluginArchiveException('plugin.json in archive is missing compatibility.');
         }
 
-        // Phase 2a — archive.mode controls whether the backend Composer
-        // package is resolved from Packagist (connected) or from a
-        // path repository pointing at the staged backend/package/ dir
-        // (standalone). Default to connected so existing Phase-1
-        // archives keep validating unchanged.
+        // archive.mode controls whether the backend Composer package
+        // is resolved from Packagist (connected) or from a path
+        // repository pointing at the staged backend/package/ dir
+        // (standalone). `present=false` covers handcrafted archives
+        // that omit the block; we treat them as connected with
+        // composer-packagist install mode and skip the backend slot
+        // verification entirely.
         $archiveBlock = $this->readArchiveBlock($manifestData);
         $archiveMode = $archiveBlock['mode'];
         $archiveBackendDir = null;
@@ -157,11 +159,12 @@ final class PluginArchiveValidator
             $payloadInput['runtime']['stylesheetIntegrity'] = $runtime['stylesheetIntegrity'];
         }
 
-        // Phase 2a — re-inject the archive block so the recomputed
-        // canonical payload reproduces the publisher's signed bytes.
-        // For standalone archives we recompute the backend packageHash
+        // Re-inject the archive block so the recomputed canonical
+        // payload reproduces the publisher's signed bytes. For
+        // standalone archives we recompute the backend packageHash
         // from disk; if the publisher tampered with backend/package/
-        // after signing, the recomputed payload diverges and we reject.
+        // after signing, the recomputed payload diverges and we
+        // reject.
         if ($archiveBlock['present']) {
             $archiveInput = ['mode' => $archiveMode];
             if ($archiveMode === 'standalone') {
@@ -285,13 +288,12 @@ final class PluginArchiveValidator
     /**
      * Verifies each `<sha256>  <path>` line of
      * `artifacts/SHA256SUMS`. Paths MUST be archive-root-relative and
-     * MUST begin with one of the recognised prefixes — `artifacts/` for
-     * frontend artifacts (Phase 1) or `backend/package/` for the
-     * standalone backend slot (Phase 2a). The publishing toolchain
-     * (`scripts/sign.mjs`, `scripts/build-shplugin.mjs`) produces
-     * canonical paths in these forms; accepting any other layout would
-     * silently let a forged archive smuggle files outside the
-     * recognised staging slots.
+     * MUST begin with one of the recognised prefixes — `artifacts/`
+     * for frontend artifacts or `backend/package/` for the standalone
+     * backend slot. The publishing toolchain (`scripts/sign.mjs`,
+     * `scripts/build-shplugin.mjs`) produces canonical paths in these
+     * forms; accepting any other layout would silently let a forged
+     * archive smuggle files outside the recognised staging slots.
      *
      * @param array<string,string> $sums relativePath => sha256 hex
      */
@@ -327,10 +329,13 @@ final class PluginArchiveValidator
     }
 
     /**
-     * Reads the optional `archive` block from a manifest array. Returns
-     * a normalised descriptor: `{present, mode, installMode}`. Missing
-     * blocks default to `mode=connected` so existing Phase-1 archives
-     * keep validating unchanged.
+     * Reads the `archive` block from a manifest array. Returns a
+     * normalised descriptor: `{present, mode, installMode}`. Missing
+     * blocks (handcrafted archives that bypass the canonical schema)
+     * default to `mode=connected` with `installMode=composer-packagist`
+     * and `present=false`, which suppresses the archive re-injection
+     * step in the canonical payload — preserving byte-equality for
+     * legacy fixtures that never carried the block.
      *
      * The schema already enforces enum values; here we tolerate the
      * absence of the block and surface a precise error when `mode`
@@ -365,7 +370,7 @@ final class PluginArchiveValidator
             }
             if ($rawInstallMode !== 'composer-path-repository') {
                 throw new PluginArchiveException(sprintf(
-                    'plugin.json archive.backend.installMode "%s" is not supported by this host (Phase 2a accepts: composer-path-repository).',
+                    'plugin.json archive.backend.installMode "%s" is not supported by this host (expected: composer-path-repository).',
                     $rawInstallMode,
                 ));
             }
@@ -375,7 +380,7 @@ final class PluginArchiveValidator
     }
 
     /**
-     * Phase 2a — verifies the staged `backend/package/` slot:
+     * Verifies the staged `backend/package/` slot:
      *
      *   1. Every file on disk under `backend/package/` is listed in
      *      SHA256SUMS (two-way diff catches files appended after

@@ -31,9 +31,9 @@ ecosystem. It complements:
 
 **Audience: tooling**
 - [`multi-repo-agents-md.md`](./multi-repo-agents-md.md) — AGENTS.md coordination across repos.
-- [`plugin-manifest.schema.json`](./plugin-manifest.schema.json) — manifest schema.
-- [`plugin-lock.schema.json`](./plugin-lock.schema.json) — lock-file schema.
-- [`plugin-registry.schema.json`](./plugin-registry.schema.json) — registry-source schema.
+- [`plugin-manifest.schema.json`](./plugin-manifest.schema.json) — manifest schema. **CANONICAL** — every other copy in the ecosystem (`plugins/sh2-plugin-registry/plugin-manifest.schema.json`, plugin repos under `plugins/<id>/docs/plugins/plugin-manifest.schema.json`) must be byte-identical. The registry repo's `build-registry` workflow re-fetches the host copy on every build and refuses drift.
+- [`plugin-lock.schema.json`](./plugin-lock.schema.json) — lock-file schema. Host-only; no other copies exist.
+- [`plugin-registry.schema.json`](./plugin-registry.schema.json) — registry-source schema. Host-only.
 
 ## 1. Goal
 
@@ -113,7 +113,8 @@ sh-selfhelp_backend/
 │   │                     PluginDependencyPolicy (host-provided drift soft-check),
 │   │                     PluginSignatureVerifier (Ed25519), SignedPayloadBuilder,
 │   │                     PluginSignatureException
-│   ├── Service/          PluginAdminService (facade)
+│   ├── Service/          PluginAdminService (facade for admin API),
+│   │                     PluginCliFinalizer (CLI-only managed-mode finalize)
 │   └── Versioning/       SemverHelper, PluginCompatibilityValidator
 ├── src/Entity/Plugin/    Plugin (+ signing_key_id + signature_ed25519), PluginOperation,
 │                         PluginSource, PluginFeatureFlag
@@ -385,14 +386,17 @@ loads exactly the bundles declared in the lock.
 
 ## 13. CLI summary
 
-| Command                                            | Phase  | Purpose                                              |
+| Command                                            | Scope  | Purpose                                              |
 | -------------------------------------------------- | ------ | ---------------------------------------------------- |
 | `selfhelp:plugin:install <manifest>`               | any    | Dispatch an install operation (worker handles composer + finalize) |
 | `selfhelp:plugin:update <manifest>`                | any    | Dispatch an update operation                         |
 | `selfhelp:plugin:uninstall <id>`                   | any    | Dispatch an uninstall operation (keeps plugin tables) |
 | `selfhelp:plugin:enable <id>` / `:disable`         | any    | Toggle without removing data                         |
 | `selfhelp:plugin:purge <id> --confirm`             | any    | Drop plugin-owned tables (destructive)               |
-| `selfhelp:plugin:sync-lock`                        | any    | Regenerate lock + bundles file from DB state         |
+| `selfhelp:plugin:repair [pluginId]`                | any    | Regenerate lock + bundles file from DB state         |
+| `selfhelp:plugin:rollback <operationId>`           | any    | Replay an operation's `rollbackPlan` to revert it    |
+| `selfhelp:plugin:status [pluginId]`                | any    | List installed plugins / inspect a single plugin's operation history |
+| `selfhelp:plugin:cancel-operation <operationId>`   | any    | Cancel a queued or in-flight `plugin_operations` row |
 | `selfhelp:plugin:check-compatibility`              | any    | Per-plugin compatibility report                      |
 | `selfhelp:plugin:check-updates`                    | any    | Cross-reference installed vs available versions       |
 | `selfhelp:plugin:doctor [--ci] [--json]`           | any    | Global plugin health report                          |

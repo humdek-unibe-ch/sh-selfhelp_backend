@@ -27,8 +27,8 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
  * modes run `composer require <package>:<newVersion>`, promote any
  * new `.shplugin` artifacts, then call `PluginUpdater::finalize()`.
  *
- * The Phase-2a standalone-archive flow (promote BEFORE composer +
- * synthetic path repo + dependency-policy report) is shared with
+ * The standalone-archive flow (promote BEFORE composer + synthetic
+ * path repo + dependency-policy report) is shared with
  * {@see InstallPluginHandler} via {@see StandaloneArchiveComposerHelper}.
  * Without this, updates of plugins originally installed from a
  * standalone .shplugin archive would fail at composer require because
@@ -84,9 +84,9 @@ final class UpdatePluginHandler
                 return;
             }
 
-            // Phase 2a — standalone archives carry their own backend
-            // Composer package under backend/package/. We must promote
-            // the staging dir BEFORE composer require so the synthetic
+            // Standalone archives carry their own backend Composer
+            // package under backend/package/. We must promote the
+            // staging dir BEFORE composer require so the synthetic
             // path repo points at a durable location (not the staging
             // dir which gets cleaned up). Without this, managed-mode
             // updates of standalone-installed plugins fail at composer
