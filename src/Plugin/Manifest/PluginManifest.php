@@ -139,6 +139,31 @@ final class PluginManifest
     }
 
     /**
+     * PHP namespace under which the plugin ships its Doctrine migrations
+     * (`<plugin>/src/Migrations/`). Used by `PluginMigrationsRunner` to
+     * register the plugin's migration directory with a per-operation
+     * `DependencyFactory` so finalize() can apply pending migrations
+     * against the shared `doctrine_migration_versions` metadata table.
+     * Returns `null` when the manifest declares no backend bundle.
+     */
+    public function getBackendMigrationsNamespace(): ?string
+    {
+        $ns = $this->data['backend']['migrationsNamespace'] ?? null;
+        if (is_string($ns) && $ns !== '') {
+            return $ns;
+        }
+        $bundleClass = $this->getBackendBundleClass();
+        if ($bundleClass === null || $bundleClass === '') {
+            return null;
+        }
+        $lastSlash = strrpos($bundleClass, '\\');
+        if ($lastSlash === false) {
+            return null;
+        }
+        return substr($bundleClass, 0, $lastSlash) . '\\Migrations';
+    }
+
+    /**
      * Runtime ESM entrypoint path / URL. After the host has promoted a
      * `.shplugin` to `public/plugin-artifacts/<id>-<ver>/`, this returns
      * the rewritten `/plugin-artifacts/...` URL. For registry installs

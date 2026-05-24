@@ -19,10 +19,10 @@ use App\Plugin\Event\Lifecycle\PluginUpdatedEvent;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\Messenger\UpdatePluginMessage;
+use App\Plugin\Migration\PluginMigrationsRunner;
 use App\Plugin\Registry\PluginRegistryService;
 use App\Plugin\Security\PluginCapabilityValidator;
-use App\Plugin\Security\PluginMigrationGuard;
-use App\Plugin\Security\PluginMigrationGuardException;
+use App\Plugin\Security\PluginMigrationScanner;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Plugin\Versioning\SemverHelper;
 use App\Repository\Plugin\PluginRepository;
@@ -63,7 +63,8 @@ final class PluginUpdater
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginRegistryService $registry,
-        private readonly PluginMigrationGuard $migrationGuard,
+        private readonly PluginMigrationScanner $migrationScanner,
+        private readonly PluginMigrationsRunner $migrationsRunner,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
@@ -123,7 +124,7 @@ final class PluginUpdater
             }
 
             $capabilities = $this->capabilityValidator->validate($newManifest, $resolved);
-            $migrationScan = $this->scanPluginMigrations($newManifest);
+            $migrationScan = $this->migrationScanner->scan($newManifest);
             $installMode = $this->installModeResolver->resolve();
 
             $operation = $this->recorder->start(
@@ -162,6 +163,12 @@ final class PluginUpdater
                     'expectedChecksums' => $resolved->expectedChecksums,
                     'composer' => $resolved->composer,
                     'archiveStagingDir' => $resolved->archiveStagingDir,
+                    // Same rationale as PluginInstaller — the runbook
+                    // for managed-mode updates of standalone archives
+                    // needs the backend dir + archive mode so the
+                    // operator can wire the path repo correctly.
+                    'archiveMode' => $resolved->archiveMode,
+                    'archiveBackendDir' => $resolved->archiveBackendDir,
                 ],
                 'migrationScan' => $migrationScan,
             ]);
@@ -251,6 +258,16 @@ final class PluginUpdater
 
             $this->registry->invalidate();
             $this->bundlesWriter->regenerate();
+
+            // Architecture §7: minor + major plugin updates always
+            // carry a Doctrine migration. Run any pending plugin
+            // migrations between bundles-file regeneration and lock-
+            // file upsert so the new version's schema/style/permission
+            // changes land before the lock file claims the new version
+            // is fully installed.
+            $migrationResult = $this->migrationsRunner->migrate($newManifest);
+            $this->recorder->appendLog($operation, 'plugin-migrations', $migrationResult, 80);
+
             $this->lockFileWriter->upsertPlugin($plugin, $newManifest);
 
             $this->recorder->succeed($operation, 'Plugin updated', $plugin, $plugin->getVersion());
@@ -293,71 +310,5 @@ final class PluginUpdater
         $data = $plugin->getManifestJson();
         $owned = $data['dataAccess']['ownedTables'] ?? [];
         return is_array($owned) ? array_values(array_filter($owned, 'is_string')) : [];
-    }
-
-    /**
-     * @return array{scanned:int,files:list<array{file:string,violations:list<string>}>}
-     */
-    private function scanPluginMigrations(PluginManifest $manifest): array
-    {
-        $bundleClass = $manifest->getBackendBundleClass();
-        if ($bundleClass === null || !class_exists($bundleClass)) {
-            return ['scanned' => 0, 'files' => []];
-        }
-        $bundleReflection = new \ReflectionClass($bundleClass);
-        $bundleDir = dirname((string) $bundleReflection->getFileName());
-        $migrationsDir = $bundleDir . '/Migrations';
-        if (!is_dir($migrationsDir)) {
-            return ['scanned' => 0, 'files' => []];
-        }
-
-        $entries = glob($migrationsDir . '/*.php') ?: [];
-        $report = ['scanned' => count($entries), 'files' => []];
-        foreach ($entries as $file) {
-            $contents = @file_get_contents($file);
-            if ($contents === false) {
-                continue;
-            }
-            $violations = [];
-            foreach ($this->extractStringLiterals($contents) as $sql) {
-                try {
-                    $this->migrationGuard->assertAllowed($sql);
-                } catch (PluginMigrationGuardException $e) {
-                    $violations[] = $e->getMessage();
-                }
-            }
-            if ($violations !== []) {
-                $report['files'][] = ['file' => basename($file), 'violations' => $violations];
-            }
-        }
-
-        return $report;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function extractStringLiterals(string $php): array
-    {
-        $matches = [];
-        if (preg_match_all('/<<<["\']?(\w+)["\']?\R(.*?)\R\s*\1\s*;/s', $php, $heredocs)) {
-            foreach ($heredocs[2] as $body) {
-                $matches[] = $body;
-            }
-        }
-        if (preg_match_all('/(?<!\\\\)\'([^\']{4,})\'/s', $php, $singles)) {
-            foreach ($singles[1] as $body) {
-                $matches[] = $body;
-            }
-        }
-        if (preg_match_all('/(?<!\\\\)"([^"]{4,})"/s', $php, $doubles)) {
-            foreach ($doubles[1] as $body) {
-                $matches[] = $body;
-            }
-        }
-        return array_values(array_filter(
-            $matches,
-            static fn(string $s): bool => preg_match('/\b(drop|truncate|alter|delete\s+from)\b/i', $s) === 1,
-        ));
     }
 }

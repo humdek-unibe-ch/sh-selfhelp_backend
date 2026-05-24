@@ -18,11 +18,11 @@ use App\Plugin\Event\Lifecycle\PluginInstalledEvent;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\Messenger\InstallPluginMessage;
+use App\Plugin\Migration\PluginMigrationsRunner;
 use App\Plugin\Registry\PluginRegistryService;
 use App\Plugin\Security\PluginCapabilityValidator;
 use App\Plugin\Security\PluginCapabilityViolationException;
-use App\Plugin\Security\PluginMigrationGuard;
-use App\Plugin\Security\PluginMigrationGuardException;
+use App\Plugin\Security\PluginMigrationScanner;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
 use App\Repository\Plugin\PluginRepository;
 use App\Service\Core\LookupService;
@@ -66,7 +66,8 @@ final class PluginInstaller
         private readonly PluginLockFileReader $lockFileReader,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginBundlesFileWriter $bundlesWriter,
-        private readonly PluginMigrationGuard $migrationGuard,
+        private readonly PluginMigrationScanner $migrationScanner,
+        private readonly PluginMigrationsRunner $migrationsRunner,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
@@ -106,7 +107,7 @@ final class PluginInstaller
                 throw new ServiceException($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY, null);
             }
 
-            $migrationScan = $this->scanPluginMigrations($manifest);
+            $migrationScan = $this->migrationScanner->scan($manifest);
 
             $installMode = $this->installModeResolver->resolve();
             $operation = $this->recorder->start(
@@ -129,6 +130,15 @@ final class PluginInstaller
                     'expectedChecksums' => $resolved->expectedChecksums,
                     'composer' => $resolved->composer,
                     'archiveStagingDir' => $resolved->archiveStagingDir,
+                    // archiveMode + archiveBackendDir are needed by the
+                    // managed-mode runbook so a CI operator setting up
+                    // a Composer path repo for a standalone .shplugin
+                    // knows where to point it. Including both in the
+                    // snapshot lets selfhelp:plugin:run-operation
+                    // re-render the runbook for the operator after the
+                    // initial worker run.
+                    'archiveMode' => $resolved->archiveMode,
+                    'archiveBackendDir' => $resolved->archiveBackendDir,
                 ],
                 'lockFileBefore' => $this->lockFileReader->readRaw(),
                 'migrationScan' => $migrationScan,
@@ -230,6 +240,17 @@ final class PluginInstaller
 
             $this->registry->invalidate();
             $this->bundlesWriter->regenerate();
+
+            // Architecture §7 puts "run plugin Doctrine migrations"
+            // between the bundles-file regeneration and the lock-file
+            // upsert. Without this step the plugin's tables, styles,
+            // permissions, lookups, and fields never get created — the
+            // plugin row exists but the CMS surface registration the
+            // plugin's migration is responsible for is missing, so the
+            // plugin cannot function even after enabling it.
+            $migrationResult = $this->migrationsRunner->migrate($manifest);
+            $this->recorder->appendLog($operation, 'plugin-migrations', $migrationResult, 80);
+
             $this->lockFileWriter->upsertPlugin($plugin, $manifest);
 
             $this->recorder->succeed($operation, 'Plugin installed', $plugin, $manifest->getVersion());
@@ -266,72 +287,4 @@ final class PluginInstaller
         $plugin->setSignatureEd25519(is_string($signature) && $signature !== '' ? $signature : null);
     }
 
-    /**
-     * Scans the plugin's migration directory for destructive operations
-     * on protected core tables.
-     *
-     * @return array{scanned:int,files:list<array{file:string,violations:list<string>}>}
-     */
-    private function scanPluginMigrations(PluginManifest $manifest): array
-    {
-        $bundleClass = $manifest->getBackendBundleClass();
-        if ($bundleClass === null || !class_exists($bundleClass)) {
-            return ['scanned' => 0, 'files' => []];
-        }
-        $bundleReflection = new \ReflectionClass($bundleClass);
-        $bundleDir = dirname((string) $bundleReflection->getFileName());
-        $migrationsDir = $bundleDir . '/Migrations';
-        if (!is_dir($migrationsDir)) {
-            return ['scanned' => 0, 'files' => []];
-        }
-
-        $entries = glob($migrationsDir . '/*.php') ?: [];
-        $report = ['scanned' => count($entries), 'files' => []];
-        foreach ($entries as $file) {
-            $contents = @file_get_contents($file);
-            if ($contents === false) {
-                continue;
-            }
-            $violations = [];
-            foreach ($this->extractStringLiterals($contents) as $sql) {
-                try {
-                    $this->migrationGuard->assertAllowed($sql);
-                } catch (PluginMigrationGuardException $e) {
-                    $violations[] = $e->getMessage();
-                }
-            }
-            if ($violations !== []) {
-                $report['files'][] = ['file' => basename($file), 'violations' => $violations];
-            }
-        }
-
-        return $report;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function extractStringLiterals(string $php): array
-    {
-        $matches = [];
-        if (preg_match_all('/<<<["\']?(\w+)["\']?\R(.*?)\R\s*\1\s*;/s', $php, $heredocs)) {
-            foreach ($heredocs[2] as $body) {
-                $matches[] = $body;
-            }
-        }
-        if (preg_match_all('/(?<!\\\\)\'([^\']{4,})\'/s', $php, $singles)) {
-            foreach ($singles[1] as $body) {
-                $matches[] = $body;
-            }
-        }
-        if (preg_match_all('/(?<!\\\\)"([^"]{4,})"/s', $php, $doubles)) {
-            foreach ($doubles[1] as $body) {
-                $matches[] = $body;
-            }
-        }
-        return array_values(array_filter(
-            $matches,
-            static fn(string $s): bool => preg_match('/\b(drop|truncate|alter|delete\s+from)\b/i', $s) === 1,
-        ));
-    }
 }
