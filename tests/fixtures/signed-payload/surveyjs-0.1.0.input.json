@@ -27,5 +27,8 @@
         "react": "^19",
         "reactNative": "^0.83",
         "expoSdk": "^55"
+    },
+    "archive": {
+        "mode": "connected"
     }
 }

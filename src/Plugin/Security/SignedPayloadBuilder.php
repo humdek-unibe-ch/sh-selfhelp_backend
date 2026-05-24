@@ -33,12 +33,12 @@ namespace App\Plugin\Security;
  *   - runtime         ({entrypointUrl, stylesheetUrl?, format, integrity?, stylesheetIntegrity?})
  *   - checksums       ({frontendEsm, frontendCss?})
  *   - compatibility   ({selfhelp, php?, node?, react?, reactNative?, expoSdk?})
- *   - archive         (optional; Phase 2a)
+ *   - archive         (REQUIRED)
  *                     ({mode: "connected"|"standalone",
  *                       backend?: {included: bool, path: string, installMode: string, packageHash: "sha256-..."}})
- *                     Phase-1 (connected) inputs omit this key entirely — the canonical output
- *                     stays byte-identical to existing fixtures. Phase-2a (standalone) inputs
- *                     include the full block; the `packageHash` covers every file under
+ *                     `mode=connected` may omit `backend` — the host resolves the Composer
+ *                     package from Packagist / VCS. `mode=standalone` REQUIRES the full
+ *                     `backend` block; the `packageHash` covers every file under
  *                     `backend/package/` so a tampered backend tree fails recomputation.
  *
  * The cross-impl test (tests/Plugin/Security/SignedPayloadBuilderTest.php
@@ -143,16 +143,16 @@ final class SignedPayloadBuilder
         }
         $out['compatibility'] = $compatOut;
 
-        // Optional `archive` block (Phase 2a). Phase-1 callers omit this
-        // key entirely; the canonical output stays byte-identical to
-        // pre-Phase-2 fixtures. `mode=connected` with no `backend`
+        // Required `archive` block. `mode=connected` with no `backend`
         // sub-block is allowed (publishers may explicitly mark a
         // connected archive). `mode=standalone` REQUIRES the `backend`
         // sub-block so the recomputed payload pins the backend
         // packageHash that the validator re-derives from disk.
-        if (isset($input['archive']) && is_array($input['archive'])) {
-            $out['archive'] = $this->normaliseArchive($input['archive']);
+        $archive = $input['archive'] ?? null;
+        if (!is_array($archive)) {
+            throw new \InvalidArgumentException('SignedPayloadBuilder: "archive" is required and must be an object.');
         }
+        $out['archive'] = $this->normaliseArchive($archive);
 
         return $out;
     }

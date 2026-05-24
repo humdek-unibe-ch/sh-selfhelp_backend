@@ -50,6 +50,25 @@ final class SignedPayloadBuilderTest extends TestCase
         $this->builder->build([]);
     }
 
+    public function testRequiresArchiveBlock(): void
+    {
+        $input = [
+            'pluginId' => 'humdek/example',
+            'version' => '1.0.0',
+            'compatibility' => ['selfhelp' => '>=8.0.0'],
+            'composer' => ['package' => 'humdek/example', 'version' => '1.0.0'],
+            'checksums' => ['frontendEsm' => str_repeat('0', 64)],
+            'runtime' => [
+                'format' => 'esm',
+                'entrypointUrl' => 'artifacts/example-1.0.0/plugin.esm.js',
+            ],
+        ];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('archive');
+        $this->builder->build($input);
+    }
+
     /**
      * @return iterable<string, array{string,string}>
      */
