@@ -33,8 +33,13 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Purge removes:
  *   - plugin-owned tables declared in `dataAccess.ownedTables`,
- *   - rows in shared core tables tagged with `id_plugins`,
- *   - rows in `data_tables` owned by the plugin (tagged with `id_plugins`),
+ *   - rows in shared core tables tagged with `id_plugins`
+ *     (`styles`, `api_routes`, `fields`, `permissions`, `lookups`),
+ *   - rows in `data_tables` tagged with `id_plugins` — plus every
+ *     `data_cols` / `data_rows` / `data_cells` / `actions` /
+ *     `scheduled_jobs` row that referenced them (via the existing
+ *     `ON DELETE CASCADE` FKs), so the "data tables stay orphaned"
+ *     regression is gone,
  *   - the plugin's row from `plugins`,
  *   - its operation history is preserved for audit.
  *
@@ -209,12 +214,35 @@ final class PluginPurger
         $this->connection->executeStatement($sql);
     }
 
+    /**
+     * Hard-delete every row across shared core tables that is tagged
+     * with this plugin id (via the nullable `id_plugins` FK added in
+     * `Version20260522062453.php`).
+     *
+     * `data_tables` rows are deleted explicitly. The matching
+     * `data_cols`, `data_rows`, and `data_cells` rows disappear via
+     * the existing `ON DELETE CASCADE` FKs declared in
+     * `Version20260501000000.php`; `actions`/`scheduled_jobs` pointed
+     * at the purged data table also cascade (with
+     * `scheduled_job_reminders` using `SET NULL` instead). Without
+     * this explicit DELETE the FK on `data_tables(id_plugins) ON
+     * DELETE SET NULL` would just orphan the table rows and the docs'
+     * "purge is complete" claim would not hold.
+     */
     private function deletePluginTaggedRows(?int $idPlugins): void
     {
         if ($idPlugins === null) {
             return;
         }
-        foreach (['styles', 'api_routes', 'fields', 'permissions', 'lookups'] as $table) {
+        $taggedTables = [
+            'styles',
+            'api_routes',
+            'fields',
+            'permissions',
+            'lookups',
+            'data_tables',
+        ];
+        foreach ($taggedTables as $table) {
             $this->connection->executeStatement(
                 sprintf('DELETE FROM `%s` WHERE `id_plugins` = :idp', $table),
                 ['idp' => $idPlugins]
