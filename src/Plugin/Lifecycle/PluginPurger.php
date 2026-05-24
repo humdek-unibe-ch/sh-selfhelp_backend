@@ -43,6 +43,12 @@ use Symfony\Component\HttpFoundation\Response;
  *   - the plugin's row from `plugins`,
  *   - its operation history is preserved for audit.
  *
+ * Owned tables are dropped after every foreign key declared on them is
+ * removed (see {@see dropOwnedTableForeignKeys()}). This is what makes
+ * the per-table `DROP TABLE IF EXISTS` loop FK-safe regardless of the
+ * order the plugin manifest happens to list its tables in, including
+ * schemas with circular FKs between two owned tables.
+ *
  * The purger never touches protected tables (`ProtectedTablesPolicy`)
  * — even if the manifest claims to own one (manifests are validated
  * against the protected list at install time, but this is the runtime
@@ -132,6 +138,18 @@ final class PluginPurger
                 // window.
                 $this->deletePluginTaggedRows($plugin->getId());
 
+                // Drop every foreign key declared on an owned table BEFORE
+                // dropping the tables themselves. Without this step, a
+                // plain `DROP TABLE` loop in manifest order fails as soon
+                // as the manifest lists a parent before its child, and is
+                // outright impossible when the plugin schema has a circular
+                // FK (e.g. the SurveyJS plugin's
+                // `surveys.id_current_survey_versions` <->
+                // `survey_versions.id_surveys`). Dropping FKs first lets
+                // the existing per-table `DROP TABLE IF EXISTS` loop
+                // succeed in any order.
+                $this->dropOwnedTableForeignKeys($ownedTables, $operation);
+
                 foreach ($ownedTables as $table) {
                     $this->dropOwnedTable($table);
                     $this->recorder->appendLog($operation, 'Dropped plugin-owned table', ['table' => $table]);
@@ -212,6 +230,74 @@ final class PluginPurger
     {
         $sql = sprintf('DROP TABLE IF EXISTS `%s`', $table);
         $this->connection->executeStatement($sql);
+    }
+
+    /**
+     * Drop every foreign key constraint declared on a plugin-owned table.
+     *
+     * The loop in `purge()` calls `DROP TABLE IF EXISTS` per owned table
+     * in manifest order. MySQL refuses a `DROP TABLE` while another table
+     * still references it via a FK, so any plugin whose owned tables
+     * reference each other (or, worse, hold a circular FK like the
+     * SurveyJS plugin's `surveys` <-> `survey_versions`) would fail with
+     * "Cannot drop table X referenced by a foreign key constraint Y on
+     * table Z". We discover those constraints via
+     * `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` and drop them up
+     * front, so subsequent `DROP TABLE` calls succeed regardless of
+     * order.
+     *
+     * Only FKs whose CHILD side (the one carrying the column) is an
+     * owned table are dropped. FKs from non-owned tables into owned
+     * tables are NEVER touched — by host contract no shared/core table
+     * holds a FK into a plugin table, so if we ever encounter one the
+     * subsequent `DROP TABLE` will fail with a clear MySQL error and
+     * surface the contract violation instead of being silently masked.
+     *
+     * @param list<string> $ownedTables
+     */
+    private function dropOwnedTableForeignKeys(array $ownedTables, PluginOperation $operation): void
+    {
+        if ($ownedTables === []) {
+            return;
+        }
+
+        // Table names are validated by collectOwnedTables() against
+        // ^[a-z0-9_]+$, so they are safe to splice into the SQL literal
+        // here. We do this rather than binding because INFORMATION_SCHEMA
+        // queries with bound IN() lists need ArrayParameterType juggling
+        // for what is otherwise a trivial whitelist.
+        $tableList = "'" . implode("','", $ownedTables) . "'";
+        $sql = sprintf(
+            'SELECT TABLE_NAME AS child_table, CONSTRAINT_NAME AS constraint_name '
+            . 'FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS '
+            . 'WHERE CONSTRAINT_SCHEMA = DATABASE() '
+            . 'AND TABLE_NAME IN (%s)',
+            $tableList
+        );
+
+        /** @var list<array{child_table: string, constraint_name: string}> $rows */
+        $rows = $this->connection->fetchAllAssociative($sql);
+
+        foreach ($rows as $row) {
+            $childTable = (string) $row['child_table'];
+            $constraintName = (string) $row['constraint_name'];
+
+            // Defensive: the WHERE clause already filters by owned tables,
+            // but re-checking keeps the safety invariant local.
+            if (!in_array($childTable, $ownedTables, true)) {
+                continue;
+            }
+
+            $this->connection->executeStatement(sprintf(
+                'ALTER TABLE `%s` DROP FOREIGN KEY `%s`',
+                $childTable,
+                $constraintName
+            ));
+            $this->recorder->appendLog($operation, 'Dropped plugin-owned foreign key', [
+                'table' => $childTable,
+                'constraint' => $constraintName,
+            ]);
+        }
     }
 
     /**
