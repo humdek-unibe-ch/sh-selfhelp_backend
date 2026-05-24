@@ -128,13 +128,19 @@ final class AdminPluginController extends AbstractController
      * (with a `.shplugin` file under `archive`). Dispatches a single
      * `InstallPluginMessage` regardless of source.
      *
+     * For JSON requests the body is validated against
+     * `requests/admin/plugins/install.json` so malformed payloads are
+     * rejected with a structured 400 instead of crashing in the
+     * resolver. Multipart requests skip JSON validation — the resolver
+     * itself surfaces missing-archive / bad-source errors.
+     *
      * @route /admin/plugins/install
      * @method POST
      */
     public function install(Request $request): JsonResponse
     {
         try {
-            [$input, $archive] = $this->extractInstallInput($request);
+            [$input, $archive] = $this->extractInstallInput($request, validate: true);
             return $this->responseFormatter->formatSuccess(
                 $this->pluginAdminService->install($input, $archive),
                 'responses/admin/plugins/plugin_operation',
@@ -244,7 +250,7 @@ final class AdminPluginController extends AbstractController
     public function update(string $pluginId, Request $request): JsonResponse
     {
         try {
-            [$input, $archive] = $this->extractInstallInput($request);
+            [$input, $archive] = $this->extractInstallInput($request, validate: true);
             // Lock the URL-pinned plugin id against the resolved manifest in the service layer.
             $input['expectedPluginId'] = $pluginId;
             return $this->responseFormatter->formatSuccess(
@@ -258,9 +264,15 @@ final class AdminPluginController extends AbstractController
     }
 
     /**
+     * Extracts the install/update payload from either a JSON body
+     * (registry|url|paste sources) or multipart/form-data (archive
+     * source). When `$validate` is true, JSON bodies are validated
+     * against `requests/admin/plugins/install.json` so a malformed
+     * payload returns a structured 400 from `validateRequest()`.
+     *
      * @return array{0: array<string,mixed>, 1: \Symfony\Component\HttpFoundation\File\UploadedFile|null}
      */
-    private function extractInstallInput(Request $request): array
+    private function extractInstallInput(Request $request, bool $validate = false): array
     {
         $contentType = (string) $request->headers->get('Content-Type', '');
         $isMultipart = stripos($contentType, 'multipart/form-data') !== false;
@@ -277,6 +289,16 @@ final class AdminPluginController extends AbstractController
                 ],
                 $archive instanceof \Symfony\Component\HttpFoundation\File\UploadedFile ? $archive : null,
             ];
+        }
+        if ($validate) {
+            // The schema's `oneOf` over (registry|url|paste) variants
+            // plus `additionalProperties: false` per variant rejects
+            // mis-shaped bodies BEFORE the service layer fans the
+            // payload out to the resolver. `expectedPluginId` (URL-
+            // pinned by the update controller) is appended AFTER this
+            // call so it does not need to be in the schema.
+            $payload = $this->validateRequest($request, 'requests/admin/plugins/install', $this->jsonSchemaValidationService);
+            return [$payload, null];
         }
         $raw = (string) $request->getContent();
         $payload = $raw === '' ? [] : json_decode($raw, true);
