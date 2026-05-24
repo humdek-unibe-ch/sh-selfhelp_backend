@@ -14,6 +14,7 @@ use App\Entity\Plugin\Plugin;
 use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
+use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginInstalledEvent;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
@@ -71,6 +72,7 @@ final class PluginInstaller
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
+        private readonly PluginCacheInvalidator $cacheInvalidator,
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
@@ -250,6 +252,16 @@ final class PluginInstaller
             // plugin cannot function even after enabling it.
             $migrationResult = $this->migrationsRunner->migrate($manifest);
             $this->recorder->appendLog($operation, 'plugin-migrations', $migrationResult, 80);
+
+            // The plugin migration just inserted into `styles`,
+            // `permissions`, `rel_permissions_roles`, `lookups`,
+            // `api_routes`, etc. Invalidate the cached lists for every
+            // impacted Redis category here, AFTER the migration runs,
+            // so the very next request sees the new rows. The earlier
+            // `registry->invalidate()` only dropped `CATEGORY_PLUGINS`,
+            // which is not enough for the admin sidebar / page editor /
+            // permission resolver to refresh on their own.
+            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
 
             $this->lockFileWriter->upsertPlugin($plugin, $manifest);
 

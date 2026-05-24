@@ -14,12 +14,11 @@ use App\Entity\Plugin\Plugin;
 use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
+use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginDisabledEvent;
 use App\Plugin\Event\Lifecycle\PluginEnabledEvent;
 use App\Plugin\Manifest\PluginManifest;
-use App\Plugin\Registry\PluginRegistryService;
 use App\Repository\Plugin\PluginRepository;
-use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -49,13 +48,12 @@ final class PluginEnabler
         private readonly PluginRepository $plugins,
         private readonly PluginOperationLock $lock,
         private readonly PluginOperationRecorder $recorder,
-        private readonly PluginRegistryService $registry,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
-        private readonly CacheService $cache,
         private readonly InstallModeResolver $installModeResolver,
+        private readonly PluginCacheInvalidator $cacheInvalidator,
     ) {
     }
 
@@ -111,8 +109,14 @@ final class PluginEnabler
                 throw $e;
             }
 
-            $this->registry->invalidate();
-            $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
+            // Enabling/disabling flips `plugins.enabled`, which gates
+            // every reader that walks `styles`, `permissions`,
+            // `rel_permissions_roles`, `lookups`, `api_routes`,
+            // contributed admin pages, and the plugin list itself.
+            // Clear every impacted Redis category in one shot so the
+            // admin shell does not have to be force-refreshed (and so
+            // operators no longer have to `redis-cli flushdb` by hand).
+            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
             $this->bundlesWriter->regenerate();
             $manifest = new PluginManifest($plugin->getManifestJson());
             $this->lockFileWriter->upsertPlugin($plugin, $manifest);

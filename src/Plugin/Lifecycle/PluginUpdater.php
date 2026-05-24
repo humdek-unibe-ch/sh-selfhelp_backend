@@ -15,6 +15,7 @@ use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
 use App\Plugin\Backup\PluginBackupHookInterface;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
+use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginUpdatedEvent;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
@@ -68,6 +69,7 @@ final class PluginUpdater
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
+        private readonly PluginCacheInvalidator $cacheInvalidator,
     ) {
     }
 
@@ -267,6 +269,13 @@ final class PluginUpdater
             // is fully installed.
             $migrationResult = $this->migrationsRunner->migrate($newManifest);
             $this->recorder->appendLog($operation, 'plugin-migrations', $migrationResult, 80);
+
+            // The new migration may have added/changed rows in
+            // `styles`, `permissions`, `rel_permissions_roles`,
+            // `lookups`, `api_routes`, … Invalidate every impacted
+            // category so the next request sees the upgraded CMS
+            // surface without an operator flushing Redis.
+            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
 
             $this->lockFileWriter->upsertPlugin($plugin, $newManifest);
 

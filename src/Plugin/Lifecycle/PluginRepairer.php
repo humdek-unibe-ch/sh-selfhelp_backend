@@ -13,10 +13,9 @@ namespace App\Plugin\Lifecycle;
 use App\Entity\Plugin\Plugin;
 use App\Exception\ServiceException;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
+use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Manifest\PluginManifest;
-use App\Plugin\Registry\PluginRegistryService;
 use App\Repository\Plugin\PluginRepository;
-use App\Service\Cache\Core\CacheService;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -37,8 +36,7 @@ final class PluginRepairer
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginLockFileReader $lockFileReader,
-        private readonly PluginRegistryService $registry,
-        private readonly CacheService $cache,
+        private readonly PluginCacheInvalidator $cacheInvalidator,
     ) {
     }
 
@@ -68,8 +66,7 @@ final class PluginRepairer
         }
         $this->dropStaleLockEntries($dbPluginIds);
 
-        $this->registry->invalidate();
-        $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
+        $this->cacheInvalidator->invalidatePluginSurfaceCaches();
 
         return [
             'plugins' => $touched,
@@ -112,8 +109,7 @@ final class PluginRepairer
         $manifest = new PluginManifest($plugin->getManifestJson());
         $this->lockFileWriter->upsertPlugin($plugin, $manifest);
         $this->bundlesWriter->regenerate();
-        $this->registry->invalidate();
-        $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
+        $this->cacheInvalidator->invalidatePluginSurfaceCaches();
         return $plugin;
     }
 }

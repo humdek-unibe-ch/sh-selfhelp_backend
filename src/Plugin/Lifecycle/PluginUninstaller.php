@@ -15,11 +15,10 @@ use App\Entity\Plugin\PluginOperation;
 use App\Exception\ServiceException;
 use App\Plugin\Archive\PluginArchivePromoter;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
+use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginUninstalledEvent;
 use App\Plugin\Messenger\UninstallPluginMessage;
-use App\Plugin\Registry\PluginRegistryService;
 use App\Repository\Plugin\PluginRepository;
-use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -55,15 +54,14 @@ final class PluginUninstaller
         private readonly PluginRepository $plugins,
         private readonly PluginOperationLock $lock,
         private readonly PluginOperationRecorder $recorder,
-        private readonly PluginRegistryService $registry,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginArchivePromoter $archivePromoter,
         private readonly InstallModeResolver $installModeResolver,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
-        private readonly CacheService $cache,
         private readonly MessageBusInterface $messageBus,
+        private readonly PluginCacheInvalidator $cacheInvalidator,
     ) {
     }
 
@@ -136,8 +134,13 @@ final class PluginUninstaller
                 throw $e;
             }
 
-            $this->registry->invalidate();
-            $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
+            // Uninstall preserves plugin-owned data but removes the
+            // bundle, routes, styles, permissions, and lookups. Every
+            // cached list that touched those rows must be invalidated
+            // — otherwise admin sidebars, the page editor, and the
+            // permission resolver keep serving the uninstalled
+            // plugin's surface until Redis is flushed by hand.
+            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());
 

@@ -16,12 +16,11 @@ use App\Exception\ServiceException;
 use App\Plugin\Archive\PluginArchivePromoter;
 use App\Plugin\Backup\PluginBackupHookInterface;
 use App\Plugin\Bundle\PluginBundlesFileWriter;
+use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginPurgedEvent;
 use App\Plugin\Manifest\PluginManifest;
-use App\Plugin\Registry\PluginRegistryService;
 use App\Plugin\Security\ProtectedTablesPolicy;
 use App\Repository\Plugin\PluginRepository;
-use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use Doctrine\DBAL\Connection;
@@ -73,7 +72,6 @@ final class PluginPurger
         private readonly PluginRepository $plugins,
         private readonly PluginOperationLock $lock,
         private readonly PluginOperationRecorder $recorder,
-        private readonly PluginRegistryService $registry,
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginArchivePromoter $archivePromoter,
@@ -81,7 +79,7 @@ final class PluginPurger
         private readonly InstallModeResolver $installModeResolver,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
-        private readonly CacheService $cache,
+        private readonly PluginCacheInvalidator $cacheInvalidator,
     ) {
     }
 
@@ -186,8 +184,13 @@ final class PluginPurger
                 throw $e;
             }
 
-            $this->registry->invalidate();
-            $this->cache->withCategory(CacheService::CATEGORY_API_ROUTES)->invalidateCategory();
+            // Purge is destructive: every plugin-owned table is gone,
+            // every `id_plugins`-tagged row across styles / permissions /
+            // lookups / api_routes is gone. Clear every cached list that
+            // could still reference them so the admin shell, the page
+            // editor, and the permission resolver stop returning stale
+            // entries without an operator having to flush Redis.
+            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $installMode);
 
