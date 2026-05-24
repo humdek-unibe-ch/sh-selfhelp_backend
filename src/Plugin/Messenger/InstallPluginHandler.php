@@ -17,9 +17,7 @@ use App\Plugin\Lifecycle\PluginOperationRecorder;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\PackageManager\PackageManagerRunner;
-use App\Plugin\Security\PluginDependencyPolicy;
 use App\Repository\Plugin\PluginOperationRepository;
-use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 
@@ -40,6 +38,10 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
  *      URLs on the manifest array before finalize.
  *   5. Call `PluginInstaller::finalize($op, $manifest)`.
  *
+ * The Phase-2a standalone-archive flow (promote BEFORE composer +
+ * synthetic path repo + dependency-policy report) is shared with
+ * {@see UpdatePluginHandler} via {@see StandaloneArchiveComposerHelper}.
+ *
  * Failure handling: any throwable inside the worker marks the
  * operation as failed via the recorder and re-throws so the worker
  * logs the failure too. The retry strategy in messenger.yaml is
@@ -50,14 +52,13 @@ use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 final class InstallPluginHandler
 {
     public function __construct(
-        private readonly EntityManagerInterface $em,
         private readonly PluginOperationRepository $operations,
         private readonly PluginOperationRecorder $recorder,
         private readonly PluginInstaller $installer,
         private readonly PackageManagerRunner $packageManager,
         private readonly PluginArchivePromoter $archivePromoter,
         private readonly InstallModeResolver $installModeResolver,
-        private readonly PluginDependencyPolicy $dependencyPolicy,
+        private readonly StandaloneArchiveComposerHelper $standaloneHelper,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -104,37 +105,25 @@ final class InstallPluginHandler
             // <ver>/installed/) rather than the transient staging dir,
             // otherwise the symlink/copy would dangle the moment the
             // staging dir is cleaned up.
-            $isStandaloneArchive = (
-                $resolved->kind === ResolvedSource::KIND_ARCHIVE
-                && $resolved->archiveMode === ResolvedSource::ARCHIVE_MODE_STANDALONE
-                && $resolved->archiveStagingDir !== null
-            );
             $promotedBackendDir = null;
+            $isStandaloneArchive = $this->standaloneHelper->isStandaloneArchive($resolved);
             if ($isStandaloneArchive) {
-                $this->recorder->appendLog($operation, 'archive-promote:start', ['mode' => 'standalone'], 15);
-                $manifestArray = $this->archivePromoter->promote(
-                    (string) $resolved->archiveStagingDir,
+                $promoteResult = $this->standaloneHelper->promoteStandaloneArchive(
+                    $operation,
+                    $resolved,
                     $manifestArray,
                 );
-                $promotedBackendDir = $this->archivePromoter->installedDir(
-                    (string) ($manifestArray['id'] ?? ''),
-                    (string) ($manifestArray['version'] ?? ''),
-                ) . DIRECTORY_SEPARATOR . 'backend' . DIRECTORY_SEPARATOR . 'package';
-                if (!is_dir($promotedBackendDir)) {
-                    $this->recorder->fail(
-                        $operation,
-                        new \RuntimeException(sprintf(
-                            'Standalone archive: backend/package/ was not promoted to "%s".',
-                            $promotedBackendDir,
-                        )),
-                        'archive-promote',
-                    );
+                if ($promoteResult === null) {
                     return;
                 }
-                $this->recorder->appendLog($operation, 'archive-promote:done', ['mode' => 'standalone', 'backendDir' => $promotedBackendDir], 18);
+                [$manifestArray, $promotedBackendDir] = $promoteResult;
             }
 
-            $repository = $this->resolveComposerRepository($composer, $resolved, $promotedBackendDir);
+            $repository = $this->standaloneHelper->resolveComposerRepository(
+                $composer,
+                $resolved,
+                $promotedBackendDir,
+            );
 
             // Soft check — for standalone archives the package's
             // composer.json is on disk in the promoted backend dir, so
@@ -143,7 +132,7 @@ final class InstallPluginHandler
             // archive sources skip the check; Composer's solver will
             // surface the same drift at solve-time.
             if ($promotedBackendDir !== null) {
-                $this->logDependencyPolicyReport($operation, $promotedBackendDir);
+                $this->standaloneHelper->logDependencyPolicyReport($operation, $promotedBackendDir);
             }
 
             $this->recorder->appendLog($operation, 'composer-require:start', [
@@ -225,92 +214,5 @@ final class InstallPluginHandler
         $this->recorder->appendLog($operation, 'managed-runbook', ['runbook' => $runbook], 25);
         // Operation intentionally stays running — it is waiting for the
         // operator. finalize() will move it to succeeded/failed.
-    }
-
-    /**
-     * Reads the package's `composer.json` from the promoted backend
-     * dir, runs it through {@see PluginDependencyPolicy::inspect()},
-     * and writes the report to the operation log. Soft check: never
-     * fails the install — Composer's solver runs immediately after
-     * and is the authoritative gate. The log entry exists so
-     * operators auditing a failed install can see the drift at a
-     * glance.
-     */
-    private function logDependencyPolicyReport(PluginOperation $operation, string $promotedBackendDir): void
-    {
-        $composerPath = $promotedBackendDir . DIRECTORY_SEPARATOR . 'composer.json';
-        if (!is_file($composerPath)) {
-            return;
-        }
-        $raw = @file_get_contents($composerPath);
-        if (!is_string($raw) || $raw === '') {
-            return;
-        }
-        $data = json_decode($raw, true);
-        if (!is_array($data)) {
-            return;
-        }
-        $require = $data['require'] ?? [];
-        if (!is_array($require) || $require === []) {
-            return;
-        }
-        $stringKeyed = [];
-        foreach ($require as $key => $value) {
-            if (is_string($key)) {
-                $stringKeyed[$key] = $value;
-            }
-        }
-        if ($stringKeyed === []) {
-            return;
-        }
-        $report = $this->dependencyPolicy->inspect($stringKeyed);
-        if ($report['warnings'] === [] && $report['violations'] === []) {
-            return;
-        }
-        $this->recorder->appendLog($operation, 'dependency-policy:report', [
-            'warnings' => $report['warnings'],
-            'violations' => $report['violations'],
-        ], 18);
-    }
-
-    /**
-     * Picks the right Composer repository descriptor for the operation:
-     *
-     *   - For standalone archives (Phase 2a): a synthetic `type: "path"`
-     *     repo pointing at the promoted backend/package/ dir with
-     *     `options.symlink: false` so vendor/ holds a real copy rather
-     *     than a fragile symlink. Any `repository` declared in
-     *     plugin.json is intentionally IGNORED here — the archive's
-     *     own backend package wins over the manifest's published
-     *     repository pointer.
-     *
-     *   - For connected archives and every non-archive source: the
-     *     repository declared in `backend.composer.repository`
-     *     (Packagist when absent). Phase-1 behaviour preserved.
-     *
-     * @param array<string,mixed> $composer plugin.json#backend.composer (from ResolvedSource)
-     * @return array{type:string,url:string,reference?:string,options?:array<string,bool|int|string>}|null
-     */
-    private function resolveComposerRepository(array $composer, ResolvedSource $resolved, ?string $promotedBackendDir): ?array
-    {
-        if (
-            $resolved->kind === ResolvedSource::KIND_ARCHIVE
-            && $resolved->archiveMode === ResolvedSource::ARCHIVE_MODE_STANDALONE
-            && $promotedBackendDir !== null
-        ) {
-            return [
-                'type' => 'path',
-                'url' => $promotedBackendDir,
-                'options' => [
-                    'symlink' => false,
-                ],
-            ];
-        }
-        if (isset($composer['repository']) && is_array($composer['repository'])) {
-            /** @var array{type:string,url:string,reference?:string,options?:array<string,bool|int|string>} $repo */
-            $repo = $composer['repository'];
-            return $repo;
-        }
-        return null;
     }
 }
