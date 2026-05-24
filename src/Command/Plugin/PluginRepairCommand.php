@@ -21,7 +21,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(
     name: 'selfhelp:plugin:repair',
     description: 'Regenerate config/selfhelp_plugin_bundles.php + selfhelp.plugins.lock.json from DB state.',
-    aliases: ['selfhelp:plugin:sync-lock'],
 )]
 final class PluginRepairCommand extends Command
 {
@@ -33,10 +32,6 @@ final class PluginRepairCommand extends Command
 
     protected function configure(): void
     {
-        // `selfhelp:plugin:sync-lock` is kept as an alias so existing
-        // operator runbooks / CI scripts that call the old name keep
-        // working. They both call `PluginAdminService::repair()` —
-        // the old command was a strict subset of this one.
         $this->addArgument('pluginId', InputArgument::OPTIONAL, 'Plugin id (omit to repair every plugin / regenerate the lock file and bundles file).');
     }
 

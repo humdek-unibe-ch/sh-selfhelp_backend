@@ -79,7 +79,7 @@ final class PluginInstallCommand extends Command
             ));
         } else {
             $io->note(sprintf(
-                'The Messenger worker is now running composer + finalize for operation #%d. Monitor selfhelp:plugin:operations:list or the Mercure stream.',
+                'The Messenger worker is now running composer + finalize for operation #%d. Monitor with `selfhelp:plugin:status` or the Mercure stream.',
                 (int) $operation['id'],
             ));
         }

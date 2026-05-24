@@ -357,17 +357,6 @@ final class PluginManifest
     }
 
     /**
-     * Alias for `getBackendBundleClass()` kept for symmetry with
-     * `PluginDataAccessGuard` and other plugin-layer code that thinks
-     * of "the plugin's bundle class" rather than "the backend bundle
-     * class" (the manifest only declares backend bundles today).
-     */
-    public function getBundleClass(): ?string
-    {
-        return $this->getBackendBundleClass();
-    }
-
-    /**
      * Raw manifest JSON. The host treats the manifest as opaque after
      * load; the registry uses this for round-tripping and for the
      * `Plugin.manifestJson` column.

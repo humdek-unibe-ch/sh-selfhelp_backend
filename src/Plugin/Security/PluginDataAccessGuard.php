@@ -164,7 +164,7 @@ final class PluginDataAccessGuard
         $bundleClassByNamespace = [];
         foreach ($this->plugins->getEnabled() as $plugin) {
             $manifest = new PluginManifest($plugin->getManifestJson());
-            $bundleClass = $manifest->getBundleClass();
+            $bundleClass = $manifest->getBackendBundleClass();
             if ($bundleClass === null || $bundleClass === '') {
                 continue;
             }

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Humdek, University of Bern
 # SPDX-License-Identifier: MPL-2.0
 #
-# Plugin host check (plan §21.2).
+# Plugin host check.
 #
 # Validates the Symfony plugin host:
 #   - Plugin manifest / registry / lock JSON Schemas are themselves
@@ -116,26 +116,34 @@ jobs:
         run: |
           set -euo pipefail
           php bin/console list selfhelp:plugin --no-interaction
-          # Sanity-check the canonical commands exist
-          for cmd in \
-            selfhelp:plugin:install \
-            selfhelp:plugin:update \
-            selfhelp:plugin:disable \
-            selfhelp:plugin:enable \
-            selfhelp:plugin:uninstall \
-            selfhelp:plugin:purge \
-            selfhelp:plugin:repair \
-            selfhelp:plugin:rollback \
-            selfhelp:plugin:check-compatibility \
-            selfhelp:plugin:sync-lock \
-            selfhelp:plugin:doctor \
-            selfhelp:plugin:safe-mode \
-            selfhelp:plugin:status \
-            selfhelp:plugin:run-operation; do
+          # Assert by name (not by count) so adding/removing a command
+          # only requires updating this list, not chasing a numeric
+          # assertion in CI output.
+          required=(
+            selfhelp:plugin:install
+            selfhelp:plugin:update
+            selfhelp:plugin:enable
+            selfhelp:plugin:disable
+            selfhelp:plugin:uninstall
+            selfhelp:plugin:purge
+            selfhelp:plugin:purge-staging
+            selfhelp:plugin:repair
+            selfhelp:plugin:rollback
+            selfhelp:plugin:cancel-operation
+            selfhelp:plugin:check-compatibility
+            selfhelp:plugin:check-updates
+            selfhelp:plugin:doctor
+            selfhelp:plugin:safe-mode
+            selfhelp:plugin:status
+            selfhelp:plugin:run-operation
+            selfhelp:plugin:validate-archive
+            selfhelp:plugin:cleanup-archives
+          )
+          for cmd in "${required[@]}"; do
             echo "==> $cmd --help"
             php bin/console "$cmd" --help --no-interaction > /dev/null
           done
-          echo "All 14 plugin CLI commands registered and respond to --help."
+          echo "All ${#required[@]} required plugin CLI commands registered and respond to --help."
 
       - name: Debug plugin DI autowiring
         run: |
