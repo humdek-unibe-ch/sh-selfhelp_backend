@@ -70,7 +70,7 @@ final class PluginDataAccessGuard
         $ownedTables = $manifest->getOwnedTables();
         $pluginId = $pluginContext->getPluginId();
 
-        foreach (['scheduledEntityInsertions', 'scheduledEntityUpdates', 'scheduledEntityDeletions'] as $bucket) {
+        foreach (['getScheduledEntityInsertions', 'getScheduledEntityUpdates', 'getScheduledEntityDeletions'] as $bucket) {
             foreach ($uow->{$bucket}() as $entity) {
                 $meta = $args->getObjectManager()->getClassMetadata(get_class($entity));
                 $this->assertWriteAllowed($pluginId, $meta, $allowedWrites, $ownedTables);
