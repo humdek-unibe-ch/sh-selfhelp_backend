@@ -79,15 +79,27 @@ class AdminStyleController extends AbstractController
         }
 
         $groupIndexByName = [];
+        $existingStyleNames = [];
         foreach ($groupedStyles as $i => $group) {
             $name = strtolower((string) ($group['name'] ?? ''));
             if ($name !== '') {
                 $groupIndexByName[$name] = $i;
             }
+            foreach (($group['styles'] ?? []) as $style) {
+                $styleName = strtolower((string) ($style['name'] ?? ''));
+                if ($styleName !== '') {
+                    $existingStyleNames[$styleName] = true;
+                }
+            }
         }
 
         $pluginGroupKey = null;
         foreach ($contributions as $contribution) {
+            $styleName = strtolower((string) ($contribution['name'] ?? ''));
+            if ($styleName !== '' && isset($existingStyleNames[$styleName])) {
+                continue;
+            }
+
             $entry = [
                 'id' => null,
                 'name' => $contribution['name'],
@@ -102,6 +114,9 @@ class AdminStyleController extends AbstractController
             $category = strtolower((string) ($contribution['category'] ?? ''));
             if ($category !== '' && isset($groupIndexByName[$category])) {
                 $groupedStyles[$groupIndexByName[$category]]['styles'][] = $entry;
+                if ($styleName !== '') {
+                    $existingStyleNames[$styleName] = true;
+                }
                 continue;
             }
 
@@ -116,6 +131,9 @@ class AdminStyleController extends AbstractController
                 ];
             }
             $groupedStyles[$pluginGroupKey]['styles'][] = $entry;
+            if ($styleName !== '') {
+                $existingStyleNames[$styleName] = true;
+            }
         }
 
         return array_values($groupedStyles);
