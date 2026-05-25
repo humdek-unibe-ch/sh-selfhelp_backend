@@ -234,29 +234,37 @@ example:
     └── sh2-shp-survey-js/
 ```
 
-the recommended workflow is:
+the recommended development workflow is:
 
-1. Make the backend package resolvable by Composer. The plugin's
-   `scripts/install-local.mjs` (single cross-platform Node script —
-   no `.ps1` / `.sh` wrappers) adds a `path` repository entry to
-   `composer.json`, then runs `composer require`. The same script
-   defaults to building the plugin's `.shplugin` archive and posting
-   it to `POST /admin/plugins/install` so a localhost host runs the
-   real Messenger pipeline; `--symlink` switches it to the path-repo
-   fast path. It auto-loads `<plugin>/.env`, so `SELFHELP_ADMIN_TOKEN`
-   and `SELFHELP_API_BASE` can live next to `plugin.json`.
-2. Either:
-   - run `php bin/console selfhelp:plugin:install path/to/plugin.json`
-     from the backend (development mode dispatches and finalizes
-     in-process), **or**
-   - upload the local `.shplugin` from
-     `Admin → Plugins → Install plugin → Upload .shplugin`. The host
-     calls `POST /admin/plugins/inspect-archive` first to show
-     manifest + compatibility + signature preview, then dispatches
-     `InstallPluginMessage` with `source=archive`.
+1. Run the plugin's one-time attach command:
 
-The frontend Next.js server does not need to restart — runtime ESM
-bundles are loaded from `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
+```bash
+cd plugins/sh2-shp-survey-js
+node scripts/install-local.mjs --symlink
+```
+
+The script writes a temporary development manifest whose
+`backend.composer.repository` points at the local plugin backend, then
+installs/finalizes the plugin through the normal Messenger pipeline,
+enables it, and prints the frontend runtime command. The host root
+`composer.json`, `composer.lock`, and `config/bundles.php` are not
+modified by this dev attach path; the worker uses the isolated plugin
+Composer root under `var/plugin-composer/`. Because the host install
+mode is `development`, the persisted plugin row uses
+`frontend.runtime.devEntrypointUrl` as the active runtime URL.
+
+2. Keep the plugin runtime dev server running:
+
+```bash
+npm --prefix frontend run dev:runtime
+```
+
+This serves `frontend/dist` from the Vite watch build at the manifest
+dev URL and emits reload events. The Next.js host runtime listens to
+those events and re-imports the plugin bundle with cache busting, so
+normal plugin UI edits do not require rebuilding an archive,
+reinstalling the plugin, or restarting the host frontend.
+
 Mobile builds still consume `selfhelp.plugins.mobile.lock.json` per
 EAS profile.
 

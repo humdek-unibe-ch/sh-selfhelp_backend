@@ -238,7 +238,7 @@ final class PluginUpdater
                 $plugin->setTrustLevel($newManifest->getTrustLevel());
                 $plugin->setBackendPackage($newManifest->getBackendPackage());
                 $plugin->setBackendBundleClass($newManifest->getBackendBundleClass());
-                $plugin->setFrontendRuntimeUrl($newManifest->getFrontendRuntimeEntrypoint());
+                $plugin->setFrontendRuntimeUrl($this->resolveFrontendRuntimeUrl($newManifest, $operation));
                 $plugin->setFrontendRuntimeStylesheetUrl($newManifest->getFrontendRuntimeStylesheet());
                 $plugin->setFrontendRuntimeIntegrity($newManifest->getFrontendRuntimeIntegrity());
                 $plugin->setFrontendRuntimeFormat($newManifest->getFrontendRuntimeFormat());
@@ -319,5 +319,14 @@ final class PluginUpdater
         $data = $plugin->getManifestJson();
         $owned = $data['dataAccess']['ownedTables'] ?? [];
         return is_array($owned) ? array_values(array_filter($owned, 'is_string')) : [];
+    }
+
+    private function resolveFrontendRuntimeUrl(PluginManifest $manifest, PluginOperation $operation): ?string
+    {
+        if ($operation->getInstallMode() === Plugin::INSTALL_MODE_DEVELOPMENT) {
+            return $manifest->getFrontendDevEntrypointUrl() ?? $manifest->getFrontendRuntimeEntrypoint();
+        }
+
+        return $manifest->getFrontendRuntimeEntrypoint();
     }
 }

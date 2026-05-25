@@ -274,6 +274,12 @@ final class PluginAdminService extends BaseService
      * `ResolvedSource`, performs the synchronous compatibility checks,
      * and dispatches the async `InstallPluginMessage`.
      *
+     * If the resolved plugin is already installed, transparently routes
+     * the request through the updater instead of failing with a 409.
+     * This lets admins drop a `.shplugin` (or pick a registry entry) of
+     * a newer version without having to switch tabs between "Install"
+     * and "Update".
+     *
      * Returns the freshly-created `plugin_operations` row so the UI
      * can subscribe to its Mercure topic.
      *
@@ -283,12 +289,31 @@ final class PluginAdminService extends BaseService
      *   sourceName?: string,
      *   manifestUrl?: string,
      *   manifest?: array<string,mixed>,
+     *   forceMajor?: bool,
+     *   backupBefore?: bool,
      * } $input
      * @return array<string,mixed>
      */
     public function install(array $input, ?UploadedFile $archive = null): array
     {
         $resolved = $this->resolveSource($input, $archive);
+        $pluginId = $resolved['manifest']->getPluginId();
+
+        if ($this->plugins->findOneByPluginId($pluginId) !== null) {
+            // Plugin already installed → route to update flow so the
+            // admin can re-upload a newer .shplugin / re-pick a newer
+            // registry entry from the Install dialog without juggling
+            // tabs. The updater enforces version diff rules (same /
+            // downgrade / major-without-force) on its own.
+            $operation = $this->updater->request(
+                $resolved['manifest'],
+                $resolved['resolved'],
+                (bool) ($input['forceMajor'] ?? false),
+                (bool) ($input['backupBefore'] ?? false),
+            );
+            return $this->formatOperation($operation);
+        }
+
         $operation = $this->installer->request($resolved['manifest'], $resolved['resolved']);
         return $this->formatOperation($operation);
     }

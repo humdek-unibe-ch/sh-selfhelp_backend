@@ -220,7 +220,7 @@ final class PluginInstaller
                 $plugin->setInstallMode($operation->getInstallMode());
                 $plugin->setBackendPackage($manifest->getBackendPackage());
                 $plugin->setBackendBundleClass($manifest->getBackendBundleClass());
-                $plugin->setFrontendRuntimeUrl($manifest->getFrontendRuntimeEntrypoint());
+                $plugin->setFrontendRuntimeUrl($this->resolveFrontendRuntimeUrl($manifest, $operation));
                 $plugin->setFrontendRuntimeStylesheetUrl($manifest->getFrontendRuntimeStylesheet());
                 $plugin->setFrontendRuntimeIntegrity($manifest->getFrontendRuntimeIntegrity());
                 $plugin->setFrontendRuntimeFormat($manifest->getFrontendRuntimeFormat());
@@ -297,6 +297,15 @@ final class PluginInstaller
         $signature = $resolved['signature'] ?? null;
         $plugin->setSigningKeyId(is_string($keyId) && $keyId !== '' ? $keyId : null);
         $plugin->setSignatureEd25519(is_string($signature) && $signature !== '' ? $signature : null);
+    }
+
+    private function resolveFrontendRuntimeUrl(PluginManifest $manifest, PluginOperation $operation): ?string
+    {
+        if ($operation->getInstallMode() === Plugin::INSTALL_MODE_DEVELOPMENT) {
+            return $manifest->getFrontendDevEntrypointUrl() ?? $manifest->getFrontendRuntimeEntrypoint();
+        }
+
+        return $manifest->getFrontendRuntimeEntrypoint();
     }
 
 }

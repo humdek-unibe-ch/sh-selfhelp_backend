@@ -58,6 +58,7 @@ final class PluginInstallCommand extends Command
             $operation = $this->pluginAdminService->install([
                 'source' => 'paste',
                 'manifest' => $manifest->toArray(),
+                'registryEntry' => $this->loadAdjacentSignature($path),
             ]);
         } catch (\Throwable $e) {
             $io->error($e->getMessage());
@@ -85,5 +86,22 @@ final class PluginInstallCommand extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Local development installs may stage a `signature.json` beside the
+     * temporary manifest so the normal paste resolver can verify the
+     * same canonical payload shape used by registry installs.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function loadAdjacentSignature(string $manifestPath): ?array
+    {
+        $signaturePath = dirname($manifestPath) . DIRECTORY_SEPARATOR . 'signature.json';
+        if (!is_file($signaturePath)) {
+            return null;
+        }
+        $decoded = json_decode((string) file_get_contents($signaturePath), true);
+        return is_array($decoded) ? $decoded : null;
     }
 }

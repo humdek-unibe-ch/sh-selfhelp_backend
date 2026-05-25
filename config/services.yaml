@@ -56,7 +56,7 @@ parameters:
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
     selfhelp.plugin_api_version: '%env(default:selfhelp_plugin_api_version_default:SELFHELP_PLUGIN_API_VERSION)%'
-    selfhelp_plugin_api_version_default: '1.0'
+    selfhelp_plugin_api_version_default: '1.1'
     # Default official plugin registry URL. Plugin sources remain
     # DB-backed via `plugin_sources`; this env var only overrides the
     # seeded system source `humdek-public` so an operator can point the

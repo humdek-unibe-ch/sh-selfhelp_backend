@@ -194,6 +194,13 @@ final class PluginSignatureVerifier
         ));
 
         if ($missing) {
+            if ($this->appEnv === 'dev' && !$pluginRequiresSignature) {
+                $this->logger->warning(
+                    'Plugin signature missing; allowed for local APP_ENV=dev plugin installation.',
+                    ['trustLevel' => $trustLevel],
+                );
+                return;
+            }
             if (!$this->requireSignature && !$pluginRequiresSignature && $isUntrusted) {
                 $this->logger->warning(
                     'Plugin signature missing; allowed because SELFHELP_PLUGIN_REQUIRE_SIGNATURE=false and trustLevel=untrusted.',

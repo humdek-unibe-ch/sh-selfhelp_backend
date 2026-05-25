@@ -96,8 +96,11 @@ to extend the CSP for the development build.
 ## Dev workflow
 
 ```bash
-# Plugin terminal:
+# One-time attach/register from the plugin checkout:
 cd plugins/sh2-shp-survey-js
+node scripts/install-local.mjs --symlink
+
+# Plugin terminal:
 npm --prefix frontend run dev:runtime
 
 # Host terminal (no rebuild needed for plugin UI edits):
@@ -107,8 +110,19 @@ npm run dev
 
 When the plugin's source changes:
 
-1. The Vite dev server emits a fresh `plugin.esm.js`.
-2. The host detects the registered plugin's `runtimeUrl` is the
-   `devEntrypointUrl` and reloads the module on the next render
-   (you may need a hard refresh on the admin page; the host shell
-   does not HMR plugin modules itself).
+1. `install-local.mjs --symlink` passes a temporary path-repository
+   manifest to the plugin installer. The Messenger worker installs the
+   backend package into the isolated plugin Composer root
+   (`var/plugin-composer/`), registers the bundle through the generated
+   plugin bundles file, runs the plugin migrations, enables the plugin,
+   and stores the manifest `devEntrypointUrl` as the active runtime URL.
+   The host root `composer.json`, `composer.lock`, and
+   `config/bundles.php` stay untouched.
+2. `npm --prefix frontend run dev:runtime` runs the plugin's Vite
+   library build in watch mode, serves `frontend/dist` at the declared
+   dev URL, and exposes a small SSE reload endpoint.
+3. The host `PluginRuntime` listens to that endpoint, disposes the
+   existing plugin registration, re-imports `plugin.esm.js` with a
+   cache-busting query string, and updates the active admin/styles
+   snapshot. A hard refresh is only needed if the module itself fails to
+   re-register cleanly.
