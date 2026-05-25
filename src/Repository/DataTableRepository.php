@@ -44,7 +44,9 @@ class DataTableRepository extends ServiceEntityRepository
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
         if ($userId > 0) {
-            $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+            // withEntityScope returns a clone - reassign so the user
+            // scope is actually applied to the cache key.
+            $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
 
         // Sanitize the filter parameter for cache key usage
@@ -83,7 +85,9 @@ class DataTableRepository extends ServiceEntityRepository
         $user = $this->getEntityManager()->getRepository(User::class)->find($currentUserId);
         if ($user) {
             foreach ($user->getUserRoles() as $role) {
-                $cache->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+                // withEntityScope returns a clone - reassign so every
+                // role scope is actually folded into the cache key.
+                $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
             }
         }
 
@@ -118,7 +122,7 @@ class DataTableRepository extends ServiceEntityRepository
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(entityType: CacheService::ENTITY_SCOPE_DATA_TABLE, entityId: $tableId);
         if ($userId > 0) {
-            $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+            $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
 
         // Sanitize the filter parameter for cache key usage
