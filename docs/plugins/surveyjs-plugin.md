@@ -40,22 +40,24 @@ This document focuses on plugin-specific behaviour. For ecosystem-wide concepts,
 Owned by the plugin (see `Migrations/Version20260601100000.php`):
 
 ```text
-survey                  id, id_plugins, name, key_slug (unique), theme_code, archived,
-                        created_at, updated_at, id_current_version → survey_version
+surveys                 id, survey_id (unique), name, theme_code, archived,
+                        created_at, updated_at, id_current_survey_versions → survey_versions
 
-survey_version          id, id_survey → survey, revision (unique per survey),
+survey_versions         id, id_surveys → surveys, revision (unique per survey),
                         definition (JSON), definition_sha256, created_at, created_by_user_id
 
-survey_run              id, id_survey → survey, id_survey_version → survey_version,
+survey_runs             id, response_id (unique), id_surveys → surveys, id_survey_versions → survey_versions,
                         id_user (FK to core users.id, plain int), id_data_row (FK to core data_rows.id),
                         status, started_at, completed_at, progress (JSON)
 
-survey_answer_link      id, id_survey_run → survey_run,
+survey_answer_links     id, id_survey_runs → survey_runs,
                         question_name (unique per run), question_type,
-                        id_data_cell (FK to core data_cells.id), sanitized_html
+                        answer_value, sanitized_html
 ```
 
-`survey_run.id_data_row` and `survey_answer_link.id_data_cell` reference core tables but are intentionally plain ints (not Doctrine associations) because the plugin must stay decoupled from the core form storage entity classes.
+`survey_id` and `response_id` are generated stable external keys (`SV_...` / `R_...`). The plugin-owned tables are dropped on purge via `plugin.json#dataAccess.ownedTables`; shared CMS rows and generated core `data_tables` remain tagged with `id_plugins` because the host purger deletes those rows by plugin ownership.
+
+`survey_runs.id_data_rows` references the CMS data-browser row written into core form storage. `survey_answer_links.answer_value` keeps the same normalized answer value available to the SurveyJS dashboard without depending on core `data_cells` internals.
 
 ## 4. Public API
 
@@ -63,7 +65,7 @@ Base path: `/cms-api/v1/plugins/surveyjs`.
 
 | Method | Path                          | Description                                                |
 | ------ | ----------------------------- | ---------------------------------------------------------- |
-| GET    | `/published/{key}`            | Fetch the published definition for the survey identified by `key_slug`. |
+| GET    | `/published/{key}`            | Fetch the published definition for the survey identified by `survey_id`. |
 | POST   | `/published/{key}/submit`     | Submit an answer payload `{ answers: {...} }`.             |
 
 Both endpoints are anonymous-friendly. The host's auth listener attaches the JWT payload to the request when present so `survey_run.id_user` is populated for logged-in respondents.
@@ -178,7 +180,7 @@ npm install
 eas build --profile production-default
 ```
 
-Now visit `/admin/plugins-host/sh2-shp-survey-js/surveys` to create a survey, then publish a page using the `surveyjs` style with the survey's `key_slug` to embed it.
+Now visit `/admin/plugins-host/sh2-shp-survey-js/surveys` to create a survey, then publish a page using the `surveyjs` style with the generated `survey_id` selected in the Survey field.
 
 ## 14. Operational notes
 
