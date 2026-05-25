@@ -151,13 +151,18 @@ final class PluginDataAccessGuard
     }
 
     /**
-     * Walks the call stack looking for a class whose namespace matches
-     * one of the installed plugin bundle namespaces. Returns the
-     * Plugin entity for the first match, or `null` for core code.
+     * Walks the call stack looking for the originator of the current
+     * write. Returns the Plugin entity when the most-recent userland
+     * frame above Doctrine + the guard itself belongs to a registered
+     * plugin namespace. Returns `null` when the originator is host
+     * (`App\…`) code — even if a plugin is deeper in the stack.
      *
-     * Iterates at most ~60 frames so it stays cheap. The detection is
-     * deliberately conservative — anything outside the registered
-     * plugin namespaces is treated as core.
+     * This makes the common pattern of "plugin controller -> host
+     * service (TransactionService, DataService, etc.) -> Doctrine
+     * flush" behave correctly: the host service is the actual writer
+     * and bypasses the guard, while a plugin that calls
+     * `EntityManager::flush()` directly on a host entity still gets
+     * caught.
      */
     private function detectPluginContextFromBacktrace(): ?Plugin
     {
@@ -184,6 +189,25 @@ final class PluginDataAccessGuard
             if ($class === '') {
                 continue;
             }
+
+            // Skip Doctrine internals, the guard itself, and any other
+            // framework infrastructure — we are looking for the first
+            // userland frame above the flush call.
+            if (
+                str_starts_with($class, 'Doctrine\\')
+                || str_starts_with($class, 'Symfony\\')
+                || $class === self::class
+            ) {
+                continue;
+            }
+
+            // First userland frame is a host (`App\…`) service or
+            // controller. Treat this as a host-originated write even
+            // when a plugin is somewhere deeper in the stack.
+            if (str_starts_with($class, 'App\\')) {
+                return null;
+            }
+
             foreach ($bundleClassByNamespace as $namespace => $plugin) {
                 if (str_starts_with($class, $namespace . '\\')) {
                     return $plugin;
