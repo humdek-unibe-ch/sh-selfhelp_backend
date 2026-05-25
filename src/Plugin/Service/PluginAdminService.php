@@ -299,7 +299,8 @@ final class PluginAdminService extends BaseService
         $resolved = $this->resolveSource($input, $archive);
         $pluginId = $resolved['manifest']->getPluginId();
 
-        if ($this->plugins->findOneByPluginId($pluginId) !== null) {
+        $existing = $this->plugins->findOneByPluginId($pluginId);
+        if ($existing !== null) {
             // Plugin already installed → route to update flow so the
             // admin can re-upload a newer .shplugin / re-pick a newer
             // registry entry from the Install dialog without juggling
@@ -311,11 +312,22 @@ final class PluginAdminService extends BaseService
                 (bool) ($input['forceMajor'] ?? false),
                 (bool) ($input['backupBefore'] ?? false),
             );
-            return $this->formatOperation($operation);
+
+            // Tell the admin UI this was not a fresh install so it can
+            // show an "Updating <id> from X to Y" banner instead of the
+            // first-install copy. `formatOperation` already returns
+            // `type=update` + `fromVersion`/`toVersion`; the boolean is
+            // a quick signal that the route was an /install POST.
+            $payload = $this->formatOperation($operation);
+            $payload['redirectedToUpdate'] = true;
+            $payload['existingVersion'] = $existing->getVersion();
+            return $payload;
         }
 
         $operation = $this->installer->request($resolved['manifest'], $resolved['resolved']);
-        return $this->formatOperation($operation);
+        $payload = $this->formatOperation($operation);
+        $payload['redirectedToUpdate'] = false;
+        return $payload;
     }
 
     /**

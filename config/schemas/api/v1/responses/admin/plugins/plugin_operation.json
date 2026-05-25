@@ -21,7 +21,15 @@
                 "errorSummary": { "type": ["string", "null"] },
                 "snapshots": { "type": ["object", "null"], "additionalProperties": true },
                 "rollbackPlan": { "type": ["object", "null"], "additionalProperties": true },
-                "logs": { "type": ["array", "null"], "items": { "type": "object", "additionalProperties": true } }
+                "logs": { "type": ["array", "null"], "items": { "type": "object", "additionalProperties": true } },
+                "redirectedToUpdate": {
+                    "type": "boolean",
+                    "description": "Only emitted by POST /admin/plugins/install. True when the install request was transparently routed through the updater because the plugin id was already installed; the UI should show 'Updating <id> from existingVersion to toVersion' instead of the first-install copy."
+                },
+                "existingVersion": {
+                    "type": ["string", "null"],
+                    "description": "Only set together with redirectedToUpdate=true. Version of the already-installed plugin row, so the UI can render the from/to delta even before the operation reaches running/succeeded."
+                }
             },
             "required": ["id", "pluginId", "type", "status"],
             "additionalProperties": true
