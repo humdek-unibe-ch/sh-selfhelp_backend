@@ -39,12 +39,11 @@ class ApiRouteLoader extends Loader
         private ?EventDispatcherInterface $eventDispatcher = null,
         private string $cmsVersion = 'dev'
     ) {
-        // The parent Loader doesn't need any arguments
-        parent::__construct();
+        parent::__construct($env);
 
     }
 
-    public function load(mixed $resource, string $type = null): RouteCollection
+    public function load(mixed $resource, ?string $type = null): RouteCollection
     {
         if ($this->isLoaded) {
             throw new \RuntimeException('Do not add the database routes loader twice');
@@ -232,7 +231,7 @@ class ApiRouteLoader extends Loader
         return $versionedClass . '::' . $method;
     }
 
-    public function supports(mixed $resource, string $type = null): bool
+    public function supports(mixed $resource, ?string $type = null): bool
     {
         return $type === 'api_database';
     }

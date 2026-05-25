@@ -55,6 +55,7 @@ final class PluginBundlesFileWriter
             @unlink($tmp);
             throw new \RuntimeException(sprintf('Failed to rename %s to %s.', $tmp, $path));
         }
+        $this->invalidateConfigCacheResources($path);
 
         return $path;
     }
@@ -113,5 +114,19 @@ PHP;
     public function configPath(): string
     {
         return $this->projectDir . '/config/selfhelp_plugin_bundles.php';
+    }
+
+    private function invalidateConfigCacheResources(string $generatedPath): void
+    {
+        $bundlesPath = $this->projectDir . '/config/bundles.php';
+        if (is_file($bundlesPath)) {
+            @touch($bundlesPath);
+        }
+        if (function_exists('opcache_invalidate')) {
+            @opcache_invalidate($generatedPath, true);
+            if (is_file($bundlesPath)) {
+                @opcache_invalidate($bundlesPath, true);
+            }
+        }
     }
 }

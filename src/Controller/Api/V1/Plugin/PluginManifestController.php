@@ -88,8 +88,8 @@ final class PluginManifestController extends AbstractController
                     'enabled' => $plugin->isEnabled(),
                     'capabilities' => $capabilities,
                     'featureFlags' => $featureFlagDefaults,
-                    'frontendRuntimeUrl' => $plugin->getFrontendRuntimeUrl(),
-                    'frontendRuntimeStylesheetUrl' => $plugin->getFrontendRuntimeStylesheetUrl(),
+                    'frontendRuntimeUrl' => $this->versionedAssetUrl($plugin->getFrontendRuntimeUrl(), $plugin),
+                    'frontendRuntimeStylesheetUrl' => $this->versionedAssetUrl($plugin->getFrontendRuntimeStylesheetUrl(), $plugin),
                     'frontendRuntimeIntegrity' => $plugin->getFrontendRuntimeIntegrity(),
                     'frontendRuntimeFormat' => $plugin->getFrontendRuntimeFormat(),
                     'mobilePackage' => $plugin->getMobilePackage(),
@@ -113,5 +113,23 @@ final class PluginManifestController extends AbstractController
             }
             return $this->responseFormatter->formatError($e->getMessage(), $status);
         }
+    }
+
+    private function versionedAssetUrl(?string $url, \App\Entity\Plugin\Plugin $plugin): ?string
+    {
+        if ($url === null || $url === '') {
+            return $url;
+        }
+
+        $separator = str_contains($url, '?') ? '&' : '?';
+        $version = hash('sha256', implode('|', [
+            $plugin->getPluginId(),
+            $plugin->getVersion(),
+            (string) $plugin->getId(),
+            $plugin->getUpdatedAt()->format(DATE_ATOM),
+            $plugin->getFrontendRuntimeIntegrity() ?? '',
+        ]));
+
+        return $url . $separator . '_shPluginAsset=' . substr($version, 0, 16);
     }
 }
