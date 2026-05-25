@@ -43,7 +43,7 @@ Applies even if the agent was started from only one repo.
 
 ## Required-before-coding checklist
 
-Run through this list every phase and every PR that touches more than one repo:
+Run through this list on every PR that touches more than one repo:
 
 - [ ] Identify all repositories affected by the task.
 - [ ] Read `AGENTS.md` in each affected repository.

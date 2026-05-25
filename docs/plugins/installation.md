@@ -68,7 +68,7 @@ with four source tabs (priority order):
    still require Composer to reach a package source for the plugin's
    third-party PHP dependencies at install time — `.shplugin` is not
    a fully offline install bundle. See
-   [`shplugin-archive.md`](./shplugin-archive.md#archive-modes-phase-2a)
+   [`shplugin-archive.md`](./shplugin-archive.md#archive-modes)
    for the mode semantics.
 
    When the upload is signed by a publisher key that is not yet in

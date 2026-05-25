@@ -414,7 +414,7 @@ admin pages, custom question types, Mantine theme bridge, Tiptap
 rich-text adapter, mobile readonly + Open-on-Web fallback, realtime
 topics, feature flags, health check, and license-key endpoint.
 
-## 15. What is intentionally NOT part of this phase
+## 15. What is intentionally NOT part of the current architecture
 
 - Native mobile SurveyJS renderer (`survey-react-native` evaluation). Deferred.
 - Frontend admin field registry (custom CMS field renderers contributed by plugins to the admin UI). Deferred.
