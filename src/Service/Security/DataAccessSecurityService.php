@@ -69,6 +69,14 @@ class DataAccessSecurityService
             return true;
         }
 
+        return $this->hasStoredPermission($userId, $resourceType, $resourceId, $requiredPermission);
+    }
+
+    /**
+     * Check permissions only through role_data_access, without role-name overrides.
+     */
+    public function hasStoredPermission(int $userId, string $resourceType, int $resourceId, int $requiredPermission): bool
+    {
         // Get resource type ID
         $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, $resourceType);
 
@@ -103,7 +111,7 @@ class DataAccessSecurityService
      * Log permission check to audit table
      * Uses its own transaction to ensure audit logs are committed even if main operations fail
      */
-    private function auditLog(?int $userId, string $resourceType, int $resourceId, string $action, string $result, ?int $permission, string $notes = null): void
+    private function auditLog(?int $userId, string $resourceType, int $resourceId, string $action, string $result, ?int $permission, ?string $notes = null): void
     {
         // Skip audit logging if no user ID (not authenticated)
         if ($userId === null) {
