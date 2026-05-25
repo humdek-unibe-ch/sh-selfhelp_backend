@@ -351,17 +351,18 @@ CREATE TABLE `data_cells` (
 3. **Translation Rule**: If a cell exists with `language_id = 1`, it cannot have translations
 4. **Multi-translation Rule**: If a cell exists with `language_id > 1`, it can have multiple translations
 
-#### Data Retrieval with `get_dataTable_with_filter`
+#### Data Retrieval with `get_data_table_filtered`
 
-The stored procedure `get_dataTable_with_filter` has been enhanced to support language filtering:
+The stored procedure `get_data_table_filtered` (renamed from `get_dataTable_with_filter` as part of the lowercase_snake_case normalization in the canonical baseline migration) supports language filtering and timezone conversion:
 
 ```sql
-PROCEDURE `get_dataTable_with_filter`(
+PROCEDURE `get_data_table_filtered`(
     IN table_id_param INT,
     IN user_id_param INT,
     IN filter_param VARCHAR(1000),
     IN exclude_deleted_param BOOLEAN,
-    IN language_id_param INT -- New parameter for language filtering
+    IN language_id_param INT, -- Language filtering
+    IN timezone_code_param VARCHAR(100) -- Output timezone for entry_date
 )
 ```
 
@@ -374,13 +375,13 @@ PROCEDURE `get_dataTable_with_filter`(
 
 ```sql
 -- Get data in internal language only (default behavior)
-CALL get_dataTable_with_filter(1, 0, '', FALSE, 1);
+CALL get_data_table_filtered(1, 0, '', FALSE, 1, 'UTC');
 
 -- Get data with English translations (includes fallback to internal)
-CALL get_dataTable_with_filter(1, 0, '', FALSE, 2);
+CALL get_data_table_filtered(1, 0, '', FALSE, 2, 'UTC');
 
 -- Get data with German translations (includes fallback to internal)
-CALL get_dataTable_with_filter(1, 0, '', FALSE, 3);
+CALL get_data_table_filtered(1, 0, '', FALSE, 3, 'Europe/Zurich');
 ```
 
 #### Data Entry Rules
