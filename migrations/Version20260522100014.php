@@ -17,7 +17,11 @@ use Doctrine\Migrations\AbstractMigration;
  * section inside it. All IDs are resolved by name so the migration is
  * portable across environments.
  *
- * Down removes the sections by name prefix and the page row by keyword.
+ * Also removes the unused `text_md` and `email_user` fields from the
+ * `resetPassword` style.
+ *
+ * Down removes the sections by name prefix and the page row by keyword,
+ * and restores the removed style–field links.
  */
 final class Version20260522100014 extends AbstractMigration
 {
@@ -26,7 +30,7 @@ final class Version20260522100014 extends AbstractMigration
 
     public function getDescription(): string
     {
-        return 'Seed register system page with a container + register section.';
+        return 'Seed register system page with a container + register section; remove unused text_md and email_user fields from resetPassword style.';
     }
 
     public function up(Schema $schema): void
@@ -48,6 +52,14 @@ final class Version20260522100014 extends AbstractMigration
             WHERE p.`keyword` = 'register'
         SQL);
 
+        // Remove unused fields from the resetPassword style.
+        $this->addSql(<<<SQL
+            DELETE rfs FROM `rel_fields_styles` rfs
+            JOIN `styles` s ON s.id = rfs.id_styles
+            JOIN `fields` f ON f.id = rfs.id_fields
+            WHERE s.`name` = 'resetPassword' AND f.`name` IN ('text_md', 'email_user')
+        SQL);
+
         // Sections.
         $this->insertSection(
             name: self::PREFIX . '-wrapper',
@@ -63,6 +75,14 @@ final class Version20260522100014 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
+        // Restore removed style–field links.
+        $this->addSql(<<<SQL
+            INSERT IGNORE INTO `rel_fields_styles` (`id_styles`, `id_fields`)
+            SELECT s.id, f.id
+            FROM `styles` s, `fields` f
+            WHERE s.`name` = 'resetPassword' AND f.`name` IN ('text_md', 'email_user')
+        SQL);
+
         $this->addSql("DELETE FROM `sections` WHERE `name` LIKE '" . self::PREFIX . "-%'");
         $this->addSql("DELETE FROM `pages` WHERE `keyword` = '" . self::KEYWORD . "'");
     }
