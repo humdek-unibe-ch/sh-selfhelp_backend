@@ -35,12 +35,13 @@ final class Version20260522100014 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
-        // Insert the page row, resolved via page_types.name = 'core'.
+        // Insert the page row. id_page_access_types is copied from login
+        // (the canonical open-access auth page) so no value is hardcoded.
         $this->addSql(<<<SQL
-            INSERT IGNORE INTO `pages` (`keyword`, `url`, `id_page_types`, `is_system`, `is_headless`, `is_open_access`)
-            SELECT 'register', '/register', pt.id, 1, 0, 1
-            FROM `page_types` pt
-            WHERE pt.`name` = 'core'
+            INSERT IGNORE INTO `pages` (`keyword`, `url`, `id_page_types`, `id_page_access_types`, `is_system`, `is_headless`, `is_open_access`)
+            SELECT 'register', '/register', pt.id, login.id_page_access_types, 1, 0, 1
+            FROM `page_types` pt, `pages` login
+            WHERE pt.`name` = 'core' AND login.`keyword` = 'login'
         SQL);
 
         // ACL: all groups get select; admin additionally gets update.
