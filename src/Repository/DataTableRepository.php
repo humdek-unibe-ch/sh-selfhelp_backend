@@ -36,7 +36,7 @@ class DataTableRepository extends ServiceEntityRepository
     }
 
     /**
-     * Calls the stored procedure get_dataTable_with_filter and returns the result.
+     * Calls the stored procedure get_data_table_filtered and returns the result.
      */
     public function getDataTableWithFilter(int $tableId, int $userId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
     {
@@ -44,7 +44,9 @@ class DataTableRepository extends ServiceEntityRepository
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
         if ($userId > 0) {
-            $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+            // withEntityScope returns a clone - reassign so the user
+            // scope is actually applied to the cache key.
+            $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
 
         // Sanitize the filter parameter for cache key usage
@@ -54,7 +56,7 @@ class DataTableRepository extends ServiceEntityRepository
         return $cache
             ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId, $timezoneCode) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_dataTable_with_filter(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
+                $sql = 'CALL get_data_table_filtered(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
                 $stmt->bindValue('userId', $userId, ParameterType::INTEGER);
@@ -69,7 +71,7 @@ class DataTableRepository extends ServiceEntityRepository
     }
 
     /**
-     * Calls the stored procedure get_dataTable_with_user_group_filter for group-based user filtering.
+     * Calls the stored procedure get_data_table_for_user_groups for group-based user filtering.
      * Used for non-admin users who should only see data from users in their accessible groups.
      * The stored procedure internally determines accessible users based on current user's permissions.
      */
@@ -83,7 +85,9 @@ class DataTableRepository extends ServiceEntityRepository
         $user = $this->getEntityManager()->getRepository(User::class)->find($currentUserId);
         if ($user) {
             foreach ($user->getUserRoles() as $role) {
-                $cache->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+                // withEntityScope returns a clone - reassign so every
+                // role scope is actually folded into the cache key.
+                $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
             }
         }
 
@@ -94,7 +98,7 @@ class DataTableRepository extends ServiceEntityRepository
         return $cache
             ->getList("data_table_with_user_group_filter_{$tableId}_{$currentUserId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}", function () use ($tableId, $currentUserId, $filter, $excludeDeleted, $languageId, $timezoneCode) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_dataTable_with_user_group_filter(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
+                $sql = 'CALL get_data_table_for_user_groups(:tableId, :currentUserId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
                 $stmt->bindValue('currentUserId', $currentUserId, ParameterType::INTEGER);
@@ -109,7 +113,7 @@ class DataTableRepository extends ServiceEntityRepository
     }
 
     /**
-     * Calls the stored procedure get_dataTable_with_all_languages and returns the result.
+     * Calls the stored procedure get_data_table_all_languages and returns the result.
      * This procedure returns all languages for each record (no language filtering).
      */
     public function getDataTableWithAllLanguages(int $tableId, int $userId, string $filter, bool $excludeDeleted, string $timezoneCode = 'UTC'): array
@@ -118,7 +122,7 @@ class DataTableRepository extends ServiceEntityRepository
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(entityType: CacheService::ENTITY_SCOPE_DATA_TABLE, entityId: $tableId);
         if ($userId > 0) {
-            $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
+            $cache = $cache->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
         }
 
         // Sanitize the filter parameter for cache key usage
@@ -128,7 +132,7 @@ class DataTableRepository extends ServiceEntityRepository
         return $cache
             ->getList("data_table_with_all_languages_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$sanitizedTimezone}", function () use ($tableId, $userId, $filter, $excludeDeleted, $timezoneCode) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_dataTable_with_all_languages(:tableId, :userId, :filter, :excludeDeleted, :timezoneCode)';
+                $sql = 'CALL get_data_table_all_languages(:tableId, :userId, :filter, :excludeDeleted, :timezoneCode)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
                 $stmt->bindValue('userId', $userId, ParameterType::INTEGER);

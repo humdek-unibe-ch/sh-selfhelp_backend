@@ -8,11 +8,13 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Plugin\Event\StyleRegistryEvent;
 use App\Repository\StyleRepository;
 use App\Service\CMS\Admin\PromptTemplateService;
 use App\Service\CMS\Admin\StyleSchemaService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -30,6 +32,7 @@ class AdminStyleController extends AbstractController
         private readonly PromptTemplateService $promptTemplateService,
         private readonly ApiResponseFormatter $apiResponseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -44,11 +47,96 @@ class AdminStyleController extends AbstractController
     public function getStyles(): JsonResponse
     {
         $styles = $this->styleRepository->findAllStylesGroupedByGroup();
+        $styles = $this->mergePluginStyles($styles);
 
         return $this->apiResponseFormatter->formatSuccess(
             $styles,
             'responses/style/styleGroups'
         );
+    }
+
+    /**
+     * Append plugin-contributed styles to the grouped catalog.
+     *
+     * Plugins declare styles by subscribing to `StyleRegistryEvent`. The
+     * event's `category` field maps to a `style_groups.name` (case-insensitive);
+     * unknown categories fall into a synthetic "Plugins" group appended
+     * at the end so the admin builder still surfaces the styles.
+     *
+     * Synthetic entries are tagged with `plugin_id` so the frontend can
+     * render a "plugin" badge and link to the plugin detail page. Real
+     * DB rows are left untouched.
+     *
+     * @param array<int, array<string, mixed>> $groupedStyles
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergePluginStyles(array $groupedStyles): array
+    {
+        $event = $this->eventDispatcher->dispatch(new StyleRegistryEvent());
+        $contributions = $event->getStyles();
+        if ($contributions === []) {
+            return $groupedStyles;
+        }
+
+        $groupIndexByName = [];
+        $existingStyleNames = [];
+        foreach ($groupedStyles as $i => $group) {
+            $name = strtolower((string) ($group['name'] ?? ''));
+            if ($name !== '') {
+                $groupIndexByName[$name] = $i;
+            }
+            foreach (($group['styles'] ?? []) as $style) {
+                $styleName = strtolower((string) ($style['name'] ?? ''));
+                if ($styleName !== '') {
+                    $existingStyleNames[$styleName] = true;
+                }
+            }
+        }
+
+        $pluginGroupKey = null;
+        foreach ($contributions as $contribution) {
+            $styleName = strtolower((string) ($contribution['name'] ?? ''));
+            if ($styleName !== '' && isset($existingStyleNames[$styleName])) {
+                continue;
+            }
+
+            $entry = [
+                'id' => null,
+                'name' => $contribution['name'],
+                'description' => $contribution['description'],
+                'relationships' => [
+                    'allowedChildren' => $contribution['canHaveChildren'] ? [] : [],
+                    'allowedParents' => [],
+                ],
+                'plugin_id' => $contribution['pluginId'],
+            ];
+
+            $category = strtolower((string) ($contribution['category'] ?? ''));
+            if ($category !== '' && isset($groupIndexByName[$category])) {
+                $groupedStyles[$groupIndexByName[$category]]['styles'][] = $entry;
+                if ($styleName !== '') {
+                    $existingStyleNames[$styleName] = true;
+                }
+                continue;
+            }
+
+            if ($pluginGroupKey === null) {
+                $pluginGroupKey = count($groupedStyles);
+                $groupedStyles[$pluginGroupKey] = [
+                    'id' => null,
+                    'name' => 'plugins',
+                    'description' => 'Plugin-contributed styles.',
+                    'position' => PHP_INT_MAX,
+                    'styles' => [],
+                ];
+            }
+            $groupedStyles[$pluginGroupKey]['styles'][] = $entry;
+            if ($styleName !== '') {
+                $existingStyleNames[$styleName] = true;
+            }
+        }
+
+        return array_values($groupedStyles);
     }
 
     /**

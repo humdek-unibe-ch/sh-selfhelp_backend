@@ -182,6 +182,24 @@ $route->setOption('permissions', $permissions);
 
 ## 📋 Route Management Workflow
 
+This section describes the workflow for **core host routes**.
+
+Plugin routes are intentionally handled differently:
+
+- plugin packages declare routes in `plugin.json#apiRoutes`;
+- the host persists those rows into `api_routes` through
+  `PluginApiRouteSynchronizer` during install / update;
+- plugin migrations still own plugin-created permission rows, but they
+  do **not** insert `api_routes` rows directly.
+
+The reason for the split is lifecycle:
+
+- core routes are baseline host application data, so host Doctrine
+  migrations are the natural source of truth;
+- plugin routes belong to separately installed packages, so the host
+  must reconcile them on update and remove or hide them cleanly on
+  uninstall / disable.
+
 ### Adding New Routes
 1. **Insert into Database**:
 ```sql
@@ -191,7 +209,11 @@ VALUES ('admin_create_user', 'v1', '/admin/users', 'App\\Controller\\AdminUserCo
 ```
 
 2. **Add to Update Script**:
-All route changes must be added to `db/update_scripts/api_routes.sql`
+For core routes, add a Doctrine migration that inserts the route into
+`api_routes` and links it in `rel_api_routes_permissions`.
+
+Do **not** use this workflow for plugin package routes; those are
+declared in the plugin manifest and synchronized by the host.
 
 3. **Create Controller**:
 ```php

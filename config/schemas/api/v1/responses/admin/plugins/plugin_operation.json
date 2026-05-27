@@ -1,0 +1,39 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin operation envelope",
+    "description": "Response from /cms-api/v1/admin/plugins/operations/{id} and from any install/update/finalize endpoint. plugin_operations row formatted for the admin UI.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "pluginId": { "type": "string" },
+                "type": { "type": "string", "enum": ["install", "update", "disable", "enable", "uninstall", "purge", "rollback", "repair"] },
+                "status": { "type": "string", "enum": ["requested", "running", "succeeded", "failed", "cancelled", "rolled_back"] },
+                "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
+                "fromVersion": { "type": ["string", "null"] },
+                "toVersion": { "type": ["string", "null"] },
+                "createdAt": { "type": "string", "format": "date-time" },
+                "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+                "errorSummary": { "type": ["string", "null"] },
+                "snapshots": { "type": ["object", "null"], "additionalProperties": true },
+                "rollbackPlan": { "type": ["object", "null"], "additionalProperties": true },
+                "logs": { "type": ["array", "null"], "items": { "type": "object", "additionalProperties": true } },
+                "redirectedToUpdate": {
+                    "type": "boolean",
+                    "description": "Only emitted by POST /admin/plugins/install. True when the install request was transparently routed through the updater because the plugin id was already installed; the UI should show 'Updating <id> from existingVersion to toVersion' instead of the first-install copy."
+                },
+                "existingVersion": {
+                    "type": ["string", "null"],
+                    "description": "Only set together with redirectedToUpdate=true. Version of the already-installed plugin row, so the UI can render the from/to delta even before the operation reaches running/succeeded."
+                }
+            },
+            "required": ["id", "pluginId", "type", "status"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

@@ -6,7 +6,7 @@
  */
 
 
-return [
+$coreBundles = [
     Symfony\Bundle\FrameworkBundle\FrameworkBundle::class => ['all' => true],
     Doctrine\Bundle\DoctrineBundle\DoctrineBundle::class => ['all' => true],
     Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle::class => ['all' => true],
@@ -20,3 +20,26 @@ return [
     Symfony\Bundle\WebProfilerBundle\WebProfilerBundle::class => ['dev' => true, 'test' => true],
     Symfony\Bundle\MercureBundle\MercureBundle::class => ['all' => true],
 ];
+
+// Plugin bundles are loaded from a generated file written atomically
+// by the plugin installer/uninstaller. The file is missing on a clean
+// install and on installs that have no backend-bundle plugins. The
+// emergency safe-mode env (SELFHELP_DISABLE_PLUGINS=true) short-circuits
+// the include so a broken plugin bundle can never break Symfony boot.
+// The persistent safe-mode flag (var/plugin_safe_mode.lock written by
+// `selfhelp:plugin:safe-mode --enable`) is also honored so ops do not
+// have to edit `.env` to recover from a broken plugin.
+$pluginBundles = [];
+$safeModeEnv = filter_var($_ENV['SELFHELP_DISABLE_PLUGINS'] ?? $_SERVER['SELFHELP_DISABLE_PLUGINS'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
+$safeModeFlag = is_file(dirname(__DIR__) . '/var/plugin_safe_mode.lock');
+if (!$safeModeEnv && !$safeModeFlag) {
+    $generated = __DIR__ . '/selfhelp_plugin_bundles.php';
+    if (is_file($generated)) {
+        $loaded = require $generated;
+        if (is_array($loaded)) {
+            $pluginBundles = $loaded;
+        }
+    }
+}
+
+return $coreBundles + $pluginBundles;

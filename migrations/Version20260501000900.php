@@ -20,7 +20,7 @@ use Doctrine\Migrations\AbstractMigration;
  *
  * What this migration adds:
  *   - `page_types` row: `mail_config`.
- *   - `pages` row: `sh-mail-config` (one-off system page, no parent).
+ *   - `pages` row: `sh-mail-config` (configuration page, no parent).
  *   - `fields` rows:
  *       * Global sender properties (`mail_from_email`, `mail_from_name`,
  *         `mail_reply_to`, `mail_is_html`) — non-translatable, language id 1.
@@ -124,7 +124,7 @@ final class Version20260501000900 extends AbstractMigration
                 (SELECT id FROM page_types WHERE name = '{$pageType}' LIMIT 1),
                 (SELECT id FROM lookups WHERE type_code = 'pageAccessTypes' AND lookup_code = 'mobile_and_web' LIMIT 1),
                 0,
-                1,
+                0,
                 NULL
             )
         ");

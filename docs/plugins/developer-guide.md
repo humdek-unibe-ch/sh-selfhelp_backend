@@ -1,0 +1,909 @@
+# SelfHelp Plugin Developer Guide
+
+Audience: plugin authors building against `@selfhelp/shared/plugin-sdk` and
+the SelfHelp Symfony backend (CMS host). This document is the canonical
+"how to build a SelfHelp plugin" reference. It is paired with:
+
+- `docs/plugins/plugin-manifest.schema.json` (machine-readable manifest schema)
+- `docs/plugins/multi-repo-agents-md.md` (AGENTS.md rules across repos)
+- `docs/plugins/plugin-repo-agents-md-template.md` (drop-in AGENTS.md for plugin repos)
+- `docs/plugins/architecture.md` (system-level architecture overview)
+
+> SelfHelp CMS lives in `sh-selfhelp_backend` (Symfony 7.4 + PHP 8.4). The
+> frontend lives in `sh-selfhelp_frontend` (Next.js + Mantine). The
+> mobile app lives in `sh-selfhelp_mobile` (Expo / React Native). The
+> shared TypeScript SDK lives in `sh-selfhelp_shared`. Plugins always
+> live in their own repository: `sh-shp-<name>`.
+
+---
+
+## 1. Plugin Anatomy
+
+A SelfHelp plugin is a multi-package repository. The minimum layout is:
+
+```
+sh-shp-<name>/
+├── plugin.json                       # manifest (canonical)
+├── AGENTS.md                         # plugin AGENTS rules (use the template)
+├── README.md
+├── CHANGELOG.md
+├── server/                           # Symfony bundle (optional)
+│   ├── composer.json
+│   ├── src/<Vendor><Name>Bundle.php
+│   ├── src/...
+│   └── src/Migrations/Version*.php
+├── react/                            # Next.js plugin package (web)
+│   ├── package.json                  # name "@selfhelp/sh-shp-<name>"
+│   ├── src/index.ts                  # exports `register`
+│   └── src/styles/, src/admin/, ...
+└── mobile/                           # Expo plugin package (optional)
+    ├── package.json                  # name "@selfhelp-mobile/sh-shp-<name>"
+    └── src/index.ts                  # exports `registerMobile`
+```
+
+Not every plugin needs every part. A plugin can ship:
+
+- backend-only (Composer package + migrations + bundle),
+- frontend-only (npm package contributing styles / admin pages),
+- mobile-only (npm package consumed by EAS builds),
+- or any combination of the three.
+
+The presence/absence of each side is declared explicitly in `plugin.json`.
+
+---
+
+## 2. The Manifest (`plugin.json`)
+
+The manifest is the source of truth used by the host installer. It is
+validated against `plugin-manifest.schema.json`.
+
+A minimal manifest looks like this:
+
+```json
+{
+  "id": "sh2-shp-example",
+  "name": "Example Plugin",
+  "version": "1.0.0",
+  "pluginApiVersion": "1.0",
+  "license": "MPL-2.0",
+  "compatibility": {
+    "selfhelp": "^2.0",
+    "php": "^8.4",
+    "node": "^22"
+  },
+  "security": {
+    "trustLevel": "reviewed",
+    "capabilities": ["frontendStyles"]
+  },
+  "backend": {
+    "bundleClass": "SelfHelp\\ExampleBundle\\SelfHelpExampleBundle",
+    "composer": {
+      "package": "selfhelp/sh-shp-example",
+      "version": "1.0.0"
+    }
+  },
+  "frontend": {
+    "runtime": {
+      "entrypoint": "dist/plugin.esm.js",
+      "stylesheet": "dist/plugin.css",
+      "format": "esm"
+    }
+  },
+  "styles": [
+    {
+      "name": "example-banner",
+      "description": "A banner style contributed by the example plugin.",
+      "canHaveChildren": true
+    }
+  ]
+}
+```
+
+Key rules:
+
+- `id` must be **kebab-case** and unique across the registry.
+- `version` follows SemVer:
+  - **patch** (`1.0.0` → `1.0.1`): no schema change, no migration. The
+    installer rejects a patch bump that ships a migration file.
+  - **minor** (`1.0.x` → `1.1.0`): must ship at least one migration class
+    (the installer enforces this even for "no-op" minor bumps).
+  - **major** (`1.x` → `2.x`): breaking. Migration optional.
+- `pluginApiVersion` declares the SDK contract version (currently `1.0`).
+  Patch/minor mismatches in the SDK never break a plugin. Major SDK bumps
+  do; you must re-test against the new SDK.
+- `security.capabilities` is **deny-by-default**. You can only use a
+  capability that is listed. If you load an external CDN, you must list
+  it under `security.externalHosts` and request the `externalNetworkAccess`
+  capability.
+- `compatibility.selfhelp` must satisfy the host CMS version range. The
+  admin UI shows a clear "blocking" reason when this fails.
+
+See `plugin-manifest.schema.json` for the full property list.
+
+---
+
+## 3. The SDK (`@selfhelp/shared/plugin-sdk`)
+
+Every plugin package imports from this single subpath. Importing from
+other parts of `@selfhelp/shared` is unsupported and will break across
+SDK upgrades.
+
+Frontend plugins call `definePlugin()`:
+
+```ts
+import { definePlugin } from '@selfhelp/shared/plugin-sdk';
+import { ExampleBanner } from './styles/ExampleBanner';
+
+export const register = definePlugin({
+    id: 'sh2-shp-example',
+    version: '1.0.0',
+    pluginApiVersion: '1.0',
+    styles: [
+        {
+            name: 'example-banner',
+            description: 'Example banner.',
+            category: 'plugin',
+            canHaveChildren: true,
+            component: ExampleBanner,
+        },
+    ],
+    adminPages: [
+        {
+            slug: 'settings',
+            title: 'Example settings',
+            permission: 'example.manage',
+            component: ExampleAdminPage,
+        },
+    ],
+    menuItems: [
+        {
+            key: 'example.settings',
+            label: 'Example',
+            href: '/admin/plugins-host/sh2-shp-example/settings',
+            permission: 'example.manage',
+            position: { section: 'admin', order: 200 },
+        },
+    ],
+    featureFlags: [
+        { key: 'example.beta-ui', label: 'Beta UI', defaultEnabled: false },
+    ],
+});
+```
+
+Mobile plugins call `defineMobilePlugin()`:
+
+```ts
+import { defineMobilePlugin } from '@selfhelp/shared/plugin-sdk';
+import { ExampleBannerMobile } from './styles/ExampleBannerMobile';
+
+export const registerMobile = defineMobilePlugin({
+    id: 'sh2-shp-example',
+    version: '1.0.0',
+    pluginApiVersion: '1.0',
+    styles: [
+        {
+            name: 'example-banner',
+            description: 'Example banner (mobile).',
+            category: 'plugin',
+            canHaveChildren: true,
+            component: ExampleBannerMobile,
+        },
+    ],
+});
+```
+
+Both `definePlugin()` and `defineMobilePlugin()` throw at boot if the
+plugin's `pluginApiVersion` is not compatible with the host SDK. The
+host `PluginRuntime` catches the error, logs it, and skips the plugin
+instead of crashing the page.
+
+### Style contributions
+
+A plugin style is just another CMS style. The host renders it through
+the same `BasicStyle.tsx` dispatcher used for core styles, so plugin
+styles automatically get:
+
+- the standard `getCssClass()` helper (Mantine spacing tokens),
+- debug overlays in CMS preview mode,
+- proper recursive child rendering when `canHaveChildren: true`,
+- the `parentActive` / `parentColor` / `childIndex` props.
+
+Your component receives the same props as a core style component. See
+`sh-selfhelp_frontend/src/types/styles` for the prop shapes.
+
+### Admin pages
+
+Pages contributed under `adminPages` are mounted at
+`/admin/plugins-host/{pluginId}/{slug}`. The host shell handles the
+layout, breadcrumbs, and permission gating; your component renders the
+page body.
+
+### Menu items
+
+Menu items are merged into the host menu by the `PluginRuntime`. The
+host honors the `position.section` (`admin`, `cms`, `tools`) and
+`position.order`. Items always require their declared `permission` to
+be visible.
+
+### Realtime topics
+
+Use `definePluginRealtimeTopic()` to declare a topic. Plugins **never**
+talk to Mercure directly. The host installer registers each topic with
+its scoped path `selfhelp/plugin/{pluginId}/{key}`. Backend code
+publishes through `IPluginRealtimePublisher` (passed as `api.realtime`
+inside the Symfony bundle).
+
+### Feature flags
+
+Flags are declared in the manifest **and** passed to `definePlugin()`.
+The host seeds a `plugin_feature_flags` row with `defaultEnabled` and
+exposes the flag to your code via `api.isFeatureEnabled('beta-ui')`.
+
+### Rich text editor adapter
+
+If your plugin needs rich text, use `api.richTextEditor` rather than
+embedding your own editor. The host provides a Tiptap-backed adapter
+with consistent styling, paste handling, sanitization, and a stable
+serialization format.
+
+---
+
+## 4. Backend Plugins (Symfony Bundle)
+
+A backend plugin ships:
+
+- a Composer package (`server/composer.json`),
+- a Symfony bundle class implementing the standard `BundleInterface`
+  contract,
+- optional Doctrine migrations (`server/src/Migrations/`),
+- optional API controllers,
+- optional event listeners and services.
+
+Bundle registration is **dynamic**. The host writes
+`config/selfhelp_plugin_bundles.php` automatically when you install,
+enable, disable, or uninstall. You never edit `bundles.php` by hand.
+
+The host enforces these guard rails on the backend side:
+
+- **Migration safety**: migrations are only allowed to touch tables the
+  plugin owns. The host's `MigrationGuard` aborts a migration that
+  tries to `ALTER` core tables. Use `id_plugins` columns to mark
+  plugin-owned data in core tables when collaboration is needed.
+- **Capability checks**: a plugin without `databaseMigrations` cannot
+  run migrations; a plugin without `externalNetworkAccess` cannot use
+  the HTTP client; etc.
+- **Transaction logging**: any data-changing operation must go through
+  `TransactionService` like the rest of the CMS code.
+- **API routes**: routes declared under `apiRoutes` in the manifest
+  are persisted by the host into `api_routes` (tagged with
+  `id_plugins`) and linked to their permissions through
+  `rel_api_routes_permissions` at install / update time. The plugin
+  ships the controllers; the host owns the route rows. Disable hides
+  the routes without dropping the rows; uninstall removes them
+  because the controllers are about to be gone. See
+  [`architecture.md` §9](./architecture.md#9-extension-points-no-monkey-patching).
+  Route permissions and request/response validation schemas live in
+  the plugin's repo.
+
+Why this is different from core CMS routes:
+
+- core CMS routes are baseline host application data, so the host adds
+  them through host Doctrine migrations;
+- plugin routes belong to a separately installed package, so the host
+  needs to reconcile them on install, update, disable, uninstall, and
+  purge;
+- `plugin.json#apiRoutes` is therefore the plugin package's source of
+  truth, while `PluginApiRouteSynchronizer` is the host-side writer
+  into `api_routes`.
+
+This split is intentional. Plugin migrations still own plugin-created
+permissions, lookups, and schema objects, but they do **not** insert
+their own `api_routes` rows. Shared host metadata stays host-managed.
+
+### Migrations and the plugin lifecycle
+
+The plugin's migration files live in
+`server/src/Migrations/Version*.php`. They are timestamped with the
+standard `bin/console doctrine:migrations:generate` command (do **not**
+hand-name migration files).
+
+The host invokes migrations **only** inside the Messenger
+`InstallPluginHandler` / `UpdatePluginHandler`, after Composer has
+installed the new code, and within the plugin operation transaction.
+If a migration fails the operation is recorded as `failed`, any
+artifacts promoted to `public/plugin-artifacts/` are rolled back, and
+the plugin is left in its previous state.
+
+---
+
+## 5. Installation Modes
+
+The CMS supports three install modes; each plugin install records the
+mode that produced it in the lock file.
+
+| Mode          | Composer                     | When to use                                                       |
+| ------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `development` | run by the Messenger worker  | Local dev only. Disabled in CI.                                   |
+| `managed`     | run by the operator manually | Production. The worker writes a runbook entry into `plugin_operations.logs_json`; the operator finalizes with `selfhelp:plugin:run-operation`. |
+| `trusted`     | run by the Messenger worker  | Air-gapped on-prem installs where signed archives are pre-vetted. |
+
+Frontend bundles are runtime ESM. The host serves
+`/plugin-artifacts/<id>-<ver>/plugin.esm.js` directly out of
+`public/plugin-artifacts/`, so plugin updates never require an npm
+install or Next.js rebuild on the host frontend.
+
+---
+
+## 6. Trust Levels and Capabilities
+
+Three trust levels:
+
+- `official` — published by the SelfHelp core team, signed Ed25519.
+- `reviewed` — community plugins that passed the publishing review.
+- `untrusted` — local-only plugins. Forbidden to ship a Composer
+  package or run migrations. Allowed to contribute frontend-only
+  styles / admin pages.
+
+Capabilities are deny-by-default. The installer compares declared
+capabilities against the plugin's trust level and refuses the install
+if the plugin requests something its trust level doesn't allow. The
+admin sees the unmet requirement in the install request UI.
+
+---
+
+## 7. Versioning and Compatibility
+
+| Thing                | Versioning rule                                                        |
+| -------------------- | ---------------------------------------------------------------------- |
+| Plugin (`version`)   | SemVer. Patch = no migration. Minor = ships migration. Major = breaking.|
+| SDK (`pluginApiVersion`) | Independent SemVer, currently `1.0`. Host honors `host minor >= plugin minor` within the same major. |
+| Host CMS             | SemVer. Declared via `compatibility.selfhelp` (npm-style range).        |
+| Lock file            | `schemaVersion` is part of the lock JSON. Currently `1.0`.             |
+
+`assertPluginVersionSemantics(prev, next, { hasMigration })` runs in
+plugin CI to catch SemVer rule violations before publishing.
+`assertCmsCompatibility(cmsVersion, range)` runs at install time on
+the host.
+
+---
+
+## 8. Data Storage Patterns
+
+Plugins usually fall into one of these patterns:
+
+1. **No persistent state** — purely visual styles. Nothing to store.
+2. **Plugin-owned tables** — entities + migrations + services
+   inside the plugin bundle. Use plugin-namespaced table names like
+   `survey_runs`, `survey_responses`.
+3. **CMS `data_tables` extension** — write form submissions / answers
+   into existing `data_tables`/`data_rows`/`data_cells` so the rest of
+   the CMS (export, analytics, scheduled jobs) sees them as normal
+   submissions.
+
+Patterns 2 and 3 can be combined. The SurveyJS plugin uses pattern 2
+for survey definitions and pattern 3 for survey responses.
+
+---
+
+## 9. CMS Extension Points
+
+The host exposes Symfony events and tagged services for the
+extension surfaces it actually consumes today. Plugins extend the
+CMS via these only; new tags or events that the host does not
+collect have no effect at runtime.
+
+Events the host dispatches:
+
+- **Styles** — subscribe to `App\Plugin\Event\StyleRegistryEvent` to
+  add styles to the schema returned by `AdminStyleController`.
+- **Lookups** — subscribe to `App\Plugin\Event\LookupRegistryEvent` to
+  extend `plugin_extendable` lookup groups (or to own a new
+  `plugin_owned` group) when `LookupService` first loads them.
+- **Scheduled job types** — subscribe to
+  `App\Plugin\Event\ScheduledJobTypeEvent` to advertise job types in
+  the admin schema; pair with a `selfhelp.plugin.scheduled_job_handler`
+  tagged service to actually execute the job.
+- **Realtime topics** — subscribe to
+  `App\Plugin\Event\PluginRealtimeTopicRegistryEvent` to advertise a
+  Mercure topic and to `App\Plugin\Event\PluginRealtimePermissionEvent`
+  to grant subscribers access at JWT-mint time.
+- **Lifecycle events** — react to `PluginInstalledEvent`,
+  `PluginEnabledEvent`, `PluginDisabledEvent`, `PluginUpdatedEvent`,
+  `PluginUninstalledEvent`, `PluginPurgedEvent`, and
+  `PluginOperationProgressEvent` for plugin-specific bootstrap or
+  cleanup work.
+
+Tagged services the host collects today:
+
+- **`selfhelp.plugin.health_check`** — gathered by
+  `App\Plugin\Health\PluginHealthService` for the admin diagnostics
+  surface.
+- **`selfhelp.plugin.scheduled_job_handler`** — collected by
+  `App\Plugin\ScheduledJob\PluginScheduledJobRegistry` and dispatched
+  by `JobSchedulerService::executeByType` when a scheduled job whose
+  `jobType` matches the handler's `JOB_TYPE` is due.
+
+Singleton aliases on interfaces (`PluginBackupHookInterface`,
+`PluginRealtimePublisherInterface`) provide additional extension
+points; see [`architecture.md`](./architecture.md) for the full list.
+
+Manifest-driven surfaces consumed without tags or events:
+
+- **API routes** — declare them in `plugin.json#apiRoutes`. The host
+  installer (`PluginApiRouteSynchronizer`) persists each entry into
+  `api_routes` (tagged with `id_plugins`) and wires the matching
+  rows into `rel_api_routes_permissions`. Plugins do **not** ship a
+  route subscriber for normal HTTP endpoints; the `ApiRouteLoader`
+  serves plugin routes through the same DB-backed pipeline used for
+  core routes, and skips them automatically when the owning plugin
+  is disabled.
+- Why not plugin migrations? Because plugin routes are package
+  metadata with a lifecycle the host must reconcile. A manifest +
+  synchronizer can update, remove, disable, and uninstall route rows
+  symmetrically; per-plugin SQL migrations are better reserved for
+  plugin-owned schema and data.
+- **CSP rules** — declare `security.cspRules` in the manifest; the
+  installer merges them into the global CSP on enable / disable.
+- **Lookups** — declare `lookups.extends[]` / `lookups.owned[]` in
+  the manifest as a static alternative to subscribing to
+  `LookupRegistryEvent`.
+
+Field renderers, page-lifecycle hooks, and other surfaces from
+earlier proposals are **not** consumed by the host. Do not register
+tags such as `selfhelp.plugin.field_renderer` — nothing iterates
+over them and the bundle compile pass will not complain about it.
+
+---
+
+## 10. Plugin Health and Diagnostics
+
+Declare health checks in your plugin registration:
+
+```ts
+export const register = definePlugin({
+    // ...
+    healthChecks: [
+        {
+            key: 'example.license',
+            label: 'License key reachable',
+            severity: 'warning',
+            run: async () => {
+                const ok = await checkLicenseEndpoint();
+                return ok ? { status: 'ok' } : { status: 'warn', detail: 'License endpoint unreachable.' };
+            },
+        },
+    ],
+});
+```
+
+Health checks show up:
+
+- in the plugin detail page,
+- as part of `selfhelp:plugin:doctor`,
+- in CI when `selfhelp:plugin:doctor --ci` is wired into deployment
+  preflight.
+
+---
+
+## 11. Plugin Lifecycle (operator side)
+
+The CMS installer flow is **one HTTP request → one Messenger message**:
+
+1. **Install / update** — the admin sends `POST /admin/plugins/install`
+   or `POST /admin/plugins/{pluginId}/update` (JSON for
+   `source ∈ {registry, url, paste}`, multipart for
+   `source=archive`). The service validates compatibility +
+   capabilities + signature + (on update) `expectedPluginId`, persists
+   a `plugin_operations` row, and dispatches
+   `InstallPluginMessage` / `UpdatePluginMessage` on the `plugin_ops`
+   transport. The response is `202 Accepted` with the operation id.
+2. **Worker run** — the Messenger worker
+   (`php bin/console messenger:consume plugin_ops`) runs `composer
+   require`, optionally promotes a `.shplugin` archive, runs the
+   plugin's Doctrine migrations, regenerates
+   `config/selfhelp_plugin_bundles.php`, writes the lock file, then
+   dispatches the matching `Plugin{Installed,Updated}Event`. Progress
+   is streamed to the `selfhelp/plugins/state` Mercure topic.
+3. **Managed mode** — in `managed` mode the worker stops after writing
+   a runbook entry into `plugin_operations.logs_json`. The operator
+   runs the composer step + deploys + calls
+   `selfhelp:plugin:run-operation <opId>` which invokes the same
+   `finalize()`. No browser finalize step exists.
+4. **Enable / disable** — synchronous; toggles the `enabled` flag,
+   regenerates the bundles file, invalidates relevant caches.
+   Install does NOT auto-enable in the upload / CLI paths — the
+   `enabled = 0` default lets an admin review trust level,
+   capabilities, signing key id, requested external hosts, and the
+   declared `dataAccess` lists before turning the plugin on. The
+   Admin **Install plugin** modal exposes an "Enable plugin after
+   install" switch (default ON) so single-click install is still
+   one click; sticking ticks of off leaves the plugin disabled.
+   Development fast-paths (e.g. the SurveyJS plugin's
+   `node scripts/install-local.mjs --symlink`) intentionally run
+   `selfhelp:plugin:enable <id>` themselves so a fresh local
+   checkout is immediately usable. The mechanics, side effects,
+   and operator UI flow are documented in
+   [`installation.md` §6.1](./installation.md#61-why-install-does-not-auto-enable-by-default).
+5. **Uninstall** — `POST /admin/plugins/{pluginId}/uninstall` mirrors
+   the install/update flow: persists an operation row, dispatches
+   `UninstallPluginMessage`. The worker runs `composer remove`, then
+   `PluginUninstaller::finalize()` deletes the `plugins` row and
+   regenerates the lock + bundles files. Plugin-owned tables stay in
+   place.
+6. **Purge** — destructive. Drops plugin-owned tables and removes
+   `id_plugins`-tagged rows. Requires `confirmedPluginId` in the
+   request body and `--confirm` on CLI.
+7. **Repair** — recomputes the lock file and bundles file from the DB
+   state. Idempotent. Exposed as `selfhelp:plugin:repair` on the CLI.
+
+Every operation creates a `plugin_operations` row with type,
+before/after manifest snapshots, bundles + lock file checksums,
+migration scan, signing metadata (keyId + signature), and a rollback
+descriptor.
+
+---
+
+## 12. Realtime Communication (no-polling policy)
+
+The host uses Mercure for all dynamic updates. Plugins **must** use the
+host realtime publisher; running an own Mercure client is forbidden
+and will be blocked at install time.
+
+Inject the host contract directly:
+
+```php
+use App\Plugin\Realtime\PluginRealtimePublisherInterface;
+
+final class MyPluginRealtimePublisher
+{
+    public function __construct(
+        private readonly PluginRealtimePublisherInterface $host,
+    ) {}
+}
+```
+
+The host aliases `App\Plugin\Realtime\PluginRealtimePublisherInterface`
+to its concrete `App\Plugin\Realtime\PluginRealtimePublisher` in
+`config/services.yaml`. Symfony's autowiring resolves the dependency
+without any extra configuration in the plugin's `services.php`.
+
+Anti-patterns to avoid:
+
+- Do **NOT** redeclare a plugin-local interface named
+  `PluginRealtimePublisherInterface` inside the plugin namespace and
+  rely on the host to alias it — the host only aliases its own
+  interface, never plugin-local copies. If you ever shipped such a
+  pattern, migrate to importing the host interface directly.
+- Do **NOT** ship a production no-op publisher
+  (`NullPluginRealtimePublisher`-style) as the default DI binding.
+  Realtime is mandatory; if Mercure is unavailable in a given
+  environment, that is a host configuration problem, not something
+  the plugin should silently mask.
+- Test fakes are fine, but they belong **only** in test config
+  (`config/services_test.php`) — never in the production service
+  wiring.
+
+Frontend plugins subscribe to topics through the host's React Query
+key invalidation: the `usePluginRuntime()` snapshot lists declared
+topics, and the host shell wires SSE subscriptions automatically. You
+just have to publish.
+
+If you absolutely must poll (e.g. a third-party LLM provider that
+doesn't push), implement the polling **inside your backend scheduled
+job**, not in the frontend.
+
+---
+
+## 13. Plugin AGENTS.md
+
+Every plugin repo ships an `AGENTS.md` derived from
+`docs/plugins/plugin-repo-agents-md-template.md`. The template embeds
+the multi-repo coordination rules and the plugin-specific guard rails
+the AI agent must follow when editing the plugin (manifest schema,
+SemVer rule, capability declarations, migration safety, etc.).
+
+Plugin repos must include the multi-repo rule, the architecture rule,
+the lifecycle rule, and the SemVer rule **without modification**. The
+plugin can append its own rules below.
+
+---
+
+## 14. Publishing
+
+Production plugins are published to:
+
+- **Composer registry** for the backend package, and / or
+- **npm registry** (or a private scoped registry) for the frontend and
+  mobile packages.
+
+Each release ships:
+
+- a tarball (CDN-cached),
+- a SHA-256 checksum,
+- optionally an Ed25519 signature for `official` plugins.
+
+The host installer downloads the artifact, verifies the checksum
+(mandatory) and the signature (when configured), and refuses the
+install on mismatch.
+
+The plugin must also publish a `registry.json` entry. See
+`@selfhelp/shared/plugin-sdk` → `IPluginRegistry` for the document
+shape.
+
+---
+
+## 15. What belongs inside a `.shplugin` (and what doesn't)
+
+A `.shplugin` archive is a thin packaging container, not a full
+self-contained install bundle. Its job is to carry the plugin's own
+compiled artifacts (frontend ESM + optional CSS) plus, in
+`standalone` mode, the plugin's own backend Composer package source.
+Everything else — third-party PHP dependencies, host singletons,
+Node tooling — is the host's responsibility, owned by Composer at
+install time and by the host's existing Next.js bundle at runtime.
+
+The publisher's CI workflow, the build script, and the host's
+validator all enforce these rules. Ignoring them produces archives
+that the host rejects up-front (signed-payload mismatch, validator
+errors) or, worse, corrupts the running host (duplicate React copies,
+shadowed Composer locks).
+
+### 15.1 Frontend rules
+
+- **Bundle every plugin-owned JS dependency** directly into
+  `plugin.esm.js` via Vite library mode. "Plugin-owned" means
+  packages that are NOT part of the host singleton set. Examples for
+  the SurveyJS plugin: `survey-core`, `survey-react-ui`,
+  `survey-creator-react`, `@tiptap/*` (when used only by the
+  plugin), `leaflet` (when used only by the plugin).
+- **Externalise the host singletons** so the plugin's bundle does
+  NOT contain a second copy. Loading two copies of React breaks the
+  reconciler; loading two copies of `@tanstack/react-query` breaks
+  the host's cache invariants. The current host singleton list is:
+  - `react`
+  - `react-dom` (+ `react/jsx-runtime`, `react-dom/client`)
+  - `@mantine/core`, `@mantine/hooks`, `@mantine/notifications`
+    (+ any `@mantine/*` package the host ships)
+  - `@selfhelp/shared` (+ `@selfhelp/shared/plugin-sdk`)
+  - `@tanstack/react-query` (the host owns the singleton
+    `QueryClient`; bundling a second copy would shadow it)
+- The plugin's Vite config carries an `EXTERNAL_PEERS` array that is
+  the authoritative externalise list. The reference implementation
+  lives at
+  [`plugins/sh2-shp-survey-js/frontend/vite.config.ts`](../../plugins/sh2-shp-survey-js/frontend/vite.config.ts);
+  extend that list with `@tanstack/react-query` once the host
+  exposes the singleton through the plugin SDK contract.
+- **CSS** may be inlined into the JS bundle (Vite's default with
+  `cssCodeSplit: false`) or emitted as a sibling `plugin.css`. Both
+  are supported; the validator and the canonical signed payload
+  handle the no-CSS case correctly.
+
+### 15.2 Backend rules
+
+- **Ship only the plugin's own PHP source** under `backend/package/`
+  in a `standalone` archive: `composer.json` + `src/` + optional
+  `config/`, `migrations/`, `Resources/`. The publisher contract
+  enforces `backend/package/composer.json#{name,version}` equal to
+  `plugin.json#backend.composer.package` + `plugin.json#version`;
+  the host's `PluginArchiveValidator` re-checks this and rejects
+  mismatches.
+- **Declare third-party PHP dependencies the normal Composer way**
+  inside `backend/package/composer.json#require`. The host installs
+  them via `composer require <pkg>:<ver>` at install time, against
+  Packagist or the host's configured private mirror.
+- **Never** ship `backend/vendor/`. The current validator does not
+  forbid it explicitly, but it would (a) redistribute code that is
+  not the plugin author's, and (b) defeat Composer's dependency
+  resolver, security advisories, and update path. The build script's
+  `copyTreeFiltered()` already excludes `vendor/` from the staged
+  backend package — keep it that way.
+- **Never** ship third-party PHP package zips alongside the bundle
+  (no `backend/packages/`, no Composer artifact repository slot).
+  The validator's `ALLOWED_TOP_LEVEL_PREFIXES` deliberately lists
+  only `artifacts/` and `backend/`; the only sanctioned subtree
+  under `backend/` is `backend/package/`.
+- **Never** ship `composer.lock` inside the archive. Lockfile
+  pinning is the host's concern; shipping one would shadow the
+  host's transitive resolution. The build script excludes it.
+- Composer scripts inside `backend/package/composer.json` are
+  rejected by the validator unless
+  `SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS=1` is explicitly set.
+  Keep `composer.json#scripts` empty. In particular: **do not** add
+  a `post-install-cmd` that runs `npm install` or `npm run build`.
+  The host has no Node / npm requirement for plugin installation,
+  and adding one would defeat the runtime ESM model. Frontend
+  artifacts MUST be built by the plugin publisher / CI before
+  distribution.
+
+### 15.3 Host runtime requirements during plugin install
+
+- **PHP 8.4 + Composer 2** (already required by the host itself).
+- **Network reachable to Packagist OR a private Composer mirror**
+  configured via the host's `composer.json#repositories` block.
+- **No Node, no npm, no Yarn, no `nvm`.** Adding any of these as
+  install-time prerequisites would defeat the runtime ESM model;
+  the host neither runs them nor expects them on `composer require`.
+
+### 15.4 Post-install runtime behaviour
+
+What the host does, in order, after the operator clicks **Install**
+on a valid `.shplugin`:
+
+1. The backend Messenger worker (`plugin_ops` transport) runs
+   `composer require <pkg>:<ver> --no-interaction --no-scripts`.
+   Composer downloads and installs the plugin's third-party PHP
+   dependencies from Packagist or the configured mirror.
+2. The backend promotes the frontend artifacts:
+   `staging/artifacts/*` → `public/plugin-artifacts/<id>-<ver>/*`.
+   Atomic copy-then-rename so the previous artifacts keep serving
+   until the swap.
+3. The backend runs the plugin's Doctrine migrations.
+4. The backend regenerates `config/selfhelp_plugin_bundles.php`
+   (adds the plugin's bundle class).
+5. The backend updates `selfhelp.plugins.lock.json` with
+   `signing.keyId`, `signature`, and per-migration `sha256`.
+6. The backend dispatches `PluginInstalledEvent` and publishes a
+   Mercure event on `selfhelp/plugins/manifest`.
+7. The frontend
+   ([`PluginsProvider.tsx`](../../../sh-selfhelp_frontend/src/app/components/frontend/plugin-runtime/PluginsProvider.tsx))
+   sees the Mercure event over the `useAdminPluginsRealtime` SSE
+   subscription (registered globally in
+   [`providers.tsx`](../../../sh-selfhelp_frontend/src/providers/providers.tsx)),
+   refetches `/cms-api/v1/plugins/manifest`, and dynamically imports
+   the new plugin's `/plugin-artifacts/<id>-<ver>/plugin.esm.js`.
+8. If live registration is unsafe (e.g. the plugin contributes new
+   admin routes that require a fresh `RouterProvider` mount), the
+   admin UI shows a non-blocking notification: **"Plugin installed.
+   Reload the page to activate it."** Clicking the notification
+   reloads the SPA. The plugin's data is already on the server;
+   only the runtime registration needs the reload. The reload is
+   never silent / automatic — it is always an opt-in click.
+9. **No Next.js rebuild.** The host's Next.js bundle is unchanged
+   by plugin install / update / uninstall. The frontend continues
+   serving from the same compiled bundle; only the runtime ESM
+   contributions are added or removed.
+
+### 15.5 Local development of in-repo plugins (dev mode)
+
+When you are *authoring* a plugin (vs. installing one), you want
+fast iteration: edit a `.tsx`, save, see the change in the host
+admin shell without rebuilding a `.shplugin` archive every time.
+The plugin lifecycle has a dedicated `INSTALL_MODE_DEVELOPMENT`
+that takes care of this. Two-line setup, from inside the plugin
+checkout:
+
+```bash
+# 1. Install + auto-enable the plugin in development mode. Same
+#    Messenger pipeline as production, but the host stores the
+#    manifest's `frontend.runtime.devEntrypointUrl` (typically
+#    http://localhost:5174/<plugin-id>/plugin.esm.js) as the
+#    active runtime URL instead of `/plugin-artifacts/...`.
+node scripts/install-local.mjs --symlink
+
+# 2. Keep the plugin's runtime dev server up. It serves the
+#    Vite watch build at the dev URL and emits SSE reload
+#    events on `<base>/__selfhelp_plugin_reload`. The host
+#    runtime listens to those events and re-imports the bundle.
+npm --prefix frontend run dev:runtime
+```
+
+Routing decision (host side, `PluginInstaller::resolveFrontendRuntimeUrl`):
+
+```text
+install_mode == 'development'
+    → manifest.frontend.runtime.devEntrypointUrl
+       ?? manifest.frontend.runtime.entrypoint
+    (e.g. http://localhost:5174/<pluginId>/plugin.esm.js)
+
+install_mode in ('managed', 'trusted', 'production')
+    → manifest.frontend.runtime.entrypoint, rewritten to
+      /plugin-artifacts/<id>-<ver>/plugin.esm.js
+```
+
+The host frontend identifies a development URL by the
+`http://` scheme + `localhost`/`127.0.0.1`/`::1` hostname
+([`PluginRuntime.isDevelopmentRuntimeUrl`](../../../sh-selfhelp_frontend/src/app/components/frontend/plugin-runtime/PluginRuntime.ts))
+and opens the SSE reload subscription for those URLs. Any
+other scheme/host is treated as a stable production URL.
+
+The plugin's runtime dev server is the plugin author's
+responsibility. SurveyJS ships `scripts/dev-runtime.mjs`
+spawned via `npm run dev:runtime`; other plugins are expected
+to follow the same contract (path `/<plugin-id>/plugin.esm.js`
+serving the Vite watch build, optional `__selfhelp_plugin_reload`
+SSE endpoint).
+
+If you forget step 2, the host runtime reports the mount
+failure described in [`installation.md` §6.2](./installation.md#62-troubleshooting-plugin-could-not-be-mounted):
+
+> Plugin "X" v\<version>: import of "http://localhost:5174/..."
+> failed (Failed to fetch dynamically imported module ...).
+
+`<version>` in that error message comes from the host's
+`plugins.version` column, captured by `PluginInstaller::finalize()`
+from `plugin.json#version` at the moment of install. The host's
+mount-failure banner therefore shows the version that was current
+*when you ran* `install-local.mjs --symlink`. Bumping
+`plugin.json#version` without re-running the install script is the
+only way to make the host's expected version disagree with the
+loaded bundle's reported version.
+
+### 15.6 Standalone `.shplugin` archive testing
+
+If you want to test how the plugin will land for an end-user
+(no Composer path repo, no `--symlink`, just a signed archive
+dropped through the admin UI), build the archive once and use the
+standard install flow:
+
+```bash
+# In the plugin checkout
+node scripts/build-shplugin.mjs --mode standalone
+
+# In the host backend
+APP_ENV=dev php bin/console messenger:consume plugin_ops --time-limit=600
+```
+
+Open `http://localhost:3000/admin/plugins → Install plugin →
+Upload .shplugin`, drop the file, click **Install** (leave
+"Enable plugin after install" ticked), and verify the plugin
+appears under **Installed** with status `enabled`. This time the
+host stores `frontend.runtime.entrypoint` rewritten through
+`/plugin-artifacts/<id>-<ver>/` — no dev server needed; the
+artifact is served from disk. The flow is documented end-to-end
+in [`installation.md` §3.4](./installation.md#34-private-plugin-distributed-as-a-shplugin).
+
+---
+
+## 16. Testing
+
+Run the host CMS in development install mode:
+
+```bash
+APP_ENV=dev composer install
+# Start the Messenger worker that processes plugin operations:
+php bin/console messenger:consume plugin_ops --time-limit=3600
+# In another shell, install a plugin from a local manifest or .shplugin:
+php bin/console selfhelp:plugin:install path/to/plugin.json
+# or
+php bin/console selfhelp:plugin:validate-archive path/to/plugin-1.0.0.shplugin
+```
+
+Useful CLI commands:
+
+| Command                                          | Purpose                                            |
+| ------------------------------------------------ | -------------------------------------------------- |
+| `selfhelp:plugin:install <manifest>`             | Dispatch an install operation                      |
+| `selfhelp:plugin:update <manifest>`              | Dispatch an update operation                       |
+| `selfhelp:plugin:enable <id>`                    | Enable a plugin                                    |
+| `selfhelp:plugin:disable <id>`                   | Disable a plugin                                   |
+| `selfhelp:plugin:uninstall <id>`                 | Dispatch an uninstall (keeps data)                 |
+| `selfhelp:plugin:purge <id> --confirm`           | Drop plugin-owned tables                           |
+| `selfhelp:plugin:repair [pluginId]`              | Regenerate lock + bundles file from DB state       |
+| `selfhelp:plugin:check-compatibility`            | Per-plugin compatibility report                    |
+| `selfhelp:plugin:check-updates`                  | Cross-reference installed plugins vs registries    |
+| `selfhelp:plugin:doctor [--ci] [--json]`         | Global plugin health report                        |
+| `selfhelp:plugin:safe-mode --enable|--disable`   | Emergency safe-mode (no plugin bundles)            |
+| `selfhelp:plugin:run-operation <id>`             | Finalize a `managed` mode operation                |
+| `selfhelp:plugin:rollback <operationId>`         | Replay an operation's `rollbackPlan`               |
+| `selfhelp:plugin:status [pluginId]`              | List installed plugins / inspect operation history |
+| `selfhelp:plugin:cancel-operation <operationId>` | Cancel a queued or in-flight operation             |
+| `selfhelp:plugin:validate-archive <path>`        | Run the inspect-archive pipeline on a local file   |
+| `selfhelp:plugin:cleanup-archives`               | Reap orphaned `.shplugin` staging dirs             |
+| `selfhelp:plugin:purge-staging <id> [--all]`     | Force-delete staging dirs for one or all plugins   |
+
+---
+
+## 17. Open Questions / Roadmap
+
+- Mobile plugin packaging through EAS profile-specific lock entries
+  is still being finalised — see `docs/plugins/multi-repo-agents-md.md`
+  for the cross-repo hand-off contract.
+- The SurveyJS plugin (`plugins/sh2-shp-survey-js/`) is the first
+  reference plugin and drives most of the SDK 1.0 surface validation.
+  When in doubt, mirror its layout and `plugin.json`.
+- A runtime proxy / method-interception hook system is **explicitly
+  out of scope**. Any new extension surface must be added either as
+  a documented Symfony event (see §3) or a tagged service that the
+  host actually consumes (see §3 + the manifest extension points in
+  §4). The retired proposal lived in `docs/plugin_hooks.md`; that
+  file has been removed.

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Set Plugin Feature Flag",
+  "additionalProperties": false,
+  "required": ["flagKey", "enabled"],
+  "properties": {
+    "flagKey": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "enabled": { "type": "boolean" },
+    "scope": {
+      "type": "string",
+      "enum": ["global", "role", "user", "group"],
+      "default": "global"
+    },
+    "scopeValue": {
+      "type": ["string", "null"],
+      "maxLength": 64,
+      "description": "Empty string for global; role/user/group id otherwise."
+    }
+  }
+}

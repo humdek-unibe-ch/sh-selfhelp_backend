@@ -2629,9 +2629,9 @@ This section outlines the setup for writing and running automated tests for the 
 - **Symfony `PantherTestCase`**: Can be used for end-to-end tests that require a real browser (optional, for more complex UI-driven API interactions if needed).
 
 ### Configuration Files
-- **`phpunit.xml.dist`**: Located in the project root (`d:\TPF\SelfHelp\sh-selfhelp\server\symfony\phpunit.xml.dist`). Configures PHPUnit, sets the `APP_ENV` to `test`, and bootstraps the Symfony environment via `tests/bootstrap.php`.
+- **`phpunit.xml.dist`**: Located at the repository root (`phpunit.xml.dist`). Configures PHPUnit, sets the `APP_ENV` to `test`, and bootstraps the Symfony environment via `tests/bootstrap.php`.
 - **`tests/bootstrap.php`**: Loads the test environment, including `.env.test`.
-- **`.env.test`**: Located in the project root (`d:\TPF\SelfHelp\sh-selfhelp\server\symfony\.env.test`). Contains environment-specific variables for testing:
+- **`.env.test`**: Located at the repository root (`.env.test`). Contains environment-specific variables for testing:
     - `APP_ENV=test`
     - `APP_SECRET`: **Crucial! Set this to a unique, strong random string.**
     - `DATABASE_URL`: Defines the database connection for tests. Defaults to SQLite (`sqlite:///%kernel.project_dir%/var/data.db.test`). You can change this to a dedicated test PostgreSQL or MySQL database.
@@ -2641,7 +2641,7 @@ This section outlines the setup for writing and running automated tests for the 
 - **`config/packages/test/framework.yaml`**: Contains framework-specific overrides for the test environment, such as using mock session storage and disabling the profiler for performance.
 
 ### Test Directory Structure
-- Tests reside in the `d:\TPF\SelfHelp\sh-selfhelp\server\symfony\tests\` directory.
+- Tests reside in the `tests/` directory at the repository root.
 - API controller tests are typically organized mirroring the `src/Controller/Api/` structure, e.g., `tests/Controller/Api/V1/AuthControllerTest.php`.
 - *Note*: If directories like `config/packages/test/` or `tests/Controller/Api/V1/` do not exist, they may need to be created manually if the development tools fail to create them automatically during file generation.
 
@@ -2658,7 +2658,7 @@ This section outlines the setup for writing and running automated tests for the 
     -   Alternatively, you can manually manage database state in your test `setUp()` / `tearDown()` methods by dropping/creating the database or truncating tables, but this is slower and more complex.
 
 ### Running Tests
-1.  Navigate to the Symfony project root in your terminal: `d:\TPF\SelfHelp\sh-selfhelp\server\symfony\`
+1.  Open a terminal at the repository root (the directory containing `composer.json`).
 2.  **Run all tests**:
     ```bash
     php bin/phpunit

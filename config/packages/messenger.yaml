@@ -1,0 +1,63 @@
+framework:
+    messenger:
+        # Single transport for plugin lifecycle operations
+        # (install/update/uninstall). Doctrine-backed so it works on a
+        # bare host (no Redis/RabbitMQ required to develop). Production
+        # deployments override via MESSENGER_PLUGIN_OPS_DSN to swap to a
+        # broker-backed transport, e.g.
+        # `redis://localhost:6379/messages?stream=plugin_ops`.
+        transports:
+            sync: 'sync://'
+            plugin_ops:
+                # `auto_setup=true` lets the framework create the
+                # `messenger_messages` table on first dispatch in dev.
+                # Production deployments should pre-create it via
+                # `php bin/console messenger:setup-transports` after
+                # running migrations.
+                dsn: '%env(default:messenger_plugin_ops_dsn_default:MESSENGER_PLUGIN_OPS_DSN)%'
+                options:
+                    queue_name: plugin_ops
+                retry_strategy:
+                    max_retries: 0
+
+        routing:
+            App\Plugin\Messenger\InstallPluginMessage: plugin_ops
+            App\Plugin\Messenger\UpdatePluginMessage: plugin_ops
+            App\Plugin\Messenger\UninstallPluginMessage: plugin_ops
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                # Sync transport so PHPUnit integration tests see the
+                # install/update/uninstall handler run inline and can
+                # assert on the resulting plugin row immediately.
+                plugin_ops: 'sync://'
+
+when@dev:
+    framework:
+        messenger:
+            transports:
+                # In development we default to a sync transport for plugin
+                # lifecycle operations so install/uninstall/update/purge
+                # actually happen during the HTTP request — no separate
+                # `messenger:consume plugin_ops` worker required. The
+                # admin UI still receives the 202 envelope, but the
+                # finalize work (composer require/remove, lock-file +
+                # bundles regeneration, lifecycle events) runs inline.
+                #
+                # If a developer needs the async path locally to exercise
+                # the production worker contract, set in `.env.local`:
+                #   MESSENGER_PLUGIN_OPS_DSN=doctrine://default?queue_name=plugin_ops&auto_setup=true
+                # and run `php bin/console messenger:consume plugin_ops`.
+                plugin_ops: '%env(default:messenger_plugin_ops_dev_default:MESSENGER_PLUGIN_OPS_DSN)%'
+
+    parameters:
+        # Default to inline (sync) processing in `dev` so plugin
+        # operations don't get stranded in the queue when no worker is
+        # running. Overridable via MESSENGER_PLUGIN_OPS_DSN.
+        messenger_plugin_ops_dev_default: 'sync://'
+
+parameters:
+    # Default Doctrine messenger DSN; overridable via env.
+    messenger_plugin_ops_dsn_default: 'doctrine://default?queue_name=plugin_ops&auto_setup=true'

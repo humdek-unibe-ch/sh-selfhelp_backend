@@ -24,9 +24,14 @@
                     "format": "uri",
                     "description": "Per-user impersonation-lifecycle topic IRI (e.g. https://selfhelp.app/users/{id}/impersonation). Receives `impersonation-status` events when an admin starts or stops impersonating this user. Both topics share the same subscriber JWT in the `token` field."
                 },
+                "pluginTopics": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uri" },
+                    "description": "Additional plugin realtime topic IRIs the subscriber JWT authorises. Computed at JWT-mint time by dispatching `PluginRealtimePermissionEvent` and gathering allowed topics. Empty when no plugin listener grants this user any topic. The BFF must include these in its upstream `topic=` query params so plugin updates flow over the same SSE connection."
+                },
                 "token": {
-                    "type": "string",
-                    "description": "Short-lived HMAC-SHA256 JWT to send as Authorization: Bearer <token> when subscribing to hubUrl. Authorises BOTH `topic` and `impersonationTopic` so the BFF only needs one upstream connection. Lifetime equals expiresIn seconds; the BFF should re-mint via this endpoint on every Mercure reconnect."
+                    "type": ["string", "null"],
+                    "description": "Short-lived HMAC-SHA256 JWT to send as Authorization: Bearer <token> when subscribing to hubUrl. Authorises `topic`, `impersonationTopic`, and every IRI in `pluginTopics`, so the BFF only needs one upstream connection. Lifetime equals expiresIn seconds; the BFF should re-mint via this endpoint on every Mercure reconnect. `null` when `transport=cookie` was requested — the backend then sets an HttpOnly `mercureAuthorization` cookie instead."
                 },
                 "expiresIn": {
                     "type": "integer",
@@ -34,7 +39,7 @@
                     "description": "Lifetime of token in seconds (MERCURE_SUBSCRIBER_TTL). Treat as an upper bound."
                 }
             },
-            "required": ["hubUrl", "topic", "impersonationTopic", "token", "expiresIn"],
+            "required": ["hubUrl", "topic", "impersonationTopic", "pluginTopics", "token", "expiresIn"],
             "additionalProperties": false
         }
     },
