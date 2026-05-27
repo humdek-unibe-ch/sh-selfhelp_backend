@@ -35,6 +35,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use App\Plugin\Versioning\PluginCompatibilityValidator;
+use App\Plugin\Versioning\SemverHelper;
 use App\Repository\Plugin\PluginFeatureFlagRepository;
 use App\Repository\Plugin\PluginOperationRepository;
 use App\Repository\Plugin\PluginRepository;
@@ -228,6 +229,18 @@ final class PluginAdminService extends BaseService
      */
     public function listAvailableUpdates(): array
     {
+        // Same source→baseUrl map listAvailableFromRegistries() builds so
+        // the manifestUrl shipped to the admin UI is always absolute. The
+        // raw registry entry carries a registry-relative path
+        // (`manifests/<id>-<ver>.json`); without resolving it against the
+        // source's published base URL the update endpoint chokes on it
+        // ("Invalid URL: scheme is missing") when the frontend echoes the
+        // registryEntry back to /admin/plugins/{id}/update.
+        $sourceBaseUrls = [];
+        foreach ($this->sources->findEnabled() as $source) {
+            $sourceBaseUrls[$source->getName()] = rtrim($this->sourceUrlResolver->resolve($source), '/') . '/';
+        }
+
         $aggregated = $this->registryClient->fetchAllIndexes();
         $rows = [];
         foreach ($this->plugins->findAllOrderedByName() as $installed) {
@@ -251,9 +264,24 @@ final class PluginAdminService extends BaseService
                     $bestSource = $sourceName;
                 }
             }
-            if ($best === null) {
+            if ($best === null || $bestSource === null) {
                 continue;
             }
+
+            $resolvedManifestUrl = $this->resolveManifestUrl(
+                $best['manifestUrl'] ?? null,
+                $sourceBaseUrls[$bestSource] ?? null,
+            );
+            $manifest = is_array($best['manifest'] ?? null) ? $best['manifest'] : null;
+
+            $registryEntry = $best;
+            if ($resolvedManifestUrl !== null && $resolvedManifestUrl !== '') {
+                $registryEntry['manifestUrl'] = $resolvedManifestUrl;
+            }
+            if ($manifest !== null) {
+                $registryEntry['manifest'] = $manifest;
+            }
+
             $rows[] = [
                 'pluginId' => $pluginId,
                 'name' => $installed->getName(),
@@ -262,9 +290,9 @@ final class PluginAdminService extends BaseService
                 'diffKind' => \App\Plugin\Versioning\SemverHelper::diffKind($installed->getVersion(), (string) $best['version']),
                 'sourceName' => $bestSource,
                 'trustLevel' => is_string($best['trustLevel'] ?? null) ? $best['trustLevel'] : $installed->getTrustLevel(),
-                'manifestUrl' => is_string($best['manifestUrl'] ?? null) ? $best['manifestUrl'] : null,
-                'manifest' => is_array($best['manifest'] ?? null) ? $best['manifest'] : null,
-                'registryEntry' => $best,
+                'manifestUrl' => $resolvedManifestUrl,
+                'manifest' => $manifest,
+                'registryEntry' => $registryEntry,
             ];
         }
         return $rows;
@@ -310,11 +338,46 @@ final class PluginAdminService extends BaseService
 
         $existing = $this->plugins->findOneByPluginId($pluginId);
         if ($existing !== null) {
-            // Plugin already installed → route to update flow so the
-            // admin can re-upload a newer .shplugin / re-pick a newer
-            // registry entry from the Install dialog without juggling
-            // tabs. The updater enforces version diff rules (same /
-            // downgrade / major-without-force) on its own.
+            // Plugin already installed → decide between three cases up
+            // front so the admin UI can show actionable copy without
+            // catching exceptions:
+            //
+            //   - same version    → no-op (200 OK with reason=already_installed)
+            //   - newer requested → auto-route to update (avoid making
+            //                       the admin click Update separately)
+            //   - older requested → reject with a downgrade hint
+            //
+            // The updater also enforces these rules at request time, so
+            // this only optimises the UX path; the underlying contract
+            // (no downgrade, no double-install) is unchanged.
+            $existingVersion = $existing->getVersion();
+            $requestedVersion = $resolved['manifest']->getVersion();
+            $diff = SemverHelper::diffKind($existingVersion, $requestedVersion);
+
+            if ($diff === 'same') {
+                return [
+                    'installAction' => 'already_installed',
+                    'redirectedToUpdate' => false,
+                    'pluginId' => $pluginId,
+                    'existingVersion' => $existingVersion,
+                    'requestedVersion' => $requestedVersion,
+                    'message' => sprintf(
+                        'Plugin "%s" is already installed at version %s. No action taken.',
+                        $pluginId,
+                        $existingVersion,
+                    ),
+                ];
+            }
+
+            if ($diff === 'downgrade') {
+                $this->throwValidationError(sprintf(
+                    'Plugin "%s" is installed at version %s. Refusing to install older version %s — use rollback if you really want to downgrade.',
+                    $pluginId,
+                    $existingVersion,
+                    $requestedVersion,
+                ));
+            }
+
             $operation = $this->updater->request(
                 $resolved['manifest'],
                 $resolved['resolved'],
@@ -322,19 +385,25 @@ final class PluginAdminService extends BaseService
                 (bool) ($input['backupBefore'] ?? false),
             );
 
-            // Tell the admin UI this was not a fresh install so it can
-            // show an "Updating <id> from X to Y" banner instead of the
-            // first-install copy. `formatOperation` already returns
-            // `type=update` + `fromVersion`/`toVersion`; the boolean is
-            // a quick signal that the route was an /install POST.
             $payload = $this->formatOperation($operation);
+            $payload['installAction'] = 'update_dispatched';
             $payload['redirectedToUpdate'] = true;
-            $payload['existingVersion'] = $existing->getVersion();
+            $payload['existingVersion'] = $existingVersion;
+            $payload['requestedVersion'] = $requestedVersion;
+            $payload['diffKind'] = $diff;
+            $payload['message'] = sprintf(
+                'Plugin "%s" is installed at %s. Updating to %s (diff: %s).',
+                $pluginId,
+                $existingVersion,
+                $requestedVersion,
+                $diff,
+            );
             return $payload;
         }
 
         $operation = $this->installer->request($resolved['manifest'], $resolved['resolved']);
         $payload = $this->formatOperation($operation);
+        $payload['installAction'] = 'install_dispatched';
         $payload['redirectedToUpdate'] = false;
         return $payload;
     }

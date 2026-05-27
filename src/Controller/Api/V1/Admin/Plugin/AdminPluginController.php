@@ -120,10 +120,18 @@ final class AdminPluginController extends AbstractController
     {
         try {
             [$input, $archive] = $this->extractInstallInput($request, validate: true);
+            $payload = $this->pluginAdminService->install($input, $archive);
+            // The service may short-circuit with installAction=already_installed
+            // when the requested version is already on disk. That's a no-op,
+            // not a queued operation, so 200 OK is more accurate than the
+            // default 202 ACCEPTED used for install/update dispatches.
+            $status = (isset($payload['installAction']) && $payload['installAction'] === 'already_installed')
+                ? Response::HTTP_OK
+                : Response::HTTP_ACCEPTED;
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->install($input, $archive),
+                $payload,
                 'responses/admin/plugins/plugin_operation',
-                Response::HTTP_ACCEPTED,
+                $status,
             );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);

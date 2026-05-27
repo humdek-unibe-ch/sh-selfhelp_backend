@@ -424,6 +424,26 @@ The update flow:
    runs incremental Doctrine migrations and rewrites the lock file.
 5. Dispatches `PluginUpdatedEvent`.
 
+### 5.1 Install endpoint auto-routes to update
+
+`POST /admin/plugins/install` is the single entry point for the
+"install or update" UX. The admin doesn't have to know up front
+whether the plugin is fresh or already on disk — the backend
+inspects the existing `plugins` row and short-circuits via the
+`installAction` discriminator:
+
+| Existing plugin row | Requested version | `installAction`        | HTTP   | What runs                                                                                                    |
+| ------------------- | ----------------- | ---------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| Absent              | any               | `install_dispatched`   | `202`  | `PluginInstaller::request()` → `InstallPluginMessage`. Standard fresh install.                                |
+| Same version        | `=`               | `already_installed`    | `200`  | **No-op.** Returns the existing row's version + a `message` for the UI. Nothing is queued, no migrations.    |
+| Older installed     | newer (semver)    | `update_dispatched`    | `202`  | Auto-routes to `PluginUpdater::request()` → `UpdatePluginMessage`. UI gets `existingVersion`, `requestedVersion`, `diffKind` so the toast reads `<id>: x.y.z → a.b.c`. Major bumps still require the `forceMajor` flag — the updater itself rejects with 422 + a force-major hint when it's missing. |
+| Newer installed     | older             | (refused)              | `422`  | `RequestValidationException` "refusing to install older version — use rollback".                              |
+
+The frontend's install dialog reads `installAction` and branches the
+notification copy (`Already installed` / `Update queued` /
+`Install queued`). The `redirectedToUpdate` boolean is kept for
+backwards compatibility; new code should switch on `installAction`.
+
 ## 6. Disable / re-enable
 
 ```bash
