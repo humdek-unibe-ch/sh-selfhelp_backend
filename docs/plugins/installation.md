@@ -421,7 +421,10 @@ The update flow:
 4. Dispatches `UpdatePluginMessage`. The worker runs
    `composer require <package>:<newVersion>`, promotes any new
    `.shplugin` archive, then calls `PluginUpdater::finalize()` which
-   runs incremental Doctrine migrations and rewrites the lock file.
+   runs **incremental Doctrine migrations** (using the same plan
+   calculator as `doctrine:migrations:migrate` — already-applied
+   versions in `doctrine_migration_versions` are skipped, only
+   pending versions execute) and rewrites the lock file.
 5. Dispatches `PluginUpdatedEvent`.
 
 ### 5.1 Install endpoint auto-routes to update
@@ -518,6 +521,18 @@ php bin/console selfhelp:plugin:purge sh2-shp-survey-js --confirm
 ```
 
 Drops plugin-owned tables, removes the plugin backend package from `var/plugin-composer/vendor/`, deletes the plugin's lookup contributions, and removes the lock entry. The `--confirm` flag is mandatory; when run interactively the operator must additionally re-type the plugin id when prompted.
+
+### 8.1 What purge cleans in `doctrine_migration_versions`
+
+Plugin migrations are tracked in the shared `doctrine_migration_versions` table — every plugin migration row's `version` column stores the **FQCN** of the migration class, e.g. `Humdek\SurveyJsBundle\Migrations\Version20260522063620`. `PluginPurger::deletePluginMigrationVersions()` walks the manifest's `backend.migrationsNamespace` (e.g. `Humdek\SurveyJsBundle\Migrations`) and deletes every row whose `version` starts with that namespace prefix:
+
+```sql
+DELETE FROM doctrine_migration_versions WHERE LOCATE('Humdek\\SurveyJsBundle\\Migrations\\', version) = 1;
+```
+
+This is necessary because if those rows stayed behind, the next install of the same plugin id would call `PluginMigrationsRunner::migrate()` and Doctrine would return `NoMigrationsToExecute` for migrations whose version strings are already recorded — so the plugin's tables would never be re-created and the plugin would end up half-installed (`plugins` row present, schema missing). Uninstall does **not** delete migration version rows on purpose: uninstall is reversible and the data is preserved; purge is the destructive path that wipes them.
+
+We deliberately do **not** add an `id_plugins` column to `doctrine_migration_versions`. The Doctrine schema for that table is fixed and stable across versions, the migration FQCN already encodes the owner (each plugin is required to declare a unique `backend.migrationsNamespace`), and the namespace-prefix join is exact — adding a sidecar column would deviate from standard Doctrine practice without any new capability.
 
 ## 9. Doctor
 
