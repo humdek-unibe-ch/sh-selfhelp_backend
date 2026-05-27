@@ -213,6 +213,10 @@ immediately. The Messenger worker:
 - runs the plugin's Doctrine migrations (still gated by
   `PluginMigrationGuard`),
 - regenerates `config/selfhelp_plugin_bundles.php`,
+- reconciles `plugin.json#apiRoutes` with `api_routes` /
+  `rel_api_routes_permissions` via `PluginApiRouteSynchronizer` so
+  the plugin's HTTP endpoints become part of the DB-backed route
+  collection (tagged with `id_plugins`),
 - updates `selfhelp.plugins.lock.json` (with signing.keyId + signature),
 - dispatches `PluginInstalledEvent`.
 

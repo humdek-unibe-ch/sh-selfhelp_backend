@@ -95,7 +95,7 @@ Base path: `/cms-api/v1/admin/plugins/surveyjs`. All endpoints require the `surv
 | `surveyjs.surveys.view-responses`     | Read responses, dashboard, recent runs.             |
 | `surveyjs.surveys.export-pdf`         | Generate PDF exports (feature-flagged).             |
 
-The host's `ApiSecurityListener` enforces these via the routes' `permissions` field in `plugin.json`. Controllers never re-check.
+The plugin's Doctrine migration inserts the three rows above into `permissions` with `id_plugins` set. Each `plugin.json#apiRoutes` entry references one of these permission names; the host's `PluginApiRouteSynchronizer` resolves the name to a `Permission` entity and writes the `rel_api_routes_permissions` link during install. The host's `ApiSecurityListener` then enforces the permission on every request; controllers never re-check.
 
 ## 7. Feature flags
 

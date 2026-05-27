@@ -89,11 +89,12 @@ sh-selfhelp_backend/
 │   │                     PluginArchivePromoter (atomic copy-then-rename),
 │   │                     PluginArchiveInspectionService, PluginArchiveCleaner
 │   ├── Bundle/           PluginBundlesFileWriter (regenerates config/selfhelp_plugin_bundles.php)
-│   ├── Event/            Lifecycle + ApiRouteRegistryEvent + LookupRegistryEvent + StyleRegistryEvent + …
+│   ├── Event/            Lifecycle + LookupRegistryEvent + StyleRegistryEvent + …
 │   ├── Lifecycle/        PluginInstaller, PluginUpdater, PluginUninstaller,
 │   │                     PluginEnabler, PluginPurger, PluginRollbacker,
 │   │                     PluginRepairer, PluginSafeMode, PluginOperationLock,
 │   │                     PluginOperationRecorder, PluginLockFileReader/Writer,
+│   │                     PluginApiRouteSynchronizer (manifest → api_routes),
 │   │                     InstallModeResolver
 │   ├── Manifest/         PluginManifest, PluginManifestLoader, PluginManifestValidator,
 │   │                     ManifestResolver (single normaliser for registry|url|paste|archive),
@@ -279,10 +280,17 @@ runtime, and never write to config outside the installer.
 - `App\Plugin\Event\StyleRegistryEvent` — contribute styles.
 - `App\Plugin\Event\LookupRegistryEvent` — contribute lookup rows for known type codes.
 - `App\Plugin\Event\PluginRealtimeTopicRegistryEvent` — declare realtime topics.
-- `App\Plugin\Event\ApiRouteRegistryEvent` — register additional routes (always under `/plugins/{pluginId}/`).
 - `App\Plugin\Event\Lifecycle\*` — react to install / update / enable / disable / uninstall / purge events.
 - `App\Plugin\Event\PluginRealtimePermissionEvent` — scope SSE subscriber JWTs.
 - `App\Plugin\Event\ScheduledJobTypeEvent` — register a scheduled job type.
+
+> Plugin HTTP routes are not an event surface. The host persists
+> `plugin.json#apiRoutes` directly into `api_routes` (tagged with
+> `id_plugins`) and links each row into
+> `rel_api_routes_permissions` at install/update time — see
+> `PluginApiRouteSynchronizer`. Disabled plugins are filtered at
+> load time; uninstall removes the rows; purge cleans every
+> `id_plugins`-tagged row across shared tables.
 
 ### Tagged services (host → plugin runtime)
 

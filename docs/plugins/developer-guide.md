@@ -274,9 +274,31 @@ The host enforces these guard rails on the backend side:
   the HTTP client; etc.
 - **Transaction logging**: any data-changing operation must go through
   `TransactionService` like the rest of the CMS code.
-- **API routes**: routes declared under `apiRoutes` in the manifest are
-  registered automatically. Route permissions and validation schemas
-  belong to the plugin's repo.
+- **API routes**: routes declared under `apiRoutes` in the manifest
+  are persisted by the host into `api_routes` (tagged with
+  `id_plugins`) and linked to their permissions through
+  `rel_api_routes_permissions` at install / update time. The plugin
+  ships the controllers; the host owns the route rows. Disable hides
+  the routes without dropping the rows; uninstall removes them
+  because the controllers are about to be gone. See
+  [`architecture.md` §9](./architecture.md#9-extension-points-no-monkey-patching).
+  Route permissions and request/response validation schemas live in
+  the plugin's repo.
+
+Why this is different from core CMS routes:
+
+- core CMS routes are baseline host application data, so the host adds
+  them through host Doctrine migrations;
+- plugin routes belong to a separately installed package, so the host
+  needs to reconcile them on install, update, disable, uninstall, and
+  purge;
+- `plugin.json#apiRoutes` is therefore the plugin package's source of
+  truth, while `PluginApiRouteSynchronizer` is the host-side writer
+  into `api_routes`.
+
+This split is intentional. Plugin migrations still own plugin-created
+permissions, lookups, and schema objects, but they do **not** insert
+their own `api_routes` rows. Shared host metadata stays host-managed.
 
 ### Migrations and the plugin lifecycle
 
@@ -372,8 +394,6 @@ collect have no effect at runtime.
 
 Events the host dispatches:
 
-- **API routes** — subscribe to `App\Plugin\Event\ApiRouteRegistryEvent`
-  to contribute additional routes loaded by `App\Routing\ApiRouteLoader`.
 - **Styles** — subscribe to `App\Plugin\Event\StyleRegistryEvent` to
   add styles to the schema returned by `AdminStyleController`.
 - **Lookups** — subscribe to `App\Plugin\Event\LookupRegistryEvent` to
@@ -409,6 +429,19 @@ points; see [`architecture.md`](./architecture.md) for the full list.
 
 Manifest-driven surfaces consumed without tags or events:
 
+- **API routes** — declare them in `plugin.json#apiRoutes`. The host
+  installer (`PluginApiRouteSynchronizer`) persists each entry into
+  `api_routes` (tagged with `id_plugins`) and wires the matching
+  rows into `rel_api_routes_permissions`. Plugins do **not** ship a
+  route subscriber for normal HTTP endpoints; the `ApiRouteLoader`
+  serves plugin routes through the same DB-backed pipeline used for
+  core routes, and skips them automatically when the owning plugin
+  is disabled.
+- Why not plugin migrations? Because plugin routes are package
+  metadata with a lifecycle the host must reconcile. A manifest +
+  synchronizer can update, remove, disable, and uninstall route rows
+  symmetrically; per-plugin SQL migrations are better reserved for
+  plugin-owned schema and data.
 - **CSP rules** — declare `security.cspRules` in the manifest; the
   installer merges them into the global CSP on enable / disable.
 - **Lookups** — declare `lookups.extends[]` / `lookups.owned[]` in

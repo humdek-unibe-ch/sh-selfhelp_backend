@@ -384,21 +384,55 @@
         },
         "apiRoutes": {
             "type": "array",
+            "description": "Plugin HTTP routes. The host installer persists each entry as a row in `api_routes` (tagged with `id_plugins`) and links it to permissions through `rel_api_routes_permissions`. Routes from disabled plugins are skipped at load time; routes are removed on uninstall (their controllers are gone after composer remove) and on purge.",
             "items": {
                 "type": "object",
-                "required": ["name", "path", "methods"],
+                "required": ["name", "path", "methods", "controller"],
                 "additionalProperties": false,
                 "properties": {
-                    "name": {"type": "string"},
-                    "path": {"type": "string"},
+                    "name": {
+                        "type": "string",
+                        "description": "Stable route id used as the Symfony route name. Must be unique within the plugin's manifest."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Path WITHOUT the `/cms-api/{version}` prefix. Must start with `/plugins/{pluginId}/` (public) or `/admin/plugins/{pluginId}/` (admin). The host's `ApiSecurityListener` enforces admin-gate semantics on the latter."
+                    },
+                    "controller": {
+                        "type": "string",
+                        "description": "Fully-qualified controller in the form `Vendor\\Bundle\\Controller\\FooController::bar`. Must be autoloadable by the time the host runs the route sync (i.e. after the plugin's composer require)."
+                    },
                     "methods": {
                         "type": "array",
+                        "minItems": 1,
                         "items": {
                             "type": "string",
                             "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
                         }
                     },
-                    "permission": {"type": "string"}
+                    "version": {
+                        "type": "string",
+                        "pattern": "^v\\d+$",
+                        "description": "API version (defaults to `v1`). Bumping the version is the contract for breaking changes — old `v1` routes can stay in `api_routes` while a new `v2` rolls out."
+                    },
+                    "requirements": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"},
+                        "description": "Regex requirements per path placeholder, mirroring Symfony's route `requirements`."
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": "Expected query / body params: `name → {in: body|query|path, required: bool}`. Mirrors the core `api_routes.params` JSON shape."
+                    },
+                    "permission": {
+                        "type": "string",
+                        "description": "Single-permission shorthand. Looked up by name in `permissions` (which the plugin's migration must have inserted)."
+                    },
+                    "permissions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Required permissions, looked up by name in `permissions`. Use this when a route needs more than one permission; otherwise prefer the `permission` shorthand."
+                    }
                 }
             }
         },

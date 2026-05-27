@@ -111,6 +111,13 @@ sequenceDiagram
 The CMS is extended through a manifest-driven plugin ecosystem implemented under `src/Plugin/`. Plugins live in their own repositories and ship up to three packages each: a Symfony bundle (Composer), a frontend npm package, and an optional mobile npm package.
 
 - **Manifest as source of truth.** Every plugin ships a `plugin.json` validated against `docs/plugins/plugin-manifest.schema.json`. Permissions, lookups, API routes, realtime topics, feature flags, capabilities, and trust levels are declared there.
+- **Route ownership is split by lifecycle, not by table.** Core CMS
+  routes are host-owned baseline data and are seeded by host Doctrine
+  migrations into `api_routes`. Plugin routes use the same
+  `api_routes` table, but their source of truth is the plugin manifest:
+  the host reconciles `plugin.json#apiRoutes` into DB rows so update /
+  disable / uninstall remain symmetric for separately installed
+  packages.
 - **Bundles loaded dynamically.** Installed plugins are listed in `config/selfhelp_plugin_bundles.php`, which is regenerated atomically by the installer. The default `config/bundles.php` includes that file.
 - **Extension points only.** Plugins contribute through documented Symfony events (under `App\Plugin\Event\*`) and tagged services. There is no runtime proxy / method-interception hook system.
 - **Distributed locking.** `App\Plugin\Lifecycle\PluginOperationLock` ensures a single in-flight install/update/uninstall operation per plugin and cluster-wide.

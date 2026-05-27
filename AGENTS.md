@@ -339,7 +339,6 @@ Plugins must not directly patch core services, modify core routes at runtime, wr
 
 The new backend currently dispatches zero custom domain events. The plugin layer adds ONLY events that correspond to extension surfaces that exist today:
 
-- `ApiRouteRegistryEvent` (extends `App\Routing\ApiRouteLoader`).
 - `StyleRegistryEvent` (extends `AdminStyleController::getStylesSchema`).
 - `LookupRegistryEvent` (extends `App\Service\Core\LookupService`).
 - `ScheduledJobTypeEvent` (extends the scheduled-job service).
@@ -463,12 +462,12 @@ Plugins must not directly insert/update/delete lookup rows at runtime. Lookup ch
 
 ### Plugin API route convention
 
-Plugin public and admin APIs are versioned under `/cms-api/v1/plugins/{pluginId}/...` (public) and `/cms-api/v1/admin/plugins/{pluginId}/...` (admin). Breaking API changes require either a new route version (`/v2/plugins/{pluginId}/...`) or a major plugin version. Routes contributed by plugins should be added through `ApiRouteRegistryEvent` (not direct DB inserts), so they live in `plugin_operations.snapshots_json` and disappear cleanly on uninstall.
+Plugin public and admin APIs are versioned under `/cms-api/v1/plugins/{pluginId}/...` (public) and `/cms-api/v1/admin/plugins/{pluginId}/...` (admin). Breaking API changes require either a new route version (`/v2/plugins/{pluginId}/...`) or a major plugin version. Plugins **declare** routes in `plugin.json#apiRoutes`; the host's `PluginApiRouteSynchronizer` persists each entry as a row in `api_routes` tagged with `id_plugins` and links it to permissions through `rel_api_routes_permissions` during install/update. Disabled plugins are filtered at load time; uninstall removes the rows (their controllers are gone after `composer remove`); purge cleans every `id_plugins`-tagged row. Plugins **do not** register routes via event subscribers or direct DB inserts in their own migrations.
 
 ### Plugin lifecycle words
 
-- `disable` — hides plugin, keeps data. Reversible.
-- `uninstall` — removes packages, keeps data. Reversible by reinstalling.
+- `disable` — hides plugin, keeps data. Reversible. Plugin-owned `api_routes` rows stay in place; `ApiRouteRepository` filters them out at load time by joining `plugins.enabled = 1`.
+- `uninstall` — removes packages, keeps user-facing data (styles, permissions, lookups, fields, plugin-tagged `data_tables`). Explicitly clears plugin-owned `api_routes` rows because their controllers are gone after `composer remove`. Reversible by reinstalling.
 - `purge` — destructive. Requires `--confirm` on CLI and "type the plugin id" in the UI plus a backup warning. Only deletes plugin-owned tables, rows tagged with `id_plugins`, plugin-created `data_tables`/`data_rows`/`data_cells`, plugin-created permissions/routes/styles/lookups.
 
 ### GDPR & backup hooks
