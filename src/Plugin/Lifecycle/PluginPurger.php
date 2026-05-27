@@ -19,6 +19,7 @@ use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginPurgedEvent;
 use App\Plugin\Manifest\PluginManifest;
+use App\Plugin\PackageManager\PackageManagerRunner;
 use App\Plugin\Security\ProtectedTablesPolicy;
 use App\Repository\Plugin\PluginRepository;
 use App\Service\Core\LookupService;
@@ -77,6 +78,7 @@ final class PluginPurger
         private readonly PluginArchivePromoter $archivePromoter,
         private readonly PluginBackupHookInterface $backupHook,
         private readonly InstallModeResolver $installModeResolver,
+        private readonly PackageManagerRunner $packageManager,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly PluginCacheInvalidator $cacheInvalidator,
@@ -133,6 +135,40 @@ final class PluginPurger
             // `running`. Run each step as its own autocommitted statement
             // instead — DDL has no rollback guarantee anyway.
             try {
+                $backendPackage = $plugin->getBackendPackage();
+                if (is_string($backendPackage) && $backendPackage !== '') {
+                    $this->recorder->appendLog($operation, 'composer-remove:start', [
+                        'package' => $backendPackage,
+                    ], 15);
+                    $result = $this->packageManager->removeComposerPackage(
+                        $backendPackage,
+                        function (string $line, string $stream) use ($operation): void {
+                            if ($line === '') {
+                                return;
+                            }
+                            $this->recorder->appendLog($operation, 'composer-remove:line', [
+                                'stream' => $stream,
+                                'line' => $line,
+                            ]);
+                        },
+                    );
+                    if (!$result->success) {
+                        throw new ServiceException(sprintf(
+                            'composer remove failed during purge (exit %d): %s',
+                            $result->exitCode,
+                            trim($result->stderr !== '' ? $result->stderr : $result->stdout),
+                        ), Response::HTTP_INTERNAL_SERVER_ERROR);
+                    }
+                    $this->recorder->appendLog($operation, 'composer-remove:done', [
+                        'package' => $backendPackage,
+                        'exitCode' => $result->exitCode,
+                    ], 20);
+                } else {
+                    $this->recorder->appendLog($operation, 'composer-remove:skipped', [
+                        'reason' => 'No backend.composer.package declared (frontend-only plugin).',
+                    ], 20);
+                }
+
                 // Plugin-tagged rows on shared tables are removed via the
                 // FK ON DELETE SET NULL on `id_plugins` when the plugin row
                 // is removed. We additionally hard-delete rows whose
@@ -224,10 +260,14 @@ final class PluginPurger
 
     /**
      * @return list<string>
+     * @param array<string,mixed> $manifestData
      */
     private function collectOwnedTables(array $manifestData): array
     {
-        $owned = $manifestData['dataAccess']['ownedTables'] ?? [];
+        $dataAccess = isset($manifestData['dataAccess']) && is_array($manifestData['dataAccess'])
+            ? $manifestData['dataAccess']
+            : [];
+        $owned = $dataAccess['ownedTables'] ?? [];
         if (!is_array($owned)) {
             return [];
         }

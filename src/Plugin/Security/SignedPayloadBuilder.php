@@ -28,7 +28,6 @@ namespace App\Plugin\Security;
  *
  *   - pluginId        (string)
  *   - version         (string)
- *   - manifestUrl     (string, optional)
  *   - composer        ({package, version, repository?})
  *   - runtime         ({entrypointUrl, stylesheetUrl?, format, integrity?, stylesheetIntegrity?})
  *   - checksums       ({frontendEsm, frontendCss?})
@@ -76,10 +75,6 @@ final class SignedPayloadBuilder
 
         $out['pluginId'] = $this->requireString($input, 'pluginId');
         $out['version']  = $this->requireString($input, 'version');
-
-        if (isset($input['manifestUrl']) && is_string($input['manifestUrl']) && $input['manifestUrl'] !== '') {
-            $out['manifestUrl'] = $input['manifestUrl'];
-        }
 
         $composer = $input['composer'] ?? null;
         if (!is_array($composer)) {

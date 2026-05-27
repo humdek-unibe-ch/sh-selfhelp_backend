@@ -126,6 +126,14 @@ final class PluginAdminService extends BaseService
                     $manifest = $this->tryFetchManifest($resolvedManifestUrl);
                 }
 
+                $registryEntry = $entry;
+                if ($resolvedManifestUrl !== null && $resolvedManifestUrl !== '') {
+                    $registryEntry['manifestUrl'] = $resolvedManifestUrl;
+                }
+                if ($manifest !== null) {
+                    $registryEntry['manifest'] = $manifest;
+                }
+
                 $available[] = [
                     'sourceName' => $sourceName,
                     'pluginId' => (string) $pluginId,
@@ -136,6 +144,7 @@ final class PluginAdminService extends BaseService
                     'homepage' => isset($entry['homepage']) && is_string($entry['homepage']) ? $entry['homepage'] : null,
                     'manifest' => $manifest,
                     'manifestUrl' => $resolvedManifestUrl,
+                    'registryEntry' => $registryEntry,
                 ];
             }
         }

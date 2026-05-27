@@ -106,6 +106,7 @@ final class PackageManagerRunner
         $repoSlug = null;
 
         if ($repository !== null) {
+            $repository = $this->normaliseRepositoryForComposer($repository);
             $type = (string) ($repository['type'] ?? '');
             $url = (string) ($repository['url'] ?? '');
             if ($type === '' || $url === '') {
@@ -174,6 +175,45 @@ final class PackageManagerRunner
         }
 
         return $requireResult;
+    }
+
+    /**
+     * Composer treats `type=vcs` GitHub URLs as API-backed GitHub
+     * repositories and may fall back to `git@github.com:...` on API
+     * rate-limit/auth failures. The plugin worker runs
+     * non-interactively under service accounts where SSH host keys are
+     * often unavailable, so prefer a plain `git` repository for public
+     * GitHub HTTPS remotes.
+     *
+     * @param array{
+     *     type:string,
+     *     url:string,
+     *     reference?:string,
+     *     options?:array<string,bool|int|string>
+     * } $repository
+     * @return array{
+     *     type:string,
+     *     url:string,
+     *     reference?:string,
+     *     options?:array<string,bool|int|string>
+     * }
+     */
+    private function normaliseRepositoryForComposer(array $repository): array
+    {
+        $type = (string) ($repository['type'] ?? '');
+        $url = (string) ($repository['url'] ?? '');
+        if ($type !== 'vcs' || $url === '') {
+            return $repository;
+        }
+
+        $parts = parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if (($host === 'github.com' || $host === 'www.github.com') && $scheme === 'https') {
+            $repository['type'] = 'git';
+        }
+
+        return $repository;
     }
 
     /**

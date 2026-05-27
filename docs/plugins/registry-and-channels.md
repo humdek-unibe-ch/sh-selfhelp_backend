@@ -116,6 +116,51 @@ cross-platform Node script — no `.sh` / `.ps1` wrappers) calls
 to compose a signed entry from the canonical signed payload that the
 `.shplugin` was signed with — one signing event per release.
 
+### Runtime URL contract (must be absolute)
+
+`runtime.entrypointUrl` and `runtime.stylesheetUrl` in every published
+entry **MUST** be absolute `https://…` URLs. The host frontend imports
+the bundle with `await import(runtimeUrl)`, which the browser refuses
+on bare module specifiers like `artifacts/foo/plugin.esm.js`. The
+canonical schema (`docs/plugins/plugin-registry.schema.json`, mirrored
+into the registry repo as `registry.schema.json`) enforces this via
+`format: uri` + `pattern: ^https?://` on both URL fields and on the
+top-level `baseUrl`.
+
+To make publishers DRY, every registry declares its own published
+origin in a single place:
+
+```json
+{
+    "schemaVersion": "1.0",
+    "baseUrl": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/",
+    "publishedAt": "...",
+    "publisher": { ... },
+    "plugins": [ ... ]
+}
+```
+
+`scripts/publish-to-registry.mjs` reads `registry.json#baseUrl` from
+the target registry checkout, joins it to the relative artifact path
+(`artifacts/<id>-<version>/plugin.esm.js`), and feeds the resulting
+absolute URL into `build-registry-entry.mjs`. The signed canonical
+payload contains the absolute URL, so the host's
+`SignedPayloadBuilder` recompute matches the publisher's signature
+without any host-side normalisation.
+
+Resolution order in the publisher (highest priority first):
+
+1. `--registry-base-url https://…/` CLI flag.
+2. `SELFHELP_REGISTRY_BASE_URL` environment variable.
+3. `<registry>/registry.json#baseUrl`.
+
+The publisher throws when none of these resolves to a valid `https?://`
+URL — there is no silent fallback to relative paths.
+
+For private registries, set `baseUrl` to the URL where your
+authenticated host fetches the registry from (the same URL the
+`PluginSource.url` column points at, with a trailing slash).
+
 ## Channel promotion workflow
 
 The recommended promotion path:

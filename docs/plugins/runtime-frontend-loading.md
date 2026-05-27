@@ -42,9 +42,11 @@ Every published `plugin.json` declares its runtime under
 - `stylesheet` — optional. The host runtime injects it with `integrity`
   + `crossorigin` attributes when present.
 - `format` — `esm` (only supported value in v1).
-- `devEntrypointUrl` — optional dev-server URL. In `development` install
-  mode the host loads this URL instead of the published artifact so
-  the plugin's Vite dev server (with HMR) drives the loaded code.
+- `devEntrypointUrl` — optional dev-server URL. The host uses this only
+  for local development installs that come from a pasted local manifest
+  (for example `install-local.mjs --symlink` or
+  `selfhelp:plugin:install <plugin.json>` on a dev host). Registry
+  installs still pin the published runtime URL from the registry entry.
 
 ## Per-installation pin
 
@@ -52,14 +54,30 @@ The installed `Plugin` row stores the resolved URLs:
 
 | Column                            | Source                                                            |
 | --------------------------------- | ----------------------------------------------------------------- |
-| `frontend_runtime_url`            | `frontend.runtime.entrypoint` after promotion                     |
-| `frontend_runtime_stylesheet_url` | `frontend.runtime.stylesheet` after promotion                     |
-| `frontend_runtime_integrity`      | `frontend.runtime.integrity`                                      |
-| `frontend_runtime_format`         | `frontend.runtime.format`                                         |
+| `frontend_runtime_url`            | resolved install source runtime URL: dev URL for local paste installs, `/plugin-artifacts/...` for archives, published registry URL for registry installs |
+| `frontend_runtime_stylesheet_url` | resolved install source stylesheet URL                            |
+| `frontend_runtime_integrity`      | resolved install source integrity                                 |
+| `frontend_runtime_format`         | resolved install source format                                    |
 
 `selfhelp.plugins.lock.json#plugins.<id>.frontend` mirrors the same
 fields. The lock file is the audit source the doctor compares against
 when checking for drift.
+
+### URL shapes by install source
+
+| Install source            | Stored `frontend_runtime_url`                                                                   | Who chooses it                                                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registry`                | Absolute `https://…/artifacts/<id>-<ver>/plugin.esm.js`                                          | The publisher (`publish-to-registry.mjs` joins `<registry>/registry.json#baseUrl` to the relative artifact path **before** signing). See [`registry-and-channels.md`](./registry-and-channels.md#runtime-url-contract-must-be-absolute). |
+| `url`                     | Absolute URL the manifest or registry entry served                                              | The publisher (manifest's `frontend.runtime.entrypoint` for `.shplugin`-derived hosts, or the registry entry passed alongside the manifest URL).               |
+| `archive` (`.shplugin`)   | Host-relative `/plugin-artifacts/<id>-<ver>/plugin.esm.js`                                       | The host. `PluginInstaller` promotes the archive's `artifacts/plugin.esm.js` into `public/plugin-artifacts/<id>-<ver>/` and rewrites the URL accordingly.    |
+| `paste` (development)     | Whatever the manifest's `frontend.runtime.devEntrypointUrl` declares (e.g. `http://localhost:5174/<id>/plugin.esm.js`) | The plugin author's dev workflow (`install-local.mjs --symlink`).                                                                                              |
+
+The browser's `await import(<runtimeUrl>)` requires either an absolute
+URL or a host-relative path starting with `/`. Bare module specifiers
+like `artifacts/foo/plugin.esm.js` are rejected by every browser. The
+canonical registry schema enforces `pattern: ^https?://` on
+`runtime.entrypointUrl` and `runtime.stylesheetUrl` so a broken
+publisher cannot reach GitHub Pages in the first place.
 
 ## Host runtime loader
 

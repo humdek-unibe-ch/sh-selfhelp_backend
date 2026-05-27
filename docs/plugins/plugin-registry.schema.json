@@ -15,6 +15,12 @@
             "type": "string",
             "format": "date-time"
         },
+        "baseUrl": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://",
+            "description": "Public base URL where this registry is served (with trailing slash). Plugin publishers join this to relative `artifacts/<id>-<version>/...` paths to produce the absolute `runtime.entrypointUrl` / `runtime.stylesheetUrl` that gets signed and shipped in each plugin entry."
+        },
         "publisher": {
             "type": "object",
             "additionalProperties": false,
@@ -80,8 +86,18 @@
                     "required": ["entrypointUrl", "format"],
                     "additionalProperties": false,
                     "properties": {
-                        "entrypointUrl":       {"type": "string", "format": "uri-reference"},
-                        "stylesheetUrl":       {"type": "string", "format": "uri-reference"},
+                        "entrypointUrl":       {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https?://",
+                            "description": "Absolute https URL of the published ESM bundle. The host frontend imports this directly via `import()`. Publishers MUST join the registry `baseUrl` to their relative `artifacts/<id>-<version>/plugin.esm.js` path before signing."
+                        },
+                        "stylesheetUrl":       {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https?://",
+                            "description": "Absolute https URL of the optional published stylesheet."
+                        },
                         "format":              {"type": "string", "enum": ["esm"]},
                         "integrity":           {"type": "string"},
                         "stylesheetIntegrity": {"type": "string"}

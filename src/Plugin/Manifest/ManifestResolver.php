@@ -175,17 +175,23 @@ final class ManifestResolver
         $composer = (isset($manifestData['backend']['composer']) && is_array($manifestData['backend']['composer']))
             ? $manifestData['backend']['composer']
             : [];
+        $archive = (isset($manifestData['archive']) && is_array($manifestData['archive']))
+            ? $manifestData['archive']
+            : ['mode' => 'connected'];
         $checksums = (isset($entry['checksums']) && is_array($entry['checksums']))
             ? $entry['checksums']
             : [];
+        $resolvedRuntime = $runtime;
+        $resolvedComposer = $composer;
 
         if ($signedPayload !== null && $signature !== null && $keyId !== null) {
             $registryRuntime = (isset($entry['runtime']) && is_array($entry['runtime'])) ? $entry['runtime'] : [];
+            $registryComposer = (isset($entry['composer']) && is_array($entry['composer'])) ? $entry['composer'] : [];
 
             $payloadInput = [
                 'pluginId' => $manifest->getPluginId(),
                 'version' => $manifest->getVersion(),
-                'composer' => isset($entry['composer']) && is_array($entry['composer']) ? $entry['composer'] : $composer,
+                'composer' => $registryComposer !== [] ? $registryComposer : $composer,
                 'runtime' => [
                     'entrypointUrl' => (string) ($registryRuntime['entrypointUrl'] ?? ''),
                     'format' => (string) ($registryRuntime['format'] ?? ($runtime['format'] ?? 'esm')),
@@ -194,6 +200,7 @@ final class ManifestResolver
                     'frontendEsm' => (string) ($checksums['frontendEsm'] ?? ''),
                 ],
                 'compatibility' => isset($manifestData['compatibility']) && is_array($manifestData['compatibility']) ? $manifestData['compatibility'] : [],
+                'archive' => $archive,
             ];
             if (isset($registryRuntime['stylesheetUrl']) && is_string($registryRuntime['stylesheetUrl']) && $registryRuntime['stylesheetUrl'] !== '') {
                 $payloadInput['runtime']['stylesheetUrl'] = $registryRuntime['stylesheetUrl'];
@@ -207,10 +214,6 @@ final class ManifestResolver
             if (isset($checksums['frontendCss']) && is_string($checksums['frontendCss']) && $checksums['frontendCss'] !== '') {
                 $payloadInput['checksums']['frontendCss'] = $checksums['frontendCss'];
             }
-            if ($manifestUrl !== null && $manifestUrl !== '') {
-                $payloadInput['manifestUrl'] = $manifestUrl;
-            }
-
             try {
                 $recomputed = $this->signedPayloadBuilder->build($payloadInput);
             } catch (\Throwable $e) {
@@ -232,6 +235,13 @@ final class ManifestResolver
                 );
             } catch (PluginSignatureException $e) {
                 throw new \RuntimeException($e->getMessage(), 0, $e);
+            }
+
+            if ($registryComposer !== []) {
+                $resolvedComposer = $this->mergeResolvedComposer($composer, $registryComposer);
+            }
+            if ($registryRuntime !== []) {
+                $resolvedRuntime = $this->mergeResolvedRuntime($runtime, $registryRuntime);
             }
         } else {
             // No signature attached. Let the verifier decide whether the
@@ -263,8 +273,8 @@ final class ManifestResolver
             signature: $signature,
             keyId: $keyId,
             expectedChecksums: $expectedChecksums,
-            composer: $composer,
-            runtime: $runtime,
+            composer: $resolvedComposer,
+            runtime: $resolvedRuntime,
             archiveStagingDir: null,
         );
     }
@@ -276,6 +286,59 @@ final class ManifestResolver
     {
         $v = $arr[$key] ?? null;
         return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    /**
+     * Preserve manifest-only runtime fields like `entrypoint` /
+     * `devEntrypointUrl`, but override install-critical fields from the
+     * signed registry/runtime payload.
+     *
+     * @param array<string,mixed> $manifestRuntime
+     * @param array<string,mixed> $registryRuntime
+     * @return array<string,mixed>
+     */
+    private function mergeResolvedRuntime(array $manifestRuntime, array $registryRuntime): array
+    {
+        $resolved = $manifestRuntime;
+
+        if (isset($registryRuntime['entrypointUrl']) && is_string($registryRuntime['entrypointUrl']) && $registryRuntime['entrypointUrl'] !== '') {
+            $resolved['entrypointUrl'] = $registryRuntime['entrypointUrl'];
+        }
+        if (isset($registryRuntime['stylesheetUrl']) && is_string($registryRuntime['stylesheetUrl']) && $registryRuntime['stylesheetUrl'] !== '') {
+            $resolved['stylesheetUrl'] = $registryRuntime['stylesheetUrl'];
+        }
+        foreach (['format', 'integrity', 'stylesheetIntegrity'] as $key) {
+            if (isset($registryRuntime[$key]) && is_string($registryRuntime[$key]) && $registryRuntime[$key] !== '') {
+                $resolved[$key] = $registryRuntime[$key];
+            }
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Preserve manifest-only composer fields like `repository` when an
+     * older registry entry only signed/published `{package, version}`.
+     *
+     * @param array<string,mixed> $manifestComposer
+     * @param array<string,mixed> $registryComposer
+     * @return array<string,mixed>
+     */
+    private function mergeResolvedComposer(array $manifestComposer, array $registryComposer): array
+    {
+        $resolved = $manifestComposer;
+
+        foreach (['package', 'version'] as $key) {
+            if (isset($registryComposer[$key]) && is_string($registryComposer[$key]) && $registryComposer[$key] !== '') {
+                $resolved[$key] = $registryComposer[$key];
+            }
+        }
+
+        if (isset($registryComposer['repository']) && is_array($registryComposer['repository'])) {
+            $resolved['repository'] = $registryComposer['repository'];
+        }
+
+        return $resolved;
     }
 
     /**

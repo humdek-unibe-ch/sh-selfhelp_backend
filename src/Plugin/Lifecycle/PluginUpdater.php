@@ -166,6 +166,7 @@ final class PluginUpdater
                     'signature' => $resolved->signature,
                     'expectedChecksums' => $resolved->expectedChecksums,
                     'composer' => $resolved->composer,
+                    'runtime' => $resolved->runtime,
                     'archiveStagingDir' => $resolved->archiveStagingDir,
                     // Same rationale as PluginInstaller — the runbook
                     // for managed-mode updates of standalone archives
@@ -235,15 +236,16 @@ final class PluginUpdater
         try {
             $this->em->beginTransaction();
             try {
+                $frontendRuntime = $this->resolveFrontendRuntimeMetadata($newManifest, $operation);
                 $plugin->setVersion($newManifest->getVersion());
                 $plugin->setPluginApiVersion($newManifest->getPluginApiVersion());
                 $plugin->setTrustLevel($newManifest->getTrustLevel());
                 $plugin->setBackendPackage($newManifest->getBackendPackage());
                 $plugin->setBackendBundleClass($newManifest->getBackendBundleClass());
-                $plugin->setFrontendRuntimeUrl($this->resolveFrontendRuntimeUrl($newManifest, $operation));
-                $plugin->setFrontendRuntimeStylesheetUrl($newManifest->getFrontendRuntimeStylesheet());
-                $plugin->setFrontendRuntimeIntegrity($newManifest->getFrontendRuntimeIntegrity());
-                $plugin->setFrontendRuntimeFormat($newManifest->getFrontendRuntimeFormat());
+                $plugin->setFrontendRuntimeUrl($frontendRuntime['entrypointUrl']);
+                $plugin->setFrontendRuntimeStylesheetUrl($frontendRuntime['stylesheetUrl']);
+                $plugin->setFrontendRuntimeIntegrity($frontendRuntime['integrity']);
+                $plugin->setFrontendRuntimeFormat($frontendRuntime['format']);
                 $plugin->setMobilePackage($newManifest->getMobilePackage());
                 $plugin->setMobilePackageVersion($newManifest->getMobilePackageVersion());
                 $plugin->setManifestJson($newManifest->toArray());
@@ -331,16 +333,113 @@ final class PluginUpdater
     private function affectedTables(Plugin $plugin): array
     {
         $data = $plugin->getManifestJson();
-        $owned = $data['dataAccess']['ownedTables'] ?? [];
+        $dataAccess = isset($data['dataAccess']) && is_array($data['dataAccess']) ? $data['dataAccess'] : [];
+        $owned = $dataAccess['ownedTables'] ?? [];
         return is_array($owned) ? array_values(array_filter($owned, 'is_string')) : [];
     }
 
-    private function resolveFrontendRuntimeUrl(PluginManifest $manifest, PluginOperation $operation): ?string
+    /**
+     * @return array{
+     *     entrypointUrl: string|null,
+     *     stylesheetUrl: string|null,
+     *     integrity: string|null,
+     *     format: string
+     * }
+     */
+    private function resolveFrontendRuntimeMetadata(PluginManifest $manifest, PluginOperation $operation): array
     {
-        if ($operation->getInstallMode() === Plugin::INSTALL_MODE_DEVELOPMENT) {
-            return $manifest->getFrontendDevEntrypointUrl() ?? $manifest->getFrontendRuntimeEntrypoint();
+        $runtime = [
+            'entrypointUrl' => $manifest->getFrontendRuntimeEntrypoint(),
+            'stylesheetUrl' => $manifest->getFrontendRuntimeStylesheet(),
+            'integrity' => $manifest->getFrontendRuntimeIntegrity(),
+            'format' => $manifest->getFrontendRuntimeFormat(),
+        ];
+
+        $resolved = $this->getResolvedSourceSnapshot($operation);
+        $kind = is_array($resolved) && is_string($resolved['kind'] ?? null) ? $resolved['kind'] : null;
+
+        // Archive updates rewrite the manifest in the worker after
+        // promoting runtime files into public/plugin-artifacts/.
+        // Be defensive here too: if the worker hands finalize() an
+        // archive manifest that still contains archive-relative paths
+        // like `dist/plugin.esm.js`, persist the promoted public path
+        // instead of leaking the raw manifest value into the DB.
+        if ($kind === ResolvedSource::KIND_ARCHIVE) {
+            $pluginVersionDir = rawurlencode($manifest->getPluginId() . '-' . $manifest->getVersion());
+            if ($this->isArchiveRelativeRuntimePath($runtime['entrypointUrl'])) {
+                $runtime['entrypointUrl'] = '/plugin-artifacts/' . $pluginVersionDir . '/plugin.esm.js';
+            }
+            if ($this->isArchiveRelativeRuntimePath($runtime['stylesheetUrl'])) {
+                $runtime['stylesheetUrl'] = '/plugin-artifacts/' . $pluginVersionDir . '/plugin.css';
+            }
+            return $runtime;
         }
 
-        return $manifest->getFrontendRuntimeEntrypoint();
+        if ($operation->getInstallMode() === Plugin::INSTALL_MODE_DEVELOPMENT
+            && $kind === ResolvedSource::KIND_PASTE
+        ) {
+            $runtime['entrypointUrl'] = $manifest->getFrontendDevEntrypointUrl() ?? $runtime['entrypointUrl'];
+            return $runtime;
+        }
+
+        $resolvedRuntime = $this->normaliseStringKeyArray($resolved['runtime'] ?? null);
+        if ($resolvedRuntime !== null) {
+            $runtime['entrypointUrl'] = $this->stringOrFallback($resolvedRuntime, 'entrypointUrl', $runtime['entrypointUrl']);
+            $runtime['stylesheetUrl'] = $this->stringOrFallback($resolvedRuntime, 'stylesheetUrl', $runtime['stylesheetUrl']);
+            $runtime['integrity'] = $this->stringOrFallback($resolvedRuntime, 'integrity', $runtime['integrity']);
+            $runtime['format'] = $this->stringOrFallback($resolvedRuntime, 'format', $runtime['format']) ?? 'esm';
+        }
+
+        return $runtime;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function getResolvedSourceSnapshot(PluginOperation $operation): ?array
+    {
+        $snapshots = $operation->getSnapshotsJson() ?? [];
+        return $this->normaliseStringKeyArray($snapshots['resolvedSource'] ?? null);
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function normaliseStringKeyArray(mixed $value): ?array
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($value as $key => $entry) {
+            if (is_string($key)) {
+                $out[$key] = $entry;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     */
+    private function stringOrFallback(array $data, string $key, ?string $fallback): ?string
+    {
+        $value = $data[$key] ?? null;
+        return is_string($value) && $value !== '' ? $value : $fallback;
+    }
+
+    private function isArchiveRelativeRuntimePath(?string $value): bool
+    {
+        if ($value === null || $value === '') {
+            return false;
+        }
+
+        if (str_starts_with($value, '/')) {
+            return false;
+        }
+
+        return !preg_match('#^[a-z][a-z0-9+.-]*://#i', $value);
     }
 }

@@ -253,8 +253,9 @@ installs/finalizes the plugin through the normal Messenger pipeline,
 enables it, and prints the frontend runtime command. The host root
 `composer.json`, `composer.lock`, and `config/bundles.php` are not
 modified by this dev attach path; the worker uses the isolated plugin
-Composer root under `var/plugin-composer/`. Because the host install
-mode is `development`, the persisted plugin row uses
+Composer root under `var/plugin-composer/`. Because this local attach
+path resolves the plugin through a pasted local manifest while the host
+install mode is `development`, the persisted plugin row uses
 `frontend.runtime.devEntrypointUrl` as the active runtime URL.
 
 2. Keep the plugin runtime dev server running:
@@ -462,7 +463,7 @@ Where each token comes from:
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<name>`         | `plugins.name` column in the host DB — captured by `PluginInstaller::finalize()` from `plugin.json#name` at install time.                                                                                                                                                                                                                                                                                       |
 | `v<version>`     | The infamous "Expected v0.2.2". Comes from `plugins.version` in the host DB, captured by `PluginInstaller::finalize()` from `plugin.json#version` at install time. The same value is returned to the browser by `GET /cms-api/v1/plugins/manifest` as the `version` field. Bumping `plugin.json#version` without re-installing leaves the host's expected version on the previous number — that is the only way to make the two diverge intentionally. |
-| `<runtimeUrl>`   | `plugins.frontend_runtime_url` column, set by `PluginInstaller::resolveFrontendRuntimeUrl()`. For `INSTALL_MODE_DEVELOPMENT` installs (the local sibling-checkout / `--symlink` path) it is the manifest's `frontend.runtime.devEntrypointUrl` (e.g. `http://localhost:5174/<pluginId>/plugin.esm.js`). For all other install modes it is the manifest's `frontend.runtime.entrypoint`, rewritten through `/plugin-artifacts/<id>-<ver>/`. |
+| `<runtimeUrl>`   | `plugins.frontend_runtime_url` column, resolved during install/update finalization. Local development installs that come from a pasted local manifest (the sibling-checkout / `--symlink` path) use `frontend.runtime.devEntrypointUrl` (e.g. `http://localhost:5174/<pluginId>/plugin.esm.js`). `.shplugin` installs use the promoted `/plugin-artifacts/<id>-<ver>/...` path, and registry installs use the registry entry's published runtime URL instead of the raw `plugin.json#frontend.runtime.entrypoint`. |
 | `<reason>`       | The browser's `import()` rejection. The common failures are listed below.                                                                                                                                                                                                                                                                                                                                       |
 
 | Reason                                                  | What it means                                                                                                                                                                                                                                                                                                                                                              | Fix                                                                                                                                                              |
@@ -488,7 +489,7 @@ Removes the bundle, deletes the plugin row, and clears feature flags. Does NOT d
 php bin/console selfhelp:plugin:purge sh2-shp-survey-js --confirm
 ```
 
-Drops plugin-owned tables, deletes the plugin's lookup contributions, and removes the lock entry. The `--confirm` flag is mandatory; when run interactively the operator must additionally re-type the plugin id when prompted.
+Drops plugin-owned tables, removes the plugin backend package from `var/plugin-composer/vendor/`, deletes the plugin's lookup contributions, and removes the lock entry. The `--confirm` flag is mandatory; when run interactively the operator must additionally re-type the plugin id when prompted.
 
 ## 9. Doctor
 
