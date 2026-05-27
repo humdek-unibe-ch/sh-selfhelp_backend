@@ -128,6 +128,7 @@ final class PluginUpdater
 
             $capabilities = $this->capabilityValidator->validate($newManifest, $resolved);
             $migrationScan = $this->migrationScanner->scan($newManifest);
+            $this->apiRouteSynchronizer->preflightValidate($newManifest, $resolved);
             $installMode = $this->installModeResolver->resolve();
 
             $operation = $this->recorder->start(

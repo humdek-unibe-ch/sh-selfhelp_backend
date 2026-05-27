@@ -14,6 +14,7 @@ use App\Entity\ApiRoute;
 use App\Entity\Permission;
 use App\Entity\Plugin\Plugin;
 use App\Plugin\Manifest\PluginManifest;
+use App\Plugin\Manifest\ResolvedSource;
 use App\Repository\ApiRouteRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -60,6 +61,89 @@ final class PluginApiRouteSynchronizer
         private readonly EntityManagerInterface $em,
         private readonly ApiRouteRepository $apiRoutes,
     ) {
+    }
+
+    /**
+     * Preflight validation that runs BEFORE an install/update operation
+     * is queued. This keeps malformed route declarations from creating
+     * a half-installed plugin row.
+     *
+     * Unlike `sync()`, this phase does not require DB permission rows
+     * or a persisted `Plugin` entity. When a local backend source tree
+     * is available (standalone archive or path-repo dev install), it
+     * validates controller classes/methods against those source files
+     * directly so long-lived worker processes do not accidentally read
+     * stale already-loaded plugin classes.
+     */
+    public function preflightValidate(PluginManifest $manifest, ?ResolvedSource $resolved = null): void
+    {
+        $pluginId = $manifest->getPluginId();
+        $publicPrefix = '/plugins/' . $pluginId . '/';
+        $adminPrefix = '/admin/plugins/' . $pluginId . '/';
+        $seen = [];
+        $declaredPermissions = $this->declaredPermissionKeys($manifest);
+        $backendSourceDir = $this->resolveBackendSourceDir($manifest, $resolved);
+
+        foreach ($manifest->getApiRoutes() as $index => $raw) {
+            $name = isset($raw['name']) && is_string($raw['name']) ? trim($raw['name']) : '';
+            $path = isset($raw['path']) && is_string($raw['path']) ? $raw['path'] : '';
+            $controller = isset($raw['controller']) && is_string($raw['controller']) ? trim($raw['controller']) : '';
+            $version = isset($raw['version']) && is_string($raw['version']) && $raw['version'] !== '' ? $raw['version'] : 'v1';
+
+            if ($name === '') {
+                throw new \InvalidArgumentException(sprintf('Plugin "%s" apiRoutes[%d] is missing a non-empty "name".', $pluginId, $index));
+            }
+            if ($controller === '' || !str_contains($controller, '::')) {
+                throw new \InvalidArgumentException(sprintf('Plugin "%s" apiRoutes[%d] ("%s") must declare a "controller" in the form "Fully\\Qualified\\Class::method".', $pluginId, $index, $name));
+            }
+            if (!str_starts_with($path, $publicPrefix) && !str_starts_with($path, $adminPrefix)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Plugin "%s" apiRoutes[%d] ("%s") path must begin with "%s" or "%s", got "%s".',
+                    $pluginId,
+                    $index,
+                    $name,
+                    $publicPrefix,
+                    $adminPrefix,
+                    $path
+                ));
+            }
+
+            $this->normaliseMethods($pluginId, $name, $raw['methods'] ?? []);
+
+            $key = $this->routeKey($name, $version);
+            if (isset($seen[$key])) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Plugin "%s" apiRoutes declares duplicate route name/version "%s/%s".',
+                    $pluginId,
+                    $name,
+                    $version
+                ));
+            }
+            $seen[$key] = true;
+
+            foreach ($this->extractPermissionNames($raw) as $permissionName) {
+                if (!isset($declaredPermissions[$permissionName])) {
+                    throw new \InvalidArgumentException(sprintf(
+                        'Plugin "%s" apiRoutes "%s" references permission "%s" that is not declared under plugin.json#permissions.',
+                        $pluginId,
+                        $name,
+                        $permissionName
+                    ));
+                }
+            }
+
+            [$controllerClass, $controllerMethod] = explode('::', $controller, 2);
+            if ($backendSourceDir !== null) {
+                $this->validateControllerAgainstSource(
+                    $backendSourceDir,
+                    $pluginId,
+                    $index,
+                    $name,
+                    $controllerClass,
+                    $controllerMethod,
+                );
+            }
+        }
     }
 
     /**
@@ -184,27 +268,6 @@ final class PluginApiRouteSynchronizer
 
             $methods = $this->normaliseMethods($pluginId, $name, $raw['methods'] ?? []);
 
-            [$controllerClass, $controllerMethod] = explode('::', $controller, 2);
-            if (!class_exists($controllerClass)) {
-                throw new \RuntimeException(sprintf(
-                    'Plugin "%s" apiRoutes[%d] ("%s") references controller class "%s" that is not autoloadable.',
-                    $pluginId,
-                    $index,
-                    $name,
-                    $controllerClass
-                ));
-            }
-            if (!method_exists($controllerClass, $controllerMethod)) {
-                throw new \RuntimeException(sprintf(
-                    'Plugin "%s" apiRoutes[%d] ("%s") references controller method "%s::%s" that does not exist.',
-                    $pluginId,
-                    $index,
-                    $name,
-                    $controllerClass,
-                    $controllerMethod
-                ));
-            }
-
             $requirements = $this->normaliseAssocStringArray($raw['requirements'] ?? null);
             $params = isset($raw['params']) && is_array($raw['params']) ? $raw['params'] : null;
             $permissions = $this->resolvePermissions($pluginId, $name, $raw);
@@ -275,6 +338,146 @@ final class PluginApiRouteSynchronizer
             ));
         }
         return $out;
+    }
+
+    /**
+     * @return array<string,true>
+     */
+    private function declaredPermissionKeys(PluginManifest $manifest): array
+    {
+        $out = [];
+        foreach ($manifest->getPermissions() as $permission) {
+            $key = $permission['key'] ?? null;
+            if (is_string($key) && $key !== '') {
+                $out[$key] = true;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $raw
+     * @return list<string>
+     */
+    private function extractPermissionNames(array $raw): array
+    {
+        $names = [];
+        if (isset($raw['permissions']) && is_array($raw['permissions'])) {
+            foreach ($raw['permissions'] as $name) {
+                if (is_string($name) && trim($name) !== '') {
+                    $names[] = trim($name);
+                }
+            }
+        }
+        if (isset($raw['permission']) && is_string($raw['permission']) && trim($raw['permission']) !== '') {
+            $names[] = trim($raw['permission']);
+        }
+        return array_values(array_unique($names));
+    }
+
+    private function resolveBackendSourceDir(PluginManifest $manifest, ?ResolvedSource $resolved): ?string
+    {
+        if ($resolved?->archiveBackendDir !== null && is_dir($resolved->archiveBackendDir)) {
+            return $resolved->archiveBackendDir;
+        }
+
+        $repo = $manifest->getBackendComposerRepository();
+        if ($repo !== null && ($repo['type'] ?? null) === 'path') {
+            $path = $repo['url'] ?? null;
+            if (is_string($path) && $path !== '' && is_dir($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    private function validateControllerAgainstSource(
+        string $backendSourceDir,
+        string $pluginId,
+        int $index,
+        string $routeName,
+        string $controllerClass,
+        string $controllerMethod,
+    ): void {
+        $composerPath = $backendSourceDir . '/composer.json';
+        if (!is_file($composerPath)) {
+            throw new \RuntimeException(sprintf(
+                'Plugin "%s" apiRoutes[%d] ("%s") cannot validate controller "%s": backend composer.json missing at "%s".',
+                $pluginId,
+                $index,
+                $routeName,
+                $controllerClass,
+                $composerPath
+            ));
+        }
+
+        $composerRaw = file_get_contents($composerPath);
+        $composer = is_string($composerRaw) ? json_decode($composerRaw, true) : null;
+        $psr4 = is_array($composer['autoload']['psr-4'] ?? null) ? $composer['autoload']['psr-4'] : [];
+        $controllerFile = $this->resolvePsr4ClassFile($backendSourceDir, $controllerClass, $psr4);
+        if ($controllerFile === null || !is_file($controllerFile)) {
+            throw new \RuntimeException(sprintf(
+                'Plugin "%s" apiRoutes[%d] ("%s") references controller class "%s" that does not resolve to a PHP file under "%s".',
+                $pluginId,
+                $index,
+                $routeName,
+                $controllerClass,
+                $backendSourceDir
+            ));
+        }
+
+        $source = file_get_contents($controllerFile);
+        if (!is_string($source) || $source === '') {
+            throw new \RuntimeException(sprintf(
+                'Plugin "%s" apiRoutes[%d] ("%s") controller file "%s" is not readable.',
+                $pluginId,
+                $index,
+                $routeName,
+                $controllerFile
+            ));
+        }
+
+        if (!preg_match('/function\s+' . preg_quote($controllerMethod, '/') . '\s*\(/', $source)) {
+            throw new \RuntimeException(sprintf(
+                'Plugin "%s" apiRoutes[%d] ("%s") references controller method "%s::%s" that does not exist in "%s".',
+                $pluginId,
+                $index,
+                $routeName,
+                $controllerClass,
+                $controllerMethod,
+                $controllerFile
+            ));
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $psr4
+     */
+    private function resolvePsr4ClassFile(string $backendSourceDir, string $className, array $psr4): ?string
+    {
+        $bestPrefix = null;
+        $bestDir = null;
+        foreach ($psr4 as $prefix => $dir) {
+            if (!is_string($prefix) || !is_string($dir)) {
+                continue;
+            }
+            if (!str_starts_with($className, $prefix)) {
+                continue;
+            }
+            if ($bestPrefix === null || strlen($prefix) > strlen($bestPrefix)) {
+                $bestPrefix = $prefix;
+                $bestDir = $dir;
+            }
+        }
+
+        if ($bestPrefix === null || $bestDir === null) {
+            return null;
+        }
+
+        $relativeClass = substr($className, strlen($bestPrefix));
+        $relativePath = str_replace('\\', '/', $relativeClass) . '.php';
+        return rtrim($backendSourceDir, '/\\') . '/' . trim($bestDir, '/\\') . '/' . $relativePath;
     }
 
     /**

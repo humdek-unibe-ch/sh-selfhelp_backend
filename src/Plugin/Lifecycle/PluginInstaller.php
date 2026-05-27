@@ -111,6 +111,7 @@ final class PluginInstaller
             }
 
             $migrationScan = $this->migrationScanner->scan($manifest);
+            $this->apiRouteSynchronizer->preflightValidate($manifest, $resolved);
 
             $installMode = $this->installModeResolver->resolve();
             $operation = $this->recorder->start(

@@ -12,6 +12,7 @@ namespace App\Plugin\Archive;
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\PluginManifestLoader;
 use App\Plugin\Manifest\ResolvedSource;
+use App\Plugin\Lifecycle\PluginApiRouteSynchronizer;
 use App\Plugin\Security\PluginCapabilityValidator;
 use App\Plugin\Security\PluginCapabilityViolationException;
 use App\Plugin\Security\PluginSignatureException;
@@ -43,6 +44,7 @@ final class PluginArchiveInspectionService
         private readonly PluginCompatibilityValidator $compatibility,
         private readonly PluginCapabilityValidator $capabilities,
         private readonly PluginSignatureVerifier $signatureVerifier,
+        private readonly PluginApiRouteSynchronizer $apiRouteSynchronizer,
     ) {
     }
 
@@ -166,6 +168,15 @@ final class PluginArchiveInspectionService
             $this->capabilities->validate($manifest, $resolved ?? $this->placeholderResolvedSource($manifest, $stagingDir));
         } catch (PluginCapabilityViolationException $e) {
             $errors[] = 'capability: ' . $e->getMessage();
+        }
+
+        try {
+            $this->apiRouteSynchronizer->preflightValidate(
+                $manifest,
+                $resolved ?? $this->placeholderResolvedSource($manifest, $stagingDir),
+            );
+        } catch (\Throwable $e) {
+            $errors[] = 'apiRoutes: ' . $e->getMessage();
         }
 
         $resolvedDescriptor = $resolved !== null ? [
@@ -408,6 +419,7 @@ final class PluginArchiveInspectionService
             composer: $composer,
             runtime: $runtime,
             archiveStagingDir: $stagingDir,
+            archiveBackendDir: is_dir($stagingDir . '/backend/package') ? $stagingDir . '/backend/package' : null,
         );
     }
 
