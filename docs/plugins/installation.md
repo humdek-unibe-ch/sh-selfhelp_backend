@@ -424,6 +424,56 @@ php bin/console selfhelp:plugin:enable sh2-shp-survey-js
 
 Disabling unregisters the Symfony bundle, hides admin routes, and removes the plugin contributions from the frontend runtime — without deleting plugin data.
 
+### 6.1 Why install does not auto-enable (by default)
+
+The host treats install and enable as two distinct lifecycle steps.
+
+| Step    | What changes on disk / in the DB                                                                                                                                                                                                                                       | What the user sees                              |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Install | New row in `plugins` (`enabled = 0`), plugin migrations run, `permissions`/`styles`/`lookups`/`api_routes` rows tagged with `id_plugins`, `config/selfhelp_plugin_bundles.php` regenerated, lock file written. The Symfony bundle is registered but the route loader, style schema, frontend manifest endpoint, and admin menu all gate on `enabled = 1`. | Row appears under **Installed** with status `disabled`. |
+| Enable  | `plugins.enabled = 1`, `enabled_at` set, every plugin-surface Redis category invalidated (`CATEGORY_{PLUGINS,API_ROUTES,STYLES,PERMISSIONS,ROLES,USERS,LOOKUPS,PAGES}`), `config/selfhelp_plugin_bundles.php` regenerated, lock file refreshed, `PluginEnabledEvent` published over Mercure on `selfhelp/plugins/state` so the admin UI refreshes without a page reload. | Plugin appears in the side menu, admin pages mount, frontend manifest endpoint includes the plugin's `frontendRuntimeUrl`. |
+
+Why the split exists:
+
+- **Trust review** — the operator who clicked **Install** is not necessarily the security-aware admin who decides whether to expose the plugin's surface. Keeping enable separate gives that admin a chance to inspect trust level, capabilities, signing key id, requested external hosts, and the declared `dataAccess.read`/`dataAccess.write` lists on the **Installed** tab before turning the plugin on.
+- **Symmetry with the lifecycle** — disable already exists and is reversible. Making install also leave the plugin disabled means the two terminal states of the install/disable axis are identical (`enabled=0`), which simplifies recovery scripts.
+
+The **Install plugin** modal exposes an **Enable plugin after install** switch that defaults to ON for the upload (`.shplugin` / paste / URL) flows. Tick it OFF if you want to land the plugin in disabled state. The CLI `selfhelp:plugin:install` command never auto-enables — operators run `selfhelp:plugin:enable <id>` explicitly. The plugin development fast-path (e.g. SurveyJS's `node scripts/install-local.mjs --symlink`) calls `selfhelp:plugin:enable` itself so a fresh dev checkout is usable immediately.
+
+The frontend / admin menu is filtered by `enabled = 1` at two layers:
+
+- `App\Controller\Api\V1\Plugin\PluginManifestController::manifest()` walks `PluginRegistryService::getEnabled()` only. Disabled plugins are absent from the response.
+- The host Next.js `PluginRuntime` then iterates `manifest.plugins.filter((p) => p.enabled)`, so even if a disabled plugin slipped through the API filter, the runtime would not call its `register()` function.
+
+That is why the SurveyJS menu items appear only after **Enable** is clicked.
+
+### 6.2 Troubleshooting "Plugin could not be mounted"
+
+The host shows a red mount-failure banner when a plugin is enabled (so the host runtime tries to load it) but the JS runtime bundle cannot be fetched / parsed / registered. The error message text is generated in [`PluginRuntime.ts`](../../../sh-selfhelp_frontend/src/app/components/frontend/plugin-runtime/PluginRuntime.ts):
+
+```text
+Plugin "<name>" v<version>: import of "<runtimeUrl>" failed (<reason>).
+Verify the URL is reachable and serves a valid ESM module.
+```
+
+Where each token comes from:
+
+| Token            | Source                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<name>`         | `plugins.name` column in the host DB — captured by `PluginInstaller::finalize()` from `plugin.json#name` at install time.                                                                                                                                                                                                                                                                                       |
+| `v<version>`     | The infamous "Expected v0.2.2". Comes from `plugins.version` in the host DB, captured by `PluginInstaller::finalize()` from `plugin.json#version` at install time. The same value is returned to the browser by `GET /cms-api/v1/plugins/manifest` as the `version` field. Bumping `plugin.json#version` without re-installing leaves the host's expected version on the previous number — that is the only way to make the two diverge intentionally. |
+| `<runtimeUrl>`   | `plugins.frontend_runtime_url` column, set by `PluginInstaller::resolveFrontendRuntimeUrl()`. For `INSTALL_MODE_DEVELOPMENT` installs (the local sibling-checkout / `--symlink` path) it is the manifest's `frontend.runtime.devEntrypointUrl` (e.g. `http://localhost:5174/<pluginId>/plugin.esm.js`). For all other install modes it is the manifest's `frontend.runtime.entrypoint`, rewritten through `/plugin-artifacts/<id>-<ver>/`. |
+| `<reason>`       | The browser's `import()` rejection. The common failures are listed below.                                                                                                                                                                                                                                                                                                                                       |
+
+| Reason                                                  | What it means                                                                                                                                                                                                                                                                                                                                                              | Fix                                                                                                                                                              |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Failed to fetch dynamically imported module`           | The browser could not connect to or load `<runtimeUrl>` at all. For a `localhost:<port>` URL this is almost always the plugin's dev runtime server being down. For a `/plugin-artifacts/...` URL it is the file missing under `public/plugin-artifacts/<id>-<ver>/` — i.e. the install never promoted the archive.                                                          | Dev: start the plugin's runtime dev server (e.g. `npm --prefix frontend run dev:runtime` for SurveyJS). Prod: re-run install so the archive is promoted, or run `selfhelp:plugin:doctor` to confirm the bundle is on disk. |
+| `Plugin "<x>": host expected v<n> but the bundle reports v<m>` | The JS bundle DID load but `definePlugin({ version: '<m>' })` does not match the host's expected `<n>`. Out-of-sync publisher (build artifact made from a different `plugin.json` version) or a stale browser cache.                                                                                                                                                       | Republish / rebuild the bundle from the same `plugin.json`, or hard-refresh (`Ctrl+Shift+R`) to clear cached ESM modules.                                        |
+| `runtime bundle … does not export a register() function` | The bundle loaded, exported something, but no `register` symbol. Typical when a plugin author renames their entry point or forgets to re-export `default.register`.                                                                                                                                                                                                       | Check the plugin's `frontend/src/index.ts` and rebuild.                                                                                                          |
+| `register() threw`                                       | The plugin's own `register()` callback raised. The plugin code is at fault.                                                                                                                                                                                                                                                                                                | The mount-failure banner expands to show the inner error message — pass it to the plugin author.                                                                 |
+
+The host's caches and Mercure topics are fine on the enable path — the visible failure is always one of the four rows above. When SurveyJS reports "Expected v0.2.2", you are virtually always looking at the first row: the dev runtime server is not running, the host's database row is fine, the version string is just being read from the host DB and rendered alongside the failed-import diagnostic.
+
 ## 7. Uninstall (non-destructive)
 
 ```bash

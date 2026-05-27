@@ -511,6 +511,19 @@ The CMS installer flow is **one HTTP request → one Messenger message**:
    `finalize()`. No browser finalize step exists.
 4. **Enable / disable** — synchronous; toggles the `enabled` flag,
    regenerates the bundles file, invalidates relevant caches.
+   Install does NOT auto-enable in the upload / CLI paths — the
+   `enabled = 0` default lets an admin review trust level,
+   capabilities, signing key id, requested external hosts, and the
+   declared `dataAccess` lists before turning the plugin on. The
+   Admin **Install plugin** modal exposes an "Enable plugin after
+   install" switch (default ON) so single-click install is still
+   one click; sticking ticks of off leaves the plugin disabled.
+   Development fast-paths (e.g. the SurveyJS plugin's
+   `node scripts/install-local.mjs --symlink`) intentionally run
+   `selfhelp:plugin:enable <id>` themselves so a fresh local
+   checkout is immediately usable. The mechanics, side effects,
+   and operator UI flow are documented in
+   [`installation.md` §6.1](./installation.md#61-why-install-does-not-auto-enable-by-default).
 5. **Uninstall** — `POST /admin/plugins/{pluginId}/uninstall` mirrors
    the install/update flow: persists an operation row, dispatches
    `UninstallPluginMessage`. The worker runs `composer remove`, then
@@ -749,6 +762,95 @@ on a valid `.shplugin`:
    by plugin install / update / uninstall. The frontend continues
    serving from the same compiled bundle; only the runtime ESM
    contributions are added or removed.
+
+### 15.5 Local development of in-repo plugins (dev mode)
+
+When you are *authoring* a plugin (vs. installing one), you want
+fast iteration: edit a `.tsx`, save, see the change in the host
+admin shell without rebuilding a `.shplugin` archive every time.
+The plugin lifecycle has a dedicated `INSTALL_MODE_DEVELOPMENT`
+that takes care of this. Two-line setup, from inside the plugin
+checkout:
+
+```bash
+# 1. Install + auto-enable the plugin in development mode. Same
+#    Messenger pipeline as production, but the host stores the
+#    manifest's `frontend.runtime.devEntrypointUrl` (typically
+#    http://localhost:5174/<plugin-id>/plugin.esm.js) as the
+#    active runtime URL instead of `/plugin-artifacts/...`.
+node scripts/install-local.mjs --symlink
+
+# 2. Keep the plugin's runtime dev server up. It serves the
+#    Vite watch build at the dev URL and emits SSE reload
+#    events on `<base>/__selfhelp_plugin_reload`. The host
+#    runtime listens to those events and re-imports the bundle.
+npm --prefix frontend run dev:runtime
+```
+
+Routing decision (host side, `PluginInstaller::resolveFrontendRuntimeUrl`):
+
+```text
+install_mode == 'development'
+    → manifest.frontend.runtime.devEntrypointUrl
+       ?? manifest.frontend.runtime.entrypoint
+    (e.g. http://localhost:5174/<pluginId>/plugin.esm.js)
+
+install_mode in ('managed', 'trusted', 'production')
+    → manifest.frontend.runtime.entrypoint, rewritten to
+      /plugin-artifacts/<id>-<ver>/plugin.esm.js
+```
+
+The host frontend identifies a development URL by the
+`http://` scheme + `localhost`/`127.0.0.1`/`::1` hostname
+([`PluginRuntime.isDevelopmentRuntimeUrl`](../../../sh-selfhelp_frontend/src/app/components/frontend/plugin-runtime/PluginRuntime.ts))
+and opens the SSE reload subscription for those URLs. Any
+other scheme/host is treated as a stable production URL.
+
+The plugin's runtime dev server is the plugin author's
+responsibility. SurveyJS ships `scripts/dev-runtime.mjs`
+spawned via `npm run dev:runtime`; other plugins are expected
+to follow the same contract (path `/<plugin-id>/plugin.esm.js`
+serving the Vite watch build, optional `__selfhelp_plugin_reload`
+SSE endpoint).
+
+If you forget step 2, the host runtime reports the mount
+failure described in [`installation.md` §6.2](./installation.md#62-troubleshooting-plugin-could-not-be-mounted):
+
+> Plugin "X" v\<version>: import of "http://localhost:5174/..."
+> failed (Failed to fetch dynamically imported module ...).
+
+`<version>` in that error message comes from the host's
+`plugins.version` column, captured by `PluginInstaller::finalize()`
+from `plugin.json#version` at the moment of install. The host's
+mount-failure banner therefore shows the version that was current
+*when you ran* `install-local.mjs --symlink`. Bumping
+`plugin.json#version` without re-running the install script is the
+only way to make the host's expected version disagree with the
+loaded bundle's reported version.
+
+### 15.6 Standalone `.shplugin` archive testing
+
+If you want to test how the plugin will land for an end-user
+(no Composer path repo, no `--symlink`, just a signed archive
+dropped through the admin UI), build the archive once and use the
+standard install flow:
+
+```bash
+# In the plugin checkout
+node scripts/build-shplugin.mjs --mode standalone
+
+# In the host backend
+APP_ENV=dev php bin/console messenger:consume plugin_ops --time-limit=600
+```
+
+Open `http://localhost:3000/admin/plugins → Install plugin →
+Upload .shplugin`, drop the file, click **Install** (leave
+"Enable plugin after install" ticked), and verify the plugin
+appears under **Installed** with status `enabled`. This time the
+host stores `frontend.runtime.entrypoint` rewritten through
+`/plugin-artifacts/<id>-<ver>/` — no dev server needed; the
+artifact is served from disk. The flow is documented end-to-end
+in [`installation.md` §3.4](./installation.md#34-private-plugin-distributed-as-a-shplugin).
 
 ---
 

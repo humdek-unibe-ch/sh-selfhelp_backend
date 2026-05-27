@@ -229,6 +229,17 @@ final class PluginInstaller
                 $plugin->setMobilePackageVersion($manifest->getMobilePackageVersion());
                 $plugin->setManifestJson($manifest->toArray());
                 $plugin->setCapabilitiesJson($this->capabilityValidator->validate($manifest));
+                // Install never auto-enables. The new plugin row lands
+                // disabled so an admin can review trust level, capabilities,
+                // signing key id, requested external hosts, and the declared
+                // dataAccess lists on the Installed tab before flipping
+                // `enabled = 1`. The admin UI's "Install plugin" modal
+                // chains a `selfhelp:plugin:enable` call when its "Enable
+                // plugin after install" switch is on (default ON);
+                // development fast-paths (e.g. SurveyJS's
+                // `install-local.mjs --symlink`) call the enable command
+                // themselves. Documented at
+                // `docs/plugins/installation.md` §6.1.
                 $plugin->setEnabled(false);
                 $this->applySigningMetadata($plugin, $operation);
 
