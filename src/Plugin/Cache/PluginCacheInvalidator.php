@@ -46,6 +46,11 @@ use App\Service\Cache\Core\CacheService;
  * after their DB commit so the very next request sees fresh data
  * without forcing an operator to flush Redis by hand.
  *
+ * Destructive lifecycle steps (`uninstall`, `purge`) can opt into the
+ * stronger {@see invalidateAllCaches()} path when "best effort plugin
+ * surface" is not enough and the host must guarantee that no stale
+ * Redis entry of any category survives the removal.
+ *
  * The call is idempotent and cheap (it issues one
  * `invalidateCategory()` per category against the same Redis pool the
  * host already uses), so the orchestrators can keep their existing
@@ -91,6 +96,25 @@ final class PluginCacheInvalidator
         $this->registry->invalidate();
 
         foreach (self::IMPACTED_CATEGORIES as $category) {
+            $this->cache->withCategory($category)->invalidateCategory();
+        }
+    }
+
+    /**
+     * Invalidate every Redis-backed cache category the host knows
+     * about.
+     *
+     * Used by destructive plugin lifecycle operations (`uninstall`,
+     * `purge`) so a removed plugin cannot linger through an unrelated
+     * cached page tree, section hierarchy, condition result, lookup
+     * projection, or any other host cache that might indirectly depend
+     * on plugin-contributed CMS surface.
+     */
+    public function invalidateAllCaches(): void
+    {
+        $this->registry->invalidate();
+
+        foreach (CacheService::ALL_CATEGORIES as $category) {
             $this->cache->withCategory($category)->invalidateCategory();
         }
     }

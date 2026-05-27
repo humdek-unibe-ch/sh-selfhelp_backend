@@ -190,7 +190,7 @@ final class PluginPurger
             // could still reference them so the admin shell, the page
             // editor, and the permission resolver stop returning stale
             // entries without an operator having to flush Redis.
-            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
+            $this->cacheInvalidator->invalidateAllCaches();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $installMode);
 

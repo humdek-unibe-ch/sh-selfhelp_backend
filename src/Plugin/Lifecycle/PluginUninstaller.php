@@ -159,7 +159,7 @@ final class PluginUninstaller
             // — otherwise admin sidebars, the page editor, and the
             // permission resolver keep serving the uninstalled
             // plugin's surface until Redis is flushed by hand.
-            $this->cacheInvalidator->invalidatePluginSurfaceCaches();
+            $this->cacheInvalidator->invalidateAllCaches();
             $this->bundlesWriter->regenerate();
             $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());
 
