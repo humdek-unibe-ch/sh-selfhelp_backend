@@ -11,6 +11,7 @@ namespace App\Plugin\Messenger;
 
 use App\Entity\Plugin\PluginOperation;
 use App\Plugin\Archive\PluginArchivePromoter;
+use App\Plugin\Archive\PluginRuntimeArtifactFetcher;
 use App\Plugin\Lifecycle\InstallModeResolver;
 use App\Plugin\Lifecycle\PluginOperationRecorder;
 use App\Plugin\Lifecycle\PluginUpdater;
@@ -43,6 +44,7 @@ final class UpdatePluginHandler
         private readonly PluginUpdater $updater,
         private readonly PackageManagerRunner $packageManager,
         private readonly PluginArchivePromoter $archivePromoter,
+        private readonly PluginRuntimeArtifactFetcher $runtimeArtifactFetcher,
         private readonly InstallModeResolver $installModeResolver,
         private readonly StandaloneArchiveComposerHelper $standaloneHelper,
         private readonly LoggerInterface $logger,
@@ -155,6 +157,15 @@ final class UpdatePluginHandler
                 $this->recorder->appendLog($operation, 'archive-promote:done', ['mode' => 'connected'], 70);
             }
 
+            // Registry / URL updates: re-fetch the published runtime
+            // bundle for the NEW version into a sibling artifact dir.
+            // Same rationale as InstallPluginHandler — plugin bundles
+            // import host-only paths and must be served same-origin.
+            // See {@see PluginRuntimeArtifactFetcher}.
+            if ($resolved->kind === ResolvedSource::KIND_REGISTRY || $resolved->kind === ResolvedSource::KIND_URL) {
+                $manifestArray = $this->fetchAndRewriteRuntimeArtifacts($operation, $resolved, $manifestArray);
+            }
+
             $this->updater->finalize($operation, new PluginManifest($manifestArray));
         } catch (\Throwable $e) {
             $this->recorder->fail($operation, $e, 'update-worker');
@@ -165,6 +176,67 @@ final class UpdatePluginHandler
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Download the published runtime bundle for the new version into
+     * public/plugin-artifacts/<id>-<ver>/ and rewrite the manifest's
+     * frontend.runtime.entrypoint / stylesheet to the host-relative
+     * paths. Mirrors {@see InstallPluginHandler::fetchAndRewriteRuntimeArtifacts()}.
+     *
+     * @param array<string,mixed> $manifestArray
+     * @return array<string,mixed>
+     */
+    private function fetchAndRewriteRuntimeArtifacts(
+        PluginOperation $operation,
+        ResolvedSource $resolved,
+        array $manifestArray,
+    ): array {
+        $pluginId = $this->stringFieldOrEmpty($manifestArray, 'id');
+        $version = $this->stringFieldOrEmpty($manifestArray, 'version');
+        $this->recorder->appendLog($operation, 'runtime-artifact-fetch:start', [
+            'kind' => $resolved->kind,
+            'entrypointUrl' => $this->resolvedRuntimeString($resolved, 'entrypointUrl'),
+            'stylesheetUrl' => $this->resolvedRuntimeString($resolved, 'stylesheetUrl'),
+        ], 72);
+        $promoted = $this->runtimeArtifactFetcher->fetchAndPromote(
+            pluginId: $pluginId,
+            version: $version,
+            resolvedRuntime: $resolved->runtime,
+            expectedChecksums: $resolved->expectedChecksums,
+        );
+
+        $frontend = isset($manifestArray['frontend']) && is_array($manifestArray['frontend']) ? $manifestArray['frontend'] : [];
+        $runtime = isset($frontend['runtime']) && is_array($frontend['runtime']) ? $frontend['runtime'] : [];
+        $runtime['entrypoint'] = $promoted['entrypointWebPath'];
+        if ($promoted['stylesheetWebPath'] !== null) {
+            $runtime['stylesheet'] = $promoted['stylesheetWebPath'];
+        }
+        $frontend['runtime'] = $runtime;
+        $manifestArray['frontend'] = $frontend;
+
+        $this->recorder->appendLog($operation, 'runtime-artifact-fetch:done', [
+            'entrypointWebPath' => $promoted['entrypointWebPath'],
+            'stylesheetWebPath' => $promoted['stylesheetWebPath'],
+            'chunkCount' => count($promoted['downloadedChunks']),
+        ], 75);
+
+        return $manifestArray;
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     */
+    private function stringFieldOrEmpty(array $data, string $key): string
+    {
+        $value = $data[$key] ?? null;
+        return is_string($value) ? $value : '';
+    }
+
+    private function resolvedRuntimeString(ResolvedSource $resolved, string $key): ?string
+    {
+        $value = $resolved->runtime[$key] ?? null;
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /**

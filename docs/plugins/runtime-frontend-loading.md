@@ -65,19 +65,65 @@ when checking for drift.
 
 ### URL shapes by install source
 
-| Install source            | Stored `frontend_runtime_url`                                                                   | Who chooses it                                                                                                                                                |
-| ------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `registry`                | Absolute `https://…/artifacts/<id>-<ver>/plugin.esm.js`                                          | The publisher (`publish-to-registry.mjs` joins `<registry>/registry.json#baseUrl` to the relative artifact path **before** signing). See [`registry-and-channels.md`](./registry-and-channels.md#runtime-url-contract-must-be-absolute). |
-| `url`                     | Absolute URL the manifest or registry entry served                                              | The publisher (manifest's `frontend.runtime.entrypoint` for `.shplugin`-derived hosts, or the registry entry passed alongside the manifest URL).               |
-| `archive` (`.shplugin`)   | Host-relative `/plugin-artifacts/<id>-<ver>/plugin.esm.js`                                       | The host. `PluginInstaller` promotes the archive's `artifacts/plugin.esm.js` into `public/plugin-artifacts/<id>-<ver>/` and rewrites the URL accordingly.    |
-| `paste` (development)     | Whatever the manifest's `frontend.runtime.devEntrypointUrl` declares (e.g. `http://localhost:5174/<id>/plugin.esm.js`) | The plugin author's dev workflow (`install-local.mjs --symlink`).                                                                                              |
+| Install source            | Stored `frontend_runtime_url`                                                                   | Who chooses it / how the artifact lands on disk                                                                                                                                                                                                                                                                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registry`                | Host-relative `/plugin-artifacts/<id>-<ver>/plugin.esm.js`                                       | The host. `InstallPluginHandler` invokes `PluginRuntimeArtifactFetcher` to download the absolute `https://…/artifacts/<id>-<ver>/plugin.esm.js` from the registry, verify its SHA-256 against `expectedChecksums.frontendEsm` (signed by the publisher), fetch the sibling `SHA256SUMS` manifest, verify it is anchored to the same signed entry hash, then download every listed code-split chunk and verify each chunk's SHA-256 before promoting the whole tree into `public/plugin-artifacts/<id>-<ver>/`. |
+| `url`                     | Host-relative `/plugin-artifacts/<id>-<ver>/plugin.esm.js`                                       | The host. Same flow as `registry` — fetcher reads `resolved.runtime.entrypointUrl`, verifies the checksum + SHA256SUMS-listed chunks, promotes the whole tree to the host.                                                                                                                                                  |
+| `archive` (`.shplugin`)   | Host-relative `/plugin-artifacts/<id>-<ver>/plugin.esm.js`                                       | The host. `PluginArchivePromoter` promotes the archive's `artifacts/` tree (entry + stylesheet + every code-split chunk) out of the staging dir into `public/plugin-artifacts/<id>-<ver>/`. SHA256SUMS in the archive is validated by `PluginArchiveValidator` before promotion.                                              |
+| `paste` (development)     | Whatever the manifest's `frontend.runtime.devEntrypointUrl` declares (e.g. `http://localhost:5174/<id>/plugin.esm.js`) | The plugin author's dev workflow (`install-local.mjs --symlink`). No download — Vite serves the bundle from the dev server with live reload.                                                                                                                                                                                |
 
-The browser's `await import(<runtimeUrl>)` requires either an absolute
-URL or a host-relative path starting with `/`. Bare module specifiers
-like `artifacts/foo/plugin.esm.js` are rejected by every browser. The
-canonical registry schema enforces `pattern: ^https?://` on
-`runtime.entrypointUrl` and `runtime.stylesheetUrl` so a broken
-publisher cannot reach GitHub Pages in the first place.
+Every non-dev install ends up serving the bundle from
+`/plugin-artifacts/<id>-<ver>/` on the SelfHelp host. This is
+**mandatory** because plugin ESM bundles emit host-only imports like
+`/api/plugins/runtime-shim/react` and `/api/plugins/runtime-shim/@selfhelp/shared/plugin-sdk`,
+which the browser resolves against the importing module's origin.
+Serving the bundle from a CDN (or directly from GitHub Pages) would
+make those internal imports resolve to the CDN origin and 404, so the
+dynamic `import()` would reject with "Failed to fetch dynamically
+imported module" even though the entry URL itself is reachable.
+
+The canonical registry schema still enforces `pattern: ^https?://`
+on `runtime.entrypointUrl` and `runtime.stylesheetUrl` — that absolute
+URL is the *download source* the host fetches from at install time,
+not the URL the browser ever uses at runtime.
+
+### Code-split chunks & the `SHA256SUMS` manifest
+
+Modern Vite library builds emit a single entry (`plugin.esm.js`) plus
+one or more *code-split chunks* whose filenames embed a content hash
+(`survey-creator-react-DJSXYH6o.js`, `_commonjsHelpers-DaMA6jEr.js`,
+…). Once the host imports `plugin.esm.js`, the chunk imports inside
+the bundle resolve relative to the entry's URL — so every chunk
+**must live in the same directory** as the entry on the host.
+
+For `archive` installs this is automatic: `PluginArchivePromoter`
+copies the entire `artifacts/` tree. For `registry` / `url` installs
+the host can't enumerate the registry's directory listing over HTTP,
+so the publisher ships a `SHA256SUMS` text file next to the entry
+(format: `<sha256>  <filename>` per line) listing **every** artifact
+that was produced by the build. `PluginRuntimeArtifactFetcher` does:
+
+1. Download + verify `plugin.esm.js` against the signed
+   `checksums.frontendEsm`.
+2. Download + verify `plugin.css` against `checksums.frontendCss`
+   when the manifest declares a stylesheet.
+3. Try to fetch the sibling `<entrypoint-dir>/SHA256SUMS`.
+   - If the URL 404s, the plugin has no chunks (or predates the
+     manifest contract). Promotion completes with just entry + css.
+   - If found, parse the manifest. Refuse to trust it unless its
+     `plugin.esm.js` line's hash matches the signed
+     `checksums.frontendEsm` (anchoring chunk integrity to the same
+     payload the publisher signed).
+4. For every other listed filename: download it next to the entry
+   and verify its SHA-256 against the manifest line. Mismatch =
+   abort install. Path traversal (`../`, absolute paths, etc.) is
+   refused before the request is even made.
+
+The publish script (`scripts/publish-to-registry.mjs`) re-emits a
+stripped-down `SHA256SUMS` for the registry artifacts dir (bare
+filenames, no archive-root prefix, frontend lines only) so the host
+parser does not have to know anything about the `.shplugin` archive
+layout.
 
 ## Host runtime loader
 

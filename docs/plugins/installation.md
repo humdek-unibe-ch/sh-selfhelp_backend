@@ -210,6 +210,14 @@ immediately. The Messenger worker:
 - for `.shplugin` uploads: copies the validated archive into
   `var/plugins/<id>-<ver>/installed/` and atomically replaces
   `public/plugin-artifacts/<id>-<ver>/` with the runtime bundles,
+- for `registry` / `url` installs: downloads `runtime.entrypointUrl`
+  (and `runtime.stylesheetUrl` if present) via
+  `PluginRuntimeArtifactFetcher`, verifies each file's SHA-256
+  against the signed `checksums.frontendEsm` / `checksums.frontendCss`,
+  and writes them into `public/plugin-artifacts/<id>-<ver>/` so the
+  host self-serves the bundle (mandatory because plugin bundles import
+  host-only paths like `/api/plugins/runtime-shim/*` that only resolve
+  same-origin),
 - runs the plugin's Doctrine migrations (still gated by
   `PluginMigrationGuard`),
 - regenerates `config/selfhelp_plugin_bundles.php`,
@@ -463,7 +471,7 @@ Where each token comes from:
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<name>`         | `plugins.name` column in the host DB — captured by `PluginInstaller::finalize()` from `plugin.json#name` at install time.                                                                                                                                                                                                                                                                                       |
 | `v<version>`     | The infamous "Expected v0.2.2". Comes from `plugins.version` in the host DB, captured by `PluginInstaller::finalize()` from `plugin.json#version` at install time. The same value is returned to the browser by `GET /cms-api/v1/plugins/manifest` as the `version` field. Bumping `plugin.json#version` without re-installing leaves the host's expected version on the previous number — that is the only way to make the two diverge intentionally. |
-| `<runtimeUrl>`   | `plugins.frontend_runtime_url` column, resolved during install/update finalization. Local development installs that come from a pasted local manifest (the sibling-checkout / `--symlink` path) use `frontend.runtime.devEntrypointUrl` (e.g. `http://localhost:5174/<pluginId>/plugin.esm.js`). `.shplugin` installs use the promoted `/plugin-artifacts/<id>-<ver>/...` path, and registry installs use the registry entry's published runtime URL instead of the raw `plugin.json#frontend.runtime.entrypoint`. |
+| `<runtimeUrl>`   | `plugins.frontend_runtime_url` column, resolved during install/update finalization. Local development installs that come from a pasted local manifest (the sibling-checkout / `--symlink` path) use `frontend.runtime.devEntrypointUrl` (e.g. `http://localhost:5174/<pluginId>/plugin.esm.js`). **Every other install source** — `.shplugin` archive, registry, direct URL — resolves to the promoted `/plugin-artifacts/<id>-<ver>/...` path on the host: archives are promoted by `PluginArchivePromoter`, registry / URL installs by `PluginRuntimeArtifactFetcher` (downloads `runtime.entrypointUrl`, verifies `checksums.frontendEsm`, writes into `public/plugin-artifacts/<id>-<ver>/`). The browser never imports plugin bundles cross-origin because their internal imports (`/api/plugins/runtime-shim/*`) resolve against the importer's origin and would 404 on any CDN. |
 | `<reason>`       | The browser's `import()` rejection. The common failures are listed below.                                                                                                                                                                                                                                                                                                                                       |
 
 | Reason                                                  | What it means                                                                                                                                                                                                                                                                                                                                                              | Fix                                                                                                                                                              |

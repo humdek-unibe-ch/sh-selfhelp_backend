@@ -346,6 +346,17 @@ final class PluginInstaller
         $resolved = $this->getResolvedSourceSnapshot($operation);
         $kind = is_array($resolved) && is_string($resolved['kind'] ?? null) ? $resolved['kind'] : null;
 
+        // Registry / URL installs: the InstallPluginHandler downloaded
+        // the published runtime bundle into public/plugin-artifacts/
+        // and rewrote the manifest's frontend.runtime.entrypoint to the
+        // host-relative path. Trust that rewrite — DO NOT fall through
+        // to the snapshot's absolute URL below or we would store the
+        // cross-origin GitHub Pages URL that browsers cannot use for
+        // this bundle (its imports resolve against the same origin).
+        if ($this->isPromotedRuntimeWebPath($runtime['entrypointUrl'])) {
+            return $runtime;
+        }
+
         // Archive installs rewrite the manifest in the worker after
         // promoting runtime files into public/plugin-artifacts/.
         // Be defensive here too: if the worker hands finalize() an
@@ -432,6 +443,11 @@ final class PluginInstaller
         }
 
         return !preg_match('#^[a-z][a-z0-9+.-]*://#i', $value);
+    }
+
+    private function isPromotedRuntimeWebPath(?string $value): bool
+    {
+        return is_string($value) && str_starts_with($value, '/plugin-artifacts/');
     }
 
 }

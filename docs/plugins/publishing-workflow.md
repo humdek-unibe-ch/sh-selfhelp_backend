@@ -301,15 +301,20 @@ Plugin repo:
             ▼  .github/workflows/publish-to-registry.yml
   - validate manifest against plugin-manifest.schema.json
   - npm install + npm run build (frontend + mobile)
-  - scripts/build-shplugin.mjs → dist/<id>-<ver>.shplugin
+  - scripts/build-shplugin.mjs --mode connected
+      → dist/<id>-<ver>.shplugin (later renamed to -connected.shplugin)
   - sign canonical payload (Ed25519, SELFHELP_PLUGIN_SIGNING_KEY)
-  - create GitHub Release for v0.2.0, attach the .shplugin
-  - node scripts/publish-to-registry.mjs --skip-build --push
+  - node scripts/publish-to-registry.mjs --mode connected --skip-build --push
+  - scripts/build-shplugin.mjs --mode standalone
+      → dist/<id>-<ver>-standalone.shplugin
+  - create GitHub Release for v0.2.0, attach BOTH archives
             │
             ▼  sh2-plugin-registry repo (humdek-unibe-ch/sh2-plugin-registry)
   - manifests/<id>-<ver>.json              ← copy of plugin.json
-  - artifacts/<id>-<ver>/plugin.esm.js     ← runtime bundle (GH Pages)
+  - artifacts/<id>-<ver>/plugin.esm.js     ← entry bundle (GH Pages)
   - artifacts/<id>-<ver>/plugin.css        ← stylesheet (GH Pages)
+  - artifacts/<id>-<ver>/<chunk-hash>.js   ← EVERY Vite code-split chunk
+  - artifacts/<id>-<ver>/SHA256SUMS        ← bare-filename sha256 manifest
   - registry.json                          ← new entry inserted (sorted by id)
   - commit + push (REGISTRY_PUSH_TOKEN)
             │
@@ -322,6 +327,34 @@ Plugin repo:
   - Admin → Plugins → Available tab refreshes
   - new row appears; admin clicks Install → host runs the unified pipeline
 ```
+
+### Connected vs standalone .shplugin
+
+Every release ships two archives, one per install profile:
+
+- **`<id>-<ver>-connected.shplugin`** — minimal layout
+  (`plugin.json`, `artifacts/`, `signature.json`). The host installs
+  the backend Composer package from `backend.composer.repository` (the
+  registry's declared Packagist / VCS source) and the frontend bundle
+  is downloaded by `PluginRuntimeArtifactFetcher` from
+  `runtime.entrypointUrl`. Used by the registry publish step because
+  the `humdek-public` registry resolves the Composer package over the
+  network and never serves the archive itself.
+
+- **`<id>-<ver>-standalone.shplugin`** — connected layout PLUS a
+  `backend/package/` directory containing the plugin's Composer
+  package source. The host installs the backend via a synthetic
+  Composer path repository pointing at the promoted
+  `var/plugins/<id>-<ver>/installed/backend/package/`, so no
+  Packagist / git fetch is required for the plugin's own code. This
+  is the asset humans download from the GitHub Release for
+  drag-and-drop installs (**Admin → Plugins → Upload .shplugin**) and
+  for fully offline / air-gapped installs.
+
+Both archives are signed with the same Ed25519 publisher key and
+contain the same canonical signed payload bytes for the runtime
+fields; only the `archive` block differs (`mode: connected` vs
+`mode: standalone` plus `backend.packageHash`).
 
 Required GitHub Actions secrets on the plugin repo:
 
@@ -368,7 +401,9 @@ sh2-plugin-registry/
 ├── artifacts/
 │   ├── sh2-shp-survey-js-0.1.0/
 │   │   ├── plugin.esm.js                  # served by GH Pages
-│   │   └── plugin.css
+│   │   ├── plugin.css
+│   │   ├── <chunk-hash>.js                # every Vite code-split chunk
+│   │   └── SHA256SUMS                     # bare-filename sha256 manifest
 │   └── sh2-shp-survey-js-0.2.0/
 │       └── ...
 └── scripts/

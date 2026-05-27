@@ -236,6 +236,10 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    App\Plugin\Archive\PluginRuntimeArtifactFetcher:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
     App\Plugin\Archive\PluginArchiveCleaner:
         arguments:
             $projectDir: '%kernel.project_dir%'

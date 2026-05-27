@@ -119,13 +119,34 @@ to compose a signed entry from the canonical signed payload that the
 ### Runtime URL contract (must be absolute)
 
 `runtime.entrypointUrl` and `runtime.stylesheetUrl` in every published
-entry **MUST** be absolute `https://…` URLs. The host frontend imports
-the bundle with `await import(runtimeUrl)`, which the browser refuses
-on bare module specifiers like `artifacts/foo/plugin.esm.js`. The
-canonical schema (`docs/plugins/plugin-registry.schema.json`, mirrored
-into the registry repo as `registry.schema.json`) enforces this via
-`format: uri` + `pattern: ^https?://` on both URL fields and on the
-top-level `baseUrl`.
+entry **MUST** be absolute `https://…` URLs. The host uses these URLs
+**at install time** as the *download source* — `PluginRuntimeArtifactFetcher`
+fetches the bundle, verifies its SHA-256 against the signed
+`checksums.frontendEsm`, then fetches the sibling `SHA256SUMS` text
+file (`<entrypoint-dir>/SHA256SUMS`) and downloads every Vite
+code-split chunk listed in it, verifying each chunk's SHA-256 against
+the manifest. The full tree (entry + stylesheet + every chunk) lands
+in `public/plugin-artifacts/<id>-<ver>/`. From then on the browser
+imports the bundle from the host's own origin
+(`/plugin-artifacts/<id>-<ver>/plugin.esm.js`); it never talks to
+GitHub Pages or any other CDN at runtime. The browser would refuse a
+bare specifier like `artifacts/foo/plugin.esm.js` and, more
+importantly, the bundle's internal imports (`/api/plugins/runtime-shim/*`)
+and code-split chunk imports
+(`./survey-creator-react-<hash>.js`) resolve against the importer's
+origin, so a CDN-hosted entrypoint would 404 on its own dependencies.
+
+The chunk manifest itself is anchored to the signed canonical
+payload: the host refuses to trust `SHA256SUMS` unless its
+`plugin.esm.js` line's hash matches `checksums.frontendEsm`. That
+gives chunk integrity an equivalent guarantee to the in-archive
+`SHA256SUMS` used by `.shplugin` installs without expanding the
+canonical signed payload schema.
+
+The canonical schema (`docs/plugins/plugin-registry.schema.json`,
+mirrored into the registry repo as `registry.schema.json`) enforces
+this via `format: uri` + `pattern: ^https?://` on both URL fields and
+on the top-level `baseUrl`.
 
 To make publishers DRY, every registry declares its own published
 origin in a single place:

@@ -358,6 +358,14 @@ final class PluginUpdater
         $resolved = $this->getResolvedSourceSnapshot($operation);
         $kind = is_array($resolved) && is_string($resolved['kind'] ?? null) ? $resolved['kind'] : null;
 
+        // Registry / URL updates: same self-host rationale as
+        // PluginInstaller — trust the manifest rewrite emitted by the
+        // worker over the snapshot's absolute URL. See
+        // {@see PluginInstaller::resolveFrontendRuntimeMetadata()}.
+        if ($this->isPromotedRuntimeWebPath($runtime['entrypointUrl'])) {
+            return $runtime;
+        }
+
         // Archive updates rewrite the manifest in the worker after
         // promoting runtime files into public/plugin-artifacts/.
         // Be defensive here too: if the worker hands finalize() an
@@ -441,5 +449,10 @@ final class PluginUpdater
         }
 
         return !preg_match('#^[a-z][a-z0-9+.-]*://#i', $value);
+    }
+
+    private function isPromotedRuntimeWebPath(?string $value): bool
+    {
+        return is_string($value) && str_starts_with($value, '/plugin-artifacts/');
     }
 }

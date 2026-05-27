@@ -11,6 +11,7 @@ namespace App\Plugin\Messenger;
 
 use App\Entity\Plugin\PluginOperation;
 use App\Plugin\Archive\PluginArchivePromoter;
+use App\Plugin\Archive\PluginRuntimeArtifactFetcher;
 use App\Plugin\Lifecycle\InstallModeResolver;
 use App\Plugin\Lifecycle\PluginInstaller;
 use App\Plugin\Lifecycle\PluginOperationRecorder;
@@ -57,6 +58,7 @@ final class InstallPluginHandler
         private readonly PluginInstaller $installer,
         private readonly PackageManagerRunner $packageManager,
         private readonly PluginArchivePromoter $archivePromoter,
+        private readonly PluginRuntimeArtifactFetcher $runtimeArtifactFetcher,
         private readonly InstallModeResolver $installModeResolver,
         private readonly StandaloneArchiveComposerHelper $standaloneHelper,
         private readonly LoggerInterface $logger,
@@ -180,6 +182,19 @@ final class InstallPluginHandler
                 $this->recorder->appendLog($operation, 'archive-promote:done', ['mode' => 'connected'], 70);
             }
 
+            // Registry / URL installs: download the published runtime
+            // bundle (plugin.esm.js + optional plugin.css) from the
+            // signed-payload URLs into public/plugin-artifacts/<id>-<ver>/.
+            // The host then serves the bundle from its own origin —
+            // mandatory because plugin bundles import host-only paths
+            // such as /api/plugins/runtime-shim/* which only resolve
+            // when same-origin with the SelfHelp host. Archive installs
+            // already wrote the same files above; paste installs use a
+            // dev server and never hit the registry artifact URL.
+            if ($resolved->kind === ResolvedSource::KIND_REGISTRY || $resolved->kind === ResolvedSource::KIND_URL) {
+                $manifestArray = $this->fetchAndRewriteRuntimeArtifacts($operation, $resolved, $manifestArray);
+            }
+
             $manifest = new PluginManifest($manifestArray);
             $this->installer->finalize($operation, $manifest);
             // recorder->succeed() is called inside installer->finalize().
@@ -192,6 +207,69 @@ final class InstallPluginHandler
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Download the published runtime bundle into
+     * public/plugin-artifacts/<id>-<ver>/ and rewrite the manifest's
+     * frontend.runtime.entrypoint / stylesheet to the resulting
+     * host-relative paths. See {@see PluginRuntimeArtifactFetcher}
+     * for the rationale (plugin bundles import host-only paths and
+     * must be served same-origin).
+     *
+     * @param array<string,mixed> $manifestArray
+     * @return array<string,mixed>
+     */
+    private function fetchAndRewriteRuntimeArtifacts(
+        PluginOperation $operation,
+        ResolvedSource $resolved,
+        array $manifestArray,
+    ): array {
+        $pluginId = $this->stringFieldOrEmpty($manifestArray, 'id');
+        $version = $this->stringFieldOrEmpty($manifestArray, 'version');
+        $this->recorder->appendLog($operation, 'runtime-artifact-fetch:start', [
+            'kind' => $resolved->kind,
+            'entrypointUrl' => $this->resolvedRuntimeString($resolved, 'entrypointUrl'),
+            'stylesheetUrl' => $this->resolvedRuntimeString($resolved, 'stylesheetUrl'),
+        ], 72);
+        $promoted = $this->runtimeArtifactFetcher->fetchAndPromote(
+            pluginId: $pluginId,
+            version: $version,
+            resolvedRuntime: $resolved->runtime,
+            expectedChecksums: $resolved->expectedChecksums,
+        );
+
+        $frontend = isset($manifestArray['frontend']) && is_array($manifestArray['frontend']) ? $manifestArray['frontend'] : [];
+        $runtime = isset($frontend['runtime']) && is_array($frontend['runtime']) ? $frontend['runtime'] : [];
+        $runtime['entrypoint'] = $promoted['entrypointWebPath'];
+        if ($promoted['stylesheetWebPath'] !== null) {
+            $runtime['stylesheet'] = $promoted['stylesheetWebPath'];
+        }
+        $frontend['runtime'] = $runtime;
+        $manifestArray['frontend'] = $frontend;
+
+        $this->recorder->appendLog($operation, 'runtime-artifact-fetch:done', [
+            'entrypointWebPath' => $promoted['entrypointWebPath'],
+            'stylesheetWebPath' => $promoted['stylesheetWebPath'],
+            'chunkCount' => count($promoted['downloadedChunks']),
+        ], 75);
+
+        return $manifestArray;
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     */
+    private function stringFieldOrEmpty(array $data, string $key): string
+    {
+        $value = $data[$key] ?? null;
+        return is_string($value) ? $value : '';
+    }
+
+    private function resolvedRuntimeString(ResolvedSource $resolved, string $key): ?string
+    {
+        $value = $resolved->runtime[$key] ?? null;
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     /**
