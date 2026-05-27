@@ -69,6 +69,7 @@ final class PluginInstaller
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginMigrationScanner $migrationScanner,
         private readonly PluginMigrationsRunner $migrationsRunner,
+        private readonly PluginApiRouteSynchronizer $apiRouteSynchronizer,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
@@ -253,14 +254,26 @@ final class PluginInstaller
             $migrationResult = $this->migrationsRunner->migrate($manifest);
             $this->recorder->appendLog($operation, 'plugin-migrations', $migrationResult, 80);
 
+            // Persist plugin-declared API routes into `api_routes`
+            // (tagged with `id_plugins`) and link them to permissions
+            // through `rel_api_routes_permissions`. Plugin migrations
+            // own the permission rows; the host owns the route rows
+            // so disable / uninstall / purge stay symmetric across
+            // every plugin. See {@see PluginApiRouteSynchronizer}.
+            $this->apiRouteSynchronizer->sync($plugin, $manifest);
+            $this->recorder->appendLog($operation, 'plugin-api-routes-sync', [
+                'routes' => count($manifest->getApiRoutes()),
+            ], 85);
+
             // The plugin migration just inserted into `styles`,
             // `permissions`, `rel_permissions_roles`, `lookups`,
-            // `api_routes`, etc. Invalidate the cached lists for every
-            // impacted Redis category here, AFTER the migration runs,
-            // so the very next request sees the new rows. The earlier
-            // `registry->invalidate()` only dropped `CATEGORY_PLUGINS`,
-            // which is not enough for the admin sidebar / page editor /
-            // permission resolver to refresh on their own.
+            // etc. Invalidate the cached lists for every impacted
+            // Redis category here, AFTER the migration and route sync
+            // have run, so the very next request sees the new rows.
+            // The earlier `registry->invalidate()` only dropped
+            // `CATEGORY_PLUGINS`, which is not enough for the admin
+            // sidebar / page editor / permission resolver to refresh
+            // on their own.
             $this->cacheInvalidator->invalidatePluginSurfaceCaches();
 
             $this->lockFileWriter->upsertPlugin($plugin, $manifest);

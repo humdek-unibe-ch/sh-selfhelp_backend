@@ -47,9 +47,9 @@ parameters:
     default_mercure_subscriber_ttl: '3600'
 
     # CMS version surfaced to plugins (semver compatibility checks). The
-    # parameter is fetched by `ApiRouteRegistryEvent` and the plugin
-    # SDK helpers. Override with `SELFHELP_CMS_VERSION` to match the
-    # deployed application version.
+    # parameter is consumed by `PluginCompatibilityValidator` and the
+    # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
+    # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
     selfhelp_cms_version_default: '8.0.0-dev'
 
@@ -126,7 +126,6 @@ services:
         tags: [routing.loader]
         arguments:
             $env: '%kernel.environment%'
-            $cmsVersion: '%selfhelp.cms_version%'
 
     # Plugin layer realtime publisher — wraps the Mercure hub.
     App\Plugin\Realtime\PluginRealtimePublisher:

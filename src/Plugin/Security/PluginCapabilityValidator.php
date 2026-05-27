@@ -34,7 +34,10 @@ use App\Plugin\Manifest\ResolvedSource;
  *      - admin pages → `adminPages`
  *      - styles → `frontendStyles`
  *      - mobile styles → `mobileStyles`
- *      - api routes → `backendBundle` (because routes require backend code)
+ *      - api routes → `backendBundle` (the host persists each
+ *        `plugin.json#apiRoutes` entry into `api_routes` via
+ *        `PluginApiRouteSynchronizer`; the route's controller
+ *        therefore lives inside the plugin's backend bundle)
  *      - realtime topics → `realtimePublish`
  *      - scheduled jobs → `scheduledJobs` and `backendBundle`
  *      - lookups.extends → `lookupExtend` and/or `lookupOwnGroup`

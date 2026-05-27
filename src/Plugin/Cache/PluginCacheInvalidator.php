@@ -20,7 +20,9 @@ use App\Service\Cache\Core\CacheService;
  *
  * A plugin migration may insert into any of the following shared core
  * tables on install and the matching `id_plugins`-tagged rows are
- * removed again on purge:
+ * removed again on purge. The host also persists `api_routes` rows
+ * itself via `PluginApiRouteSynchronizer` (driven by
+ * `plugin.json#apiRoutes`), and those need the same category bumps:
  *
  *   - `styles`, `style_groups`, `fields`, `field_types`,
  *     `rel_fields_styles`              → `CATEGORY_STYLES`

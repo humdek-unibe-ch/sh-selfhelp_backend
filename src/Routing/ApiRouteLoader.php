@@ -8,25 +8,27 @@
 
 namespace App\Routing;
 
-use App\Entity\Permission;
-use App\Plugin\Event\ApiRouteRegistryEvent;
 use App\Repository\ApiRouteRepository;
 use App\Service\Cache\Core\CacheService;
-use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Config\Loader\Loader;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouteCollection;
-use Symfony\Contracts\Cache\ItemInterface;
 
 /**
- * Custom route loader that loads routes from database.
+ * Custom route loader that loads routes from the database.
  *
- * Plugins contribute additional API routes through
- * `App\Plugin\Event\ApiRouteRegistryEvent`. The event fires after the
- * DB-backed routes have been built so plugin routes appear last but
- * before the collection is cached. Plugin routes are version-prefixed
- * under `/cms-api/{version}/plugins/{pluginId}/...` (enforced by the
- * event itself).
+ * Plugin-contributed routes are persisted in `api_routes` with a
+ * non-null `id_plugins` column (the host's
+ * `PluginApiRouteSynchronizer` upserts them from
+ * `plugin.json#apiRoutes` during install / update). They are loaded
+ * by the same DB-backed pipeline used for core routes; the repository
+ * filters out rows whose owning plugin is disabled so disable stays
+ * instant without destroying metadata.
+ *
+ * Plugin routes are namespaced under
+ * `/cms-api/{version}/plugins/{pluginId}/...` (public) and
+ * `/cms-api/{version}/admin/plugins/{pluginId}/...` (admin) — the
+ * synchronizer enforces those prefixes at install time.
  */
 class ApiRouteLoader extends Loader
 {
@@ -36,8 +38,6 @@ class ApiRouteLoader extends Loader
         private ApiRouteRepository $apiRouteRepository,
         private CacheService $cache,
         protected ?string $env,
-        private ?EventDispatcherInterface $eventDispatcher = null,
-        private string $cmsVersion = 'dev'
     ) {
         parent::__construct($env);
 
@@ -151,58 +151,24 @@ class ApiRouteLoader extends Loader
             $routes->add($routeData['route_name'] . '_' . $version, $route);
         }
 
-        $this->appendPluginRoutes($routes);
-
         return $routes;
     }
 
     /**
-     * Dispatch the plugin route-registry event and merge contributed
-     * routes into the collection. Routes are namespaced under
-     * `/cms-api/{version}/plugins/{pluginId}/...`; the event enforces
-     * the path/name conventions.
-     */
-    private function appendPluginRoutes(RouteCollection $routes): void
-    {
-        if ($this->eventDispatcher === null) {
-            return;
-        }
-
-        $event = new ApiRouteRegistryEvent($this->cmsVersion);
-        $this->eventDispatcher->dispatch($event);
-
-        foreach ($event->getRoutes() as $pluginRoute) {
-            $version = $pluginRoute['version'] ?: 'v1';
-            $path = '/' . $version . $pluginRoute['path'];
-            $controller = $this->mapControllerToVersionedNamespace($pluginRoute['controller'], $version);
-
-            $defaults = [
-                '_controller' => $controller,
-                '_version' => $version,
-                '_plugin_id' => $pluginRoute['pluginId'],
-                '_params' => [],
-            ];
-
-            $route = new Route(
-                $path,
-                $defaults,
-                $pluginRoute['requirements'] ?? [],
-                ['permissions' => $pluginRoute['permissions'] ?? []],
-                '',
-                [],
-                $pluginRoute['methods']
-            );
-
-            $routes->add($pluginRoute['name'] . '_' . $version, $route);
-        }
-    }
-    
-    /**
      * Maps a controller from the database to the versioned namespace
-     * 
+     *
+     * Legacy core route rows ship a flat controller string like
+     * `App\Controller\AuthController::login`; the loader rewrites that
+     * to the versioned namespace (`App\Controller\Api\V1\Auth\AuthController::login`).
+     * Plugin-owned and already-versioned rows ship a fully-qualified
+     * controller string that resolves directly — for those we keep the
+     * stored value untouched so plugin controllers in any namespace
+     * (e.g. `Humdek\SurveyJsBundle\Controller\SurveyController::list`)
+     * are dispatched as-is.
+     *
      * @param string $controller The controller string from the database (e.g., App\Controller\AuthController::login)
      * @param string $version The API version (e.g., v1)
-     * @return string The mapped controller string (e.g., App\Controller\Api\V1\Auth\AuthController::login)
+     * @return string The mapped controller string
      */
     private function mapControllerToVersionedNamespace(string $controller, string $version): string
     {
@@ -210,7 +176,19 @@ class ApiRouteLoader extends Loader
         if (str_contains($controller, '\\Controller\\Api\\')) {
             return $controller;
         }
-        
+
+        // If the controller class as stored is autoloadable, dispatch
+        // to it directly. This covers plugin controllers (any vendor
+        // namespace) and any non-`App\\` core controller that doesn't
+        // need the legacy versioned-namespace rewrite.
+        $separator = strpos($controller, '::');
+        if ($separator !== false) {
+            $controllerClass = substr($controller, 0, $separator);
+            if ($controllerClass !== '' && class_exists($controllerClass)) {
+                return $controller;
+            }
+        }
+
         // Parse controller string (e.g., "App\Controller\AuthController::login")
         [$controllerClass, $method] = explode('::', $controller);
         

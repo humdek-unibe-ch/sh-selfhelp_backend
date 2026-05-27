@@ -57,6 +57,7 @@ final class PluginUninstaller
         private readonly PluginBundlesFileWriter $bundlesWriter,
         private readonly PluginLockFileWriter $lockFileWriter,
         private readonly PluginArchivePromoter $archivePromoter,
+        private readonly PluginApiRouteSynchronizer $apiRouteSynchronizer,
         private readonly InstallModeResolver $installModeResolver,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
@@ -122,6 +123,24 @@ final class PluginUninstaller
 
             $this->recorder->markRunning($operation, 'Finalizing plugin uninstall');
             $pluginVersion = $plugin->getVersion();
+
+            // Drop the plugin-owned `api_routes` rows BEFORE removing
+            // the plugin entity. The `composer remove` step in the
+            // worker already deleted the controller classes those
+            // rows point at; leaving them behind (the `id_plugins`
+            // FK `ON DELETE SET NULL` would otherwise just orphan
+            // them with `id_plugins = NULL`) would let `ApiRouteLoader`
+            // keep dispatching to controllers that no longer exist.
+            // Other plugin-tagged shared rows (styles, permissions,
+            // lookups, fields) intentionally stay around with their
+            // ownership null'd — that's the "uninstall keeps data"
+            // contract; `purge` is the destructive cleanup.
+            $removedRoutes = $this->apiRouteSynchronizer->removeAllForPlugin($plugin);
+            if ($removedRoutes > 0) {
+                $this->recorder->appendLog($operation, 'plugin-api-routes-removed', [
+                    'count' => $removedRoutes,
+                ]);
+            }
 
             $this->em->beginTransaction();
             try {

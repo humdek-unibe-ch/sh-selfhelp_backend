@@ -66,6 +66,7 @@ final class PluginUpdater
         private readonly PluginRegistryService $registry,
         private readonly PluginMigrationScanner $migrationScanner,
         private readonly PluginMigrationsRunner $migrationsRunner,
+        private readonly PluginApiRouteSynchronizer $apiRouteSynchronizer,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly MessageBusInterface $messageBus,
@@ -270,11 +271,23 @@ final class PluginUpdater
             $migrationResult = $this->migrationsRunner->migrate($newManifest);
             $this->recorder->appendLog($operation, 'plugin-migrations', $migrationResult, 80);
 
+            // Reconcile plugin-owned `api_routes` rows with the new
+            // manifest: rows whose name/version still appear are
+            // updated in place, rows the new manifest no longer
+            // declares are deleted, and any new rows are inserted.
+            // Runs AFTER the migration so any newly declared
+            // permissions are resolvable by name.
+            $this->apiRouteSynchronizer->sync($plugin, $newManifest);
+            $this->recorder->appendLog($operation, 'plugin-api-routes-sync', [
+                'routes' => count($newManifest->getApiRoutes()),
+            ], 85);
+
             // The new migration may have added/changed rows in
             // `styles`, `permissions`, `rel_permissions_roles`,
-            // `lookups`, `api_routes`, … Invalidate every impacted
-            // category so the next request sees the upgraded CMS
-            // surface without an operator flushing Redis.
+            // `lookups`, … and the route sync above re-shaped
+            // `api_routes` / `rel_api_routes_permissions`. Invalidate
+            // every impacted category so the next request sees the
+            // upgraded CMS surface without an operator flushing Redis.
             $this->cacheInvalidator->invalidatePluginSurfaceCaches();
 
             $this->lockFileWriter->upsertPlugin($plugin, $newManifest);
