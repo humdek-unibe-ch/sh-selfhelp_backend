@@ -306,7 +306,38 @@ final class PackageManagerRunner
                 }
             }
         }
+        $this->clearComposerMissingClassCache($loader);
         return true;
+    }
+
+    /**
+     * Composer's ClassLoader keeps a per-process cache of classes it
+     * already failed to resolve. During plugin install/update the worker
+     * may have looked up the bundle class before `composer require`
+     * completed, so simply merging the regenerated PSR-4/classmap files
+     * is not enough â€” the loader can keep returning the stale miss.
+     *
+     * Clear only Composer's internal negative cache. This is much
+     * smaller/safer than rebuilding the whole autoloader chain and is
+     * enough for the immediate `class_exists($bundleClass)` gate in the
+     * lifecycle finalizer.
+     */
+    private function clearComposerMissingClassCache(\Composer\Autoload\ClassLoader $loader): void
+    {
+        try {
+            $ref = new \ReflectionObject($loader);
+            if (!$ref->hasProperty('missingClasses')) {
+                return;
+            }
+
+            $property = $ref->getProperty('missingClasses');
+            $property->setAccessible(true);
+            $property->setValue($loader, []);
+        } catch (\Throwable) {
+            // Best-effort only. If Composer changes the internal field
+            // name in a future release, the refreshed PSR-4/classmap is
+            // still applied and the next process boot will pick it up.
+        }
     }
 
     /**

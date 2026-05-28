@@ -182,11 +182,24 @@ When the plugin's source changes:
    and stores the manifest `devEntrypointUrl` as the active runtime URL.
    The host root `composer.json`, `composer.lock`, and
    `config/bundles.php` stay untouched.
-2. `npm --prefix frontend run dev:runtime` runs the plugin's Vite
-   library build in watch mode, serves `frontend/dist` at the declared
-   dev URL, and exposes a small SSE reload endpoint.
+2. `npm --prefix frontend run dev:runtime` boots a Vite middleware
+   server that transforms `src/index.ts` on demand (no full library
+   rebuild between edits), serves the bundle at the declared dev URL,
+   exposes the `__selfhelp_plugin_reload` SSE endpoint, and proxies
+   `/api/plugins/runtime-shim/*` back to the Next.js host so bare
+   specifiers like `react` and `@mantine/core` resolve to the host's
+   singleton modules — not a second copy from the plugin's own
+   `node_modules`. The shim-rewriting Vite plugin must run in BOTH
+   build and dev modes; gating it to `command === 'build'` was the
+   root cause of dev-runtime live reload regressions in earlier
+   plugin versions.
 3. The host `PluginRuntime` listens to that endpoint, disposes the
    existing plugin registration, re-imports `plugin.esm.js` with a
    cache-busting query string, and updates the active admin/styles
    snapshot. A hard refresh is only needed if the module itself fails to
    re-register cleanly.
+
+The full singleton list the host shims to plugin bundles lives in
+`@selfhelp/shared/plugin-sdk` under `PLUGIN_RUNTIME_SHIM_SPECIFIERS`.
+Both the plugin's Vite build and the host's `/api/plugins/runtime-shim/*`
+allowlist read from that constant, so they cannot drift.

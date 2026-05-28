@@ -380,7 +380,25 @@ final class PluginInstaller
         if ($operation->getInstallMode() === Plugin::INSTALL_MODE_DEVELOPMENT
             && $kind === ResolvedSource::KIND_PASTE
         ) {
-            $runtime['entrypointUrl'] = $manifest->getFrontendDevEntrypointUrl() ?? $runtime['entrypointUrl'];
+            $devEntrypoint = $manifest->getFrontendDevEntrypointUrl();
+            if (is_string($devEntrypoint) && $devEntrypoint !== '') {
+                $runtime['entrypointUrl'] = $devEntrypoint;
+                // Rewrite the stylesheet URL to a sibling of the dev
+                // entrypoint so the host injects an absolute URL
+                // pointing at the plugin's Vite dev runtime. Without
+                // this, the manifest carries the archive-relative
+                // `dist/plugin.css` from `plugin.json`, the manifest
+                // controller passes it through verbatim, and the
+                // browser resolves the <link href> against whatever
+                // admin / frontend page the user is on — yielding a
+                // 404 like `/admin/plugins-host/<id>/dist/plugin.css`
+                // and disposing the previous plugin's <link> on every
+                // live-reload boot, which presents as "page does not
+                // update after edit; hard reload works".
+                if (is_string($runtime['stylesheetUrl']) && $runtime['stylesheetUrl'] !== '') {
+                    $runtime['stylesheetUrl'] = $this->deriveDevStylesheetUrl($devEntrypoint);
+                }
+            }
             return $runtime;
         }
 
@@ -448,6 +466,30 @@ final class PluginInstaller
     private function isPromotedRuntimeWebPath(?string $value): bool
     {
         return is_string($value) && str_starts_with($value, '/plugin-artifacts/');
+    }
+
+    /**
+     * Derive a sibling stylesheet URL from a dev entrypoint URL by
+     * replacing the trailing path segment with `plugin.css`. Preserves
+     * origin, base path, and discards any query / fragment. Used only
+     * for the development fast-path; the plugin's `dev-runtime.mjs`
+     * serves `plugin.css` at the same base as `plugin.esm.js`.
+     */
+    private function deriveDevStylesheetUrl(string $devEntrypointUrl): string
+    {
+        $hashPos = strpos($devEntrypointUrl, '#');
+        $base = $hashPos !== false ? substr($devEntrypointUrl, 0, $hashPos) : $devEntrypointUrl;
+        $queryPos = strpos($base, '?');
+        if ($queryPos !== false) {
+            $base = substr($base, 0, $queryPos);
+        }
+        $lastSlash = strrpos($base, '/');
+        if ($lastSlash === false) {
+            // No path segment to rewrite — fall back to the original
+            // input so the caller can decide what to do.
+            return $devEntrypointUrl;
+        }
+        return substr($base, 0, $lastSlash + 1) . 'plugin.css';
     }
 
 }

@@ -659,20 +659,58 @@ shadowed Composer locks).
 - **Externalise the host singletons** so the plugin's bundle does
   NOT contain a second copy. Loading two copies of React breaks the
   reconciler; loading two copies of `@tanstack/react-query` breaks
-  the host's cache invariants. The current host singleton list is:
+  the host's cache invariants. The canonical singleton list is:
   - `react`
-  - `react-dom` (+ `react/jsx-runtime`, `react-dom/client`)
-  - `@mantine/core`, `@mantine/hooks`, `@mantine/notifications`
-    (+ any `@mantine/*` package the host ships)
-  - `@selfhelp/shared` (+ `@selfhelp/shared/plugin-sdk`)
-  - `@tanstack/react-query` (the host owns the singleton
-    `QueryClient`; bundling a second copy would shadow it)
-- The plugin's Vite config carries an `EXTERNAL_PEERS` array that is
-  the authoritative externalise list. The reference implementation
-  lives at
+  - `react/jsx-runtime`
+  - `react/jsx-dev-runtime`
+  - `react-dom`
+  - `react-dom/client`
+  - `@mantine/core`
+  - `@mantine/hooks`
+  - `@mantine/notifications`
+  - `@tanstack/react-query`
+  - `@selfhelp/shared`
+  - `@selfhelp/shared/plugin-sdk`
+  - `@selfhelp/shared/registry`
+- At runtime the plugin bundle imports each of those specifiers
+  through the host frontend's BFF route
+  `/api/plugins/runtime-shim/<specifier>`. That route is owned by
+  the Next.js host (`sh-selfhelp_frontend`), NOT by this Symfony
+  backend — the backend only serves the bundle from
+  `/plugin-artifacts/<id>-<ver>/...` and never proxies the shim. The
+  shim re-exports the host's own React / Mantine / React Query /
+  shared-registry instances, preserving singleton identity across
+  the host shell and every plugin.
+- Plugin builds **must** read the singleton list, the host import
+  map, and the runtime-shim base path from
+  `@selfhelp/shared/plugin-sdk`:
+
+  ```ts
+  import {
+      PLUGIN_RUNTIME_SHIM_SPECIFIERS,
+      PLUGIN_RUNTIME_IMPORT_MAP,
+      PLUGIN_RUNTIME_SHIM_BASE_PATH,
+      buildPluginRuntimeShimPath,
+  } from '@selfhelp/shared/plugin-sdk';
+  ```
+
+  The reference Vite implementation lives at
   [`plugins/sh2-shp-survey-js/frontend/vite.config.ts`](../../plugins/sh2-shp-survey-js/frontend/vite.config.ts);
-  extend that list with `@tanstack/react-query` once the host
-  exposes the singleton through the plugin SDK contract.
+  copy the structure and feed `PLUGIN_RUNTIME_SHIM_SPECIFIERS` into
+  Rollup's `external` predicate and `output.paths` map. Do NOT
+  hand-maintain an `EXTERNAL_PEERS` array — that path was the
+  long-standing cause of drift between plugin builds and the host
+  shim allowlist.
+- Plugin dev runtimes (the long-running Vite middleware servers that
+  back `frontend.runtime.devEntrypointUrl`) must run the same
+  shim-rewriting Vite plugin in BOTH dev and build modes. Gating it
+  to `command === 'build'` silently introduces a second React copy
+  in dev because Vite's default resolver points bare specifiers at
+  the plugin's own `node_modules`. The reference dev runtime in
+  [`plugins/sh2-shp-survey-js/scripts/dev-runtime.mjs`](../../plugins/sh2-shp-survey-js/scripts/dev-runtime.mjs)
+  also proxies `/api/plugins/runtime-shim/*` back to the host
+  frontend so the inlined shim payloads can be fetched against
+  `localhost:5174`.
 - **CSS** may be inlined into the JS bundle (Vite's default with
   `cssCodeSplit: false`) or emitted as a sibling `plugin.css`. Both
   are supported; the validator and the canonical signed payload

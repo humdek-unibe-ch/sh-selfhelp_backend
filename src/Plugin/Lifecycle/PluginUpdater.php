@@ -386,7 +386,19 @@ final class PluginUpdater
         if ($operation->getInstallMode() === Plugin::INSTALL_MODE_DEVELOPMENT
             && $kind === ResolvedSource::KIND_PASTE
         ) {
-            $runtime['entrypointUrl'] = $manifest->getFrontendDevEntrypointUrl() ?? $runtime['entrypointUrl'];
+            $devEntrypoint = $manifest->getFrontendDevEntrypointUrl();
+            if (is_string($devEntrypoint) && $devEntrypoint !== '') {
+                $runtime['entrypointUrl'] = $devEntrypoint;
+                // Mirror of `PluginInstaller::resolveFrontendRuntimeMetadata()`:
+                // the archive-relative `dist/plugin.css` from the
+                // manifest must be rewritten to an absolute sibling
+                // of the dev entrypoint so the host injects a <link>
+                // whose href points at the plugin's Vite dev runtime
+                // instead of the current admin page's directory.
+                if (is_string($runtime['stylesheetUrl']) && $runtime['stylesheetUrl'] !== '') {
+                    $runtime['stylesheetUrl'] = $this->deriveDevStylesheetUrl($devEntrypoint);
+                }
+            }
             return $runtime;
         }
 
@@ -454,5 +466,29 @@ final class PluginUpdater
     private function isPromotedRuntimeWebPath(?string $value): bool
     {
         return is_string($value) && str_starts_with($value, '/plugin-artifacts/');
+    }
+
+    /**
+     * Mirror of `PluginInstaller::deriveDevStylesheetUrl()` — replaces
+     * the trailing path segment of `$devEntrypointUrl` with
+     * `plugin.css` so the host injects an absolute URL pointing at
+     * the plugin's Vite dev runtime. Kept as a sibling helper rather
+     * than extracting into a trait because the Installer / Updater
+     * already duplicate their other runtime-URL helpers and the
+     * convention is intentional.
+     */
+    private function deriveDevStylesheetUrl(string $devEntrypointUrl): string
+    {
+        $hashPos = strpos($devEntrypointUrl, '#');
+        $base = $hashPos !== false ? substr($devEntrypointUrl, 0, $hashPos) : $devEntrypointUrl;
+        $queryPos = strpos($base, '?');
+        if ($queryPos !== false) {
+            $base = substr($base, 0, $queryPos);
+        }
+        $lastSlash = strrpos($base, '/');
+        if ($lastSlash === false) {
+            return $devEntrypointUrl;
+        }
+        return substr($base, 0, $lastSlash + 1) . 'plugin.css';
     }
 }

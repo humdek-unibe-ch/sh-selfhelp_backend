@@ -1,5 +1,27 @@
 # v8.0.0 (Not released yet)
 
+### Plugin dev install: rewrite the stylesheet URL alongside the entrypoint
+
+- `PluginInstaller::resolveFrontendRuntimeMetadata()` and
+  `PluginUpdater::resolveFrontendRuntimeMetadata()` already overrode
+  `frontend_runtime_url` to the absolute `frontend.runtime
+  .devEntrypointUrl` for development-mode paste installs (used by
+  `install-local.mjs --symlink` and the
+  `selfhelp:plugin:install <local plugin.json>` fast-path). The
+  matching `frontend_runtime_stylesheet_url` was NOT rewritten and
+  kept the archive-internal relative path (`dist/plugin.css`) the
+  manifest carries. Combined with the host's `cacheBustUrl()`
+  absolutizing pure-relative URLs against `window.location.href`,
+  every dev-mode live-reload reboot 404'd the stylesheet at
+  `http://localhost:3000/admin/plugins-host/<id>/dist/plugin.css...`
+  and presented as "page does not visually update after edit; hard
+  reload works". Both lifecycle services now derive a sibling
+  stylesheet URL from `devEntrypointUrl` (replacing the trailing
+  path segment with `plugin.css`) so the host injects an absolute
+  `<link>` that points at the plugin's Vite dev runtime, matching
+  the path served by `dev-runtime.mjs`. Production / registry /
+  archive install paths are unchanged.
+
 ### Docs: align plugin installation guide
 
 - `docs/plugins/installation.md` now documents the URL-persisted
