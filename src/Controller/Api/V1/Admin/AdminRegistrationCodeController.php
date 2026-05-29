@@ -33,14 +33,22 @@ class AdminRegistrationCodeController extends AbstractController
     /**
      * @route GET /admin/registration-codes
      */
-    public function getAll(): JsonResponse
+    public function getAll(Request $request): JsonResponse
     {
-        return $this->responseFormatter->formatSuccess(
-            ['codes' => $this->registrationCodeService->getAll()],
-            null,
-            Response::HTTP_OK,
-            true,
-        );
+        $page      = max(1, $request->query->getInt('page', 1));
+        $pageSize  = max(1, min(100, $request->query->getInt('pageSize', 20)));
+
+        $filters = [
+            'search'        => $request->query->getString('search') ?: null,
+            'id_groups'     => $request->query->getInt('id_groups') ?: null,
+            'status'        => $request->query->getString('status') ?: null,
+            'sort'          => $request->query->getString('sort') ?: null,
+            'sortDirection' => $request->query->getString('sortDirection') ?: null,
+        ];
+
+        $result = $this->registrationCodeService->getAll($filters, $page, $pageSize);
+
+        return $this->responseFormatter->formatSuccess($result, null, Response::HTTP_OK, true);
     }
 
     /**
