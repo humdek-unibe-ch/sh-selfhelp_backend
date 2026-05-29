@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+
+# PHPStan configuration for CI (plugin-host-check workflow)
+# Disables dead code detection since controllers are used via Symfony routing
+# which static analysis cannot detect.
+
+includes:
+    - phpstan.dist.neon
+
+parameters:
+    shipmonkDeadCode:
+        enabled: false

@@ -100,7 +100,7 @@ jobs:
       - name: PHPStan (max, plugin scope)
         env:
           PHP_MEMORY_LIMIT: '2G'
-        run: php -d memory_limit=2G vendor/bin/phpstan analyse src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin --no-progress
+        run: php -d memory_limit=2G vendor/bin/phpstan analyse src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin --configuration=phpstan.ci.neon --no-progress
 
       - name: Doctrine schema mapping validation
         run: php bin/console doctrine:schema:validate --skip-sync --no-interaction || true
