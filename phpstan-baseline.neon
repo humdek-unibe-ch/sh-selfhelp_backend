@@ -19,72 +19,6 @@ parameters:
 			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
 
 		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 292 on line 8$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 53 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 64 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 1040 on line 22$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 138 on line 5$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 61 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 674 on line 14$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 71 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 72 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 2
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 73 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 75 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
-
-		-
 			message: '#^Parameter \#1 \$input of method App\\Plugin\\Service\\PluginAdminService\:\:install\(\) expects array\{source\: ''archive''\|''paste''\|''registry''\|''url'', registryEntry\?\: array\<string, mixed\>, sourceName\?\: string, manifestUrl\?\: string, manifest\?\: array\<string, mixed\>, forceMajor\?\: bool, backupBefore\?\: bool\}, array\<string, mixed\> given\.$#'
 			identifier: argument.type
 			count: 1
@@ -133,18 +67,6 @@ parameters:
 			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginController.php
 
 		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 78 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginFeatureFlagController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 79 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginFeatureFlagController.php
-
-		-
 			message: '#^Property App\\Controller\\Api\\V1\\Admin\\Plugin\\AdminPluginFeatureFlagController\:\:\$jsonSchemaValidationService is never read$#'
 			identifier: shipmonk.deadProperty.neverRead
 			count: 1
@@ -179,30 +101,6 @@ parameters:
 			identifier: shipmonk.deadProperty.neverWritten
 			count: 1
 			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginFeatureFlagController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 60 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginHealthController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 71 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginHealthController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 71 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginHealthController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 72 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginHealthController.php
 
 		-
 			message: '#^Property App\\Controller\\Api\\V1\\Admin\\Plugin\\AdminPluginHealthController\:\:\$healthService is never read$#'
@@ -241,30 +139,6 @@ parameters:
 			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginHealthController.php
 
 		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 64 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginOperationController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 78 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginOperationController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 86 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginOperationController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 88 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginOperationController.php
-
-		-
 			message: '#^Property App\\Controller\\Api\\V1\\Admin\\Plugin\\AdminPluginOperationController\:\:\$pluginAdminService is never read$#'
 			identifier: shipmonk.deadProperty.neverRead
 			count: 1
@@ -287,30 +161,6 @@ parameters:
 			identifier: shipmonk.deadProperty.neverWritten
 			count: 1
 			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginOperationController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(DELETE\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 75 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginSourceController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 61 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginSourceController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(POST\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 62 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginSourceController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(PUT\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 72 on line 3$#'
-			identifier: phpDoc.parseError
-			count: 1
-			path: src/Controller/Api/V1/Admin/Plugin/AdminPluginSourceController.php
 
 		-
 			message: '#^Property App\\Controller\\Api\\V1\\Admin\\Plugin\\AdminPluginSourceController\:\:\$jsonSchemaValidationService is never read$#'
@@ -363,12 +213,6 @@ parameters:
 		-
 			message: '#^Cannot cast mixed to string\.$#'
 			identifier: cast.string
-			count: 1
-			path: src/Controller/Api/V1/Plugin/PluginManifestController.php
-
-		-
-			message: '#^PHPDoc tag @method has invalid value \(GET\)\: Unexpected token "\\r\\n     ", expected ''\('' at offset 56 on line 3$#'
-			identifier: phpDoc.parseError
 			count: 1
 			path: src/Controller/Api/V1/Plugin/PluginManifestController.php
 

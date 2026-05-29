@@ -34,3 +34,16 @@ parameters:
 
     # Only ignore specific errors if needed
     ignoreErrors:
+        # The API controllers document their HTTP verb with a plain-text
+        # `@method GET|POST|PUT|DELETE` pseudo-tag. The real route lives in
+        # the DB-driven `api_routes` table (loaded by ApiRouteLoader), so
+        # these are human-readable annotations, not PHPStan magic-method
+        # declarations. PHPStan's phpDoc parser expects `@method <type>
+        # name()` and emits phpDoc.parseError for the bare verb. This is a
+        # deliberate, codebase-wide convention (every Api/V1 controller),
+        # so the parse error is ignored. The message regex carries no byte
+        # offsets, so it stays stable across CRLF/LF checkouts (a baseline
+        # entry would not, because its message embeds `at offset N`).
+        -
+            message: '#^PHPDoc tag @method has invalid value#'
+            identifier: phpDoc.parseError
