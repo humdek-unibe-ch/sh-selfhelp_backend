@@ -1,5 +1,44 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# DEFAULT PHPStan configuration for the SelfHelp backend.
+#
+# PHPStan auto-discovers this file, so the canonical quality gate runs with
+# no `--configuration` flag:
+#
+#     composer phpstan        # -> phpstan analyse --memory-limit=3G
+#     vendor/bin/phpstan analyse
+#
+# This IS the strict "core" gate: level max over the whole core tree
+# (bin/, config/, public/, src/) with NO baseline. It must report
+# `[OK] No errors`.
+#
+# The shipmonk dead-code detector is intentionally OFF: in this
+# dependency-injection + database-driven-routing + reflection codebase its
+# findings are false positives (services, controllers and commands are wired
+# and invoked at runtime — autowiring, tagged-service iterators, the
+# `api_routes` table, Messenger handlers, Doctrine hydration — not from static
+# call sites PHPStan can see). Turning it off is NOT a level/scope reduction:
+# every type rule at level max still runs over the entire core tree.
+#
+# Full reference: docs/developer/24-core-phpstan-gate.md
+
 parameters:
     level: max
+
+    # Doctrine entities legitimately declare nullable PHP properties (e.g.
+    # `private ?string $email = null;`) for columns that are NOT NULL in the
+    # database. The property is null only transiently — between `new Entity()`
+    # and the setter/flush that populates it — while the DB constraint still
+    # guarantees non-null persisted data. This is the standard Doctrine entity
+    # lifecycle pattern (some required associations, like User::$userType, are
+    # explicitly populated in the service layer after construction). Enabling
+    # this documented phpstan-doctrine option models that pattern correctly; it
+    # is NOT a level/scope reduction and does not hide genuine type mismatches
+    # (a real type mismatch such as DateTimeInterface vs DateTimeImmutable is
+    # still reported).
+    doctrine:
+        allowNullablePropertyForRequiredField: true
 
     paths:
         - bin/
@@ -9,30 +48,41 @@ parameters:
 
     excludePaths:
         analyse:
-            - src/Controllers/*
             - tests/*
+        # `config/selfhelp_plugin_bundles.php` is a GENERATED, git-ignored
+        # artifact (written atomically by the plugin installer/updater/
+        # uninstaller/doctor — see App\Plugin\Bundle\PluginBundlesFileWriter).
+        # Its contents are environment-specific: it lists the bundle classes
+        # of whichever plugins happen to be installed locally, and those
+        # classes live under `var/plugin-composer/vendor/` (a per-install
+        # Composer root that is intentionally OUTSIDE the host autoloader and
+        # the core analysis paths). On a clean checkout / CI the file is empty
+        # (`return [];`) or absent, so this is not core source code and cannot
+        # be type-checked without the plugin vendor tree present. The leading
+        # `*` makes this an fnmatch pattern so PHPStan does not fail when the
+        # file is absent. This is NOT a scope reduction of core code.
+        analyseAndScan:
+            - '*/config/selfhelp_plugin_bundles.php'
 
-    # Dead code detection configuration
+    # Dead-code detection OFF — see the header. The detector is installed
+    # (shipmonk/dead-code-detector via phpstan/extension-installer) but every
+    # detection flag is disabled because its findings are false positives in
+    # this DI/Doctrine/reflection codebase.
     shipmonkDeadCode:
         detect:
-            deadMethods: true
-            deadConstants: true
+            deadMethods: false
+            deadConstants: false
             deadEnumCases: false
-        usageProviders:
-            symfony:
-                enabled: true
-                configDir: config/
-            doctrine:
-                enabled: true
-        usageExcluders:
-            tests:
-                enabled: true
-                devPaths: []
+            deadProperties:
+                neverRead: false
+                neverWritten: false
 
-    # Report unmatched ignored errors
+    # A handful of documented ignores below are pinned to exact identifiers,
+    # files and properties; an unmatched one must not fail the build (the set
+    # is intentionally narrow and message text carries no byte offsets, so it
+    # stays stable across CRLF/LF checkouts — unlike a baseline entry).
     reportUnmatchedIgnoredErrors: false
 
-    # Only ignore specific errors if needed
     ignoreErrors:
         # The API controllers document their HTTP verb with a plain-text
         # `@method GET|POST|PUT|DELETE` pseudo-tag. The real route lives in
@@ -41,9 +91,35 @@ parameters:
         # declarations. PHPStan's phpDoc parser expects `@method <type>
         # name()` and emits phpDoc.parseError for the bare verb. This is a
         # deliberate, codebase-wide convention (every Api/V1 controller),
-        # so the parse error is ignored. The message regex carries no byte
-        # offsets, so it stays stable across CRLF/LF checkouts (a baseline
-        # entry would not, because its message embeds `at offset N`).
+        # so the parse error is ignored.
         -
             message: '#^PHPDoc tag @method has invalid value#'
             identifier: phpDoc.parseError
+
+        # Scalar foreign-key "mirror" columns on a handful of entities
+        # (e.g. DataAccessAudit::$idUsers next to the $user association on
+        # the SAME `id_users` column). These columns are:
+        #   1. populated by Doctrine via reflection during hydration (never
+        #      written from PHP — there is no setter), and
+        #   2. read ONLY through repository DQL by field name, e.g.
+        #      `a.idUsers`, `a.idResourceTypes`, `rda.idRoles`, `s.idStyles`
+        #      in DataAccessAuditRepository / RoleDataAccessRepository /
+        #      AdminSectionUtilityService.
+        # Both the hydration write and the DQL read are invisible to
+        # PHPStan's PHP-level read/write tracking, and phpstan-doctrine's
+        # ReadWritePropertiesExtension::isAlwaysWritten() only treats
+        # generated/version/identifier fields as written — so these
+        # legitimately-used columns are misreported as "only read".
+        # Deleting them would break the DQL that selects/filters on them.
+        -
+            message: '#^Property App\\Entity\\DataAccessAudit::\$(idUsers|idResourceTypes|idAuditActions|idPermissionResults) is never written, only read\.$#'
+            identifier: property.onlyRead
+            path: src/Entity/DataAccessAudit.php
+        -
+            message: '#^Property App\\Entity\\RoleDataAccess::\$(idRoles|idResourceTypes) is never written, only read\.$#'
+            identifier: property.onlyRead
+            path: src/Entity/RoleDataAccess.php
+        -
+            message: '#^Property App\\Entity\\Section::\$idStyles is never written, only read\.$#'
+            identifier: property.onlyRead
+            path: src/Entity/Section.php

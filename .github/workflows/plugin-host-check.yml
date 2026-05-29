@@ -7,6 +7,11 @@
 # whole Symfony host, with extra emphasis on the plugin subsystem. It
 # runs on every PR and push to `main` and must pass before a merge.
 #
+# Static analysis (PHPStan) is NOT run here: the strict, no-baseline
+# core-backend-check.yml gate already analyses the whole core (plugin
+# code included) at level max, which supersedes the old baselined
+# plugin-scope check. See docs/developer/24-core-phpstan-gate.md.
+#
 # It boots the real application against a throwaway MySQL 8 + Redis 7 so
 # the checks exercise the same code paths a developer hits locally. The
 # full reference (what each step does, how to reproduce locally, strict
@@ -20,8 +25,6 @@
 #   - JSON Schema validation (plugin manifest/registry/lock + request
 #     schemas compile as Draft-07; response fragments are well-formed
 #     JSON; expected folders must be present and non-empty)
-#   - PHPStan level max over the plugin scope (regressions only; the
-#     pre-existing debt is captured in phpstan-baseline.neon)
 #   - PHPUnit "unit" suite (DB-free plugin-host tests)
 #   - Symfony YAML + container lint
 #   - Doctrine: create test DB -> run ALL migrations -> strict
@@ -227,14 +230,6 @@ jobs:
             php -r 'json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);' "$schema"
           done
           echo "Validated ${#res[@]} response schema fragments."
-
-      - name: PHPStan (level max, plugin host scope)
-        # Pre-existing findings are captured in phpstan-baseline.neon (wired
-        # into phpstan.ci.neon), so this fails on NEW regressions only.
-        run: |
-          php -d memory_limit=2G vendor/bin/phpstan analyse \
-            src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin \
-            --configuration=phpstan.ci.neon --no-progress
 
       - name: PHPUnit (DB-free unit suite)
         # The "unit" suite is the plugin-host tests that extend
