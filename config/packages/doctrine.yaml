@@ -6,6 +6,16 @@ doctrine:
         # either here or in the DATABASE_URL env var (see .env file)
         #server_version: '16'
 
+        # Exclude framework-managed tables from ORM schema introspection
+        # so `doctrine:schema:validate`, `schema:update` and
+        # `make:migration` do not report/clobber them. `messenger_messages`
+        # is created by migration Version20260523141331 for the Doctrine
+        # Messenger `plugin_ops` transport; it is NOT a Doctrine entity, so
+        # without this filter the schema comparator always wants to DROP it
+        # (the classic Doctrine + Messenger false positive). The migrations
+        # bundle already excludes its own `doctrine_migration_versions`.
+        schema_filter: '~^(?!messenger_messages$)~'
+
         profiling_collect_backtrace: '%kernel.debug%'
         profiling: true
     orm:

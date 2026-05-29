@@ -28,6 +28,7 @@ namespace App\Plugin\Security;
  *
  *   - pluginId        (string)
  *   - version         (string)
+ *   - manifestUrl     (string, optional — registry/url sources only)
  *   - composer        ({package, version, repository?})
  *   - runtime         ({entrypointUrl, stylesheetUrl?, format, integrity?, stylesheetIntegrity?})
  *   - checksums       ({frontendEsm, frontendCss?})
@@ -75,6 +76,15 @@ final class SignedPayloadBuilder
 
         $out['pluginId'] = $this->requireString($input, 'pluginId');
         $out['version']  = $this->requireString($input, 'version');
+
+        // Optional registry pointer. Present for registry/url sources
+        // (the build step records where the manifest was fetched from),
+        // omitted for archive/paste sources. It is part of the signed
+        // payload, so it MUST be carried through verbatim to stay
+        // byte-identical with the Node `sign.mjs` publisher.
+        if (isset($input['manifestUrl']) && is_string($input['manifestUrl']) && $input['manifestUrl'] !== '') {
+            $out['manifestUrl'] = $input['manifestUrl'];
+        }
 
         $composer = $input['composer'] ?? null;
         if (!is_array($composer)) {

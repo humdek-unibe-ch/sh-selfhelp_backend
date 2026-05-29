@@ -70,6 +70,18 @@ final class PluginDoctorCommand extends Command
             }
         }
 
+        // Summary so warnings stay visible. Only `error`-severity
+        // findings are fatal under `--ci`; warnings/info are surfaced
+        // but never fail the build (so a fresh host exits 0).
+        [$warnings, $errors] = self::tally($report);
+        if ($errors > 0) {
+            $io->error(sprintf('%d error(s), %d warning(s).', $errors, $warnings));
+        } elseif ($warnings > 0) {
+            $io->warning(sprintf('%d warning(s), 0 errors. Warnings do not fail --ci.', $warnings));
+        } else {
+            $io->success('All checks OK.');
+        }
+
         return $this->resolveExit($input, $report);
     }
 
@@ -81,17 +93,70 @@ final class PluginDoctorCommand extends Command
         if (!$input->getOption('ci')) {
             return Command::SUCCESS;
         }
-        foreach ($report['siteChecks'] as $check) {
-            if (($check['status'] ?? 'ok') !== 'ok') {
-                return Command::FAILURE;
+        return self::reportHasFatalError($report) ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * CI contract: only `error`-severity findings are fatal. `warning`
+     * and informational statuses are reported but never fail `--ci`, so
+     * a fresh host (no plugins installed, infra probes skipped) exits 0.
+     *
+     * Kept as a pure static method so the exit-code contract can be unit
+     * tested without booting the kernel or the (final) health service.
+     *
+     * @param array<string,mixed> $report
+     */
+    public static function reportHasFatalError(array $report): bool
+    {
+        $siteChecks = $report['siteChecks'] ?? [];
+        if (is_iterable($siteChecks)) {
+            foreach ($siteChecks as $check) {
+                if (is_array($check) && ($check['status'] ?? 'ok') === 'error') {
+                    return true;
+                }
             }
         }
-        foreach ($report['plugins'] as $plugin) {
-            $severity = $plugin['compatibility']['severity'] ?? 'ok';
-            if ($severity !== 'ok') {
-                return Command::FAILURE;
+        $plugins = $report['plugins'] ?? [];
+        if (is_iterable($plugins)) {
+            foreach ($plugins as $plugin) {
+                if (is_array($plugin) && (($plugin['compatibility']['severity'] ?? 'ok') === 'error')) {
+                    return true;
+                }
             }
         }
-        return Command::SUCCESS;
+        return false;
+    }
+
+    /**
+     * @param array<string,mixed> $report
+     * @return array{0:int,1:int} [warnings, errors]
+     */
+    private static function tally(array $report): array
+    {
+        $warnings = 0;
+        $errors = 0;
+        $siteChecks = $report['siteChecks'] ?? [];
+        if (is_iterable($siteChecks)) {
+            foreach ($siteChecks as $check) {
+                $status = is_array($check) ? ($check['status'] ?? 'ok') : 'ok';
+                if ($status === 'error') {
+                    ++$errors;
+                } elseif ($status === 'warning') {
+                    ++$warnings;
+                }
+            }
+        }
+        $plugins = $report['plugins'] ?? [];
+        if (is_iterable($plugins)) {
+            foreach ($plugins as $plugin) {
+                $severity = is_array($plugin) ? ($plugin['compatibility']['severity'] ?? 'ok') : 'ok';
+                if ($severity === 'error') {
+                    ++$errors;
+                } elseif ($severity === 'warning') {
+                    ++$warnings;
+                }
+            }
+        }
+        return [$warnings, $errors];
     }
 }
