@@ -39,7 +39,7 @@ class AdminActionController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/create_action', $this->jsonSchemaValidationService);
 
-            $result = $this->adminActionService->createAction((array) $data);
+            $result = $this->adminActionService->createAction($this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
                 $result,
@@ -66,10 +66,10 @@ class AdminActionController extends AbstractController
             $search = $request->query->get('search');
             $sort = $request->query->get('sort');
             $sortDirection = $request->query->get('sortDirection', 'asc');
-            $triggerTypeId = $request->query->get('triggerTypeId');
-            $dataTableId = $request->query->get('dataTableId');
+            $triggerTypeId = $request->query->has('triggerTypeId') ? (int) $request->query->get('triggerTypeId') : null;
+            $dataTableId = $request->query->has('dataTableId') ? (int) $request->query->get('dataTableId') : null;
 
-            $result = $this->adminActionService->getActions($page, $pageSize, $search, $sort, $sortDirection, $triggerTypeId ,$dataTableId);
+            $result = $this->adminActionService->getActions($page, $pageSize, $search, $sort, $sortDirection, $triggerTypeId, $dataTableId);
 
             return $this->responseFormatter->formatSuccess(
                 $result,
@@ -92,7 +92,7 @@ class AdminActionController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/update_action', $this->jsonSchemaValidationService);
 
-            $result = $this->adminActionService->updateAction($actionId, (array) $data);
+            $result = $this->adminActionService->updateAction($actionId, $this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
                 $result,

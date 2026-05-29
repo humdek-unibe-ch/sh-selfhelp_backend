@@ -58,12 +58,16 @@ final class PluginManifestController extends AbstractController
         try {
             $plugins = [];
             foreach ($this->pluginRegistry->getEnabled() as $plugin) {
-                $manifest = $plugin->getManifestJson();
-                $manifestArray = is_array($manifest) ? $manifest : [];
+                $manifestArray = $plugin->getManifestJson();
                 $featureFlagDefaults = [];
-                foreach ($manifestArray['featureFlags'] ?? [] as $flag) {
-                    if (!is_array($flag) || !isset($flag['key'])) continue;
-                    $featureFlagDefaults[(string) $flag['key']] = (bool) ($flag['defaultEnabled'] ?? false);
+                $featureFlags = $manifestArray['featureFlags'] ?? null;
+                if (is_array($featureFlags)) {
+                    foreach ($featureFlags as $flag) {
+                        if (!is_array($flag) || !isset($flag['key']) || !is_scalar($flag['key'])) {
+                            continue;
+                        }
+                        $featureFlagDefaults[(string) $flag['key']] = (bool) ($flag['defaultEnabled'] ?? false);
+                    }
                 }
                 $capabilities = [];
                 $security = $manifestArray['security'] ?? null;

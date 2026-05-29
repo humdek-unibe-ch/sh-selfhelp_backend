@@ -35,6 +35,8 @@ class AdminActionService extends BaseService
 
     /**
      * Get actions with pagination
+     *
+     * @return array<string, mixed>
      */
     public function getActions(
         int $page = 1,
@@ -73,6 +75,8 @@ class AdminActionService extends BaseService
 
     /**
      * Get a single action by ID with entity scope caching
+     *
+     * @return array<string, mixed>
      */
     public function getActionById(int $actionId): array
     {
@@ -94,6 +98,9 @@ class AdminActionService extends BaseService
 
     /**
      * Update an action's basic fields and config with optional translations
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
      */
     public function updateAction(int $actionId, array $data): array
     {
@@ -108,7 +115,7 @@ class AdminActionService extends BaseService
             $originalAction = clone $action;
 
             if (array_key_exists('name', $data)) {
-                $action->setName((string) $data['name']);
+                $action->setName($this->asString($data['name']));
             }
 
             if (array_key_exists('id_action_trigger_types', $data)) {
@@ -121,11 +128,13 @@ class AdminActionService extends BaseService
 
             if (array_key_exists('config', $data)) {
                 // Store as JSON text (validated at controller level against schema)
-                $action->setConfig(is_string($data['config']) ? $data['config'] : json_encode($data['config'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                $config = $data['config'];
+                $configJson = is_string($config) ? $config : json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $action->setConfig($configJson === false ? null : $configJson);
             }
 
             if (array_key_exists('id_data_tables', $data)) {
-                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, (int) $data['id_data_tables']);
+                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, $this->asInt($data['id_data_tables']));
                 if (!$dataTable) {
                     throw new ServiceException('Invalid data table', Response::HTTP_BAD_REQUEST);
                 }
@@ -146,7 +155,9 @@ class AdminActionService extends BaseService
             // Handle translations if provided
             $translationsResult = null;
             if (isset($data['translations']) && is_array($data['translations'])) {
-                $translationsResult = $this->adminActionTranslationService->bulkCreateTranslations($actionId, $data['translations']);
+                /** @var array<int, array<string, mixed>> $translationsInput */
+                $translationsInput = $data['translations'];
+                $translationsResult = $this->adminActionTranslationService->bulkCreateTranslations($actionId, $translationsInput);
             }
 
             $this->entityManager->commit();
@@ -175,6 +186,9 @@ class AdminActionService extends BaseService
 
     /**
      * Create a new action with optional translations
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
      */
     public function createAction(array $data): array
     {
@@ -185,7 +199,7 @@ class AdminActionService extends BaseService
             if (empty($data['name'])) {
                 $this->throwBadRequest('Field "name" is required');
             }
-            $action->setName((string) $data['name']);
+            $action->setName($this->asString($data['name']));
 
             if (!empty($data['id_action_trigger_types'])) {
                 $lookup = $this->lookupRepository->find($data['id_action_trigger_types']);
@@ -198,11 +212,13 @@ class AdminActionService extends BaseService
             }
 
             if (array_key_exists('config', $data)) {
-                $action->setConfig(is_string($data['config']) ? $data['config'] : json_encode($data['config'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                $config = $data['config'];
+                $configJson = is_string($config) ? $config : json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $action->setConfig($configJson === false ? null : $configJson);
             }
 
             if (array_key_exists('id_data_tables', $data)) {
-                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, (int) $data['id_data_tables']);
+                $dataTable = $this->entityManager->getReference(\App\Entity\DataTable::class, $this->asInt($data['id_data_tables']));
                 if (!$dataTable) {
                     $this->throwBadRequest('Invalid data table');
                 }
@@ -226,7 +242,9 @@ class AdminActionService extends BaseService
             // Handle translations if provided
             $translationsResult = null;
             if (isset($data['translations']) && is_array($data['translations'])) {
-                $translationsResult = $this->adminActionTranslationService->bulkCreateTranslations($action->getId(), $data['translations']);
+                /** @var array<int, array<string, mixed>> $translationsInput */
+                $translationsInput = $data['translations'];
+                $translationsResult = $this->adminActionTranslationService->bulkCreateTranslations((int) $action->getId(), $translationsInput);
             }
 
             $this->entityManager->commit();
@@ -295,6 +313,9 @@ class AdminActionService extends BaseService
         }
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function formatAction(Action $action): array
     {
         $trigger = $action->getActionTriggerType();

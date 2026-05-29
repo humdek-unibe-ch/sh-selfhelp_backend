@@ -14,17 +14,14 @@ use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
+use App\Entity\StylesField;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
-use App\Service\ACL\ACLService;
-use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Admin\AdminAssetService;
-use App\Repository\PageRepository;
-use App\Repository\SectionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -39,10 +36,6 @@ class SectionFieldService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly DataTableService $dataTableService,
         private readonly CacheService $cache,
-        private readonly ACLService $aclService,
-        private readonly UserContextService $userContextService,
-        private readonly PageRepository $pageRepository,
-        private readonly SectionRepository $sectionRepository,
         private readonly AdminAssetService $adminAssetService
     ) {
     }
@@ -51,7 +44,7 @@ class SectionFieldService extends BaseService
      * Get section fields with translations
      * 
      * @param Section $section The section entity
-     * @return array The formatted fields with translations
+     * @return list<array<string, mixed>> The formatted fields with translations
      */
     public function getSectionFields(Section $section): array
     {
@@ -60,7 +53,7 @@ class SectionFieldService extends BaseService
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId())
+            ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId())
             ->getItem(
                 $cacheKey,
                 function () use ($section) {
@@ -69,6 +62,9 @@ class SectionFieldService extends BaseService
             );
     }
 
+    /**
+     * @return list<array<string, mixed>>
+     */
     private function fetchSectionFieldsFromDatabase(Section $section): array
     {
 
@@ -79,14 +75,14 @@ class SectionFieldService extends BaseService
         }
 
         // Get all StylesField for this style ordered by priority asc and field name asc
-        $stylesFields = $style->getStylesFields()->toArray();
-        usort($stylesFields, function ($a, $b) {
-            $priorityA = $a->getField()->getType()->getPosition() ?? PHP_INT_MAX;
-            $priorityB = $b->getField()->getType()->getPosition() ?? PHP_INT_MAX;
+        $stylesFields = $style->getStylesFields()?->toArray() ?? [];
+        usort($stylesFields, function (StylesField $a, StylesField $b): int {
+            $priorityA = $a->getField()?->getType()?->getPosition() ?? PHP_INT_MAX;
+            $priorityB = $b->getField()?->getType()?->getPosition() ?? PHP_INT_MAX;
             if ($priorityA !== $priorityB) {
                 return $priorityA - $priorityB;
             }
-            return strcasecmp($a->getField()->getName(), $b->getField()->getName());
+            return strcasecmp($this->asString($a->getField()?->getName()), $this->asString($b->getField()?->getName()));
         });
 
         // Fetch all field translations for this section
@@ -98,18 +94,17 @@ class SectionFieldService extends BaseService
             ->leftJoin('f.type', 'ft')
             ->where('t.section = :section')
             ->setParameter('section', $section);
+        /** @var list<SectionsFieldsTranslation> $translations */
         $translations = $qb->getQuery()->getResult();
 
         // Group translations by field and language
+        /** @var array<int, array<int, array{content: mixed, meta: mixed}>> $translationsByFieldLang */
         $translationsByFieldLang = [];
         foreach ($translations as $tr) {
-            $fieldId = $tr->getField()->getId();
-            $langId = $tr->getLanguage()->getId();
+            $fieldId = (int) $tr->getField()?->getId();
+            $langId = (int) $tr->getLanguage()?->getId();
             if (!isset($translationsByFieldLang[$fieldId])) {
                 $translationsByFieldLang[$fieldId] = [];
-            }
-            if (!isset($translationsByFieldLang[$fieldId][$langId])) {
-                $translationsByFieldLang[$fieldId][$langId] = [];
             }
             $translationsByFieldLang[$fieldId][$langId] = [
                 'content' => $tr->getContent(),
@@ -124,28 +119,31 @@ class SectionFieldService extends BaseService
             if (!$field)
                 continue;
 
-            $fieldId = $field->getId();
+            $fieldId = (int) $field->getId();
+            $fieldTypeName = $field->getType()?->getName();
 
             $fieldData = [
                 'id' => $fieldId,
                 'name' => $field->getName(),
                 'title' => $stylesField->getTitle(),
-                'type' => $field->getType() ? $field->getType()->getName() : null,
+                'type' => $fieldTypeName,
                 'default_value' => $stylesField->getDefaultValue(),
                 'help' => $stylesField->getHelp(),
                 'disabled' => $stylesField->isDisabled(),
                 'hidden' => $stylesField->getHidden(),
                 'display' => $field->isDisplay(),
-                'config' => $field->getConfig() ?? $this->getFieldConfig($field->getType() ? $field->getType()->getName() : []),
+                'config' => $field->getConfig() ?? $this->getFieldConfig($this->asString($fieldTypeName)),
                 'translations' => [],
             ];
+
+            $translations = [];
 
             // Handle translations based on display flag
             if ($field->isDisplay()) {
                 // Content field (display=1) - can have translations for each language
                 if (isset($translationsByFieldLang[$fieldId])) {
                     foreach ($translationsByFieldLang[$fieldId] as $langId => $translation) {
-                        $fieldData['translations'][] = [
+                        $translations[] = [
                             'language_id' => $langId,
                             'content' => $translation['content'],
                             'meta' => $translation['meta']
@@ -155,18 +153,17 @@ class SectionFieldService extends BaseService
             } else {
                 // Property field (display=0) - use language_id = 1 only
                 if (isset($translationsByFieldLang[$fieldId][1])) {
-                    $propertyTranslation = $translationsByFieldLang[$fieldId][1] ?? null;
-                    if ($propertyTranslation) {
-                        $fieldData['translations'][] = [
-                            'language_id' => 1,
-                            'language_code' => 'all',  // This is a property, not actually language-specific
-                            'content' => $propertyTranslation['content'],
-                            'meta' => $propertyTranslation['meta']
-                        ];
-                    }
+                    $propertyTranslation = $translationsByFieldLang[$fieldId][1];
+                    $translations[] = [
+                        'language_id' => 1,
+                        'language_code' => 'all',  // This is a property, not actually language-specific
+                        'content' => $propertyTranslation['content'],
+                        'meta' => $propertyTranslation['meta']
+                    ];
                 }
             }
 
+            $fieldData['translations'] = $translations;
             $formattedFields[] = $fieldData;
         }
 
@@ -177,9 +174,9 @@ class SectionFieldService extends BaseService
      * Get field configuration based on field type
      * 
      * @param string $fieldType The field type
-     * @return array The field configuration
+     * @return array<string, mixed> The field configuration
      */
-    private function getFieldConfig($fieldType): array
+    private function getFieldConfig(string $fieldType): array
     {
         $options = [];
         if ($fieldType === 'select-group') {
@@ -229,7 +226,7 @@ class SectionFieldService extends BaseService
     /**
      * Get groups for select-group field type
      * 
-     * @return array The groups formatted as options
+     * @return list<array<string, mixed>> The groups formatted as options
      */
     private function getGroups(): array
     {
@@ -245,10 +242,11 @@ class SectionFieldService extends BaseService
                         ->from(Group::class, 'g')
                         ->orderBy('g.name', 'ASC');
 
+                    /** @var list<array{id: mixed, name: mixed}> $groups */
                     $groups = $qb->getQuery()->getResult();
 
-                    return array_map(fn($group) => [
-                        'value' => (string) $group['id'],
+                    return array_map(fn (array $group): array => [
+                        'value' => $this->asString($group['id']),
                         'text' => $group['name']
                     ], $groups);
                 }
@@ -258,7 +256,7 @@ class SectionFieldService extends BaseService
     /**
      * Get data tables for select-data_table field type
      * 
-     * @return array The data tables formatted as options
+     * @return list<array<string, mixed>> The data tables formatted as options
      */
     private function getDataTables(): array
     {
@@ -273,10 +271,11 @@ class SectionFieldService extends BaseService
                         ->from(DataTable::class, 'dt')
                         ->orderBy('dt.name', 'ASC');
 
+                    /** @var list<array{id: mixed, name: mixed}> $dataTables */
                     $dataTables = $qb->getQuery()->getResult();
 
-                    return array_map(fn($table) => [
-                        'value' => (string) $table['id'],
+                    return array_map(fn (array $table): array => [
+                        'value' => $this->asString($table['id']),
                         'text' => $table['name']
                     ], $dataTables);
                 }
@@ -286,7 +285,7 @@ class SectionFieldService extends BaseService
     /**
      * Get page keywords for select-page-keyword field type
      *
-     * @return array The page keywords formatted as options
+     * @return list<array<string, mixed>> The page keywords formatted as options
      */
     public function getPageKeywords(): array
     {
@@ -302,9 +301,10 @@ class SectionFieldService extends BaseService
                         ->where('p.keyword IS NOT NULL')
                         ->orderBy('p.keyword', 'ASC');
 
+                    /** @var list<array{id: mixed, keyword: mixed}> $pages */
                     $pages = $qb->getQuery()->getResult();
 
-                    return array_map(fn($page) => [
+                    return array_map(fn (array $page): array => [
                         'value' => $page['keyword'],
                         'text' => $page['keyword']
                     ], $pages);
@@ -315,7 +315,7 @@ class SectionFieldService extends BaseService
     /**
      * Get images for select-image field type
      *
-     * @return array The images formatted as options with relative paths
+     * @return list<array<string, mixed>> The images formatted as options with relative paths
      */
     private function getImages(): array
     {
@@ -327,16 +327,18 @@ class SectionFieldService extends BaseService
                 function () {
                     // Get all assets and filter for image types
                     $allAssets = $this->adminAssetService->getAllAssets(1, 1000); // Get first 1000 assets for initial load
+                    /** @var list<array<string, mixed>> $assetList */
+                    $assetList = is_array($allAssets['assets'] ?? null) ? $allAssets['assets'] : [];
 
-                    $images = array_filter($allAssets['assets'], function ($asset) {
-                        $extension = strtolower(pathinfo($asset['file_name'], PATHINFO_EXTENSION));
+                    $images = array_filter($assetList, function (array $asset): bool {
+                        $extension = strtolower(pathinfo($this->asString($asset['file_name'] ?? ''), PATHINFO_EXTENSION));
                         return in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']);
                     });
 
-                    return array_map(function ($image) {
+                    return array_map(function (array $image): array {
                         return [
-                            'value' => $image['file_path'], // Use relative path as value
-                            'text' => $image['file_name']
+                            'value' => $image['file_path'] ?? null, // Use relative path as value
+                            'text' => $image['file_name'] ?? null
                         ];
                     }, array_values($images));
                 }
@@ -346,7 +348,7 @@ class SectionFieldService extends BaseService
     /**
      * Get videos for select-video field type
      *
-     * @return array The videos formatted as options with relative paths
+     * @return list<array<string, mixed>> The videos formatted as options with relative paths
      */
     private function getVideos(): array
     {
@@ -358,16 +360,18 @@ class SectionFieldService extends BaseService
                 function () {
                     // Get all assets and filter for video types
                     $allAssets = $this->adminAssetService->getAllAssets(1, 1000); // Get first 1000 assets for initial load
+                    /** @var list<array<string, mixed>> $assetList */
+                    $assetList = is_array($allAssets['assets'] ?? null) ? $allAssets['assets'] : [];
 
-                    $videos = array_filter($allAssets['assets'], function ($asset) {
-                        $extension = strtolower(pathinfo($asset['file_name'], PATHINFO_EXTENSION));
+                    $videos = array_filter($assetList, function (array $asset): bool {
+                        $extension = strtolower(pathinfo($this->asString($asset['file_name'] ?? ''), PATHINFO_EXTENSION));
                         return in_array($extension, ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm']);
                     });
 
-                    return array_map(function ($video) {
+                    return array_map(function (array $video): array {
                         return [
-                            'value' => $video['file_path'], // Use relative path as value
-                            'text' => $video['file_name']
+                            'value' => $video['file_path'] ?? null, // Use relative path as value
+                            'text' => $video['file_name'] ?? null
                         ];
                     }, array_values($videos));
                 }
@@ -378,30 +382,32 @@ class SectionFieldService extends BaseService
      * Update section field translations
      * 
      * @param Section $section The section entity
-     * @param array $contentFields Content fields (display=1)
-     * @param array $propertyFields Property fields (display=0)
+     * @param list<array<string, mixed>> $contentFields Content fields (display=1)
+     * @param list<array<string, mixed>> $propertyFields Property fields (display=0)
      * @throws ServiceException If validation fails
      */
     public function updateSectionFields(Section $section, array $contentFields, array $propertyFields): void
     {
         // Validate that all fields belong to the section's style
-        $allFieldIds = array_merge(
+        $allFieldIds = array_map(fn ($v): int => $this->asInt($v), array_merge(
             array_column($contentFields, 'fieldId'),
             array_column($propertyFields, 'fieldId')
-        );
+        ));
 
-        if (!empty($allFieldIds)) {
-            $this->validateStyleFields($allFieldIds, $section->getStyle()->getId(), $this->entityManager);
+        $style = $section->getStyle();
+        if (!empty($allFieldIds) && $style !== null) {
+            $this->validateStyleFields($allFieldIds, (int) $style->getId(), $this->entityManager);
         }
 
         // Check if displayName field is being updated for form sections
         $isFormSection = $this->dataTableService->isFormSection($section);
+        $displayNameUpdate = null;
         if ($isFormSection) {
             $displayNameUpdate = $this->extractDisplayNameUpdate($propertyFields);
         }
 
         // Update field translations using trait method
-        $this->updateSectionFieldTranslations($section->getId(), $contentFields, $propertyFields, $this->entityManager);
+        $this->updateSectionFieldTranslations((int) $section->getId(), $contentFields, $propertyFields, $this->entityManager);
 
         // Sync displayName to dataTable if this is a form section and displayName was updated
         if ($isFormSection && $displayNameUpdate !== null) {
@@ -411,7 +417,7 @@ class SectionFieldService extends BaseService
         // Invalidate section cache after updates
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
-            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId());
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
@@ -420,7 +426,7 @@ class SectionFieldService extends BaseService
     /**
      * Extract displayName update from field updates
      * 
-     * @param array $propertyFields Property fields
+     * @param list<array<string, mixed>> $propertyFields Property fields
      * @return string|null The new displayName value if found
      */
     private function extractDisplayNameUpdate(array $propertyFields): ?string
@@ -428,14 +434,14 @@ class SectionFieldService extends BaseService
         // Check both content and property fields for displayName field
         foreach ($propertyFields as $fieldUpdate) {
             // Find the field entity to check its name
-            $fieldId = $fieldUpdate['fieldId'];
+            $fieldId = $fieldUpdate['fieldId'] ?? null;
             $field = $this->entityManager->getRepository(Field::class)->find($fieldId);
 
             if ($field && $field->getName() === 'name') {
                 // Get the first translation content (assuming language_id = 1 for displayName)
                 $content = $fieldUpdate['value'] ?? null;
                 if ($content) {
-                    return $content;
+                    return $this->asString($content);
                 }
             }
         }

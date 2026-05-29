@@ -32,7 +32,7 @@ use Psr\Log\LoggerInterface;
  */
 class MailTemplateService
 {
-    /** @var array<string, string|null>|null lazy-cached global sender config (request-scoped) */
+    /** @var array{from_email: string|null, from_name: string|null, reply_to: string|null, is_html: bool|null}|null lazy-cached global sender config (request-scoped) */
     private ?array $globalConfig = null;
 
     /** @var array<string, array{subject: string|null, body: string|null}> */
@@ -174,9 +174,12 @@ class MailTemplateService
             }
         }
 
-        return MailTemplateDefaults::LOCALES[0] ?? 'en-GB';
+        return MailTemplateDefaults::LOCALES[0];
     }
 
+    /**
+     * @phpstan-assert-if-true string $locale
+     */
     private function isSupportedLocale(?string $locale): bool
     {
         return $locale !== null && in_array($locale, MailTemplateDefaults::LOCALES, true);
@@ -207,7 +210,7 @@ class MailTemplateService
             ['locale' => $locale]
         );
 
-        return $id === false || $id === null ? null : (int) $id;
+        return is_numeric($id) ? (int) $id : null;
     }
 
     private function getLocaleByLanguageId(int $languageId): ?string
@@ -217,7 +220,7 @@ class MailTemplateService
             ['id' => $languageId]
         );
 
-        return $locale === false || $locale === null ? null : (string) $locale;
+        return is_scalar($locale) ? (string) $locale : null;
     }
 
     private function fetchField(int $pageId, string $fieldName, int $languageId): ?string
@@ -237,11 +240,13 @@ class MailTemplateService
             return null;
         }
 
+        $contentString = is_scalar($content) ? (string) $content : '';
+
         // Subjects should never carry HTML markup.
         if (str_ends_with($fieldName, '_subject')) {
-            return html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            return html_entity_decode(strip_tags($contentString), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }
 
-        return (string) $content;
+        return $contentString;
     }
 }

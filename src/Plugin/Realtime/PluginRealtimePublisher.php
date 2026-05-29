@@ -45,7 +45,7 @@ final class PluginRealtimePublisher implements PluginRealtimePublisherInterface
 
     public function publish(string $pluginId, string $topicKey, array $payload, array $options = []): void
     {
-        $topicParams = isset($options['topicParams']) && is_array($options['topicParams']) ? $options['topicParams'] : [];
+        $topicParams = $options['topicParams'] ?? [];
         $iri = $this->resolveTopicIri($pluginId, $topicKey, $topicParams);
         $event = isset($options['event']) ? (string) $options['event'] : $topicKey;
         $private = !array_key_exists('private', $options) || (bool) $options['private'];

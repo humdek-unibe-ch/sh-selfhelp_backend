@@ -24,6 +24,8 @@ class TransactionRepository extends ServiceEntityRepository
 
     /**
      * Find transactions by table name and ID
+     *
+     * @return Transaction[]
      */
     public function findByTableAndId(string $tableName, int $id): array
     {
@@ -35,28 +37,38 @@ class TransactionRepository extends ServiceEntityRepository
 
     /**
      * Find transactions by user
+     *
+     * @return list<Transaction>
      */
     public function findByUser(int $userId): array
     {
-        return $this->createQueryBuilder('t')
+        /** @var list<Transaction> $result */
+        $result = $this->createQueryBuilder('t')
             ->andWhere('t.user = :userId')
             ->setParameter('userId', $userId)
             ->orderBy('t.transactionTime', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
      * Find transactions by type
+     *
+     * @return list<Transaction>
      */
     public function findByTransactionType(string $type): array
     {
-        return $this->createQueryBuilder('t')
+        /** @var list<Transaction> $result */
+        $result = $this->createQueryBuilder('t')
             ->join('t.transactionType', 'tt')
             ->andWhere('tt.lookupValue = :type')
             ->setParameter('type', $type)
             ->orderBy('t.transactionTime', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 } 

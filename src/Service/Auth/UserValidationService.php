@@ -65,7 +65,7 @@ class UserValidationService extends BaseService
                 $user->setBlocked(true);
             }
 
-            $job = $this->scheduleValidationEmail($user->getId(), $token, $emailConfig);
+            $job = $this->scheduleValidationEmail((int) $user->getId(), $token, $emailConfig);
 
             if (!$job) {
                 throw new \RuntimeException('Failed to schedule validation email');
@@ -75,7 +75,7 @@ class UserValidationService extends BaseService
                 'success' => true,
                 'token' => $token,
                 'job_id' => $job->getId(),
-                'validation_url' => $this->buildValidationUrl($user->getId(), $token),
+                'validation_url' => $this->buildValidationUrl((int) $user->getId(), $token),
                 'message' => 'Validation email has been queued.',
             ];
         } catch (\Throwable $e) {
@@ -138,7 +138,7 @@ class UserValidationService extends BaseService
                     'token' => $token,
                     'email' => $user->getEmail(),
                     'welcome_job_id' => $welcomeJobId,
-                ])
+                ]) ?: null
             );
 
             $this->entityManager->commit();
@@ -195,7 +195,7 @@ class UserValidationService extends BaseService
             }
 
             $executed = $this->jobSchedulerService->executeJob(
-                $job->getId(),
+                (int) $job->getId(),
                 LookupService::TRANSACTION_BY_BY_SYSTEM
             );
 

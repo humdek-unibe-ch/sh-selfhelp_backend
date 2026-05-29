@@ -75,8 +75,10 @@ final class UpdatePluginHandler
             }
 
             $composer = $resolved->composer;
-            $package = (string) ($composer['package'] ?? '');
-            $version = (string) ($composer['version'] ?? '');
+            $packageRaw = $composer['package'] ?? '';
+            $package = is_scalar($packageRaw) ? (string) $packageRaw : '';
+            $versionRaw = $composer['version'] ?? '';
+            $version = is_scalar($versionRaw) ? (string) $versionRaw : '';
             if ($package === '' || $version === '') {
                 $this->recorder->fail(
                     $operation,
@@ -244,8 +246,10 @@ final class UpdatePluginHandler
      */
     private function emitManagedRunbook(PluginOperation $operation, array $manifestArray, ResolvedSource $resolved): void
     {
-        $package = (string) ($resolved->composer['package'] ?? ($manifestArray['id'] ?? ''));
-        $version = (string) ($resolved->composer['version'] ?? ($manifestArray['version'] ?? ''));
+        $packageRaw = $resolved->composer['package'] ?? $manifestArray['id'] ?? '';
+        $package = is_scalar($packageRaw) ? (string) $packageRaw : '';
+        $versionRaw = $resolved->composer['version'] ?? $manifestArray['version'] ?? '';
+        $version = is_scalar($versionRaw) ? (string) $versionRaw : '';
         $runbook = [
             'mode' => 'managed',
             'command' => sprintf('composer require %s:%s --no-interaction --no-scripts', $package, $version),

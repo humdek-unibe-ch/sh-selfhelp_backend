@@ -25,18 +25,24 @@ use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 #[ORM\Index(name: 'idx_users_id_timezones', columns: ['id_timezones'])]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
+    /** @var Collection<int, UsersGroup> */
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: UsersGroup::class, orphanRemoval: true)]
     private Collection $usersGroups;
 
     // --- RELATIONSHIPS ---
 
     /**
-     * @return Collection|Group[]
+     * @return Collection<int, Group>
      */
     public function getGroups(): Collection
     {
+        // Every UsersGroup still in the collection has a non-null group
+        // (removeUsersGroup() detaches it before nulling the back-reference);
+        // array_filter drops the never-occurring null case to satisfy types.
         return new ArrayCollection(
-            array_map(fn($ug) => $ug->getGroup(), $this->usersGroups->toArray())
+            array_values(array_filter(
+                array_map(fn(UsersGroup $ug) => $ug->getGroup(), $this->usersGroups->toArray())
+            ))
         );
     }
 
@@ -59,20 +65,27 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    /**
+     * @return Collection<int, UsersGroup>
+     */
     public function getUsersGroups(): Collection
     {
         return $this->usersGroups;
     }
 
+    /** @var Collection<int, Transaction> */
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: Transaction::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $transactions;
 
+    /** @var Collection<int, RefreshToken> */
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: RefreshToken::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $refreshTokens;
 
+    /** @var Collection<int, ValidationCode> */
     #[ORM\OneToMany(mappedBy: 'user', targetEntity: ValidationCode::class, orphanRemoval: true, cascade: ['persist', 'remove'])]
     private Collection $validationCodes;
 
+    /** @var Collection<int, Role> */
     #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'users', fetch: 'EAGER')]
     #[ORM\JoinTable(
         name: 'rel_roles_users',
@@ -125,7 +138,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     private ?int $id_languages = null;
 
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
-    private ?\DateTimeInterface $last_login = null;
+    private ?\DateTimeImmutable $last_login = null;
 
     #[ORM\Column(type: 'string', length: 200, nullable: true)]
     private ?string $device_token = null;
@@ -258,6 +271,18 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return $this;
     }
 
+    public function getDeviceToken(): ?string
+    {
+        return $this->device_token;
+    }
+
+    public function setDeviceToken(?string $deviceToken): static
+    {
+        $this->device_token = $deviceToken;
+
+        return $this;
+    }
+
     public function getIdLanguages(): ?int
     {
         return $this->id_languages;
@@ -265,12 +290,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
 
 
-    public function getLastLogin(): ?\DateTimeInterface
+    public function getLastLogin(): ?\DateTimeImmutable
     {
         return $this->last_login;
     }
 
-    public function setLastLogin(?\DateTimeInterface $last_login): static
+    public function setLastLogin(?\DateTimeImmutable $last_login): static
     {
         $this->last_login = $last_login;
 
@@ -338,13 +363,17 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function eraseCredentials(): void {}
     public function getUserIdentifier(): string
     {
+        // A persisted/authenticated user always has a non-empty email (the DB
+        // column is NOT NULL and login flows require it); assert the invariant
+        // so the security contract's non-empty-string return type holds.
+        assert($this->email !== null && $this->email !== '');
         return $this->email;
     }
 
     // --- RELATIONSHIP GETTERS & SETTERS ---
 
     /**
-     * @return Collection|Transaction[]
+     * @return Collection<int, Transaction>
      */
     public function getTransactions(): Collection
     {
@@ -369,7 +398,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     }
 
     /**
-     * @return Collection|RefreshToken[]
+     * @return Collection<int, RefreshToken>
      */
     public function getRefreshTokens(): Collection
     {
@@ -395,7 +424,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
 
 
     /**
-     * @return Collection|ValidationCode[]
+     * @return Collection<int, ValidationCode>
      */
     public function getValidationCodes(): Collection
     {
@@ -444,12 +473,6 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
         return false;
     }
 
-    /**
-     * Set the two-factor authentication requirement flag
-     * 
-     * @param bool $required Whether 2FA is required
-     * @return self
-     */
     public function getAclVersion(): ?string
     {
         return $this->acl_version;
@@ -479,10 +502,11 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     }
 
     /**
-     * @return Collection|Permission[]
+     * @return Collection<int, Permission>
      */
     public function getPermissions(): Collection
     {
+        /** @var ArrayCollection<int, Permission> $perms */
         $perms = new ArrayCollection();
         foreach ($this->getUserRoles() as $role) {
             foreach ($role->getPermissions() as $p) {

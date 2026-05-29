@@ -37,15 +37,18 @@ class ApiRoute
     #[ORM\Column(length: 50)]
     private ?string $methods = null;
 
+    /** @var array<string, mixed>|null */
     #[ORM\Column(type: 'json', nullable: true)]
     private ?array $requirements = null;
 
+    /** @var array<string, mixed>|null */
     #[ORM\Column(type: 'json', nullable: true, options: ['comment' => 'Expected parameters: name → {in: body|query, required: bool}'])]
     private ?array $params = null;
 
     #[ORM\Column(length: 10, options: ['default' => 'v1'])]
     private ?string $version = 'v1';
 
+    /** @var Collection<int, Permission> */
     #[ORM\ManyToMany(targetEntity: Permission::class, inversedBy: 'apiRoutes')]
     #[ORM\JoinTable(name: 'rel_api_routes_permissions',
         joinColumns: [new ORM\JoinColumn(name: 'id_api_routes', referencedColumnName: 'id', onDelete: 'CASCADE')],
@@ -133,11 +136,13 @@ class ApiRoute
         return $this;
     }
 
+    /** @return array<string, mixed>|null */
     public function getRequirements(): ?array
     {
         return $this->requirements;
     }
 
+    /** @param array<string, mixed>|null $requirements */
     public function setRequirements(?array $requirements): static
     {
         $this->requirements = $requirements;
@@ -145,11 +150,13 @@ class ApiRoute
         return $this;
     }
 
+    /** @return array<string, mixed>|null */
     public function getParams(): ?array
     {
         return $this->params;
     }
 
+    /** @param array<string, mixed>|null $params */
     public function setParams(?array $params): static
     {
         $this->params = $params;

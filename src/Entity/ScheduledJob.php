@@ -105,6 +105,7 @@ class ScheduledJob
     /**
      * Structured job payload used during execution and admin display.
      */
+    /** @var array<string, mixed>|null */
     #[ORM\Column(name: 'config', type: 'json', nullable: true)]
     private ?array $config = null;
 
@@ -247,11 +248,13 @@ class ScheduledJob
         return $this;
     }
 
+    /** @return array<string, mixed>|null */
     public function getConfig(): ?array
     {
         return $this->config;
     }
 
+    /** @param array<string, mixed>|null $config */
     public function setConfig(?array $config): self
     {
         $this->config = $config;

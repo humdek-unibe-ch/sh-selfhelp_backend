@@ -41,7 +41,11 @@ final class PluginManifestLoader
         if (!is_array($data)) {
             throw new \RuntimeException(sprintf('plugin.json at "%s" is not a JSON object.', $path));
         }
-        return $this->loadFromArray($data);
+        $assoc = [];
+        foreach ($data as $key => $value) {
+            $assoc[(string) $key] = $value;
+        }
+        return $this->loadFromArray($assoc);
     }
 
     /**

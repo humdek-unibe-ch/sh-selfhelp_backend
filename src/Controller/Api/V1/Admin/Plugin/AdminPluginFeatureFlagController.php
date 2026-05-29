@@ -59,7 +59,7 @@ final class AdminPluginFeatureFlagController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/plugins/set_feature_flag', $this->jsonSchemaValidationService);
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->setFeatureFlag($pluginId, $data),
+                $this->pluginAdminService->setFeatureFlag($pluginId, $this->toAssocArray($data)),
                 'responses/admin/plugins/plugin_feature_flags'
             );
         } catch (\Throwable $e) {

@@ -8,6 +8,7 @@
 
 namespace App\Controller\Api\V1\Admin;
 
+use App\Controller\Trait\RequestValidatorTrait;
 use App\Service\CMS\Admin\PageVersionService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +23,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class PageVersionController extends AbstractController
 {
+    use RequestValidatorTrait;
+
     public function __construct(
         private readonly PageVersionService $pageVersionService,
         private readonly ApiResponseFormatter $responseFormatter
@@ -37,11 +40,12 @@ class PageVersionController extends AbstractController
     {
         try {
             // Get request body
-            $data = json_decode($request->getContent(), true) ?? [];
-            
-            $versionName = $data['version_name'] ?? null;
-            $metadata = $data['metadata'] ?? null;
-            $languageId = $data['language_id'] ?? null;
+            $decoded = json_decode($request->getContent(), true);
+            $data = is_array($decoded) ? $decoded : [];
+
+            $versionName = $this->asStringOrNullField($data, 'version_name');
+            $metadata = $this->asNullableArrayField($data, 'metadata');
+            $languageId = $this->asIntOrNullField($data, 'language_id');
 
             // Create and publish the version
             $version = $this->pageVersionService->createAndPublishVersion(
@@ -183,7 +187,8 @@ class PageVersionController extends AbstractController
             $version = $this->pageVersionService->getVersionById($version_id);
 
             // Verify the version belongs to this page
-            if ($version->getPage()->getId() !== $page_id) {
+            $page = $version->getPage();
+            if ($page === null || $page->getId() !== $page_id) {
                 return $this->responseFormatter->formatError(
                     "Version {$version_id} does not belong to page {$page_id}",
                     Response::HTTP_BAD_REQUEST
@@ -194,7 +199,7 @@ class PageVersionController extends AbstractController
 
             $versionData = [
                 'id' => $version->getId(),
-                'page_id' => $version->getPage()->getId(),
+                'page_id' => $page->getId(),
                 'version_number' => $version->getVersionNumber(),
                 'version_name' => $version->getVersionName(),
                 'created_by' => $version->getCreatedBy() ? [

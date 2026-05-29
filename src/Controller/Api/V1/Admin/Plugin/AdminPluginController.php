@@ -285,14 +285,14 @@ final class AdminPluginController extends AbstractController
             // pinned by the update controller) is appended AFTER this
             // call so it does not need to be in the schema.
             $payload = $this->validateRequest($request, 'requests/admin/plugins/install', $this->jsonSchemaValidationService);
-            return [$payload, null];
+            return [$this->toAssocArray($payload), null];
         }
         $raw = (string) $request->getContent();
         $payload = $raw === '' ? [] : json_decode($raw, true);
         if (!is_array($payload)) {
             $payload = [];
         }
-        return [$payload, null];
+        return [$this->toAssocArray($payload), null];
     }
 
     /**
@@ -352,7 +352,7 @@ final class AdminPluginController extends AbstractController
     {
         try {
             $payload = $this->validateRequest($request, 'requests/admin/plugins/purge_plugin', $this->jsonSchemaValidationService);
-            $confirmed = (string) ($payload['confirmedPluginId'] ?? '');
+            $confirmed = $this->asStringField($this->toAssocArray($payload), 'confirmedPluginId');
             $this->pluginAdminService->purge($pluginId, $confirmed);
             return $this->responseFormatter->formatSuccess(['pluginId' => $pluginId, 'status' => 'purged']);
         } catch (\Throwable $e) {

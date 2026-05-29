@@ -38,8 +38,10 @@ final class PluginRollbackCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $opIdRaw = $input->getArgument('operationId');
+        $opId = is_numeric($opIdRaw) ? (int) $opIdRaw : 0;
         try {
-            $op = $this->pluginAdminService->rollback((int) $input->getArgument('operationId'));
+            $op = $this->pluginAdminService->rollback($opId);
         } catch (\Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;

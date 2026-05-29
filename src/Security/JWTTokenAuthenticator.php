@@ -11,7 +11,6 @@ namespace App\Security;
 use App\Entity\User;
 use App\Service\Auth\JWTService;
 use App\Service\Cache\Core\CacheService;
-use App\Service\Core\ApiResponseFormatter;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -28,7 +27,6 @@ class JWTTokenAuthenticator extends AbstractAuthenticator
     public function __construct(
         private readonly JWTService $jwtService,
         private readonly EntityManagerInterface $entityManager,
-        private readonly ApiResponseFormatter $responseFormatter,
         private readonly CacheService $cache
     ) {
     }
@@ -42,10 +40,13 @@ class JWTTokenAuthenticator extends AbstractAuthenticator
             return false;
         }
 
-        // Check for Authorization header in multiple ways (for Apache compatibility)
+        // Check for Authorization header in multiple ways (for Apache compatibility).
+        // ServerBag::get() returns mixed, so narrow to string before str_starts_with().
+        $httpAuth = $request->server->get('HTTP_AUTHORIZATION', '');
+        $redirectAuth = $request->server->get('REDIRECT_HTTP_AUTHORIZATION', '');
         $hasAuth = $request->headers->has('Authorization') && str_starts_with($request->headers->get('Authorization', ''), 'Bearer ');
-        $hasHttpAuth = $request->server->has('HTTP_AUTHORIZATION') && str_starts_with($request->server->get('HTTP_AUTHORIZATION', ''), 'Bearer ');
-        $hasRedirectAuth = $request->server->has('REDIRECT_HTTP_AUTHORIZATION') && str_starts_with($request->server->get('REDIRECT_HTTP_AUTHORIZATION', ''), 'Bearer ');
+        $hasHttpAuth = is_string($httpAuth) && str_starts_with($httpAuth, 'Bearer ');
+        $hasRedirectAuth = is_string($redirectAuth) && str_starts_with($redirectAuth, 'Bearer ');
 
         $hasToken = $hasAuth || $hasHttpAuth || $hasRedirectAuth;
 
@@ -79,18 +80,22 @@ class JWTTokenAuthenticator extends AbstractAuthenticator
         if (null === $userIdentifier) {
             throw new CustomUserMessageAuthenticationException('User identifier not found in token payload.');
         }
+        if (!is_numeric($userIdentifier)) {
+            throw new CustomUserMessageAuthenticationException('User identifier in token payload is invalid.');
+        }
+        $userId = (int) $userIdentifier;
 
         $user = $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userIdentifier)
-            ->getItem("user_profile", fn() => $this->entityManager->getRepository(User::class)->findOneBy(['id' => $userIdentifier]));
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getItem("user_profile", fn() => $this->entityManager->getRepository(User::class)->findOneBy(['id' => $userId]));
 
 
         if (null === $user) {
-            throw new CustomUserMessageAuthenticationException(sprintf('User "%s" not found.', $userIdentifier));
+            throw new CustomUserMessageAuthenticationException(sprintf('User "%d" not found.', $userId));
         }
 
-        return new SelfValidatingPassport(new UserBadge($userIdentifier, function ($userIdentifier) use ($user) {
+        return new SelfValidatingPassport(new UserBadge((string) $userId, function () use ($user) {
             // This callable is used to load the user from the UserBadge's identifier.
             // Since we already loaded the user, we can just return it.
             // Or, ensure UserBadge is constructed with the User object itself if your UserProvider supports it.

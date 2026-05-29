@@ -53,7 +53,8 @@ class ScheduledJobExecuteOneCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $jobId = (int) $input->getArgument('jobId');
+        $jobIdRaw = $input->getArgument('jobId');
+        $jobId = is_numeric($jobIdRaw) ? (int) $jobIdRaw : 0;
 
         $result = $this->jobSchedulerService->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM);
         if (!$result) {

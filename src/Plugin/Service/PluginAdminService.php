@@ -52,6 +52,22 @@ use Symfony\Component\HttpFoundation\Response;
  * implements the read-side queries (list plugins, list operations,
  * list sources) and emits structured DTO arrays for the response
  * formatter.
+ *
+ * @phpstan-type PluginOperationData array{
+ *     id: int|null,
+ *     pluginId: string,
+ *     type: string,
+ *     status: string,
+ *     requestedVersion: string|null,
+ *     fromVersion: string|null,
+ *     toVersion: string|null,
+ *     installMode: string,
+ *     errorSummary: string|null,
+ *     startedAt: string|null,
+ *     finishedAt: string|null,
+ *     createdAt: string,
+ *     logs: array<int,array<string,mixed>>|null
+ * }
  */
 final class PluginAdminService extends BaseService
 {
@@ -178,7 +194,7 @@ final class PluginAdminService extends BaseService
             $body = $response->getContent(false);
             $body = preg_replace('/^\xEF\xBB\xBF/', '', $body) ?? $body;
             $decoded = json_decode($body, true);
-            return is_array($decoded) ? $decoded : null;
+            return is_array($decoded) ? $this->asAssocArray($decoded) : null;
         } catch (TransportExceptionInterface) {
             return null;
         } catch (\Throwable) {
@@ -259,7 +275,7 @@ final class PluginAdminService extends BaseService
                 if (\App\Plugin\Versioning\SemverHelper::compare($candidateVersion, $installed->getVersion()) <= 0) {
                     continue;
                 }
-                if ($best === null || \App\Plugin\Versioning\SemverHelper::compare($candidateVersion, (string) ($best['version'] ?? '0.0.0')) > 0) {
+                if ($best === null || \App\Plugin\Versioning\SemverHelper::compare($candidateVersion, $this->asString($best['version'] ?? '0.0.0')) > 0) {
                     $best = $entry;
                     $bestSource = $sourceName;
                 }
@@ -286,8 +302,8 @@ final class PluginAdminService extends BaseService
                 'pluginId' => $pluginId,
                 'name' => $installed->getName(),
                 'installedVersion' => $installed->getVersion(),
-                'availableVersion' => (string) $best['version'],
-                'diffKind' => \App\Plugin\Versioning\SemverHelper::diffKind($installed->getVersion(), (string) $best['version']),
+                'availableVersion' => $this->asString($best['version']),
+                'diffKind' => \App\Plugin\Versioning\SemverHelper::diffKind($installed->getVersion(), $this->asString($best['version'])),
                 'sourceName' => $bestSource,
                 'trustLevel' => is_string($best['trustLevel'] ?? null) ? $best['trustLevel'] : $installed->getTrustLevel(),
                 'manifestUrl' => $resolvedManifestUrl,
@@ -320,15 +336,16 @@ final class PluginAdminService extends BaseService
      * Returns the freshly-created `plugin_operations` row so the UI
      * can subscribe to its Mercure topic.
      *
-     * @param array{
-     *   source: 'registry'|'url'|'paste'|'archive',
-     *   registryEntry?: array<string,mixed>,
-     *   sourceName?: string,
-     *   manifestUrl?: string,
-     *   manifest?: array<string,mixed>,
-     *   forceMajor?: bool,
-     *   backupBefore?: bool,
-     * } $input
+     * Recognised `$input` keys (validated at runtime by resolveSource()):
+     *   - source: 'registry'|'url'|'paste'|'archive'
+     *   - registryEntry?: array<string,mixed>
+     *   - sourceName?: string
+     *   - manifestUrl?: string
+     *   - manifest?: array<string,mixed>
+     *   - forceMajor?: bool
+     *   - backupBefore?: bool
+     *
+     * @param array<string,mixed> $input
      * @return array<string,mixed>
      */
     public function install(array $input, ?UploadedFile $archive = null): array
@@ -416,22 +433,23 @@ final class PluginAdminService extends BaseService
      * accidentally (or maliciously) updating plugin A with the manifest
      * of plugin B by changing the URL path while keeping the body.
      *
-     * @param array{
-     *   source: 'registry'|'url'|'paste'|'archive',
-     *   registryEntry?: array<string,mixed>,
-     *   sourceName?: string,
-     *   manifestUrl?: string,
-     *   manifest?: array<string,mixed>,
-     *   forceMajor?: bool,
-     *   backupBefore?: bool,
-     *   expectedPluginId?: string,
-     * } $input
+     * Recognised `$input` keys (validated at runtime by resolveSource()):
+     *   - source: 'registry'|'url'|'paste'|'archive'
+     *   - registryEntry?: array<string,mixed>
+     *   - sourceName?: string
+     *   - manifestUrl?: string
+     *   - manifest?: array<string,mixed>
+     *   - forceMajor?: bool
+     *   - backupBefore?: bool
+     *   - expectedPluginId?: string
+     *
+     * @param array<string,mixed> $input
      * @return array<string,mixed>
      */
     public function update(array $input, ?UploadedFile $archive = null): array
     {
         $resolved = $this->resolveSource($input, $archive);
-        $expectedPluginId = isset($input['expectedPluginId']) ? (string) $input['expectedPluginId'] : null;
+        $expectedPluginId = isset($input['expectedPluginId']) ? $this->asString($input['expectedPluginId']) : null;
         if ($expectedPluginId !== null && $expectedPluginId !== '') {
             $actual = $resolved['manifest']->getPluginId();
             if ($actual !== $expectedPluginId) {
@@ -499,28 +517,28 @@ final class PluginAdminService extends BaseService
      */
     private function resolveSource(array $input, ?UploadedFile $archive): array
     {
-        $source = (string) ($input['source'] ?? '');
+        $source = $this->asString($input['source'] ?? '');
         switch ($source) {
             case ResolvedSource::KIND_REGISTRY:
                 if (!isset($input['registryEntry']) || !is_array($input['registryEntry'])) {
                     $this->throwValidationError('install.source=registry requires a `registryEntry` object.');
                 }
-                $sourceName = isset($input['sourceName']) ? (string) $input['sourceName'] : 'registry';
-                return $this->manifestResolver->resolveRegistry($input['registryEntry'], $sourceName);
+                $sourceName = isset($input['sourceName']) ? $this->asString($input['sourceName']) : 'registry';
+                return $this->manifestResolver->resolveRegistry($this->asAssocArray($input['registryEntry']), $sourceName);
 
             case ResolvedSource::KIND_URL:
                 if (!isset($input['manifestUrl']) || !is_string($input['manifestUrl']) || $input['manifestUrl'] === '') {
                     $this->throwValidationError('install.source=url requires a `manifestUrl`.');
                 }
-                $registryEntry = isset($input['registryEntry']) && is_array($input['registryEntry']) ? $input['registryEntry'] : null;
-                return $this->manifestResolver->resolveUrl((string) $input['manifestUrl'], $registryEntry);
+                $registryEntry = isset($input['registryEntry']) && is_array($input['registryEntry']) ? $this->asAssocArray($input['registryEntry']) : null;
+                return $this->manifestResolver->resolveUrl($input['manifestUrl'], $registryEntry);
 
             case ResolvedSource::KIND_PASTE:
                 if (!isset($input['manifest']) || !is_array($input['manifest'])) {
                     $this->throwValidationError('install.source=paste requires a `manifest` object.');
                 }
-                $registryEntry = isset($input['registryEntry']) && is_array($input['registryEntry']) ? $input['registryEntry'] : null;
-                return $this->manifestResolver->resolvePaste($input['manifest'], $registryEntry);
+                $registryEntry = isset($input['registryEntry']) && is_array($input['registryEntry']) ? $this->asAssocArray($input['registryEntry']) : null;
+                return $this->manifestResolver->resolvePaste($this->asAssocArray($input['manifest']), $registryEntry);
 
             case ResolvedSource::KIND_ARCHIVE:
                 if (!$archive instanceof UploadedFile) {
@@ -531,8 +549,6 @@ final class PluginAdminService extends BaseService
             default:
                 $this->throwValidationError(sprintf('Unknown install source "%s". Expected registry|url|paste|archive.', $source));
         }
-        // unreachable
-        throw new \LogicException('resolveSource fell through');
     }
 
     /** @return array<string,mixed> */
@@ -553,7 +569,7 @@ final class PluginAdminService extends BaseService
      * Messenger worker handles `composer remove` and the lock-file +
      * bundles regeneration via `PluginUninstaller::finalize()`.
      *
-     * @return array<string,mixed>
+     * @return PluginOperationData
      */
     public function uninstall(string $pluginId): array
     {
@@ -565,7 +581,7 @@ final class PluginAdminService extends BaseService
         $this->purger->purge($pluginId, $confirmedPluginId, $backupBefore);
     }
 
-    /** @return array<string,mixed> */
+    /** @return PluginOperationData */
     public function rollback(int $operationId): array
     {
         return $this->formatOperation($this->rollbacker->rollback($operationId));
@@ -581,7 +597,7 @@ final class PluginAdminService extends BaseService
         return $this->repairer->repair();
     }
 
-    /** @return array<int, array<string,mixed>> */
+    /** @return array<int, PluginOperationData> */
     public function listOperations(?string $pluginId = null, int $limit = 100): array
     {
         $operations = $pluginId !== null
@@ -591,7 +607,7 @@ final class PluginAdminService extends BaseService
         return array_map(fn(PluginOperation $op) => $this->formatOperation($op), $operations);
     }
 
-    /** @return array<string,mixed> */
+    /** @return PluginOperationData */
     public function getOperation(int $operationId): array
     {
         return $this->formatOperation($this->mustFindOperation($operationId));
@@ -605,7 +621,7 @@ final class PluginAdminService extends BaseService
      * Only operations in REQUESTED or RUNNING are eligible — any
      * other status is a no-op (idempotent for the UI).
      *
-     * @return array<string,mixed>
+     * @return PluginOperationData
      */
     public function cancelOperation(int $operationId): array
     {
@@ -639,25 +655,28 @@ final class PluginAdminService extends BaseService
         return array_map(fn(PluginSource $s) => $this->formatSource($s), $this->sources->findAll());
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
     public function createSource(array $data): array
     {
         $source = new PluginSource(
-            (string) $data['name'],
-            (string) $data['kind'],
-            (string) $data['url'],
+            $this->asString($data['name'] ?? ''),
+            $this->asString($data['kind'] ?? ''),
+            $this->asString($data['url'] ?? ''),
         );
         if (isset($data['authHeaderName'])) {
-            $source->setAuthHeaderName((string) $data['authHeaderName']);
+            $source->setAuthHeaderName($this->asString($data['authHeaderName']));
         }
         if (isset($data['authSecretEnvVar'])) {
-            $source->setAuthSecretEnvVar((string) $data['authSecretEnvVar']);
+            $source->setAuthSecretEnvVar($this->asString($data['authSecretEnvVar']));
         }
         if (isset($data['channel'])) {
-            $source->setChannel((string) $data['channel']);
+            $source->setChannel($this->asString($data['channel']));
         }
         if (isset($data['trustLevel'])) {
-            $source->setTrustLevel((string) $data['trustLevel']);
+            $source->setTrustLevel($this->asString($data['trustLevel']));
         }
         if (isset($data['enabled'])) {
             $source->setEnabled((bool) $data['enabled']);
@@ -667,7 +686,10 @@ final class PluginAdminService extends BaseService
         return $this->formatSource($source);
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
     public function updateSource(int $sourceId, array $data): array
     {
         $source = $this->sources->find($sourceId);
@@ -695,25 +717,25 @@ final class PluginAdminService extends BaseService
         }
 
         if (array_key_exists('name', $data)) {
-            $source->setName((string) $data['name']);
+            $source->setName($this->asString($data['name']));
         }
         if (array_key_exists('kind', $data)) {
-            $source->setKind((string) $data['kind']);
+            $source->setKind($this->asString($data['kind']));
         }
         if (array_key_exists('url', $data)) {
-            $source->setUrl((string) $data['url']);
+            $source->setUrl($this->asString($data['url']));
         }
         if (array_key_exists('authHeaderName', $data)) {
-            $source->setAuthHeaderName($data['authHeaderName'] === null ? null : (string) $data['authHeaderName']);
+            $source->setAuthHeaderName($this->asStringOrNull($data['authHeaderName']));
         }
         if (array_key_exists('authSecretEnvVar', $data)) {
-            $source->setAuthSecretEnvVar($data['authSecretEnvVar'] === null ? null : (string) $data['authSecretEnvVar']);
+            $source->setAuthSecretEnvVar($this->asStringOrNull($data['authSecretEnvVar']));
         }
         if (array_key_exists('channel', $data)) {
-            $source->setChannel((string) $data['channel']);
+            $source->setChannel($this->asString($data['channel']));
         }
         if (array_key_exists('trustLevel', $data)) {
-            $source->setTrustLevel((string) $data['trustLevel']);
+            $source->setTrustLevel($this->asString($data['trustLevel']));
         }
         if (array_key_exists('enabled', $data)) {
             $source->setEnabled((bool) $data['enabled']);
@@ -750,13 +772,16 @@ final class PluginAdminService extends BaseService
         );
     }
 
-    /** @return array<string,mixed> */
+    /**
+     * @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
     public function setFeatureFlag(string $pluginId, array $data): array
     {
         $plugin = $this->mustFindPlugin($pluginId);
-        $flagKey = (string) $data['flagKey'];
-        $scope = isset($data['scope']) ? (string) $data['scope'] : PluginFeatureFlag::SCOPE_GLOBAL;
-        $scopeValue = isset($data['scopeValue']) ? (string) $data['scopeValue'] : '';
+        $flagKey = $this->asString($data['flagKey'] ?? '');
+        $scope = isset($data['scope']) ? $this->asString($data['scope']) : PluginFeatureFlag::SCOPE_GLOBAL;
+        $scopeValue = isset($data['scopeValue']) ? $this->asString($data['scopeValue']) : '';
         $enabled = (bool) ($data['enabled'] ?? true);
 
         $flag = $this->featureFlags->findOneByKey($plugin, $flagKey, $scope, $scopeValue);
@@ -789,6 +814,7 @@ final class PluginAdminService extends BaseService
         return $this->installModeResolver->resolve();
     }
 
+    /** @return array<string,mixed>|null */
     public function getLockFileSnapshot(): ?array
     {
         return $this->lockFileReader->readRaw();
@@ -885,7 +911,7 @@ final class PluginAdminService extends BaseService
     }
 
     /**
-     * @return array<string,mixed>
+     * @return PluginOperationData
      */
     private function formatOperation(PluginOperation $op): array
     {

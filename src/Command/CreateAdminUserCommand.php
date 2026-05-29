@@ -87,22 +87,27 @@ class CreateAdminUserCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
 
-        $email = (string) $input->getArgument('email');
-        $displayName = (string) $input->getArgument('display-name');
-        $userName = (string) ($input->getOption('name') ?? $email);
+        $emailArg = $input->getArgument('email');
+        $email = is_string($emailArg) ? $emailArg : '';
+        $displayNameArg = $input->getArgument('display-name');
+        $displayName = is_string($displayNameArg) ? $displayNameArg : '';
+        $nameOpt = $input->getOption('name');
+        $userName = is_string($nameOpt) && $nameOpt !== '' ? $nameOpt : $email;
 
-        $password = $input->getOption('password');
-        if ($password === null || $password === '') {
+        $passwordRaw = $input->getOption('password');
+        $password = is_string($passwordRaw) ? $passwordRaw : '';
+        if ($password === '') {
             /** @var QuestionHelper $helper */
             $helper = $this->getHelper('question');
             $question = new Question('Password (hidden input): ');
             $question->setHidden(true);
             $question->setHiddenFallback(false);
-            $password = $helper->ask($input, $output, $question);
-            if (!is_string($password) || $password === '') {
+            $answer = $helper->ask($input, $output, $question);
+            if (!is_string($answer) || $answer === '') {
                 $io->error('Password is required.');
                 return Command::FAILURE;
             }
+            $password = $answer;
         }
 
         $em = $this->entityManager;
@@ -152,8 +157,10 @@ class CreateAdminUserCommand extends Command
         }
 
         if (!$input->getOption('no-admin')) {
-            $groupKw = (string) $input->getOption('group');
-            $roleKw = (string) $input->getOption('role');
+            $groupOpt = $input->getOption('group');
+            $groupKw = is_string($groupOpt) ? $groupOpt : '';
+            $roleOpt = $input->getOption('role');
+            $roleKw = is_string($roleOpt) ? $roleOpt : '';
 
             $group = $em->getRepository(Group::class)->findOneBy(['name' => $groupKw]);
             $role = $em->getRepository(Role::class)->findOneBy(['name' => $roleKw]);
@@ -186,7 +193,7 @@ class CreateAdminUserCommand extends Command
 
         $user->bumpAclVersion();
         $em->flush();
-        $this->invalidateUserCaches($user->getId());
+        $this->invalidateUserCaches((int) $user->getId());
 
         $io->success(($isNew ? 'Created' : 'Updated') . " admin user #{$user->getId()} <{$email}>.");
         $io->writeln('You can now log in with:');

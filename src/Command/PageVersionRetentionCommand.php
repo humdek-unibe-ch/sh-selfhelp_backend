@@ -70,8 +70,10 @@ class PageVersionRetentionCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         
-        $keepCount = (int) $input->getOption('keep');
-        $pageId = $input->getOption('page') ? (int) $input->getOption('page') : null;
+        $keepRaw = $input->getOption('keep');
+        $keepCount = is_numeric($keepRaw) ? (int) $keepRaw : 10;
+        $pageRaw = $input->getOption('page');
+        $pageId = is_numeric($pageRaw) ? (int) $pageRaw : null;
         $dryRun = $input->getOption('dry-run');
 
         $io->title('Page Version Retention Policy');
@@ -102,7 +104,7 @@ class PageVersionRetentionCommand extends Command
 
             try {
                 if (!$dryRun) {
-                    $deletedCount = $this->pageVersionService->applyRetentionPolicy($page->getId(), $keepCount);
+                    $deletedCount = $this->pageVersionService->applyRetentionPolicy((int) $page->getId(), $keepCount);
                     $totalDeleted += $deletedCount;
                     
                     if ($deletedCount > 0) {

@@ -32,12 +32,12 @@ class PluginRepository extends ServiceEntityRepository
     /** @return list<Plugin> */
     public function findEnabled(): array
     {
-        return $this->findBy(['enabled' => true]);
+        return array_values($this->findBy(['enabled' => true]));
     }
 
     /** @return list<Plugin> */
     public function findAllOrderedByName(): array
     {
-        return $this->findBy([], ['name' => 'ASC']);
+        return array_values($this->findBy([], ['name' => 'ASC']));
     }
 }

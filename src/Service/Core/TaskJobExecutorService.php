@@ -11,7 +11,6 @@ namespace App\Service\Core;
 use App\Entity\Group;
 use App\Entity\ScheduledJob;
 use App\Entity\UsersGroup;
-use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -23,8 +22,7 @@ class TaskJobExecutorService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TransactionService $transactionService,
-        private readonly CacheService $cache,
-        private readonly UserRepository $userRepository
+        private readonly CacheService $cache
     ) {
     }
 
@@ -41,7 +39,7 @@ class TaskJobExecutorService extends BaseService
      */
     public function execute(ScheduledJob $job, string $transactionBy): bool
     {
-        $taskConfig = $job->getConfig()['task'] ?? [];
+        $taskConfig = $this->asArray($job->getConfig()['task'] ?? []);
         $taskType = $taskConfig['task_type'] ?? null;
         $groupSpecs = $taskConfig['groups'] ?? [];
         $user = $job->getUser();
@@ -68,7 +66,7 @@ class TaskJobExecutorService extends BaseService
                 continue;
             }
 
-            $currentMembership = $this->findMembership($user->getId(), $group->getId());
+            $currentMembership = $this->findMembership((int) $user->getId(), (int) $group->getId());
             $membershipChanged = false;
             if ($taskType === 'add_group') {
                 if ($currentMembership === null) {
@@ -89,7 +87,7 @@ class TaskJobExecutorService extends BaseService
             }
 
             if ($membershipChanged) {
-                $affectedGroupIds[] = $group->getId();
+                $affectedGroupIds[] = (int) $group->getId();
             }
 
             $this->transactionService->logTransaction(
@@ -112,7 +110,7 @@ class TaskJobExecutorService extends BaseService
         $this->entityManager->flush();
 
         if (!empty($affectedGroupIds)) {
-            $this->invalidateUserGroupCaches($user->getId(), array_values(array_unique($affectedGroupIds)));
+            $this->invalidateUserGroupCaches((int) $user->getId(), array_values(array_unique($affectedGroupIds)));
         }
 
         return $success;
@@ -123,6 +121,8 @@ class TaskJobExecutorService extends BaseService
      * change performed by a scheduled task job. Mirrors the behaviour of
      * AdminUserService::invalidateUserGroupCaches so the ACL cache does not
      * go stale when memberships are modified by jobs.
+     *
+     * @param list<int> $groupIds
      */
     private function invalidateUserGroupCaches(int $userId, array $groupIds): void
     {

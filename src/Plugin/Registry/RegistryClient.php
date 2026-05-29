@@ -61,11 +61,19 @@ final class RegistryClient
                 ]);
                 continue;
             }
-            foreach ($index['plugins'] ?? [] as $entry) {
-                if (!is_array($entry) || !isset($entry['id'])) {
+            $plugins = $index['plugins'] ?? [];
+            if (!is_array($plugins)) {
+                continue;
+            }
+            foreach ($plugins as $entry) {
+                if (!is_array($entry) || !isset($entry['id']) || !is_scalar($entry['id'])) {
                     continue;
                 }
-                $combined[(string) $entry['id']][$source->getName()] = $entry;
+                $assoc = [];
+                foreach ($entry as $key => $value) {
+                    $assoc[(string) $key] = $value;
+                }
+                $combined[(string) $entry['id']][$source->getName()] = $assoc;
             }
         }
         return $combined;
@@ -118,7 +126,11 @@ final class RegistryClient
         if (!is_array($decoded)) {
             throw new \RuntimeException(sprintf('Registry %s returned invalid JSON.', $url));
         }
-        return $decoded;
+        $out = [];
+        foreach ($decoded as $key => $value) {
+            $out[(string) $key] = $value;
+        }
+        return $out;
     }
 
     private function resolveIndexUrl(PluginSource $source): string

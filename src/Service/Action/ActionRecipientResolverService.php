@@ -40,10 +40,15 @@ class ActionRecipientResolverService
         $users = [];
 
         if (($runtimeConfig[ActionConfig::TARGET_GROUPS] ?? false) === true) {
-            $groupNames = array_values(array_filter(
-                $runtimeConfig[ActionConfig::SELECTED_TARGET_GROUPS] ?? [],
-                static fn(mixed $value): bool => is_string($value) && $value !== ''
-            ));
+            $groupNames = [];
+            $selectedGroups = $runtimeConfig[ActionConfig::SELECTED_TARGET_GROUPS] ?? [];
+            if (is_array($selectedGroups)) {
+                foreach ($selectedGroups as $value) {
+                    if (is_string($value) && $value !== '') {
+                        $groupNames[] = $value;
+                    }
+                }
+            }
             $users = $this->userRepository->findIdsByGroupNames($groupNames);
         } elseif ($sourceUserId !== null) {
             $users = [$sourceUserId];
@@ -53,6 +58,7 @@ class ActionRecipientResolverService
         $overwriteVariables = $runtimeConfig[ActionConfig::SELECTED_OVERWRITE_VARIABLES] ?? [];
         if (
             $overwriteVariablesEnabled &&
+            is_array($overwriteVariables) &&
             in_array(ActionConfig::OVERWRITE_IMPERSONATE_USER_CODE, $overwriteVariables, true) &&
             isset($submittedValues[ActionConfig::OVERWRITE_IMPERSONATE_USER_CODE]) &&
             is_string($submittedValues[ActionConfig::OVERWRITE_IMPERSONATE_USER_CODE])

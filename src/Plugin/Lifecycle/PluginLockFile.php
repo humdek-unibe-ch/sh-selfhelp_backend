@@ -52,13 +52,36 @@ final class PluginLockFile
     /** @param array<string,mixed> $data */
     public static function fromArray(array $data): self
     {
-        $generatedAt = isset($data['generatedAt']) ? new \DateTimeImmutable((string) $data['generatedAt']) : new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $generatedAtRaw = $data['generatedAt'] ?? null;
+        $generatedAt = is_scalar($generatedAtRaw)
+            ? new \DateTimeImmutable((string) $generatedAtRaw)
+            : new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
+        $plugins = [];
+        if (isset($data['plugins']) && is_array($data['plugins'])) {
+            foreach ($data['plugins'] as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                $assoc = [];
+                foreach ($entry as $key => $value) {
+                    $assoc[(string) $key] = $value;
+                }
+                $plugins[] = $assoc;
+            }
+        }
+
         return new self(
-            (string) ($data['schemaVersion'] ?? '1.0'),
-            (string) ($data['generatedBy'] ?? 'unknown'),
+            self::str($data['schemaVersion'] ?? null, '1.0'),
+            self::str($data['generatedBy'] ?? null, 'unknown'),
             $generatedAt,
-            (string) ($data['installMode'] ?? 'managed'),
-            isset($data['plugins']) && is_array($data['plugins']) ? array_values($data['plugins']) : [],
+            self::str($data['installMode'] ?? null, 'managed'),
+            $plugins,
         );
+    }
+
+    private static function str(mixed $value, string $default): string
+    {
+        return is_scalar($value) ? (string) $value : $default;
     }
 }

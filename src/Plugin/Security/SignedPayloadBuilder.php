@@ -163,7 +163,7 @@ final class SignedPayloadBuilder
     }
 
     /**
-     * @param array<string,mixed> $archive
+     * @param array<array-key,mixed> $archive
      * @return array<string,mixed>
      */
     private function normaliseArchive(array $archive): array
@@ -210,7 +210,7 @@ final class SignedPayloadBuilder
     }
 
     /**
-     * @param array<string,mixed> $data
+     * @param array<array-key,mixed> $data
      */
     private function requireString(array $data, string $key, ?string $label = null): string
     {

@@ -106,6 +106,7 @@ class PageVersion
      * - Condition definitions
      * - Style configurations
      */
+    /** @var array<string, mixed> */
     #[ORM\Column(name: 'page_json', type: 'json', nullable: false, options: ['comment' => 'Complete JSON structure from getPage() including all languages, conditions, data table configs'])]
     private array $pageJson;
 
@@ -162,6 +163,7 @@ class PageVersion
     /**
      * Additional metadata like change summary, tags, etc.
      */
+    /** @var array<string, mixed>|null */
     #[ORM\Column(name: 'metadata', type: 'json', nullable: true, options: ['comment' => 'Additional info like change summary, tags, etc.'])]
     private ?array $metadata = null;
 
@@ -210,11 +212,13 @@ class PageVersion
         return $this;
     }
 
+    /** @return array<string, mixed> */
     public function getPageJson(): array
     {
         return $this->pageJson;
     }
 
+    /** @param array<string, mixed> $pageJson */
     public function setPageJson(array $pageJson): static
     {
         $this->pageJson = $pageJson;
@@ -272,11 +276,13 @@ class PageVersion
         return $this;
     }
 
+    /** @return array<string, mixed>|null */
     public function getMetadata(): ?array
     {
         return $this->metadata;
     }
 
+    /** @param array<string, mixed>|null $metadata */
     public function setMetadata(?array $metadata): static
     {
         $this->metadata = $metadata;

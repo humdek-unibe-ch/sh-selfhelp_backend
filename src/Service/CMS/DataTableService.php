@@ -19,12 +19,8 @@ use App\Repository\RoleDataAccessRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
-use App\Service\ACL\ACLService;
-use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Security\DataAccessSecurityService;
-use App\Repository\PageRepository;
-use App\Repository\SectionRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -43,10 +39,6 @@ class DataTableService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly TransactionService $transactionService,
         private readonly DataTableRepository $dataTableRepository,
-        private readonly ACLService $aclService,
-        private readonly UserContextService $userContextService,
-        private readonly PageRepository $pageRepository,
-        private readonly SectionRepository $sectionRepository,
         private readonly CacheService $cache,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
@@ -78,7 +70,7 @@ class DataTableService extends BaseService
         try {
             // Create new dataTable
             $dataTable = new DataTable();
-            $dataTable->setName($formName);
+            $dataTable->setName((string) $formName);
             $dataTable->setTimestamp(new \DateTime());
             
             // Set displayName from section's displayName field if available
@@ -140,6 +132,10 @@ class DataTableService extends BaseService
             $dataTable = $this->dataTableRepository->findOneBy(['name' => $formName]);
         }
 
+        if (!$dataTable) {
+            throw new ServiceException('Data table not found', Response::HTTP_NOT_FOUND);
+        }
+
         $this->entityManager->beginTransaction();
         
         try {
@@ -163,7 +159,7 @@ class DataTableService extends BaseService
 
             $this->cache
                 ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
 
             return true;
             
@@ -211,6 +207,7 @@ class DataTableService extends BaseService
            ->setParameter('fieldName', 'displayName')
            ->setMaxResults(1);
         
+        /** @var SectionsFieldsTranslation|null $translation */
         $translation = $qb->getQuery()->getOneOrNullResult();
         
         return $translation ? $translation->getContent() : null;
@@ -267,7 +264,7 @@ class DataTableService extends BaseService
 
             $this->cache
                 ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $deletedDataTableId);
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $deletedDataTableId);
 
             return true;
             
@@ -285,7 +282,7 @@ class DataTableService extends BaseService
      * Get dataTable statistics
      * 
      * @param string $tableName The table name
-     * @return array Statistics array
+     * @return array<string, mixed> Statistics array
      */
     public function getDataTableStats(string $tableName): array
     {
@@ -319,6 +316,8 @@ class DataTableService extends BaseService
     /**
      * Delete selected columns from a data table
      * Returns number of deleted columns, false if table not found
+     *
+     * @param list<string> $columnNames
      */
     public function deleteColumns(string $tableName, array $columnNames): int|false
     {
@@ -345,6 +344,7 @@ class DataTableService extends BaseService
                 ->setParameter('dataTable', $dataTable)
                 ->setParameter('names', $columnNames);
 
+            /** @var array<int, \App\Entity\DataCol> $columns */
             $columns = $qb->getQuery()->getResult();
 
             foreach ($columns as $column) {
@@ -378,6 +378,8 @@ class DataTableService extends BaseService
     /**
      * Get columns for a data table by name
      * Returns an array of column definitions [{ id, name }] or false if not found
+     *
+     * @return list<array<string, mixed>>|false
      */
     public function getColumns(string $tableName): array|false
     {
@@ -400,6 +402,8 @@ class DataTableService extends BaseService
      /**
      * Get columns for a data table by name
      * Returns an array of column names or false if not found
+     *
+     * @return list<string|null>|false
      */
     public function getColumnsNames(string $tableName): array|false
     {
@@ -420,6 +424,9 @@ class DataTableService extends BaseService
      * Get filtered data tables with permission-based access control
      * Includes proper caching with user scope
      * Uses RoleDataAccessRepository optimized methods
+     *
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
      */
     public function getFilteredDataTables(int $userId, array $filters = []): array
     {
@@ -451,6 +458,9 @@ class DataTableService extends BaseService
     /**
      * Fetch filtered data tables from repository with permission checking
      * Uses RoleDataAccessRepository optimized SQL queries
+     *
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
      */
     private function fetchFilteredDataTablesFromRepository(int $userId, array $filters): array
     {
@@ -468,8 +478,9 @@ class DataTableService extends BaseService
 
         // Apply additional filters if provided (name)
         if (!empty($filters) && isset($filters['name']) && $filters['name']) {
-            $dataTables = array_filter($dataTables, function ($dataTable) use ($filters) {
-                return stripos($dataTable['name'], $filters['name']) !== false;
+            $filterName = $this->asString($filters['name']);
+            $dataTables = array_filter($dataTables, function (array $dataTable) use ($filterName) {
+                return stripos($this->asString($dataTable['name'] ?? ''), $filterName) !== false;
             });
         }
 

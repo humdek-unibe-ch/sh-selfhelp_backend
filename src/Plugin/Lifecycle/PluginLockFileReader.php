@@ -49,7 +49,7 @@ final class PluginLockFileReader
         if (!is_array($data)) {
             throw new \RuntimeException(sprintf('Lock file at "%s" is not a JSON object.', $path));
         }
-        return PluginLockFile::fromArray($data);
+        return PluginLockFile::fromArray(self::toAssoc($data));
     }
 
     /**
@@ -70,6 +70,19 @@ final class PluginLockFileReader
             return null;
         }
         $data = json_decode($raw, true);
-        return is_array($data) ? $data : null;
+        return is_array($data) ? self::toAssoc($data) : null;
+    }
+
+    /**
+     * @param array<array-key,mixed> $data
+     * @return array<string,mixed>
+     */
+    private static function toAssoc(array $data): array
+    {
+        $out = [];
+        foreach ($data as $key => $value) {
+            $out[(string) $key] = $value;
+        }
+        return $out;
     }
 }

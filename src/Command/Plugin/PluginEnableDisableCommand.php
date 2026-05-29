@@ -40,7 +40,8 @@ abstract class PluginEnableDisableCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $pluginId = (string) $input->getArgument('pluginId');
+        $pluginIdArg = $input->getArgument('pluginId');
+        $pluginId = is_string($pluginIdArg) ? $pluginIdArg : '';
 
         try {
             $plugin = $this->shouldDisable()
@@ -53,8 +54,8 @@ abstract class PluginEnableDisableCommand extends Command
 
         $io->success(sprintf(
             'Plugin "%s" is now %s.',
-            $plugin['pluginId'],
-            $plugin['enabled'] ? 'enabled' : 'disabled',
+            is_string($plugin['pluginId'] ?? null) ? $plugin['pluginId'] : $pluginId,
+            !empty($plugin['enabled']) ? 'enabled' : 'disabled',
         ));
         return Command::SUCCESS;
     }

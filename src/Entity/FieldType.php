@@ -15,8 +15,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'uq_field_types_name', columns: ['name'])]
 class FieldType
 {
+    public function __construct()
+    {
+        $this->fields = new \Doctrine\Common\Collections\ArrayCollection();
+    }
+
+    /** @var \Doctrine\Common\Collections\Collection<int, Field> */
     #[ORM\OneToMany(mappedBy: 'type', targetEntity: Field::class)]
-    private ?\Doctrine\Common\Collections\Collection $fields = null;
+    private \Doctrine\Common\Collections\Collection $fields;
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column(name: 'id', type: 'integer')]
@@ -57,6 +63,7 @@ class FieldType
         return $this;
     }
 
+    /** @return \Doctrine\Common\Collections\Collection<int, Field>|null */
     public function getFields(): ?\Doctrine\Common\Collections\Collection
     {
         return $this->fields;
@@ -64,9 +71,6 @@ class FieldType
 
     public function addField(Field $field): static
     {
-        if (!$this->fields) {
-            $this->fields = new \Doctrine\Common\Collections\ArrayCollection();
-        }
         if (!$this->fields->contains($field)) {
             $this->fields[] = $field;
             $field->setType($this);
@@ -76,7 +80,7 @@ class FieldType
 
     public function removeField(Field $field): static
     {
-        if ($this->fields && $this->fields->contains($field)) {
+        if ($this->fields->contains($field)) {
             $this->fields->removeElement($field);
             if ($field->getType() === $this) {
                 $field->setType(null);

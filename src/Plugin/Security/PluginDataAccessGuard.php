@@ -79,6 +79,7 @@ final class PluginDataAccessGuard
     }
 
     /**
+     * @param ClassMetadata<object> $meta
      * @param list<string> $allowedWrites
      * @param list<string> $ownedTables
      */
@@ -88,7 +89,7 @@ final class PluginDataAccessGuard
         array $allowedWrites,
         array $ownedTables,
     ): void {
-        $table = (string) ($meta->getTableName() ?? '');
+        $table = $meta->getTableName();
         if ($table === '') {
             return;
         }

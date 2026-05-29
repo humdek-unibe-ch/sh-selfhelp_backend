@@ -8,18 +8,12 @@
 
 namespace App\Service\CMS;
 
-use App\Entity\Field;
-use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\SectionsHierarchy;
-use App\Repository\DataTableRepository;
-use App\Repository\LanguageRepository;
-use App\Repository\PageRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\GlobalVariableService;
 use App\Service\Core\BaseService;
-use Doctrine\DBAL\Exception;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -30,9 +24,6 @@ class DataVariableResolver extends BaseService
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly DataTableRepository $dataTableRepository,
-        private readonly LanguageRepository $languageRepository,
-        private readonly PageRepository $pageRepository,
         private readonly DataService $dataService,
         private readonly CacheService $cache,
         private readonly GlobalVariableService $globalVariableService
@@ -42,15 +33,16 @@ class DataVariableResolver extends BaseService
     /**
      * Get all available data variables for a section
      *
-     * @param array $section The section data array
-     * @return array List of variable names
+     * @param array<string, mixed> $section The section data array
+     * @return array<int, string> List of variable names
      */
     public function getDataVariables(array $section): array
     {
-        $sectionId = $section['id'] ?? null;
-        if (!$sectionId) {
+        $sectionIdRaw = $section['id'] ?? null;
+        if (!$sectionIdRaw) {
             return [];
         }
+        $sectionId = $this->asInt($sectionIdRaw);
 
         $cacheKey = "section_data_variables_{$sectionId}";
 
@@ -98,20 +90,20 @@ class DataVariableResolver extends BaseService
     /**
      * Extract all data table IDs that sections in the hierarchy depend on
      *
-     * @param array $sections Array of section data arrays
-     * @return array Array of unique data table IDs
+     * @param list<array<string, mixed>> $sections Array of section data arrays
+     * @return array<int, int> Array of unique data table IDs
      */
     private function extractDataTableDependencies(array $sections): array
     {
         $dataTableIds = [];
 
         foreach ($sections as $section) {
-            if (!isset($section['global_fields']['data_config'])) {
+            $globalFields = $section['global_fields'] ?? null;
+            if (!is_array($globalFields) || !isset($globalFields['data_config'])) {
                 continue;
             }
 
-            $dataConfigJson = $section['global_fields']['data_config'];
-            $dataConfig = json_decode($dataConfigJson, true);
+            $dataConfig = json_decode($this->asString($globalFields['data_config']), true);
 
             if (!is_array($dataConfig)) {
                 continue;
@@ -119,11 +111,11 @@ class DataVariableResolver extends BaseService
 
             // Process each config entry
             foreach ($dataConfig as $config) {
-                if (isset($config['table'])) {
+                if (is_array($config) && isset($config['table'])) {
                     try {
-                        $dataTable = $this->dataService->getDataTableByName($config['table']);
+                        $dataTable = $this->dataService->getDataTableByName($this->asString($config['table']));
                         if ($dataTable) {
-                            $dataTableIds[] = $dataTable->getId();
+                            $dataTableIds[] = (int) $dataTable->getId();
                         }
                     } catch (\Exception $e) {
                         // Continue if data table not found
@@ -139,7 +131,7 @@ class DataVariableResolver extends BaseService
      * Get all sections in the hierarchy from root to current section
      *
      * @param int $sectionId The section ID to get hierarchy for
-     * @return array Array of section data arrays from root to current section
+     * @return list<array<string, mixed>> Array of section data arrays from root to current section
      */
     private function getSectionHierarchy(int $sectionId): array
     {
@@ -174,7 +166,7 @@ class DataVariableResolver extends BaseService
      * Get section data by ID
      *
      * @param int $sectionId The section ID
-     * @return array|null Section data or null if not found
+     * @return array<string, mixed>|null Section data or null if not found
      */
     private function getSectionData(int $sectionId): ?array
     {
@@ -221,7 +213,7 @@ class DataVariableResolver extends BaseService
             $hierarchy = $this->entityManager->getRepository(SectionsHierarchy::class)
                 ->findOneBy(['childSection' => $sectionId]);
 
-            return $hierarchy ? $hierarchy->getParentSection()->getId() : null;
+            return $hierarchy?->getParentSection()?->getId();
         } catch (\Exception $e) {
             return null;
         }
@@ -230,44 +222,45 @@ class DataVariableResolver extends BaseService
     /**
      * Parse data_config to extract custom variables
      *
-     * @param array $section The section data array
-     * @return array List of custom variable names
+     * @param array<string, mixed> $section The section data array
+     * @return list<string> List of custom variable names
      */
     private function parseDataConfig(array $section): array
     {
         $variables = [];
 
         // Check if section has global_fields with data_config
-        if (!isset($section['global_fields']['data_config'])) {
+        $globalFields = $section['global_fields'] ?? null;
+        if (!is_array($globalFields) || !isset($globalFields['data_config'])) {
             return $variables;
         }
 
-        $dataConfigJson = $section['global_fields']['data_config'];
-
         // Parse JSON data_config
-        $dataConfig = json_decode($dataConfigJson, true);
+        $dataConfig = json_decode($this->asString($globalFields['data_config']), true);
         if (!is_array($dataConfig)) {
             return $variables;
         }
 
         // Process each config entry
         foreach ($dataConfig as $config) {
-            if (isset($config['scope'])) {
-                $scope = $config['scope'];
+            if (!is_array($config) || !isset($config['scope'])) {
+                continue;
+            }
 
-                // Check if custom fields are defined
-                if (isset($config['fields']) && is_array($config['fields'])) {
-                    foreach ($config['fields'] as $field) {
-                        if (isset($field['field_name'])) {
-                            $variables[] = $scope . '.' . $field['field_name'];
-                        }
+            $scope = $this->asString($config['scope']);
+
+            // Check if custom fields are defined
+            if (isset($config['fields']) && is_array($config['fields'])) {
+                foreach ($config['fields'] as $field) {
+                    if (is_array($field) && isset($field['field_name'])) {
+                        $variables[] = $scope . '.' . $this->asString($field['field_name']);
                     }
                 }
-                if (isset($config['table'])) {
-                    // If no custom fields but table is specified, get table variables
-                    $tableVariables = $this->getTableVariablesFromConfig($config);
-                    $variables = array_merge($variables, $tableVariables);
-                }
+            }
+            if (isset($config['table'])) {
+                // If no custom fields but table is specified, get table variables
+                $tableVariables = $this->getTableVariablesFromConfig($config);
+                $variables = array_merge($variables, $tableVariables);
             }
         }
 
@@ -277,8 +270,8 @@ class DataVariableResolver extends BaseService
     /**
      * Get table variables from a specific data config entry
      *
-     * @param array $config Single data config entry
-     * @return array List of variable names with scope prefix
+     * @param array<array-key, mixed> $config Single data config entry
+     * @return list<string> List of variable names with scope prefix
      */
     private function getTableVariablesFromConfig(array $config): array
     {
@@ -288,14 +281,14 @@ class DataVariableResolver extends BaseService
             return $variables;
         }
 
-        $scope = $config['scope'];
-        $tableName = $config['table'];
+        $scope = $this->asString($config['scope']);
+        $tableName = $this->asString($config['table']);
 
         try {
             // Get data table by name
             $dataTable = $this->dataService->getDataTableByName($tableName);
             if ($dataTable) {
-                $tableId = $dataTable->getId();
+                $tableId = (int) $dataTable->getId();
                 $columnNames = $this->getTableColumnNames($tableId);
 
                 foreach ($columnNames as $columnName) {
@@ -312,28 +305,30 @@ class DataVariableResolver extends BaseService
     /**
      * Get table variables for a section (fallback when no custom variables)
      *
-     * @param array $section The section data array
-     * @return array List of variable names with scope prefix
+     * @param array<string, mixed> $section The section data array
+     * @return list<string> List of variable names with scope prefix
      */
     private function getTableVariables(array $section): array
     {
         $variables = [];
 
         // Check if section has global_fields with data_config
-        if (!isset($section['global_fields']['data_config'])) {
+        $globalFields = $section['global_fields'] ?? null;
+        if (!is_array($globalFields) || !isset($globalFields['data_config'])) {
             return $variables;
         }
 
-        $dataConfigJson = $section['global_fields']['data_config'];
-
         // Parse JSON data_config
-        $dataConfig = json_decode($dataConfigJson, true);
+        $dataConfig = json_decode($this->asString($globalFields['data_config']), true);
         if (!is_array($dataConfig)) {
             return $variables;
         }
 
         // Process each config entry
         foreach ($dataConfig as $config) {
+            if (!is_array($config)) {
+                continue;
+            }
             $tableVariables = $this->getTableVariablesFromConfig($config);
             $variables = array_merge($variables, $tableVariables);
         }
@@ -345,7 +340,7 @@ class DataVariableResolver extends BaseService
      * Get column names for a data table
      *
      * @param int $tableId Data table ID
-     * @return array List of column names
+     * @return list<string> List of column names
      */
     private function getTableColumnNames(int $tableId): array
     {
@@ -364,7 +359,7 @@ class DataVariableResolver extends BaseService
 
                     $columnNames = [];
                     foreach ($result->fetchAllAssociative() as $row) {
-                        $columnNames[] = $row['name'];
+                        $columnNames[] = $this->asString($row['name']);
                     }
 
                     // Add the standard columns that always exist as variables
@@ -385,7 +380,7 @@ class DataVariableResolver extends BaseService
     /**
      * Get global variables from sh_global_values page for all languages
      *
-     * @return array List of global variable names with 'global.' prefix
+     * @return array<int, string> List of global variable names with 'global.' prefix
      */
     public function getGlobalVariables(): array
     {
@@ -396,7 +391,7 @@ class DataVariableResolver extends BaseService
     /**
      * Get hardcoded system variables
      *
-     * @return array List of system variable names with 'system.' prefix
+     * @return list<string> List of system variable names with 'system.' prefix
      */
     private function getSystemVariables(): array
     {

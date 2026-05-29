@@ -77,11 +77,10 @@ class PromptTemplateService
         $lines[] = '';
 
         foreach ($schema as $styleName => $meta) {
-            $group = $meta['group'] ?? 'unknown';
+            $group = $this->scalarToString($meta['group'] ?? 'unknown');
             $canHave = !empty($meta['can_have_children']);
-            $description = isset($meta['description']) && $meta['description'] !== null
-                ? trim((string) $meta['description'])
-                : '';
+            $rawDescription = $meta['description'] ?? null;
+            $description = is_scalar($rawDescription) ? trim((string) $rawDescription) : '';
 
             $header = sprintf('### %s (%s)%s', $styleName, $group, $canHave ? ' — can_have_children' : '');
             $lines[] = $header;
@@ -91,17 +90,21 @@ class PromptTemplateService
                 $lines[] = str_replace(["\r\n", "\n"], ' ', $description);
             }
 
-            if (!empty($meta['fields'])) {
+            $fields = $meta['fields'] ?? null;
+            if (is_array($fields) && $fields !== []) {
                 $lines[] = '';
                 $lines[] = 'Fields:';
-                foreach ($meta['fields'] as $fieldName => $fieldMeta) {
-                    $type = $fieldMeta['type'] ?? '?';
-                    $isTranslatable = ((int) ($fieldMeta['display'] ?? 0)) === 1;
+                foreach ($fields as $fieldName => $fieldMeta) {
+                    if (!is_array($fieldMeta)) {
+                        continue;
+                    }
+                    $type = $this->scalarToString($fieldMeta['type'] ?? '?');
+                    $isTranslatable = $this->scalarToInt($fieldMeta['display'] ?? 0) === 1;
                     $display = $isTranslatable ? 'translatable' : 'property';
                     $locale = $isTranslatable ? 'en-GB|de-CH|...' : 'all';
-                    $default = $fieldMeta['default_value'];
-                    $defaultRepr = $default === null ? 'null' : '"' . addslashes((string) $default) . '"';
-                    $hidden = ((int) ($fieldMeta['hidden'] ?? 0)) > 0;
+                    $default = $fieldMeta['default_value'] ?? null;
+                    $defaultRepr = $default === null ? 'null' : '"' . addslashes($this->scalarToString($default)) . '"';
+                    $hidden = $this->scalarToInt($fieldMeta['hidden'] ?? 0) > 0;
                     $disabled = !empty($fieldMeta['disabled']);
 
                     $tags = [];
@@ -115,25 +118,30 @@ class PromptTemplateService
 
                     $line = sprintf(
                         '- %s (%s, default=%s, %s)',
-                        $fieldName,
+                        $this->scalarToString($fieldName),
                         $type,
                         $defaultRepr,
                         implode(', ', $tags)
                     );
 
                     // Append enum options for select/segment/slider/color-picker fields.
-                    if (!empty($fieldMeta['options']) && is_array($fieldMeta['options'])) {
-                        $values = array_values(array_unique(array_map(
-                            static fn (array $opt): string => (string) ($opt['value'] ?? ''),
-                            $fieldMeta['options']
-                        )));
-                        $values = array_values(array_filter($values, static fn (string $v): bool => $v !== ''));
+                    $options = $fieldMeta['options'] ?? null;
+                    if (is_array($options) && $options !== []) {
+                        $values = [];
+                        foreach ($options as $opt) {
+                            $optValue = is_array($opt) ? ($opt['value'] ?? '') : '';
+                            $optValue = $this->scalarToString($optValue);
+                            if ($optValue !== '') {
+                                $values[] = $optValue;
+                            }
+                        }
+                        $values = array_values(array_unique($values));
                         if (!empty($values)) {
-                            $display = array_map(
+                            $rendered = array_map(
                                 static fn (string $v): string => '"' . $v . '"',
                                 $values
                             );
-                            $line .= ' — options: ' . implode(' | ', $display);
+                            $line .= ' — options: ' . implode(' | ', $rendered);
                         }
                     }
 
@@ -141,22 +149,40 @@ class PromptTemplateService
                 }
             }
 
-            if (!empty($meta['allowed_children'])) {
+            $allowedChildren = $meta['allowed_children'] ?? null;
+            if (is_array($allowedChildren) && $allowedChildren !== []) {
                 $lines[] = '';
-                $lines[] = 'Allowed children: ' . implode(', ', $meta['allowed_children']);
+                $lines[] = 'Allowed children: ' . implode(', ', array_map(fn ($c): string => $this->scalarToString($c), $allowedChildren));
             } elseif ($canHave) {
                 $lines[] = '';
                 $lines[] = 'Allowed children: (any)';
             }
 
-            if (!empty($meta['allowed_parents'])) {
-                $lines[] = 'Allowed parents: ' . implode(', ', $meta['allowed_parents']);
+            $allowedParents = $meta['allowed_parents'] ?? null;
+            if (is_array($allowedParents) && $allowedParents !== []) {
+                $lines[] = 'Allowed parents: ' . implode(', ', array_map(fn ($p): string => $this->scalarToString($p), $allowedParents));
             }
 
             $lines[] = '';
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Coerce a schema value to a string for catalog rendering.
+     */
+    private function scalarToString(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * Coerce a schema value to an int for catalog rendering.
+     */
+    private function scalarToInt(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
     }
 
     /**

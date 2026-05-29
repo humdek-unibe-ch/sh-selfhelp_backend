@@ -12,7 +12,6 @@ use Doctrine\DBAL\Connection;
 use App\Repository\User2faCodeRepository;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use App\Service\Core\JobSchedulerService;
 use DateTime;
 use Exception;
 
@@ -22,21 +21,18 @@ class AuthRepository
     private User2faCodeRepository $user2faCodeRepository;
     private UserRepository $userRepository;
     private EntityManagerInterface $entityManager;
-    private JobSchedulerService $jobSchedulerService; 
 
 
     public function __construct(
         Connection $connection,
         User2faCodeRepository $user2faCodeRepository,
         UserRepository $userRepository,
-        EntityManagerInterface $entityManager,
-        JobSchedulerService $jobSchedulerService  
+        EntityManagerInterface $entityManager
     ) {
         $this->connection = $connection;
         $this->user2faCodeRepository = $user2faCodeRepository;
         $this->userRepository = $userRepository;
         $this->entityManager = $entityManager;
-        $this->jobSchedulerService = $jobSchedulerService;
     }
 
     /**

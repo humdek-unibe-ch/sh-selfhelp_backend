@@ -31,6 +31,39 @@ class ActionOrchestratorService
     }
 
     /**
+     * Coerce a mixed JSON-config section into a string-keyed array.
+     *
+     * @return array<string, mixed>
+     */
+    private function toConfigArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $key => $item) {
+            $result[(string) $key] = $item;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Coerce a mixed condition payload into the shape accepted by the evaluator.
+     *
+     * @return array<string, mixed>|string|null
+     */
+    private function conditionArg(mixed $condition): array|string|null
+    {
+        if ($condition === null || is_string($condition)) {
+            return $condition;
+        }
+
+        return is_array($condition) ? $this->toConfigArray($condition) : null;
+    }
+
+    /**
      * Handle a normalized action trigger emitted by the data layer.
      *
      * Reminder cleanup for completed forms is intentionally performed before new
@@ -47,7 +80,7 @@ class ActionOrchestratorService
         ) {
             $this->cleanupService->deleteQueuedReminderJobsForUserAndTable(
                 $context->userId,
-                $context->dataTable->getId(),
+                (int) $context->dataTable->getId(),
                 LookupService::TRANSACTION_BY_BY_SYSTEM
             );
         }
@@ -59,7 +92,7 @@ class ActionOrchestratorService
                     continue;
                 }
 
-                if (!$this->conditionEvaluator->passes($runtimeConfig[ActionConfig::CONDITION] ?? null, $context->userId, 'action.root')) {
+                if (!$this->conditionEvaluator->passes($this->conditionArg($runtimeConfig[ActionConfig::CONDITION] ?? null), $context->userId, 'action.root')) {
                     continue;
                 }
 
@@ -69,7 +102,7 @@ class ActionOrchestratorService
                 ) {
                     $this->cleanupService->deleteQueuedJobsForRecordAndAction(
                         $action,
-                        $context->dataRow->getId(),
+                        (int) $context->dataRow->getId(),
                         LookupService::TRANSACTION_BY_BY_SYSTEM
                     );
                 }
@@ -102,7 +135,7 @@ class ActionOrchestratorService
 
         if ($context->triggerType === LookupService::ACTION_TRIGGER_TYPES_DELETED) {
             $this->cleanupService->deleteQueuedJobsForRecord(
-                $context->dataRow->getId(),
+                (int) $context->dataRow->getId(),
                 LookupService::TRANSACTION_BY_BY_SYSTEM
             );
         }

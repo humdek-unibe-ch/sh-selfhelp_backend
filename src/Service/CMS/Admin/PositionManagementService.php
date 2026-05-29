@@ -64,7 +64,7 @@ class PositionManagementService
             if ($page) {
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
                     ->invalidateAllListsInCategory();
@@ -107,7 +107,7 @@ class PositionManagementService
             if ($parentSection) {
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $parentSection->getId());
 
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
@@ -154,6 +154,7 @@ class PositionManagementService
         $qb->orderBy("p.$positionField", 'ASC')
             ->addOrderBy('p.id', 'ASC');
 
+        /** @var list<Page> $pages */
         $pages = $qb->getQuery()->getResult();
 
         // Reindex positions starting from 10 with increments of 10

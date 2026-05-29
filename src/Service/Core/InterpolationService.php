@@ -22,27 +22,20 @@ class InterpolationService extends BaseService
     private \Mustache\Engine $mustache;
 
     /**
-     * Configuration options for the interpolation service
-     */
-    private array $config;
-
-    /**
      * Constructor - Initialize Mustache engine
      *
-     * @param array $config Configuration options:
+     * @param array<string, mixed> $config Configuration options:
      *   - custom_helpers: Array of custom Mustache helpers (optional)
      */
     public function __construct(array $config = [])
     {
-        $this->config = $config;
-
         // Create Mustache engine with explicit empty array
         $this->mustache = new \Mustache\Engine([]);
 
         // Add custom helpers if provided
-        if (!empty($config['custom_helpers'])) {
+        if (!empty($config['custom_helpers']) && is_array($config['custom_helpers'])) {
             foreach ($config['custom_helpers'] as $name => $helper) {
-                $this->mustache->addHelper($name, $helper);
+                $this->mustache->addHelper((string) $name, $helper);
             }
         }
     }
@@ -51,7 +44,7 @@ class InterpolationService extends BaseService
      * Perform Mustache rendering with error handling
      *
      * @param string $content The content containing {{variable}} patterns
-     * @param array $dataArrays One or more arrays containing variable => value mappings
+     * @param array<array-key, array<array-key, mixed>> $dataArrays One or more arrays containing variable => value mappings
      * @return string The content with variables replaced or original content on error
      */
     private function performInterpolation(string $content, array $dataArrays): string
@@ -81,7 +74,7 @@ class InterpolationService extends BaseService
      * - Custom helpers and lambdas
      *
      * @param string $content The content containing {{variable}} patterns
-     * @param array $dataArrays One or more arrays containing variable => value mappings
+     * @param array<array-key, mixed> $dataArrays One or more arrays containing variable => value mappings
      * @return string The content with variables replaced
      */
     public function interpolate(string $content, array ...$dataArrays): string
@@ -99,9 +92,9 @@ class InterpolationService extends BaseService
      * Processes arrays recursively, interpolating string values while preserving
      * the structure of nested arrays and objects.
      *
-     * @param array $contentArray Array containing content fields to interpolate
-     * @param array $dataArrays One or more arrays containing variable => value mappings
-     * @return array The content array with variables replaced
+     * @param array<array-key, mixed> $contentArray Array containing content fields to interpolate
+     * @param array<array-key, mixed> $dataArrays One or more arrays containing variable => value mappings
+     * @return array<array-key, mixed> The content array with variables replaced
      */
     public function interpolateArray(array $contentArray, array ...$dataArrays): array
     {
@@ -114,9 +107,15 @@ class InterpolationService extends BaseService
                 $result[$key] = $this->interpolateArray($value, ...$dataArrays);
             } elseif (is_object($value)) {
                 // For objects, convert to array, interpolate, then convert back
-                $arrayValue = json_decode(json_encode($value), true);
-                $interpolatedArray = $this->interpolateArray($arrayValue, ...$dataArrays);
-                $result[$key] = json_decode(json_encode($interpolatedArray));
+                $encoded = json_encode($value);
+                $arrayValue = $encoded !== false ? json_decode($encoded, true) : null;
+                if (is_array($arrayValue)) {
+                    $interpolatedArray = $this->interpolateArray($arrayValue, ...$dataArrays);
+                    $reEncoded = json_encode($interpolatedArray);
+                    $result[$key] = $reEncoded !== false ? json_decode($reEncoded) : $value;
+                } else {
+                    $result[$key] = $value;
+                }
             } else {
                 $result[$key] = $value;
             }
@@ -131,8 +130,9 @@ class InterpolationService extends BaseService
      * Preserves the original condition as 'condition_original' before interpolating.
      * Handles JSON decoding for proper storage of the original condition.
      *
-     * @param array &$section The section array (passed by reference to modify condition_original)
-     * @param array $dataArrays One or more arrays containing variable => value mappings
+     * @param array<string, mixed> &$section The section array (passed by reference to modify condition_original)
+     * @param-out array<string, mixed> $section
+     * @param array<array-key, mixed> $dataArrays One or more arrays containing variable => value mappings
      * @return string The interpolated condition
      */
     public function interpolateConditionWithDebug(array &$section, array ...$dataArrays): string
@@ -150,8 +150,8 @@ class InterpolationService extends BaseService
                 if (is_string($decoded)) {
                     // If we got a string back, that's the unescaped JSON string we want
                     $conditionOriginal = $decoded;
-                } elseif (is_array($decoded) || is_object($decoded)) {
-                    // If we got an object/array, encode it back to string
+                } elseif (is_array($decoded)) {
+                    // If we got an array, encode it back to string
                     $conditionOriginal = json_encode($decoded);
                 }
                 // If decode failed or returned null, keep original
@@ -161,8 +161,11 @@ class InterpolationService extends BaseService
             $section['condition_original'] = $conditionOriginal;
         }
 
-        // Perform normal interpolation
-        return $this->interpolate($originalCondition, ...$dataArrays);
+        // Perform normal interpolation. Conditions are stored as strings; any
+        // other type is not a valid Mustache template input, so coerce to an
+        // empty string instead of passing a non-string to interpolate().
+        $conditionContent = is_string($originalCondition) ? $originalCondition : '';
+        return $this->interpolate($conditionContent, ...$dataArrays);
     }
 
     /**
@@ -171,8 +174,8 @@ class InterpolationService extends BaseService
      * Allows rendering templates with reusable partials for better organization.
      *
      * @param string $template The Mustache template content
-     * @param array $context Data context for rendering
-     * @param array $partials Optional partial templates (name => content)
+     * @param array<string, mixed> $context Data context for rendering
+     * @param array<string, string> $partials Optional partial templates (name => content)
      * @return string The rendered template
      */
     public function renderTemplate(string $template, array $context = [], array $partials = []): string
@@ -223,8 +226,8 @@ class InterpolationService extends BaseService
      *
      * Later arrays take precedence over earlier ones, allowing for layered configuration.
      *
-     * @param array $dataArrays Arrays to merge
-     * @return array Merged context array
+     * @param array<array-key, array<array-key, mixed>> $dataArrays Arrays to merge
+     * @return array<array-key, mixed> Merged context array
      */
     private function mergeDataContexts(array $dataArrays): array
     {
@@ -247,11 +250,7 @@ class InterpolationService extends BaseService
      */
     private function logError(string $message): void
     {
-        // Use Symfony's logger if available, otherwise fallback to error_log
-        if (method_exists($this, 'getLogger')) {
-            $this->getLogger()->error($message);
-        } else {
-            error_log($message);
-        }
+        // No PSR logger is injected into this service, so fall back to error_log.
+        error_log($message);
     }
 }

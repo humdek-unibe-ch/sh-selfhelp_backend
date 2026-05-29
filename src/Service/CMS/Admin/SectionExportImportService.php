@@ -18,7 +18,6 @@ use App\Exception\ServiceException;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\LookupService;
-use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Repository\PageRepository;
@@ -39,7 +38,6 @@ class SectionExportImportService extends BaseService
         private readonly StyleRepository $styleRepository,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
-        private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
@@ -52,7 +50,7 @@ class SectionExportImportService extends BaseService
      * Export all sections of a given page (including all nested sections) as JSON
      * 
      * @param int $pageId The ID of the page to export sections from
-     * @return array JSON-serializable array with all page sections
+     * @return array<int, array<string, mixed>> JSON-serializable array with all page sections
      * @throws ServiceException If page not found or access denied
      */
     public function exportPageSections(int $pageId): array
@@ -67,7 +65,7 @@ class SectionExportImportService extends BaseService
         }
         
         // Use existing hierarchical fetching method
-        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
+        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
         
         if (empty($flatSections)) {
             return [];
@@ -87,7 +85,7 @@ class SectionExportImportService extends BaseService
      * 
      * @param int $pageId The ID of the page containing the section
      * @param int $sectionId The ID of the section to export
-     * @return array JSON-serializable array with the section and its children
+     * @return array<int, array<string, mixed>> JSON-serializable array with the section and its children
      * @throws ServiceException If section not found or access denied
      */
     public function exportSection(int $pageId, int $sectionId): array
@@ -109,7 +107,7 @@ class SectionExportImportService extends BaseService
         }
         
         // Get all sections for the page using existing method
-        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
+        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
         
         // Build hierarchical structure
         $hierarchicalSections = $this->sectionUtilityService->buildNestedSections($flatSections,false);
@@ -132,9 +130,9 @@ class SectionExportImportService extends BaseService
      * Import sections from JSON into a target page
      * 
      * @param int $pageId The ID of the target page
-     * @param array $sectionsData The sections data to import
+     * @param array<int, array<string, mixed>> $sectionsData The sections data to import
      * @param int|null $position The position where the sections should be inserted
-     * @return array Result of the import operation
+     * @return list<array<string, mixed>> Result of the import operation
      * @throws ServiceException If page not found or access denied
      */
     public function importSectionsToPage(int $pageId, array $sectionsData, ?int $position = null): array
@@ -176,7 +174,7 @@ class SectionExportImportService extends BaseService
                 "Imported " . count($importedSections) . " section(s) into page '{$page->getKeyword()}'"
             );
 
-            $this->invalidateImportCaches($page->getId());
+            $this->invalidateImportCaches((int) $page->getId());
 
             // Commit transaction
             $this->entityManager->commit();
@@ -199,9 +197,9 @@ class SectionExportImportService extends BaseService
      * 
      * @param int $pageId The ID of the target page
      * @param int $parentSectionId The ID of the parent section to import into
-     * @param array $sectionsData The sections data to import
+     * @param array<int, array<string, mixed>> $sectionsData The sections data to import
      * @param int|null $position The position where the sections should be inserted
-     * @return array Result of the import operation
+     * @return list<array<string, mixed>> Result of the import operation
      * @throws ServiceException If section not found or access denied
      */
     public function importSectionsToSection(int $pageId, int $parentSectionId, array $sectionsData, ?int $position = null): array
@@ -293,20 +291,22 @@ class SectionExportImportService extends BaseService
     /**
      * Find a section in hierarchical structure recursively
      * 
-     * @param array $sections Hierarchical sections array
+     * @param list<array<string, mixed>> $sections Hierarchical sections array
      * @param int $sectionId The section ID to find
-     * @return array|null The found section with its children, or null if not found
+     * @return array<string, mixed>|null The found section with its children, or null if not found
      */
     private function findSectionInHierarchy(array $sections, int $sectionId): ?array
     {
         foreach ($sections as $section) {
-            if ($section['id'] == $sectionId) {
+            if (($section['id'] ?? null) == $sectionId) {
                 return $section;
             }
             
             // Search in children recursively
-            if (!empty($section['children'])) {
-                $found = $this->findSectionInHierarchy($section['children'], $sectionId);
+            if (isset($section['children']) && is_array($section['children']) && !empty($section['children'])) {
+                /** @var list<array<string, mixed>> $children */
+                $children = $section['children'];
+                $found = $this->findSectionInHierarchy($children, $sectionId);
                 if ($found !== null) {
                     return $found;
                 }
@@ -340,8 +340,8 @@ class SectionExportImportService extends BaseService
             }
 
             $sectionEntity = $this->sectionRepository->find($sectionId);
-            $styleName = $section['style_name'] ?? null;
-            $styleDefaults = $styleName && isset($defaultsByStyle[$styleName])
+            $styleName = $this->asStringOrNull($section['style_name'] ?? null);
+            $styleDefaults = ($styleName !== null && isset($defaultsByStyle[$styleName]))
                 ? $defaultsByStyle[$styleName]
                 : [];
 
@@ -351,6 +351,7 @@ class SectionExportImportService extends BaseService
             ];
 
             // --- fields (translations) ---
+            /** @var list<SectionsFieldsTranslation> $translations */
             $translations = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
                 ->createQueryBuilder('t')
                 ->leftJoin('t.field', 'f')
@@ -368,8 +369,8 @@ class SectionExportImportService extends BaseService
                     continue;
                 }
 
-                $fieldName = $field->getName();
-                $locale = $language->getLocale();
+                $fieldName = (string) $field->getName();
+                $locale = (string) $language->getLocale();
                 $content = $translation->getContent();
                 $meta = $translation->getMeta();
                 $default = $styleDefaults[$fieldName] ?? null;
@@ -423,10 +424,12 @@ class SectionExportImportService extends BaseService
             }
 
             // --- children ---
-            if (!empty($section['children'])) {
-                $this->addFieldTranslationsToSections($section['children']);
-                if (!empty($section['children'])) {
-                    $cleanSection['children'] = $section['children'];
+            if (isset($section['children']) && is_array($section['children']) && !empty($section['children'])) {
+                /** @var array<int, array<string, mixed>> $children */
+                $children = $section['children'];
+                $this->addFieldTranslationsToSections($children);
+                if (!empty($children)) {
+                    $cleanSection['children'] = $children;
                 }
             }
 
@@ -459,11 +462,11 @@ class SectionExportImportService extends BaseService
      * imports can never collide. The `restoreSectionsFromVersion` flow does NOT
      * go through this method — it preserves IDs via `performSmartSectionRestoration`.
      *
-     * @param array $sectionsData The sections data to import
+     * @param array<int, array<string, mixed>> $sectionsData The sections data to import
      * @param Page|null $page The target page (if importing to page)
      * @param Section|null $parentSection The parent section (if importing to section)
      * @param int|null $globalPosition The global position for the first level of imported sections
-     * @return array Result of the import operation
+     * @return list<array<string, mixed>> Result of the import operation
      */
     private function importSections(array $sectionsData, ?Page $page = null, ?Section $parentSection = null, ?int $globalPosition = null): array
     {
@@ -474,14 +477,14 @@ class SectionExportImportService extends BaseService
             $section = new Section();
 
             // Auto-name when `section_name` is omitted — falls back to style name (or `section`) + timestamp.
-            $baseName = $sectionData['section_name']
-                ?? ($sectionData['style_name'] ?? 'section');
+            $baseName = $this->asString($sectionData['section_name']
+                ?? ($sectionData['style_name'] ?? 'section'));
             $sectionName = $baseName . '-' . time();
 
             $section->setName($sectionName);
             
             // Find style by name
-            $styleName = $sectionData['style_name'] ?? null;
+            $styleName = $this->asStringOrNull($sectionData['style_name'] ?? null);
             if ($styleName) {
                 $style = $this->styleRepository->findOneBy(['name' => $styleName]);
                 if ($style) {
@@ -504,16 +507,16 @@ class SectionExportImportService extends BaseService
                 $globalFields = $sectionData['global_fields'];
 
                 if (isset($globalFields['condition'])) {
-                    $section->setCondition($globalFields['condition']);
+                    $section->setCondition($this->asStringOrNull($globalFields['condition']));
                 }
                 if (isset($globalFields['data_config'])) {
-                    $section->setDataConfig($globalFields['data_config']);
+                    $section->setDataConfig($this->asStringOrNull($globalFields['data_config']));
                 }
                 if (isset($globalFields['css'])) {
-                    $section->setCss($globalFields['css']);
+                    $section->setCss($this->asStringOrNull($globalFields['css']));
                 }
                 if (isset($globalFields['css_mobile'])) {
-                    $section->setCssMobile($globalFields['css_mobile']);
+                    $section->setCssMobile($this->asStringOrNull($globalFields['css_mobile']));
                 }
                 if (isset($globalFields['debug'])) {
                     $section->setDebug((bool)$globalFields['debug']);
@@ -526,7 +529,9 @@ class SectionExportImportService extends BaseService
             
             // Import fields and translations using new simplified format
             if (isset($sectionData['fields']) && is_array($sectionData['fields']) && !empty($sectionData['fields'])) {
-                $this->importSectionFieldsSimplified($section, $sectionData['fields']);
+                /** @var array<string, mixed> $fieldsData */
+                $fieldsData = $sectionData['fields'];
+                $this->importSectionFieldsSimplified($section, $fieldsData);
             }
             
             // Determine position for this section
@@ -536,7 +541,7 @@ class SectionExportImportService extends BaseService
                 $sectionPosition = $currentPosition + $index;
             } else {
                 // Use section-specific position if provided, otherwise auto-assign
-                $sectionPosition = $sectionData['position'] ?? null;
+                $sectionPosition = $this->asIntOrNull($sectionData['position'] ?? null);
             }
             
             // Add section to page or parent section
@@ -550,14 +555,14 @@ class SectionExportImportService extends BaseService
                     $pageSection->setPosition($sectionPosition);
                 } else {
                     // Auto-assign position if not provided
-                    $maxPosition = $this->entityManager->createQueryBuilder()
+                    $maxPosition = (int) $this->entityManager->createQueryBuilder()
                         ->select('MAX(ps.position)')
                         ->from(PagesSection::class, 'ps')
                         ->where('ps.page = :page')
                         ->setParameter('page', $page)
                         ->getQuery()
                         ->getSingleScalarResult();
-                    $pageSection->setPosition(($maxPosition ?? 0) + 1);
+                    $pageSection->setPosition($maxPosition + 1);
                 }
                 
                 $this->entityManager->persist($pageSection);
@@ -571,14 +576,14 @@ class SectionExportImportService extends BaseService
                     $sectionHierarchy->setPosition($sectionPosition);
                 } else {
                     // Auto-assign position if not provided
-                    $maxPosition = $this->entityManager->createQueryBuilder()
+                    $maxPosition = (int) $this->entityManager->createQueryBuilder()
                         ->select('MAX(sh.position)')
                         ->from(SectionsHierarchy::class, 'sh')
                         ->where('sh.parentSection = :parent')
                         ->setParameter('parent', $parentSection)
                         ->getQuery()
                         ->getSingleScalarResult();
-                    $sectionHierarchy->setPosition(($maxPosition ?? 0) + 1);
+                    $sectionHierarchy->setPosition($maxPosition + 1);
                 }
                 
                 $this->entityManager->persist($sectionHierarchy);
@@ -596,7 +601,9 @@ class SectionExportImportService extends BaseService
             
             // Import child sections recursively if present
             if (isset($sectionData['children']) && is_array($sectionData['children'])) {
-                $childResults = $this->importSections($sectionData['children'], null, $section, null);
+                /** @var array<int, array<string, mixed>> $childSections */
+                $childSections = $sectionData['children'];
+                $childResults = $this->importSections($childSections, null, $section, null);
                 $importedSections = array_merge($importedSections, $childResults);
             }
         }
@@ -613,7 +620,7 @@ class SectionExportImportService extends BaseService
      *
      * @param int $pageId The ID of the page to restore sections to
      * @param int $versionId The ID of the published version to restore from
-     * @return array Result of the restoration operation
+     * @return array<string, mixed> Result of the restoration operation
      * @throws ServiceException If page/version not found, version not published, or access denied
      */
     public function restoreSectionsFromVersion(int $pageId, int $versionId): array
@@ -634,7 +641,7 @@ class SectionExportImportService extends BaseService
         }
 
         // Verify the version belongs to this page
-        if ($version->getPage()->getId() !== $pageId) {
+        if ($version->getPage()?->getId() !== $pageId) {
             $this->throwBadRequest("Version {$versionId} does not belong to page {$pageId}");
         }
 
@@ -645,11 +652,13 @@ class SectionExportImportService extends BaseService
 
         // Get the sections from the published version
         $pageJson = $version->getPageJson();
-        if (!isset($pageJson['page']['sections']) || empty($pageJson['page']['sections'])) {
+        $pageData = $pageJson['page'] ?? null;
+        if (!is_array($pageData) || !isset($pageData['sections']) || !is_array($pageData['sections']) || empty($pageData['sections'])) {
             $this->throwBadRequest('No sections found in the published version');
         }
 
-        $publishedSections = $pageJson['page']['sections'];
+        /** @var list<array<string, mixed>> $publishedSections */
+        $publishedSections = $pageData['sections'];
 
         // Start transaction
         $this->entityManager->beginTransaction();
@@ -662,7 +671,7 @@ class SectionExportImportService extends BaseService
             $this->entityManager->flush();
 
             // Step 3: Invalidate caches (same set as a regular import).
-            $this->invalidateImportCaches($page->getId());
+            $this->invalidateImportCaches((int) $page->getId());
 
             // Step 4: Log the transaction
             $this->transactionService->logTransaction(
@@ -717,7 +726,7 @@ class SectionExportImportService extends BaseService
      * Only processes field names with their values - minimal data needed
      *
      * @param Section $section The section to import fields for
-     * @param array $fieldsData The simplified fields data to import
+     * @param array<string, mixed> $fieldsData The simplified fields data to import
      */
     private function importSectionFieldsSimplified(Section $section, array $fieldsData): void
     {
@@ -734,8 +743,17 @@ class SectionExportImportService extends BaseService
                 );
             }
 
+            if (!is_array($localeData)) {
+                continue;
+            }
+
             // Process each locale
             foreach ($localeData as $locale => $translationData) {
+                $locale = (string) $locale;
+                if (!is_array($translationData)) {
+                    continue;
+                }
+
                 // Find language by locale. Pre-validation guarantees the locale exists.
                 $language = $this->entityManager->getRepository(Language::class)
                     ->findOneBy(['locale' => $locale]);
@@ -757,16 +775,17 @@ class SectionExportImportService extends BaseService
                 //     to handle null specially.
                 //   - The JSON schema still allows `["string","null"]` to
                 //     stay tolerant of payloads emitted by older exporters.
-                $content = $translationData['content'] ?? '';
+                $content = $this->asString($translationData['content'] ?? '');
                 $meta = $translationData['meta'] ?? null;
 
                 // Convert meta to JSON string if it's an array or object
                 $metaString = null;
                 if ($meta !== null) {
                     if (is_array($meta) || is_object($meta)) {
-                        $metaString = json_encode($meta);
+                        $encoded = json_encode($meta);
+                        $metaString = $encoded !== false ? $encoded : null;
                     } else {
-                        $metaString = (string) $meta;
+                        $metaString = $this->asString($meta);
                     }
                 }
 
@@ -806,8 +825,8 @@ class SectionExportImportService extends BaseService
      * the original section IDs to maintain referential integrity with data_tables.
      *
      * @param Page $page The page to restore sections to
-     * @param array $publishedSections The sections from the published version
-     * @return array Restoration result with statistics
+     * @param list<array<string, mixed>> $publishedSections The sections from the published version
+     * @return array<string, mixed> Restoration result with statistics
      */
     private function performSmartSectionRestoration(Page $page, array $publishedSections): array
     {
@@ -818,7 +837,7 @@ class SectionExportImportService extends BaseService
         $this->ensureAutoIncrementForManualIds($flatPublishedSections);
 
         // Step 3: Get current sections on the page for comparison
-        $currentSectionIds = $this->sectionRepository->getSectionIdsForPage($page->getId());
+        $currentSectionIds = $this->sectionRepository->getSectionIdsForPage((int) $page->getId());
 
         // Step 4: Process each section from published version
         $restoredSections = [];
@@ -826,7 +845,7 @@ class SectionExportImportService extends BaseService
         $sectionsUpdated = 0;
 
         foreach ($flatPublishedSections as $sectionData) {
-            $sectionId = $sectionData['id'];
+            $sectionId = $this->asInt($sectionData['id'] ?? 0);
 
             // Check if section with this ID already exists
             $existingSection = $this->sectionRepository->find($sectionId);
@@ -869,19 +888,19 @@ class SectionExportImportService extends BaseService
     /**
      * Create a section with a specific ID (preserving from published version)
      *
-     * @param array $sectionData Section data from published version
+     * @param array<string, mixed> $sectionData Section data from published version
      * @return Section The created section
      */
     private function createSectionWithId(array $sectionData): Section
     {
-        try {
-            $sectionId = $sectionData['id'];
+        $sectionId = $this->asInt($sectionData['id'] ?? 0);
 
+        try {
             // Create new section entity
             $section = new \App\Entity\Section();
 
             // Set properties first
-            $section->setName($sectionData['section_name'] ?? 'Restored Section');
+            $section->setName($this->asString($sectionData['section_name'] ?? 'Restored Section'));
 
             if ($sectionData['style_name']) {
                 $style = $this->styleRepository->findOneBy(['name' => $sectionData['style_name']]);
@@ -890,10 +909,10 @@ class SectionExportImportService extends BaseService
                 }
             }
 
-            $section->setCondition($sectionData['condition'] ?? null);
-            $section->setDataConfig($sectionData['data_config'] ?? null);
-            $section->setCss($sectionData['css'] ?? null);
-            $section->setCssMobile($sectionData['css_mobile'] ?? null);
+            $section->setCondition($this->asStringOrNull($sectionData['condition'] ?? null));
+            $section->setDataConfig($this->asStringOrNull($sectionData['data_config'] ?? null));
+            $section->setCss($this->asStringOrNull($sectionData['css'] ?? null));
+            $section->setCssMobile($this->asStringOrNull($sectionData['css_mobile'] ?? null));
             $section->setDebug(isset($sectionData['debug']) ? (bool)$sectionData['debug'] : false);
 
             // Use raw SQL to insert with specific ID (avoid Doctrine auto-generation)
@@ -930,8 +949,10 @@ class SectionExportImportService extends BaseService
             }
 
             // Import field translations
-            if (isset($sectionData['translations'])) {
-                $this->importSectionTranslations($section, $sectionData['translations']);
+            if (isset($sectionData['translations']) && is_array($sectionData['translations'])) {
+                /** @var array<string, mixed> $sectionTranslations */
+                $sectionTranslations = $sectionData['translations'];
+                $this->importSectionTranslations($section, $sectionTranslations);
             }
 
             return $section;
@@ -942,12 +963,12 @@ class SectionExportImportService extends BaseService
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_SYSTEM,
                 'sections',
-                $sectionData['id'] ?? 0,
+                $sectionId,
                 (object) [
                     'error' => $e->getMessage(),
                     'section_data' => $sectionData
                 ],
-                "Failed to create section with ID {$sectionData['id']}: " . $e->getMessage()
+                "Failed to create section with ID {$sectionId}: " . $e->getMessage()
             );
 
             // Re-throw to maintain transaction integrity
@@ -959,11 +980,11 @@ class SectionExportImportService extends BaseService
      * Update an existing section with published data
      *
      * @param Section $section The section to update
-     * @param array $sectionData Published section data
+     * @param array<string, mixed> $sectionData Published section data
      */
     private function updateSectionFromPublishedData(Section $section, array $sectionData): void
     {
-        $section->setName($sectionData['section_name'] ?? $section->getName());
+        $section->setName($this->asString($sectionData['section_name'] ?? $section->getName()));
 
         if ($sectionData['style_name']) {
             $style = $this->styleRepository->findOneBy(['name' => $sectionData['style_name']]);
@@ -972,25 +993,27 @@ class SectionExportImportService extends BaseService
             }
         }
 
-        $section->setCondition($sectionData['condition'] ?? null);
-        $section->setDataConfig($sectionData['data_config'] ?? null);
-        $section->setCss($sectionData['css'] ?? null);
-        $section->setCssMobile($sectionData['css_mobile'] ?? null);
+        $section->setCondition($this->asStringOrNull($sectionData['condition'] ?? null));
+        $section->setDataConfig($this->asStringOrNull($sectionData['data_config'] ?? null));
+        $section->setCss($this->asStringOrNull($sectionData['css'] ?? null));
+        $section->setCssMobile($this->asStringOrNull($sectionData['css_mobile'] ?? null));
         $section->setDebug(isset($sectionData['debug']) ? (bool)$sectionData['debug'] : false);
 
         // Clear existing translations and import new ones
         $this->clearSectionTranslations($section);
-        if (isset($sectionData['translations'])) {
-            $this->importSectionTranslations($section, $sectionData['translations']);
+        if (isset($sectionData['translations']) && is_array($sectionData['translations'])) {
+            /** @var array<string, mixed> $sectionTranslations */
+            $sectionTranslations = $sectionData['translations'];
+            $this->importSectionTranslations($section, $sectionTranslations);
         }
     }
 
     /**
      * Flatten published sections into a flat array with full data
      *
-     * @param array $sections Hierarchical sections
-     * @param array $parentData Parent section data for hierarchy
-     * @return array Flat array of section data
+     * @param list<array<string, mixed>> $sections Hierarchical sections
+     * @param array<string, mixed> $parentData Parent section data for hierarchy
+     * @return list<array<string, mixed>> Flat array of section data
      */
     private function flattenPublishedSections(array $sections, array $parentData = []): array
     {
@@ -1020,7 +1043,9 @@ class SectionExportImportService extends BaseService
                     'id' => $section['id'],
                     'position' => $sectionData['position']
                 ];
-                $flat = array_merge($flat, $this->flattenPublishedSections($section['children'], $childParentData));
+                /** @var list<array<string, mixed>> $children */
+                $children = $section['children'];
+                $flat = array_merge($flat, $this->flattenPublishedSections($children, $childParentData));
             }
         }
 
@@ -1030,14 +1055,13 @@ class SectionExportImportService extends BaseService
     /**
      * Rebuild section relationships (PagesSection and SectionsHierarchy)
      *
-     * @param Page $page The page
-     * @param array $publishedSections The hierarchical sections structure
+     * @param list<array<string, mixed>> $publishedSections The hierarchical sections structure
      */
     private function rebuildSectionRelationships(Page $page, array $publishedSections): void
     {
         // Get all section IDs that will be involved in the restoration
         $flatPublishedSections = $this->flattenPublishedSections($publishedSections);
-        $sectionIds = array_column($flatPublishedSections, 'id');
+        $sectionIds = array_map(fn (mixed $id): int => $this->asInt($id), array_column($flatPublishedSections, 'id'));
 
         // Aggressively clear ALL existing relationships for these sections
         if (!empty($sectionIds)) {
@@ -1090,7 +1114,7 @@ class SectionExportImportService extends BaseService
 
                 // If Doctrine queries fail, try raw SQL
                 $conn = $this->entityManager->getConnection();
-                $idsString = implode(',', $sectionIds);
+                $idsString = implode(',', array_map(static fn (int $id): string => (string) $id, $sectionIds));
 
                 $conn->executeStatement("DELETE FROM rel_pages_sections WHERE id_pages = {$page->getId()}");
                 $conn->executeStatement("DELETE FROM rel_sections_hierarchy WHERE id_parent_section IN ({$idsString}) OR id_child_section IN ({$idsString})");
@@ -1105,18 +1129,18 @@ class SectionExportImportService extends BaseService
      * Recursively rebuild section relationships
      *
      * @param Page $page The page
-     * @param array $sections Sections array
+     * @param array<int, array<string, mixed>> $sections Sections array
      * @param Section|null $parentSection Parent section (null for root level)
      * @param int|null $parentPosition Parent position
      */
     private function rebuildRelationshipsRecursive(Page $page, array $sections, ?Section $parentSection, ?int $parentPosition): void
     {
         foreach ($sections as $position => $sectionData) {
-            $section = $this->sectionRepository->find($sectionData['id']);
+            $section = $this->sectionRepository->find($sectionData['id'] ?? null);
 
             if ($section) {
                 try {
-                    if ($page && !$parentSection) {
+                    if (!$parentSection) {
                         // Root level - add to page
                         $pageSection = new \App\Entity\PagesSection();
                         $pageSection->setPage($page);
@@ -1134,7 +1158,9 @@ class SectionExportImportService extends BaseService
 
                     // Process children
                     if (isset($sectionData['children']) && is_array($sectionData['children'])) {
-                        $this->rebuildRelationshipsRecursive($page, $sectionData['children'], $section, $position);
+                        /** @var array<int, array<string, mixed>> $childSections */
+                        $childSections = $sectionData['children'];
+                        $this->rebuildRelationshipsRecursive($page, $childSections, $section, $position);
                     }
                 } catch (\Exception $e) {
                     // Log relationship creation failure
@@ -1145,11 +1171,11 @@ class SectionExportImportService extends BaseService
                         0,
                         (object) [
                             'error' => $e->getMessage(),
-                            'section_id' => $sectionData['id'],
+                            'section_id' => $sectionData['id'] ?? null,
                             'parent_id' => $parentSection ? $parentSection->getId() : null,
                             'position' => $position
                         ],
-                        "Failed to create relationship for section {$sectionData['id']}: " . $e->getMessage()
+                        "Failed to create relationship for section " . $this->asString($sectionData['id'] ?? '') . ": " . $e->getMessage()
                     );
 
                     // Continue with other sections instead of failing completely
@@ -1164,10 +1190,10 @@ class SectionExportImportService extends BaseService
                     0,
                     (object) [
                         'warning' => 'Section not found',
-                        'section_id' => $sectionData['id'],
+                        'section_id' => $sectionData['id'] ?? null,
                         'page_id' => $page->getId()
                     ],
-                    "Section {$sectionData['id']} not found during relationship rebuilding"
+                    "Section " . $this->asString($sectionData['id'] ?? '') . " not found during relationship rebuilding"
                 );
             }
         }
@@ -1195,7 +1221,7 @@ class SectionExportImportService extends BaseService
     /**
      * Remove sections by their IDs
      *
-     * @param array $sectionIds Array of section IDs to delete
+     * @param array<int|string> $sectionIds Array of section IDs to delete
      * @return int Number of sections deleted
      */
     private function removeOrphanedSectionsByIds(array $sectionIds): int
@@ -1247,25 +1273,28 @@ class SectionExportImportService extends BaseService
      * Import translations for a section
      *
      * @param Section $section The section
-     * @param array $translations Translations data
+     * @param array<string, mixed> $translations Translations data
      */
     private function importSectionTranslations(Section $section, array $translations): void
     {
         foreach ($translations as $languageId => $languageTranslations) {
             $language = $this->entityManager->getRepository(\App\Entity\Language::class)->find($languageId);
             if (!$language) continue;
+            if (!is_array($languageTranslations)) {
+                continue;
+            }
 
             foreach ($languageTranslations as $fieldName => $fieldData) {
                 $field = $this->entityManager->getRepository(\App\Entity\Field::class)
                     ->findOneBy(['name' => $fieldName]);
 
-                if ($field) {
+                if ($field && is_array($fieldData)) {
                     $translation = new \App\Entity\SectionsFieldsTranslation();
                     $translation->setSection($section);
                     $translation->setField($field);
                     $translation->setLanguage($language);
-                    $translation->setContent($fieldData['content'] ?? '');
-                    $translation->setMeta($fieldData['meta'] ?? null);
+                    $translation->setContent($this->asString($fieldData['content'] ?? ''));
+                    $translation->setMeta($this->asStringOrNull($fieldData['meta'] ?? null));
 
                     $this->entityManager->persist($translation);
                 }
@@ -1278,7 +1307,7 @@ class SectionExportImportService extends BaseService
     /**
      * Ensure auto-increment value is set high enough to avoid conflicts with manual ID inserts
      *
-     * @param array $sectionDataArray Array of section data
+     * @param list<array<string, mixed>> $sectionDataArray Array of section data
      */
     private function ensureAutoIncrementForManualIds(array $sectionDataArray): void
     {
@@ -1287,7 +1316,11 @@ class SectionExportImportService extends BaseService
         }
 
         // Find the highest ID we need to insert
-        $maxId = max(array_column($sectionDataArray, 'id'));
+        $ids = array_map(fn (mixed $id): int => $this->asInt($id), array_column($sectionDataArray, 'id'));
+        if (empty($ids)) {
+            return;
+        }
+        $maxId = max($ids);
 
         // Get current auto-increment value
         $conn = $this->entityManager->getConnection();
@@ -1373,7 +1406,7 @@ class SectionExportImportService extends BaseService
             $sectionPath = $path . '.sections[' . $index . ']';
 
             $styleName = $sectionData['style_name'] ?? null;
-            if ($styleName === null || $styleName === '') {
+            if (!is_string($styleName) || $styleName === '') {
                 $errors[] = [
                     'path' => $sectionPath,
                     'type' => 'missing_style',
@@ -1392,9 +1425,10 @@ class SectionExportImportService extends BaseService
                 // Keep scanning children & fields: their own errors are still useful to surface.
             }
 
-            $styleFieldNames = isset($schema[$styleName])
-                ? array_flip(array_keys($schema[$styleName]['fields']))
+            $styleSchemaFields = (isset($schema[$styleName]['fields']) && is_array($schema[$styleName]['fields']))
+                ? $schema[$styleName]['fields']
                 : [];
+            $styleFieldNames = array_flip(array_keys($styleSchemaFields));
 
             // Validate fields
             $fields = $sectionData['fields'] ?? [];
@@ -1452,8 +1486,10 @@ class SectionExportImportService extends BaseService
 
             // Recurse into children
             if (!empty($sectionData['children']) && is_array($sectionData['children'])) {
+                /** @var array<int, array<string, mixed>> $childSections */
+                $childSections = $sectionData['children'];
                 $this->validateSectionsRecursive(
-                    $sectionData['children'],
+                    $childSections,
                     $sectionPath,
                     $schema,
                     $allFieldNames,
@@ -1475,7 +1511,7 @@ class SectionExportImportService extends BaseService
         $rows = $conn->executeQuery('SELECT name FROM fields')->fetchAllAssociative();
         $map = [];
         foreach ($rows as $row) {
-            $map[$row['name']] = true;
+            $map[$this->asString($row['name'])] = true;
         }
         return $map;
     }
@@ -1491,8 +1527,9 @@ class SectionExportImportService extends BaseService
         $rows = $conn->executeQuery('SELECT locale FROM languages')->fetchAllAssociative();
         $map = [];
         foreach ($rows as $row) {
-            $map[$row['locale']] = true;
+            $map[$this->asString($row['locale'])] = true;
         }
         return $map;
     }
+
 } 

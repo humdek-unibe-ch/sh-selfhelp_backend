@@ -97,7 +97,7 @@ class ApiRequestLoggerListener implements EventSubscriberInterface
         
         // Get request hash from request attributes
         $requestHash = $request->attributes->get('_api_request_hash');
-        if (!$requestHash) {
+        if (!is_string($requestHash) || $requestHash === '') {
             return;
         }
         
@@ -125,7 +125,7 @@ class ApiRequestLoggerListener implements EventSubscriberInterface
         
         // Get request hash from request attributes
         $requestHash = $request->attributes->get('_api_request_hash');
-        if (!$requestHash) {
+        if (!is_string($requestHash) || $requestHash === '') {
             return;
         }
         

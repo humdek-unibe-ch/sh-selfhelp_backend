@@ -11,7 +11,6 @@ use App\Entity\DataAccessAudit;
 use App\Entity\Group;
 use App\Entity\User;
 use App\Entity\UsersGroup;
-use App\Repository\DataAccessAuditRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
@@ -35,7 +34,6 @@ class DataAccessSecurityService
     public const PERMISSION_DELETE = 8;  // 1000
 
     public function __construct(
-        private DataAccessAuditRepository $auditRepository,
         private RoleDataAccessRepository $roleDataAccessRepository,
         private UserRepository $userRepository,
         private LookupService $lookupService,
@@ -137,6 +135,7 @@ class DataAccessSecurityService
 
             // Set user entity reference
             $user = $this->entityManager->getReference(User::class, $userId);
+            assert($user instanceof User);
             $audit->setUser($user);
 
             // Set lookup relationships
@@ -237,7 +236,7 @@ class DataAccessSecurityService
         // since their permissions depend on role permissions
         $usersWithRole = $this->userRepository->findByRole($roleId);
         foreach ($usersWithRole as $user) {
-            $this->invalidateUserPermissions($user->getId());
+            $this->invalidateUserPermissions((int) $user->getId());
         }
     }
 
