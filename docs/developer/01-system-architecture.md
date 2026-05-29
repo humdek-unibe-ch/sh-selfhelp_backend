@@ -283,9 +283,9 @@ src/
 - **CacheStatsService**: Cache statistics and monitoring
 
 ### Dynamic Routing
-- **ApiRouteLoader**: Database-driven route loading
-- **DynamicControllerService**: Dynamic controller resolution
-- **ApiVersionResolver**: API version detection
+- **ApiRouteLoader**: Database-driven route loading (builds the `RouteCollection` from `api_routes`)
+- **ApiSecurityListener**: Enforces each route's required permissions on `kernel.controller`
+- **ApiVersionResolver** / **ApiVersionListener**: API version detection/handling
 
 ## 💾 Data Architecture
 

@@ -3,7 +3,7 @@
 ## Core Patterns & Best Practices
 
 ## 🚀 Project Overview
-**SelfHelp Symfony Backend** - A sophisticated database-driven REST API system built with Symfony 7.2 and PHP 8.3, implementing dynamic routing, comprehensive security, and strict data integrity patterns.
+**SelfHelp Symfony Backend** - A sophisticated database-driven REST API system built with Symfony 7.4 and PHP 8.4, implementing dynamic routing, comprehensive security, and strict data integrity patterns.
 
 ## 🏗️ Core Architecture Principles
 
@@ -385,9 +385,8 @@ CALL get_user_acl(userId, pageId)
 - `config/routes/dynamic_api.yaml` - Dynamic route loading
 
 ### Database
-- `db/structure_db.sql` - Complete database schema
-- `db/update_scripts/` - Version migration scripts
-- `db/update_scripts/api_routes.sql` - API route definitions
+- `migrations/` - Doctrine migrations (the canonical schema: baseline + seed migrations)
+- `db/legacy/` - Deprecated historical SQL (reference only; NOT used by installs)
 
 ### Schemas
 - `config/schemas/api/v1/` - JSON validation schemas
