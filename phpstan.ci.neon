@@ -10,4 +10,7 @@ includes:
 
 parameters:
     shipmonkDeadCode:
-        enabled: false
+        detect:
+            deadMethods: false
+            deadConstants: false
+            deadEnumCases: false
