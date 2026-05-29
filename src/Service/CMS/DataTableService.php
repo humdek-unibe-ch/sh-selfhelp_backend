@@ -29,10 +29,15 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Service for managing data_tables creation and column management
+ * Service for managing data_tables creation and column management.
+ *
+ * The admin role is granted full CRUD on every newly-persisted DataTable by
+ * {@see \App\EventListener\DataTableAdminAccessListener}, so no service in
+ * this file needs to grant that permission explicitly.
  */
 class DataTableService extends BaseService
 {
+
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -435,7 +440,7 @@ class DataTableService extends BaseService
      */
     public function canAccessDataTable(int $userId, int $dataTableId, int $permission): bool
     {
-        return $this->dataAccessSecurityService->hasPermission(
+        return $this->dataAccessSecurityService->hasStoredPermission(
             $userId,
             LookupService::RESOURCE_TYPES_DATA_TABLE,
             $dataTableId,
@@ -459,13 +464,7 @@ class DataTableService extends BaseService
             return [];
         }
 
-        // Check if user is admin - use repository method for all data tables
-        if ($this->dataAccessSecurityService->userHasAdminRole($userId)) {
-            $dataTables = $this->roleDataAccessRepository->getAllDataTablesWithFullPermissions();
-        } else {
-            // Use repository method for accessible data tables
-            $dataTables = $this->roleDataAccessRepository->getAccessibleDataTablesForUser($userId, $resourceTypeId);
-        }
+        $dataTables = $this->roleDataAccessRepository->getAccessibleDataTablesForUser($userId, $resourceTypeId);
 
         // Apply additional filters if provided (name)
         if (!empty($filters) && isset($filters['name']) && $filters['name']) {
@@ -492,4 +491,5 @@ class DataTableService extends BaseService
 
         return array_values($dataTables);
     }
+
 }

@@ -14,6 +14,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'fields')]
 #[ORM\UniqueConstraint(name: 'uq_fields_name', columns: ['name'])]
 #[ORM\Index(name: 'idx_fields_id_field_types', columns: ['id_field_types'])]
+#[ORM\Index(name: 'idx_fields_id_plugins', columns: ['id_plugins'])]
 class Field
 {
     #[ORM\OneToMany(mappedBy: 'field', targetEntity: StylesField::class)]
@@ -35,6 +36,15 @@ class Field
 
     #[ORM\Column(name: 'config', type: 'json', nullable: true)]
     private ?array $config = null;
+
+    /**
+     * Plugin that owns this field row. NULL = core-owned.
+     * `ON DELETE SET NULL` so dropping a plugin row never silently
+     * deletes CMS field definitions.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
     public function getId(): ?int
     {
@@ -61,6 +71,18 @@ class Field
     public function setType(?FieldType $type): static
     {
         $this->type = $type;
+
+        return $this;
+    }
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
 
         return $this;
     }

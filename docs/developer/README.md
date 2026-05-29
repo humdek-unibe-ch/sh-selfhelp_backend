@@ -33,6 +33,7 @@ This developer documentation is organized into the following sections:
 - [🧪 **Testing Guidelines**](./15-testing-guidelines.md) - Testing strategies and best practices
 - [🚀 **Deployment Process**](./16-deployment-process.md) - Version management and deployment
 - [🧱 **Seeding System Pages**](./21-seeding-system-pages.md) - How `is_system` CMS pages (login, privacy, profile, …) are shipped and extended
+- [🩺 **Local Debugging With A Production DB Copy**](./22-local-debugging-with-production-db.md) - What a DB dump restores locally, what plugin state must be rebuilt manually, and the safe recovery workflow
 
 ## 🚀 Quick Start for New Developers
 

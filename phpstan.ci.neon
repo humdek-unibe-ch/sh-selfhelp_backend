@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+
+# PHPStan configuration for CI (plugin-host-check workflow)
+# Disables dead code detection since controllers are used via Symfony routing
+# which static analysis cannot detect.
+
+includes:
+    - phpstan.dist.neon
+    # Pre-existing level-max findings in the plugin host scope are
+    # captured here so CI fails on NEW regressions only. The goal is to
+    # burn this file down over time. Regenerate (after intentionally
+    # reducing debt) with the exact scope CI analyses:
+    #   php vendor/bin/phpstan analyse \
+    #     src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin \
+    #     --configuration=phpstan.ci.neon \
+    #     --generate-baseline=phpstan-baseline.neon
+    # See docs/developer/23-ci-quality-gate.md.
+    - phpstan-baseline.neon
+
+parameters:
+    shipmonkDeadCode:
+        detect:
+            deadMethods: false
+            deadConstants: false
+            deadEnumCases: false

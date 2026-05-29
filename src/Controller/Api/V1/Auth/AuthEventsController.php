@@ -10,9 +10,11 @@ declare(strict_types=1);
 
 namespace App\Controller\Api\V1\Auth;
 
+use App\Plugin\Event\PluginRealtimePermissionEvent;
 use App\Service\Auth\UserContextService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Mercure\MercureTopicResolver;
+use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Request;
@@ -93,6 +95,7 @@ class AuthEventsController extends AbstractController
         private readonly UserContextService $userContextService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly MercureTopicResolver $topics,
+        private readonly EventDispatcherInterface $eventDispatcher,
         private readonly string $mercurePublicUrl,
         private readonly string $mercureJwtSecret,
         private readonly int $mercureSubscriberTtl
@@ -142,11 +145,22 @@ class AuthEventsController extends AbstractController
             $this->mercureSubscriberTtl
         );
 
-        // One subscriber JWT, two topics. Mercure supports multiple
+        // Ask plugin listeners for additional topic IRIs this user is
+        // allowed to subscribe to. Deny-by-default: no grant ⇒ no
+        // subscription. Plugin listeners use `PluginRealtimePublisher`
+        // to publish messages; the topic IRIs they grant here must match
+        // the IRIs declared in their `plugin.json#realtimeTopics`.
+        $pluginEvent = $this->eventDispatcher->dispatch(new PluginRealtimePermissionEvent($user));
+        $pluginTopics = $pluginEvent->getAllowedTopicIris();
+
+        // One subscriber JWT, multiple topics. Mercure supports multiple
         // `topic=` query params on a single SSE connection, so the BFF
-        // opens ONE upstream socket instead of two — half the RAM in the
+        // opens ONE upstream socket instead of N — half the RAM in the
         // hub, half the file descriptors per logged-in user.
-        $token = $factory->create([$aclTopic, $impersonationTopic], null);
+        $token = $factory->create(
+            array_values(array_unique(array_merge([$aclTopic, $impersonationTopic], $pluginTopics))),
+            null,
+        );
 
         if ($useCookieTransport && !$this->canIssueMercureCookie($hubUrl, $request)) {
             return $this->responseFormatter->formatError(
@@ -160,6 +174,7 @@ class AuthEventsController extends AbstractController
                 'hubUrl' => $hubUrl,
                 'topic' => $aclTopic,
                 'impersonationTopic' => $impersonationTopic,
+                'pluginTopics' => $pluginTopics,
                 'token' => $useCookieTransport ? null : $token,
                 'expiresIn' => $this->mercureSubscriberTtl,
             ],

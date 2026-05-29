@@ -1,0 +1,79 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin operation envelope",
+    "description": "Response from /cms-api/v1/admin/plugins/operations/{id} and from any install/update/finalize endpoint. plugin_operations row formatted for the admin UI.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "pluginId": { "type": "string" },
+                "type": { "type": "string", "enum": ["install", "update", "disable", "enable", "uninstall", "purge", "rollback", "repair"] },
+                "status": { "type": "string", "enum": ["requested", "running", "succeeded", "failed", "cancelled", "rolled_back"] },
+                "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
+                "fromVersion": { "type": ["string", "null"] },
+                "toVersion": { "type": ["string", "null"] },
+                "createdAt": { "type": "string", "format": "date-time" },
+                "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+                "errorSummary": { "type": ["string", "null"] },
+                "snapshots": { "type": ["object", "null"], "additionalProperties": true },
+                "rollbackPlan": { "type": ["object", "null"], "additionalProperties": true },
+                "logs": { "type": ["array", "null"], "items": { "type": "object", "additionalProperties": true } },
+                "installAction": {
+                    "type": "string",
+                    "enum": ["install_dispatched", "update_dispatched", "already_installed"],
+                    "description": "Only emitted by POST /admin/plugins/install. Tells the admin UI whether a fresh install was queued, the request was transparently routed to the updater because a newer version is installed, or the plugin is already installed at the requested version and no operation was dispatched."
+                },
+                "redirectedToUpdate": {
+                    "type": "boolean",
+                    "description": "Only emitted by POST /admin/plugins/install. True when the install request was transparently routed through the updater because the plugin id was already installed; the UI should show 'Updating <id> from existingVersion to toVersion' instead of the first-install copy."
+                },
+                "existingVersion": {
+                    "type": ["string", "null"],
+                    "description": "Only set when installAction is update_dispatched or already_installed. Version currently on disk."
+                },
+                "requestedVersion": {
+                    "type": ["string", "null"],
+                    "description": "Only set when installAction is update_dispatched or already_installed. Version the admin requested via the Install dialog."
+                },
+                "diffKind": {
+                    "type": ["string", "null"],
+                    "enum": ["patch", "minor", "major", "same", "downgrade", "unknown", null],
+                    "description": "Only set when installAction is update_dispatched. Result of SemverHelper::diffKind so the UI can show migration/breaking-change warnings."
+                },
+                "message": {
+                    "type": ["string", "null"],
+                    "description": "Human-readable copy. Always emitted for installAction=already_installed; opportunistic for the other two values."
+                }
+            },
+            "oneOf": [
+                {
+                    "description": "Operation dispatched (installAction = install_dispatched | update_dispatched). The standard plugin_operations envelope.",
+                    "required": ["id", "pluginId", "type", "status", "installAction"],
+                    "properties": {
+                        "installAction": { "enum": ["install_dispatched", "update_dispatched"] }
+                    }
+                },
+                {
+                    "description": "No-op (installAction = already_installed). No plugin_operations row was created — the plugin is already at the requested version.",
+                    "required": ["pluginId", "installAction", "existingVersion", "requestedVersion"],
+                    "properties": {
+                        "installAction": { "const": "already_installed" }
+                    }
+                },
+                {
+                    "description": "Legacy / non-install endpoints (status sub-resources) that do not emit installAction.",
+                    "required": ["id", "pluginId", "type", "status"],
+                    "not": {
+                        "required": ["installAction"]
+                    }
+                }
+            ],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

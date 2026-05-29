@@ -1,0 +1,9 @@
+framework:
+    lock:
+        # Default lock resource — used for any consumer that asks for
+        # `LockFactory` without naming a resource.
+        default: '%env(default:default_lock_dsn:LOCK_DSN)%'
+        # Dedicated lock resource for the plugin lifecycle. Production
+        # deployments override `PLUGIN_LOCK_DSN` with a Redis DSN so
+        # the lock is cluster-safe; development falls back to flock.
+        plugin_operation: '%env(default:default_plugin_lock_dsn:PLUGIN_LOCK_DSN)%'

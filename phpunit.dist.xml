@@ -25,6 +25,17 @@
         <testsuite name="Project Test Suite">
             <directory>tests</directory>
         </testsuite>
+        <!--
+            DB-free, CI-reliable subset: the plugin-host unit tests.
+            These extend PHPUnit\Framework\TestCase (no kernel boot, no
+            database) and are run in the plugin-host-check workflow with
+            the "unit" testsuite. The full "Project Test Suite" also needs
+            MySQL + Redis + seeded fixtures + a real login flow and is not
+            yet wired into CI (see docs/developer/23-ci-quality-gate.md).
+        -->
+        <testsuite name="unit">
+            <directory>tests/Plugin</directory>
+        </testsuite>
     </testsuites>
 
     <source ignoreSuppressionOfDeprecations="true"

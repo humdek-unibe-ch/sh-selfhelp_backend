@@ -1,0 +1,28 @@
+{
+    "pluginId": "sh2-shp-survey-js",
+    "version": "0.1.0",
+    "composer": {
+        "package": "humdek/sh2-shp-survey-js",
+        "version": "0.1.0"
+    },
+    "runtime": {
+        "entrypointUrl": "artifacts/plugin.esm.js",
+        "format": "esm"
+    },
+    "checksums": {
+        "frontendEsm": "sha256-8444c0adda8eedc6e2c3449e38e6e954dc6b8f1220816d82af3b9f9f4a0403d8"
+    },
+    "compatibility": {
+        "selfhelp": ">=8.0.0-dev <9.0.0",
+        "php": "^8.4"
+    },
+    "archive": {
+        "mode": "standalone",
+        "backend": {
+            "included": true,
+            "path": "backend/package",
+            "installMode": "composer-path-repository",
+            "packageHash": "sha256-c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3c0d3"
+        }
+    }
+}

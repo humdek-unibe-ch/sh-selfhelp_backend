@@ -143,6 +143,18 @@
             "src/Kernel.php"
         ]
     },
+    "symfony/lock": {
+        "version": "7.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "5.2",
+            "ref": "8e937ff2b4735d110af1770f242c1107fdab4c8e"
+        },
+        "files": [
+            "./config/packages/lock.yaml"
+        ]
+    },
     "symfony/mailer": {
         "version": "7.4",
         "recipe": {
@@ -174,6 +186,18 @@
         },
         "files": [
             "./config/packages/mercure.yaml"
+        ]
+    },
+    "symfony/messenger": {
+        "version": "7.4",
+        "recipe": {
+            "repo": "github.com/symfony/recipes",
+            "branch": "main",
+            "version": "6.0",
+            "ref": "d8936e2e2230637ef97e5eecc0eea074eecae58b"
+        },
+        "files": [
+            "./config/packages/messenger.yaml"
         ]
     },
     "symfony/monolog-bundle": {

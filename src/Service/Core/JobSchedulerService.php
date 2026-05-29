@@ -14,6 +14,7 @@ use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
 use App\Entity\ScheduledJobReminder;
 use App\Entity\User;
+use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Auth\UserDataService;
 use App\Service\Cache\Core\CacheService;
@@ -44,6 +45,7 @@ class JobSchedulerService extends BaseService
         private readonly LoggerInterface $logger,
         private readonly CacheService $cache,
         private readonly MailerInterface $mailer,
+        private readonly PluginScheduledJobRegistry $pluginScheduledJobs,
     ) {
     }
 
@@ -569,7 +571,19 @@ class JobSchedulerService extends BaseService
      */
     private function executeByType(ScheduledJob $job, string $transactionBy): bool
     {
-        return match ($job->getJobType()->getLookupCode()) {
+        $jobType = (string) $job->getJobType()->getLookupCode();
+        // Plugin-contributed job types take precedence so plugins can
+        // shadow a core type when they need to (rare but allowed —
+        // e.g. a survey plugin wrapping `email` with extra
+        // pre/post hooks). The registry is built from services tagged
+        // `selfhelp.plugin.scheduled_job_handler` so it stays empty on
+        // hosts that have no plugin contributions.
+        $pluginResult = $this->pluginScheduledJobs->execute($jobType, $job, $transactionBy);
+        if ($pluginResult !== null) {
+            return $pluginResult;
+        }
+
+        return match ($jobType) {
             LookupService::JOB_TYPES_EMAIL => $this->executeEmailJob($job, $transactionBy),
             LookupService::JOB_TYPES_NOTIFICATION => $this->executeNotificationJob($job, $transactionBy),
             LookupService::JOB_TYPES_TASK => $this->executeTaskJob($job, $transactionBy),

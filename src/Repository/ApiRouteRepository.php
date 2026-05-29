@@ -115,8 +115,13 @@ class ApiRouteRepository extends ServiceEntityRepository
 
     /**
      * Optimized method to find routes with permissions as array data (no entities)
-     * Returns plain arrays to avoid Doctrine proxy/lazy loading overhead
-     * 
+     * Returns plain arrays to avoid Doctrine proxy/lazy loading overhead.
+     *
+     * Plugin-owned rows (`id_plugins IS NOT NULL`) are filtered out when
+     * the owning plugin is disabled, so `ApiRouteLoader` doesn't surface
+     * routes whose controllers are loaded only when the plugin's bundle
+     * is active. Core routes (`id_plugins IS NULL`) are always included.
+     *
      * @return array Array of route data with permissions
      */
     public function findAllRoutesWithPermissionsAsArray(): array
@@ -133,11 +138,14 @@ class ApiRouteRepository extends ServiceEntityRepository
                 r.requirements,
                 r.params,
                 r.version,
+                r.id_plugins,
                 GROUP_CONCAT(p.name ORDER BY p.name SEPARATOR ",") as permission_names
             FROM api_routes r
             LEFT JOIN rel_api_routes_permissions arp ON r.id = arp.id_api_routes
             LEFT JOIN permissions p ON arp.id_permissions = p.id
-            GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version
+            LEFT JOIN plugins pl ON r.id_plugins = pl.id
+            WHERE r.id_plugins IS NULL OR pl.enabled = 1
+            GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version, r.id_plugins
             ORDER BY r.version ASC, r.id ASC
         ';
         
