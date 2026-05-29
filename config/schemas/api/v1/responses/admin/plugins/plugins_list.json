@@ -1,0 +1,24 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin list",
+    "description": "Response from /cms-api/v1/admin/plugins (installed plugins) and /cms-api/v1/admin/plugins/available (registry catalogue). `data.plugins` is the array; `data.installMode` and `data.safeMode` are only present on the installed-plugins list.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "plugins": {
+                    "type": "array",
+                    "items": { "type": "object", "additionalProperties": true }
+                },
+                "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
+                "safeMode": { "type": "boolean" }
+            },
+            "required": ["plugins"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

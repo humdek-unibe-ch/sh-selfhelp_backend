@@ -1,0 +1,45 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin manifest (public)",
+    "description": "Response from /cms-api/v1/plugins/manifest. Used by the frontend `PluginRuntime` and the mobile `plugins-sync` script to discover installed and enabled plugins. Anonymous + authenticated callers receive the same shape — no raw manifests, no lock-file snapshots, no secrets, no signatures, no operation history. Anything that needs that data uses the authenticated /admin/plugins/... endpoints.",
+    "allOf": [
+        { "$ref": "../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "cmsVersion": { "type": "string" },
+                "sdkApiVersion": { "type": "string" },
+                "safeMode": { "type": "boolean" },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "pluginId": { "type": "string" },
+                            "name": { "type": "string" },
+                            "version": { "type": "string" },
+                            "pluginApiVersion": { "type": "string" },
+                            "trustLevel": { "type": "string" },
+                            "enabled": { "type": "boolean" },
+                            "capabilities": { "type": "array", "items": { "type": "string" } },
+                            "featureFlags": { "type": "object", "additionalProperties": { "type": "boolean" } },
+                            "frontendRuntimeUrl": { "type": ["string", "null"] },
+                            "frontendRuntimeStylesheetUrl": { "type": ["string", "null"] },
+                            "frontendRuntimeIntegrity": { "type": ["string", "null"] },
+                            "frontendRuntimeFormat": { "type": ["string", "null"] },
+                            "mobilePackage": { "type": ["string", "null"] },
+                            "mobilePackageVersion": { "type": ["string", "null"] }
+                        },
+                        "required": ["pluginId", "name", "version", "pluginApiVersion", "enabled"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": ["plugins"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

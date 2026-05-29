@@ -1,0 +1,39 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin global doctor report",
+    "description": "Response from /cms-api/v1/admin/plugins/doctor. Site-wide plugin health, including the realtime topic catalog and per-plugin reports.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "generatedAt": { "type": "string", "format": "date-time" },
+                "siteChecks": { "type": "object", "additionalProperties": true },
+                "realtimeTopicCatalog": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "pluginId": { "type": "string" },
+                            "key": { "type": "string" },
+                            "description": { "type": "string" },
+                            "requiredPermission": { "type": ["string", "null"] },
+                            "payloadSchemaPath": { "type": ["string", "null"] }
+                        },
+                        "required": ["pluginId", "key"],
+                        "additionalProperties": true
+                    }
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": { "type": "object", "additionalProperties": true }
+                }
+            },
+            "required": ["generatedAt", "siteChecks", "plugins"],
+            "additionalProperties": true
+        }
+    },
+    "required": ["data"]
+}

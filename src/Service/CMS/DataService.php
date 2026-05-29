@@ -899,12 +899,15 @@ class DataService extends BaseService
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->invalidateAllListsInCategory();
 
-        // If the data table has global configs (current_user: false), invalidate the entire data table scope
-        if ($config['has_global_config']) {
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
-        }
+        // Always invalidate the data-table entity scope. Every read in
+        // DataTableRepository scopes its cache by the data_table id, so
+        // bumping that scope's generation counter is the only reliable
+        // way to invalidate plugin-owned data tables (no section
+        // references them via data_config, which would otherwise drive
+        // the has_global_config / has_current_user_config flags below).
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
 
         // If the data table has user-specific configs (current_user: true) and we have a user,
         // invalidate the user-specific scope for this user

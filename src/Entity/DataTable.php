@@ -12,6 +12,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'data_tables')]
+#[ORM\Index(name: 'idx_data_tables_id_plugins', columns: ['id_plugins'])]
 class DataTable
 {
     /**
@@ -45,6 +46,16 @@ class DataTable
 
     #[ORM\Column(name: 'display_name', type: 'string', length: 1000, nullable: true)]
     private ?string $displayName = null;
+
+    /**
+     * Plugin that owns this data_tables row. NULL = core-owned.
+     * Plugin-owned data tables also use the `ownedDataTablePrefix`
+     * naming convention so the purger can find their dataRows/Cells
+     * tables even when the data_tables row itself has been deleted.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
     public function getId(): ?int
     {
@@ -140,6 +151,18 @@ class DataTable
     public function setDisplayName(?string $displayName): static
     {
         $this->displayName = $displayName;
+
+        return $this;
+    }
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
 
         return $this;
     }

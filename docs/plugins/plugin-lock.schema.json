@@ -1,0 +1,184 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/plugin-lock.schema.json",
+    "title": "SelfHelp Plugin Lock File",
+    "description": "Schema for `selfhelp.plugins.lock.json` at the project root. Written atomically by the plugin installer/updater/uninstaller. Source of truth for backend + frontend + mobile across all hosts.",
+    "type": "object",
+    "required": ["lockfileVersion", "generatedAt", "sdk", "plugins"],
+    "additionalProperties": false,
+    "properties": {
+        "lockfileVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Bumped only on breaking changes to this schema."
+        },
+        "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "sdk": {
+            "type": "object",
+            "required": ["version", "pluginApiVersion"],
+            "additionalProperties": false,
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+                },
+                "pluginApiVersion": {
+                    "type": "string"
+                }
+            }
+        },
+        "plugins": {
+            "type": "object",
+            "patternProperties": {
+                "^[a-z][a-z0-9-]*$": {"$ref": "#/$defs/lockedPlugin"}
+            },
+            "additionalProperties": false
+        }
+    },
+    "$defs": {
+        "lockedPlugin": {
+            "type": "object",
+            "required": ["version", "channel", "trustLevel", "source", "compatibility"],
+            "additionalProperties": false,
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+                },
+                "channel": {"type": "string", "enum": ["stable", "beta", "alpha", "nightly"]},
+                "trustLevel": {"type": "string", "enum": ["official", "reviewed", "untrusted"]},
+                "installedAt": {"type": "string", "format": "date-time"},
+                "updatedAt": {"type": "string", "format": "date-time"},
+                "source": {
+                    "type": "object",
+                    "required": ["kind"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "kind": {"type": "string", "enum": ["public", "private", "local", "git"]},
+                        "registry": {"type": "string"},
+                        "url": {"type": "string"},
+                        "ref": {"type": "string"},
+                        "gitSha": {"type": "string"},
+                        "secretRef": {"type": "string"}
+                    }
+                },
+                "signature": {
+                    "type": "object",
+                    "required": ["algo", "publicKeyId", "sig"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "algo": {"type": "string", "enum": ["ed25519"]},
+                        "publicKeyId": {"type": "string"},
+                        "sig": {"type": "string"}
+                    }
+                },
+                "checksum": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "manifest": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                        "composer": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                        "npmFrontend": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                        "npmMobile": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"}
+                    }
+                },
+                "backend": {"$ref": "#/$defs/packageRef"},
+                "frontend": {"$ref": "#/$defs/runtimeRef"},
+                "mobile": {"$ref": "#/$defs/packageRef"},
+                "migrations": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "applied": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/migrationRecord"}
+                        },
+                        "pending": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/migrationRecord"}
+                        }
+                    }
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                },
+                "capabilities": {
+                    "type": "object",
+                    "additionalProperties": {"type": ["boolean", "array", "string"]}
+                },
+                "stylesOwned": {"type": "array", "items": {"type": "string"}},
+                "adminPagesOwned": {"type": "array", "items": {"type": "string"}},
+                "apiRoutesOwned": {"type": "array", "items": {"type": "string"}},
+                "realtimeTopics": {"type": "array", "items": {"type": "string"}},
+                "lookupGroupsOwned": {"type": "array", "items": {"type": "string"}},
+                "dataAccess": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "ownedTables": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}},
+                        "ownedDataTablePrefix": {"type": "string", "pattern": "^[a-z][a-z0-9_]*_$"},
+                        "read": {"type": "array", "items": {"type": "string"}},
+                        "write": {"type": "array", "items": {"type": "string"}},
+                        "delete": {"type": "array", "items": {"type": "string"}}
+                    }
+                },
+                "compatibility": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "selfhelp": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                            "description": "Per-target version range: backend, frontend, shared, mobile."
+                        },
+                        "pluginApiVersion": {"type": "string"},
+                        "php": {"type": "string"},
+                        "symfony": {"type": "string"},
+                        "node": {"type": "string"},
+                        "react": {"type": "string"},
+                        "nextjs": {"type": "string"},
+                        "reactNative": {"type": "string"},
+                        "expo": {"type": "string"}
+                    }
+                }
+            }
+        },
+        "packageRef": {
+            "type": "object",
+            "required": ["package", "version"],
+            "additionalProperties": false,
+            "properties": {
+                "package": {"type": "string"},
+                "version": {"type": "string"}
+            }
+        },
+        "runtimeRef": {
+            "type": "object",
+            "description": "Runtime ESM frontend bundle pin. The host loads runtimeUrl via dynamic import().",
+            "required": ["runtimeUrl", "format"],
+            "additionalProperties": false,
+            "properties": {
+                "runtimeUrl": {"type": "string"},
+                "stylesheetUrl": {"type": ["string", "null"]},
+                "integrity": {"type": ["string", "null"]},
+                "format": {"type": "string", "enum": ["esm"]}
+            }
+        },
+        "migrationRecord": {
+            "type": "object",
+            "required": ["version", "hash"],
+            "additionalProperties": false,
+            "properties": {
+                "version": {"type": "string"},
+                "hash": {"type": "string", "pattern": "^sha256-[A-Za-z0-9+/=_-]+$"},
+                "appliedAt": {"type": "string", "format": "date-time"},
+                "appliedBy": {"type": "string"},
+                "safeDown": {"type": "boolean", "default": false}
+            }
+        }
+    }
+}

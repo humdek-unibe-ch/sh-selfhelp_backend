@@ -1,0 +1,524 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/plugin-manifest.schema.json",
+    "title": "SelfHelp Plugin Manifest (canonical v1.0)",
+    "description": "Canonical schema for `plugin.json` at the root of every SelfHelp plugin repository. One schema for every install source (registry, direct URL, .shplugin archive, pasted JSON). The CANONICAL copy lives at sh-selfhelp_backend/docs/plugins/plugin-manifest.schema.json — every other copy in the ecosystem (sh2-plugin-registry/, plugin repos under plugins/) MUST be byte-identical. The registry's build workflow re-fetches the host copy and rejects drift. See docs/plugins/installation.md and docs/plugins/distribution.md.",
+    "type": "object",
+    "required": ["id", "name", "version", "pluginApiVersion", "compatibility", "security"],
+    "additionalProperties": false,
+    "properties": {
+        "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "Plugin identifier (kebab-case)."
+        },
+        "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+        },
+        "description": {
+            "type": "string"
+        },
+        "version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$",
+            "description": "Plugin SemVer version."
+        },
+        "pluginApiVersion": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+$",
+            "description": "SDK contract version this plugin targets (e.g. \"1.0\")."
+        },
+        "author": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "email": {"type": "string", "format": "email"},
+                "url": {"type": "string", "format": "uri"}
+            },
+            "required": ["name"],
+            "additionalProperties": false
+        },
+        "license": {"type": "string"},
+        "homepage": {"type": "string", "format": "uri"},
+        "compatibility": {
+            "type": "object",
+            "required": ["selfhelp"],
+            "additionalProperties": false,
+            "properties": {
+                "selfhelp": {"type": "string"},
+                "php": {"type": "string"},
+                "node": {"type": "string"},
+                "react": {"type": "string"},
+                "reactNative": {"type": "string"},
+                "expoSdk": {"type": "string"}
+            }
+        },
+        "dependencies": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["pluginId", "version", "required"],
+                "additionalProperties": false,
+                "properties": {
+                    "pluginId": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+                    "version": {"type": "string"},
+                    "required": {"type": "boolean"},
+                    "featureFlag": {"type": "string"}
+                }
+            }
+        },
+        "conflicts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["pluginId", "version", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                    "pluginId": {"type": "string"},
+                    "version": {"type": "string"},
+                    "reason": {"type": "string"}
+                }
+            }
+        },
+        "backend": {
+            "type": "object",
+            "description": "Backend bundle declaration. The host orchestrates Composer; the admin never runs composer require manually.",
+            "required": ["bundleClass", "composer"],
+            "additionalProperties": false,
+            "properties": {
+                "bundleClass": {
+                    "type": "string",
+                    "description": "Fully qualified Symfony bundle class, e.g. \"Humdek\\\\SurveyJsBundle\\\\HumdekSurveyJsBundle\"."
+                },
+                "migrationsNamespace": {
+                    "type": "string",
+                    "description": "Doctrine migrations namespace shipped with the plugin bundle."
+                },
+                "composer": {
+                    "type": "object",
+                    "description": "Composer coordinates resolved by the Messenger worker via `composer require`.",
+                    "required": ["package", "version"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "package": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]?|-{0,2})[a-z0-9]+)*$",
+                            "description": "Composer package name (vendor/name)."
+                        },
+                        "version": {
+                            "type": "string",
+                            "description": "Composer version constraint. May be an exact version, range, or `@dev` for path repos."
+                        },
+                        "repository": {
+                            "type": "object",
+                            "description": "Optional non-Packagist repository to register before `composer require`.",
+                            "required": ["type", "url"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["vcs", "path", "composer", "git"]
+                                },
+                                "url": {"type": "string"},
+                                "reference": {
+                                    "type": "string",
+                                    "description": "Optional git ref / commit SHA to pin to."
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "frontend": {
+            "type": "object",
+            "description": "Runtime ESM frontend bundle declaration. The host frontend loads the entrypoint via `import(runtimeUrl)` at runtime — no Next.js rebuild required.",
+            "required": ["runtime"],
+            "additionalProperties": false,
+            "properties": {
+                "runtime": {
+                    "type": "object",
+                    "required": ["entrypoint", "format"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "entrypoint": {
+                            "type": "string",
+                            "description": "Repo-relative path to the built ESM entrypoint, e.g. \"dist/plugin.esm.js\". CI / .shplugin builds copy this into artifacts/plugin.esm.js."
+                        },
+                        "stylesheet": {
+                            "type": "string",
+                            "description": "Repo-relative path to the optional plugin CSS, e.g. \"dist/plugin.css\". Injected by the host runtime with integrity + crossorigin attributes."
+                        },
+                        "format": {
+                            "type": "string",
+                            "enum": ["esm"],
+                            "description": "Module format. v1 supports `esm` only."
+                        },
+                        "integrity": {
+                            "type": "string",
+                            "description": "Subresource Integrity for the entrypoint, e.g. \"sha384-...\". The signed canonical payload pins this value."
+                        },
+                        "stylesheetIntegrity": {
+                            "type": "string",
+                            "description": "Subresource Integrity for the stylesheet."
+                        },
+                        "devEntrypointUrl": {
+                            "type": "string",
+                            "description": "Optional dev-server URL used in development install mode (e.g. http://localhost:5174/sh2-shp-survey-js/plugin.esm.js)."
+                        }
+                    }
+                }
+            }
+        },
+        "mobile": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "package": {"type": "string"},
+                "version": {"type": "string"},
+                "readonly": {"type": "boolean"}
+            }
+        },
+        "security": {
+            "type": "object",
+            "required": ["trustLevel", "capabilities"],
+            "additionalProperties": false,
+            "properties": {
+                "trustLevel": {
+                    "type": "string",
+                    "enum": ["official", "reviewed", "untrusted"]
+                },
+                "capabilities": {
+                    "type": "array",
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "backendBundle",
+                            "databaseMigrations",
+                            "readUsers",
+                            "writeUsers",
+                            "deleteUsers",
+                            "readDataTables",
+                            "writeDataTables",
+                            "deleteDataTables",
+                            "externalNetworkAccess",
+                            "scheduledJobs",
+                            "publicCallbacks",
+                            "adminPages",
+                            "frontendStyles",
+                            "mobileStyles",
+                            "realtimePublish",
+                            "fileUploads",
+                            "secretAccess",
+                            "lookupExtend",
+                            "lookupOwnGroup"
+                        ]
+                    }
+                },
+                "cspRules": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                },
+                "externalHosts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["host", "type", "reason"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "host": {"type": "string"},
+                            "type": {
+                                "type": "string",
+                                "enum": ["script", "style", "font", "image", "iframe", "fetch"]
+                            },
+                            "reason": {"type": "string"}
+                        }
+                    }
+                },
+                "signing": {
+                    "type": "object",
+                    "description": "Plugin signing policy declared by the author. The host always enforces signature verification according to SELFHELP_PLUGIN_REQUIRE_SIGNATURE + trustLevel; this block exists so the plugin can request a stricter policy than the default.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "required": {
+                            "type": "boolean",
+                            "description": "When true, the host refuses to install this plugin without a verified Ed25519 signature."
+                        },
+                        "acceptedKeyIds": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "When non-empty, the host requires the registry/archive signature to be issued by one of these keyIds."
+                        }
+                    }
+                }
+            }
+        },
+        "permissions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "description"],
+                "additionalProperties": false,
+                "properties": {
+                    "key": {"type": "string"},
+                    "description": {"type": "string"},
+                    "defaultRoles": {
+                        "type": "array",
+                        "items": {"type": "string"}
+                    }
+                }
+            }
+        },
+        "dataAccess": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "ownedTables": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+                },
+                "ownedDataTablePrefix": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*_$"
+                },
+                "read": {"type": "array", "items": {"type": "string"}},
+                "write": {"type": "array", "items": {"type": "string"}},
+                "delete": {"type": "array", "items": {"type": "string"}}
+            }
+        },
+        "realtimeTopics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "description"],
+                "additionalProperties": false,
+                "properties": {
+                    "key": {"type": "string"},
+                    "description": {"type": "string"},
+                    "requiredPermission": {"type": "string"},
+                    "payloadSchemaPath": {"type": "string"}
+                }
+            }
+        },
+        "featureFlags": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["key", "description", "defaultEnabled"],
+                "additionalProperties": false,
+                "properties": {
+                    "key": {"type": "string"},
+                    "description": {"type": "string"},
+                    "defaultEnabled": {"type": "boolean"},
+                    "capability": {"type": "string"}
+                }
+            }
+        },
+        "lookups": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "extends": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["typeCode", "ownership", "entries"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "typeCode": {"type": "string"},
+                            "ownership": {
+                                "type": "string",
+                                "enum": ["plugin_extendable", "plugin_owned"]
+                            },
+                            "entries": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["code", "value"],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "code": {"type": "string"},
+                                        "value": {"type": "string"},
+                                        "description": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "styles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "description", "canHaveChildren"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "canHaveChildren": {"type": "boolean"},
+                    "capability": {"type": "string"}
+                }
+            }
+        },
+        "adminPages": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["slug", "label", "permission"],
+                "additionalProperties": false,
+                "properties": {
+                    "slug": {"type": "string"},
+                    "label": {"type": "string"},
+                    "permission": {"type": "string"},
+                    "icon": {"type": "string"}
+                }
+            }
+        },
+        "apiRoutes": {
+            "type": "array",
+            "description": "Plugin HTTP routes. The host installer persists each entry as a row in `api_routes` (tagged with `id_plugins`) and links it to permissions through `rel_api_routes_permissions`. Routes from disabled plugins are skipped at load time; routes are removed on uninstall (their controllers are gone after composer remove) and on purge.",
+            "items": {
+                "type": "object",
+                "required": ["name", "path", "methods", "controller"],
+                "additionalProperties": false,
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Stable route id used as the Symfony route name. Must be unique within the plugin's manifest."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Path WITHOUT the `/cms-api/{version}` prefix. Must start with `/plugins/{pluginId}/` (public) or `/admin/plugins/{pluginId}/` (admin). The host's `ApiSecurityListener` enforces admin-gate semantics on the latter."
+                    },
+                    "controller": {
+                        "type": "string",
+                        "description": "Fully-qualified controller in the form `Vendor\\Bundle\\Controller\\FooController::bar`. Must be autoloadable by the time the host runs the route sync (i.e. after the plugin's composer require)."
+                    },
+                    "methods": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "string",
+                            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]
+                        }
+                    },
+                    "version": {
+                        "type": "string",
+                        "pattern": "^v\\d+$",
+                        "description": "API version (defaults to `v1`). Bumping the version is the contract for breaking changes — old `v1` routes can stay in `api_routes` while a new `v2` rolls out."
+                    },
+                    "requirements": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"},
+                        "description": "Regex requirements per path placeholder, mirroring Symfony's route `requirements`."
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": "Expected query / body params: `name → {in: body|query|path, required: bool}`. Mirrors the core `api_routes.params` JSON shape."
+                    },
+                    "permission": {
+                        "type": "string",
+                        "description": "Single-permission shorthand. Looked up by name in `permissions` (which the plugin's migration must have inserted)."
+                    },
+                    "permissions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Required permissions, looked up by name in `permissions`. Use this when a route needs more than one permission; otherwise prefer the `permission` shorthand."
+                    }
+                }
+            }
+        },
+        "scheduledJobs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["type", "description", "capability"],
+                "additionalProperties": false,
+                "properties": {
+                    "type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "capability": {
+                        "type": "string",
+                        "enum": ["scheduledJobs"]
+                    }
+                }
+            }
+        },
+        "assets": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["src", "dest", "type"],
+                "additionalProperties": false,
+                "properties": {
+                    "src": {"type": "string"},
+                    "dest": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "enum": ["script", "style", "font", "image", "other"]
+                    }
+                }
+            }
+        },
+        "health": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "endpoint": {"type": "string"},
+                "serviceId": {"type": "string"}
+            }
+        },
+        "labels": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+        },
+        "changelogUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional URL pointing at the plugin's CHANGELOG.md for this version."
+        },
+        "archive": {
+            "type": "object",
+            "description": "Required metadata describing how this manifest's `.shplugin` archive bundles the plugin. `mode=connected` means the backend Composer package is resolved from Packagist / the configured Composer repository; the archive ships only the frontend artifacts. `mode=standalone` means the `.shplugin` carries the plugin backend package under `backend/package/` and the host installs it via a Composer path repository. Note: standalone archives still resolve third-party Composer dependencies (symfony/*, doctrine/*, …) via Composer at install time; only the plugin's own backend bundle is inlined.",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["connected", "standalone"],
+                    "description": "How the host should install the plugin's backend bundle. `connected` (default) → `composer require` from Packagist / VCS. `standalone` → register a Composer path repository pointing at the staged `backend/package/` and require from there."
+                },
+                "backend": {
+                    "type": "object",
+                    "description": "Required when `mode=standalone`. Describes the backend slot inside the archive. Currently a single `installMode` (`composer-path-repository`) is supported.",
+                    "additionalProperties": false,
+                    "required": ["included", "path", "installMode"],
+                    "properties": {
+                        "included": {
+                            "type": "boolean",
+                            "description": "Must be `true` for standalone archives. The validator rejects archives whose `backend/` slot is empty when this flag is set."
+                        },
+                        "path": {
+                            "type": "string",
+                            "const": "backend/package",
+                            "description": "Archive-root-relative path to the staged backend package. Hard-coded to `backend/package` so the host's archive-root prefix check stays static."
+                        },
+                        "installMode": {
+                            "type": "string",
+                            "enum": ["composer-path-repository"],
+                            "description": "How the host installs the staged backend package. Currently only `composer-path-repository` (Composer path repo pointing at the promoted install dir) is supported."
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

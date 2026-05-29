@@ -1439,10 +1439,7 @@ class AdminUserService extends BaseService
      */
     private function invalidateUserRoleCaches(int $userId, array $roleIds): void
     {
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_USERS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->invalidateItemAndLists("users_roles_{$userId}");
+        $this->invalidateUserCaches($userId);
 
         $this->cache
             ->withCategory(CacheService::CATEGORY_ROLES)

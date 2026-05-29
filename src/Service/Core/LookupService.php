@@ -9,8 +9,13 @@
 namespace App\Service\Core;
 
 use App\Entity\Lookup;
+use App\Plugin\Event\LookupRegistryEvent;
+use App\Plugin\Lookup\LookupPolicyRegistry;
 use App\Repository\LookupRepository;
 use App\Service\Cache\Core\CacheService;
+use Psr\EventDispatcher\EventDispatcherInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Lookup service providing access to lookup data and constants.
@@ -168,7 +173,10 @@ final class LookupService
 
     public function __construct(
         private readonly LookupRepository $lookupRepository,
-        private readonly CacheService $cache
+        private readonly CacheService $cache,
+        private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly LookupPolicyRegistry $lookupPolicy,
+        private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
 
@@ -185,12 +193,20 @@ final class LookupService
     /**
      * Get all lookups for a given type.
      *
+     * Plugin-contributed entries for `plugin_extendable` and
+     * `plugin_owned` type codes are appended to the cached DB result
+     * if they are not already present (matched by `lookup_code`). This
+     * lets fully-virtual lookup overlays — declared only in PHP via
+     * `LookupRegistryEvent` — surface in admin pickers before the
+     * plugin's install migration has persisted them. Persisted rows
+     * always win.
+     *
      * @param string $typeCode
      * @return Lookup[]
      */
     public function getLookups(string $typeCode): array
     {
-        return $this->cache
+        $persisted = $this->cache
             ->withCategory(CacheService::CATEGORY_LOOKUPS)
             ->getItem(
                 "lookups_{$typeCode}",
@@ -198,6 +214,70 @@ final class LookupService
                     return $this->lookupRepository->getLookups($typeCode);
                 }
             );
+
+        return $this->mergePluginLookupContributions($typeCode, $persisted);
+    }
+
+    /**
+     * Append plugin-contributed lookup entries to the persisted result.
+     *
+     * Each contribution is checked against {@see LookupPolicyRegistry}.
+     * The host's declared policy for the type wins: a contribution
+     * whose declared `ownership` does not match the registered policy
+     * (e.g. a plugin claiming `closed` for a `plugin_extendable` type,
+     * or a non-owner plugin contributing to a `plugin_owned` type) is
+     * dropped silently from the response and logged so the doctor
+     * command can flag the drift. This stops a misbehaving plugin
+     * from squatting on a core enum.
+     *
+     * @param Lookup[] $persisted
+     * @return Lookup[]
+     */
+    private function mergePluginLookupContributions(string $typeCode, array $persisted): array
+    {
+        $event = $this->eventDispatcher->dispatch(new LookupRegistryEvent($typeCode));
+        $contributions = $event->getContributions();
+        if ($contributions === []) {
+            return $persisted;
+        }
+
+        $existingCodes = [];
+        foreach ($persisted as $row) {
+            $code = $row->getLookupCode();
+            if ($code !== null) {
+                $existingCodes[$code] = true;
+            }
+        }
+
+        foreach ($contributions as $contribution) {
+            if (!$this->lookupPolicy->isContributionAllowed(
+                $contribution['typeCode'],
+                $contribution['ownership'],
+                $contribution['pluginId'],
+            )) {
+                $this->logger->warning('Lookup contribution refused by policy', [
+                    'typeCode' => $contribution['typeCode'],
+                    'contributingPluginId' => $contribution['pluginId'],
+                    'claimedOwnership' => $contribution['ownership'],
+                    'hostPolicy' => $this->lookupPolicy->policyFor($contribution['typeCode']),
+                ]);
+                continue;
+            }
+            foreach ($contribution['entries'] as $entry) {
+                if (isset($existingCodes[$entry['code']])) {
+                    continue;
+                }
+                $virtual = (new Lookup())
+                    ->setTypeCode($contribution['typeCode'])
+                    ->setLookupCode($entry['code'])
+                    ->setLookupValue($entry['value'])
+                    ->setLookupDescription($entry['description'] ?? null);
+                $persisted[] = $virtual;
+                $existingCodes[$entry['code']] = true;
+            }
+        }
+
+        return $persisted;
     }
 
     /**

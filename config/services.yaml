@@ -46,6 +46,64 @@ parameters:
     mercure_subscriber_ttl: '%env(int:default:default_mercure_subscriber_ttl:MERCURE_SUBSCRIBER_TTL)%'
     default_mercure_subscriber_ttl: '3600'
 
+    # CMS version surfaced to plugins (semver compatibility checks). The
+    # parameter is consumed by `PluginCompatibilityValidator` and the
+    # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
+    # match the deployed application version.
+    selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
+    selfhelp_cms_version_default: '8.0.0-dev'
+
+    # Plugin SDK contract version exposed to plugin compatibility
+    # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
+    selfhelp.plugin_api_version: '%env(default:selfhelp_plugin_api_version_default:SELFHELP_PLUGIN_API_VERSION)%'
+    selfhelp_plugin_api_version_default: '1.1'
+    # Default official plugin registry URL. Plugin sources remain
+    # DB-backed via `plugin_sources`; this env var only overrides the
+    # seeded system source `humdek-public` so an operator can point the
+    # official catalogue at a mirror without editing a protected row.
+    selfhelp.plugin_default_registry_url: '%env(default:selfhelp_plugin_default_registry_url_default:SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL)%'
+    selfhelp_plugin_default_registry_url_default: 'https://humdek-unibe-ch.github.io/sh2-plugin-registry/'
+
+    # Plugin signature verification. The host trusts publisher Ed25519
+    # signatures matching the keyIds declared here. Add each publisher's
+    # public key on a single line via `SELFHELP_PLUGIN_TRUSTED_KEYS`
+    # (semicolon-separated `keyId=base64pubkey` pairs). See
+    # docs/plugins/signing.md and docs/plugins/trusted-keys.md.
+    selfhelp_plugin_trusted_keys_default: ''
+    # Strict by default. Set SELFHELP_PLUGIN_REQUIRE_SIGNATURE=false ONLY
+    # for first-boot dev environments where you intentionally install
+    # untrusted (signature-less) plugins.
+    selfhelp_plugin_require_signature_default: true
+    # Maximum .shplugin archive size, in bytes. Defaults to 20 MB.
+    selfhelp_plugin_archive_max_bytes_default: 20971520
+    # Number of days a `.shplugin` staging dir lives before being
+    # eligible for cleanup. `selfhelp:plugin:cleanup-archives` removes
+    # `var/plugins/<id>-<ver>/staging/` entries older than this.
+    selfhelp_plugin_archive_retention_days_default: 7
+
+    # Plugin Doctrine write-guard toggle. Defaults to true; set to false
+    # (SELFHELP_PLUGIN_DATA_ACCESS_GUARD=false) only for transient
+    # diagnostics. The guard intercepts entity writes from plugin-origin
+    # code and refuses access to protected core tables not declared in
+    # plugin.json#dataAccess.write.
+    selfhelp_plugin_data_access_guard_default: true
+
+    # Allow a standalone `.shplugin` archive to ship a `composer.json#scripts`
+    # block. Defaults to false (production-safe). The Messenger worker
+    # already passes `--no-scripts` to every `composer require`, so the
+    # rejection is defence-in-depth — set to `true` only for local
+    # developer ergonomics where the plugin's own composer.json carries
+    # dev-only scripts (`phpstan`, `phpunit`, …) you want to keep. See
+    # docs/plugins/installation.md §2 and docs/plugins/shplugin-archive.md
+    # under "Failure modes".
+    selfhelp_plugin_allow_composer_scripts_default: false
+
+    # Default lock DSNs (in-process flock). Production deployments
+    # override with `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`
+    # so the lock is cluster-safe.
+    default_lock_dsn: 'flock'
+    default_plugin_lock_dsn: 'flock'
+
 services:
     # default configuration for services in *this* file
     _defaults:
@@ -68,7 +126,193 @@ services:
         tags: [routing.loader]
         arguments:
             $env: '%kernel.environment%'
-    
+
+    # Plugin layer realtime publisher — wraps the Mercure hub.
+    App\Plugin\Realtime\PluginRealtimePublisher:
+        arguments:
+            $topicPrefix: '%mercure_topic_prefix%'
+
+    App\Plugin\Realtime\PluginRealtimePublisherInterface:
+        alias: App\Plugin\Realtime\PluginRealtimePublisher
+
+    # Plugin manifest validator — schema path is project-relative.
+    App\Plugin\Manifest\PluginManifestValidator:
+        arguments:
+            $schemaPath: '%kernel.project_dir%/docs/plugins/plugin-manifest.schema.json'
+
+    # Plugin lock-file IO is project-dir-bound.
+    App\Plugin\Lifecycle\PluginLockFileReader:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Plugin health service — full §17 doctor coverage.
+    # The optional args (`httpClient`, `mercureHubUrl`, `mobileHostDir`)
+    # wire the live probes: Mercure reachability, per-plugin health
+    # endpoint HTTP GET, and `npm ls` of the plugin's mobile package
+    # in the mobile host node_modules. Frontend plugins are runtime
+    # ESM bundles served from `public/plugin-artifacts/...` and need
+    # no npm probe.
+    App\Plugin\Health\PluginHealthService:
+        arguments:
+            $pluginChecks: !tagged_iterator selfhelp.plugin.health_check
+            $httpClient: '@http_client'
+            $mercureHubUrl: '%env(default::MERCURE_PUBLIC_URL)%'
+            $mobileHostDir: '%env(default::SELFHELP_MOBILE_HOST_DIR)%'
+
+    # Plugin scheduled-job dispatcher — wires the tagged iterator
+    # for `selfhelp.plugin.scheduled_job_handler` so plugins can
+    # register runtime executors for new `jobTypes` lookup codes
+    # (declared via the manifest + `ScheduledJobTypeEvent`). Without
+    # this, `JobSchedulerService::executeByType` had no way to invoke
+    # plugin-contributed job types — they showed up in the admin
+    # catalog but always returned `false` at execution time.
+    App\Plugin\ScheduledJob\PluginScheduledJobRegistry:
+        arguments:
+            $handlers: !tagged_iterator selfhelp.plugin.scheduled_job_handler
+
+    App\Plugin\Lifecycle\PluginLockFileWriter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Plugin bundles file writer — atomically generates config/selfhelp_plugin_bundles.php.
+    App\Plugin\Bundle\PluginBundlesFileWriter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Persistent plugin safe-mode toggle.
+    App\Plugin\Lifecycle\PluginSafeMode:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Install-mode resolver — env-driven, with safe defaults for production.
+    App\Plugin\Lifecycle\InstallModeResolver:
+        arguments:
+            $appEnv: '%kernel.environment%'
+            $installModeEnv: '%env(default::SELFHELP_PLUGIN_INSTALL_MODE)%'
+            $allowWebPluginInstall: '%env(bool:default::SELFHELP_ALLOW_WEB_PLUGIN_INSTALL)%'
+
+    # Plugin operation lock — wraps the Symfony Lock factory created
+    # by `framework.lock.plugin_operation` so concurrent installs
+    # across multiple app servers cannot race.
+    App\Plugin\Lifecycle\PluginOperationLock:
+        arguments:
+            $lockFactory: '@lock.plugin_operation.factory'
+
+    # Composer wrapper used by the Messenger worker.
+    # Development/trusted-mode handlers stream output line-by-line into
+    # plugin_operations.logs_json so Mercure subscribers see live
+    # progress. Managed-mode operators run composer themselves and only
+    # call selfhelp:plugin:run-operation at the end.
+    App\Plugin\PackageManager\PackageManagerRunner:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Plugin dependency policy — surfaces drift between a plugin
+    # package's composer.json#require and the host-provided packages
+    # exposed via var/plugin-composer/composer.json#provide. Soft check;
+    # Composer's solver remains the authoritative gate at install time.
+    App\Plugin\Security\PluginDependencyPolicy:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # .shplugin archive pipeline. Extractor extracts the upload to
+    # `var/plugins/<id>-<ver>/staging/`, validator verifies signature +
+    # checksums, promoter copies to `installed/` + `public/plugin-artifacts/`,
+    # cleaner purges orphaned staging dirs.
+    App\Plugin\Archive\PluginArchiveExtractor:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $maxBytes: '%env(int:default:selfhelp_plugin_archive_max_bytes_default:SELFHELP_PLUGIN_ARCHIVE_MAX_BYTES)%'
+
+    # Archive validator — wires the composer-scripts allow flag from
+    # SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS. Symfony's Dotenv only
+    # populates $_ENV / $_SERVER, so injecting via DI is the only
+    # reliable way to pick the value up at runtime.
+    App\Plugin\Archive\PluginArchiveValidator:
+        arguments:
+            $allowComposerScripts: '%env(bool:default:selfhelp_plugin_allow_composer_scripts_default:SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS)%'
+
+    App\Plugin\Archive\PluginArchivePromoter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Plugin\Archive\PluginRuntimeArtifactFetcher:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Plugin\Archive\PluginArchiveCleaner:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $retentionDays: '%env(int:default:selfhelp_plugin_archive_retention_days_default:SELFHELP_PLUGIN_ARCHIVE_RETENTION_DAYS)%'
+
+    App\Command\Plugin\PluginPurgeStagingCommand:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Canonical signed-payload builder — cross-impl with sign.mjs.
+    App\Plugin\Security\SignedPayloadBuilder: ~
+
+    # Unified resolver for registry / url / paste / archive install sources.
+    App\Plugin\Manifest\ManifestResolver: ~
+
+    # Default no-op backup hook. Operators or plugins may override by
+    # re-aliasing `App\Plugin\Backup\PluginBackupHookInterface` in
+    # their own `services.yaml`. There is no tagged iterator: the host
+    # uses exactly one backup hook at a time, injected as a singleton
+    # into `PluginUpdater` / `PluginPurger`.
+    App\Plugin\Backup\NoopPluginBackupHook: ~
+    App\Plugin\Backup\PluginBackupHookInterface:
+        alias: App\Plugin\Backup\NoopPluginBackupHook
+
+    # Plugin Ed25519 signature verifier — uses the trusted-keys env to
+    # check publisher signatures on registry entries and .shplugin
+    # archives. Configure with SELFHELP_PLUGIN_TRUSTED_KEYS +
+    # SELFHELP_PLUGIN_REQUIRE_SIGNATURE.
+    App\Plugin\Security\PluginSignatureVerifier:
+        factory: ['App\Plugin\Security\PluginSignatureVerifier', 'fromEnvString']
+        arguments:
+            $trustedKeysEnv: '%env(default:selfhelp_plugin_trusted_keys_default:SELFHELP_PLUGIN_TRUSTED_KEYS)%'
+            $requireSignature: '%env(bool:default:selfhelp_plugin_require_signature_default:SELFHELP_PLUGIN_REQUIRE_SIGNATURE)%'
+            $logger: '@logger'
+            $appEnv: '%kernel.environment%'
+
+    # Plugin Doctrine write-guard. Refuses entity writes against protected
+    # core tables for plugin-origin callers. Toggle off only for diagnostics
+    # via SELFHELP_PLUGIN_DATA_ACCESS_GUARD=false.
+    App\Plugin\Security\PluginDataAccessGuard:
+        arguments:
+            $enabled: '%env(default:selfhelp_plugin_data_access_guard_default:bool:SELFHELP_PLUGIN_DATA_ACCESS_GUARD)%'
+
+    # Plugin compatibility validator — checks plugin manifests against
+    # the current CMS + SDK version.
+    App\Plugin\Versioning\PluginCompatibilityValidator:
+        arguments:
+            $cmsVersion: '%selfhelp.cms_version%'
+            $sdkApiVersion: '%selfhelp.plugin_api_version%'
+
+    # Plugin capability validator — needs the current Symfony env so it
+    # can relax the HTTPS-only check on `frontend.runtime.entrypoint`
+    # during local development.
+    App\Plugin\Security\PluginCapabilityValidator:
+        arguments:
+            $appEnv: '%kernel.environment%'
+
+    # Admin-facing plugin service. Pinned cmsVersion + sdkApiVersion
+    # so the public manifest endpoint can advertise the values the
+    # PluginRuntime expects for drift detection.
+    App\Plugin\Service\PluginAdminService:
+        arguments:
+            $cmsVersion: '%selfhelp.cms_version%'
+            $sdkApiVersion: '%selfhelp.plugin_api_version%'
+
+    # Plugin registry client — uses the optional auth header from
+    # PluginSource and reads its secret from the environment.
+    App\Plugin\Registry\PluginSourceUrlResolver:
+        arguments:
+            $defaultRegistryUrl: '%selfhelp.plugin_default_registry_url%'
+
+    App\Plugin\Registry\RegistryClient: ~
+
     # API Request Logger Services
     App\Service\Core\ApiRequestLoggerService:
         arguments:
