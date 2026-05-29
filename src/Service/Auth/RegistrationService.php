@@ -64,13 +64,19 @@ class RegistrationService extends BaseService
         ['open_registration' => $openRegistration, 'group_id' => $groupId] =
             $this->resolveSectionPolicy($pageId);
 
-        $group = $this->resolveGroup($groupId);
-
         if (!$openRegistration) {
-            $this->consumeRegistrationCode($code, $group);
+            $group = $this->consumeRegistrationCode($code);
+        } else {
+            $group = $this->resolveGroup($groupId);
         }
 
-        $user = $this->entityManager->wrapInTransaction(function () use ($email, $group) {
+        $user = $this->entityManager->wrapInTransaction(function () use ($email, $group, $code, $openRegistration) {
+            if (!$openRegistration) {
+                $vc = $this->entityManager->getRepository(ValidationCode::class)->findOneBy(['code' => trim((string) $code)]);
+                if ($vc !== null) {
+                    $vc->setConsumed(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+                }
+            }
             $user = new User();
             $user->setEmail($email);
             $user->setBlocked(true);
@@ -110,7 +116,7 @@ class RegistrationService extends BaseService
 
             $this->invalidateCaches();
 
-            return (int) $validationResult['job_id'];
+            return is_numeric($validationResult['job_id']) ? (int) $validationResult['job_id'] : 0;
         });
 
         $this->userValidationService->executeScheduledValidationEmail((int) $user);
@@ -226,23 +232,33 @@ class RegistrationService extends BaseService
     }
 
     /**
-     * Validate a registration code for the given group.
-     * Codes are reusable — multiple users may register with the same code.
+     * Validate a registration code and return its group.
+     * The code is deleted inside the transaction so removal is atomic with user creation.
      */
-    private function consumeRegistrationCode(?string $code, Group $group): void
+    private function consumeRegistrationCode(?string $code): Group
     {
         if ($code === null || trim($code) === '') {
             throw new \InvalidArgumentException('A registration code is required.');
         }
 
         $vc = $this->entityManager->getRepository(ValidationCode::class)->findOneBy([
-            'code'  => trim($code),
-            'group' => $group,
+            'code' => trim($code),
         ]);
 
         if ($vc === null) {
             throw new \InvalidArgumentException('Invalid registration code.');
         }
+
+        if ($vc->getConsumed() !== null) {
+            throw new \InvalidArgumentException('This registration code has already been used.');
+        }
+
+        $group = $vc->getGroup();
+        if ($group === null) {
+            throw new \InvalidArgumentException('Registration code has no group assigned.');
+        }
+
+        return $group;
     }
 
     private function assignGroup(User $user, Group $group): void
