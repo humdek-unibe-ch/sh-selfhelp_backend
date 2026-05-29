@@ -65,17 +65,16 @@ class RegistrationService extends BaseService
             $this->resolveSectionPolicy($pageId);
 
         if (!$openRegistration) {
-            $group = $this->consumeRegistrationCode($code);
+            $vc    = $this->consumeRegistrationCode($code);
+            $group = $vc->getGroup() ?? throw new \LogicException('consumeRegistrationCode returned code without group.');
         } else {
+            $vc    = null;
             $group = $this->resolveGroup($groupId);
         }
 
-        $user = $this->entityManager->wrapInTransaction(function () use ($email, $group, $code, $openRegistration) {
-            if (!$openRegistration) {
-                $vc = $this->entityManager->getRepository(ValidationCode::class)->findOneBy(['code' => trim((string) $code)]);
-                if ($vc !== null) {
-                    $vc->setConsumed(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
-                }
+        $user = $this->entityManager->wrapInTransaction(function () use ($email, $group, $vc) {
+            if ($vc !== null) {
+                $vc->setConsumed(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
             }
             $user = new User();
             $user->setEmail($email);
@@ -232,10 +231,11 @@ class RegistrationService extends BaseService
     }
 
     /**
-     * Validate a registration code and return its group.
-     * The code is deleted inside the transaction so removal is atomic with user creation.
+     * Validate a registration code and return the managed entity.
+     * The caller marks it consumed inside the transaction so the change is atomic
+     * with user creation.
      */
-    private function consumeRegistrationCode(?string $code): Group
+    private function consumeRegistrationCode(?string $code): ValidationCode
     {
         if ($code === null || trim($code) === '') {
             throw new \InvalidArgumentException('A registration code is required.');
@@ -253,12 +253,11 @@ class RegistrationService extends BaseService
             throw new \InvalidArgumentException('This registration code has already been used.');
         }
 
-        $group = $vc->getGroup();
-        if ($group === null) {
+        if ($vc->getGroup() === null) {
             throw new \InvalidArgumentException('Registration code has no group assigned.');
         }
 
-        return $group;
+        return $vc;
     }
 
     private function assignGroup(User $user, Group $group): void
