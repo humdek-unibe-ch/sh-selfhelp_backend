@@ -13,12 +13,10 @@ use App\Entity\PageAclGroup;
 use App\Entity\Page;
 use App\Entity\UsersGroup;
 use App\Repository\RoleDataAccessRepository;
-use App\Repository\UserRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
-use App\Service\Auth\UserContextService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,9 +27,6 @@ class AdminGroupService extends BaseService
 {
 
     public function __construct(
-        private readonly UserContextService $userContextService,
-        private readonly EntityManagerInterface $entityManagerInterface,
-        private readonly UserRepository $userRepository,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
         private readonly EntityManagerInterface $entityManager,
@@ -46,6 +41,8 @@ class AdminGroupService extends BaseService
      * Get filtered groups with permission-based access control
      * Includes proper caching with user scope
      * Uses RoleDataAccessRepository optimized methods
+     *
+     * @return array<string, mixed>
      */
     public function getFilteredGroups(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
@@ -81,6 +78,8 @@ class AdminGroupService extends BaseService
     /**
      * Fetch filtered groups from repository with permission checking
      * Uses RoleDataAccessRepository optimized SQL queries with pagination
+     *
+     * @return array<string, mixed>
      */
     private function fetchFilteredGroupsFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
     {
@@ -113,6 +112,8 @@ class AdminGroupService extends BaseService
 
     /**
      * Get single group by ID with full details including ACLs and entity scope caching
+     *
+     * @return array<string, mixed>
      */
     public function getGroupById(int $groupId): array
     {
@@ -132,6 +133,9 @@ class AdminGroupService extends BaseService
 
     /**
      * Create new group
+     *
+     * @param array<string, mixed> $groupData
+     * @return array<string, mixed>
      */
     public function createGroup(array $groupData): array
     {
@@ -141,12 +145,12 @@ class AdminGroupService extends BaseService
             $this->validateGroupData($groupData);
 
             $group = new Group();
-            $group->setName($groupData['name']);
-            $group->setDescription($groupData['description'] ?? '');
-            $group->setRequires2fa($groupData['requires_2fa'] ?? false);
+            $group->setName($this->asString($groupData['name']));
+            $group->setDescription($this->asString($groupData['description'] ?? ''));
+            $group->setRequires2fa((bool) ($groupData['requires_2fa'] ?? false));
 
             if (isset($groupData['id_group_types'])) {
-                $group->setIdGroupTypes($groupData['id_group_types']);
+                $group->setIdGroupTypes($this->asIntOrNull($groupData['id_group_types']));
             }
 
             $this->entityManager->persist($group);
@@ -190,6 +194,9 @@ class AdminGroupService extends BaseService
 
     /**
      * Update existing group
+     *
+     * @param array<string, mixed> $groupData
+     * @return array<string, mixed>
      */
     public function updateGroup(int $userId, int $groupId, array $groupData): array
     {
@@ -207,13 +214,13 @@ class AdminGroupService extends BaseService
             }
 
             if (isset($groupData['description'])) {
-                $group->setDescription($groupData['description']);
+                $group->setDescription($this->asString($groupData['description']));
             }
             if (isset($groupData['requires_2fa'])) {
-                $group->setRequires2fa($groupData['requires_2fa']);
+                $group->setRequires2fa((bool) $groupData['requires_2fa']);
             }
             if (isset($groupData['id_group_types'])) {
-                $group->setIdGroupTypes($groupData['id_group_types']);
+                $group->setIdGroupTypes($this->asIntOrNull($groupData['id_group_types']));
             }
 
             $this->entityManager->flush();
@@ -310,6 +317,8 @@ class AdminGroupService extends BaseService
 
     /**
      * Get group ACLs with entity scope caching
+     *
+     * @return list<array<string, mixed>>
      */
     public function getGroupAcls(int $groupId): array
     {
@@ -324,6 +333,7 @@ class AdminGroupService extends BaseService
                     throw new ServiceException('Group not found', Response::HTTP_NOT_FOUND);
                 }
 
+                /** @var list<PageAclGroup> $acls */
                 $acls = $this->entityManager->getRepository(PageAclGroup::class)
                     ->createQueryBuilder('ag')
                     ->select('ag, p')
@@ -340,6 +350,9 @@ class AdminGroupService extends BaseService
 
     /**
      * Update group ACLs (bulk update)
+     *
+     * @param list<array<string, mixed>> $aclsData
+     * @return list<array<string, mixed>>
      */
     public function updateGroupAcls(int $groupId, array $aclsData): array
     {
@@ -390,10 +403,12 @@ class AdminGroupService extends BaseService
 
     /**
      * Format group for detail view
+     *
+     * @return array<string, mixed>
      */
     private function formatGroupForDetail(Group $group): array
     {
-        $acls = $this->getGroupAcls($group->getId());
+        $acls = $this->getGroupAcls((int) $group->getId());
 
         return [
             'id' => $group->getId(),
@@ -402,12 +417,12 @@ class AdminGroupService extends BaseService
             'id_group_types' => $group->getIdGroupTypes(),
             'requires_2fa' => $group->isRequires2fa(),
             'users_count' => $group->getUsersGroups()->count(),
-            'users' => array_map(function ($ug) {
+            'users' => array_map(function (UsersGroup $ug) {
                 $user = $ug->getUser();
                 return [
-                    'id' => $user->getId(),
-                    'email' => $user->getEmail(),
-                    'name' => $user->getName()
+                    'id' => $user?->getId(),
+                    'email' => $user?->getEmail(),
+                    'name' => $user?->getName()
                 ];
             }, $group->getUsersGroups()->toArray()),
             'acls' => $acls
@@ -416,13 +431,15 @@ class AdminGroupService extends BaseService
 
     /**
      * Format ACL for response
+     *
+     * @return array<string, mixed>
      */
     private function formatAclForResponse(PageAclGroup $acl): array
     {
         return [
-            'page_id' => $acl->getPage()->getId(),
-            'page_keyword' => $acl->getPage()->getKeyword(),
-            'page_url' => $acl->getPage()->getUrl(),
+            'page_id' => $acl->getPage()?->getId(),
+            'page_keyword' => $acl->getPage()?->getKeyword(),
+            'page_url' => $acl->getPage()?->getUrl(),
             'acl_select' => $acl->getAclSelect(),
             'acl_insert' => $acl->getAclInsert(),
             'acl_update' => $acl->getAclUpdate(),
@@ -432,6 +449,8 @@ class AdminGroupService extends BaseService
 
     /**
      * Validate group data
+     *
+     * @param array<string, mixed> $data
      */
     private function validateGroupData(array $data): void
     {
@@ -439,28 +458,28 @@ class AdminGroupService extends BaseService
             throw new ServiceException('Group name is required', Response::HTTP_BAD_REQUEST);
         }
 
-        if (isset($data['name'])) {
-            // Check for duplicate name
-            $existingGroup = $this->entityManager->getRepository(Group::class)
-                ->findOneBy(['name' => $data['name']]);
-            if ($existingGroup) {
-                throw new ServiceException('Group name already exists', Response::HTTP_CONFLICT);
-            }
+        // Check for duplicate name
+        $existingGroup = $this->entityManager->getRepository(Group::class)
+            ->findOneBy(['name' => $data['name']]);
+        if ($existingGroup) {
+            throw new ServiceException('Group name already exists', Response::HTTP_CONFLICT);
         }
     }
 
     /**
      * Validate ACL data
      */
-    private function validateAclData(array $data): void
+    private function validateAclData(mixed $data): void
     {
-        if (!isset($data['page_id']) || !is_numeric($data['page_id'])) {
+        if (!is_array($data) || !isset($data['page_id']) || !is_numeric($data['page_id'])) {
             throw new ServiceException('Valid page_id is required for ACL', Response::HTTP_BAD_REQUEST);
         }
     }
 
     /**
      * Internal method to update group ACLs (without transaction handling)
+     *
+     * @param array<array-key, mixed> $aclsData
      */
     private function updateGroupAclsInternal(Group $group, array $aclsData): void
     {
@@ -482,8 +501,15 @@ class AdminGroupService extends BaseService
                 $this->validateAclData($aclData);
             }
 
-            // Batch load all pages in one query to avoid N+1
-            $pageIds = array_column($aclsData, 'page_id');
+            // Batch load all pages in one query to avoid N+1.
+            // All rows are arrays at this point (validateAclData enforces it).
+            $pageIds = [];
+            foreach ($aclsData as $aclData) {
+                if (is_array($aclData)) {
+                    $pageIds[] = $aclData['page_id'] ?? null;
+                }
+            }
+            /** @var list<Page> $pages */
             $pages = $this->entityManager->getRepository(Page::class)
                 ->createQueryBuilder('p')
                 ->where('p.id IN (:pageIds)')
@@ -494,12 +520,15 @@ class AdminGroupService extends BaseService
             // Create a map for quick lookup
             $pageMap = [];
             foreach ($pages as $page) {
-                $pageMap[$page->getId()] = $page;
+                $pageMap[(int) $page->getId()] = $page;
             }
 
             // Create ACLs
             foreach ($aclsData as $aclData) {
-                $pageId = $aclData['page_id'];
+                if (!is_array($aclData)) {
+                    continue;
+                }
+                $pageId = $this->asInt($aclData['page_id']);
                 if (!isset($pageMap[$pageId])) {
                     throw new ServiceException('Page not found: ' . $pageId, Response::HTTP_NOT_FOUND);
                 }
@@ -508,10 +537,10 @@ class AdminGroupService extends BaseService
                 $acl = new PageAclGroup();
                 $acl->setGroup($group);
                 $acl->setPage($pageMap[$pageId]);
-                $acl->setAclSelect($aclData['acl_select'] ?? true);
-                $acl->setAclInsert($aclData['acl_insert'] ?? false);
-                $acl->setAclUpdate($aclData['acl_update'] ?? false);
-                $acl->setAclDelete($aclData['acl_delete'] ?? false);
+                $acl->setAclSelect((bool) ($aclData['acl_select'] ?? true));
+                $acl->setAclInsert((bool) ($aclData['acl_insert'] ?? false));
+                $acl->setAclUpdate((bool) ($aclData['acl_update'] ?? false));
+                $acl->setAclDelete((bool) ($aclData['acl_delete'] ?? false));
 
                 $this->entityManager->persist($acl);
             }

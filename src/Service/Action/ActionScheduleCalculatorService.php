@@ -7,6 +7,7 @@
 
 namespace App\Service\Action;
 
+use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 
 /**
@@ -15,11 +16,25 @@ use App\Service\Core\LookupService;
  * Date calculation supports immediate jobs, fixed datetimes, after-period jobs,
  * day/time scheduling, repeating schedules, and diary-style reminder validity windows.
  */
-class ActionScheduleCalculatorService
+class ActionScheduleCalculatorService extends BaseService
 {
-    public function __construct(
-        private readonly LookupService $lookupService
-    ) {
+    /**
+     * Coerce a mixed JSON-config section into a string-keyed array.
+     *
+     * @return array<string, mixed>
+     */
+    private function toConfigArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $key => $item) {
+            $result[(string) $key] = $item;
+        }
+
+        return $result;
     }
 
     /**
@@ -31,14 +46,14 @@ class ActionScheduleCalculatorService
     public function calculateDates(array $actionConfig, array $job): array
     {
         if (($actionConfig[ActionConfig::REPEAT] ?? false) === true) {
-            return $this->calculateRepeaterDates($actionConfig[ActionConfig::REPEATER] ?? [], $job);
+            return $this->calculateRepeaterDates($this->toConfigArray($actionConfig[ActionConfig::REPEATER] ?? null), $job);
         }
 
         if (($actionConfig[ActionConfig::REPEAT_UNTIL_DATE] ?? false) === true) {
-            return $this->calculateRepeaterUntilDates($actionConfig[ActionConfig::REPEATER_UNTIL_DATE] ?? []);
+            return $this->calculateRepeaterUntilDates($this->toConfigArray($actionConfig[ActionConfig::REPEATER_UNTIL_DATE] ?? null));
         }
 
-        return [$this->calculateBaseDate($job[ActionConfig::SCHEDULE_TIME] ?? [])];
+        return [$this->calculateBaseDate($this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null))];
     }
 
     /**
@@ -54,7 +69,7 @@ class ActionScheduleCalculatorService
         $scheduleType = $schedule[ActionConfig::JOB_SCHEDULE_TYPES] ?? LookupService::ACTION_SCHEDULE_TYPES_IMMEDIATELY;
 
         return match ($scheduleType) {
-            LookupService::ACTION_SCHEDULE_TYPES_ON_FIXED_DATETIME => $this->createDateTime($schedule[ActionConfig::CUSTOM_TIME] ?? null, $now),
+            LookupService::ACTION_SCHEDULE_TYPES_ON_FIXED_DATETIME => $this->createDateTime($schedule[ActionConfig::CUSTOM_TIME] ?? null, $now) ?? $now,
             LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD => $this->calculateAfterPeriod($schedule, $now),
             LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD_ON_DAY_AT_TIME => $this->calculateDayAtTime($schedule, $now),
             default => $now,
@@ -70,8 +85,8 @@ class ActionScheduleCalculatorService
      */
     public function calculateReminderDate(\DateTimeImmutable $parentExecutionDate, array $schedule): \DateTimeImmutable
     {
-        $amount = max(1, (int) ($schedule[ActionConfig::SEND_AFTER] ?? 1));
-        $unit = (string) ($schedule[ActionConfig::SEND_AFTER_TYPE] ?? LookupService::TIME_PERIOD_MINUTES);
+        $amount = max(1, $this->asInt($schedule[ActionConfig::SEND_AFTER] ?? 1));
+        $unit = $this->asString($schedule[ActionConfig::SEND_AFTER_TYPE] ?? LookupService::TIME_PERIOD_MINUTES);
 
         return $parentExecutionDate->modify(sprintf('+%d %s', $amount, $unit));
     }
@@ -91,8 +106,8 @@ class ActionScheduleCalculatorService
             return ['start' => null, 'end' => null];
         }
 
-        $validFor = max(1, (int) ($schedule[ActionConfig::VALID] ?? 1));
-        $validType = (string) ($schedule[ActionConfig::VALID_TYPE] ?? LookupService::TIME_PERIOD_HOURS);
+        $validFor = max(1, $this->asInt($schedule[ActionConfig::VALID] ?? 1));
+        $validType = $this->asString($schedule[ActionConfig::VALID_TYPE] ?? LookupService::TIME_PERIOD_HOURS);
 
         return [
             'start' => $parentExecutionDate,
@@ -108,13 +123,13 @@ class ActionScheduleCalculatorService
      */
     private function calculateRepeaterDates(array $repeater, array $job): array
     {
-        $occurrences = max(1, (int) ($repeater[ActionConfig::OCCURRENCES] ?? 1));
-        $frequency = (string) ($repeater[ActionConfig::FREQUENCY] ?? 'day');
-        $daysOfWeek = $repeater[ActionConfig::DAYS_OF_WEEK] ?? [];
-        $daysOfMonth = $repeater[ActionConfig::DAYS_OF_MONTH] ?? [];
+        $occurrences = max(1, $this->asInt($repeater[ActionConfig::OCCURRENCES] ?? 1));
+        $frequency = $this->asString($repeater[ActionConfig::FREQUENCY] ?? 'day');
+        $daysOfWeek = array_values($this->asArray($repeater[ActionConfig::DAYS_OF_WEEK] ?? null));
+        $daysOfMonth = array_values($this->asArray($repeater[ActionConfig::DAYS_OF_MONTH] ?? null));
 
         $dates = [];
-        $baseDate = $this->calculateBaseDate($job[ActionConfig::SCHEDULE_TIME] ?? []);
+        $baseDate = $this->calculateBaseDate($this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null));
         $cursor = $baseDate;
 
         while (count($dates) < $occurrences) {
@@ -144,11 +159,11 @@ class ActionScheduleCalculatorService
             return [new \DateTimeImmutable('now', new \DateTimeZone('UTC'))];
         }
 
-        $frequency = (string) ($repeaterUntil[ActionConfig::FREQUENCY] ?? 'day');
-        $repeatEvery = max(1, (int) ($repeaterUntil[ActionConfig::REPEAT_EVERY] ?? 1));
-        $daysOfWeek = $repeaterUntil[ActionConfig::DAYS_OF_WEEK] ?? [];
-        $daysOfMonth = $repeaterUntil[ActionConfig::DAYS_OF_MONTH] ?? [];
-        $scheduleAt = (string) ($repeaterUntil[ActionConfig::SCHEDULE_AT] ?? '');
+        $frequency = $this->asString($repeaterUntil[ActionConfig::FREQUENCY] ?? 'day');
+        $repeatEvery = max(1, $this->asInt($repeaterUntil[ActionConfig::REPEAT_EVERY] ?? 1));
+        $daysOfWeek = array_values($this->asArray($repeaterUntil[ActionConfig::DAYS_OF_WEEK] ?? null));
+        $daysOfMonth = array_values($this->asArray($repeaterUntil[ActionConfig::DAYS_OF_MONTH] ?? null));
+        $scheduleAt = $this->asString($repeaterUntil[ActionConfig::SCHEDULE_AT] ?? '');
 
         $current = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $current = $this->applyTimeToDate($current, $scheduleAt);
@@ -182,11 +197,11 @@ class ActionScheduleCalculatorService
      */
     private function calculateAfterPeriod(array $schedule, \DateTimeImmutable $now): \DateTimeImmutable
     {
-        $amount = max(1, (int) ($schedule[ActionConfig::SEND_AFTER] ?? 1));
-        $unit = (string) ($schedule[ActionConfig::SEND_AFTER_TYPE] ?? LookupService::TIME_PERIOD_DAYS);
+        $amount = max(1, $this->asInt($schedule[ActionConfig::SEND_AFTER] ?? 1));
+        $unit = $this->asString($schedule[ActionConfig::SEND_AFTER_TYPE] ?? LookupService::TIME_PERIOD_DAYS);
         $date = $now->modify(sprintf('+%d %s', $amount, $unit));
 
-        return $this->applyTimeToDate($date, (string) ($schedule[ActionConfig::SEND_ON_DAY_AT] ?? ''));
+        return $this->applyTimeToDate($date, $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? ''));
     }
 
     /**
@@ -198,10 +213,10 @@ class ActionScheduleCalculatorService
      */
     private function calculateDayAtTime(array $schedule, \DateTimeImmutable $now): \DateTimeImmutable
     {
-        $weeks = max(1, (int) ($schedule[ActionConfig::SEND_ON] ?? 1));
-        $weekday = (string) ($schedule[ActionConfig::SEND_ON_DAY] ?? 'Monday');
+        $weeks = max(1, $this->asInt($schedule[ActionConfig::SEND_ON] ?? 1));
+        $weekday = $this->asString($schedule[ActionConfig::SEND_ON_DAY] ?? 'Monday');
         $target = $now->modify(sprintf('next %s', $weekday));
-        $target = $this->applyTimeToDate($target, (string) ($schedule[ActionConfig::SEND_ON_DAY_AT] ?? '00:00'));
+        $target = $this->applyTimeToDate($target, $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? '00:00'));
 
         if ($weeks > 1) {
             $target = $target->modify(sprintf('+%d week', $weeks - 1));
@@ -247,7 +262,7 @@ class ActionScheduleCalculatorService
             return true;
         }
 
-        $normalizedDays = array_map(static fn(mixed $day): string => strtolower((string) $day), $daysOfWeek);
+        $normalizedDays = array_map(fn (mixed $day): string => strtolower($this->asString($day)), $daysOfWeek);
         return in_array(strtolower($date->format('l')), $normalizedDays, true);
     }
 
@@ -268,7 +283,7 @@ class ActionScheduleCalculatorService
             return true;
         }
 
-        return in_array((int) $date->format('j'), array_map('intval', $daysOfMonth), true);
+        return in_array((int) $date->format('j'), array_map(fn (mixed $day): int => $this->asInt($day), $daysOfMonth), true);
     }
 
     /**

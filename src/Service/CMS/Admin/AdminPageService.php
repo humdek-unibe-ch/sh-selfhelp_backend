@@ -10,20 +10,16 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\PageTypeField;
-use App\Entity\User;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
-use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\PageTypeRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Repository\SectionRepository;
 use App\Service\ACL\ACLService;
-use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Admin\PositionManagementService;
 use App\Service\CMS\Admin\PageFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
-use App\Service\CMS\Admin\AdminSectionUtilityService;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\LookupService;
@@ -33,7 +29,6 @@ use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -56,23 +51,18 @@ class AdminPageService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly LookupService $lookupService,
         private readonly PageTypeRepository $pageTypeRepository,
-        private readonly ManagerRegistry $doctrine,
         private readonly TransactionService $transactionService,
         private readonly PositionManagementService $positionManagementService,
         private readonly SectionUtilityService $sectionUtilityService,
         private readonly PageFieldService $pageFieldService,
         private readonly SectionRelationshipService $sectionRelationshipService,
-        private readonly AdminSectionUtilityService $adminSectionUtilityService,
         private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
-        private readonly UserContextService $userContextService,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly CacheService $cache,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
-        private readonly CmsPreferenceService $cmsPreferenceService,
     ) {
     }
 
@@ -80,7 +70,7 @@ class AdminPageService extends BaseService
      * Get page with its fields and translations
      * 
      * @param int $pageId The page ID
-     * @return array The page with its fields and translations
+     * @return array<string, mixed> The page with its fields and translations
      * @throws ServiceException If page not found or access denied
      */
     public function getPageWithFields(int $pageId): array
@@ -92,7 +82,7 @@ class AdminPageService extends BaseService
      * Get page sections with entity scope caching
      * 
      * @param int $pageId The page ID
-     * @return array The page sections in a hierarchical structure
+     * @return list<array<string, mixed>> The page sections in a hierarchical structure
      * @throws \Exception If page not found
      */
     public function getPageSections(int $pageId): array
@@ -107,7 +97,7 @@ class AdminPageService extends BaseService
                     $this->throwNotFound('Page not found');
                 }
 
-                $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
+                $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'select');
 
                 // Cache with entity scope for this specific page
                 $result = $this->cache
@@ -115,7 +105,7 @@ class AdminPageService extends BaseService
                     ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
                     ->getItem("page_sections_scoped_{$pageId}", function () use ($page) {
                     // Call stored procedure for hierarchical sections
-                    $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
+                    $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
                     return $this->sectionUtilityService->buildNestedSections($flatSections, false);
                 });
 
@@ -279,8 +269,8 @@ class AdminPageService extends BaseService
      * Update an existing page and its field translations
      * 
      * @param int $pageId The ID of the page to update
-     * @param array $pageData The page data to update
-     * @param array $fields The fields to update
+     * @param array<string, mixed> $pageData The page data to update
+     * @param list<array<string, mixed>> $fields The fields to update
      * @return Page The updated page
      * @throws ServiceException If page not found or access denied
      */
@@ -296,7 +286,7 @@ class AdminPageService extends BaseService
             }
 
             // Check if user has update access to the page
-            $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
+            $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'update');
 
             // Store original page for transaction logging
             $originalPage = clone $page;
@@ -304,15 +294,15 @@ class AdminPageService extends BaseService
             // Update page properties
             // Use array_key_exists instead of isset to handle explicit null values
             if (array_key_exists('url', $pageData)) {
-                $page->setUrl($pageData['url']);
+                $page->setUrl($this->asStringOrNull($pageData['url']));
             }
 
             if (array_key_exists('headless', $pageData)) {
-                $page->setIsHeadless($pageData['headless']);
+                $page->setIsHeadless((bool) $pageData['headless']);
             }
 
             if (array_key_exists('navPosition', $pageData)) {
-                $page->setNavPosition($pageData['navPosition']);
+                $page->setNavPosition($this->asIntOrNull($pageData['navPosition']));
                 $this->entityManager->flush();
                 // Only reorder positions if setting to a non-null value
                 if ($pageData['navPosition'] !== null) {
@@ -325,7 +315,7 @@ class AdminPageService extends BaseService
             }
 
             if (array_key_exists('footerPosition', $pageData)) {
-                $page->setFooterPosition($pageData['footerPosition']);
+                $page->setFooterPosition($this->asIntOrNull($pageData['footerPosition']));
                 $this->entityManager->flush();
                 // Only reorder positions if setting to a non-null value
                 if ($pageData['footerPosition'] !== null) {
@@ -338,7 +328,7 @@ class AdminPageService extends BaseService
             }
 
             if (array_key_exists('openAccess', $pageData)) {
-                $page->setIsOpenAccess($pageData['openAccess']);
+                $page->setIsOpenAccess($pageData['openAccess'] === null ? null : (bool) $pageData['openAccess']);
             }
 
             if (array_key_exists('pageAccessTypeCode', $pageData)) {
@@ -349,7 +339,7 @@ class AdminPageService extends BaseService
                     // Find the page access type lookup
                     $pageAccessType = $this->lookupService->findByTypeAndCode(
                         LookupService::PAGE_ACCESS_TYPES,
-                        $pageData['pageAccessTypeCode']
+                        $this->asString($pageData['pageAccessTypeCode'])
                     );
 
                     if (!$pageAccessType) {
@@ -368,7 +358,7 @@ class AdminPageService extends BaseService
 
             // Validate that all fields belong to the page's page type
             if (!empty($fields)) {
-                $fieldIds = array_column($fields, 'fieldId');
+                $fieldIds = array_map(fn($v): int => $this->asInt($v), array_column($fields, 'fieldId'));
                 // Get the page type ID from the page entity
                 $pageType = $page->getPageType();
                 if (!$pageType) {
@@ -380,7 +370,8 @@ class AdminPageService extends BaseService
                 $pageTypeId = $pageType->getId();
 
                 // Get all valid field IDs for this page type from rel_fields_page_types
-                $validFieldIds = $this->entityManager->getRepository(PageTypeField::class)
+                /** @var list<array<string, mixed>> $validFieldRows */
+                $validFieldRows = $this->entityManager->getRepository(PageTypeField::class)
                     ->createQueryBuilder('ptf')
                     ->select('f.id')
                     ->leftJoin('ptf.field', 'f')
@@ -392,7 +383,7 @@ class AdminPageService extends BaseService
                     ->getQuery()
                     ->getScalarResult();
 
-                $validFieldIds = array_column($validFieldIds, 'id');
+                $validFieldIds = array_map(fn($v): int => $this->asInt($v), array_column($validFieldRows, 'id'));
                 $invalidFieldIds = array_diff($fieldIds, $validFieldIds);
 
                 if (!empty($invalidFieldIds)) {
@@ -400,8 +391,8 @@ class AdminPageService extends BaseService
                         sprintf(
                             "Fields [%s] do not belong to page type %s (page %s)",
                             implode(', ', $invalidFieldIds),
-                            $pageType->getName(),
-                            $page->getKeyword()
+                            (string) $pageType->getName(),
+                            (string) $page->getKeyword()
                         ),
                         Response::HTTP_BAD_REQUEST
                     );
@@ -427,10 +418,10 @@ class AdminPageService extends BaseService
             $this->entityManager->commit();
 
             // Invalidate entity-scoped cache for this specific page
-            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId())
+                ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId())
                 ->invalidateAllListsInCategory();
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
@@ -470,14 +461,15 @@ class AdminPageService extends BaseService
 
         try {
             $page = $this->pageRepository->find($pageId);
-            $deleted_page = clone $page;
 
             if (!$page) {
                 $this->throwNotFound('Page not found');
             }
 
+            $deleted_page = clone $page;
+
             // Check if user has delete access to the page
-            $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'delete');
+            $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'delete');
 
             // Block deletion of system pages. Pages flagged as `is_system = 1`
             // (e.g. the GDPR `/privacy` notice seeded by migration
@@ -521,7 +513,7 @@ class AdminPageService extends BaseService
 
             // Store page keyword for logging before deletion
             $pageKeywordForLog = $page->getKeyword();
-            $pageIdForLog = $page->getId();
+            $pageIdForLog = (int) $page->getId();
 
             // Delete the page
             $this->entityManager->remove($page);
@@ -569,7 +561,7 @@ class AdminPageService extends BaseService
      * every touched section.
      *
      * @param int   $pageId   The ID of the page to attach the sections to
-     * @param array $sections Batch of section payloads. Each item must contain
+     * @param list<array<string, mixed>> $sections Batch of section payloads. Each item must contain
      *                        `sectionId` and may include `position` and
      *                        `oldParentSectionId`.
      * @return array<int, array{id: int, position: int|null}> Result for each
@@ -626,7 +618,8 @@ class AdminPageService extends BaseService
      * Remove multiple sections from a page, invalidaes all cache entries to the affected entities.
      * 
      * @param int $pageId The ID of the page
-     * @param array $sectionIds The List of IDs of the sections to remove
+     * @param list<int> $sectionIds The List of IDs of the sections to remove
+     * @return array<string, mixed>
      * @throws ServiceException If the relationship does not exist
      */
     public function bulkRemoveSectionsFromPage(int $pageId, array $sectionIds): array
@@ -664,13 +657,13 @@ class AdminPageService extends BaseService
      * Get all pages for admin purposes without ACL filtering
      * Returns pages in the same format as PageService for compatibility
      *
-     * @return array Array of pages in hierarchical structure
+     * @return list<array<string, mixed>> Array of pages in hierarchical structure
      */
     public function getAllPagesForAdmin(): array
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? $user->getId() : 1; // guest user
+        $userId = $user ? (int) $user->getId() : 1; // guest user
 
         // Cache key for admin pages (no ACL filtering)
         $cacheKey = "admin_pages";
@@ -678,7 +671,7 @@ class AdminPageService extends BaseService
         $pages = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getList($cacheKey, function () use ($userId) {
+            ->getList($cacheKey, function () {
                 // Get all pages from repository
                 $pages = $this->pageRepository->findAll();
 
@@ -707,49 +700,12 @@ class AdminPageService extends BaseService
     }
 
     /**
-     * Determine language ID for translations
-     */
-    private function determineLanguageId(?int $language_id = null): int
-    {
-        if ($language_id !== null) {
-            return $language_id;
-        }
-
-        // Get default language from CMS preferences
-        try {
-            $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
-            if ($defaultLanguageId) {
-                return $defaultLanguageId;
-            }
-        } catch (\Exception $e) {
-            // Continue with default
-        }
-
-        return 1; // Default fallback
-    }
-
-    /**
-     * Sort pages recursively by nav_position
-     */
-    private function sortPagesRecursively(array &$pages): void
-    {
-        usort($pages, function ($a, $b) {
-            $posA = $a['nav_position'] ?? PHP_INT_MAX;
-            $posB = $b['nav_position'] ?? PHP_INT_MAX;
-            return $posA <=> $posB;
-        });
-
-        foreach ($pages as &$page) {
-            if (!empty($page['children'])) {
-                $this->sortPagesRecursively($page['children']);
-            }
-        }
-    }
-
-    /**
      * Get filtered pages with permission-based access control
      * Includes proper caching with user scope
      * Uses RoleDataAccessRepository optimized methods
+     *
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
      */
     public function getFilteredPages(int $userId, array $filters = []): array
     {
@@ -781,6 +737,9 @@ class AdminPageService extends BaseService
     /**
      * Fetch filtered pages from repository with permission checking
      * Uses RoleDataAccessRepository optimized SQL queries
+     *
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
      */
     private function fetchFilteredPagesFromRepository(int $userId, array $filters): array
     {
@@ -808,14 +767,10 @@ class AdminPageService extends BaseService
         // can filter against them directly.
         if (!empty($filters)) {
             $pages = array_filter($pages, function ($page) use ($filters) {
-                if (!is_array($page)) {
-                    return false;
-                }
-
                 // Filter by keyword
                 if (isset($filters['keyword']) && $filters['keyword']) {
-                    $keyword = isset($page['keyword']) ? (string) $page['keyword'] : '';
-                    if (stripos($keyword, (string) $filters['keyword']) === false) {
+                    $keyword = isset($page['keyword']) ? $this->asString($page['keyword']) : '';
+                    if (stripos($keyword, $this->asString($filters['keyword'])) === false) {
                         return false;
                     }
                 }

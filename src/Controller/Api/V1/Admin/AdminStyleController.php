@@ -13,7 +13,6 @@ use App\Repository\StyleRepository;
 use App\Service\CMS\Admin\PromptTemplateService;
 use App\Service\CMS\Admin\StyleSchemaService;
 use App\Service\Core\ApiResponseFormatter;
-use App\Service\JSON\JsonSchemaValidationService;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -31,7 +30,6 @@ class AdminStyleController extends AbstractController
         private readonly StyleSchemaService $styleSchemaService,
         private readonly PromptTemplateService $promptTemplateService,
         private readonly ApiResponseFormatter $apiResponseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
@@ -72,7 +70,8 @@ class AdminStyleController extends AbstractController
      */
     private function mergePluginStyles(array $groupedStyles): array
     {
-        $event = $this->eventDispatcher->dispatch(new StyleRegistryEvent());
+        $event = new StyleRegistryEvent();
+        $this->eventDispatcher->dispatch($event);
         $contributions = $event->getStyles();
         if ($contributions === []) {
             return $groupedStyles;
@@ -81,12 +80,12 @@ class AdminStyleController extends AbstractController
         $groupIndexByName = [];
         $existingStyleNames = [];
         foreach ($groupedStyles as $i => $group) {
-            $name = strtolower((string) ($group['name'] ?? ''));
+            $name = strtolower($this->asStringField($group, 'name'));
             if ($name !== '') {
                 $groupIndexByName[$name] = $i;
             }
-            foreach (($group['styles'] ?? []) as $style) {
-                $styleName = strtolower((string) ($style['name'] ?? ''));
+            foreach ($this->asListOfArrays($group['styles'] ?? null) as $style) {
+                $styleName = strtolower($this->asStringField($style, 'name'));
                 if ($styleName !== '') {
                     $existingStyleNames[$styleName] = true;
                 }
@@ -95,7 +94,7 @@ class AdminStyleController extends AbstractController
 
         $pluginGroupKey = null;
         foreach ($contributions as $contribution) {
-            $styleName = strtolower((string) ($contribution['name'] ?? ''));
+            $styleName = strtolower($contribution['name']);
             if ($styleName !== '' && isset($existingStyleNames[$styleName])) {
                 continue;
             }
@@ -111,9 +110,12 @@ class AdminStyleController extends AbstractController
                 'plugin_id' => $contribution['pluginId'],
             ];
 
-            $category = strtolower((string) ($contribution['category'] ?? ''));
+            $category = strtolower($contribution['category']);
             if ($category !== '' && isset($groupIndexByName[$category])) {
-                $groupedStyles[$groupIndexByName[$category]]['styles'][] = $entry;
+                $targetIdx = $groupIndexByName[$category];
+                $targetStyles = $this->asListOfArrays($groupedStyles[$targetIdx]['styles'] ?? null);
+                $targetStyles[] = $entry;
+                $groupedStyles[$targetIdx]['styles'] = $targetStyles;
                 if ($styleName !== '') {
                     $existingStyleNames[$styleName] = true;
                 }
@@ -130,7 +132,9 @@ class AdminStyleController extends AbstractController
                     'styles' => [],
                 ];
             }
-            $groupedStyles[$pluginGroupKey]['styles'][] = $entry;
+            $pluginStyles = $this->asListOfArrays($groupedStyles[$pluginGroupKey]['styles'] ?? null);
+            $pluginStyles[] = $entry;
+            $groupedStyles[$pluginGroupKey]['styles'] = $pluginStyles;
             if ($styleName !== '') {
                 $existingStyleNames[$styleName] = true;
             }

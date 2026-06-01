@@ -38,12 +38,15 @@ class PageVersionRepository extends ServiceEntityRepository
      */
     public function findByPage(int $pageId): array
     {
-        return $this->createQueryBuilder('pv')
+        /** @var list<PageVersion> $result */
+        $result = $this->createQueryBuilder('pv')
             ->where('pv.page = :pageId')
             ->setParameter('pageId', $pageId)
             ->orderBy('pv.versionNumber', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -72,7 +75,8 @@ class PageVersionRepository extends ServiceEntityRepository
      */
     public function getPublishedVersion(int $pageId): ?PageVersion
     {
-        return $this->createQueryBuilder('pv')
+        /** @var PageVersion|null $result */
+        $result = $this->createQueryBuilder('pv')
             ->where('pv.page = :pageId')
             ->andWhere('pv.publishedAt IS NOT NULL')
             ->setParameter('pageId', $pageId)
@@ -80,6 +84,8 @@ class PageVersionRepository extends ServiceEntityRepository
             ->setMaxResults(1)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
@@ -91,13 +97,16 @@ class PageVersionRepository extends ServiceEntityRepository
      */
     public function findByPageAndVersionNumber(int $pageId, int $versionNumber): ?PageVersion
     {
-        return $this->createQueryBuilder('pv')
+        /** @var PageVersion|null $result */
+        $result = $this->createQueryBuilder('pv')
             ->where('pv.page = :pageId')
             ->andWhere('pv.versionNumber = :versionNumber')
             ->setParameter('pageId', $pageId)
             ->setParameter('versionNumber', $versionNumber)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
@@ -106,11 +115,12 @@ class PageVersionRepository extends ServiceEntityRepository
      * @param int $pageId The page ID
      * @param int $limit Maximum number of versions to return
      * @param int $offset Offset for pagination
-     * @return array Array of PageVersion entities
+     * @return list<PageVersion> Array of PageVersion entities
      */
     public function getVersionHistory(int $pageId, int $limit = 10, int $offset = 0): array
     {
-        return $this->createQueryBuilder('pv')
+        /** @var list<PageVersion> $result */
+        $result = $this->createQueryBuilder('pv')
             ->where('pv.page = :pageId')
             ->setParameter('pageId', $pageId)
             ->orderBy('pv.createdAt', 'DESC')
@@ -118,6 +128,8 @@ class PageVersionRepository extends ServiceEntityRepository
             ->setFirstResult($offset)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -147,6 +159,7 @@ class PageVersionRepository extends ServiceEntityRepository
     public function deleteOldVersions(int $pageId, int $keepCount = 10): int
     {
         // Get IDs of versions to keep (most recent N versions)
+        /** @var list<array{id: int|string}> $versionsToKeep */
         $versionsToKeep = $this->createQueryBuilder('pv')
             ->select('pv.id')
             ->where('pv.page = :pageId')
@@ -156,14 +169,15 @@ class PageVersionRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
 
-        $idsToKeep = array_map(fn($v) => $v['id'], $versionsToKeep);
+        $idsToKeep = array_map(fn(array $v) => $v['id'], $versionsToKeep);
 
         if (empty($idsToKeep)) {
             return 0;
         }
 
         // Delete versions not in the keep list
-        return $this->createQueryBuilder('pv')
+        /** @var int $deleted */
+        $deleted = $this->createQueryBuilder('pv')
             ->delete()
             ->where('pv.page = :pageId')
             ->andWhere('pv.id NOT IN (:idsToKeep)')
@@ -171,6 +185,8 @@ class PageVersionRepository extends ServiceEntityRepository
             ->setParameter('idsToKeep', $idsToKeep)
             ->getQuery()
             ->execute();
+
+        return $deleted;
     }
 
     /**
@@ -182,13 +198,16 @@ class PageVersionRepository extends ServiceEntityRepository
      */
     public function findByCreatedBy(int $userId, int $limit = 50): array
     {
-        return $this->createQueryBuilder('pv')
+        /** @var list<PageVersion> $result */
+        $result = $this->createQueryBuilder('pv')
             ->where('pv.createdBy = :userId')
             ->setParameter('userId', $userId)
             ->orderBy('pv.createdAt', 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -212,9 +231,12 @@ class PageVersionRepository extends ServiceEntityRepository
                ->setParameter('pageId', $pageId);
         }
 
-        return $qb->orderBy('pv.createdAt', 'DESC')
+        /** @var list<PageVersion> $result */
+        $result = $qb->orderBy('pv.createdAt', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }
 

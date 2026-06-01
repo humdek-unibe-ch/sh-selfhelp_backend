@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# Core backend PHPStan quality gate.
+#
+# This is the STRICT, ZERO-TOLERANCE static-analysis gate for the core
+# Symfony backend (bin/, config/, public/, src/ — see the `paths` in
+# phpstan.dist.neon). It runs PHPStan at level max over the whole core code
+# base using the DEFAULT config (phpstan.dist.neon, auto-discovered — no
+# --configuration flag), which:
+#   - sets level max + the documented phpstan-doctrine
+#     `allowNullablePropertyForRequiredField` option,
+#   - disables the shipmonk dead-code detector, because in this
+#     DI + DB-driven-routing + reflection codebase those findings are
+#     false positives (services, controllers and commands are wired at
+#     runtime, never referenced statically), and
+#   - carries NO baseline. The core source is a genuine zero.
+#
+# Hard rules for this gate (do not relax without team sign-off):
+#   - no baseline
+#   - no `continue-on-error`
+#   - no `|| true` / no advisory-only PHPStan
+#   - the job FAILS on the first error, blocking the merge
+#
+# This complements plugin-host-check.yml: that job runs the wider,
+# DB-backed host gate (schemas, migrations, doctor, ...). THIS job is the
+# single PHPStan gate and guarantees the whole core (plugin code included)
+# never regresses below zero. Both must pass before a merge to `main`.
+#
+# Reproduce locally (identical config + memory limit):
+#   composer phpstan
+# or, with the same flags CI uses:
+#   php -d memory_limit=3G vendor/bin/phpstan analyse --no-progress
+#
+# Full reference: docs/developer/24-core-phpstan-gate.md
+
+name: core-backend-check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so rapid pushes / force-pushes
+# don't pile up runners.
+concurrency:
+  group: core-backend-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-phpstan:
+    name: Core PHPStan (level max, no baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          # Match the runtime extension set so PHPStan can reflect the
+          # internal functions/classes the code actually uses.
+          extensions: ctype, iconv, intl, mbstring, json, pdo, pdo_mysql, redis, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        # --no-scripts: the Symfony auto-scripts (cache:clear,
+        # assets:install) boot the kernel, which needs a prepared env.
+        # PHPStan analyses statically (no container XML, no DB), so the
+        # kernel never has to boot for this gate. The phpstan/extension-
+        # installer plugin still runs (plugins are not skipped), so the
+        # doctrine/symfony/shipmonk PHPStan extensions stay wired.
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
+
+      - name: Core PHPStan (level max, zero baseline)
+        # STRICT: no baseline, no continue-on-error, no `|| true`. The
+        # `composer phpstan` script runs `phpstan analyse --memory-limit=3G`
+        # against the auto-discovered phpstan.dist.neon; the limit is
+        # generous so the level-max run over the whole core never OOMs.
+        run: composer phpstan -- --no-progress

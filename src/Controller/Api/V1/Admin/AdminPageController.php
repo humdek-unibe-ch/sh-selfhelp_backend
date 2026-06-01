@@ -12,11 +12,9 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminPageService;
-use App\Service\CMS\Frontend\PageService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
-use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -37,9 +35,7 @@ class AdminPageController extends AbstractController
     public function __construct(
         private readonly AdminPageService $adminPageService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly PageService $pageService,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly UserContextService $userContextService
     ) {
     }
@@ -142,14 +138,14 @@ class AdminPageController extends AbstractController
 
             // Create page using pageAccessTypeCode
             $page = $this->adminPageService->createPage(
-                $data['keyword'],
-                $data['pageAccessTypeCode'],
-                $data['headless'] ?? false,
-                $data['openAccess'] ?? false,
-                $data['url'] ?? null,
-                $data['navPosition'] ?? null,
-                $data['footerPosition'] ?? null,
-                $data['parent'] ?? null,
+                $this->asStringField($data, 'keyword'),
+                $this->asStringField($data, 'pageAccessTypeCode'),
+                $this->asBoolField($data, 'headless'),
+                $this->asBoolField($data, 'openAccess'),
+                $this->asStringOrNullField($data, 'url'),
+                $this->asIntOrNullField($data, 'navPosition'),
+                $this->asIntOrNullField($data, 'footerPosition'),
+                $this->asIntOrNullField($data, 'parent'),
             );
 
             // Page cache is automatically invalidated by the service
@@ -212,8 +208,8 @@ class AdminPageController extends AbstractController
 
             $this->adminPageService->updatePage(
                 $page_id,
-                $data['pageData'],
-                $data['fields']
+                $this->asArrayField($data, 'pageData'),
+                $this->asListOfArrays($data['fields'] ?? null)
             );
 
             // Page cache is automatically invalidated by the service
@@ -253,7 +249,7 @@ class AdminPageController extends AbstractController
         );
 
         $isBulkRequest = isset($data['sections']);
-        $sections = $isBulkRequest ? $data['sections'] : [$data];
+        $sections = $isBulkRequest ? $this->asListOfArrays($data['sections']) : [$this->toAssocArray($data)];
 
         $results = $this->adminPageService->addSectionToPage($page_id, $sections);
 
@@ -296,7 +292,7 @@ class AdminPageController extends AbstractController
         try {
             $result = $this->adminPageService->bulkRemoveSectionsFromPage(
                 $page_id,
-                $data['sectionIds']
+                $this->toIntList($data['sectionIds'] ?? null)
             );
 
             return $this->responseFormatter->formatSuccess($result);

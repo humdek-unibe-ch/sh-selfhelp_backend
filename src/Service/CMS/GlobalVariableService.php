@@ -31,7 +31,7 @@ class GlobalVariableService extends BaseService
     // hitting MySQL round-trip latency. See PageService::processSectionsRecursively.
     private ?Page $memoizedGlobalPage = null;
     private bool $globalPageLoaded = false;
-    /** @var array<int, array<string, mixed>> keyed by languageId */
+    /** @var array<int, array<array-key, mixed>> keyed by languageId */
     private array $memoizedGlobalValuesByLanguage = [];
 
     public function __construct(
@@ -46,7 +46,7 @@ class GlobalVariableService extends BaseService
      * Get global variable VALUES for a specific language
      *
      * @param int $languageId Language ID to get values for
-     * @return array Array of variable names to their values (e.g., ['my_var' => 'english'])
+     * @return array<array-key, mixed> Array of variable names to their values (e.g., ['my_var' => 'english'])
      */
     public function getGlobalVariableValues(int $languageId): array
     {
@@ -63,7 +63,7 @@ class GlobalVariableService extends BaseService
 
         $values = $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $globalPage->getId())
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $globalPage->getId())
             ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
             ->getItem($cacheKey, function () use ($globalPage, $languageId) {
                 $globalValuesJson = $this->getPageFieldValueByLanguage($globalPage, self::PF_GLOBAL_VALUES, $languageId);
@@ -78,7 +78,7 @@ class GlobalVariableService extends BaseService
                 return [];
             });
 
-        return $this->memoizedGlobalValuesByLanguage[$languageId] = $values ?? [];
+        return $this->memoizedGlobalValuesByLanguage[$languageId] = $values;
     }
 
     /**
@@ -87,7 +87,7 @@ class GlobalVariableService extends BaseService
      * Returns unique variable names that exist in any language, prefixed with 'global.'
      * Used for admin UI dropdowns and autocomplete.
      *
-     * @return array List of global variable names with 'global.' prefix (e.g., ['global.my_var'])
+     * @return array<int, string> List of global variable names with 'global.' prefix (e.g., ['global.my_var'])
      */
     public function getGlobalVariableNames(): array
     {
@@ -98,13 +98,13 @@ class GlobalVariableService extends BaseService
         $cacheService = $this->cache->withCategory(CacheService::CATEGORY_PAGES);
 
         if ($globalPage) {
-            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $globalPage->getId());
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $globalPage->getId());
         }
 
         // Add all languages as dependencies
         $allLanguages = $this->languageRepository->findAllLanguages();
         foreach ($allLanguages as $language) {
-            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $language->getId());
+            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, (int) $language->getId());
         }
 
         return $cacheService->getList($cacheKey, function () use ($globalPage, $allLanguages) {
@@ -116,7 +116,7 @@ class GlobalVariableService extends BaseService
 
             // Get global variables for each language
             foreach ($allLanguages as $language) {
-                $globalValuesJson = $this->getPageFieldValueByLanguage($globalPage, self::PF_GLOBAL_VALUES, $language->getId());
+                $globalValuesJson = $this->getPageFieldValueByLanguage($globalPage, self::PF_GLOBAL_VALUES, (int) $language->getId());
                 if ($globalValuesJson) {
                     $globalValues = json_decode($globalValuesJson, true);
                     if (is_array($globalValues)) {
@@ -185,7 +185,7 @@ class GlobalVariableService extends BaseService
             $result = $stmt->executeQuery();
 
             $row = $result->fetchAssociative();
-            return $row ? $row['content'] : null;
+            return $row !== false ? $this->asStringOrNull($row['content']) : null;
         } catch (\Exception $e) {
             return null;
         }

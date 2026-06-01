@@ -41,7 +41,6 @@ class UserValidationController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly TransactionService $transactionService,
-        private readonly LookupService $lookupService,
         private readonly DataService $dataService,
         private readonly LoggerInterface $logger
     ) {
@@ -55,10 +54,14 @@ class UserValidationController extends AbstractController
      */
     public function validateToken(Request $request): JsonResponse
     {
+        $userId = 0;
+        $token = '';
         try {
             // Get route parameters from request attributes
-            $userId = (int) $request->attributes->get('user_id');
-            $token = $request->attributes->get('token');
+            $userIdRaw = $request->attributes->get('user_id');
+            $userId = is_numeric($userIdRaw) ? (int) $userIdRaw : 0;
+            $tokenRaw = $request->attributes->get('token');
+            $token = is_string($tokenRaw) ? $tokenRaw : '';
 
             // Validate parameters
             if (!$userId || !$token) {
@@ -120,10 +123,14 @@ class UserValidationController extends AbstractController
      */
     public function completeValidation(Request $request): JsonResponse
     {
+        $userId = 0;
+        $token = '';
         try {
             // Get route parameters from request attributes
-            $userId = (int) $request->attributes->get('user_id');
-            $token = $request->attributes->get('token');
+            $userIdRaw = $request->attributes->get('user_id');
+            $userId = is_numeric($userIdRaw) ? (int) $userIdRaw : 0;
+            $tokenRaw = $request->attributes->get('token');
+            $token = is_string($tokenRaw) ? $tokenRaw : '';
 
             // Validate parameters
             if (!$userId || !$token) {
@@ -137,16 +144,16 @@ class UserValidationController extends AbstractController
             $data = $this->validateRequest($request, 'requests/auth/complete_validation', $this->jsonSchemaValidationService);
 
             // Extract user data
-            $password = $data['password'] ?? null;
-            $name = $data['name'] ?? null;
-            $formInputs = $data['form_inputs'] ?? [];
-            $sectionId = $data['section_id'] ?? null;
+            $password = $this->asStringField($data, 'password');
+            $name = $this->asStringOrNullField($data, 'name');
+            $formInputs = $this->asArrayField($data, 'form_inputs');
+            $sectionId = $this->asIntOrNullField($data, 'section_id');
 
             // Validate the token first
             $validationResult = $this->userValidationService->validateToken($userId, $token);
             if (!$validationResult['success']) {
                 return $this->responseFormatter->formatError(
-                    $validationResult['error'],
+                    $this->asStringField($validationResult, 'error', 'Token validation failed'),
                     Response::HTTP_BAD_REQUEST
                 );
             }
@@ -186,7 +193,7 @@ class UserValidationController extends AbstractController
                         'has_password' => !empty($password),
                         'has_form_inputs' => !empty($formInputs),
                         'section_id' => $sectionId
-                    ])
+                    ]) ?: null
                 );
 
                 $this->entityManager->commit();
@@ -234,7 +241,7 @@ class UserValidationController extends AbstractController
      * Save user form inputs to data_tables
      *
      * @param int $userId User ID
-     * @param array $formInputs Form input data
+     * @param array<string, mixed> $formInputs Form input data
      * @param int $sectionId Section ID
      * @param string $formName Form name
      *

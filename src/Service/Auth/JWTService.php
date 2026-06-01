@@ -66,7 +66,7 @@ class JWTService
         $refreshToken->setTokenHash(bin2hex(random_bytes(32)));
         
         // Get refresh token TTL from environment (in seconds) and convert to DateInterval
-        $refreshTokenTtl = $this->params->get('jwt_refresh_token_ttl');
+        $refreshTokenTtl = (int) $this->params->get('jwt_refresh_token_ttl');
         $expiresAt = new \DateTime();
         $expiresAt->modify('+' . $refreshTokenTtl . ' seconds');
         
@@ -82,6 +82,8 @@ class JWTService
      * Verify and decode a JWT access token, optionally checking against the blacklist.
      *
      * @throws AuthenticationException if the token is invalid, expired, or blacklisted
+     *
+     * @return array<string, mixed>
      */
     public function verifyAndDecodeAccessToken(string $token, bool $checkBlacklist = true): array
     {
@@ -105,6 +107,7 @@ class JWTService
 
         try {
             $this->logger->debug('[JWTService] Decoding token with jwtEncoder.');
+            /** @var array<string, mixed> $payload */
             $payload = $this->jwtEncoder->decode($token);
             if (!$payload) {
                 $this->logger->error('[JWTService] Token decoding returned no payload.');
@@ -131,8 +134,9 @@ class JWTService
             $payload = $this->jwtEncoder->decode($accessToken);
             $this->logger->debug('[JWTService] Token decoded for blacklisting.', ['payload' => $payload]);
 
-            $tokenTtl = $this->params->get('jwt_token_ttl');
-            $expiresAt = $payload['exp'] ?? (time() + $tokenTtl); // Use configured TTL if 'exp' is not present
+            $tokenTtl = (int) $this->params->get('jwt_token_ttl');
+            $expValue = $payload['exp'] ?? null; // Use configured TTL if 'exp' is not present
+            $expiresAt = is_numeric($expValue) ? (int) $expValue : (time() + $tokenTtl);
             $remainingLifetime = $expiresAt - time();
             $this->logger->debug('[JWTService] Calculated remaining lifetime for blacklist entry.', ['expiresAt' => $expiresAt, 'remainingLifetime' => $remainingLifetime]);
 
@@ -165,6 +169,8 @@ class JWTService
      * Process a refresh token string: validate it, issue new tokens, and invalidate the old one.
      *
      * @throws AuthenticationException if the refresh token is invalid or processing fails
+     *
+     * @return array<string, string|null>
      */
     public function processRefreshToken(string $refreshTokenString): array
     {
@@ -210,13 +216,13 @@ class JWTService
 
         // Try HTTP_AUTHORIZATION (Apache might pass it this way)
         $httpAuth = $request->server->get('HTTP_AUTHORIZATION');
-        if ($httpAuth && str_starts_with($httpAuth, 'Bearer ')) {
+        if (is_string($httpAuth) && str_starts_with($httpAuth, 'Bearer ')) {
             return substr($httpAuth, 7);
         }
 
         // Try REDIRECT_HTTP_AUTHORIZATION (some Apache configurations)
         $redirectAuth = $request->server->get('REDIRECT_HTTP_AUTHORIZATION');
-        if ($redirectAuth && str_starts_with($redirectAuth, 'Bearer ')) {
+        if (is_string($redirectAuth) && str_starts_with($redirectAuth, 'Bearer ')) {
             return substr($redirectAuth, 7);
         }
 
@@ -243,6 +249,8 @@ class JWTService
      *
      * TTL is intentionally much shorter than a regular access token
      * (default 15 min, configurable via IMPERSONATION_TOKEN_TTL).
+     *
+     * @return array<string, mixed>
      */
     public function createImpersonationToken(User $targetUser, int $adminUserId): array
     {
@@ -281,6 +289,8 @@ class JWTService
     /**
      * Whether a decoded JWT payload represents an impersonation session.
      * Cheap O(1) flag check — safe to call on every request.
+     *
+     * @param array<string, mixed> $payload
      */
     public function isImpersonationPayload(array $payload): bool
     {
@@ -295,20 +305,22 @@ class JWTService
      * legacy `act.id_users` shape we emit for in-house consumers, and
      * finally to the deprecated `impersonated_by` claim used by the v1
      * implementation so old tokens still work during a rolling deploy.
+     *
+     * @param array<string, mixed> $payload
      */
     public function getImpersonatorUserId(array $payload): ?int
     {
         if (isset($payload['act']) && is_array($payload['act'])) {
             $act = $payload['act'];
-            if (isset($act['id_users'])) {
+            if (isset($act['id_users']) && is_scalar($act['id_users'])) {
                 return (int) $act['id_users'];
             }
-            if (isset($act['sub'])) {
+            if (isset($act['sub']) && is_scalar($act['sub'])) {
                 return (int) $act['sub'];
             }
         }
 
-        if (isset($payload['impersonated_by'])) {
+        if (isset($payload['impersonated_by']) && is_scalar($payload['impersonated_by'])) {
             return (int) $payload['impersonated_by'];
         }
 

@@ -13,7 +13,6 @@ use App\Entity\Section;
 use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Repository\SectionRepository;
-use App\Repository\StyleRepository;
 use App\Repository\PageRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -23,7 +22,6 @@ use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\CMS\Admin\SectionFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\SectionCreationService;
-use App\Service\CMS\Admin\AdminSectionUtilityService;
 use App\Service\CMS\DataVariableResolver;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -41,13 +39,11 @@ class AdminSectionService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TransactionService $transactionService,
-        private readonly StyleRepository $styleRepository,
         private readonly PositionManagementService $positionManagementService,
         private readonly SectionUtilityService $sectionUtilityService,
         private readonly SectionFieldService $sectionFieldService,
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly SectionCreationService $sectionCreationService,
-        private readonly AdminSectionUtilityService $adminSectionUtilityService,
         private readonly SectionExportImportService $sectionExportImportService,
         private readonly DataVariableResolver $dataVariableResolver,
         private readonly CacheService $cache,
@@ -61,7 +57,7 @@ class AdminSectionService extends BaseService
      * Get a section by its ID with its fields and translations
      * @param int|null $page_id
      * @param int $section_id
-     * @return array
+     * @return array<string, mixed>
      * @throws ServiceException If section not found or access denied
      */
     public function getSection(?int $page_id, int $section_id): array
@@ -77,10 +73,13 @@ class AdminSectionService extends BaseService
             );
         
         $globalVariables = $this->dataVariableResolver->getGlobalVariables();
-        $result['data_variables'] = array_merge($result['data_variables'], $globalVariables);
+        $result['data_variables'] = array_merge($this->asArray($result['data_variables'] ?? []), $globalVariables);
         return $result;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function fetchSectionFromDatabase(?int $page_id, int $section_id): array
     {
         // Fetch section
@@ -114,7 +113,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'select');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $section_id);
 
         // Get fields using the dedicated service
@@ -123,9 +122,10 @@ class AdminSectionService extends BaseService
         // Get languages from the formatted fields
         $languages = [];
         foreach ($formattedFields as $field) {
-            foreach ($field['translations'] as $translation) {
-                if (isset($translation['language_id']) && $translation['language_id'] > 1) {
-                    $langId = $translation['language_id'];
+            $fieldTranslations = is_array($field['translations'] ?? null) ? $field['translations'] : [];
+            foreach ($fieldTranslations as $translation) {
+                if (is_array($translation) && isset($translation['language_id']) && $translation['language_id'] > 1) {
+                    $langId = $this->asInt($translation['language_id']);
                     $languages[$langId] = [
                         'id' => $langId,
                         'locale' => $translation['language_code'] ?? null,
@@ -149,7 +149,7 @@ class AdminSectionService extends BaseService
      * Get all children sections for a parent section
      * @param int $page_id
      * @param int $parent_section_id
-     * @return array
+     * @return list<array<string, mixed>>
      */
     public function getChildrenSections(int $page_id, int $parent_section_id): array
     {
@@ -159,7 +159,7 @@ class AdminSectionService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'select');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $parent_section_id);
         $hierarchies = $this->entityManager->getRepository(SectionsHierarchy::class)
             ->findBy(['parentSection' => $parent_section_id], ['position' => 'ASC']);
@@ -176,7 +176,7 @@ class AdminSectionService extends BaseService
     /**
      * Normalize a Section entity for API response
      * @param Section $section
-     * @return array
+     * @return array<string, mixed>
      */
     protected function normalizeSection($section): array
     {
@@ -221,7 +221,7 @@ class AdminSectionService extends BaseService
      *
      * @param int   $pageId          The page the parent section belongs to
      * @param int   $parentSectionId The section to nest the child sections under
-     * @param array $sections        Batch of section payloads. Each item must
+     * @param list<array<string, mixed>> $sections        Batch of section payloads. Each item must
      *                               contain `sectionId` (or legacy `childSectionId`)
      *                               and may include `position`, `oldParentPageId`,
      *                               and `oldParentSectionId`.
@@ -306,7 +306,7 @@ class AdminSectionService extends BaseService
      * @param int $page_id The ID of the page to add the section to
      * @param int $styleId The ID of the style to use for the section
      * @param int|null $position The position of the section on the page
-     * @return array The ID and position of the new section
+     * @return array<string, mixed> The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
     public function createPageSection(int $page_id, int $styleId, ?int $position, ?string $name = null): array
@@ -323,7 +323,7 @@ class AdminSectionService extends BaseService
      * @param int $parent_section_id The ID of the parent section
      * @param int $styleId The ID of the style to use for the section
      * @param int|null $position The position of the child section
-     * @return array The ID and position of the new section
+     * @return array<string, mixed> The ID and position of the new section
      * @throws ServiceException If the parent section or style is not found
      */
     public function createChildSection(?int $page_id, int $parent_section_id, int $styleId, ?int $position, ?string $name = null): array
@@ -342,9 +342,9 @@ class AdminSectionService extends BaseService
      * @param int $pageId The ID of the page the section belongs to
      * @param int $sectionId The ID of the section to update
      * @param string $sectionName The new name for the section
-     * @param array $contentFields The content fields to update (display=1 fields)
-     * @param array $propertyFields The property fields to update (display=0 fields)
-     * @param array $globalFields The global fields to update (condition, data_config, css, css_mobile, debug)
+     * @param list<array<string, mixed>> $contentFields The content fields to update (display=1 fields)
+     * @param list<array<string, mixed>> $propertyFields The property fields to update (display=0 fields)
+     * @param array<string, mixed>|null $globalFields The global fields to update (condition, data_config, css, css_mobile, debug)
      * @return Section The updated section
      * @throws ServiceException If section not found or access denied
      */
@@ -366,7 +366,7 @@ class AdminSectionService extends BaseService
             }
 
             // Check if user has update access to the page
-            $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
+            $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'update');
             $this->sectionRelationshipService->checkSectionInPage($pageId, $sectionId);
 
             // Store original section for transaction logging
@@ -389,16 +389,16 @@ class AdminSectionService extends BaseService
                 } else {
                     // Update only provided fields, leave others unchanged
                     if (array_key_exists('condition', $globalFields)) {
-                        $section->setCondition($globalFields['condition']);
+                        $section->setCondition($this->asStringOrNull($globalFields['condition']));
                     }
                     if (array_key_exists('data_config', $globalFields)) {
-                        $section->setDataConfig($globalFields['data_config']);
+                        $section->setDataConfig($this->asStringOrNull($globalFields['data_config']));
                     }
                     if (array_key_exists('css', $globalFields)) {
-                        $section->setCss($globalFields['css']);
+                        $section->setCss($this->asStringOrNull($globalFields['css']));
                     }
                     if (array_key_exists('css_mobile', $globalFields)) {
-                        $section->setCssMobile($globalFields['css_mobile']);
+                        $section->setCssMobile($this->asStringOrNull($globalFields['css_mobile']));
                     }
                     if (array_key_exists('debug', $globalFields)) {
                         $section->setDebug($globalFields['debug'] === null ? false : (bool)$globalFields['debug']);
@@ -446,7 +446,7 @@ class AdminSectionService extends BaseService
      * Export all sections of a given page (including all nested sections) as JSON
      * 
      * @param int $page_id The ID of the page to export sections from
-     * @return array JSON-serializable array with all page sections
+     * @return array<int, array<string, mixed>> JSON-serializable array with all page sections
      * @throws ServiceException If page not found or access denied
      */
     public function exportPageSections(int $page_id): array
@@ -459,7 +459,7 @@ class AdminSectionService extends BaseService
      * 
      * @param int $page_id The ID of the page containing the section
      * @param int $section_id The ID of the section to export
-     * @return array JSON-serializable array with the section and its children
+     * @return array<int, array<string, mixed>> JSON-serializable array with the section and its children
      * @throws ServiceException If section not found or access denied
      */
     public function exportSection(int $page_id, int $section_id): array
@@ -471,9 +471,9 @@ class AdminSectionService extends BaseService
      * Import sections from JSON into a target page
      * 
      * @param int $page_id The ID of the target page
-     * @param array $sectionsData The sections data to import
+     * @param array<int, array<string, mixed>> $sectionsData The sections data to import
      * @param int|null $position The position where the sections should be inserted
-     * @return array Result of the import operation
+     * @return list<array<string, mixed>> Result of the import operation
      * @throws ServiceException If page not found or access denied
      */
     public function importSectionsToPage(int $page_id, array $sectionsData, ?int $position = null): array
@@ -485,7 +485,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
+        $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'update');
 
         // Start transaction
         $this->entityManager->beginTransaction();
@@ -496,7 +496,7 @@ class AdminSectionService extends BaseService
 
             // Additional AdminSectionService-specific functionality
             // Normalize positions after import
-            $this->positionManagementService->normalizePageSectionPositions($page->getId(), true);
+            $this->positionManagementService->normalizePageSectionPositions((int) $page->getId(), true);
 
             // Commit transaction
             $this->entityManager->commit();
@@ -519,9 +519,9 @@ class AdminSectionService extends BaseService
      * 
      * @param int $page_id The ID of the target page
      * @param int $parent_section_id The ID of the parent section to import into
-     * @param array $sectionsData The sections data to import
+     * @param array<int, array<string, mixed>> $sectionsData The sections data to import
      * @param int|null $position The position where the sections should be inserted
-     * @return array Result of the import operation
+     * @return list<array<string, mixed>> Result of the import operation
      * @throws ServiceException If section not found or access denied
      */
     public function importSectionsToSection(int $page_id, int $parent_section_id, array $sectionsData, ?int $position = null): array
@@ -533,7 +533,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
+        $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'update');
         $this->sectionRelationshipService->checkSectionInPage($page_id, $parent_section_id);
 
         // Get the parent section
@@ -583,7 +583,7 @@ class AdminSectionService extends BaseService
      *
      * @param int $page_id The ID of the page to restore sections to
      * @param int $version_id The ID of the published version to restore from
-     * @return array Result of the restoration operation
+     * @return array<string, mixed> Result of the restoration operation
      * @throws ServiceException If page/version not found, version not published, or access denied
      */
     public function restoreSectionsFromVersion(int $page_id, int $version_id): array
@@ -595,7 +595,7 @@ class AdminSectionService extends BaseService
         }
 
         // Permission check
-        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'update');
+        $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'update');
 
         // Start transaction
         $this->entityManager->beginTransaction();
@@ -606,7 +606,7 @@ class AdminSectionService extends BaseService
 
             // Additional AdminSectionService-specific functionality
             // Normalize positions after restoration
-            $this->positionManagementService->normalizePageSectionPositions($page->getId(), true);
+            $this->positionManagementService->normalizePageSectionPositions((int) $page->getId(), true);
 
             // Commit transaction
             $this->entityManager->commit();

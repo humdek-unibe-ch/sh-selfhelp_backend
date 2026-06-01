@@ -54,7 +54,8 @@ final class PluginValidateArchiveCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $path = (string) $input->getArgument('archive');
+        $pathArg = $input->getArgument('archive');
+        $path = is_string($pathArg) ? $pathArg : '';
         if (!is_file($path)) {
             $io->error(sprintf('Archive "%s" does not exist.', $path));
             return Command::FAILURE;
@@ -73,8 +74,7 @@ final class PluginValidateArchiveCommand extends Command
         $version = isset($manifest['version']) && is_string($manifest['version']) ? $manifest['version'] : '(unknown)';
 
         $io->section(sprintf('Plugin: %s @ %s', $pluginId, $version));
-        $signature = is_array($result['signature']) ? $result['signature'] : [];
-        $signatureStatus = isset($signature['status']) && is_string($signature['status']) ? $signature['status'] : 'unverifiable';
+        $signatureStatus = $result['signature']['status'];
         $io->writeln(sprintf('Signature status: <info>%s</info>', $signatureStatus));
         $io->writeln(sprintf('Capabilities: %s', $result['capabilities'] === [] ? '(none)' : implode(', ', $result['capabilities'])));
 

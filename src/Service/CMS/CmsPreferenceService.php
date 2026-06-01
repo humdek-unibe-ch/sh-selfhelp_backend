@@ -41,7 +41,7 @@ class CmsPreferenceService extends BaseService
     /**
      * Get CMS preferences from the page-based system
      *
-     * @return array Array containing all CMS preference values
+     * @return array<string, mixed> Array containing all CMS preference values
      */
     public function getCmsPreferences(): array
     {
@@ -53,15 +53,15 @@ class CmsPreferenceService extends BaseService
         $cacheKey = "cms_preferences_all";
         return $this->cache
             ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $preferencesPage->getId())
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $preferencesPage->getId())
             ->getItem($cacheKey, function () use ($preferencesPage) {
                 $fieldValues = $this->getAllPageFieldValues($preferencesPage);
-                $defaultTimezoneId = $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')->getId();
+                $defaultTimezoneId = $fieldValues[self::PF_DEFAULT_TIMEZONE] ?? $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')?->getId();
 
                 return [
                     'id' => $preferencesPage->getId(),
                     'default_language_id' => $fieldValues[self::PF_DEFAULT_LANGUAGE_ID] ?? null,
-                    'anonymous_users' => (int) ($fieldValues[self::PF_ANONYMOUS_USERS] ?? 0),
+                    'anonymous_users' => $this->asInt($fieldValues[self::PF_ANONYMOUS_USERS] ?? 0),
                     'firebase_config' => $fieldValues[self::PF_FIREBASE_CONFIG] ?? null,
                     'default_timezone' => $defaultTimezoneId
                 ];
@@ -76,8 +76,8 @@ class CmsPreferenceService extends BaseService
     public function getDefaultLanguageId(): ?int
     {
         $preferences = $this->getCmsPreferences();
-        $languageId = $preferences['default_language_id'];
-        return $languageId ? (int) $languageId : null;
+        $languageId = $preferences['default_language_id'] ?? null;
+        return $languageId ? $this->asInt($languageId) : null;
     }
 
     /**
@@ -88,7 +88,7 @@ class CmsPreferenceService extends BaseService
     public function getAnonymousUsers(): int
     {
         $preferences = $this->getCmsPreferences();
-        return $preferences['anonymous_users'];
+        return $this->asInt($preferences['anonymous_users'] ?? 0);
     }
 
     /**
@@ -99,7 +99,7 @@ class CmsPreferenceService extends BaseService
     public function getFirebaseConfig(): ?string
     {
         $preferences = $this->getCmsPreferences();
-        return $preferences['firebase_config'];
+        return $this->asStringOrNull($preferences['firebase_config'] ?? null);
     }
 
     /**
@@ -116,7 +116,7 @@ class CmsPreferenceService extends BaseService
             return null;
         }
 
-        return (int) $timezoneId;
+        return $this->asInt($timezoneId);
     }
 
     /**
@@ -146,14 +146,14 @@ class CmsPreferenceService extends BaseService
             return 'Europe/Zurich';
         }
 
-        return $this->lookupService->getLookupCodeById($defaultTimezoneId);
+        return $this->lookupService->getLookupCodeById($defaultTimezoneId) ?? 'Europe/Zurich';
     }
 
     /**
      * Get all field values for a page in a single query
      *
      * @param Page $page The page entity
-     * @return array Associative array of field names to values
+     * @return array<string, mixed> Associative array of field names to values
      */
     private function getAllPageFieldValues(Page $page): array
     {
@@ -172,7 +172,7 @@ class CmsPreferenceService extends BaseService
 
             $fieldValues = [];
             while ($row = $result->fetchAssociative()) {
-                $fieldValues[$row['name']] = $row['content'];
+                $fieldValues[$this->asString($row['name'])] = $row['content'];
             }
 
             return $fieldValues;
@@ -206,7 +206,7 @@ class CmsPreferenceService extends BaseService
     /**
      * Get default preferences when page is not found
      *
-     * @return array
+     * @return array<string, mixed>
      */
     private function getDefaultPreferences(): array
     {
@@ -215,7 +215,7 @@ class CmsPreferenceService extends BaseService
             'default_language_id' => null,
             'anonymous_users' => 0,
             'firebase_config' => null,
-            'default_timezone' => $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')->getId()
+            'default_timezone' => $this->lookupService->findByTypeAndCode($this->lookupService::TIMEZONES, 'Europe/Zurich')?->getId()
         ];
     }
 

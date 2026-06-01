@@ -88,6 +88,7 @@ class ActionRepository extends ServiceEntityRepository
         $page = max(1, $page);
         $pageSize = max(1, $pageSize);
 
+        /** @var list<Action> $records */
         $records = $qb
             ->orderBy($sortField, $direction)
             ->setFirstResult(($page - 1) * $pageSize)
@@ -141,7 +142,8 @@ class ActionRepository extends ServiceEntityRepository
      */
     public function findByDataTableAndTrigger(DataTable $dataTable, string $triggerTypeCode): array
     {
-        return $this->createQueryBuilder('a')
+        /** @var list<Action> $result */
+        $result = $this->createQueryBuilder('a')
             ->leftJoin('a.actionTriggerType', 'att')
             ->addSelect('att')
             ->leftJoin('a.dataTable', 'dt')
@@ -153,6 +155,8 @@ class ActionRepository extends ServiceEntityRepository
             ->orderBy('a.id', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }
 

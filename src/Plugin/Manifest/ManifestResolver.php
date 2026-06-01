@@ -77,6 +77,7 @@ final class ManifestResolver
     }
 
     /**
+     * @param array<string,mixed>|null $registryEntry
      * @return array{manifest: PluginManifest, resolved: ResolvedSource}
      */
     public function resolveUrl(string $manifestUrl, ?array $registryEntry = null): array
@@ -120,7 +121,7 @@ final class ManifestResolver
     private function loadManifestFromRegistryEntry(array $registryEntry): array
     {
         if (isset($registryEntry['manifest']) && is_array($registryEntry['manifest'])) {
-            return $registryEntry['manifest'];
+            return $this->assocArray($registryEntry['manifest']);
         }
         if (isset($registryEntry['manifestUrl']) && is_string($registryEntry['manifestUrl']) && $registryEntry['manifestUrl'] !== '') {
             return $this->fetchManifest($registryEntry['manifestUrl']);
@@ -150,7 +151,7 @@ final class ManifestResolver
         if (!is_array($data)) {
             throw new \RuntimeException(sprintf('Manifest fetch failed: %s returned invalid JSON.', $url));
         }
-        return $data;
+        return $this->assocArray($data);
     }
 
     /**
@@ -169,35 +170,31 @@ final class ManifestResolver
         $trustLevel = $manifest->getTrustLevel();
 
         $manifestData = $manifest->toArray();
-        $runtime = (isset($manifestData['frontend']['runtime']) && is_array($manifestData['frontend']['runtime']))
-            ? $manifestData['frontend']['runtime']
-            : [];
-        $composer = (isset($manifestData['backend']['composer']) && is_array($manifestData['backend']['composer']))
-            ? $manifestData['backend']['composer']
-            : [];
+        $frontend = $this->assocArray($manifestData['frontend'] ?? null);
+        $runtime = $this->assocArray($frontend['runtime'] ?? null);
+        $backend = $this->assocArray($manifestData['backend'] ?? null);
+        $composer = $this->assocArray($backend['composer'] ?? null);
         $archive = (isset($manifestData['archive']) && is_array($manifestData['archive']))
             ? $manifestData['archive']
             : ['mode' => 'connected'];
-        $checksums = (isset($entry['checksums']) && is_array($entry['checksums']))
-            ? $entry['checksums']
-            : [];
+        $checksums = $this->assocArray($entry['checksums'] ?? null);
         $resolvedRuntime = $runtime;
         $resolvedComposer = $composer;
 
         if ($signedPayload !== null && $signature !== null && $keyId !== null) {
-            $registryRuntime = (isset($entry['runtime']) && is_array($entry['runtime'])) ? $entry['runtime'] : [];
-            $registryComposer = (isset($entry['composer']) && is_array($entry['composer'])) ? $entry['composer'] : [];
+            $registryRuntime = $this->assocArray($entry['runtime'] ?? null);
+            $registryComposer = $this->assocArray($entry['composer'] ?? null);
 
             $payloadInput = [
                 'pluginId' => $manifest->getPluginId(),
                 'version' => $manifest->getVersion(),
                 'composer' => $registryComposer !== [] ? $registryComposer : $composer,
                 'runtime' => [
-                    'entrypointUrl' => (string) ($registryRuntime['entrypointUrl'] ?? ''),
-                    'format' => (string) ($registryRuntime['format'] ?? ($runtime['format'] ?? 'esm')),
+                    'entrypointUrl' => $this->scalarString($registryRuntime['entrypointUrl'] ?? ''),
+                    'format' => $this->scalarString($registryRuntime['format'] ?? ($runtime['format'] ?? 'esm')),
                 ],
                 'checksums' => [
-                    'frontendEsm' => (string) ($checksums['frontendEsm'] ?? ''),
+                    'frontendEsm' => $this->scalarString($checksums['frontendEsm'] ?? ''),
                 ],
                 'compatibility' => isset($manifestData['compatibility']) && is_array($manifestData['compatibility']) ? $manifestData['compatibility'] : [],
                 'archive' => $archive,
@@ -286,6 +283,34 @@ final class ManifestResolver
     {
         $v = $arr[$key] ?? null;
         return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    /**
+     * Coerce a mixed value (typically a nested decoded JSON object) to a
+     * string-keyed array. Non-arrays become an empty array; integer keys
+     * are stringified so the result satisfies array<string, mixed>.
+     *
+     * @return array<string,mixed>
+     */
+    private function assocArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $k => $v) {
+            $out[(string) $k] = $v;
+        }
+        return $out;
+    }
+
+    /**
+     * Coerce a mixed value to a string, mirroring a plain `(string)` cast
+     * for the scalar values these canonical-payload fields receive.
+     */
+    private function scalarString(mixed $value, string $default = ''): string
+    {
+        return is_scalar($value) ? (string) $value : $default;
     }
 
     /**

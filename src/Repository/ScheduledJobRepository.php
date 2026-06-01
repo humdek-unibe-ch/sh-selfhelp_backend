@@ -123,7 +123,7 @@ class ScheduledJobRepository extends ServiceEntityRepository
 
         // Get total count
         $countQb = clone $qb;
-        $totalCount = $countQb->select('COUNT(DISTINCT sj.id)')->getQuery()->getSingleScalarResult();
+        $totalCount = (int) $countQb->select('COUNT(DISTINCT sj.id)')->getQuery()->getSingleScalarResult();
 
         // Apply pagination
         $offset = ($page - 1) * $pageSize;
@@ -151,11 +151,14 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findScheduledJobById(int $id): ?ScheduledJob
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var ScheduledJob|null $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('sj.id = :id')
             ->setParameter('id', $id)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
@@ -169,11 +172,14 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findByStatus(string $status): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('status.lookupValue = :status')
             ->setParameter('status', $status)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -187,11 +193,14 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findByJobType(string $jobType): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('jobType.lookupValue = :jobType')
             ->setParameter('jobType', $jobType)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -205,11 +214,14 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findByUser(int $userId): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('user.id = :userId')
             ->setParameter('userId', $userId)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -220,7 +232,8 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findJobsToExecute(): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('sj.dateToBeExecuted <= :now')
             ->andWhere('status.lookupCode = :status')
             ->setParameter('now', new \DateTime('now', new \DateTimeZone('UTC')))
@@ -228,6 +241,8 @@ class ScheduledJobRepository extends ServiceEntityRepository
             ->orderBy('sj.dateToBeExecuted', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -253,7 +268,10 @@ class ScheduledJobRepository extends ServiceEntityRepository
                 ->setParameter('userId', $userId);
         }
 
-        return $qb->getQuery()->getResult();
+        /** @var list<ScheduledJob> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 
     /**
@@ -268,7 +286,8 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findQueuedJobsForActionAndRow(int $actionId, int $rowId): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('action.id = :actionId')
             ->andWhere('IDENTITY(sj.dataRow) = :rowId')
             ->andWhere('status.lookupCode = :status')
@@ -277,6 +296,8 @@ class ScheduledJobRepository extends ServiceEntityRepository
             ->setParameter('status', 'queued')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -289,13 +310,16 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findQueuedJobsForRow(int $rowId): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('IDENTITY(sj.dataRow) = :rowId')
             ->andWhere('status.lookupCode = :status')
             ->setParameter('rowId', $rowId)
             ->setParameter('status', 'queued')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -310,7 +334,8 @@ class ScheduledJobRepository extends ServiceEntityRepository
      */
     public function findQueuedReminderJobsForUserAndTable(int $userId, int $reminderTableId): array
     {
-        return $this->createScheduledJobsQueryBuilder()
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
             ->andWhere('user.id = :userId')
             ->andWhere('IDENTITY(reminderMetadata.reminderDataTable) = :reminderTableId')
             ->andWhere('status.lookupCode = :status')
@@ -321,5 +346,7 @@ class ScheduledJobRepository extends ServiceEntityRepository
             ->setParameter('now', new \DateTime('now', new \DateTimeZone('UTC')))
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }

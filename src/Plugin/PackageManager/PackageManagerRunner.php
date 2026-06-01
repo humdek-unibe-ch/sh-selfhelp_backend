@@ -107,8 +107,8 @@ final class PackageManagerRunner
 
         if ($repository !== null) {
             $repository = $this->normaliseRepositoryForComposer($repository);
-            $type = (string) ($repository['type'] ?? '');
-            $url = (string) ($repository['url'] ?? '');
+            $type = $repository['type'];
+            $url = $repository['url'];
             if ($type === '' || $url === '') {
                 return new PackageManagerResult(
                     command: 'composer require ' . $package . ':' . $constraint,
@@ -120,9 +120,7 @@ final class PackageManagerRunner
             }
 
             $repoSlug = 'plugin-' . preg_replace('/[^a-z0-9.-]+/i', '-', $package);
-            $options = (isset($repository['options']) && is_array($repository['options']))
-                ? $repository['options']
-                : [];
+            $options = $repository['options'] ?? [];
 
             if ($options !== []) {
                 // Composer's JSON repo form lets us pass arbitrary
@@ -154,7 +152,7 @@ final class PackageManagerRunner
         }
 
         $constraintToUse = $constraint;
-        if ($repository !== null && isset($repository['reference']) && is_string($repository['reference']) && $repository['reference'] !== '') {
+        if ($repository !== null && isset($repository['reference']) && $repository['reference'] !== '') {
             // VCS path references — append `#<ref>` so composer pins to the exact commit.
             $constraintToUse = sprintf('%s#%s', $constraint, $repository['reference']);
         }
@@ -200,8 +198,8 @@ final class PackageManagerRunner
      */
     private function normaliseRepositoryForComposer(array $repository): array
     {
-        $type = (string) ($repository['type'] ?? '');
-        $url = (string) ($repository['url'] ?? '');
+        $type = $repository['type'];
+        $url = $repository['url'];
         if ($type !== 'vcs' || $url === '') {
             return $repository;
         }

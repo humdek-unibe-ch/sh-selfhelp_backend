@@ -32,7 +32,8 @@ class ApiRouteRepository extends ServiceEntityRepository
      */
     public function findAllRoutesByVersion(string $version): array
     {
-        return $this->createQueryBuilder('r')
+        /** @var list<ApiRoute> $result */
+        $result = $this->createQueryBuilder('r')
             ->leftJoin('r.permissions', 'p')
             ->addSelect('p')
             ->where('r.version = :version')
@@ -40,6 +41,8 @@ class ApiRouteRepository extends ServiceEntityRepository
             ->orderBy('r.id', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
     
     /**
@@ -49,6 +52,7 @@ class ApiRouteRepository extends ServiceEntityRepository
      */
     public function findAllVersions(): array
     {
+        /** @var list<array{version: string}> $result */
         $result = $this->createQueryBuilder('r')
             ->select('DISTINCT r.version')
             ->orderBy('r.version', 'ASC')
@@ -56,7 +60,7 @@ class ApiRouteRepository extends ServiceEntityRepository
             ->getScalarResult();
             
         // Extract version strings from result
-        return array_map(function($item) {
+        return array_map(function(array $item) {
             return $item['version'];
         }, $result);
     }
@@ -92,6 +96,7 @@ class ApiRouteRepository extends ServiceEntityRepository
      */
     public function findAllRoutesGroupedByVersionWithPermissions(): array
     {
+        /** @var list<ApiRoute> $routes */
         $routes = $this->createQueryBuilder('r')
             ->leftJoin('r.permissions', 'p')
             ->addSelect('p')
@@ -122,7 +127,7 @@ class ApiRouteRepository extends ServiceEntityRepository
      * routes whose controllers are loaded only when the plugin's bundle
      * is active. Core routes (`id_plugins IS NULL`) are always included.
      *
-     * @return array Array of route data with permissions
+     * @return list<array<string, mixed>> Array of route data with permissions
      */
     public function findAllRoutesWithPermissionsAsArray(): array
     {
@@ -150,17 +155,29 @@ class ApiRouteRepository extends ServiceEntityRepository
         ';
         
         $result = $conn->executeQuery($sql);
+        /** @var list<array<string, mixed>> $routes */
         $routes = $result->fetchAllAssociative();
         
         // Process the results to parse JSON fields and permission names
         foreach ($routes as &$route) {
             // Parse JSON fields
-            $route['requirements'] = $route['requirements'] ? json_decode($route['requirements'], true) : [];
-            $route['params'] = $route['params'] ? json_decode($route['params'], true) : [];
-            
+            $requirements = $route['requirements'];
+            $route['requirements'] = is_string($requirements) && $requirements !== ''
+                ? json_decode($requirements, true)
+                : [];
+
+            $params = $route['params'];
+            $route['params'] = is_string($params) && $params !== ''
+                ? json_decode($params, true)
+                : [];
+
             // Parse permission names
-            $route['permission_names'] = $route['permission_names'] ? explode(',', $route['permission_names']) : [];
+            $permissionNames = $route['permission_names'];
+            $route['permission_names'] = is_string($permissionNames) && $permissionNames !== ''
+                ? explode(',', $permissionNames)
+                : [];
         }
+        unset($route);
         
         return $routes;
     }

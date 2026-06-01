@@ -9,9 +9,7 @@ namespace App\Tests\Service\Action;
 
 use App\Service\Action\ActionConfig;
 use App\Service\Action\ActionScheduleCalculatorService;
-use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
-use App\Repository\LookupRepository;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -24,7 +22,7 @@ class ActionScheduleCalculatorServiceTest extends TestCase
      */
     public function testCalculateBaseDateAfterPeriodUsesConfiguredTime(): void
     {
-        $service = new ActionScheduleCalculatorService($this->createLookupService());
+        $service = new ActionScheduleCalculatorService();
 
         $date = $service->calculateBaseDate([
             ActionConfig::JOB_SCHEDULE_TYPES => LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD,
@@ -41,7 +39,7 @@ class ActionScheduleCalculatorServiceTest extends TestCase
      */
     public function testCalculateReminderSessionWindowForDiaryReturnsWindow(): void
     {
-        $service = new ActionScheduleCalculatorService($this->createLookupService());
+        $service = new ActionScheduleCalculatorService();
         $parentDate = new \DateTimeImmutable('2026-04-13 08:00:00', new \DateTimeZone('UTC'));
         $reminderDate = new \DateTimeImmutable('2026-04-13 10:00:00', new \DateTimeZone('UTC'));
 
@@ -53,19 +51,5 @@ class ActionScheduleCalculatorServiceTest extends TestCase
 
         $this->assertEquals('2026-04-13 08:00:00', $window['start']?->format('Y-m-d H:i:s'));
         $this->assertEquals('2026-04-13 14:00:00', $window['end']?->format('Y-m-d H:i:s'));
-    }
-
-    /**
-     * Create a lightweight lookup service suitable for calculator unit tests.
-     *
-     * @return LookupService
-     *   A lookup service with mocked dependencies.
-     */
-    private function createLookupService(): LookupService
-    {
-        return new LookupService(
-            $this->createMock(LookupRepository::class),
-            $this->createMock(CacheService::class)
-        );
     }
 }

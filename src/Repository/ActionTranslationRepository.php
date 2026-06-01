@@ -24,6 +24,8 @@ class ActionTranslationRepository extends ServiceEntityRepository
 
     /**
      * Find translations by action ID and optionally language ID
+     *
+     * @return list<ActionTranslation>
      */
     public function findByActionId(int $actionId, ?int $languageId = null): array
     {
@@ -38,9 +40,12 @@ class ActionTranslationRepository extends ServiceEntityRepository
                 ->setParameter('languageId', $languageId);
         }
 
-        return $qb->orderBy('at.translationKey', 'ASC')
+        /** @var list<ActionTranslation> $result */
+        $result = $qb->orderBy('at.translationKey', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -48,7 +53,8 @@ class ActionTranslationRepository extends ServiceEntityRepository
      */
     public function findByActionKeyAndLanguage(int $actionId, string $translationKey, int $languageId): ?ActionTranslation
     {
-        return $this->createQueryBuilder('at')
+        /** @var ActionTranslation|null $result */
+        $result = $this->createQueryBuilder('at')
             ->andWhere('at.action = :actionId')
             ->andWhere('at.translationKey = :translationKey')
             ->andWhere('at.language = :languageId')
@@ -57,6 +63,8 @@ class ActionTranslationRepository extends ServiceEntityRepository
             ->setParameter('languageId', $languageId)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
@@ -64,21 +72,27 @@ class ActionTranslationRepository extends ServiceEntityRepository
      */
     public function findOneByActionAndId(int $actionId, int $translationId): ?ActionTranslation
     {
-        return $this->createQueryBuilder('at')
+        /** @var ActionTranslation|null $result */
+        $result = $this->createQueryBuilder('at')
             ->andWhere('at.action = :actionId')
             ->andWhere('at.id = :translationId')
             ->setParameter('actionId', $actionId)
             ->setParameter('translationId', $translationId)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
      * Find existing translation keys by action and language
+     *
+     * @return list<array<string, mixed>>
      */
     public function findKeysByActionAndLanguage(int $actionId, int $languageId): array
     {
-        return $this->createQueryBuilder('at')
+        /** @var list<array<string, mixed>> $result */
+        $result = $this->createQueryBuilder('at')
             ->select('at.translationKey')
             ->andWhere('at.action = :actionId')
             ->andWhere('at.language = :languageId')
@@ -87,5 +101,7 @@ class ActionTranslationRepository extends ServiceEntityRepository
             ->orderBy('at.translationKey', 'ASC')
             ->getQuery()
             ->getScalarResult();
+
+        return $result;
     }
 }

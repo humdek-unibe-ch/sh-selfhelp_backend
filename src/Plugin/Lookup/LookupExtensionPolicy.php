@@ -46,6 +46,9 @@ final class LookupExtensionPolicy
         self::PLUGIN_OWNED,
     ];
 
+    /**
+     * @phpstan-assert-if-true self::CLOSED|self::PLUGIN_EXTENDABLE|self::PLUGIN_OWNED $value
+     */
     public static function isValid(string $value): bool
     {
         return in_array($value, self::ALL, true);

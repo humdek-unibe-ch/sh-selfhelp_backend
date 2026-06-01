@@ -42,30 +42,46 @@ final class PluginDoctorCommand extends Command
         $report = $this->healthService->runGlobalDoctor();
 
         if ($input->getOption('json')) {
-            $output->writeln(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $json = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $output->writeln($json !== false ? $json : '{}');
             return $this->resolveExit($input, $report);
         }
 
         $io->title('SelfHelp plugin doctor');
         $io->section('Site checks');
         $rows = [];
-        foreach ($report['siteChecks'] as $check) {
-            $rows[] = [$check['name'], $check['status'], $check['message']];
+        $siteChecks = $report['siteChecks'] ?? [];
+        if (is_iterable($siteChecks)) {
+            foreach ($siteChecks as $check) {
+                if (!is_array($check)) {
+                    continue;
+                }
+                $rows[] = [
+                    self::asText($check['name'] ?? ''),
+                    self::asText($check['status'] ?? ''),
+                    self::asText($check['message'] ?? ''),
+                ];
+            }
         }
         $io->table(['Check', 'Status', 'Message'], $rows);
 
         $io->section('Plugins');
-        if ($report['plugins'] === []) {
+        $pluginReports = $report['plugins'] ?? [];
+        if (!is_iterable($pluginReports) || $pluginReports === []) {
             $io->info('No plugins installed.');
         } else {
-            foreach ($report['plugins'] as $plugin) {
+            foreach ($pluginReports as $plugin) {
+                if (!is_array($plugin)) {
+                    continue;
+                }
                 $compat = $plugin['compatibility'] ?? null;
+                $severity = is_array($compat) ? ($compat['severity'] ?? 'unknown') : 'unknown';
                 $io->writeln(sprintf(
                     '<info>%s</info> v%s — enabled: %s — compatibility: %s',
-                    $plugin['pluginId'],
-                    $plugin['version'],
-                    $plugin['enabled'] ? 'yes' : 'no',
-                    $compat['severity'] ?? 'unknown',
+                    self::asText($plugin['pluginId'] ?? ''),
+                    self::asText($plugin['version'] ?? ''),
+                    !empty($plugin['enabled']) ? 'yes' : 'no',
+                    self::asText($severity),
                 ));
             }
         }
@@ -83,6 +99,14 @@ final class PluginDoctorCommand extends Command
         }
 
         return $this->resolveExit($input, $report);
+    }
+
+    /**
+     * Coerce a loose report value to a printable string for table/console output.
+     */
+    private static function asText(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**
@@ -119,7 +143,8 @@ final class PluginDoctorCommand extends Command
         $plugins = $report['plugins'] ?? [];
         if (is_iterable($plugins)) {
             foreach ($plugins as $plugin) {
-                if (is_array($plugin) && (($plugin['compatibility']['severity'] ?? 'ok') === 'error')) {
+                $compat = is_array($plugin) ? ($plugin['compatibility'] ?? null) : null;
+                if (is_array($compat) && (($compat['severity'] ?? 'ok') === 'error')) {
                     return true;
                 }
             }
@@ -149,7 +174,8 @@ final class PluginDoctorCommand extends Command
         $plugins = $report['plugins'] ?? [];
         if (is_iterable($plugins)) {
             foreach ($plugins as $plugin) {
-                $severity = is_array($plugin) ? ($plugin['compatibility']['severity'] ?? 'ok') : 'ok';
+                $compat = is_array($plugin) ? ($plugin['compatibility'] ?? null) : null;
+                $severity = is_array($compat) ? ($compat['severity'] ?? 'ok') : 'ok';
                 if ($severity === 'error') {
                     ++$errors;
                 } elseif ($severity === 'warning') {

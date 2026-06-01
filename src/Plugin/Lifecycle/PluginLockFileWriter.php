@@ -77,7 +77,8 @@ final class PluginLockFileWriter
 
         $found = false;
         foreach ($plugins as $index => $entry) {
-            if (isset($entry['id']) && (string) $entry['id'] === $plugin->getPluginId()) {
+            $entryId = $entry['id'] ?? null;
+            if (is_scalar($entryId) && (string) $entryId === $plugin->getPluginId()) {
                 $plugins[$index] = $this->renderPluginEntry($plugin, $manifest);
                 $found = true;
                 break;
@@ -108,7 +109,11 @@ final class PluginLockFileWriter
         }
         $plugins = array_values(array_filter(
             $existing->plugins,
-            static fn(array $entry): bool => !isset($entry['id']) || (string) $entry['id'] !== $pluginId,
+            /** @param array<string,mixed> $entry */
+            static function (array $entry) use ($pluginId): bool {
+                $entryId = $entry['id'] ?? null;
+                return !is_scalar($entryId) || (string) $entryId !== $pluginId;
+            },
         ));
         $this->write(new PluginLockFile(
             self::SCHEMA_VERSION,
@@ -121,6 +126,8 @@ final class PluginLockFileWriter
 
     /**
      * Restore the lock file from a previously snapshotted raw payload.
+     *
+     * @param array<array-key,mixed>|null $rawSnapshot
      */
     public function restore(?array $rawSnapshot): void
     {

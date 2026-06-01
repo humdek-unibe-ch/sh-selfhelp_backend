@@ -30,16 +30,19 @@ database-backed checks.
 | 6 | PHP syntax lint (`php -l`, whole tree) | strict | no |
 | 7 | Self-contained JSON Schemas (manifest/registry/lock + request) compile as Draft-07 | strict | no |
 | 8 | Response JSON Schema fragments are well-formed + present | strict | no |
-| 9 | PHPStan level max (plugin scope, regressions only) | strict | no |
-| 10 | PHPUnit `unit` suite (DB-free plugin-host tests) | strict | no |
-| 11 | `lint:yaml config --parse-tags` | strict | no |
-| 12 | `lint:container` (whole DI graph) | strict | no |
-| 13 | Create test DB (`doctrine:database:create`) | strict | **yes** |
-| 14 | Run migrations (`doctrine:migrations:migrate`) | strict | **yes** |
-| 15 | `doctrine:schema:validate` (mapping **and** live-DB sync) | strict | **yes** |
-| 16 | Plugin CLI smoke (every required command + `--help`) | strict | yes (kernel) |
-| 17 | Plugin DI autowiring (key services wireable) | strict | yes (kernel) |
-| 18 | `selfhelp:plugin:doctor --ci` | strict (error-only) | **yes** |
+| 9 | PHPUnit `unit` suite (DB-free plugin-host tests) | strict | no |
+| 10 | `lint:yaml config --parse-tags` | strict | no |
+| 11 | `lint:container` (whole DI graph) | strict | no |
+| 12 | Create test DB (`doctrine:database:create`) | strict | **yes** |
+| 13 | Run migrations (`doctrine:migrations:migrate`) | strict | **yes** |
+| 14 | `doctrine:schema:validate` (mapping **and** live-DB sync) | strict | **yes** |
+| 15 | Plugin CLI smoke (every required command + `--help`) | strict | yes (kernel) |
+| 16 | Plugin DI autowiring (key services wireable) | strict | yes (kernel) |
+| 17 | `selfhelp:plugin:doctor --ci` | strict (error-only) | **yes** |
+
+> **PHPStan is not run here.** Static analysis is the separate, strict,
+> no-baseline [`core-backend-check`](./24-core-phpstan-gate.md) gate, which
+> analyses the whole core (plugin code included) at level max.
 
 "Needs DB/Redis = yes (kernel)" means the step boots the Symfony kernel
 (so it needs the prepared `.env` and the service containers to exist),
@@ -100,24 +103,13 @@ The decision is implemented in
 `tests/Plugin/Command/PluginDoctorExitContractTest`. On a fresh checkout
 with no plugins installed the report is a clean zero-exit baseline.
 
-## PHPStan baseline
+## PHPStan
 
-CI runs PHPStan level max over the plugin scope
-(`src/Plugin`, `src/Controller/Api/V1/Admin/Plugin`,
-`src/Controller/Api/V1/Plugin`) using `phpstan.ci.neon`, which includes
-`phpstan-baseline.neon`. The baseline captures the **pre-existing**
-findings so the gate fails on *new* regressions only. The goal is to
-burn the baseline down over time.
-
-Regenerate the baseline after intentionally reducing debt (run the exact
-scope CI analyses):
-
-```bash
-php vendor/bin/phpstan analyse \
-  src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin \
-  --configuration=phpstan.ci.neon \
-  --generate-baseline=phpstan-baseline.neon
-```
+This gate does **not** run PHPStan. Static analysis lives in the separate,
+strict, no-baseline [`core-backend-check`](./24-core-phpstan-gate.md)
+gate, which analyses the whole core (`bin/`, `config/`, `public/`, `src/`
+— plugin code included) at level max with no baseline. Run it locally with
+`composer phpstan`.
 
 ## Reproduce locally
 
@@ -140,9 +132,6 @@ php bin/console lexik:jwt:generate-keypair --skip-if-exists
 composer validate --strict
 composer headers:check
 find src config public bin migrations tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
-php -d memory_limit=2G vendor/bin/phpstan analyse \
-  src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin \
-  --configuration=phpstan.ci.neon
 php bin/phpunit --testsuite=unit
 php bin/console lint:yaml config --parse-tags
 php bin/console lint:container
@@ -175,9 +164,6 @@ npx ajv compile -s docs/plugins/plugin-manifest.schema.json --strict=false
     SurveyJS plugin is installed. Those are owned by the plugin bundle
     and are **not** present in CI (a fresh checkout has no plugin bundles),
     so CI validates the host schema only.
-- **PHPStan fails with a new error** — you introduced a regression in the
-  plugin scope. Fix it; do not add it to the baseline unless it is a
-  genuine false positive being tracked down.
 - **Plugin CLI smoke fails** — a `selfhelp:plugin:*` command was removed
   or its service wiring broke. Update the `required` list in the workflow
   if the command was intentionally renamed/removed.

@@ -7,13 +7,11 @@
 
 namespace App\Service\CMS\Common;
 
+use App\Entity\Section;
 use App\Repository\StylesFieldRepository;
 use App\Service\CMS\DataService;
-use App\Service\Cache\Core\CacheService;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Common\StyleNames;
-use App\Service\Core\InterpolationService;
-use App\Service\CMS\DataVariableResolver;
 use App\Service\Core\VariableResolverService;
 
 /**
@@ -25,10 +23,7 @@ class SectionUtilityService
     public function __construct(
         private readonly DataService $dataService,
         private readonly StylesFieldRepository $stylesFieldRepository,
-        private readonly CacheService $cache,
         private readonly UserContextService $userContextService,
-        private readonly InterpolationService $interpolationService,
-        private readonly DataVariableResolver $dataVariableResolver,
         private readonly VariableResolverService $variableResolverService
     ) {
     }
@@ -36,10 +31,10 @@ class SectionUtilityService
     /**
      * Build a nested hierarchical structure from flat sections array
      *
-     * @param array $sections Flat array of sections with path and level information
+     * @param list<array<string, mixed>> $sections Flat array of sections with path and level information
      * @param bool $applyData Whether to apply data to sections
      * @param int $languageId Language ID for data retrieval
-     * @return array Hierarchical structure of sections
+     * @return list<array<string, mixed>> Hierarchical structure of sections
      */
     public function buildNestedSections(array $sections, bool $applyData = false, int $languageId = 1): array
     {
@@ -53,24 +48,24 @@ class SectionUtilityService
             if ($applyData) {
                 $this->applySectionData($section, $languageId);
             }
-            $sectionsById[$section['id']] = $section;
+            $sectionsById[$this->asInt($section['id'])] = $section;
         }
 
         // Second pass: build the hierarchy
         foreach ($sections as $section) {
-            $id = $section['id'];
+            $id = $this->asInt($section['id']);
 
             // If it's a root section (level 0), add to root array
             if ($section['level'] === 0) {
                 $rootSections[] = &$sectionsById[$id];
             } else {
                 // Find parent using the path
-                $pathParts = explode(',', $section['path']);
+                $pathParts = explode(',', $this->asString($section['path']));
                 if (count($pathParts) >= 2) {
                     $parentId = (int) $pathParts[count($pathParts) - 2];
 
                     // If parent exists, add this as its child
-                    if (isset($sectionsById[$parentId])) {
+                    if (isset($sectionsById[$parentId]) && is_array($sectionsById[$parentId]['children'] ?? null)) {
                         $sectionsById[$parentId]['children'][] = &$sectionsById[$id];
                     }
                 }
@@ -78,25 +73,30 @@ class SectionUtilityService
         }
 
         // Recursively sort children by position
-        $sortChildren = function (&$nodes) use (&$sortChildren) {
-            usort($nodes, function ($a, $b) {
-                return ($a['position'] ?? 0) <=> ($b['position'] ?? 0);
+        $sortChildren = function (array &$nodes) use (&$sortChildren): void {
+            usort($nodes, static function ($a, $b): int {
+                $posA = is_array($a) && isset($a['position']) ? $a['position'] : 0;
+                $posB = is_array($b) && isset($b['position']) ? $b['position'] : 0;
+                return $posA <=> $posB;
             });
             foreach ($nodes as &$node) {
-                if (!empty($node['children'])) {
+                if (is_array($node) && !empty($node['children']) && is_array($node['children'])) {
                     $sortChildren($node['children']);
                 }
             }
+            unset($node);
         };
         $sortChildren($rootSections);
+
+        /** @var list<array<string, mixed>> $rootSections */
         return $rootSections;
     }
 
     /**
      * Recursively extract all section IDs from a hierarchical sections structure
      * 
-     * @param array $sections Hierarchical sections structure
-     * @return array Flat array of section IDs
+     * @param list<array<string, mixed>> $sections Hierarchical sections structure
+     * @return list<int> Flat array of section IDs
      */
     public function extractSectionIds(array $sections): array
     {
@@ -104,12 +104,14 @@ class SectionUtilityService
 
         foreach ($sections as $section) {
             if (isset($section['id'])) {
-                $ids[] = $section['id'];
+                $ids[] = $this->asInt($section['id']);
             }
 
             // Process children recursively
-            if (!empty($section['children'])) {
-                $childIds = $this->extractSectionIds($section['children']);
+            if (isset($section['children']) && is_array($section['children']) && $section['children'] !== []) {
+                /** @var list<array<string, mixed>> $children */
+                $children = $section['children'];
+                $childIds = $this->extractSectionIds($children);
                 $ids = array_merge($ids, $childIds);
             }
         }
@@ -120,11 +122,10 @@ class SectionUtilityService
     /**
      * Apply translations to sections recursively
      * 
-     * @param array &$sections The sections to apply translations to (passed by reference)
-     * @param array $translations The translations keyed by section ID
-     * @param array $defaultTranslations Default language translations for fallback
-     * @param array $propertyTranslations Property translations (language ID 1) for fields of type 1
-     * @throws \LogicException If stylesFieldRepository is not set but style default values are needed
+     * @param list<array<string, mixed>> &$sections The sections to apply translations to (passed by reference)
+     * @param array<int|string, array<string, mixed>> $translations The translations keyed by section ID
+     * @param array<int|string, array<string, mixed>> $defaultTranslations Default language translations for fallback
+     * @param array<int|string, array<string, mixed>> $propertyTranslations Property translations (language ID 1) for fields of type 1
      */
     public function applySectionTranslations(
         array &$sections,
@@ -137,10 +138,8 @@ class SectionUtilityService
 
         // Batch fetch default values for all styles in one query to avoid N+1
         $defaultValuesByStyle = [];
-        if (!empty($styleIds) && $this->stylesFieldRepository !== null) {
+        if (!empty($styleIds)) {
             $defaultValuesByStyle = $this->stylesFieldRepository->findDefaultValuesByStyleIds($styleIds);
-        } elseif (!empty($styleIds) && $this->stylesFieldRepository === null) {
-            throw new \LogicException('StylesFieldRepository is required for applying default style values');
         }
 
         // Second pass: apply translations and default values
@@ -156,8 +155,8 @@ class SectionUtilityService
     /**
      * Collect all unique style IDs from sections recursively
      * 
-     * @param array $sections The sections to collect style IDs from
-     * @return array Array of unique style IDs
+     * @param list<array<string, mixed>> $sections The sections to collect style IDs from
+     * @return list<int> Array of unique style IDs
      */
     private function collectUniqueStyleIds(array $sections): array
     {
@@ -166,12 +165,14 @@ class SectionUtilityService
         foreach ($sections as $section) {
             $styleId = $section['id_styles'] ?? null;
             if ($styleId !== null) {
-                $styleIds[$styleId] = true; // Use array key to ensure uniqueness
+                $styleIds[$this->asInt($styleId)] = true; // Use array key to ensure uniqueness
             }
 
             // Process children recursively
             if (isset($section['children']) && is_array($section['children'])) {
-                $childStyleIds = $this->collectUniqueStyleIds($section['children']);
+                /** @var list<array<string, mixed>> $children */
+                $children = $section['children'];
+                $childStyleIds = $this->collectUniqueStyleIds($children);
                 foreach ($childStyleIds as $childStyleId) {
                     $styleIds[$childStyleId] = true;
                 }
@@ -184,11 +185,11 @@ class SectionUtilityService
     /**
      * Apply translations to sections recursively with pre-fetched default values
      * 
-     * @param array &$sections The sections to apply translations to (passed by reference)
-     * @param array $translations The translations keyed by section ID
-     * @param array $defaultTranslations Default language translations for fallback
-     * @param array $propertyTranslations Property translations (language ID 1) for fields of type 1
-     * @param array $defaultValuesByStyle Pre-fetched default values organized by style ID
+     * @param list<array<string, mixed>> &$sections The sections to apply translations to (passed by reference)
+     * @param array<int|string, array<string, mixed>> $translations The translations keyed by section ID
+     * @param array<int|string, array<string, mixed>> $defaultTranslations Default language translations for fallback
+     * @param array<int|string, array<string, mixed>> $propertyTranslations Property translations (language ID 1) for fields of type 1
+     * @param array<int|string, array<string, mixed>> $defaultValuesByStyle Pre-fetched default values organized by style ID
      */
     private function applySectionTranslationsRecursive(
         array &$sections,
@@ -198,11 +199,11 @@ class SectionUtilityService
         array $defaultValuesByStyle = []
     ): void {
         foreach ($sections as &$section) {
-            $sectionId = $section['id'] ?? null;
+            $sectionId = $this->asInt($section['id'] ?? 0);
 
             if ($sectionId) {
                 // Get the section's style ID to fetch default values if needed
-                $styleId = $section['id_styles'] ?? null;
+                $styleId = $this->asInt($section['id_styles'] ?? 0);
 
                 // First apply property translations (for fields of type 1)
                 if (isset($propertyTranslations[$sectionId])) {
@@ -242,26 +243,30 @@ class SectionUtilityService
 
             // Process children recursively
             if (isset($section['children']) && is_array($section['children'])) {
+                /** @var list<array<string, mixed>> $children */
+                $children = $section['children'];
                 $this->applySectionTranslationsRecursive(
-                    $section['children'],
+                    $children,
                     $translations,
                     $defaultTranslations,
                     $propertyTranslations,
                     $defaultValuesByStyle
                 );
+                $section['children'] = $children;
             }
         }
+        unset($section);
     }
 
     /**
      * Normalize a Section entity for API response
      * 
-     * @param object $section Section entity or array with section data
-     * @return array Normalized section data
+     * @param Section|array<string, mixed> $section Section entity or array with section data
+     * @return array<string, mixed> Normalized section data
      */
     public function normalizeSection($section): array
     {
-        if (is_object($section) && method_exists($section, 'getId')) {
+        if ($section instanceof Section) {
             // It's an entity, convert to array
             return [
                 'id' => $section->getId(),
@@ -269,27 +274,24 @@ class SectionUtilityService
                 'id_styles' => $section->getStyle() ? $section->getStyle()->getId() : null,
                 'style_name' => $section->getStyle() ? $section->getStyle()->getName() : null,
             ];
-        } else if (is_array($section)) {
-            // It's already an array, ensure it has the expected structure
-            return array_merge([
-                'id' => $section['id'] ?? null,
-                'name' => $section['name'] ?? null,
-                'id_styles' => $section['id_styles'] ?? null,
-                'style_name' => $section['style_name'] ?? null,
-            ], $section);
         }
 
-        // Fallback for unexpected input
-        return [];
+        // It's already an array, ensure it has the expected structure
+        return array_merge([
+            'id' => $section['id'] ?? null,
+            'name' => $section['name'] ?? null,
+            'id_styles' => $section['id_styles'] ?? null,
+            'style_name' => $section['style_name'] ?? null,
+        ], $section);
     }
 
     /**
      * Retrieve data based on JSON configuration
      *
-     * @param array $dataConfig JSON structure defining data source
-     * @param array $params Parameters to replace in the config
+     * @param array<string, mixed> $dataConfig JSON structure defining data source
+     * @param array<string, mixed> $params Parameters to replace in the config
      * @param int $languageId Language ID for data retrieval
-     * @return array Retrieved data or empty array if failed
+     * @return array<array-key, mixed> Retrieved data or empty array if failed
      */
     public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1): array
     {
@@ -304,9 +306,9 @@ class SectionUtilityService
     /**
      * Parse parameters in data config and replace placeholders
      *
-     * @param array $dataConfig The JSON config structure
-     * @param array $params Parameters to replace (#param_name with actual values)
-     * @return array Parsed config with parameters replaced
+     * @param array<string, mixed> $dataConfig The JSON config structure
+     * @param array<string, mixed> $params Parameters to replace (#param_name with actual values)
+     * @return array<string, mixed> Parsed config with parameters replaced
      */
     private function parseParams(array $dataConfig, array $params = []): array
     {
@@ -321,21 +323,22 @@ class SectionUtilityService
             foreach ($matchGroup as $paramPlaceholder) {
                 $paramName = str_replace('#', '', $paramPlaceholder);
                 if (isset($params[$paramName])) {
-                    $strData = str_replace($paramPlaceholder, $params[$paramName], $strData);
+                    $strData = str_replace($paramPlaceholder, $this->asString($params[$paramName]), $strData);
                 }
             }
         }
 
+        /** @var array<string, mixed>|null $parsed */
         $parsed = json_decode($strData, true);
-        return $parsed !== null ? $parsed : $dataConfig;
+        return is_array($parsed) ? $parsed : $dataConfig;
     }
 
     /**
      * Fetch data based on parsed data configuration
      *
-     * @param array $dataConfig Parsed data configuration
+     * @param array<string, mixed> $dataConfig Parsed data configuration
      * @param int $languageId Language ID for data retrieval
-     * @return array Retrieved data
+     * @return array<array-key, mixed> Retrieved data
      */
     private function fetchData(array $dataConfig, int $languageId): array
     {
@@ -343,11 +346,10 @@ class SectionUtilityService
             return [];
         }
 
-        $tableName = $dataConfig['table'];
+        $tableName = $this->asString($dataConfig['table']);
         $retrieve = $dataConfig['retrieve'] ?? 'all';
-        $filter = $dataConfig['filter'] ?? '';
+        $filter = $this->asString($dataConfig['filter'] ?? '');
         $currentUser = $dataConfig['current_user'] ?? true;
-        $allFields = $dataConfig['all_fields'] ?? true;
 
         // Get data table
         $dataTable = $this->dataService->getDataTableByName($tableName);
@@ -355,11 +357,11 @@ class SectionUtilityService
             return [];
         }
 
-        $dataTableId = $dataTable->getId();
+        $dataTableId = (int) $dataTable->getId();
 
         // Determine user filtering
         $userId = null;
-        $ownEntriesOnly = $currentUser;
+        $ownEntriesOnly = (bool) $currentUser;
         if ($currentUser) {
             $currentUserObj = $this->userContextService->getCurrentUser();
             $userId = $currentUserObj ? $currentUserObj->getId() : -1;
@@ -389,6 +391,7 @@ class SectionUtilityService
         $combinedFilter = trim($filter . ' ' . $additionalFilter);
 
         // Get data
+        /** @var list<array<string, mixed>> $data */
         $data = $this->dataService->getData(
             $dataTableId,
             $combinedFilter,
@@ -410,13 +413,16 @@ class SectionUtilityService
 
                     if (!$allFields) {
                         // Filter to only specified fields and apply field configurations
-                        $fields = $dataConfig['fields'] ?? [];
+                        $fields = is_array($dataConfig['fields'] ?? null) ? $dataConfig['fields'] : [];
                         if (!empty($fields)) {
                             $processedRecord = [];
                             foreach ($fields as $fieldConfig) {
-                                $fieldName = $fieldConfig['field_name'];
-                                $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
-                                $notFoundText = $fieldConfig['not_found_text'] ?? '';
+                                if (!is_array($fieldConfig)) {
+                                    continue;
+                                }
+                                $fieldName = $this->asString($fieldConfig['field_name'] ?? '');
+                                $fieldHolder = $this->asString($fieldConfig['field_holder'] ?? $fieldName);
+                                $notFoundText = $this->asString($fieldConfig['not_found_text'] ?? '');
 
                                 // Check if field has no value (empty, null, or not set)
                                 $value = $record[$fieldName] ?? '';
@@ -446,9 +452,9 @@ class SectionUtilityService
     /**
      * Process data for 'all' retrieve type
      *
-     * @param array $data Raw data from database
-     * @param array $dataConfig Data configuration
-     * @return array Processed data
+     * @param list<array<string, mixed>> $data Raw data from database
+     * @param array<string, mixed> $dataConfig Data configuration
+     * @return array<string, mixed> Processed data
      */
     private function processAll(array $data, array $dataConfig): array
     {
@@ -464,13 +470,16 @@ class SectionUtilityService
 
             if (!$allFields) {
                 // Filter to only specified fields and apply field configurations
-                $fields = $dataConfig['fields'] ?? [];
+                $fields = is_array($dataConfig['fields'] ?? null) ? $dataConfig['fields'] : [];
                 if (!empty($fields)) {
                     $processedRecord = [];
                     foreach ($fields as $fieldConfig) {
-                        $fieldName = $fieldConfig['field_name'];
-                        $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
-                        $notFoundText = $fieldConfig['not_found_text'] ?? '';
+                        if (!is_array($fieldConfig)) {
+                            continue;
+                        }
+                        $fieldName = $this->asString($fieldConfig['field_name'] ?? '');
+                        $fieldHolder = $this->asString($fieldConfig['field_holder'] ?? $fieldName);
+                        $notFoundText = $this->asString($fieldConfig['not_found_text'] ?? '');
 
                         // Check if field has no value (empty, null, or not set)
                         $value = $record[$fieldName] ?? '';
@@ -498,29 +507,32 @@ class SectionUtilityService
             foreach ($fieldNames as $fieldName) {
                 $values = [];
                 foreach ($data as $record) {
-                    $values[] = $record[$fieldName] ?? '';
+                    $values[] = $this->asString($record[$fieldName] ?? '');
                 }
                 $result[$fieldName] = implode(',', $values);
             }
         } else {
             // Filter to only specified fields and apply field configurations
-            $fields = $dataConfig['fields'] ?? [];
+            $fields = is_array($dataConfig['fields'] ?? null) ? $dataConfig['fields'] : [];
             if (empty($fields)) {
                 $fieldNames = array_keys($data[0]);
                 // For each field, collect values from all records and join with commas
                 foreach ($fieldNames as $fieldName) {
                     $values = [];
                     foreach ($data as $record) {
-                        $values[] = $record[$fieldName] ?? '';
+                        $values[] = $this->asString($record[$fieldName] ?? '');
                     }
                     $result[$fieldName] = implode(',', $values);
                 }
             } else {
                 // Apply field configurations for specified fields
                 foreach ($fields as $fieldConfig) {
-                    $fieldName = $fieldConfig['field_name'];
-                    $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
-                    $notFoundText = $fieldConfig['not_found_text'] ?? '';
+                    if (!is_array($fieldConfig)) {
+                        continue;
+                    }
+                    $fieldName = $this->asString($fieldConfig['field_name'] ?? '');
+                    $fieldHolder = $this->asString($fieldConfig['field_holder'] ?? $fieldName);
+                    $notFoundText = $this->asString($fieldConfig['not_found_text'] ?? '');
 
                     $values = [];
                     foreach ($data as $record) {
@@ -529,7 +541,7 @@ class SectionUtilityService
                         if (empty($value)) {
                             $value = $notFoundText;
                         }
-                        $values[] = $value;
+                        $values[] = $this->asString($value);
                     }
                     $result[$fieldHolder] = implode(',', $values);
                 }
@@ -542,9 +554,9 @@ class SectionUtilityService
     /**
      * Process data for 'all_as_array' retrieve type
      *
-     * @param array $data Raw data from database
-     * @param array $dataConfig Data configuration
-     * @return array Processed data as array
+     * @param list<array<string, mixed>> $data Raw data from database
+     * @param array<string, mixed> $dataConfig Data configuration
+     * @return array<string, mixed> Processed data as array
      */
     private function processAllAsArray(array $data, array $dataConfig): array
     {
@@ -569,7 +581,7 @@ class SectionUtilityService
             }
         } else {
             // Filter to only specified fields and apply field configurations
-            $fields = $dataConfig['fields'] ?? [];
+            $fields = is_array($dataConfig['fields'] ?? null) ? $dataConfig['fields'] : [];
             if (empty($fields)) {
                 $fieldNames = array_keys($data[0]);
                 // For each field, collect values from all records into arrays
@@ -583,9 +595,12 @@ class SectionUtilityService
             } else {
                 // Apply field configurations for specified fields
                 foreach ($fields as $fieldConfig) {
-                    $fieldName = $fieldConfig['field_name'];
-                    $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
-                    $notFoundText = $fieldConfig['not_found_text'] ?? '';
+                    if (!is_array($fieldConfig)) {
+                        continue;
+                    }
+                    $fieldName = $this->asString($fieldConfig['field_name'] ?? '');
+                    $fieldHolder = $this->asString($fieldConfig['field_holder'] ?? $fieldName);
+                    $notFoundText = $this->asString($fieldConfig['not_found_text'] ?? '');
 
                     $values = [];
                     foreach ($data as $record) {
@@ -607,9 +622,9 @@ class SectionUtilityService
     /**
      * Process data for 'JSON' retrieve type
      *
-     * @param array $data Raw data from database
-     * @param array $dataConfig Data configuration
-     * @return array Processed data as JSON structure
+     * @param list<array<string, mixed>> $data Raw data from database
+     * @param array<string, mixed> $dataConfig Data configuration
+     * @return list<array<string, mixed>> Processed data as JSON structure
      */
     private function processJSON(array $data, array $dataConfig): array
     {
@@ -619,11 +634,14 @@ class SectionUtilityService
             $processedRecord = [];
 
             // Apply field mappings if specified
-            $mapFields = $dataConfig['map_fields'] ?? [];
+            $mapFields = is_array($dataConfig['map_fields'] ?? null) ? $dataConfig['map_fields'] : [];
             if (!empty($mapFields)) {
                 foreach ($mapFields as $mapping) {
-                    $fieldName = $mapping['field_name'];
-                    $newName = $mapping['field_new_name'];
+                    if (!is_array($mapping)) {
+                        continue;
+                    }
+                    $fieldName = $this->asString($mapping['field_name'] ?? '');
+                    $newName = $this->asString($mapping['field_new_name'] ?? '');
 
                     if (isset($record[$fieldName])) {
                         $processedRecord[$newName] = $record[$fieldName];
@@ -632,13 +650,16 @@ class SectionUtilityService
             }
 
             // Apply field configurations
-            $fields = $dataConfig['fields'] ?? [];
+            $fields = is_array($dataConfig['fields'] ?? null) ? $dataConfig['fields'] : [];
             if (!empty($fields)) {
                 // If fields are specified, use only those fields
                 foreach ($fields as $fieldConfig) {
-                    $fieldName = $fieldConfig['field_name'];
-                    $fieldHolder = $fieldConfig['field_holder'] ?? $fieldName;
-                    $notFoundText = $fieldConfig['not_found_text'] ?? '';
+                    if (!is_array($fieldConfig)) {
+                        continue;
+                    }
+                    $fieldName = $this->asString($fieldConfig['field_name'] ?? '');
+                    $fieldHolder = $this->asString($fieldConfig['field_holder'] ?? $fieldName);
+                    $notFoundText = $this->asString($fieldConfig['not_found_text'] ?? '');
 
                     // Check if field has no value (empty, null, or not set)
                     $value = $record[$fieldName] ?? '';
@@ -664,19 +685,22 @@ class SectionUtilityService
      * Get actual values for global and system variables for interpolation
      *
      * @param int $languageId Language ID for data retrieval
-     * @return array Array of variable names to their actual values
+     * @return array<string, mixed> Array of variable names to their actual values
      */
     private function getGlobalAndSystemVariableValues(int $languageId = 1): array
     {
         // Use the unified variable resolver service
-        return $this->variableResolverService->getAllVariables(null, $languageId, true);
+        /** @var array<string, mixed> $variables */
+        $variables = $this->variableResolverService->getAllVariables(null, $languageId, true);
+
+        return $variables;
     }
 
 
     /**
      * Apply data to a section
      *
-     * @param array &$section The section to apply data to (passed by reference)
+     * @param array<string, mixed> &$section The section to apply data to (passed by reference)
      * @param int $languageId Language ID for data retrieval
      */
     public function applySectionData(array &$section, int $languageId = 1): void
@@ -685,7 +709,7 @@ class SectionUtilityService
 
         // Handle form record data
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
-            $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($section['id']);
+            $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
         }
 
         // Get variable values (flat array from VariableResolverService)
@@ -706,8 +730,8 @@ class SectionUtilityService
      *
      * Separates flat variable array into system and globals namespaces
      *
-     * @param array $variableValues Flat array of system and global variables
-     * @return array Structured data with system and globals namespaces
+     * @param array<string, mixed> $variableValues Flat array of system and global variables
+     * @return array<string, mixed> Structured data with system and globals namespaces
      */
     private function structureSystemAndGlobalVariables(array $variableValues): array
     {
@@ -740,27 +764,6 @@ class SectionUtilityService
     }
 
     /**
-     * Merge structured system/global variables with retrieved data scopes
-     *
-     * Combines initial structured variables (system, globals) with data scopes (parent, test, etc.)
-     *
-     * @param array $structuredVariables Structured system and global variables
-     * @param array $retrievedData Retrieved data scopes from data_config
-     * @return array Final structured data with all namespaces
-     */
-    private function mergeStructuredData(array $structuredVariables, array $retrievedData): array
-    {
-        $merged = $structuredVariables;
-
-        // Add all data scopes (parent, test, etc.) at root level
-        foreach ($retrievedData as $scope => $data) {
-            $merged[$scope] = $data;
-        }
-
-        return $merged;
-    }
-
-    /**
      * Check if a variable name is a system variable
      *
      * @param string $variableName Variable name to check
@@ -785,5 +788,21 @@ class SectionUtilityService
         ];
 
         return in_array($variableName, $systemVariables);
+    }
+
+    /**
+     * Safely coerce a mixed value to int (non-numeric values become 0).
+     */
+    private function asInt(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * Safely coerce a mixed value to string (non-scalar values become '').
+     */
+    private function asString(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 }

@@ -36,7 +36,7 @@ class LanguageService extends BaseService
     /**
      * Get all languages with ID > 1
      * 
-     * @return array
+     * @return list<array<string, mixed>>
      */
     public function getAllLanguages(): array
     {
@@ -46,9 +46,9 @@ class LanguageService extends BaseService
             ->withCategory(CacheService::CATEGORY_LANGUAGES)
             ->getList($cacheKey, function () {
                 $languages = $this->languageRepository->findAllLanguages();
-                return array_map(function (Language $language) {
+                return array_values(array_map(function (Language $language) {
                     return EntityUtil::convertEntityToArray($language);
-                }, $languages);
+                }, $languages));
             });
     }
 
@@ -56,7 +56,7 @@ class LanguageService extends BaseService
      * Get all languages except the internal one (ID = 1)
      * Always returns the default language first, followed by other languages
      * 
-     * @return array
+     * @return list<array<string, mixed>>
      */
     public function getAllNonInternalLanguages(): array
     {
@@ -88,9 +88,9 @@ class LanguageService extends BaseService
                     }
 
                     // Convert entities to arrays
-                    $languageArrays = array_map(function (Language $language) {
+                    $languageArrays = array_values(array_map(function (Language $language) {
                         return EntityUtil::convertEntityToArray($language);
-                    }, $languages);
+                    }, $languages));
 
                     // If we have a default language, ensure it's first in the array
                     if ($defaultLanguageId !== null) {
@@ -120,7 +120,7 @@ class LanguageService extends BaseService
      * Get a language by ID
      * 
      * @param int $id
-     * @return array
+     * @return array<string, mixed>
      * @throws NotFoundHttpException
      */
     public function getLanguageById(int $id): array
@@ -146,8 +146,8 @@ class LanguageService extends BaseService
     /**
      * Create a new language
      * 
-     * @param array $data
-     * @return array
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
      */
     public function createLanguage(array $data): array
     {
@@ -157,11 +157,11 @@ class LanguageService extends BaseService
             $this->validateLanguageData($data);
 
             $language = new Language();
-            $language->setLocale($data['locale']);
-            $language->setLanguage($data['language']);
+            $language->setLocale($this->asString($data['locale']));
+            $language->setLanguage($this->asString($data['language']));
 
             if (isset($data['csv_separator'])) {
-                $language->setCsvSeparator($data['csv_separator']);
+                $language->setCsvSeparator($this->asString($data['csv_separator']));
             }
 
             $this->entityManager->persist($language);
@@ -195,8 +195,8 @@ class LanguageService extends BaseService
      * Update an existing language
      * 
      * @param int $id
-     * @param array $data
-     * @return array
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
      * @throws NotFoundHttpException
      */
     public function updateLanguage(int $id, array $data): array
@@ -220,15 +220,15 @@ class LanguageService extends BaseService
             $this->validateLanguageData($data);
 
             if (isset($data['locale'])) {
-                $language->setLocale($data['locale']);
+                $language->setLocale($this->asString($data['locale']));
             }
 
             if (isset($data['language'])) {
-                $language->setLanguage($data['language']);
+                $language->setLanguage($this->asString($data['language']));
             }
 
             if (isset($data['csv_separator'])) {
-                $language->setCsvSeparator($data['csv_separator']);
+                $language->setCsvSeparator($this->asString($data['csv_separator']));
             }
 
             $this->entityManager->flush();
@@ -318,7 +318,7 @@ class LanguageService extends BaseService
     /**
      * Validate language data
      * 
-     * @param array $data
+     * @param array<string, mixed> $data
      * @throws BadRequestHttpException
      */
     private function validateLanguageData(array $data): void
@@ -331,7 +331,7 @@ class LanguageService extends BaseService
             throw new BadRequestHttpException('Language name is required');
         }
 
-        if (isset($data['csv_separator']) && strlen($data['csv_separator']) !== 1) {
+        if (isset($data['csv_separator']) && strlen($this->asString($data['csv_separator'])) !== 1) {
             throw new BadRequestHttpException('CSV separator must be a single character');
         }
     }

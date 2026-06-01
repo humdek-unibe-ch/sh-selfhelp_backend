@@ -85,35 +85,39 @@ class ApiRouteLoader extends Loader
         // follow-up migration). We keep the existing version + id order
         // as the tie-breaker so the relative order within each bucket
         // remains stable and idempotent.
-        usort($allRoutesData, static function ($a, $b): int {
-            $aArr = is_array($a) ? $a : [];
-            $bArr = is_array($b) ? $b : [];
-            $aVersion = isset($aArr['version']) && is_string($aArr['version']) ? $aArr['version'] : '';
-            $bVersion = isset($bArr['version']) && is_string($bArr['version']) ? $bArr['version'] : '';
+        usort($allRoutesData, static function (array $a, array $b): int {
+            $aVersion = isset($a['version']) && is_string($a['version']) ? $a['version'] : '';
+            $bVersion = isset($b['version']) && is_string($b['version']) ? $b['version'] : '';
             $versionCmp = strcmp($aVersion, $bVersion);
             if ($versionCmp !== 0) {
                 return $versionCmp;
             }
-            $aPath = isset($aArr['path']) && is_string($aArr['path']) ? $aArr['path'] : '';
-            $bPath = isset($bArr['path']) && is_string($bArr['path']) ? $bArr['path'] : '';
+            $aPath = isset($a['path']) && is_string($a['path']) ? $a['path'] : '';
+            $bPath = isset($b['path']) && is_string($b['path']) ? $b['path'] : '';
             $aDynamic = str_contains($aPath, '{') ? 1 : 0;
             $bDynamic = str_contains($bPath, '{') ? 1 : 0;
             if ($aDynamic !== $bDynamic) {
                 return $aDynamic - $bDynamic;
             }
-            $aId = isset($aArr['id']) && is_int($aArr['id']) ? $aArr['id'] : 0;
-            $bId = isset($bArr['id']) && is_int($bArr['id']) ? $bArr['id'] : 0;
+            $aId = isset($a['id']) && is_int($a['id']) ? $a['id'] : 0;
+            $bId = isset($b['id']) && is_int($b['id']) ? $b['id'] : 0;
             return $aId - $bId;
         });
 
         foreach ($allRoutesData as $routeData) {
-            $version = $routeData['version'];
-            
+            // Row values come from raw SQL (fetchAllAssociative), so each
+            // column is mixed; narrow the scalars we interpolate / pass on.
+            $version = is_scalar($routeData['version'] ?? null) ? (string) $routeData['version'] : '';
+            $pathValue = is_scalar($routeData['path'] ?? null) ? (string) $routeData['path'] : '';
+            $controllerValue = is_scalar($routeData['controller'] ?? null) ? (string) $routeData['controller'] : '';
+            $methodsValue = is_scalar($routeData['methods'] ?? null) ? (string) $routeData['methods'] : '';
+            $routeName = is_scalar($routeData['route_name'] ?? null) ? (string) $routeData['route_name'] : '';
+
             // Always prepend version to the path
-            $path = '/' . $version . $routeData['path'];
+            $path = '/' . $version . $pathValue;
             
             // Map controller to versioned namespace
-            $controller = $this->mapControllerToVersionedNamespace($routeData['controller'], $version);
+            $controller = $this->mapControllerToVersionedNamespace($controllerValue, $version);
             
             $defaults = [
                 '_controller' => $controller,
@@ -121,10 +125,19 @@ class ApiRouteLoader extends Loader
             ];
             
             // Parse methods (GET, POST, etc.)
-            $methods = explode(',', $routeData['methods']);
+            $methods = explode(',', $methodsValue);
 
-            // Requirements and params are already arrays from the optimized query
-            $requirements = $routeData['requirements'] ?? [];
+            // Requirements are already arrays from the optimized query; the
+            // Route constructor needs string requirement values.
+            $requirements = [];
+            $rawRequirements = $routeData['requirements'] ?? [];
+            if (is_array($rawRequirements)) {
+                foreach ($rawRequirements as $reqKey => $reqValue) {
+                    if (is_scalar($reqValue)) {
+                        $requirements[(string) $reqKey] = (string) $reqValue;
+                    }
+                }
+            }
             $params = $routeData['params'] ?? [];
 
             // Attach params as a default for controller access
@@ -148,7 +161,7 @@ class ApiRouteLoader extends Loader
                 [],                    // schemes
                 $methods               // methods
             );
-            $routes->add($routeData['route_name'] . '_' . $version, $route);
+            $routes->add($routeName . '_' . $version, $route);
         }
 
         return $routes;

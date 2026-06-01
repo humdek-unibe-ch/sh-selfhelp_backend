@@ -224,7 +224,7 @@ final class SemverHelper
     {
         $parts = explode('.', strtolower($token));
         $expected = [
-            'major' => $parts[0] ?? '*',
+            'major' => $parts[0],
             'minor' => $parts[1] ?? '*',
             'patch' => $parts[2] ?? '*',
         ];

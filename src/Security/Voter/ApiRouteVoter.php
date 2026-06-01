@@ -18,6 +18,8 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Voter to check if a user has the required permissions for an API route
+ *
+ * @extends Voter<string, mixed>
  */
 class ApiRouteVoter extends Voter
 {
@@ -58,7 +60,7 @@ class ApiRouteVoter extends Voter
 
         // Get the matched route
         $routeName = $request->attributes->get('_route');
-        if (!$routeName) {
+        if (!is_string($routeName) || $routeName === '') {
             // No route matched, allow access by default (other security measures will apply)
             return true;
         }
@@ -72,10 +74,10 @@ class ApiRouteVoter extends Voter
             }
 
             // Get the required permissions from the route options
-            $requiredPermissions = $route->getOption('permissions') ?? [];
+            $requiredPermissions = $route->getOption('permissions');
             
             // If no permissions are required, allow access
-            if (empty($requiredPermissions)) {
+            if (!is_array($requiredPermissions) || $requiredPermissions === []) {
                 return true;
             }
 

@@ -150,7 +150,8 @@ class AuthEventsController extends AbstractController
         // subscription. Plugin listeners use `PluginRealtimePublisher`
         // to publish messages; the topic IRIs they grant here must match
         // the IRIs declared in their `plugin.json#realtimeTopics`.
-        $pluginEvent = $this->eventDispatcher->dispatch(new PluginRealtimePermissionEvent($user));
+        $pluginEvent = new PluginRealtimePermissionEvent($user);
+        $this->eventDispatcher->dispatch($pluginEvent);
         $pluginTopics = $pluginEvent->getAllowedTopicIris();
 
         // One subscriber JWT, multiple topics. Mercure supports multiple

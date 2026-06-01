@@ -32,8 +32,7 @@ class AdminDataController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
-        private readonly TransactionService $transactionService,
-        private readonly LookupService $lookupService
+        private readonly TransactionService $transactionService
     ) {
     }
 
@@ -57,13 +56,14 @@ class AdminDataController extends AbstractController
             $dataTables = $this->dataTableService->getFilteredDataTables($userId);
 
             // Format the timestamp for each dataTable to match expected format
-            $result = array_map(function ($table) {
+            $result = array_map(function (array $table): array {
+                $created = $table['created'] ?? null;
                 return [
-                    'id' => $table['id'],
-                    'name' => $table['name'],
-                    'displayName' => $table['displayName'],
-                    'created' => is_string($table['created']) ? $table['created'] : $table['created']?->format(DATE_ATOM),
-                    'crud' => $table['crud']
+                    'id' => $table['id'] ?? null,
+                    'name' => $table['name'] ?? null,
+                    'displayName' => $table['displayName'] ?? null,
+                    'created' => $created instanceof \DateTimeInterface ? $created->format(DATE_ATOM) : $created,
+                    'crud' => $table['crud'] ?? null
                 ];
             }, $dataTables);
 
@@ -101,7 +101,7 @@ class AdminDataController extends AbstractController
             }
 
             // Check if user has permission to access this data table
-            if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -111,16 +111,16 @@ class AdminDataController extends AbstractController
 
             $hasFullTableAccess = $this->dataTableService->canAccessDataTable(
                 $currentUserId,
-                $dataTable->getId(),
+                (int) $dataTable->getId(),
                 DataAccessSecurityService::PERMISSION_DELETE
             );
 
             if ($hasFullTableAccess) {
-                $rows = $this->dataService->getData($dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
+                $rows = $this->dataService->getData((int) $dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
             } else {
                 // Non-admin users: use group-based filtering where permissions are calculated server-side
                 $rows = $this->dataService->getDataWithUserGroupFilter(
-                    $dataTable->getId(),
+                    (int) $dataTable->getId(),
                     $currentUserId,
                     '', // filter
                     $excludeDeleted,
@@ -176,7 +176,7 @@ class AdminDataController extends AbstractController
             }
 
             // Check if user has DELETE permission for this data table
-            if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE)) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -216,7 +216,7 @@ class AdminDataController extends AbstractController
             }
 
             // Check if user has DELETE permission for this data table
-            if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE)) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -257,12 +257,12 @@ class AdminDataController extends AbstractController
             }
 
             // Check if user has permission to update this data table (since we're modifying structure)
-            if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
             $data = $this->validateRequest($request, 'requests/admin/delete_data_columns', $this->jsonSchemaValidationService);
-            $columns = $data['columns'] ?? [];
+            $columns = $this->toStringList($data['columns'] ?? null);
 
             $result = $this->dataTableService->deleteColumns($tableName, $columns);
             if ($result === false) {
@@ -300,7 +300,7 @@ class AdminDataController extends AbstractController
             }
 
             // Check if user has permission to read this data table
-            if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -340,7 +340,7 @@ class AdminDataController extends AbstractController
             }
 
             // Check if user has permission to read this data table
-            if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 

@@ -29,11 +29,14 @@ class LanguageRepository extends ServiceEntityRepository
      */
     public function findAllExceptInternal(): array
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<Language> $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.id > 1')
             ->orderBy('l.id', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -43,10 +46,13 @@ class LanguageRepository extends ServiceEntityRepository
      */
     public function findAllLanguages(): array
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<Language> $result */
+        $result = $this->createQueryBuilder('l')
             ->orderBy('l.id', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
     
 }

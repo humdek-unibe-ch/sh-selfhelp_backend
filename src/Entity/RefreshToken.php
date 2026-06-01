@@ -29,14 +29,16 @@ class RefreshToken
     private ?string $tokenHash = null;
 
     #[ORM\Column(name: 'expires_at', type: 'datetime')]
-    private ?\DateTimeInterface $expiresAt = null;
+    private ?\DateTime $expiresAt = null;
 
     #[ORM\Column(name: 'created_at', type: 'datetime', nullable: true, options: ["default" => "CURRENT_TIMESTAMP"])]
-    private ?\DateTimeInterface $createdAt = null;
+    private ?\DateTime $createdAt = null;
 
     public function getId(): ?string
     {
-        return $this->id;
+        // bigint primary key is hydrated as an int; preserve the historical
+        // string return contract (PHP previously coerced it on return).
+        return $this->id === null ? null : (string) $this->id;
     }
 
     public function getUser(): ?User

@@ -15,10 +15,8 @@ use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\Core\BaseService;
-use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Repository\PageRepository;
-use App\Repository\SectionRepository;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -33,9 +31,7 @@ class PageFieldService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly CacheService $cache,
-        private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
-        private readonly SectionRepository $sectionRepository,
         private readonly UserContextAwareService $userContextAwareService
     ) {
     }
@@ -44,7 +40,7 @@ class PageFieldService extends BaseService
      * Get page with its fields and translations
      * 
      * @param int $pageId The page ID
-     * @return array The page with its fields and translations
+     * @return array<string, mixed> The page with its fields and translations
      * @throws ServiceException If page not found or access denied
      */
     public function getPageWithFields(int $pageId): array
@@ -58,7 +54,7 @@ class PageFieldService extends BaseService
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId())
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId())
             ->getItem(
                 $cacheKey,
                 function () use ($pageId) {
@@ -67,6 +63,9 @@ class PageFieldService extends BaseService
             );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function fetchPageWithFieldsFromDatabase(int $pageId): array
     {
 
@@ -77,7 +76,15 @@ class PageFieldService extends BaseService
         }
 
         // Check if user has access to the page
-        $this->userContextAwareService->checkAdminAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAdminAccess((string) $page->getKeyword(), 'select');
+
+        $pageType = $page->getPageType();
+        if (!$pageType) {
+            throw new ServiceException(
+                sprintf("Page %s does not have a page type assigned", $page->getKeyword()),
+                \Symfony\Component\HttpFoundation\Response::HTTP_BAD_REQUEST
+            );
+        }
 
         // Get page type fields based on the page's type
         $qb = $this->entityManager->createQueryBuilder();
@@ -86,16 +93,20 @@ class PageFieldService extends BaseService
             ->innerJoin('ptf.field', 'f')
             ->innerJoin('f.type', 'ft')
             ->where('ptf.pageType = :pageTypeId')
-            ->setParameter('pageTypeId', $page->getPageType()->getId())
+            ->setParameter('pageTypeId', $pageType->getId())
             ->orderBy('f.id', 'ASC');
 
+        /** @var list<PageTypeField> $pageTypeFields */
         $pageTypeFields = $qb->getQuery()->getResult();
 
         // Get page fields associated with this page
         $pageFieldsMap = [];
-        $pageFields = $this->entityManager->getRepository(PageTypeField::class)->findBy(['pageType' => $page->getPageType()->getId()]);
+        $pageFields = $this->entityManager->getRepository(PageTypeField::class)->findBy(['pageType' => $pageType->getId()]);
         foreach ($pageFields as $pageField) {
-            $pageFieldsMap[$pageField->getField()->getId()] = $pageField;
+            $mapFieldId = $pageField->getField()?->getId();
+            if ($mapFieldId !== null) {
+                $pageFieldsMap[$mapFieldId] = $pageField;
+            }
         }
 
         // Get all translations for this page's fields
@@ -104,8 +115,11 @@ class PageFieldService extends BaseService
             ->findBy(['page' => $page]);
 
         foreach ($translations as $translation) {
-            $fieldId = $translation->getField()->getId();
-            $langId = $translation->getLanguage()->getId();
+            $fieldId = $translation->getField()?->getId();
+            $langId = $translation->getLanguage()?->getId();
+            if ($fieldId === null || $langId === null) {
+                continue;
+            }
             if (!isset($translationsMap[$fieldId])) {
                 $translationsMap[$fieldId] = [];
             }
@@ -116,7 +130,10 @@ class PageFieldService extends BaseService
         $formattedFields = [];
         foreach ($pageTypeFields as $pageTypeField) {
             $field = $pageTypeField->getField();
-            $fieldId = $field->getId();
+            if (!$field) {
+                continue;
+            }
+            $fieldId = (int) $field->getId();
 
             // Get the pageField if it exists for this field
             $pageField = $pageFieldsMap[$fieldId] ?? null;
@@ -138,6 +155,9 @@ class PageFieldService extends BaseService
                 if (isset($translationsMap[$fieldId])) {
                     foreach ($translationsMap[$fieldId] as $translation) {
                         $language = $translation->getLanguage();
+                        if (!$language) {
+                            continue;
+                        }
                         $fieldData['translations'][] = [
                             'language_id' => $language->getId(),
                             'language_code' => $language->getLocale(),
@@ -160,6 +180,8 @@ class PageFieldService extends BaseService
             $formattedFields[] = $fieldData;
         }
 
+        $pageAccessType = $page->getPageAccessType();
+
         // Return page data with fields and their translations
         return [
             'page' => [
@@ -168,17 +190,17 @@ class PageFieldService extends BaseService
                 "url" => $page->getUrl(),
                 "parentPage" => null,
                 "pageType" => [
-                    "id" => $page->getPageType()->getId(),
-                    "name" => $page->getPageType()->getName()
+                    "id" => $pageType->getId(),
+                    "name" => $pageType->getName()
                 ],
                 "idType" => $page->getIdType(),
-                "pageAccessType" => [
-                    "id" => $page->getPageAccessType()->getId(),
+                "pageAccessType" => $pageAccessType ? [
+                    "id" => $pageAccessType->getId(),
                     "typeCode" => "pageAccessTypes",
-                    "lookupCode" => $page->getPageAccessType()->getLookupCode(),
-                    "lookupValue" => $page->getPageAccessType()->getLookupValue(),
-                    "lookupDescription" => $page->getPageAccessType()->getLookupDescription()
-                ],
+                    "lookupCode" => $pageAccessType->getLookupCode(),
+                    "lookupValue" => $pageAccessType->getLookupValue(),
+                    "lookupDescription" => $pageAccessType->getLookupDescription()
+                ] : null,
                 "headless" => $page->isHeadless(),
                 "navPosition" => $page->getNavPosition(),
                 "footerPosition" => $page->getFooterPosition(),
@@ -193,7 +215,7 @@ class PageFieldService extends BaseService
      * Update page field translations
      * 
      * @param Page $page The page entity
-     * @param array $fields The fields to update
+     * @param list<array<string, mixed>> $fields The fields to update
      * @throws ServiceException If validation fails
      */
     public function updatePageFields(Page $page, array $fields): void
@@ -203,7 +225,7 @@ class PageFieldService extends BaseService
         }
 
         // Validate that all fields belong to the page's page type
-        $fieldIds = array_column($fields, 'fieldId');
+        $fieldIds = array_map(fn ($v): int => $this->asInt($v), array_column($fields, 'fieldId'));
         $pageType = $page->getPageType();
         if (!$pageType) {
             throw new ServiceException(
@@ -212,15 +234,15 @@ class PageFieldService extends BaseService
             );
         }
 
-        $this->validatePageTypeFields($fieldIds, $pageType->getId(), $this->entityManager);
+        $this->validatePageTypeFields($fieldIds, (int) $pageType->getId(), $this->entityManager);
 
         // Update field translations using trait method
-        $this->updatePageFieldTranslations($page->getId(), $fields, $this->entityManager);
+        $this->updatePageFieldTranslations((int) $page->getId(), $fields, $this->entityManager);
 
         // Invalidate page cache after updates
         $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
-            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
         $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->invalidateAllListsInCategory();

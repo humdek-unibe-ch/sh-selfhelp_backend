@@ -19,11 +19,6 @@ use DateTimeInterface;
 
 /**
  * @extends ServiceEntityRepository<Users2faCode>
- *
- * @method Users2faCode|null find($id, $lockMode = null, $lockVersion = null)
- * @method Users2faCode|null findOneBy(array $criteria, array $orderBy = null)
- * @method Users2faCode[]    findAll()
- * @method Users2faCode[]    findBy(array $criteria, array $orderBy = null, $limit = null, $offset = null)
  */
 class User2faCodeRepository extends ServiceEntityRepository
 {
@@ -62,7 +57,8 @@ class User2faCodeRepository extends ServiceEntityRepository
      */
     public function findValidCodeForUser(User $user, string $code): ?Users2faCode
     {
-        return $this->createQueryBuilder('u2c')
+        /** @var Users2faCode|null $result */
+        $result = $this->createQueryBuilder('u2c')
             ->andWhere('u2c.user = :user')
             ->andWhere('u2c.code = :code')
             ->andWhere('u2c.expiresAt > :now')
@@ -73,5 +69,7 @@ class User2faCodeRepository extends ServiceEntityRepository
             ->setParameter('isUsed', false)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 }

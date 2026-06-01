@@ -833,7 +833,7 @@ public function setIdUsers(?int $idUsers): self { }
 ```
 
 ### Entity Synchronization
-- All entities must sync with `db/structure_db.sql`
+- All entities must stay in sync with the Doctrine migrations under `migrations/` (validate with `composer validate-db` / `php bin/console doctrine:schema:validate`)
 - Column names in entities match database column names
 - Proper ORM attributes for relationships
 - Generate complete getters and setters

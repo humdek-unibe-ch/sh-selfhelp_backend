@@ -27,11 +27,14 @@ class PluginSourceRepository extends ServiceEntityRepository
     /** @return list<PluginSource> */
     public function findEnabled(): array
     {
-        return $this->createQueryBuilder('s')
+        /** @var list<PluginSource> $result */
+        $result = $this->createQueryBuilder('s')
             ->where('s.enabled = :enabled')
             ->setParameter('enabled', true)
             ->orderBy('s.name', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }

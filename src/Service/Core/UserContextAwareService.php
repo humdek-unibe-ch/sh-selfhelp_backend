@@ -87,7 +87,7 @@ class UserContextAwareService extends BaseService
                 return $page;
             });
 
-        $this->checkAclPermission($page->getId(), $permission);
+        $this->checkAclPermission((int) $page->getId(), $permission);
     }
 
     /**
@@ -117,7 +117,7 @@ class UserContextAwareService extends BaseService
                 return $page;
             });
 
-        $this->checkAdminPermission($page->getId(), $permission);
+        $this->checkAdminPermission((int) $page->getId(), $permission);
     }
 
     /**
@@ -171,7 +171,7 @@ class UserContextAwareService extends BaseService
         };
 
         // Check data access permission for pages resource
-        if (!$this->dataAccessSecurityService->hasPermission($userId, 'pages', $resourceId, $permissionBit)) {
+        if (!$this->dataAccessSecurityService->hasPermission((int) $userId, 'pages', $resourceId, $permissionBit)) {
             $this->throwForbidden('Access denied');
         }
     }
@@ -217,10 +217,8 @@ class UserContextAwareService extends BaseService
         }
 
         // Check ACL permission for the resource
-        if ($this->aclService instanceof ACLService) {
-            if (!$this->aclService->hasAccess($userId, $resourceId, $permission)) {
-                $this->throwForbidden('Access denied');
-            }
+        if (!$this->aclService->hasAccess($userId, $resourceId, $permission)) {
+            $this->throwForbidden('Access denied');
         }
     }
 

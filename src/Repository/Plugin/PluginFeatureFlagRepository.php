@@ -43,15 +43,15 @@ class PluginFeatureFlagRepository extends ServiceEntityRepository
     /** @return list<PluginFeatureFlag> */
     public function findGlobalFlags(Plugin $plugin): array
     {
-        return $this->findBy([
+        return array_values($this->findBy([
             'plugin' => $plugin,
             'scope' => PluginFeatureFlag::SCOPE_GLOBAL,
-        ]);
+        ]));
     }
 
     /** @return list<PluginFeatureFlag> */
     public function findByPlugin(Plugin $plugin): array
     {
-        return $this->findBy(['plugin' => $plugin]);
+        return array_values($this->findBy(['plugin' => $plugin]));
     }
 }

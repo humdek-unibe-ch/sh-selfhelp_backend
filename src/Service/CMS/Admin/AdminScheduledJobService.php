@@ -13,18 +13,15 @@ use App\Entity\Lookup;
 
 use App\Plugin\Event\ScheduledJobTypeEvent;
 use App\Repository\ScheduledJobRepository;
-use App\Repository\UserRepository;
 use App\Repository\TransactionRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
-use App\Service\Core\TransactionService;
 
 use App\Service\Auth\UserContextService;
 use App\Exception\ServiceException;
-use Doctrine\ORM\EntityManagerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
 use App\Service\Core\JobSchedulerService;
@@ -41,12 +38,9 @@ class AdminScheduledJobService extends BaseService
 
     public function __construct(
         private readonly UserContextService $userContextService,
-        private readonly EntityManagerInterface $entityManager,
         private readonly ScheduledJobRepository $scheduledJobRepository,
-        private readonly UserRepository $userRepository,
         private readonly TransactionRepository $transactionRepository,
         private readonly LookupService $lookupService,
-        private readonly TransactionService $transactionService,
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly CacheService $cache,
         private readonly CmsPreferenceService $cmsPreferenceService,
@@ -84,7 +78,8 @@ class AdminScheduledJobService extends BaseService
             ];
         }
 
-        $event = $this->eventDispatcher->dispatch(new ScheduledJobTypeEvent());
+        $event = new ScheduledJobTypeEvent();
+        $this->eventDispatcher->dispatch($event);
         foreach ($event->getJobTypes() as $contribution) {
             $catalog[] = [
                 'type' => $contribution['type'],
@@ -102,6 +97,9 @@ class AdminScheduledJobService extends BaseService
      * Get ALL scheduled jobs without pagination (used for calendar view, export, etc.)
      * 
      * Returns the same formatted structure as the list view for consistency.
+     *
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
      */
     public function getAllScheduledJobs(
         array $filters = [],
@@ -133,6 +131,7 @@ class AdminScheduledJobService extends BaseService
 
                 $qb->select('sj');
 
+                /** @var list<ScheduledJob> $jobsEntities */
                 $jobsEntities = $qb->getQuery()->getResult();
 
                 $jobs = [];
@@ -209,6 +208,7 @@ class AdminScheduledJobService extends BaseService
                 // Select only the main entity (relationships will be loaded)
                 $qb->select('sj');
 
+                /** @var list<ScheduledJob> $jobsEntities */
                 $jobsEntities = $qb->getQuery()->getResult();
                 $jobs = [];
 
@@ -257,7 +257,7 @@ class AdminScheduledJobService extends BaseService
         }
 
         if (!empty($filters['search'])) {
-            $searchTerm = '%' . $filters['search'] . '%';
+            $searchTerm = '%' . $this->asString($filters['search']) . '%';
             $qb->andWhere(
                 $qb->expr()->orX(
                     $qb->expr()->like('sj.id', ':search'),
@@ -282,13 +282,13 @@ class AdminScheduledJobService extends BaseService
         };
 
         if (!empty($filters['date_from'])) {
-            $dateFromObj = new \DateTime($filters['date_from']);
+            $dateFromObj = new \DateTime($this->asString($filters['date_from']));
             $qb->andWhere("{$dateField} >= :date_from_start")
                 ->setParameter('date_from_start', $dateFromObj->format('Y-m-d 00:00:00'));
         }
 
         if (!empty($filters['date_to'])) {
-            $dateToObj = new \DateTime($filters['date_to']);
+            $dateToObj = new \DateTime($this->asString($filters['date_to']));
             $qb->andWhere("{$dateField} <= :date_to_end")
                 ->setParameter('date_to_end', $dateToObj->format('Y-m-d 23:59:59'));
         }
@@ -331,22 +331,15 @@ class AdminScheduledJobService extends BaseService
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
         $displayConfig = $this->resolveConfigForDisplay($job);
 
-        $dateCreate = $job->getDateCreate();
-        if ($dateCreate) {
-            $dateCreate = \DateTime::createFromInterface($dateCreate)->setTimezone($cmsTimezone);
-        }
-
-        $dateToBeExecuted = $job->getDateToBeExecuted();
-        if ($dateToBeExecuted) {
-            $dateToBeExecuted = \DateTime::createFromInterface($dateToBeExecuted)->setTimezone($cmsTimezone);
-        }
+        $dateCreate = \DateTime::createFromInterface($job->getDateCreate())->setTimezone($cmsTimezone);
+        $dateToBeExecuted = \DateTime::createFromInterface($job->getDateToBeExecuted())->setTimezone($cmsTimezone);
 
         $dateExecuted = $job->getDateExecuted();
         if ($dateExecuted) {
             $dateExecuted = \DateTime::createFromInterface($dateExecuted)->setTimezone($cmsTimezone);
         }
 
-        $jobTransactions = $includeTransactions ? $this->getJobTransactions($job->getId()) : [];
+        $jobTransactions = $includeTransactions ? $this->getJobTransactions((int) $job->getId()) : [];
         
         return [
             'id' => $job->getId(),
@@ -359,9 +352,9 @@ class AdminScheduledJobService extends BaseService
             'status' => $job->getStatus()->getLookupValue(),
             'description' => $job->getDescription(),
             'user_timezone' => $job->getUser()?->getTimezone()?->getLookupCode() ?? 'Europe/Zurich',
-            'date_scheduled' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
-            'date_created' => $dateCreate?->format('Y-m-d H:i:s'),
-            'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
+            'date_scheduled' => $dateToBeExecuted->format('Y-m-d H:i:s'),
+            'date_created' => $dateCreate->format('Y-m-d H:i:s'),
+            'date_to_be_executed' => $dateToBeExecuted->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
             'email_subject' => $this->extractEmailSubjectForList($displayConfig),
             'config' => $displayConfig,
@@ -374,7 +367,7 @@ class AdminScheduledJobService extends BaseService
      * Cancel a scheduled job
      *
      * @param int $jobId Job ID to cancel
-     * @return array|null Job data if successful, null on failure
+     * @return array<string, mixed>|null Job data if successful, null on failure
      */
     public function cancelScheduledJob(int $jobId): ?array
     {
@@ -382,7 +375,7 @@ class AdminScheduledJobService extends BaseService
             $user = $this->userContextService->getCurrentUser();
             $userId = $user ? $user->getId() : null;
 
-            $result = $this->jobSchedulerService->cancelJob($jobId, $userId ?: $this->lookupService::TRANSACTION_BY_BY_SYSTEM);
+            $result = $this->jobSchedulerService->cancelJob($jobId, (string) ($userId ?: $this->lookupService::TRANSACTION_BY_BY_SYSTEM));
 
             if ($result) {
                 return $this->getScheduledJobById($jobId);
@@ -475,6 +468,7 @@ class AdminScheduledJobService extends BaseService
                     throw new ServiceException('Scheduled job not found', Response::HTTP_NOT_FOUND);
                 }
 
+                /** @var list<\App\Entity\Transaction> $transactions */
                 $transactions = $this->transactionRepository->createQueryBuilder('t')
                     ->where('t.tableName = :tableName')
                     ->andWhere('t.idTableName = :idTableName')
@@ -489,14 +483,11 @@ class AdminScheduledJobService extends BaseService
 
                 $formattedTransactions = [];
                 foreach ($transactions as $transaction) {
-                    $transactionTime = $transaction->getTransactionTime();
-                    if ($transactionTime) {
-                        $transactionTime = $transactionTime->setTimezone($cmsTimezone);
-                    }
+                    $transactionTime = $transaction->getTransactionTime()->setTimezone($cmsTimezone);
 
                     $formattedTransactions[] = [
                         'transaction_id' => $transaction->getId(),
-                        'transaction_time' => $transactionTime?->format('Y-m-d H:i:s'),
+                        'transaction_time' => $transactionTime->format('Y-m-d H:i:s'),
                         'transaction_type' => $transaction->getTransactionType()?->getLookupValue(),
                         'transaction_verbal_log' => $transaction->getTransactionLog(),
                         'user' => $transaction->getUser()?->getName()
@@ -522,15 +513,8 @@ class AdminScheduledJobService extends BaseService
         // Convert timezone for datetime fields
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
 
-        $dateCreate = $job->getDateCreate();
-        if ($dateCreate) {
-            $dateCreate = \DateTime::createFromInterface($dateCreate)->setTimezone($cmsTimezone);
-        }
-
-        $dateToBeExecuted = $job->getDateToBeExecuted();
-        if ($dateToBeExecuted) {
-            $dateToBeExecuted = \DateTime::createFromInterface($dateToBeExecuted)->setTimezone($cmsTimezone);
-        }
+        $dateCreate = \DateTime::createFromInterface($job->getDateCreate())->setTimezone($cmsTimezone);
+        $dateToBeExecuted = \DateTime::createFromInterface($job->getDateToBeExecuted())->setTimezone($cmsTimezone);
 
         $dateExecuted = $job->getDateExecuted();
         if ($dateExecuted) {
@@ -557,16 +541,16 @@ class AdminScheduledJobService extends BaseService
             'reminder_session_start_date' => $job->getReminderMetadata()?->getSessionStartDate()?->format('Y-m-d H:i:s'),
             'reminder_session_end_date' => $job->getReminderMetadata()?->getSessionEndDate()?->format('Y-m-d H:i:s'),
             'status' => [
-                'id' => $job->getStatus()?->getId(),
-                'value' => $job->getStatus()?->getLookupValue()
+                'id' => $job->getStatus()->getId(),
+                'value' => $job->getStatus()->getLookupValue()
             ],
             'job_type' => [
-                'id' => $job->getJobType()?->getId(),
-                'value' => $job->getJobType()?->getLookupValue()
+                'id' => $job->getJobType()->getId(),
+                'value' => $job->getJobType()->getLookupValue()
             ],
             'description' => $job->getDescription(),
-            'date_create' => $dateCreate?->format('Y-m-d H:i:s'),
-            'date_to_be_executed' => $dateToBeExecuted?->format('Y-m-d H:i:s'),
+            'date_create' => $dateCreate->format('Y-m-d H:i:s'),
+            'date_to_be_executed' => $dateToBeExecuted->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
             'config' => $this->resolveConfigForDisplay($job)
         ];
@@ -618,12 +602,12 @@ class AdminScheduledJobService extends BaseService
     /**
      * Resolve configured translation keys for the specified config fields.
      *
-     * @param array<string, mixed> $config
+     * @param array<array-key, mixed> $config
      *   The config subsection containing translatable fields.
      * @param string[] $fields
      *   The field names that should be translated when present.
      *
-     * @return array<string, mixed>
+     * @return array<array-key, mixed>
      *   The config subsection with translated field values.
      */
     private function resolveTranslatedConfigFields(int $actionId, array $config, array $fields): array
@@ -657,12 +641,14 @@ class AdminScheduledJobService extends BaseService
             return null;
         }
 
-        $emailSubject = $config['email']['subject'] ?? null;
+        $email = $config['email'] ?? null;
+        $emailSubject = is_array($email) ? ($email['subject'] ?? null) : null;
         if (is_string($emailSubject) && trim($emailSubject) !== '') {
             return $emailSubject;
         }
 
-        $notificationSubject = $config['notification']['subject'] ?? null;
+        $notification = $config['notification'] ?? null;
+        $notificationSubject = is_array($notification) ? ($notification['subject'] ?? null) : null;
         if (is_string($notificationSubject) && trim($notificationSubject) !== '') {
             return $notificationSubject;
         }

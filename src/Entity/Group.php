@@ -14,9 +14,11 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: '`groups`')]
 class Group
 {
+    /** @var \Doctrine\Common\Collections\Collection<int, UsersGroup> */
     #[ORM\OneToMany(mappedBy: 'group', targetEntity: UsersGroup::class, orphanRemoval: true)]
     private \Doctrine\Common\Collections\Collection $usersGroups;
 
+    /** @var \Doctrine\Common\Collections\Collection<int, ValidationCode> */
     #[ORM\OneToMany(mappedBy: 'group', targetEntity: ValidationCode::class, orphanRemoval: true)]
     private \Doctrine\Common\Collections\Collection $validationCodes;
 
@@ -51,7 +53,7 @@ class Group
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection|UsersGroup[]
+     * @return \Doctrine\Common\Collections\Collection<int, UsersGroup>
      */
     public function getUsersGroups(): \Doctrine\Common\Collections\Collection
     {
@@ -78,12 +80,17 @@ class Group
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection|User[]
+     * @return \Doctrine\Common\Collections\Collection<int, User>
      */
     public function getUsers(): \Doctrine\Common\Collections\Collection
     {
+        // Every UsersGroup still in the collection has a non-null user
+        // (removeUsersGroup() detaches it before nulling the back-reference);
+        // array_filter drops the never-occurring null case to satisfy types.
         return new \Doctrine\Common\Collections\ArrayCollection(
-            array_map(fn($ug) => $ug->getUser(), $this->usersGroups->toArray())
+            array_values(array_filter(
+                array_map(fn(UsersGroup $ug) => $ug->getUser(), $this->usersGroups->toArray())
+            ))
         );
     } // Returns users only via UsersGroup entity. No direct $users property.
 
@@ -137,7 +144,7 @@ class Group
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection|ValidationCode[]
+     * @return \Doctrine\Common\Collections\Collection<int, ValidationCode>
      */
     public function getValidationCodes(): \Doctrine\Common\Collections\Collection
     {

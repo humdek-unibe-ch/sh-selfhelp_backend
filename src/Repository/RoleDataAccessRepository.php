@@ -25,6 +25,8 @@ use Doctrine\Persistence\ManagerRegistry;
  *
  * Handles database operations for role-based data access permissions
  * Provides methods for permission checking and management
+ *
+ * @extends ServiceEntityRepository<RoleDataAccess>
  */
 class RoleDataAccessRepository extends ServiceEntityRepository
 {
@@ -52,6 +54,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->setParameter('resourceTypeId', $resourceTypeId)
             ->setParameter('resourceId', $resourceId);
 
+        /** @var list<array{crudPermissions: int}> $results */
         $results = $qb->getQuery()->getResult();
 
         // Aggregate permissions using bitwise OR
@@ -65,10 +68,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
     /**
      * Get all permissions for a role
+     *
+     * @return list<RoleDataAccess>
      */
     public function getRolePermissions(int $roleId): array
     {
-        return $this->createQueryBuilder('rda')
+        /** @var list<RoleDataAccess> $result */
+        $result = $this->createQueryBuilder('rda')
             ->leftJoin('rda.resourceType', 'rt')
             ->addSelect('rt')
             ->where('rda.idRoles = :roleId')
@@ -77,6 +83,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->addOrderBy('rda.resourceId', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -84,7 +92,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      */
     public function findPermission(int $roleId, int $resourceTypeId, int $resourceId): ?RoleDataAccess
     {
-        return $this->createQueryBuilder('rda')
+        /** @var RoleDataAccess|null $result */
+        $result = $this->createQueryBuilder('rda')
             ->where('rda.idRoles = :roleId')
             ->andWhere('rda.idResourceTypes = :resourceTypeId')
             ->andWhere('rda.resourceId = :resourceId')
@@ -93,10 +102,14 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->setParameter('resourceId', $resourceId)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
      * Get all roles with their data access permissions
+     *
+     * @return list<array<string, mixed>>
      */
     public function getAllRolesWithPermissions(): array
     {
@@ -123,10 +136,11 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->addOrderBy('rda.idResourceTypes', 'ASC')
             ->addOrderBy('rda.resourceId', 'ASC');
 
+        /** @var list<array<string, mixed>> $results */
         $results = $qb->getQuery()->getResult();
 
         // Convert to the expected associative array format
-        return array_map(function ($result) {
+        return array_map(function (array $result) {
             return [
                 'role_id' => $result['role_id'],
                 'role_name' => $result['role_name'],
@@ -150,7 +164,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @param int $userId User ID
      * @param int $resourceTypeId Resource type ID for pages
-     * @return array Array of pages with crud permissions in the expected format
+     * @return list<array<string, mixed>> Array of pages with crud permissions in the expected format
      */
     public function getAccessiblePagesForUser(int $userId, int $resourceTypeId): array
     {
@@ -182,7 +196,10 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->setParameter('resourceTypeId', $resourceTypeId)
             ->orderBy('p.id', 'ASC');
 
-        return $qb->getQuery()->getResult();
+        /** @var list<array<string, mixed>> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 
     /**
@@ -191,7 +208,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @param int $userId User ID
      * @param int $resourceTypeId Resource type ID for dataTables
-     * @return array Array of dataTables with crud permissions in the expected format
+     * @return list<array<string, mixed>> Array of dataTables with crud permissions in the expected format
      */
     public function getAccessibleDataTablesForUser(int $userId, int $resourceTypeId): array
     {
@@ -214,14 +231,17 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->setParameter('resourceTypeId', $resourceTypeId)
             ->orderBy('dt.id', 'ASC');
 
-        return $qb->getQuery()->getResult();
+        /** @var list<array<string, mixed>> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 
     /**
      * Get all pages with full permissions for admin users
      * Admin users get access to all pages with full CRUD permissions
      *
-     * @return array Array of all pages with full permissions (crud=15)
+     * @return list<array<string, mixed>> Array of all pages with full permissions (crud=15)
      */
     public function getAllPagesWithFullPermissions(): array
     {
@@ -244,14 +264,17 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->from(Page::class, 'p')
             ->orderBy('p.id', 'ASC');
 
-        return $qb->getQuery()->getResult();
+        /** @var list<array<string, mixed>> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 
     /**
      * Get all dataTables with full permissions for admin users
      * Admin users get access to all dataTables with full CRUD permissions
      *
-     * @return array Array of all dataTables with full permissions (crud=15)
+     * @return list<array<string, mixed>> Array of all dataTables with full permissions (crud=15)
      */
     public function getAllDataTablesWithFullPermissions(): array
     {
@@ -267,7 +290,10 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->from(DataTable::class, 'dt')
             ->orderBy('dt.id', 'ASC');
 
-        return $qb->getQuery()->getResult();
+        /** @var list<array<string, mixed>> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 
     /**
@@ -276,7 +302,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @param int $userId User ID
      * @param int $resourceTypeId Resource type ID for groups
-     * @return array Array of users with their group membership info
+     * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Users with their group membership info
      */
     public function getAccessibleUsersForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
@@ -333,8 +359,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         $idQb->setFirstResult(($page - 1) * $pageSize)
             ->setMaxResults($pageSize);
 
+        /** @var list<array{id: int|string}> $idRows */
         $idRows = $idQb->getQuery()->getScalarResult();
-        $userIds = array_map(static fn($row) => (int) $row['id'], $idRows);
+        $userIds = array_map(static fn(array $row): int => (int) $row['id'], $idRows);
 
         if (empty($userIds)) {
             return [
@@ -358,6 +385,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
 
         $this->applyUserSorting($qb, $sort, $sortDirection);
 
+        /** @var list<User> $users */
         $users = $qb->getQuery()->getResult();
 
         $formattedUsers = array_map(
@@ -375,7 +403,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * Get all users for admin users (SQL-based, no pagination)
      * Returns all users formatted to match AdminUserService output
      *
-     * @return array Array of formatted users
+     * @return array{users: list<array<string, mixed>>, pagination: array<string, mixed>} Formatted users
      */
     public function getAllUsersForAdmin(int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
@@ -410,8 +438,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         $idQb->setFirstResult(($page - 1) * $pageSize)
             ->setMaxResults($pageSize);
 
+        /** @var list<array{id: int|string}> $idRows */
         $idRows = $idQb->getQuery()->getScalarResult();
-        $userIds = array_map(static fn($row) => (int) $row['id'], $idRows);
+        $userIds = array_map(static fn(array $row): int => (int) $row['id'], $idRows);
 
         if (empty($userIds)) {
             return [
@@ -437,6 +466,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
         // Re-apply sorting so the page preserves the requested order
         $this->applyUserSorting($qb, $sort, $sortDirection);
 
+        /** @var list<User> $users */
         $users = $qb->getQuery()->getResult();
 
         // Format users (full CRUD permissions for admin)
@@ -463,7 +493,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * @param string|null $sort Sort field
      * @param string $sortDirection Sort direction ('asc' or 'desc')
      * @param bool $isAdmin Whether the user is an admin (has access to all groups)
-     * @return array Array of groups with pagination info
+     * @return array{groups: list<array<string, mixed>>, pagination: array<string, mixed>} Groups with pagination info
      */
     public function getAccessibleGroupsForUser(int $userId, int $resourceTypeId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc', bool $isAdmin = false): array
     {
@@ -550,12 +580,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 ->setParameter('search', '%' . $search . '%');
         }
 
-        $totalCount = $countQb->getQuery()->getSingleScalarResult();
+        $totalCount = (int) $countQb->getQuery()->getSingleScalarResult();
 
         // Apply pagination
         $qb->setFirstResult(($page - 1) * $pageSize)
             ->setMaxResults($pageSize);
 
+        /** @var list<array{0: Group, users_count: int|string}> $groups */
         $groups = $qb->getQuery()->getResult();
 
         // Format groups for response
@@ -588,8 +619,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @param int $userId User ID
      * @param int $resourceTypeId Resource type ID
-     * @param array|null $resourceIds Specific resource IDs to check, null for all accessible
-     * @return array Array mapping resource IDs to permission values
+     * @param list<int>|null $resourceIds Specific resource IDs to check, null for all accessible
+     * @return array<int, int> Array mapping resource IDs to permission values
      */
     public function getUserPermissionsForResources(int $userId, int $resourceTypeId, ?array $resourceIds = null): array
     {
@@ -609,12 +640,13 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 ->setParameter('resourceIds', $resourceIds);
         }
 
+        /** @var list<array{resourceId: int|string, permissions: int|string}> $results */
         $results = $qb->getQuery()->getResult();
 
         // Convert to associative array
         $permissions = [];
         foreach ($results as $result) {
-            $permissions[$result['resourceId']] = (int) $result['permissions'];
+            $permissions[(int) $result['resourceId']] = (int) $result['permissions'];
         }
 
         return $permissions;
@@ -627,7 +659,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      * @param int $page Current page number
      * @param int $pageSize Page size
      * @param int $totalCount Total number of items
-     * @return array Pagination information
+     * @return array{page: int, pageSize: int, totalCount: int, totalPages: int, hasNext: bool, hasPrevious: bool} Pagination information
      */
     private function createPaginationInfo(int $page, int $pageSize, int $totalCount): array
     {
@@ -691,7 +723,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
      *
      * @param User $user
      * @param int $crudPermissions
-     * @return array
+     * @return array<string, mixed>
      */
     private function formatUserForResponse(User $user, int $crudPermissions = 15): array
     {

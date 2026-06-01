@@ -42,7 +42,7 @@ class ActionCleanupService
      */
     public function deleteQueuedJobsForAction(Action $action, ?int $userId, string $transactionBy): void
     {
-        $jobs = $this->scheduledJobRepository->findQueuedJobsForAction($action->getId(), $userId);
+        $jobs = $this->scheduledJobRepository->findQueuedJobsForAction((int) $action->getId(), $userId);
         $this->markJobsDeleted($jobs, $transactionBy);
     }
 
@@ -58,7 +58,7 @@ class ActionCleanupService
      */
     public function deleteQueuedJobsForRecordAndAction(Action $action, int $recordId, string $transactionBy): void
     {
-        $jobs = $this->scheduledJobRepository->findQueuedJobsForActionAndRow($action->getId(), $recordId);
+        $jobs = $this->scheduledJobRepository->findQueuedJobsForActionAndRow((int) $action->getId(), $recordId);
         $this->markJobsDeleted($jobs, $transactionBy);
     }
 
@@ -108,6 +108,9 @@ class ActionCleanupService
             LookupService::SCHEDULED_JOBS_STATUS,
             LookupService::SCHEDULED_JOBS_STATUS_DELETED
         );
+        if ($deletedStatus === null) {
+            throw new \RuntimeException('Missing scheduled job status lookup: ' . LookupService::SCHEDULED_JOBS_STATUS_DELETED);
+        }
 
         foreach ($jobs as $job) {
             $job->setStatus($deletedStatus);

@@ -25,15 +25,15 @@ trait TranslationManagerTrait
      * Update page field translations
      * 
      * @param int $pageId The page ID
-     * @param array $fields Array of field data
+     * @param list<array<string, mixed>> $fields Array of field data
      * @param EntityManagerInterface $entityManager
      */
     protected function updatePageFieldTranslations(int $pageId, array $fields, EntityManagerInterface $entityManager): void
     {
         foreach ($fields as $fieldData) {
-            $fieldId = $fieldData['fieldId'];
-            $languageId = $fieldData['languageId'];
-            $content = $fieldData['content'];
+            $fieldId = $this->asInt($fieldData['fieldId'] ?? null);
+            $languageId = $this->asInt($fieldData['languageId'] ?? null);
+            $content = $this->asString($fieldData['content'] ?? null);
 
             // Check if translation exists
             $page = $entityManager->getRepository(Page::class)->find($pageId);
@@ -61,21 +61,22 @@ trait TranslationManagerTrait
      * Update section field translations
      * 
      * @param int $sectionId The section ID
-     * @param array $contentFields Content fields (display=1)
-     * @param array $propertyFields Property fields (display=0)
+     * @param list<array<string, mixed>> $contentFields Content fields (display=1)
+     * @param list<array<string, mixed>> $propertyFields Property fields (display=0)
      * @param EntityManagerInterface $entityManager
      */
     protected function updateSectionFieldTranslations(int $sectionId, array $contentFields, array $propertyFields, EntityManagerInterface $entityManager): void
     {
         // Update content field translations (display=1 fields)
         foreach ($contentFields as $fieldData) {
-            $this->updateSectionFieldTranslation($sectionId, $fieldData['fieldId'], $fieldData['languageId'], $fieldData['value'], $entityManager);
+            $this->updateSectionFieldTranslation($sectionId, $this->asInt($fieldData['fieldId'] ?? null), $this->asInt($fieldData['languageId'] ?? null), $this->asString($fieldData['value'] ?? null), $entityManager);
         }
 
         // Update property field translations (display=0 fields)
         foreach ($propertyFields as $fieldData) {
-            $content = is_bool($fieldData['value']) ? ($fieldData['value'] ? '1' : '0') : (string) $fieldData['value'];
-            $this->updateSectionFieldTranslation($sectionId, $fieldData['fieldId'], 1, $content, $entityManager);
+            $value = $fieldData['value'] ?? null;
+            $content = is_bool($value) ? ($value ? '1' : '0') : $this->asString($value);
+            $this->updateSectionFieldTranslation($sectionId, $this->asInt($fieldData['fieldId'] ?? null), 1, $content, $entityManager);
         }
     }
 

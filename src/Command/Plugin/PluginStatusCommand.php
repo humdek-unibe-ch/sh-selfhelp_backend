@@ -51,7 +51,7 @@ final class PluginStatusCommand extends Command
                 $io->error($e->getMessage());
                 return Command::FAILURE;
             }
-            $io->title(sprintf('Plugin: %s', $plugin['pluginId']));
+            $io->title(sprintf('Plugin: %s', is_scalar($plugin['pluginId'] ?? null) ? (string) $plugin['pluginId'] : $pluginId));
             $io->definitionList(
                 ['Name' => $plugin['name']],
                 ['Version' => $plugin['version']],

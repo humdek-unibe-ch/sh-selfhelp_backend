@@ -59,7 +59,8 @@ class ScheduledJobsExecuteDueCommand extends Command
         $jobs = $this->scheduledJobRepository->findJobsToExecute();
 
         if ($limit !== null) {
-            $jobs = array_slice($jobs, 0, max(0, (int) $limit));
+            $limitInt = is_numeric($limit) ? (int) $limit : 0;
+            $jobs = array_slice($jobs, 0, max(0, $limitInt));
         }
 
         $io->title('Execute Due Scheduled Jobs');
@@ -69,7 +70,7 @@ class ScheduledJobsExecuteDueCommand extends Command
         $failed = 0;
 
         foreach ($jobs as $job) {
-            $result = $this->jobSchedulerService->executeJob($job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
+            $result = $this->jobSchedulerService->executeJob((int) $job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
             if ($result) {
                 $executed++;
                 continue;

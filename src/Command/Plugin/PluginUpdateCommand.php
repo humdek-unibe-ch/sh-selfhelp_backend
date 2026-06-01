@@ -50,7 +50,8 @@ final class PluginUpdateCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $path = (string) $input->getArgument('manifest');
+        $pathArg = $input->getArgument('manifest');
+        $path = is_string($pathArg) ? $pathArg : '';
         if (!is_file($path)) {
             $io->error(sprintf('Manifest file "%s" does not exist.', $path));
             return Command::FAILURE;
@@ -74,7 +75,7 @@ final class PluginUpdateCommand extends Command
                 'forceMajor' => $force,
                 'backupBefore' => $backupBefore,
             ]);
-            $operationId = (int) $result['id'];
+            $operationId = is_numeric($result['id'] ?? null) ? (int) $result['id'] : 0;
             $io->success(sprintf(
                 'Update operation requested. Operation id #%d, mode=%s — dispatched to the Messenger worker.',
                 $operationId,

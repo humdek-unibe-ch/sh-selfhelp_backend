@@ -47,7 +47,7 @@ class ConditionService
     /**
      * Evaluate a JSON Logic condition
      *
-     * @param array|string|null $condition JSON Logic condition array or JSON string
+     * @param array<array-key, mixed>|string|null $condition JSON Logic condition array or JSON string
      * @param int|null $userId User ID (optional, defaults to current user)
      * @param string $section Section name for error reporting
      * @param int|null $languageId Language ID of the current request — used so conditions
@@ -57,7 +57,7 @@ class ConditionService
      *                        Pass `null` (or omit) when there is no request-scoped
      *                        language (action runtime, scheduled jobs, CLI commands)
      *                        and the CMS-default language should be used instead.
-     * @return array Result with 'result' (bool) and optional 'fields' for errors
+     * @return array<string, mixed> Result with 'result' (bool) and optional 'fields' for errors
      */
     public function evaluateCondition(array|string|null $condition, ?int $userId = null, string $section = 'system', ?int $languageId = null): array
     {
@@ -113,7 +113,7 @@ class ConditionService
                     $decodeAttempts++;
                 }
 
-                if (!is_array($condition) && !is_object($condition)) {
+                if (!is_array($condition)) {
                     // Handle primitive JSON values that can be valid conditions
                     if (is_bool($condition)) {
                         // Boolean conditions: true = always pass, false = always fail
@@ -122,11 +122,6 @@ class ConditionService
                     // For other primitive types (string, number, null), treat as invalid
                     return ['result' => false, 'fields' => "Condition must be a JSON object/array in section '{$section}' (got primitive type '" . gettype($condition) . "' with value: " . json_encode($condition) . ", original: {$originalString})"];
                 }
-            }
-
-            // Ensure condition is an array for processing (JsonLogic can handle both)
-            if (is_object($condition)) {
-                $condition = (array) $condition;
             }
 
             // Extract variables referenced by the condition. Used for debug output;
@@ -165,7 +160,7 @@ class ConditionService
      * Extract all variable names referenced in a condition
      *
      * @param mixed $condition The condition to analyze (array expected)
-     * @return array Array of variable names used in the condition
+     * @return array<int, string> Array of variable names used in the condition
      */
     private function extractVariablesFromCondition($condition): array
     {
@@ -185,7 +180,7 @@ class ConditionService
      * Recursively extract variable names from condition
      *
      * @param mixed $condition The condition element to process
-     * @param array &$variables Reference to array that collects variable names
+     * @param list<string> $variables Reference to array that collects variable names
      */
     private function extractVariablesRecursive($condition, array &$variables): void
     {
@@ -241,7 +236,7 @@ class ConditionService
      * Detect literal values in a condition for debugging purposes
      *
      * @param mixed $condition The condition to analyze
-     * @return array Array of literal values found in the condition
+     * @return array<int, string> Array of literal values found in the condition
      */
     private function detectLiteralValuesInCondition($condition): array
     {
@@ -263,7 +258,7 @@ class ConditionService
     /**
      * Fix JsonLogic operators that have parameter order differences with React Query Builder
      *
-     * @param array $condition The condition array to fix
+     * @param array<array-key, mixed> $condition The condition array to fix
      * @return mixed The fixed condition (array or literal value)
      */
     private function fixOperatorParameters(array $condition): mixed
@@ -331,7 +326,7 @@ class ConditionService
      *
      * @param int|null $userId User ID (null for anonymous visitors on open-access pages)
      * @param int $languageId Language of the current request; used for the `language` system variable.
-     * @return array Associative array of variable names to values
+     * @return array<string, mixed> Associative array of variable names to values
      */
     private function getConditionVariables(?int $userId, int $languageId = 1): array
     {
@@ -354,7 +349,7 @@ class ConditionService
      * `APP_DEBUG=1`.
      *
      * @param array{result: bool, fields?: mixed, debug?: array<string, mixed>} $conditionResult
-     * @param array|string|null $rawCondition The original condition value off the section
+     * @param array<array-key, mixed>|string|null $rawCondition The original condition value off the section
      * @return array{result: bool, error: mixed, variables: array<string, mixed>, condition_object: mixed}
      */
     public function buildConditionDebug(array $conditionResult, array|string|null $rawCondition): array
@@ -368,10 +363,15 @@ class ConditionService
             }
         }
 
+        // The debug variable set always originates from VariableResolverService::getAllVariables(),
+        // a string-keyed map; the cast keeps the declared return shape precise.
+        /** @var array<string, mixed> $variables */
+        $variables = $conditionResult['debug']['variables'] ?? [];
+
         return [
             'result' => $conditionResult['result'],
             'error' => $conditionResult['fields'] ?? [],
-            'variables' => $conditionResult['debug']['variables'] ?? [],
+            'variables' => $variables,
             'condition_object' => $conditionObject,
         ];
     }

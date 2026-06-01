@@ -31,13 +31,16 @@ class LookupRepository extends ServiceEntityRepository
      */
     public function findByTypeAndValue(string $typeCode, string $lookupValue): ?Lookup
     {
-        return $this->createQueryBuilder('l')
+        /** @var Lookup|null $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.typeCode = :typeCode')
             ->andWhere('l.lookupValue = :lookupValue')
             ->setParameter('typeCode', $typeCode)
             ->setParameter('lookupValue', $lookupValue)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
@@ -58,11 +61,14 @@ class LookupRepository extends ServiceEntityRepository
      */
     public function getLookups(string $typeCode): array
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<Lookup> $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.typeCode = :typeCode')
             ->setParameter('typeCode', $typeCode)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -87,6 +93,7 @@ class LookupRepository extends ServiceEntityRepository
      */
     public function getLookupIdByCode(string $typeCode, string $lookupCode): ?int
     {
+        /** @var Lookup|null $lookup */
         $lookup = $this->createQueryBuilder('l')
             ->where('l.typeCode = :typeCode')
             ->andWhere('l.lookupCode = :lookupCode')
@@ -99,11 +106,16 @@ class LookupRepository extends ServiceEntityRepository
 
     /**
      * Get all lookups
+     *
+     * @return list<Lookup>
      */
     public function getAllLookups(): array
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<Lookup> $result */
+        $result = $this->createQueryBuilder('l')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }

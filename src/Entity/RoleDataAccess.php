@@ -31,6 +31,12 @@ class RoleDataAccess
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
+    // Scalar mirrors of the id_roles / id_resource_types FKs (also mapped
+    // via the ManyToOne associations below). Kept because the getters and
+    // RoleDataAccessRepository DQL read/filter them by field name (e.g.
+    // `rda.idRoles`, `rda.idResourceTypes`). Doctrine hydrates them, so
+    // they read as "never written" to PHPStan — see the documented
+    // property.onlyRead ignore in phpstan.dist.neon.
     #[ORM\Column(name: 'id_roles', type: Types::INTEGER)]
     private int $idRoles;
 
@@ -202,6 +208,8 @@ class RoleDataAccess
 
     /**
      * Get permissions as array of bit flags
+     *
+     * @return list<int>
      */
     public function getPermissionsArray(): array
     {

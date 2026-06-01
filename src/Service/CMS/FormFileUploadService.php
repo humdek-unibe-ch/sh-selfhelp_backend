@@ -10,11 +10,6 @@ namespace App\Service\CMS;
 
 use App\Exception\ServiceException;
 use App\Service\Core\BaseService;
-use App\Service\Core\LookupService;
-use App\Service\Core\TransactionService;
-use App\Service\Auth\UserContextService;
-use App\Service\Cache\Core\CacheService;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -40,10 +35,6 @@ class FormFileUploadService extends BaseService
     private const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total per form submission
 
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly TransactionService $transactionService,
-        private readonly UserContextService $userContextService,
-        private readonly CacheService $cache,
         private readonly string $projectDir
     ) {
     }
@@ -51,10 +42,10 @@ class FormFileUploadService extends BaseService
     /**
      * Process uploaded files from form data
      *
-     * @param array $uploadedFiles Array of UploadedFile objects keyed by field name
+     * @param array<string, mixed> $uploadedFiles Array of UploadedFile objects keyed by field name
      * @param int $userId The user ID
      * @param int $sectionId The section ID
-     * @return array Array with processed file data keyed by field name
+     * @return array<string, mixed> Array with processed file data keyed by field name
      * @throws ServiceException
      */
     public function processUploadedFiles(array $uploadedFiles, int $userId, int $sectionId): array
@@ -276,9 +267,9 @@ class FormFileUploadService extends BaseService
     private function sanitizeFieldName(string $fieldName): string
     {
         // Replace non-alphanumeric characters with underscores
-        $sanitized = preg_replace('/[^a-zA-Z0-9\-_]/', '_', $fieldName);
+        $sanitized = preg_replace('/[^a-zA-Z0-9\-_]/', '_', $fieldName) ?? '';
         // Remove multiple consecutive underscores
-        $sanitized = preg_replace('/_+/', '_', $sanitized);
+        $sanitized = preg_replace('/_+/', '_', $sanitized) ?? '';
         // Remove leading/trailing underscores
         return trim($sanitized, '_');
     }
@@ -286,7 +277,7 @@ class FormFileUploadService extends BaseService
     /**
      * Delete files associated with a record
      *
-     * @param array $fileData Array of file paths or arrays of file paths
+     * @param array<array-key, mixed> $fileData Array of file paths or arrays of file paths
      * @throws ServiceException
      */
     public function deleteFiles(array $fileData): void
@@ -313,8 +304,8 @@ class FormFileUploadService extends BaseService
     /**
      * Extract file data from form data for cleanup
      *
-     * @param array $formData The form data containing file information
-     * @return array Array of file paths keyed by field name
+     * @param array<string, mixed> $formData The form data containing file information
+     * @return array<string, mixed> Array of file paths keyed by field name
      */
     public function extractFileData(array $formData): array
     {

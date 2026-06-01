@@ -27,7 +27,7 @@ class ApiExceptionListener
     ) {}
     
     #[AsEventListener]
-    public function onKernelException(ExceptionEvent $event)
+    public function onKernelException(ExceptionEvent $event): void
     {
         $request = $event->getRequest();
         // Check if it's an API route (adjust as needed)
@@ -83,8 +83,8 @@ class ApiExceptionListener
     /**
      * Extract missing fields from validation errors
      *
-     * @param array $validationErrors The validation errors
-     * @return array The missing fields
+     * @param list<string> $validationErrors The validation errors
+     * @return list<string> The missing fields
      */
     private function extractMissingFields(array $validationErrors): array
     {

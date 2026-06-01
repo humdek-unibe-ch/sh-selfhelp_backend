@@ -58,7 +58,8 @@ final class PluginCancelOperationCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $opId = (int) $input->getArgument('operationId');
+        $opIdRaw = $input->getArgument('operationId');
+        $opId = is_numeric($opIdRaw) ? (int) $opIdRaw : 0;
         try {
             $result = $this->adminService->cancelOperation($opId);
         } catch (ServiceException $e) {
@@ -66,9 +67,9 @@ final class PluginCancelOperationCommand extends Command
             return Command::FAILURE;
         }
 
-        $status = (string) ($result['status'] ?? 'unknown');
-        $pluginId = (string) ($result['pluginId'] ?? '');
-        $type = (string) ($result['type'] ?? '');
+        $status = $result['status'];
+        $pluginId = $result['pluginId'];
+        $type = $result['type'];
         if ($status !== 'cancelled') {
             $io->warning(sprintf(
                 'Operation #%d (%s/%s) was not cancellable; current status is "%s".',

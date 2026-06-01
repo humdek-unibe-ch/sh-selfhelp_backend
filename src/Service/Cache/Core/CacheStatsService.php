@@ -30,7 +30,7 @@ class CacheStatsService extends CacheService
 
     public function __construct(
         private readonly TagAwareCacheInterface $cache,
-        private readonly ?LoggerInterface $logger = null
+        ?LoggerInterface $logger = null
     ) {
         parent::__construct($cache, $logger);
     }
@@ -42,7 +42,7 @@ class CacheStatsService extends CacheService
      * during cache operations. Useful for monitoring cache performance.
      * 
      * @param string|null $category Specific category to get stats for, or null for all categories
-     * @return array Statistics data structure following cache_stats.json schema format
+     * @return array<string, mixed> Statistics data structure following cache_stats.json schema format
      */
     public function getStats(?string $category = null): array
     {
@@ -77,6 +77,8 @@ class CacheStatsService extends CacheService
 
     /**
      * Get raw category statistics (internal format)
+     *
+     * @return array<string, array<string, int>>
      */
     public function getRawCategoryStats(): array
     {
@@ -89,6 +91,8 @@ class CacheStatsService extends CacheService
 
     /**
      * Get top performing categories by hit rate
+     *
+     * @return array<string, array<string, float|int|string>>
      */
     public function getTopPerformingCategories(int $limit = 5): array
     {
@@ -105,6 +109,8 @@ class CacheStatsService extends CacheService
 
     /**
      * Get statistics for a specific category
+     *
+     * @return array<string, float|int|string>
      */
     public function getCategoryStatistics(string $category): array
     {
@@ -138,6 +144,8 @@ class CacheStatsService extends CacheService
 
     /**
      * Get cache health status with recommendations
+     *
+     * @return array<string, mixed>
      */
     public function getCacheHealth(): array
     {
@@ -200,6 +208,9 @@ class CacheStatsService extends CacheService
 
     // Private helper methods
 
+    /**
+     * @return array<string, int>
+     */
     private function readStatsBucket(string $category): array
     {
         return [
@@ -212,6 +223,9 @@ class CacheStatsService extends CacheService
 
     /**
      * Format category statistics
+     *
+     * @param array<string, array<string, int>> $categoryStats
+     * @return array<string, array<string, float|int|string>>
      */
     private function formatCategoryStats(array $categoryStats): array
     {
@@ -234,6 +248,8 @@ class CacheStatsService extends CacheService
 
     /**
      * Calculate the hit rate for a category
+     *
+     * @param array<string, int> $stats
      */
     private function calculateHitRate(array $stats): float
     {
@@ -243,6 +259,9 @@ class CacheStatsService extends CacheService
 
     /**
      * Calculate global statistics from all category statistics
+     *
+     * @param array<string, array<string, int>> $categoryStats
+     * @return array<string, float|int>
      */
     private function calculateGlobalStatsFromCategories(array $categoryStats): array
     {
@@ -272,6 +291,9 @@ class CacheStatsService extends CacheService
 
     /**
      * Calculate the global statistics (for compatibility with getCacheHealth)
+     *
+     * @param array<string, array<string, int>> $allStats
+     * @return array<string, float|int|string>
      */
     private function calculateGlobalStats(array $allStats): array
     {

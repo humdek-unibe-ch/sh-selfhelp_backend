@@ -65,7 +65,12 @@ final class PluginManifestValidator
         $errors = [];
         if (!$validator->isValid()) {
             foreach ($validator->getErrors() as $err) {
-                $errors[] = sprintf('[%s] %s', $err['property'] ?: '(root)', $err['message']);
+                if (!is_array($err)) {
+                    continue;
+                }
+                $property = is_scalar($err['property'] ?? null) ? (string) $err['property'] : '';
+                $message = is_scalar($err['message'] ?? null) ? (string) $err['message'] : '';
+                $errors[] = sprintf('[%s] %s', $property !== '' ? $property : '(root)', $message);
             }
         }
 
@@ -81,17 +86,19 @@ final class PluginManifestValidator
     private function validateCrossField(array $data): array
     {
         $errors = [];
-        $capabilities = $data['security']['capabilities'] ?? [];
-        $trustLevel = $data['security']['trustLevel'] ?? null;
+        $security = is_array($data['security'] ?? null) ? $data['security'] : [];
+        $capabilities = is_array($security['capabilities'] ?? null) ? $security['capabilities'] : [];
+        $trustLevel = $security['trustLevel'] ?? null;
 
         if (isset($data['backend'])) {
+            $backend = is_array($data['backend']) ? $data['backend'] : [];
             if (!in_array('backendBundle', $capabilities, true)) {
                 $errors[] = '[security.capabilities] must include "backendBundle" when `backend` is declared.';
             }
             if ($trustLevel === 'untrusted') {
                 $errors[] = '[backend] trust level "untrusted" forbids shipping a backend bundle.';
             }
-            if (isset($data['backend']['migrationsNamespace'])
+            if (isset($backend['migrationsNamespace'])
                 && !in_array('databaseMigrations', $capabilities, true)
             ) {
                 $errors[] = '[security.capabilities] must include "databaseMigrations" when `backend.migrationsNamespace` is declared.';

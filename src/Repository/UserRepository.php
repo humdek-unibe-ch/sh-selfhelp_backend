@@ -66,7 +66,7 @@ class UserRepository extends ServiceEntityRepository
      * @param string|null $search
      * @param string|null $sort
      * @param string $sortDirection
-     * @return array
+     * @return array<string, mixed>
      */
     public function findUsersWithPagination(
         int $page = 1,
@@ -93,7 +93,7 @@ class UserRepository extends ServiceEntityRepository
 
         // Get total count
         $countQb = clone $qb;
-        $totalCount = $countQb->select('COUNT(u.id)')->getQuery()->getSingleScalarResult();
+        $totalCount = (int) $countQb->select('COUNT(u.id)')->getQuery()->getSingleScalarResult();
 
         // Apply pagination
         $offset = ($page - 1) * $pageSize;
@@ -118,13 +118,16 @@ class UserRepository extends ServiceEntityRepository
      */
     public function findByGroup(int $groupId): array
     {
-        return $this->createQueryBuilder('u')
+        /** @var list<User> $result */
+        $result = $this->createQueryBuilder('u')
             ->innerJoin('u.usersGroups', 'ug')
             ->innerJoin('ug.group', 'g')
             ->where('g.id = :groupId')
             ->setParameter('groupId', $groupId)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -135,12 +138,15 @@ class UserRepository extends ServiceEntityRepository
      */
     public function findByRole(int $roleId): array
     {
-        return $this->createQueryBuilder('u')
+        /** @var list<User> $result */
+        $result = $this->createQueryBuilder('u')
             ->innerJoin('u.roles', 'r')
             ->where('r.id = :roleId')
             ->setParameter('roleId', $roleId)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -150,7 +156,7 @@ class UserRepository extends ServiceEntityRepository
      */
     public function countActiveUsers(): int
     {
-        return $this->createActiveUsersQueryBuilder()
+        return (int) $this->createActiveUsersQueryBuilder()
             ->select('COUNT(u.id)')
             ->getQuery()
             ->getSingleScalarResult();
@@ -173,7 +179,10 @@ class UserRepository extends ServiceEntityRepository
             $qb->where('vc.consumed IS NULL');
         }
 
-        return $qb->getQuery()->getResult();
+        /** @var list<User> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
 
     /**
@@ -209,10 +218,11 @@ class UserRepository extends ServiceEntityRepository
      * Get all user's group names
      *
      * @param int $userId
-     * @return array
+     * @return list<string>
      */
     public function getUserGroupNames(int $userId): array
     {
+        /** @var list<array{name: string}> $results */
         $results = $this->createQueryBuilder('u')
             ->select('g.name')
             ->innerJoin('u.usersGroups', 'ug')
@@ -227,6 +237,7 @@ class UserRepository extends ServiceEntityRepository
     }
 
     /**
+     * @param list<string> $groupNames
      * @return int[]
      *   Active, non-intern user ids that belong to one of the given group names.
      */
@@ -236,6 +247,7 @@ class UserRepository extends ServiceEntityRepository
             return [];
         }
 
+        /** @var list<array{id: int|string}> $results */
         $results = $this->createQueryBuilder('u')
             ->select('DISTINCT u.id AS id')
             ->innerJoin('u.usersGroups', 'ug')
@@ -264,6 +276,7 @@ class UserRepository extends ServiceEntityRepository
      */
     public function findIdByValidationCode(string $code): ?int
     {
+        /** @var array{id: int|string}|null $result */
         $result = $this->createQueryBuilder('u')
             ->select('u.id AS id')
             ->innerJoin('u.validationCodes', 'vc')

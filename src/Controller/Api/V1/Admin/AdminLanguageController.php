@@ -60,7 +60,7 @@ class AdminLanguageController extends AbstractController
     public function createLanguage(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
-        $language = $this->languageService->createLanguage($data);
+        $language = $this->languageService->createLanguage($this->toAssocArray($data));
         return $this->apiResponseFormatter->formatSuccess($language);
     }
 
@@ -74,7 +74,7 @@ class AdminLanguageController extends AbstractController
     public function updateLanguage(int $id, Request $request): JsonResponse
     {
         $data = json_decode($request->getContent(), true);
-        $language = $this->languageService->updateLanguage($id, $data);
+        $language = $this->languageService->updateLanguage($id, $this->toAssocArray($data));
         return $this->apiResponseFormatter->formatSuccess($language, 'responses/languages/language');
     }
 
