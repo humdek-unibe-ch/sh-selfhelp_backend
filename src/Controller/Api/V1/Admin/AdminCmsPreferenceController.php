@@ -11,7 +11,6 @@ namespace App\Controller\Api\V1\Admin;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Service\CMS\Admin\AdminCmsPreferenceService;
 use App\Service\Core\ApiResponseFormatter;
-use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -28,8 +27,7 @@ class AdminCmsPreferenceController extends AbstractController
 
     public function __construct(
         private readonly AdminCmsPreferenceService $adminCmsPreferenceService,
-        private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly ApiResponseFormatter $responseFormatter
     ) {
     }
 

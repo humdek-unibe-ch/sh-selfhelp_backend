@@ -11,7 +11,6 @@ use App\Entity\DataAccessAudit;
 use App\Entity\Group;
 use App\Entity\User;
 use App\Entity\UsersGroup;
-use App\Repository\DataAccessAuditRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
@@ -35,7 +34,6 @@ class DataAccessSecurityService
     public const PERMISSION_DELETE = 8;  // 1000
 
     public function __construct(
-        private DataAccessAuditRepository $auditRepository,
         private RoleDataAccessRepository $roleDataAccessRepository,
         private UserRepository $userRepository,
         private LookupService $lookupService,
@@ -69,6 +67,14 @@ class DataAccessSecurityService
             return true;
         }
 
+        return $this->hasStoredPermission($userId, $resourceType, $resourceId, $requiredPermission);
+    }
+
+    /**
+     * Check permissions only through role_data_access, without role-name overrides.
+     */
+    public function hasStoredPermission(int $userId, string $resourceType, int $resourceId, int $requiredPermission): bool
+    {
         // Get resource type ID
         $resourceTypeId = $this->lookupService->getLookupIdByCode(LookupService::RESOURCE_TYPES, $resourceType);
 
@@ -103,7 +109,7 @@ class DataAccessSecurityService
      * Log permission check to audit table
      * Uses its own transaction to ensure audit logs are committed even if main operations fail
      */
-    private function auditLog(?int $userId, string $resourceType, int $resourceId, string $action, string $result, ?int $permission, string $notes = null): void
+    private function auditLog(?int $userId, string $resourceType, int $resourceId, string $action, string $result, ?int $permission, ?string $notes = null): void
     {
         // Skip audit logging if no user ID (not authenticated)
         if ($userId === null) {
@@ -129,6 +135,7 @@ class DataAccessSecurityService
 
             // Set user entity reference
             $user = $this->entityManager->getReference(User::class, $userId);
+            assert($user instanceof User);
             $audit->setUser($user);
 
             // Set lookup relationships
@@ -229,7 +236,7 @@ class DataAccessSecurityService
         // since their permissions depend on role permissions
         $usersWithRole = $this->userRepository->findByRole($roleId);
         foreach ($usersWithRole as $user) {
-            $this->invalidateUserPermissions($user->getId());
+            $this->invalidateUserPermissions((int) $user->getId());
         }
     }
 

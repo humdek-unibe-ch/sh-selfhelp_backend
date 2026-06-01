@@ -27,7 +27,7 @@ class SectionRepository extends ServiceEntityRepository
      * Fetch hierarchical sections for a page using a stored procedure.
      *
      * @param int $pageId
-     * @return array
+     * @return list<array<string, mixed>>
      */
     public function fetchSectionsHierarchicalByPageId(int $pageId): array
     {
@@ -48,7 +48,7 @@ class SectionRepository extends ServiceEntityRepository
      * Get all section IDs for a given page
      *
      * @param int $pageId
-     * @return array Array of section IDs
+     * @return list<int|string> Array of section IDs
      */
     public function getSectionIdsForPage(int $pageId): array
     {
@@ -59,6 +59,7 @@ class SectionRepository extends ServiceEntityRepository
         $stmt = $conn->prepare($sql);
         $stmt->bindValue('page_id', $pageId, \Doctrine\DBAL\ParameterType::INTEGER);
         $result = $stmt->executeQuery();
+        /** @var list<array{id: int|string}> $rows */
         $rows = $result->fetchAllAssociative();
 
         return array_column($rows, 'id');

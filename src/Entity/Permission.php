@@ -17,6 +17,7 @@ use Doctrine\DBAL\Types\Types;
 #[ORM\Entity]
 #[ORM\Table(name: 'permissions')]
 #[ORM\UniqueConstraint(name: 'uq_permissions_name', columns: ['name'])]
+#[ORM\Index(name: 'idx_permissions_id_plugins', columns: ['id_plugins'])]
 class Permission
 {
     #[ORM\Id]
@@ -30,6 +31,16 @@ class Permission
     #[ORM\Column(name: 'description', type: Types::STRING, length: 255, nullable: true)]
     private ?string $description = null;
 
+    /**
+     * Plugin that owns this permission row. NULL = core-owned.
+     * On purge, the plugin manager deletes only rows whose
+     * `id_plugins` matches the plugin being purged.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
+
+    /** @var Collection<int, Role> */
     #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'permissions')]
     #[ORM\JoinTable(name: 'rel_permissions_roles',
         joinColumns: [new ORM\JoinColumn(name: 'id_permissions', referencedColumnName: 'id', onDelete: 'CASCADE')],
@@ -37,6 +48,7 @@ class Permission
     )]
     private Collection $roles;
     
+    /** @var Collection<int, ApiRoute> */
     #[ORM\ManyToMany(targetEntity: ApiRoute::class, mappedBy: 'permissions')]
     private Collection $apiRoutes;
 
@@ -85,6 +97,17 @@ class Permission
     public function setDescription(?string $description): self
     {
         $this->description = $description;
+        return $this;
+    }
+
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): self
+    {
+        $this->plugin = $plugin;
         return $this;
     }
 

@@ -35,14 +35,16 @@ class JsonNormalizer
     {
         // Convert to array if it's an object
         if (is_object($data)) {
-            $data = json_decode(json_encode($data), true);
+            $data = json_decode((string) json_encode($data), true);
         }
 
         // Sort the data structure recursively
         $sorted = self::sortRecursive($data);
 
         // Encode with consistent options
-        return json_encode($sorted, $options);
+        $json = json_encode($sorted, $options);
+
+        return $json !== false ? $json : '';
     }
 
     /**
@@ -55,7 +57,7 @@ class JsonNormalizer
     {
         // Convert to array if it's an object
         if (is_object($data)) {
-            $data = json_decode(json_encode($data), true);
+            $data = json_decode((string) json_encode($data), true);
         }
 
         // Sort the data structure recursively
@@ -95,7 +97,7 @@ class JsonNormalizer
     /**
      * Check if an array is associative
      * 
-     * @param array $arr The array to check
+     * @param array<array-key, mixed> $arr The array to check
      * @return bool True if associative, false if indexed
      */
     private static function isAssociativeArray(array $arr): bool
@@ -117,7 +119,7 @@ class JsonNormalizer
      * 
      * @param mixed $data1 First data structure
      * @param mixed $data2 Second data structure
-     * @return array Summary of differences
+     * @return array{are_equal: bool, changes: list<array<string, mixed>>} Summary of differences
      */
     public static function getDifferenceSummary($data1, $data2): array
     {
@@ -136,7 +138,7 @@ class JsonNormalizer
      * @param mixed $data1 First structure
      * @param mixed $data2 Second structure
      * @param string $path Current path in structure
-     * @return array List of changes
+     * @return list<array<string, mixed>> List of changes
      */
     private static function findChanges($data1, $data2, string $path = ''): array
     {

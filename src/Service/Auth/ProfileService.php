@@ -10,7 +10,6 @@ namespace App\Service\Auth;
 
 use App\Entity\Lookup;
 use App\Entity\User;
-use App\Repository\UserRepository;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -24,7 +23,6 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 class ProfileService extends BaseService
 {
     public function __construct(
-        private readonly UserRepository $userRepository,
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
@@ -64,11 +62,11 @@ class ProfileService extends BaseService
                     'old_name' => $oldName,
                     'new_name' => $newName,
                     'user_email' => $managedUser->getEmail()
-                ])
+                ]) ?: null
             );
 
             // Invalidate user caches
-            $this->invalidateUserCaches($managedUser->getId());
+            $this->invalidateUserCaches((int) $managedUser->getId());
 
             return $managedUser;
         });
@@ -127,11 +125,11 @@ class ProfileService extends BaseService
                     'new_timezone_code' => $timezone->getLookupCode(),
                     'new_timezone_value' => $timezone->getLookupValue(),
                     'user_email' => $managedUser->getEmail()
-                ])
+                ]) ?: null
             );
 
             // Invalidate user caches
-            $this->invalidateUserCaches($managedUser->getId());
+            $this->invalidateUserCaches((int) $managedUser->getId());
 
             return $managedUser;
         });
@@ -151,8 +149,6 @@ class ProfileService extends BaseService
         if (!$this->passwordHasher->isPasswordValid($user, $currentPassword)) {
             throw new \InvalidArgumentException('Current password is incorrect');
         }
-
-        // $this->validatePasswordStrength($newPassword);
 
         $this->executeInTransaction(function () use ($user, $newPassword) {
             // Fetch fresh managed entity to ensure proper change tracking
@@ -177,11 +173,11 @@ class ProfileService extends BaseService
                     'action' => 'password_changed',
                     'user_email' => $managedUser->getEmail(),
                     'user_name' => $managedUser->getUserName()
-                ])
+                ]) ?: null
             );
 
             // Invalidate user caches
-            $this->invalidateUserCaches($managedUser->getId());
+            $this->invalidateUserCaches((int) $managedUser->getId());
         });
     }
 
@@ -195,11 +191,11 @@ class ProfileService extends BaseService
     public function deleteAccount(User $user, string $emailConfirmation): void
     {
         // Verify email confirmation matches user's email
-        if (strtolower(trim($emailConfirmation)) !== strtolower(trim($user->getEmail()))) {
+        if (strtolower(trim($emailConfirmation)) !== strtolower(trim($user->getEmail() ?? ''))) {
             throw new \InvalidArgumentException('Email confirmation does not match your account email');
         }
 
-        $this->executeInTransaction(function () use ($user, $emailConfirmation) {
+        $this->executeInTransaction(function () use ($user) {
             // Fetch fresh managed entity to ensure proper change tracking
             $managedUser = $this->entityManager->find(User::class, $user->getId());
             if (!$managedUser) {
@@ -207,7 +203,7 @@ class ProfileService extends BaseService
             }
 
             // Prevent deletion of system users
-            if (in_array(strtolower($managedUser->getName()), ['admin', 'tpf'])) {
+            if (in_array(strtolower($managedUser->getName() ?? ''), ['admin', 'tpf'])) {
                 throw new \InvalidArgumentException('Cannot delete system accounts');
             }
 
@@ -223,11 +219,11 @@ class ProfileService extends BaseService
                     'user_email' => $managedUser->getEmail(),
                     'user_name' => $managedUser->getUserName(),
                     'deleted_at' => date('Y-m-d H:i:s')
-                ])
+                ]) ?: null
             );
 
             // Get user ID before deletion for cache invalidation
-            $userId = $managedUser->getId();
+            $userId = (int) $managedUser->getId();
 
             // Delete the user (cascade will handle related entities)
             $this->entityManager->remove($managedUser);
@@ -240,51 +236,12 @@ class ProfileService extends BaseService
 
 
     /**
-     * Validate password strength
-     *
-     * @param string $password The password to validate
-     * @throws \InvalidArgumentException If password is too weak
-     */
-    private function validatePasswordStrength(string $password): void
-    {
-        // Check minimum length
-        if (strlen($password) < 8) {
-            throw new \InvalidArgumentException('Password must be at least 8 characters long');
-        }
-
-        // Check maximum length
-        if (strlen($password) > 255) {
-            throw new \InvalidArgumentException('Password cannot be longer than 255 characters');
-        }
-
-        // Check for at least one uppercase letter
-        if (!preg_match('/[A-Z]/', $password)) {
-            throw new \InvalidArgumentException('Password must contain at least one uppercase letter');
-        }
-
-        // Check for at least one lowercase letter
-        if (!preg_match('/[a-z]/', $password)) {
-            throw new \InvalidArgumentException('Password must contain at least one lowercase letter');
-        }
-
-        // Check for at least one number
-        if (!preg_match('/[0-9]/', $password)) {
-            throw new \InvalidArgumentException('Password must contain at least one number');
-        }
-
-        // Check for common weak passwords
-        $weakPasswords = [
-            'password', '12345678', 'qwerty', 'abc123', 'password123',
-            'admin', 'letmein', 'welcome', 'monkey', 'dragon'
-        ];
-
-        if (in_array(strtolower($password), $weakPasswords)) {
-            throw new \InvalidArgumentException('This password is too common. Please choose a stronger password');
-        }
-    }
-
-    /**
      * Execute operation within a database transaction
+     */
+    /**
+     * @template T
+     * @param callable(): T $operation
+     * @return T
      */
     private function executeInTransaction(callable $operation): mixed
     {

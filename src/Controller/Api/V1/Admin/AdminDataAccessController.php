@@ -18,7 +18,6 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Validator\Constraints as Assert;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
  * Admin Data Access Controller
@@ -32,8 +31,7 @@ class AdminDataAccessController extends AbstractController
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly AdminDataAccessService $adminDataAccessService,
         private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly ValidatorInterface $validator
+        private readonly JsonSchemaValidationService $jsonSchemaValidationService
     ) {
     }
 
@@ -48,7 +46,8 @@ class AdminDataAccessController extends AbstractController
             // Group by role for better structure
             $grouped = [];
             foreach ($rolesWithPermissions as $row) {
-                $roleId = $row['role_id'];
+                $roleIdRaw = $row['role_id'];
+                $roleId = is_numeric($roleIdRaw) ? (int) $roleIdRaw : 0;
 
                 if (!isset($grouped[$roleId])) {
                     $grouped[$roleId] = [
@@ -90,6 +89,13 @@ class AdminDataAccessController extends AbstractController
         try {
             $data = json_decode($request->getContent(), false);
 
+            if (!$data instanceof \stdClass) {
+                return $this->responseFormatter->formatError(
+                    'Invalid request body',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
             // Validate request data using JSON schema
             $validationErrors = $this->jsonSchemaValidationService->validate(
                 $data,
@@ -104,7 +110,11 @@ class AdminDataAccessController extends AbstractController
             }
 
             // Use the bulk set functionality from the service
-            $result = $this->adminDataAccessService->setRolePermissions($roleId, $data->permissions);
+            $permissionsRaw = $data->permissions ?? null;
+            $permissions = is_array($permissionsRaw)
+                ? array_values(array_filter($permissionsRaw, static fn ($p): bool => $p instanceof \stdClass))
+                : [];
+            $result = $this->adminDataAccessService->setRolePermissions($roleId, $permissions);
 
             return $this->responseFormatter->formatSuccess(
                 [

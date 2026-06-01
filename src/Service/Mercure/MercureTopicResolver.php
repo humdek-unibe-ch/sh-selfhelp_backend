@@ -66,4 +66,23 @@ final class MercureTopicResolver
     {
         return rtrim($this->topicPrefix, '/') . '/users/' . $userId . '/impersonation';
     }
+
+    /**
+     * Admin plugin-manager state topic.
+     *
+     * Single topic published from {@see \App\EventListener\PluginStateMercurePublisher}
+     * whenever a plugin lifecycle event (`installed`, `enabled`,
+     * `disabled`, `updated`, `uninstalled`, `purged`) is dispatched, or
+     * a plugin operation transitions to a terminal status.
+     *
+     * Subscribers (admin UI) JWT-scoped to this topic invalidate their
+     * React Query cache for `['admin-plugins', ...]` keys. The host
+     * grants the subscription only to users with the
+     * `admin.plugins.manage` permission via
+     * {@see \App\EventListener\AdminPluginStateTopicGrant}.
+     */
+    public function pluginAdminStateTopic(): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/plugins/state';
+    }
 }

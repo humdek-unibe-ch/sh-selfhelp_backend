@@ -39,7 +39,7 @@ class Utils
         ]);
 
         $objectNormalizer = new ObjectNormalizer(null, null, null, null, null, null, [
-            ObjectNormalizer::CIRCULAR_REFERENCE_HANDLER => function ($object) {
+            ObjectNormalizer::CIRCULAR_REFERENCE_HANDLER => function (object $object) {
                 // For circular references, just return the ID if available
                 return method_exists($object, 'getId') ? ['id' => $object->getId()] : null;
             },

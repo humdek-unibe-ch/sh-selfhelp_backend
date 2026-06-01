@@ -11,14 +11,9 @@ namespace App\Service\CMS;
 use App\Exception\ServiceException;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\Core\BaseService;
-use App\Service\ACL\ACLService;
-use App\Service\Auth\UserContextService;
-use App\Service\Cache\Core\CacheService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
-use App\Repository\DataTableRepository;
 use App\Service\Core\UserContextAwareService;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 
@@ -30,14 +25,9 @@ class FormValidationService extends BaseService
     
 
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
-        private readonly DataTableRepository $dataTableRepository,
-        private readonly ACLService $aclService,
-        private readonly UserContextService $userContextService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly UserContextAwareService $userContextAwareService,
-        private readonly CacheService $cache
+        private readonly UserContextAwareService $userContextAwareService
     ) {
     }
 
@@ -46,8 +36,8 @@ class FormValidationService extends BaseService
      * 
      * @param int $pageId The page ID where form is submitted from
      * @param int $sectionId The section ID (form ID)
-     * @param array $formData The form data being submitted
-     * @return array Validation result with page and section info
+     * @param array<string, mixed> $formData The form data being submitted
+     * @return array<string, mixed> Validation result with page and section info
      * @throws ServiceException If validation fails
      */
     public function validateFormSubmission(int $pageId, int $sectionId, array $formData): array
@@ -59,7 +49,7 @@ class FormValidationService extends BaseService
         }
 
         // Check if user has access to the page (use 'insert' permission for form submission)
-       $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'insert');
+       $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), 'insert');
 
         // Find the section
         $section = $this->sectionRepository->find($sectionId);
@@ -91,6 +81,8 @@ class FormValidationService extends BaseService
 
     /**
      * Validate delete request: ACL delete permission, section in page, and correct section type
+     *
+     * @return array<string, mixed>
      */
     public function validateFormDeletion(int $pageId, int $sectionId): array
     {
@@ -101,7 +93,7 @@ class FormValidationService extends BaseService
         }
 
         // Check delete permission on page
-       $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'delete');
+       $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), 'delete');
 
         // Find the section
         $section = $this->sectionRepository->find($sectionId);
@@ -143,7 +135,7 @@ class FormValidationService extends BaseService
         // Check if our section ID is in the results
         $sectionFound = false;
         foreach ($sections as $section) {
-            if ((int) $section['id'] === $sectionId) {
+            if ($this->asInt($section['id'] ?? null) === $sectionId) {
                 $sectionFound = true;
                 break;
             }
@@ -159,7 +151,7 @@ class FormValidationService extends BaseService
     /**
      * Validate form data structure
      * 
-     * @param array $formData The form data to validate
+     * @param array<array-key, mixed> $formData The form data to validate
      * @throws ServiceException If validation fails
      */
     private function validateFormData(array $formData): void
@@ -230,7 +222,7 @@ class FormValidationService extends BaseService
             }
 
             // Handle translation arrays (new feature)
-            if (is_array($fieldValue) && !empty($fieldValue) && isset($fieldValue[0]['language_id'])) {
+            if (is_array($fieldValue) && !empty($fieldValue) && is_array($fieldValue[0] ?? null) && isset($fieldValue[0]['language_id'])) {
                 // Validate translation array format
                 if (!$this->isValidTranslationArray($fieldValue)) {
                     throw new ServiceException(
@@ -296,12 +288,12 @@ class FormValidationService extends BaseService
     /**
      * Check if an array contains valid translation data
      *
-     * @param array $translationArray The array to validate
+     * @param array<array-key, mixed> $translationArray The array to validate
      * @return bool True if valid translation array
      */
     private function isValidTranslationArray(array $translationArray): bool
     {
-        if (!is_array($translationArray) || empty($translationArray)) {
+        if (empty($translationArray)) {
             return false;
         }
 
@@ -323,9 +315,9 @@ class FormValidationService extends BaseService
                 return false;
             }
 
-            // value can be string, number, boolean, or null
+            // value must be scalar (null values are already rejected by the isset check above)
             $value = $translation['value'];
-            if ($value !== null && !is_scalar($value)) {
+            if (!is_scalar($value)) {
                 return false;
             }
 
@@ -344,7 +336,7 @@ class FormValidationService extends BaseService
      * 
      * @param int $pageId The page ID
      * @param int $sectionId The section ID to validate
-     * @return array Validation result with page and section info
+     * @return array<string, mixed> Validation result with page and section info
      * @throws ServiceException If page is not accessible
      */
     public function validatePublicPageAccess(int $pageId, int $sectionId): array

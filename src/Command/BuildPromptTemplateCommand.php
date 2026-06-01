@@ -15,6 +15,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Offline snapshot dumper for the AI section-generation prompt.
@@ -47,7 +48,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class BuildPromptTemplateCommand extends Command
 {
     public function __construct(
-        private readonly PromptTemplateService $promptTemplateService
+        private readonly PromptTemplateService $promptTemplateService,
+        #[Autowire('%kernel.project_dir%')]
+        private readonly string $projectDir,
+        #[Autowire('%ai_prompt_template_dir%')]
+        private readonly string $promptTemplateDir
     ) {
         parent::__construct();
     }
@@ -68,8 +73,17 @@ class BuildPromptTemplateCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $io->title('Build AI Section-Generation Prompt Template');
 
-        $outputPath = $input->getOption('output')
-            ?: $this->promptTemplateService->resolveOutputPath();
+        $outputOpt = $input->getOption('output');
+        if (is_string($outputOpt) && $outputOpt !== '') {
+            $outputPath = $outputOpt;
+        } else {
+            // Default dir from the `ai_prompt_template_dir` container parameter,
+            // resolved against the project dir when relative (per services.yaml).
+            $dir = $this->promptTemplateDir;
+            $isAbsolute = str_starts_with($dir, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $dir) === 1;
+            $baseDir = $isAbsolute ? rtrim($dir, '/\\') : $this->projectDir . '/' . trim($dir, '/\\');
+            $outputPath = $baseDir . '/prompt_template.md';
+        }
 
         try {
             $finalText = $this->promptTemplateService->render();

@@ -32,40 +32,56 @@ class UserPermissionService
     /**
      * Get user permissions with caching
      * Uses optimized query to avoid N+1 issues
+     *
+     * @return list<string>
      */
     public function getUserPermissions(User $user): array
     {
+        $userId = $user->getId();
+        assert($userId !== null);
 
-        $cacheKey = 'user_permissions_' . $user->getId();
+        $cacheKey = 'user_permissions_' . $userId;
         $cacheBuilder = $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
 
         // Add entity scopes for each role
         foreach ($user->getUserRoles() as $role) {
-            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+            $roleId = $role->getId();
+            assert($roleId !== null);
+            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $roleId);
         }
 
-        return $cacheBuilder->getItem($cacheKey, function () use ($user) {
-            return $this->fetchUserPermissionsFromDatabase($user->getId());
+        /** @var list<string> $permissions */
+        $permissions = $cacheBuilder->getItem($cacheKey, function () use ($userId) {
+            return $this->fetchUserPermissionsFromDatabase($userId);
         });
+
+        return $permissions;
     }
 
     /**
      * Get route permissions with caching
      * Uses router to get permissions from route options (already cached by ApiRouteLoader)
+     *
+     * @return list<string>
      */
     public function getRoutePermissions(string $routeName): array
     {
-        return $this->cache
+        /** @var list<string> $permissions */
+        $permissions = $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->getItem("route_permissions_{$routeName}", function () use ($routeName) {
                 return $this->fetchRoutePermissionsFromRouter($routeName);
             });
+
+        return $permissions;
     }
 
     /**
      * Fetch user permissions from database
+     *
+     * @return list<string>
      */
     private function fetchUserPermissionsFromDatabase(int $userId): array
     {
@@ -83,11 +99,16 @@ class UserPermissionService
         $stmt->bindValue('userId', $userId);
         $result = $stmt->executeQuery();
 
-        return array_column($result->fetchAllAssociative(), 'name');
+        /** @var list<string> $names */
+        $names = array_column($result->fetchAllAssociative(), 'name');
+
+        return $names;
     }
 
     /**
      * Fetch route permissions from router
+     *
+     * @return list<string>
      */
     private function fetchRoutePermissionsFromRouter(string $routeName): array
     {
@@ -99,6 +120,9 @@ class UserPermissionService
         }
 
         // Get permissions from route options
-        return $route->getOption('permissions') ?? [];
+        /** @var list<string> $permissions */
+        $permissions = $route->getOption('permissions') ?? [];
+
+        return $permissions;
     }
 }

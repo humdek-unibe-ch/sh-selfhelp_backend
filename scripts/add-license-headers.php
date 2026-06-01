@@ -72,7 +72,7 @@ $block = implode("\n", $blockLines);
 // often contain hand-written .php files we want to license too.
 $includeDirs = ['src', 'tests', 'public', 'config', 'migrations', 'scripts'];
 // Path fragments that disqualify a file (anywhere in its absolute path).
-$excludeFragments = ['/vendor/', '/var/', '/node_modules/', '/.git/', '/cache/', '/.phpunit.cache/'];
+$excludeFragments = ['/vendor/', '/var/', '/node_modules/', '/.git/', '/cache/', '/.phpunit.cache/', '/reference.php'];
 
 // ---- collect files ----
 $files = [];

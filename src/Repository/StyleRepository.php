@@ -24,7 +24,7 @@ class StyleRepository extends ServiceEntityRepository
     /**
      * Get all styles grouped by their style groups
      *
-     * @return array Returns an array of styles grouped by style group
+     * @return list<array<string, mixed>> Returns an array of styles grouped by style group
      */
     public function findAllStylesGroupedByGroup(): array
     {
@@ -43,6 +43,7 @@ class StyleRepository extends ServiceEntityRepository
             ->orderBy('sg.position', 'ASC')
             ->addOrderBy('s.name', 'ASC');
 
+        /** @var list<array{style_id: int, style_name: mixed, style_description: mixed, can_have_children: mixed, style_group_id: int, style_group: mixed, style_group_description: mixed, style_group_position: mixed}> $styles */
         $styles = $qb->getQuery()->getArrayResult();
 
         // Get relationship information for all styles
@@ -84,7 +85,7 @@ class StyleRepository extends ServiceEntityRepository
     /**
      * Get relationship information for all styles
      *
-     * @return array Returns array with allowedChildren and allowedParents for each style
+     * @return array{allowedChildren: array<int|string, mixed>, allowedParents: array<int|string, mixed>} Returns array with allowedChildren and allowedParents for each style
      */
     private function getStylesRelationshipInfo(): array
     {
@@ -92,6 +93,7 @@ class StyleRepository extends ServiceEntityRepository
         $stylesAllowedRelationshipRepository = $entityManager->getRepository(\App\Entity\StylesAllowedRelationship::class);
 
         // Get all style IDs to query relationships for
+        /** @var list<int> $styleIds */
         $styleIds = $this->createQueryBuilder('s')
             ->select('s.id')
             ->getQuery()
@@ -121,6 +123,8 @@ class StyleRepository extends ServiceEntityRepository
 
     /**
      * Get all allowed children for a specific style
+     *
+     * @return list<array<string, mixed>>
      */
     public function getAllowedChildrenForStyle(Style $parentStyle): array
     {
@@ -132,6 +136,8 @@ class StyleRepository extends ServiceEntityRepository
 
     /**
      * Get all allowed parents for a specific style
+     *
+     * @return list<array<string, mixed>>
      */
     public function getAllowedParentsForStyle(Style $childStyle): array
     {
@@ -204,6 +210,7 @@ class StyleRepository extends ServiceEntityRepository
             LEFT JOIN field_types ft ON ft.id = f.id_field_types
             ORDER BY s.name ASC, f.name ASC
         ')->fetchAllAssociative();
+        /** @var list<array{style_id: int|string, style_name: string, style_description: string|null, can_have_children: int|string, style_group: string, field_id: int|string|null, field_name: string|null, field_display: int|string|null, field_config: string|null, field_type: string|null, default_value: string|null, help: string|null, title: string|null, disabled: int|string|null, hidden: int|string|null}> $rows */
 
         // Group into styleName => { ...meta, fields: { fieldName => fieldMeta } }
         $schema = [];
@@ -246,6 +253,7 @@ class StyleRepository extends ServiceEntityRepository
             INNER JOIN styles parent ON parent.id = sar.id_parent_style
             INNER JOIN styles child  ON child.id  = sar.id_child_style
         ')->fetchAllAssociative();
+        /** @var list<array{parent_name: string, child_name: string}> $relRows */
 
         foreach ($relRows as $rel) {
             $parentName = $rel['parent_name'];
@@ -266,9 +274,13 @@ class StyleRepository extends ServiceEntityRepository
                 $styleMeta['allowed_children'] = []; // empty = unrestricted
             } else {
                 // De-duplicate in case of duplicate rows
-                $styleMeta['allowed_children'] = array_values(array_unique($styleMeta['allowed_children']));
+                /** @var list<string> $allowedChildren */
+                $allowedChildren = $styleMeta['allowed_children'];
+                $styleMeta['allowed_children'] = array_values(array_unique($allowedChildren));
             }
-            $styleMeta['allowed_parents'] = array_values(array_unique($styleMeta['allowed_parents']));
+            /** @var list<string> $allowedParents */
+            $allowedParents = $styleMeta['allowed_parents'];
+            $styleMeta['allowed_parents'] = array_values(array_unique($allowedParents));
         }
         unset($styleMeta);
 
@@ -301,14 +313,18 @@ class StyleRepository extends ServiceEntityRepository
                 if (!is_array($opt) || !array_key_exists('value', $opt)) {
                     continue;
                 }
+                $value = $opt['value'];
+                $text = $opt['text'] ?? $value;
                 $options[] = [
-                    'value' => (string) $opt['value'],
-                    'text' => isset($opt['text']) ? (string) $opt['text'] : (string) $opt['value'],
+                    'value' => is_scalar($value) ? (string) $value : '',
+                    'text' => is_scalar($text) ? (string) $text : '',
                 ];
             }
         }
 
-        $placeholder = isset($config['placeholder']) ? (string) $config['placeholder'] : null;
+        $placeholder = isset($config['placeholder']) && is_scalar($config['placeholder'])
+            ? (string) $config['placeholder']
+            : null;
 
         return [$options, $placeholder];
     }

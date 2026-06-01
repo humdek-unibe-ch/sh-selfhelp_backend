@@ -16,6 +16,8 @@ use Doctrine\Persistence\ManagerRegistry;
  * ApiRequestLogRepository
  * 
  * Repository for managing ApiRequestLog entities
+ *
+ * @extends ServiceEntityRepository<ApiRequestLog>
  */
 class ApiRequestLogRepository extends ServiceEntityRepository
 {
@@ -37,12 +39,15 @@ class ApiRequestLogRepository extends ServiceEntityRepository
      */
     public function findByPath(string $path)
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<ApiRequestLog> $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.path = :path')
             ->setParameter('path', $path)
             ->orderBy('l.requestTime', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -53,12 +58,15 @@ class ApiRequestLogRepository extends ServiceEntityRepository
      */
     public function findByUserId(int $userId)
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<ApiRequestLog> $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.userId = :userId')
             ->setParameter('userId', $userId)
             ->orderBy('l.requestTime', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -68,11 +76,14 @@ class ApiRequestLogRepository extends ServiceEntityRepository
      */
     public function findErrors()
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<ApiRequestLog> $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.statusCode >= 400')
             ->orderBy('l.requestTime', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -83,11 +94,14 @@ class ApiRequestLogRepository extends ServiceEntityRepository
      */
     public function findSlowRequests(int $minDuration = 1000)
     {
-        return $this->createQueryBuilder('l')
+        /** @var list<ApiRequestLog> $result */
+        $result = $this->createQueryBuilder('l')
             ->where('l.durationMs >= :minDuration')
             ->setParameter('minDuration', $minDuration)
             ->orderBy('l.durationMs', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }

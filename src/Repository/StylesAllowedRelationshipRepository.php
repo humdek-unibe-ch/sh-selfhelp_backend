@@ -25,10 +25,13 @@ class StylesAllowedRelationshipRepository extends ServiceEntityRepository
 
     /**
      * Get all allowed children for a specific parent style
+     *
+     * @return list<array<string, mixed>>
      */
     public function findAllowedChildren(Style $parentStyle): array
     {
-        return $this->createQueryBuilder('sar')
+        /** @var list<array<string, mixed>> $result */
+        $result = $this->createQueryBuilder('sar')
             ->select('s.id AS id', 's.name AS name')
             ->join('sar.childStyle', 's')
             ->where('sar.parentStyle = :parentStyle')
@@ -36,14 +39,19 @@ class StylesAllowedRelationshipRepository extends ServiceEntityRepository
             ->orderBy('s.name', 'ASC')
             ->getQuery()
             ->getArrayResult();
+
+        return $result;
     }
 
     /**
      * Get all allowed parents for a specific child style
+     *
+     * @return list<array<string, mixed>>
      */
     public function findAllowedParents(Style $childStyle): array
     {
-        return $this->createQueryBuilder('sar')
+        /** @var list<array<string, mixed>> $result */
+        $result = $this->createQueryBuilder('sar')
             ->select('s.id AS id', 's.name AS name')
             ->join('sar.parentStyle', 's')
             ->where('sar.childStyle = :childStyle')
@@ -51,6 +59,8 @@ class StylesAllowedRelationshipRepository extends ServiceEntityRepository
             ->orderBy('s.name', 'ASC')
             ->getQuery()
             ->getArrayResult();
+
+        return $result;
     }
 
     /**
@@ -72,6 +82,9 @@ class StylesAllowedRelationshipRepository extends ServiceEntityRepository
 
     /**
      * Get relationship information for multiple styles at once
+     *
+     * @param list<int> $styleIds
+     * @return array{allowedChildren: array<int|string, list<array<string, mixed>>>, allowedParents: array<int|string, list<array<string, mixed>>>}
      */
     public function getRelationshipsForStyles(array $styleIds): array
     {
@@ -85,6 +98,7 @@ class StylesAllowedRelationshipRepository extends ServiceEntityRepository
         }
 
         // Get allowed children for all styles
+        /** @var list<array{parent_id: int|string, child_id: int|string, child_name: string}> $childrenQuery */
         $childrenQuery = $this->createQueryBuilder('sar')
             ->select('IDENTITY(sar.parentStyle) AS parent_id', 's.id AS child_id', 's.name AS child_name')
             ->join('sar.childStyle', 's')
@@ -95,6 +109,7 @@ class StylesAllowedRelationshipRepository extends ServiceEntityRepository
             ->getArrayResult();
 
         // Get allowed parents for all styles
+        /** @var list<array{child_id: int|string, parent_id: int|string, parent_name: string}> $parentsQuery */
         $parentsQuery = $this->createQueryBuilder('sar')
             ->select('IDENTITY(sar.childStyle) AS child_id', 's.id AS parent_id', 's.name AS parent_name')
             ->join('sar.parentStyle', 's')

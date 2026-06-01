@@ -94,6 +94,13 @@ class AdminUserController extends AbstractController
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             // Check if user has permission to view this specific user
             // Admin users bypass permission checks
             if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
@@ -125,24 +132,32 @@ class AdminUserController extends AbstractController
             $data = $this->validateRequest($request, 'requests/admin/create_user', $this->jsonSchemaValidationService);
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             // Check if user can create users in the specified groups
             if (isset($data['group_ids']) && is_array($data['group_ids'])) {
                 foreach ($data['group_ids'] as $groupId) {
+                    $groupIdInt = is_numeric($groupId) ? (int) $groupId : 0;
                     if (!$this->dataAccessSecurityService->hasPermission(
                         $currentUserId,
                         LookupService::RESOURCE_TYPES_GROUP,
-                        (int) $groupId,
+                        $groupIdInt,
                         DataAccessSecurityService::PERMISSION_CREATE
                     )) {
                         return $this->responseFormatter->formatError(
-                            'Access denied: Cannot create users in group ' . $groupId,
+                            'Access denied: Cannot create users in group ' . $groupIdInt,
                             Response::HTTP_FORBIDDEN
                         );
                     }
                 }
             }
 
-            $user = $this->adminUserService->createUser($data);
+            $user = $this->adminUserService->createUser($this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
                 $user,
@@ -178,7 +193,7 @@ class AdminUserController extends AbstractController
 
             $data = $this->validateRequest($request, 'requests/admin/update_user', $this->jsonSchemaValidationService);
 
-            $user = $this->adminUserService->updateUser($currentUserId, $userId, $data);
+            $user = $this->adminUserService->updateUser($currentUserId, $userId, $this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
@@ -231,6 +246,13 @@ class AdminUserController extends AbstractController
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             // Check if user has UPDATE permission for this specific user
             $userGroupId = $this->getUserGroupId($userId);
             if (!$this->dataAccessSecurityService->hasPermission(
@@ -243,9 +265,9 @@ class AdminUserController extends AbstractController
             }
 
             $data = json_decode($request->getContent(), true);
-            $blocked = $data['blocked'] ?? true;
+            $blocked = is_array($data) ? ($data['blocked'] ?? true) : true;
 
-            $user = $this->adminUserService->toggleUserBlock($userId, $blocked);
+            $user = $this->adminUserService->toggleUserBlock($userId, (bool) $blocked);
 
             return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
@@ -267,6 +289,13 @@ class AdminUserController extends AbstractController
     {
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
 
             // Check if user has permission to view this user's groups
             $userGroupId = $this->getUserGroupId($userId);
@@ -301,6 +330,13 @@ class AdminUserController extends AbstractController
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             // Check if user has permission to view this user's roles
             $userGroupId = $this->getUserGroupId($userId);
             if (!$this->dataAccessSecurityService->hasPermission(
@@ -334,6 +370,13 @@ class AdminUserController extends AbstractController
         try {
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
 
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
             // Check if user has UPDATE permission for this specific user
             $userGroupId = $this->getUserGroupId($userId);
             if (!$this->dataAccessSecurityService->hasPermission(
@@ -346,7 +389,7 @@ class AdminUserController extends AbstractController
             }
 
             $data = json_decode($request->getContent(), true);
-            $groupIds = $data['group_ids'] ?? [];
+            $groupIds = is_array($data) ? ($data['group_ids'] ?? []) : [];
 
             if (!is_array($groupIds) || empty($groupIds)) {
                 return $this->responseFormatter->formatError(
@@ -376,7 +419,7 @@ class AdminUserController extends AbstractController
     {
         try {
             $data = json_decode($request->getContent(), true);
-            $groupIds = $data['group_ids'] ?? [];
+            $groupIds = is_array($data) ? ($data['group_ids'] ?? []) : [];
             
             if (!is_array($groupIds) || empty($groupIds)) {
                 return $this->responseFormatter->formatError(
@@ -410,7 +453,7 @@ class AdminUserController extends AbstractController
     {
         try {
             $data = json_decode($request->getContent(), true);
-            $roleIds = $data['role_ids'] ?? [];
+            $roleIds = is_array($data) ? ($data['role_ids'] ?? []) : [];
             
             if (!is_array($roleIds) || empty($roleIds)) {
                 return $this->responseFormatter->formatError(
@@ -444,7 +487,7 @@ class AdminUserController extends AbstractController
     {
         try {
             $data = json_decode($request->getContent(), true);
-            $roleIds = $data['role_ids'] ?? [];
+            $roleIds = is_array($data) ? ($data['role_ids'] ?? []) : [];
             
             if (!is_array($roleIds) || empty($roleIds)) {
                 return $this->responseFormatter->formatError(
@@ -528,7 +571,7 @@ class AdminUserController extends AbstractController
                 );
             }
 
-            $result = $this->adminUserService->impersonateUser($currentUser->getId(), $userId);
+            $result = $this->adminUserService->impersonateUser((int) $currentUser->getId(), $userId);
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
@@ -578,8 +621,11 @@ class AdminUserController extends AbstractController
                 return $this->responseFormatter->formatSuccess(['stopped' => false]);
             }
 
-            $adminUserId  = (int) ($payload['act']['id_users'] ?? $payload['act']['sub'] ?? $payload['impersonated_by'] ?? 0);
-            $targetUserId = (int) ($payload['id_users'] ?? $currentUser->getId());
+            $act = is_array($payload['act'] ?? null) ? $payload['act'] : [];
+            $adminRaw = $act['id_users'] ?? $act['sub'] ?? $payload['impersonated_by'] ?? 0;
+            $adminUserId = is_numeric($adminRaw) ? (int) $adminRaw : 0;
+            $targetRaw = $payload['id_users'] ?? $currentUser->getId();
+            $targetUserId = is_numeric($targetRaw) ? (int) $targetRaw : 0;
 
             if ($adminUserId <= 0) {
                 return $this->responseFormatter->formatError(
@@ -612,7 +658,12 @@ class AdminUserController extends AbstractController
             $result = $stmt->executeQuery();
             $row = $result->fetchAssociative();
 
-            return $row ? (int) $row['id_groups'] : 0;
+            if ($row === false) {
+                return 0;
+            }
+            $idGroups = $row['id_groups'] ?? null;
+
+            return is_numeric($idGroups) ? (int) $idGroups : 0;
         } catch (\Exception $e) {
             return 0; // Default to no access if we can't determine group
         }

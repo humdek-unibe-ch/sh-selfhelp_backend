@@ -29,10 +29,13 @@ class AssetRepository extends ServiceEntityRepository
      */
     public function findAllAssets(): array
     {
-        return $this->createQueryBuilder('a')
+        /** @var list<Asset> $result */
+        $result = $this->createQueryBuilder('a')
             ->orderBy('a.id', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
@@ -42,7 +45,7 @@ class AssetRepository extends ServiceEntityRepository
      * @param int $pageSize
      * @param string|null $search
      * @param string|null $folder
-     * @return array ['assets' => Asset[], 'total' => int]
+     * @return array{assets: list<Asset>, total: int}
      */
     public function findAssetsWithPagination(int $page, int $pageSize, ?string $search = null, ?string $folder = null): array
     {
@@ -68,6 +71,7 @@ class AssetRepository extends ServiceEntityRepository
             ->getSingleScalarResult();
 
         // Apply pagination
+        /** @var list<Asset> $assets */
         $assets = $qb->orderBy('a.id', 'DESC')
             ->setFirstResult(($page - 1) * $pageSize)
             ->setMaxResults($pageSize)
@@ -88,11 +92,14 @@ class AssetRepository extends ServiceEntityRepository
      */
     public function findByFileName(string $fileName): ?Asset
     {
-        return $this->createQueryBuilder('a')
+        /** @var Asset|null $result */
+        $result = $this->createQueryBuilder('a')
             ->where('a.fileName = :fileName')
             ->setParameter('fileName', $fileName)
             ->getQuery()
             ->getOneOrNullResult();
+
+        return $result;
     }
 
     /**
@@ -103,26 +110,32 @@ class AssetRepository extends ServiceEntityRepository
      */
     public function findByFolder(string $folder): array
     {
-        return $this->createQueryBuilder('a')
+        /** @var list<Asset> $result */
+        $result = $this->createQueryBuilder('a')
             ->where('a.folder = :folder')
             ->setParameter('folder', $folder)
             ->orderBy('a.id', 'DESC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /**
      * Check if multiple filenames exist
      * 
-     * @param array $fileNames
+     * @param list<string> $fileNames
      * @return Asset[]
      */
     public function findByFileNames(array $fileNames): array
     {
-        return $this->createQueryBuilder('a')
+        /** @var list<Asset> $result */
+        $result = $this->createQueryBuilder('a')
             ->where('a.fileName IN (:fileNames)')
             ->setParameter('fileNames', $fileNames)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 } 

@@ -26,9 +26,9 @@ class SectionsFieldsTranslationRepository extends ServiceEntityRepository
     /**
      * Fetch all section field translations for a list of section IDs and specific language
      *
-     * @param array $sectionIds Array of section IDs
+     * @param list<int> $sectionIds Array of section IDs
      * @param int $languageId Language ID
-     * @return array Associative array with section_id as key and translations as values
+     * @return array<int|string, array<string, array{content: mixed, meta: mixed}>> Associative array with section_id as key and translations as values
      */
     public function fetchTranslationsForSections(array $sectionIds, int $languageId): array
     {
@@ -46,6 +46,7 @@ class SectionsFieldsTranslationRepository extends ServiceEntityRepository
             ->setParameter('sectionIds', $sectionIds)
             ->setParameter('languageId', $languageId);
 
+        /** @var list<array{section_id: int|string, field_id: int|string, field_name: string, locale: string, content: mixed, meta: mixed}> $results */
         $results = $qb->getQuery()->getResult();
         
         // Organize results by section_id
@@ -78,10 +79,10 @@ class SectionsFieldsTranslationRepository extends ServiceEntityRepository
      * fallback just like literal empty strings do. See
      * {@see TranslationContentHelper::isEffectivelyEmpty()} for the exact rules.
      *
-     * @param array $sectionIds Array of section IDs
+     * @param list<int> $sectionIds Array of section IDs
      * @param int $languageId Primary language ID
      * @param int|null $defaultLanguageId Default language ID for fallback
-     * @return array Associative array with section_id as key and translations as values
+     * @return array<int|string, array<string, array{content: mixed, meta: mixed}>> Associative array with section_id as key and translations as values
      */
     public function fetchTranslationsForSectionsWithFallback(array $sectionIds, int $languageId, ?int $defaultLanguageId = null): array
     {

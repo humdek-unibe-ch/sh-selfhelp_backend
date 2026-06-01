@@ -12,7 +12,6 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Core\ApiResponseFormatter;
-use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -24,8 +23,7 @@ class AdminActionTranslationController extends AbstractController
 
     public function __construct(
         private readonly AdminActionTranslationService $adminActionTranslationService,
-        private readonly ApiResponseFormatter $responseFormatter,
-        private readonly JsonSchemaValidationService $jsonSchemaValidationService
+        private readonly ApiResponseFormatter $responseFormatter
     ) {
     }
 

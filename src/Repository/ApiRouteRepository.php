@@ -32,7 +32,8 @@ class ApiRouteRepository extends ServiceEntityRepository
      */
     public function findAllRoutesByVersion(string $version): array
     {
-        return $this->createQueryBuilder('r')
+        /** @var list<ApiRoute> $result */
+        $result = $this->createQueryBuilder('r')
             ->leftJoin('r.permissions', 'p')
             ->addSelect('p')
             ->where('r.version = :version')
@@ -40,6 +41,8 @@ class ApiRouteRepository extends ServiceEntityRepository
             ->orderBy('r.id', 'ASC')
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
     
     /**
@@ -49,6 +52,7 @@ class ApiRouteRepository extends ServiceEntityRepository
      */
     public function findAllVersions(): array
     {
+        /** @var list<array{version: string}> $result */
         $result = $this->createQueryBuilder('r')
             ->select('DISTINCT r.version')
             ->orderBy('r.version', 'ASC')
@@ -56,7 +60,7 @@ class ApiRouteRepository extends ServiceEntityRepository
             ->getScalarResult();
             
         // Extract version strings from result
-        return array_map(function($item) {
+        return array_map(function(array $item) {
             return $item['version'];
         }, $result);
     }
@@ -92,6 +96,7 @@ class ApiRouteRepository extends ServiceEntityRepository
      */
     public function findAllRoutesGroupedByVersionWithPermissions(): array
     {
+        /** @var list<ApiRoute> $routes */
         $routes = $this->createQueryBuilder('r')
             ->leftJoin('r.permissions', 'p')
             ->addSelect('p')
@@ -115,9 +120,14 @@ class ApiRouteRepository extends ServiceEntityRepository
 
     /**
      * Optimized method to find routes with permissions as array data (no entities)
-     * Returns plain arrays to avoid Doctrine proxy/lazy loading overhead
-     * 
-     * @return array Array of route data with permissions
+     * Returns plain arrays to avoid Doctrine proxy/lazy loading overhead.
+     *
+     * Plugin-owned rows (`id_plugins IS NOT NULL`) are filtered out when
+     * the owning plugin is disabled, so `ApiRouteLoader` doesn't surface
+     * routes whose controllers are loaded only when the plugin's bundle
+     * is active. Core routes (`id_plugins IS NULL`) are always included.
+     *
+     * @return list<array<string, mixed>> Array of route data with permissions
      */
     public function findAllRoutesWithPermissionsAsArray(): array
     {
@@ -133,26 +143,41 @@ class ApiRouteRepository extends ServiceEntityRepository
                 r.requirements,
                 r.params,
                 r.version,
+                r.id_plugins,
                 GROUP_CONCAT(p.name ORDER BY p.name SEPARATOR ",") as permission_names
             FROM api_routes r
             LEFT JOIN rel_api_routes_permissions arp ON r.id = arp.id_api_routes
             LEFT JOIN permissions p ON arp.id_permissions = p.id
-            GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version
+            LEFT JOIN plugins pl ON r.id_plugins = pl.id
+            WHERE r.id_plugins IS NULL OR pl.enabled = 1
+            GROUP BY r.id, r.route_name, r.path, r.controller, r.methods, r.requirements, r.params, r.version, r.id_plugins
             ORDER BY r.version ASC, r.id ASC
         ';
         
         $result = $conn->executeQuery($sql);
+        /** @var list<array<string, mixed>> $routes */
         $routes = $result->fetchAllAssociative();
         
         // Process the results to parse JSON fields and permission names
         foreach ($routes as &$route) {
             // Parse JSON fields
-            $route['requirements'] = $route['requirements'] ? json_decode($route['requirements'], true) : [];
-            $route['params'] = $route['params'] ? json_decode($route['params'], true) : [];
-            
+            $requirements = $route['requirements'];
+            $route['requirements'] = is_string($requirements) && $requirements !== ''
+                ? json_decode($requirements, true)
+                : [];
+
+            $params = $route['params'];
+            $route['params'] = is_string($params) && $params !== ''
+                ? json_decode($params, true)
+                : [];
+
             // Parse permission names
-            $route['permission_names'] = $route['permission_names'] ? explode(',', $route['permission_names']) : [];
+            $permissionNames = $route['permission_names'];
+            $route['permission_names'] = is_string($permissionNames) && $permissionNames !== ''
+                ? explode(',', $permissionNames)
+                : [];
         }
+        unset($route);
         
         return $routes;
     }

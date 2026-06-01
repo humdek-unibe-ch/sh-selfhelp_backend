@@ -34,6 +34,13 @@ class DataAccessAudit
     #[ORM\Column(type: Types::INTEGER)]
     private ?int $id = null;
 
+    // Scalar mirrors of the id_users / id_resource_types / id_audit_actions
+    // / id_permission_results FKs (also mapped via the ManyToOne
+    // associations below). Kept because DataAccessAuditRepository DQL
+    // projects/filters them by field name (e.g. `a.idUsers`,
+    // `a.idResourceTypes`, `a.idAuditActions`, `a.idPermissionResults`).
+    // Doctrine hydrates them and DQL reads them, both invisible to PHPStan
+    // — see the documented property.onlyRead ignore in phpstan.dist.neon.
     #[ORM\Column(name: 'id_users', type: Types::INTEGER)]
     private int $idUsers;
 
@@ -100,17 +107,6 @@ class DataAccessAudit
         return $this->id;
     }
 
-    public function getIdUsers(): int
-    {
-        return $this->idUsers;
-    }
-
-    public function getIdResourceTypes(): int
-    {
-        return $this->idResourceTypes;
-    }
-
-
     public function getResourceId(): int
     {
         return $this->resourceId;
@@ -120,21 +116,6 @@ class DataAccessAudit
     {
         $this->resourceId = $resourceId;
         return $this;
-    }
-
-    public function getIdActions(): int
-    {
-        return $this->idAuditActions;
-    }
-
-    public function getIdAuditActions(): int
-    {
-        return $this->idAuditActions;
-    }
-
-    public function getIdPermissionResults(): int
-    {
-        return $this->idPermissionResults;
     }
 
     public function getCrudPermission(): ?int

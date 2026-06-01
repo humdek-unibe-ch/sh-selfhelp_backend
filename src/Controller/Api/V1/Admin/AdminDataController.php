@@ -31,10 +31,8 @@ class AdminDataController extends AbstractController
         private readonly DataTableService $dataTableService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly UserContextService $userContextService,
-        private readonly TransactionService $transactionService,
-        private readonly LookupService $lookupService
+        private readonly TransactionService $transactionService
     ) {
     }
 
@@ -58,13 +56,14 @@ class AdminDataController extends AbstractController
             $dataTables = $this->dataTableService->getFilteredDataTables($userId);
 
             // Format the timestamp for each dataTable to match expected format
-            $result = array_map(function ($table) {
+            $result = array_map(function (array $table): array {
+                $created = $table['created'] ?? null;
                 return [
-                    'id' => $table['id'],
-                    'name' => $table['name'],
-                    'displayName' => $table['displayName'],
-                    'created' => is_string($table['created']) ? $table['created'] : $table['created']?->format(DATE_ATOM),
-                    'crud' => $table['crud']
+                    'id' => $table['id'] ?? null,
+                    'name' => $table['name'] ?? null,
+                    'displayName' => $table['displayName'] ?? null,
+                    'created' => $created instanceof \DateTimeInterface ? $created->format(DATE_ATOM) : $created,
+                    'crud' => $table['crud'] ?? null
                 ];
             }, $dataTables);
 
@@ -97,16 +96,12 @@ class AdminDataController extends AbstractController
             }
 
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
 
             // Check if user has permission to access this data table
-            if (
-                !$this->dataAccessSecurityService->hasPermission(
-                    $currentUserId,
-                    LookupService::RESOURCE_TYPES_DATA_TABLE,
-                    $dataTable->getId(),
-                    DataAccessSecurityService::PERMISSION_READ
-                )
-            ) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -114,17 +109,18 @@ class AdminDataController extends AbstractController
             $excludeDeleted = filter_var($request->query->get('exclude_deleted', 'true'), FILTER_VALIDATE_BOOLEAN);
             $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : 1;
 
-            // Check if user is admin
-            $isAdmin = $this->dataAccessSecurityService->userHasAdminRole($currentUserId);
+            $hasFullTableAccess = $this->dataTableService->canAccessDataTable(
+                $currentUserId,
+                (int) $dataTable->getId(),
+                DataAccessSecurityService::PERMISSION_DELETE
+            );
 
-            if ($isAdmin) {
-                // Admin users see all data (existing behavior)
-                // filter = '', ownEntriesOnly = false, dbFirst = false
-                $rows = $this->dataService->getData($dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
+            if ($hasFullTableAccess) {
+                $rows = $this->dataService->getData((int) $dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
             } else {
                 // Non-admin users: use group-based filtering where permissions are calculated server-side
                 $rows = $this->dataService->getDataWithUserGroupFilter(
-                    $dataTable->getId(),
+                    (int) $dataTable->getId(),
                     $currentUserId,
                     '', // filter
                     $excludeDeleted,
@@ -175,16 +171,12 @@ class AdminDataController extends AbstractController
             }
 
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
 
             // Check if user has DELETE permission for this data table
-            if (
-                !$this->dataAccessSecurityService->hasPermission(
-                    $currentUserId,
-                    LookupService::RESOURCE_TYPES_DATA_TABLE,
-                    $dataTable->getId(),
-                    DataAccessSecurityService::PERMISSION_DELETE
-                )
-            ) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -219,16 +211,12 @@ class AdminDataController extends AbstractController
             }
 
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
 
             // Check if user has DELETE permission for this data table
-            if (
-                !$this->dataAccessSecurityService->hasPermission(
-                    $currentUserId,
-                    LookupService::RESOURCE_TYPES_DATA_TABLE,
-                    $dataTable->getId(),
-                    DataAccessSecurityService::PERMISSION_DELETE
-                )
-            ) {
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE)) {
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
@@ -264,17 +252,17 @@ class AdminDataController extends AbstractController
             }
 
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
 
             // Check if user has permission to update this data table (since we're modifying structure)
-            // Admin users bypass permission checks
-            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
-                if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
-                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
-                }
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
             $data = $this->validateRequest($request, 'requests/admin/delete_data_columns', $this->jsonSchemaValidationService);
-            $columns = $data['columns'] ?? [];
+            $columns = $this->toStringList($data['columns'] ?? null);
 
             $result = $this->dataTableService->deleteColumns($tableName, $columns);
             if ($result === false) {
@@ -307,13 +295,13 @@ class AdminDataController extends AbstractController
             }
 
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
 
             // Check if user has permission to read this data table
-            // Admin users bypass permission checks
-            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
-                if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
-                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
-                }
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
             $columns = $this->dataTableService->getColumns($tableName);
@@ -347,13 +335,13 @@ class AdminDataController extends AbstractController
             }
 
             $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
 
             // Check if user has permission to read this data table
-            // Admin users bypass permission checks
-            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
-                if (!$this->dataTableService->canAccessDataTable($currentUserId, $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
-                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
-                }
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
             $columnNames = $this->dataTableService->getColumnsNames($tableName);

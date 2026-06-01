@@ -15,7 +15,6 @@ use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
-use App\Service\Auth\UserContextService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,8 +23,6 @@ class AdminRoleService extends BaseService
 {
 
     public function __construct(
-        private readonly UserContextService $userContextService,
-        private readonly EntityManagerInterface $entityManagerInterface,
         private readonly UserRepository $userRepository,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
@@ -35,6 +32,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Get roles with pagination, search, and sorting
+     *
+     * @return array<string, mixed>
      */
     public function getRoles(
         int $page = 1,
@@ -47,12 +46,14 @@ class AdminRoleService extends BaseService
             $page = 1;
         if ($pageSize < 1 || $pageSize > 100)
             $pageSize = 20;
-        if (!in_array($sortDirection, ['asc', 'desc']))
-            $sortDirection = 'asc';
+        $sortDirection = in_array($sortDirection, ['asc', 'desc'], true) ? $sortDirection : 'asc';
 
         return $this->fetchRolesFromDatabase($page, $pageSize, $search, $sort, $sortDirection);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function fetchRolesFromDatabase(int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
     {
         // Create cache key based on parameters
@@ -96,12 +97,13 @@ class AdminRoleService extends BaseService
                         $countQb->andWhere('(r.name LIKE :search OR r.description LIKE :search)')
                             ->setParameter('search', '%' . $search . '%');
                     }
-                    $totalCount = $countQb->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
+                    $totalCount = (int) $countQb->select('COUNT(r.id)')->getQuery()->getSingleScalarResult();
 
                     // Apply pagination
                     $qb->setFirstResult(($page - 1) * $pageSize)
                         ->setMaxResults($pageSize);
 
+                    /** @var list<Role> $roles */
                     $roles = $qb->getQuery()->getResult();
 
                     return [
@@ -109,7 +111,7 @@ class AdminRoleService extends BaseService
                         'pagination' => [
                             'page' => $page,
                             'pageSize' => $pageSize,
-                            'totalCount' => (int) $totalCount,
+                            'totalCount' => $totalCount,
                             'totalPages' => (int) ceil($totalCount / $pageSize),
                             'hasNext' => $page < ceil($totalCount / $pageSize),
                             'hasPrevious' => $page > 1
@@ -121,6 +123,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Get single role by ID with full details including permissions and entity scope caching
+     *
+     * @return array<string, mixed>
      */
     public function getRoleById(int $roleId): array
     {
@@ -140,6 +144,9 @@ class AdminRoleService extends BaseService
 
     /**
      * Create new role
+     *
+     * @param array<string, mixed> $roleData
+     * @return array<string, mixed>
      */
     public function createRole(array $roleData): array
     {
@@ -149,8 +156,8 @@ class AdminRoleService extends BaseService
             $this->validateRoleData($roleData);
 
             $role = new Role();
-            $role->setName($roleData['name']);
-            $role->setDescription($roleData['description'] ?? null);
+            $role->setName($this->asString($roleData['name']));
+            $role->setDescription($this->asStringOrNull($roleData['description'] ?? null));
 
             $this->entityManager->persist($role);
             $this->entityManager->flush();
@@ -186,6 +193,9 @@ class AdminRoleService extends BaseService
 
     /**
      * Update existing role
+     *
+     * @param array<string, mixed> $roleData
+     * @return array<string, mixed>
      */
     public function updateRole(int $roleId, array $roleData): array
     {
@@ -198,7 +208,7 @@ class AdminRoleService extends BaseService
             }
 
             if (isset($roleData['description'])) {
-                $role->setDescription($roleData['description']);
+                $role->setDescription($this->asStringOrNull($roleData['description']));
             }
 
             $this->entityManager->flush();
@@ -257,7 +267,7 @@ class AdminRoleService extends BaseService
 
         $userIds = [];
         foreach ($usersWithRole as $user) {
-            $userIds[] = $user->getId();
+            $userIds[] = (int) $user->getId();
             $user->bumpAclVersion();
         }
 
@@ -326,6 +336,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Get role permissions with entity scope caching
+     *
+     * @return array<int, array<string, mixed>>
      */
     public function getRolePermissions(int $roleId): array
     {
@@ -345,6 +357,9 @@ class AdminRoleService extends BaseService
 
     /**
      * Add permissions to role (bulk)
+     *
+     * @param list<int> $permissionIds
+     * @return array<int, array<string, mixed>>
      */
     public function addPermissionsToRole(int $roleId, array $permissionIds): array
     {
@@ -389,6 +404,9 @@ class AdminRoleService extends BaseService
 
     /**
      * Remove permissions from role (bulk)
+     *
+     * @param list<int> $permissionIds
+     * @return array<int, array<string, mixed>>
      */
     public function removePermissionsFromRole(int $roleId, array $permissionIds): array
     {
@@ -444,6 +462,9 @@ class AdminRoleService extends BaseService
 
     /**
      * Update role permissions (bulk replace)
+     *
+     * @param list<int> $permissionIds
+     * @return array<int, array<string, mixed>>
      */
     public function updateRolePermissions(int $roleId, array $permissionIds): array
     {
@@ -488,6 +509,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Get all available permissions
+     *
+     * @return list<array<string, mixed>>
      */
     public function getAllPermissions(): array
     {
@@ -495,6 +518,7 @@ class AdminRoleService extends BaseService
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ROLES)
             ->getList($cacheKey, function () {
+                /** @var list<Permission> $permissions */
                 $permissions = $this->entityManager->getRepository(Permission::class)
                     ->createQueryBuilder('p')
                     ->orderBy('p.name', 'asc')
@@ -507,6 +531,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Format role for list view
+     *
+     * @return array<string, mixed>
      */
     private function formatRoleForList(Role $role): array
     {
@@ -521,6 +547,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Format role for detail view
+     *
+     * @return array<string, mixed>
      */
     private function formatRoleForDetail(Role $role): array
     {
@@ -543,6 +571,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Format permission for response
+     *
+     * @return array<string, mixed>
      */
     private function formatPermissionForResponse(Permission $permission): array
     {
@@ -555,6 +585,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Validate role data
+     *
+     * @param array<string, mixed> $data
      */
     private function validateRoleData(array $data): void
     {
@@ -562,25 +594,25 @@ class AdminRoleService extends BaseService
             throw new ServiceException('Role name is required', Response::HTTP_BAD_REQUEST);
         }
 
-        if (isset($data['name'])) {
-            // Check for duplicate name
-            $existingRole = $this->entityManager->getRepository(Role::class)
-                ->findOneBy(['name' => $data['name']]);
-            if ($existingRole) {
-                throw new ServiceException('Role name already exists', Response::HTTP_CONFLICT);
-            }
+        // Check for duplicate name
+        $existingRole = $this->entityManager->getRepository(Role::class)
+            ->findOneBy(['name' => $data['name']]);
+        if ($existingRole) {
+            throw new ServiceException('Role name already exists', Response::HTTP_CONFLICT);
         }
     }
 
     /**
      * Internal method to add permissions to role (without transaction handling)
+     *
+     * @param array<array-key, mixed> $permissionIds
      */
     private function addPermissionsToRoleInternal(Role $role, array $permissionIds): void
     {
         foreach ($permissionIds as $permissionId) {
             $permission = $this->entityManager->getRepository(Permission::class)->find($permissionId);
             if (!$permission) {
-                throw new ServiceException('Permission not found: ' . $permissionId, Response::HTTP_NOT_FOUND);
+                throw new ServiceException('Permission not found: ' . $this->asString($permissionId), Response::HTTP_NOT_FOUND);
             }
 
             if (!$role->getPermissions()->contains($permission)) {
@@ -593,6 +625,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Internal method to update role permissions (without transaction handling)
+     *
+     * @param array<array-key, mixed> $permissionIds
      */
     private function updateRolePermissionsInternal(Role $role, array $permissionIds): void
     {
@@ -605,7 +639,7 @@ class AdminRoleService extends BaseService
         foreach ($permissionIds as $permissionId) {
             $permission = $this->entityManager->getRepository(Permission::class)->find($permissionId);
             if (!$permission) {
-                throw new ServiceException('Permission not found: ' . $permissionId, Response::HTTP_NOT_FOUND);
+                throw new ServiceException('Permission not found: ' . $this->asString($permissionId), Response::HTTP_NOT_FOUND);
             }
 
             $role->addPermission($permission);
@@ -617,6 +651,8 @@ class AdminRoleService extends BaseService
     /**
      * Get all API routes with their required permissions for the current user
      * This allows the frontend to check permissions before making API calls
+     *
+     * @return list<array<string, mixed>>
      */
     public function getApiRoutesWithPermissions(): array
     {
@@ -630,6 +666,8 @@ class AdminRoleService extends BaseService
 
     /**
      * Fetch API routes with permissions from database
+     *
+     * @return list<array<string, mixed>>
      */
     private function fetchApiRoutesWithPermissionsFromDatabase(): array
     {
@@ -661,8 +699,8 @@ class AdminRoleService extends BaseService
         foreach ($rows as $row) {
             $permissions = [];
             if (!empty($row['required_permissions'])) {
-                $permissionNames = explode(',', $row['required_permissions']);
-                $permissionDescriptions = explode('||', $row['permission_descriptions']);
+                $permissionNames = explode(',', $this->asString($row['required_permissions']));
+                $permissionDescriptions = explode('||', $this->asString($row['permission_descriptions']));
 
                 for ($i = 0; $i < count($permissionNames); $i++) {
                     $permissions[] = [
@@ -673,14 +711,14 @@ class AdminRoleService extends BaseService
             }
 
             $routes[] = [
-                'id' => (int)$row['id'],
+                'id' => $this->asInt($row['id']),
                 'route_name' => $row['route_name'],
                 'version' => $row['version'],
                 'path' => $row['path'],
                 'controller' => $row['controller'],
                 'methods' => $row['methods'],
-                'requirements' => $row['requirements'] ? json_decode($row['requirements'], true) : null,
-                'params' => $row['params'] ? json_decode($row['params'], true) : null,
+                'requirements' => $row['requirements'] ? json_decode($this->asString($row['requirements']), true) : null,
+                'params' => $row['params'] ? json_decode($this->asString($row['params']), true) : null,
                 'required_permissions' => $permissions
             ];
         }

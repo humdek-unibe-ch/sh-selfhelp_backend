@@ -31,9 +31,11 @@ class Role
     #[ORM\Column(name: 'description', type: Types::STRING, length: 255, nullable: true)]
     private ?string $description = null;
 
+    /** @var Collection<int, Permission> */
     #[ORM\ManyToMany(targetEntity: Permission::class, mappedBy: 'roles')]
     private Collection $permissions;
 
+    /** @var Collection<int, User> */
     #[ORM\ManyToMany(targetEntity: User::class, mappedBy: 'roles')]
     private Collection $users;
 

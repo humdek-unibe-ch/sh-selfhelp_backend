@@ -8,6 +8,7 @@
 namespace App\Service\Action;
 
 use App\Entity\Action;
+use App\Service\Core\BaseService;
 use App\Service\Core\InterpolationService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -18,12 +19,31 @@ use Doctrine\ORM\EntityManagerInterface;
  * repeat counting, randomized block selection, and persistence of randomization
  * counters for even-presentation behavior.
  */
-class ActionConfigRuntimeService
+class ActionConfigRuntimeService extends BaseService
 {
     public function __construct(
         private readonly InterpolationService $interpolationService,
         private readonly EntityManagerInterface $entityManager
     ) {
+    }
+
+    /**
+     * Coerce a mixed JSON-config section into a string-keyed array.
+     *
+     * @return array<string, mixed>
+     */
+    private function toConfigArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $key => $item) {
+            $result[(string) $key] = $item;
+        }
+
+        return $result;
     }
 
     /**
@@ -43,7 +63,7 @@ class ActionConfigRuntimeService
         }
 
         $config = $this->applyOverwriteVariables($config, $submittedValues);
-        return $this->interpolationService->interpolateArray($config, $submittedValues);
+        return $this->toConfigArray($this->interpolationService->interpolateArray($config, $submittedValues));
     }
 
     /**
@@ -64,7 +84,8 @@ class ActionConfigRuntimeService
         }
 
         if (($config[ActionConfig::REPEAT] ?? false) === true) {
-            return max(1, (int) (($config[ActionConfig::REPEATER][ActionConfig::OCCURRENCES] ?? 1)));
+            $repeater = $this->asArray($config[ActionConfig::REPEATER] ?? null);
+            return max(1, $this->asInt($repeater[ActionConfig::OCCURRENCES] ?? 1));
         }
 
         return 1;
@@ -81,28 +102,31 @@ class ActionConfigRuntimeService
      */
     public function selectBlocksForIteration(Action $action, array $runtimeConfig): array
     {
-        $blocks = array_values($runtimeConfig[ActionConfig::BLOCKS] ?? []);
+        $blocks = array_values($this->asArray($runtimeConfig[ActionConfig::BLOCKS] ?? null));
         if ($blocks === []) {
             return [];
         }
 
-        foreach ($blocks as $index => &$block) {
-            $block['index'] = $index;
+        $normalizedBlocks = [];
+        foreach ($blocks as $index => $block) {
+            $blockArray = $this->toConfigArray($block);
+            $blockArray['index'] = $index;
+            $normalizedBlocks[] = $blockArray;
         }
-        unset($block);
 
         if (($runtimeConfig[ActionConfig::RANDOMIZE] ?? false) !== true) {
-            return $blocks;
+            return $normalizedBlocks;
         }
 
-        $selectedBlocks = $blocks;
-        if (($runtimeConfig[ActionConfig::RANDOMIZER][ActionConfig::RANDOMIZER_EVEN_PRESENTATION] ?? false) === true) {
+        $randomizer = $this->asArray($runtimeConfig[ActionConfig::RANDOMIZER] ?? null);
+        $selectedBlocks = $normalizedBlocks;
+        if (($randomizer[ActionConfig::RANDOMIZER_EVEN_PRESENTATION] ?? false) === true) {
             $selectedBlocks = $this->filterBlocksWithLowestRandomizationCount($selectedBlocks);
         }
 
         shuffle($selectedBlocks);
 
-        $limit = max(1, (int) (($runtimeConfig[ActionConfig::RANDOMIZER][ActionConfig::RANDOMIZER_RANDOM_ELEMENTS] ?? 1)));
+        $limit = max(1, $this->asInt($randomizer[ActionConfig::RANDOMIZER_RANDOM_ELEMENTS] ?? 1));
         $selectedBlocks = array_slice($selectedBlocks, 0, $limit);
 
         $this->incrementRandomizationCounters($action, $selectedBlocks);
@@ -130,7 +154,7 @@ class ActionConfigRuntimeService
             $decoded = json_decode($decoded, true);
         }
 
-        return is_array($decoded) ? $decoded : [];
+        return is_array($decoded) ? $this->toConfigArray($decoded) : [];
     }
 
     /**
@@ -155,17 +179,36 @@ class ActionConfigRuntimeService
             return $config;
         }
 
-        foreach (($config[ActionConfig::BLOCKS] ?? []) as $blockIndex => $block) {
-            foreach (($block[ActionConfig::JOBS] ?? []) as $jobIndex => $job) {
+        $blocks = $this->asArray($config[ActionConfig::BLOCKS] ?? null);
+        foreach ($blocks as $blockIndex => $block) {
+            if (!is_array($block)) {
+                continue;
+            }
+
+            $jobs = $this->asArray($block[ActionConfig::JOBS] ?? null);
+            foreach ($jobs as $jobIndex => $job) {
+                if (!is_array($job)) {
+                    continue;
+                }
+
                 foreach ($selectedVariables as $variable) {
                     if (!is_string($variable) || !array_key_exists($variable, $submittedValues)) {
                         continue;
                     }
 
-                    $config[ActionConfig::BLOCKS][$blockIndex][ActionConfig::JOBS][$jobIndex][ActionConfig::SCHEDULE_TIME][$variable] = $submittedValues[$variable];
+                    $scheduleTime = $this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null);
+                    $scheduleTime[$variable] = $submittedValues[$variable];
+                    $job[ActionConfig::SCHEDULE_TIME] = $scheduleTime;
                 }
+
+                $jobs[$jobIndex] = $job;
             }
+
+            $block[ActionConfig::JOBS] = $jobs;
+            $blocks[$blockIndex] = $block;
         }
+
+        $config[ActionConfig::BLOCKS] = $blocks;
 
         return $config;
     }
@@ -185,7 +228,7 @@ class ActionConfigRuntimeService
         $selectedBlocks = [];
 
         foreach ($blocks as $block) {
-            $count = (int) ($block[ActionConfig::RANDOMIZATION_COUNT] ?? 0);
+            $count = $this->asInt($block[ActionConfig::RANDOMIZATION_COUNT] ?? 0);
             if ($minimumCount === null || $count < $minimumCount) {
                 $minimumCount = $count;
                 $selectedBlocks = [$block];
@@ -213,21 +256,27 @@ class ActionConfigRuntimeService
         }
 
         $config = $this->decodeConfig($action->getConfig());
-        if (!isset($config[ActionConfig::BLOCKS]) || !is_array($config[ActionConfig::BLOCKS])) {
+        $blocks = $config[ActionConfig::BLOCKS] ?? null;
+        if (!is_array($blocks)) {
             return;
         }
 
         foreach ($selectedBlocks as $block) {
-            $index = (int) ($block['index'] ?? -1);
-            if ($index < 0 || !isset($config[ActionConfig::BLOCKS][$index])) {
+            $index = $this->asInt($block['index'] ?? -1);
+            if ($index < 0 || !isset($blocks[$index]) || !is_array($blocks[$index])) {
                 continue;
             }
 
-            $config[ActionConfig::BLOCKS][$index][ActionConfig::RANDOMIZATION_COUNT] =
-                (int) ($config[ActionConfig::BLOCKS][$index][ActionConfig::RANDOMIZATION_COUNT] ?? 0) + 1;
+            $blocks[$index][ActionConfig::RANDOMIZATION_COUNT] =
+                $this->asInt($blocks[$index][ActionConfig::RANDOMIZATION_COUNT] ?? 0) + 1;
         }
 
-        $action->setConfig(json_encode($config, JSON_UNESCAPED_UNICODE));
-        $this->entityManager->flush();
+        $config[ActionConfig::BLOCKS] = $blocks;
+
+        $encoded = json_encode($config, JSON_UNESCAPED_UNICODE);
+        if ($encoded !== false) {
+            $action->setConfig($encoded);
+            $this->entityManager->flush();
+        }
     }
 }

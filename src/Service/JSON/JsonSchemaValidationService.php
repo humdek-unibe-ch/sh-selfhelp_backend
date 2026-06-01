@@ -48,9 +48,9 @@ class JsonSchemaValidationService
     /**
      * Validates data against a given JSON schema.
      *
-     * @param object|array $data The data to validate (decoded JSON).
+     * @param object|array<array-key, mixed> $data The data to validate (decoded JSON).
      * @param string $schemaName The relative path of the schema file from schemaBaseDir (e.g., "requests/user_create").
-     * @return array An array of validation error messages. Empty if valid.
+     * @return list<string> An array of validation error messages. Empty if valid.
      */
     public function validate(object|array $data, string $schemaName): array
     {
@@ -65,7 +65,7 @@ class JsonSchemaValidationService
         }
 
         // Create a URI for the main schema file
-        $schemaUri = 'file://' . str_replace('\\', '/', realpath($schemaFilePath));
+        $schemaUri = 'file://' . str_replace('\\', '/', realpath($schemaFilePath) ?: $schemaFilePath);
         
         // Pre-load all referenced schemas in the same directory
         $this->preLoadReferencedSchemas(dirname($schemaFilePath));
@@ -73,11 +73,7 @@ class JsonSchemaValidationService
         try {
             // Retrieve the schema
             $schemaObject = $this->retriever->retrieve($schemaUri);
-            
-            if ($schemaObject === null) {
-                throw new RuntimeException('Invalid or empty JSON in schema file: ' . $schemaFilePath);
-            }
-            
+
             // Validate with schema resolution enabled
             $this->validator->validate(
                 $data,
@@ -89,8 +85,13 @@ class JsonSchemaValidationService
             $errors = [];
             if (!$this->validator->isValid()) {
                 foreach ($this->validator->getErrors() as $error) {
-                    $pointer = $error['property'] ?? $error['pointer'] ?? 'object';
-                    $message = $error['message'] ?? 'Unknown validation error';
+                    if (!is_array($error)) {
+                        continue;
+                    }
+                    $pointerRaw = $error['property'] ?? $error['pointer'] ?? 'object';
+                    $pointer = is_scalar($pointerRaw) ? (string) $pointerRaw : 'object';
+                    $messageRaw = $error['message'] ?? 'Unknown validation error';
+                    $message = is_scalar($messageRaw) ? (string) $messageRaw : 'Unknown validation error';
                     $errors[] = sprintf("Field '%s': %s", str_replace('/', '.', ltrim($pointer, '/')), $message);
                 }
             }
@@ -104,7 +105,7 @@ class JsonSchemaValidationService
 
             if ($e instanceof \Throwable) {
                 $detailedMessage = $e->getMessage();
-                if (is_string($detailedMessage) && !empty(trim($detailedMessage))) {
+                if (!empty(trim($detailedMessage))) {
                     $errorMessage .= ' - ' . $detailedMessage;
                 }
                 $previousThrowable = $e;
@@ -154,22 +155,20 @@ class JsonSchemaValidationService
             return;
         }
         
-        $files = glob($directory . '*.json');
+        $files = glob($directory . '*.json') ?: [];
         foreach ($files as $file) {
             $file = str_replace('\\', '/', $file);
-            $uri = 'file://' . str_replace('\\', '/', realpath($file));
+            $uri = 'file://' . str_replace('\\', '/', realpath($file) ?: $file);
             
             try {
                 $schema = $this->retriever->retrieve($uri);
-                if ($schema !== null) {
-                    // Register with the full path
-                    $this->schemaStorage->addSchema($uri, $schema);
-                    
-                    // Also register with just the filename for relative references
-                    $filename = basename($file);
-                    $filenameUri = 'file://' . str_replace('\\', '/', realpath($directory)) . '/' . $filename;
-                    $this->schemaStorage->addSchema($filenameUri, $schema);
-                }
+                // Register with the full path
+                $this->schemaStorage->addSchema($uri, $schema);
+
+                // Also register with just the filename for relative references
+                $filename = basename($file);
+                $filenameUri = 'file://' . str_replace('\\', '/', realpath($directory) ?: $directory) . '/' . $filename;
+                $this->schemaStorage->addSchema($filenameUri, $schema);
             } catch (\Exception $e) {
                 // Skip files that can't be loaded
                 continue;

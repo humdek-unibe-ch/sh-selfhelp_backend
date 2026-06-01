@@ -37,7 +37,7 @@ class AdminSectionUtilityService extends BaseService
     /**
      * Get all unused sections (not in hierarchy and not in rel_pages_sections)
      * 
-     * @return array
+     * @return array<int, array<string, mixed>>
      */
     public function getUnusedSections(): array
     {
@@ -48,7 +48,8 @@ class AdminSectionUtilityService extends BaseService
                 function() {
                     $qb = $this->entityManager->createQueryBuilder();
                     
-                    return $qb->select('s.id', 's.name', 's.idStyles', 'st.name as styleName')
+                    /** @var array<int, array<string, mixed>> $rows */
+                    $rows = $qb->select('s.id', 's.name', 's.idStyles', 'st.name as styleName')
                         ->from(Section::class, 's')
                         ->leftJoin('s.style', 'st')
                         ->leftJoin('App\Entity\SectionsHierarchy', 'sh', 'WITH', 's.id = sh.childSection')
@@ -58,6 +59,8 @@ class AdminSectionUtilityService extends BaseService
                         ->orderBy('s.name', 'ASC')
                         ->getQuery()
                         ->getArrayResult();
+
+                    return $rows;
                 }
             );
     }
@@ -65,7 +68,7 @@ class AdminSectionUtilityService extends BaseService
     /**
      * Get all refContainer sections
      * 
-     * @return array
+     * @return array<int, array<string, mixed>>
      */
     public function getRefContainers(): array
     {
@@ -76,7 +79,8 @@ class AdminSectionUtilityService extends BaseService
                 function() {
                     $qb = $this->entityManager->createQueryBuilder();
                     
-                    return $qb->select('s.id', 's.name', 's.idStyles', 'st.name as styleName')
+                    /** @var array<int, array<string, mixed>> $rows */
+                    $rows = $qb->select('s.id', 's.name', 's.idStyles', 'st.name as styleName')
                         ->from(Section::class, 's')
                         ->innerJoin('s.style', 'st')
                         ->where('st.name = :styleName')
@@ -84,6 +88,8 @@ class AdminSectionUtilityService extends BaseService
                         ->orderBy('s.name', 'ASC')
                         ->getQuery()
                         ->getArrayResult();
+
+                    return $rows;
                 }
             );
     }
@@ -165,7 +171,7 @@ class AdminSectionUtilityService extends BaseService
             
             foreach ($unusedSections as $sectionData) {
                 $section = $this->sectionRepository->find($sectionData['id']);
-                if ($section && $this->isSectionUnused($section->getId())) {
+                if ($section && $this->isSectionUnused((int) $section->getId())) {
                     // Store original section for transaction logging
                     $originalSection = clone $section;
                     
@@ -288,7 +294,7 @@ class AdminSectionUtilityService extends BaseService
         }
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
-            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId());
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
     }
 
 

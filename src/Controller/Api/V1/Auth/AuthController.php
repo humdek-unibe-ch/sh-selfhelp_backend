@@ -86,8 +86,8 @@ class AuthController extends AbstractController
             // Note: We don't catch RequestValidationException here, we let it bubble up to the ApiExceptionListener
             $data = $this->validateRequest($request, 'requests/auth/login', $this->jsonSchemaValidationService);
 
-            $userInput = $data['email'] ?? null; // Schema ensures 'email' exists if valid
-            $password = $data['password'] ?? null; // Schema ensures 'password' exists if valid
+            $userInput = $this->asStringField($data, 'email'); // Schema ensures 'email' exists if valid
+            $password = $this->asStringField($data, 'password'); // Schema ensures 'password' exists if valid
 
             $user = $this->loginService->validateUser($userInput, $password);
 
@@ -100,8 +100,8 @@ class AuthController extends AbstractController
 
             // If the user is found check if 2FA is required
             if ($user->isTwoFactorRequired()) {
-                $code = $this->authRepository->generateAndStore2faCode($user->getId());
-                $emailSent = $this->userValidationService->send2faEmail($user->getId(), $code);
+                $code = $this->authRepository->generateAndStore2faCode((int) $user->getId());
+                $emailSent = $this->userValidationService->send2faEmail((int) $user->getId(), $code);
                 if (!$emailSent) {
                     return $this->responseFormatter->formatError(
                         'Failed to send 2FA email.',
@@ -161,8 +161,8 @@ class AuthController extends AbstractController
         try {
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/2fa_verify', $this->jsonSchemaValidationService);
-            $code = $data['code'] ?? null; // Schema ensures 'code' exists
-            $userId = $data['id_users'] ?? null; // Schema ensures 'id_users' exists
+            $code = $this->asStringField($data, 'code'); // Schema ensures 'code' exists
+            $userId = $this->asIntField($data, 'id_users'); // Schema ensures 'id_users' exists
 
             $verified = $this->authRepository->verify2faCode($userId, $code);
 
@@ -230,7 +230,7 @@ class AuthController extends AbstractController
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/refresh_token', $this->jsonSchemaValidationService);
 
-            $refreshTokenString = $data['refresh_token'] ?? null; // Schema ensures 'refresh_token' exists
+            $refreshTokenString = $this->asStringField($data, 'refresh_token'); // Schema ensures 'refresh_token' exists
 
             $newTokens = $this->jwtService->processRefreshToken($refreshTokenString);
 
@@ -407,17 +407,11 @@ class AuthController extends AbstractController
             }
 
             $user = $userInterface;
-            if (!$user) {
-                return $this->responseFormatter->formatError(
-                    'User not found',
-                    Response::HTTP_NOT_FOUND
-                );
-            }
 
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/set_language', $this->jsonSchemaValidationService);
 
-            $languageId = (int) $data['language_id'];
+            $languageId = $this->asIntField($data, 'language_id');
 
             try {
                 $result = $this->userDataService->setUserLanguage($user, $languageId);

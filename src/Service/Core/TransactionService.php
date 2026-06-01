@@ -12,7 +12,6 @@ use App\Entity\Transaction;
 use App\Entity\User;
 use App\Service\Auth\UserContextService;
 use App\Service\Core\LookupService;
-use App\Service\Cache\Core\CacheService;
 use App\Util\EntityUtil;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -29,8 +28,7 @@ class TransactionService
         private readonly EntityManagerInterface $entityManager,
         private readonly UserContextService $userContextService,
         private readonly RequestStack $requestStack,
-        private readonly LookupService $lookupService,
-        private readonly CacheService $cache
+        private readonly LookupService $lookupService
     ) {}
 
     /**
@@ -118,7 +116,7 @@ class TransactionService
 
         $transaction->setTableName($tableName);
         $transaction->setIdTableName($entryId);
-        $transaction->setTransactionLog(json_encode($log));
+        $transaction->setTransactionLog(json_encode($log) ?: null);
         // Transaction time is now set automatically in the entity constructor
         
         // Persist the transaction
@@ -127,43 +125,5 @@ class TransactionService
         $this->entityManager->flush();
         
         return $transaction;
-    }
-    
-    /**
-     * Get transaction type ID by code without doing database queries
-     * This uses a hardcoded mapping to avoid DB queries during active transactions
-     */
-    private function getTransactionTypeIdByCode(string $code): ?int
-    {
-        // Hardcoded mapping for common transaction types
-        // This avoids database queries during active transactions
-        $mapping = [
-            LookupService::TRANSACTION_TYPES_INSERT => 1,
-            LookupService::TRANSACTION_TYPES_UPDATE => 2,
-            LookupService::TRANSACTION_TYPES_DELETE => 3,
-            LookupService::TRANSACTION_TYPES_SELECT => 4,
-            LookupService::TRANSACTION_TYPES_STATUS_CHANGE => 5,
-        ];
-        
-        return $mapping[$code] ?? null;
-    }
-    
-    /**
-     * Get transaction by ID by code without doing database queries
-     * This uses a hardcoded mapping to avoid DB queries during active transactions
-     */
-    private function getTransactionByIdByCode(string $code): ?int
-    {
-        // Hardcoded mapping for common transaction by types
-        // This avoids database queries during active transactions
-        $mapping = [
-            LookupService::TRANSACTION_BY_BY_USER => 1,
-            LookupService::TRANSACTION_BY_BY_SYSTEM => 2,
-            LookupService::TRANSACTION_BY_BY_ANONYMOUS_USER => 3,
-            LookupService::TRANSACTION_BY_BY_CRON_JOB => 4,
-            LookupService::TRANSACTION_BY_BY_SYSTEM_USER => 5,
-        ];
-        
-        return $mapping[$code] ?? null;
     }
 }

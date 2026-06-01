@@ -13,6 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'styles')]
 #[ORM\UniqueConstraint(name: 'uq_styles_name', columns: ['name'])]
 #[ORM\Index(name: 'idx_styles_id_style_groups', columns: ['id_style_groups'])]
+#[ORM\Index(name: 'idx_styles_id_plugins', columns: ['id_plugins'])]
 class Style
 {
     public function __construct()
@@ -21,6 +22,7 @@ class Style
         $this->allowedChildrenRelationships = new \Doctrine\Common\Collections\ArrayCollection();
         $this->allowedParentsRelationships = new \Doctrine\Common\Collections\ArrayCollection();
     }
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesField> */
     #[ORM\OneToMany(mappedBy: 'style', targetEntity: StylesField::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $stylesFields;
     #[ORM\Id]
@@ -34,9 +36,7 @@ class Style
     #[ORM\Column(name: 'can_have_children', type: 'boolean', options: ['default' => 0])]
     private bool $canHaveChildren = false;
 
-    #[ORM\Column(name: 'id_style_groups', type: 'integer')]
-    private int $idStyleGroups;
-
+    // id_style_groups is mapped through the $group association below.
     #[ORM\Column(name: 'description', type: 'text', nullable: true)]
     private ?string $description = null;
 
@@ -44,11 +44,23 @@ class Style
     #[ORM\JoinColumn(name: 'id_style_groups', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?StyleGroup $group = null;
 
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesAllowedRelationship> */
     #[ORM\OneToMany(mappedBy: 'parentStyle', targetEntity: StylesAllowedRelationship::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $allowedChildrenRelationships;
 
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesAllowedRelationship> */
     #[ORM\OneToMany(mappedBy: 'childStyle', targetEntity: StylesAllowedRelationship::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $allowedParentsRelationships;
+
+    /**
+     * Plugin that owns this style row. NULL = core-owned (the default).
+     * `ON DELETE SET NULL` is intentional - dropping a plugin record
+     * must not silently delete CMS content. The PluginPurger is the
+     * only code path that actually deletes plugin-owned rows.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
     public function getId(): ?int
     {
@@ -66,18 +78,6 @@ class Style
 
         return $this;
     }
-
-
-    public function getIdGroup(): ?int
-    {
-        return $this->idStyleGroups;
-    }
-
-    public function getIdStyleGroups(): ?int
-    {
-        return $this->idStyleGroups;
-    }
-
 
 
     public function getDescription(): ?string
@@ -117,6 +117,19 @@ class Style
         return $this;
     }
 
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
+
+        return $this;
+    }
+
+    /** @return \Doctrine\Common\Collections\Collection<int, StylesField>|null */
     public function getStylesFields(): ?\Doctrine\Common\Collections\Collection
     {
         return $this->stylesFields;
@@ -124,9 +137,6 @@ class Style
 
     public function addStylesField(StylesField $stylesField): static
     {
-        if (!$this->stylesFields) {
-            $this->stylesFields = new \Doctrine\Common\Collections\ArrayCollection();
-        }
         if (!$this->stylesFields->contains($stylesField)) {
             $this->stylesFields[] = $stylesField;
             $stylesField->setStyle($this);
@@ -136,7 +146,7 @@ class Style
 
     public function removeStylesField(StylesField $stylesField): static
     {
-        if ($this->stylesFields && $this->stylesFields->contains($stylesField)) {
+        if ($this->stylesFields->contains($stylesField)) {
             $this->stylesFields->removeElement($stylesField);
             if ($stylesField->getStyle() === $this) {
                 $stylesField->setStyle(null);

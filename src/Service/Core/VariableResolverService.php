@@ -9,7 +9,6 @@ namespace App\Service\Core;
 
 use App\Entity\Page;
 use App\Entity\User;
-use App\Repository\PageRepository;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\GlobalVariableService;
@@ -43,7 +42,6 @@ class VariableResolverService
         private readonly RequestStack $requestStack,
         private readonly RouterInterface $router,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly PageRepository $pageRepository,
         private readonly GlobalVariableService $globalVariableService
     ) {
     }
@@ -54,7 +52,7 @@ class VariableResolverService
      * @param int|null $userId User ID (optional, defaults to current user)
      * @param int $languageId Language ID for data retrieval
      * @param bool $includeGlobalVars Whether to include global variables from sh-global-values page
-     * @return array Array of variable names to their actual values
+     * @return array<string, mixed> Array of variable names to their actual values
      */
     public function getAllVariables(?int $userId = null, int $languageId = 1, bool $includeGlobalVars = true): array
     {
@@ -75,6 +73,7 @@ class VariableResolverService
             return $cached;
         }
 
+        /** @var array<string, mixed> $variables */
         $variables = [];
 
         // Get request for context-aware variables
@@ -109,7 +108,7 @@ class VariableResolverService
         $variables['user_code'] = '';
         if ($currentUser) {
             // Ensure validation codes are loaded
-            $userWithValidationCodes = $this->loadUserWithValidationCodes($currentUser->getId());
+            $userWithValidationCodes = $this->loadUserWithValidationCodes((int) $currentUser->getId());
             if ($userWithValidationCodes) {
                 $validationCodes = $userWithValidationCodes->getValidationCodes();
                 if (!$validationCodes->isEmpty()) {
@@ -125,7 +124,7 @@ class VariableResolverService
 
         // Add global variables if requested
         if ($includeGlobalVars) {
-            $this->addGlobalVariables($variables, $languageId);
+            $variables = $this->addGlobalVariables($variables, $languageId);
         }
 
         // Add custom variables from request (supporting {{var}} syntax from frontend)
@@ -157,7 +156,7 @@ class VariableResolverService
     private function loadUserWithValidationCodes(int $userId): ?User
     {
         try {
-            return $this->entityManager->createQueryBuilder()
+            $result = $this->entityManager->createQueryBuilder()
                 ->select('u', 'vc')
                 ->from(User::class, 'u')
                 ->leftJoin('u.validationCodes', 'vc')
@@ -165,6 +164,8 @@ class VariableResolverService
                 ->setParameter('userId', $userId)
                 ->getQuery()
                 ->getOneOrNullResult();
+
+            return $result instanceof User ? $result : null;
         } catch (\Exception $e) {
             return null;
         }
@@ -174,7 +175,7 @@ class VariableResolverService
      * Get user groups for a user
      *
      * @param int $userId User ID
-     * @return array Array of group names
+     * @return list<string> Array of group names
      */
     private function getUserGroups(int $userId): array
     {
@@ -310,10 +311,11 @@ class VariableResolverService
     /**
      * Add global variables from sh_global_values page to the variables array
      *
-     * @param array &$variables Reference to variables array to update
+     * @param array<string, mixed> $variables Variables array to extend
      * @param int $languageId Language ID for caching separation
+     * @return array<string, mixed> Variables array including global values
      */
-    private function addGlobalVariables(array &$variables, int $languageId): void
+    private function addGlobalVariables(array $variables, int $languageId): array
     {
         try {
             // Use the centralized global variable service
@@ -321,10 +323,12 @@ class VariableResolverService
 
             // Merge global variables into the variables array
             foreach ($globalVariables as $key => $value) {
-                $variables[$key] = $value;
+                $variables[(string) $key] = $value;
             }
         } catch (\Exception $e) {
             // If there's an error getting global values, continue without them
         }
+
+        return $variables;
     }
 }

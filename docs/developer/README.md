@@ -33,6 +33,9 @@ This developer documentation is organized into the following sections:
 - [🧪 **Testing Guidelines**](./15-testing-guidelines.md) - Testing strategies and best practices
 - [🚀 **Deployment Process**](./16-deployment-process.md) - Version management and deployment
 - [🧱 **Seeding System Pages**](./21-seeding-system-pages.md) - How `is_system` CMS pages (login, privacy, profile, …) are shipped and extended
+- [🩺 **Local Debugging With A Production DB Copy**](./22-local-debugging-with-production-db.md) - What a DB dump restores locally, what plugin state must be rebuilt manually, and the safe recovery workflow
+- [✅ **Backend CI Quality Gate**](./23-ci-quality-gate.md) - The `plugin-host-check` workflow: schemas, migrations, DI, doctor, and baselined PHPStan for the plugin scope
+- [🛡️ **Core PHPStan Gate**](./24-core-phpstan-gate.md) - The strict, no-baseline `core-backend-check` workflow: how to run core PHPStan locally, why there is no baseline, and how to handle failures
 
 ## 🚀 Quick Start for New Developers
 
@@ -72,19 +75,19 @@ This project follows these core principles:
 
 ## 🔧 Technology Stack
 
-- **Framework**: Symfony 7.3
-- **PHP Version**: 8.3
-- **ORM**: Doctrine ORM 3.3
+- **Framework**: Symfony 7.4
+- **PHP Version**: >= 8.4
+- **ORM**: Doctrine ORM 3.6 / DBAL 4.4
 - **Architecture**: PSR-4 compliant
 - **Authentication**: JWT with LexikJWTAuthenticationBundle
 - **Validation**: JSON Schema validation
-- **Database**: MySQL with stored procedures for ACL
+- **Database**: MySQL 8 (Doctrine migrations); stored procedure `get_user_acl` for ACL checks; Redis for caching
 
 ## 📖 Additional Resources
 
 - [Main Project Documentation](../../ARCHITECTURE.md) - Complete project documentation
-- [API Routes Reference](../../db/update_scripts/api_routes.sql) - All available API routes
-- [Database Schema](../../db/structure_db.sql) - Complete database structure
+- [API Routes](./02-dynamic-routing.md) - DB-driven `api_routes` table, loaded by `ApiRouteLoader`; rows are seeded/changed via Doctrine migrations
+- [Database Schema](../../migrations/) - Doctrine migrations are the canonical schema (the baseline + seed migrations). `db/legacy/*.sql` is deprecated reference only
 - [JSON Schemas](../../config/schemas/api/v1/) - Request/response validation schemas
 
 ---

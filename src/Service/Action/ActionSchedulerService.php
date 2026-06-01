@@ -13,6 +13,7 @@ use App\Entity\ScheduledJob;
 use App\Entity\User;
 use App\Repository\DataTableRepository;
 use App\Repository\UserRepository;
+use App\Service\Core\BaseService;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
 
@@ -23,7 +24,7 @@ use App\Service\Core\LookupService;
  * conditions, calculates execution times, and persists both parent jobs and
  * reminder children with the metadata needed for later cleanup.
  */
-class ActionSchedulerService
+class ActionSchedulerService extends BaseService
 {
     public function __construct(
         private readonly ActionConditionEvaluatorService $conditionEvaluator,
@@ -31,9 +32,45 @@ class ActionSchedulerService
         private readonly ActionConfigRuntimeService $configRuntimeService,
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly UserRepository $userRepository,
-        private readonly DataTableRepository $dataTableRepository,
-        private readonly LookupService $lookupService
+        private readonly DataTableRepository $dataTableRepository
     ) {
+    }
+
+    /**
+     * Coerce a mixed JSON-config section into a string-keyed array.
+     *
+     * Action configuration sections are decoded JSON objects, so their keys are
+     * always strings at runtime; this normalizes PHPStan's view accordingly and
+     * returns an empty array for non-array inputs.
+     *
+     * @return array<string, mixed>
+     */
+    private function toConfigArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($value as $key => $item) {
+            $result[(string) $key] = $item;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Coerce a mixed condition payload into the shape accepted by the evaluator.
+     *
+     * @return array<string, mixed>|string|null
+     */
+    private function conditionArg(mixed $condition): array|string|null
+    {
+        if ($condition === null || is_string($condition)) {
+            return $condition;
+        }
+
+        return is_array($condition) ? $this->toConfigArray($condition) : null;
     }
 
     /**
@@ -51,25 +88,29 @@ class ActionSchedulerService
     {
         $scheduledJobs = [];
 
-        $firstJob = $runtimeConfig[ActionConfig::BLOCKS][0][ActionConfig::JOBS][0] ?? [];
-        $firstJobDates = $this->scheduleCalculator->calculateDates($runtimeConfig, is_array($firstJob) ? $firstJob : []);
+        $blocksConfig = $this->asArray($runtimeConfig[ActionConfig::BLOCKS] ?? null);
+        $firstBlock = $this->asArray($blocksConfig[0] ?? null);
+        $firstBlockJobs = $this->asArray($firstBlock[ActionConfig::JOBS] ?? null);
+        $firstJob = $this->toConfigArray($firstBlockJobs[0] ?? null);
+        $firstJobDates = $this->scheduleCalculator->calculateDates($runtimeConfig, $firstJob);
         $iterations = $this->configRuntimeService->getIterationCount($runtimeConfig, count($firstJobDates));
 
         for ($iteration = 0; $iteration < $iterations; $iteration++) {
             $selectedBlocks = $this->configRuntimeService->selectBlocksForIteration($action, $runtimeConfig);
 
             foreach ($selectedBlocks as $block) {
-                if (!$this->conditionEvaluator->passes($block[ActionConfig::CONDITION] ?? null, $context->userId, 'action.block')) {
+                if (!$this->conditionEvaluator->passes($this->conditionArg($block[ActionConfig::CONDITION] ?? null), $context->userId, 'action.block')) {
                     continue;
                 }
 
-                foreach (($block[ActionConfig::JOBS] ?? []) as $job) {
+                foreach ($this->asArray($block[ActionConfig::JOBS] ?? null) as $job) {
                     if (!is_array($job)) {
                         continue;
                     }
+                    $job = $this->toConfigArray($job);
 
                     foreach ($recipientUserIds as $recipientUserId) {
-                        if (!$this->conditionEvaluator->passes($job[ActionConfig::CONDITION] ?? null, $recipientUserId, 'action.job')) {
+                        if (!$this->conditionEvaluator->passes($this->conditionArg($job[ActionConfig::CONDITION] ?? null), $recipientUserId, 'action.job')) {
                             continue;
                         }
 
@@ -125,12 +166,13 @@ class ActionSchedulerService
             return false;
         }
 
-        $actionJobType = (string) ($job[ActionConfig::JOB_TYPE] ?? '');
-        $notificationConfig = is_array($job[ActionConfig::NOTIFICATION] ?? null) ? $job[ActionConfig::NOTIFICATION] : [];
+        $actionJobType = $this->asString($job[ActionConfig::JOB_TYPE] ?? '');
+        $notificationConfig = $this->toConfigArray($job[ActionConfig::NOTIFICATION] ?? null);
+        $onJobExecute = $this->toConfigArray($job[ActionConfig::ON_JOB_EXECUTE] ?? null);
 
         $jobData = [
             'type' => $this->resolveScheduledJobType($job, $notificationConfig),
-            'description' => (string) ($job[ActionConfig::JOB_NAME] ?? sprintf('Scheduled job for action %s', $action->getName())),
+            'description' => $this->asString($job[ActionConfig::JOB_NAME] ?? sprintf('Scheduled job for action %s', $action->getName())),
             'date_to_be_executed' => $executionDate,
             'user_id' => $recipientUserId,
             'action' => $action,
@@ -140,7 +182,7 @@ class ActionSchedulerService
             'reminder_data_table' => $reminderDataTable,
             'reminder_session_start' => $reminderSessionStart,
             'reminder_session_end' => $reminderSessionEnd,
-            'condition' => $this->normalizeExecutionCondition($job[ActionConfig::ON_JOB_EXECUTE][ActionConfig::CONDITION] ?? null),
+            'condition' => $this->normalizeExecutionCondition($this->conditionArg($onJobExecute[ActionConfig::CONDITION] ?? null)),
             'schedule' => $job[ActionConfig::SCHEDULE_TIME] ?? [],
             'action_job_type' => $actionJobType,
         ];
@@ -192,12 +234,13 @@ class ActionSchedulerService
             if (!is_array($reminder)) {
                 continue;
             }
+            $reminder = $this->toConfigArray($reminder);
 
-            if (!$this->conditionEvaluator->passes($reminder[ActionConfig::CONDITION] ?? null, $recipientUserId, 'action.reminder')) {
+            if (!$this->conditionEvaluator->passes($this->conditionArg($reminder[ActionConfig::CONDITION] ?? null), $recipientUserId, 'action.reminder')) {
                 continue;
             }
 
-            $schedule = is_array($reminder[ActionConfig::SCHEDULE_TIME] ?? null) ? $reminder[ActionConfig::SCHEDULE_TIME] : [];
+            $schedule = $this->toConfigArray($reminder[ActionConfig::SCHEDULE_TIME] ?? null);
             $executionDate = $this->scheduleCalculator->calculateReminderDate($parentExecutionDate, $schedule);
             $sessionWindow = $this->scheduleCalculator->calculateReminderSessionWindow($parentExecutionDate, $executionDate, $schedule);
 
@@ -261,7 +304,7 @@ class ActionSchedulerService
      */
     private function buildEmailConfig(array $runtimeConfig, array $notificationConfig, User $recipient): array
     {
-        $recipientEmails = (string) ($notificationConfig[ActionConfig::RECIPIENT] ?? '');
+        $recipientEmails = $this->asString($notificationConfig[ActionConfig::RECIPIENT] ?? '');
         if (($runtimeConfig[ActionConfig::TARGET_GROUPS] ?? false) === true) {
             $recipientEmails = (string) $recipient->getEmail();
         } else {
@@ -272,19 +315,19 @@ class ActionSchedulerService
         $body = str_replace(
             ['@user_name', '@user_code'],
             [(string) ($recipient->getName() ?? ''), $userCode],
-            (string) ($notificationConfig[ActionConfig::BODY] ?? '')
+            $this->asString($notificationConfig[ActionConfig::BODY] ?? '')
         );
 
         $subject = str_replace(
             ['@user_name', '@user_code'],
             [(string) ($recipient->getName() ?? ''), $userCode],
-            (string) ($notificationConfig[ActionConfig::SUBJECT] ?? '')
+            $this->asString($notificationConfig[ActionConfig::SUBJECT] ?? '')
         );
 
         return [
-            'from_email' => (string) ($notificationConfig[ActionConfig::FROM_EMAIL] ?? 'noreply@example.com'),
-            'from_name' => (string) ($notificationConfig[ActionConfig::FROM_NAME] ?? 'SelfHelp'),
-            'reply_to' => (string) ($notificationConfig[ActionConfig::REPLY_TO] ?? ($notificationConfig[ActionConfig::FROM_EMAIL] ?? 'noreply@example.com')),
+            'from_email' => $this->asString($notificationConfig[ActionConfig::FROM_EMAIL] ?? 'noreply@example.com'),
+            'from_name' => $this->asString($notificationConfig[ActionConfig::FROM_NAME] ?? 'SelfHelp'),
+            'reply_to' => $this->asString($notificationConfig[ActionConfig::REPLY_TO] ?? ($notificationConfig[ActionConfig::FROM_EMAIL] ?? 'noreply@example.com')),
             'recipient_emails' => $recipientEmails,
             'subject' => $subject,
             'body' => $body,
@@ -305,10 +348,10 @@ class ActionSchedulerService
     private function buildNotificationConfig(array $notificationConfig, User $recipient): array
     {
         return [
-            'subject' => str_replace('@user_name', (string) ($recipient->getName() ?? ''), (string) ($notificationConfig[ActionConfig::SUBJECT] ?? '')),
-            'body' => str_replace('@user_name', (string) ($recipient->getName() ?? ''), (string) ($notificationConfig[ActionConfig::BODY] ?? '')),
-            'url' => (string) ($notificationConfig[ActionConfig::REDIRECT_URL] ?? ''),
-            'notification_type' => (string) ($notificationConfig[ActionConfig::NOTIFICATION_TYPES] ?? LookupService::NOTIFICATION_TYPES_PUSH_NOTIFICATION),
+            'subject' => str_replace('@user_name', (string) ($recipient->getName() ?? ''), $this->asString($notificationConfig[ActionConfig::SUBJECT] ?? '')),
+            'body' => str_replace('@user_name', (string) ($recipient->getName() ?? ''), $this->asString($notificationConfig[ActionConfig::BODY] ?? '')),
+            'url' => $this->asString($notificationConfig[ActionConfig::REDIRECT_URL] ?? ''),
+            'notification_type' => $this->asString($notificationConfig[ActionConfig::NOTIFICATION_TYPES] ?? LookupService::NOTIFICATION_TYPES_PUSH_NOTIFICATION),
         ];
     }
 
@@ -407,6 +450,14 @@ class ActionSchedulerService
             return null;
         }
 
-        return $condition[ActionConfig::JSON_LOGIC] ?? $condition;
+        $jsonLogic = $condition[ActionConfig::JSON_LOGIC] ?? null;
+        if (is_array($jsonLogic)) {
+            return $this->toConfigArray($jsonLogic);
+        }
+        if (is_string($jsonLogic)) {
+            return $jsonLogic;
+        }
+
+        return $condition;
     }
 }

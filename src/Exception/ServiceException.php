@@ -15,14 +15,21 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ServiceException extends \Exception
 {
+    /** @var array<string, mixed>|null */
     private ?array $data;
     
+    /**
+     * @param array<string, mixed>|null $data
+     */
     public function __construct(string $message, int $code = Response::HTTP_BAD_REQUEST, ?array $data = null) 
     {
         parent::__construct($message, $code);
         $this->data = $data;
     }
     
+    /**
+     * @return array<string, mixed>|null
+     */
     public function getData(): ?array 
     {
         return $this->data;

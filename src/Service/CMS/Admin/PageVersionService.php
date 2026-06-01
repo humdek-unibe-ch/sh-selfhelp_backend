@@ -16,7 +16,6 @@ use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
 use App\Service\CMS\CmsPreferenceService;
-use App\Service\CMS\Frontend\PageService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
@@ -47,7 +46,6 @@ class PageVersionService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly PageRepository $pageRepository,
         private readonly PageVersionRepository $pageVersionRepository,
-        private readonly PageService $pageService,
         private readonly TransactionService $transactionService,
         private readonly UserContextService $userContextService,
         private readonly SectionRepository $sectionRepository,
@@ -66,7 +64,7 @@ class PageVersionService extends BaseService
      * 
      * @param int $pageId The page ID
      * @param string|null $versionName Optional user-defined name for the version
-     * @param array|null $metadata Optional metadata (change summary, tags, etc.)
+     * @param array<string, mixed>|null $metadata Optional metadata (change summary, tags, etc.)
      * @param int|null $languageId DEPRECATED - not used, all languages are saved
      * @return PageVersion The created version
      * @throws \App\Exception\ServiceException If page not found or version creation fails
@@ -161,7 +159,7 @@ class PageVersionService extends BaseService
             }
 
             // Verify the version belongs to this page
-            if ($version->getPage()->getId() !== $pageId) {
+            if ($version->getPage()?->getId() !== $pageId) {
                 $this->throwBadRequest("Version {$versionId} does not belong to page {$pageId}");
             }
 
@@ -202,7 +200,7 @@ class PageVersionService extends BaseService
      * 
      * @param int $pageId The page ID
      * @param string|null $versionName Optional user-defined name for the version
-     * @param array|null $metadata Optional metadata
+     * @param array<string, mixed>|null $metadata Optional metadata
      * @param int|null $languageId Language ID for page data retrieval
      * @return PageVersion The created and published version
      */
@@ -216,7 +214,7 @@ class PageVersionService extends BaseService
         $version = $this->createVersion($pageId, $versionName, $metadata, $languageId);
 
         // Publish it
-        return $this->publishVersion($pageId, $version->getId());
+        return $this->publishVersion($pageId, (int) $version->getId());
     }
 
     /**
@@ -321,7 +319,7 @@ class PageVersionService extends BaseService
      * @param int $pageId The page ID
      * @param int $limit Maximum number of versions to return
      * @param int $offset Offset for pagination
-     * @return array Array containing versions, total count, and unpublished changes flag
+     * @return array<string, mixed> Array containing versions, total count, and unpublished changes flag
      */
     public function getVersionHistory(int $pageId, int $limit = 10, int $offset = 0): array
     {
@@ -331,14 +329,10 @@ class PageVersionService extends BaseService
 
         // Convert timezone for output WITHOUT modifying managed entities
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
-        $formattedVersions = array_map(function ($version) use ($cmsTimezone) {
-            $createdAt = $version->getCreatedAt();
-            $publishedAt = $version->getPublishedAt();
-
+        $formattedVersions = array_map(function (PageVersion $version) use ($cmsTimezone) {
             // Convert to CMS timezone for display (don't modify the entity)
-            if ($createdAt) {
-                $createdAt = $createdAt->setTimezone($cmsTimezone);
-            }
+            $createdAt = $version->getCreatedAt()->setTimezone($cmsTimezone);
+            $publishedAt = $version->getPublishedAt();
             if ($publishedAt) {
                 $publishedAt = $publishedAt->setTimezone($cmsTimezone);
             }
@@ -348,7 +342,7 @@ class PageVersionService extends BaseService
                 'page_id' => $version->getPage()?->getId(),
                 'version_number' => $version->getVersionNumber(),
                 'version_name' => $version->getVersionName(),
-                'created_at' => $createdAt?->format('Y-m-d H:i:s'),
+                'created_at' => $createdAt->format('Y-m-d H:i:s'),
                 'published_at' => $publishedAt?->format('Y-m-d H:i:s'),
                 'created_by' => $version->getCreatedBy()?->getId(),
                 'is_published' => $version->isPublished(),
@@ -414,7 +408,7 @@ class PageVersionService extends BaseService
      * - Consistent formatting without whitespace
      * - Uses MD5 for speed (we only need equality check, not security)
      *
-     * @param array $pageStructure The page JSON structure
+     * @param array<string, mixed> $pageStructure The page JSON structure
      * @return string MD5 hash of normalized structure
      */
     private function generateStructureHash(array $pageStructure): string
@@ -439,7 +433,7 @@ class PageVersionService extends BaseService
      * @param int $versionId1 First version ID
      * @param int $versionId2 Second version ID
      * @param string $format Diff format (unified, side_by_side, json_patch, summary)
-     * @return array Comparison result
+     * @return array<string, mixed> Comparison result
      * @throws \App\Exception\ServiceException If versions not found
      */
     public function compareVersions(int $versionId1, int $versionId2, string $format = 'unified'): array
@@ -449,7 +443,7 @@ class PageVersionService extends BaseService
         $version2 = $this->getVersionById($versionId2);
 
         // Verify both versions belong to the same page
-        if ($version1->getPage()->getId() !== $version2->getPage()->getId()) {
+        if ($version1->getPage()?->getId() !== $version2->getPage()?->getId()) {
             $this->throwBadRequest("Versions must belong to the same page");
         }
 
@@ -518,7 +512,7 @@ class PageVersionService extends BaseService
      * @param int $pageId The page ID
      * @param int $versionId The version ID to compare against
      * @param string $format Diff format (unified, side_by_side, json_patch, summary)
-     * @return array Comparison result with draft and version data
+     * @return array<string, mixed> Comparison result with draft and version data
      * @throws \App\Exception\ServiceException If page or version not found
      */
     public function compareDraftWithVersion(int $pageId, int $versionId, string $format = 'side_by_side'): array
@@ -530,7 +524,7 @@ class PageVersionService extends BaseService
         $version = $this->getVersionById($versionId);
 
         // Verify the version belongs to this page
-        if ($version->getPage()->getId() !== $pageId) {
+        if ($version->getPage()?->getId() !== $pageId) {
             $this->throwBadRequest("Version {$versionId} does not belong to page {$pageId}");
         }
 
@@ -592,24 +586,25 @@ class PageVersionService extends BaseService
     /**
      * Create JSON Patch (RFC 6902) from two JSON structures
      * 
-     * @param array $json1 First JSON structure
-     * @param array $json2 Second JSON structure
-     * @return array JSON Patch operations
+     * @param array<string, mixed> $json1 First JSON structure
+     * @param array<string, mixed> $json2 Second JSON structure
+     * @return list<array<string, mixed>> JSON Patch operations
      */
     private function createJsonPatch(array $json1, array $json2): array
     {
         $operations = [];
-        $changes = JsonNormalizer::getDifferenceSummary($json1, $json2)['changes'];
+        $summary = JsonNormalizer::getDifferenceSummary($json1, $json2);
+        $changes = $summary['changes'];
 
         foreach ($changes as $change) {
-            $path = '/' . str_replace('.', '/', $change['path']);
+            $path = '/' . str_replace('.', '/', $this->asString($change['path'] ?? ''));
 
-            switch ($change['type']) {
+            switch ($this->asString($change['type'] ?? '')) {
                 case 'addition':
                     $operations[] = [
                         'op' => 'add',
                         'path' => $path,
-                        'value' => $change['value']
+                        'value' => $change['value'] ?? null
                     ];
                     break;
 
@@ -624,7 +619,7 @@ class PageVersionService extends BaseService
                     $operations[] = [
                         'op' => 'replace',
                         'path' => $path,
-                        'value' => $change['new_value']
+                        'value' => $change['new_value'] ?? null
                     ];
                     break;
             }
@@ -650,6 +645,9 @@ class PageVersionService extends BaseService
 
             // Check if this is the currently published version
             $page = $version->getPage();
+            if (!$page) {
+                $this->throwNotFound("Page not found for version {$versionId}");
+            }
             if ($page->getPublishedVersionId() === $versionId) {
                 $this->throwBadRequest("Cannot delete the currently published version. Unpublish it first.");
             }
@@ -716,7 +714,7 @@ class PageVersionService extends BaseService
             }
 
             try {
-                $this->deleteVersion($version->getId());
+                $this->deleteVersion((int) $version->getId());
                 $deletedCount++;
             } catch (\Exception $e) {
                 // Log error but continue
@@ -737,7 +735,7 @@ class PageVersionService extends BaseService
      * - NO retrieved_data or condition_debug (dynamic elements)
      *
      * @param int $pageId The page ID
-     * @return array Raw page structure with all languages
+     * @return array{page: array<string, mixed>} Raw page structure with all languages
      * @throws \App\Exception\ServiceException If page not found
      */
     private function getRawPageStructure(int $pageId): array
@@ -803,8 +801,8 @@ class PageVersionService extends BaseService
     /**
      * Fetch translations for ALL languages for given section IDs
      * 
-     * @param array $sectionIds Array of section IDs
-     * @return array Associative array [section_id => [language_id => [field_name => content]]]
+     * @param array<int, int> $sectionIds Array of section IDs
+     * @return array<int, array<int, array<string, array{content: mixed, meta: mixed}>>> Associative array [section_id => [language_id => [field_name => content]]]
      */
     private function fetchAllLanguageTranslations(array $sectionIds): array
     {
@@ -821,14 +819,15 @@ class PageVersionService extends BaseService
             ->where('s.id IN (:sectionIds)')
             ->setParameter('sectionIds', $sectionIds);
 
+        /** @var list<array<string, mixed>> $results */
         $results = $qb->getQuery()->getResult();
 
         // Organize results by section_id -> language_id -> field_name
         $translations = [];
         foreach ($results as $result) {
-            $sectionId = $result['section_id'];
-            $languageId = $result['language_id'];
-            $fieldName = $result['field_name'];
+            $sectionId = $this->asInt($result['section_id'] ?? 0);
+            $languageId = $this->asInt($result['language_id'] ?? 0);
+            $fieldName = $this->asString($result['field_name'] ?? '');
 
             if (!isset($translations[$sectionId])) {
                 $translations[$sectionId] = [];
@@ -838,8 +837,8 @@ class PageVersionService extends BaseService
             }
 
             $translations[$sectionId][$languageId][$fieldName] = [
-                'content' => $result['content'],
-                'meta' => $result['meta']
+                'content' => $result['content'] ?? null,
+                'meta' => $result['meta'] ?? null
             ];
         }
 
@@ -851,13 +850,17 @@ class PageVersionService extends BaseService
      * 
      * Preserves all existing section fields and adds multi-language translations
      * 
-     * @param array &$sections Sections array (passed by reference)
-     * @param array $translations All language translations [section_id => [language_id => [field_name => content]]]
+     * @param array<array-key, mixed> &$sections Sections array (passed by reference)
+     * @param array<int, mixed> $translations All language translations [section_id => [language_id => [field_name => content]]]
      */
     private function applyAllLanguageTranslations(array &$sections, array $translations): void
     {
         foreach ($sections as &$section) {
-            $sectionId = $section['id'];
+            if (!is_array($section)) {
+                continue;
+            }
+
+            $sectionId = $this->asInt($section['id'] ?? 0);
 
             if (isset($translations[$sectionId])) {
                 // Store all language translations in a special field
@@ -870,29 +873,7 @@ class PageVersionService extends BaseService
                 $this->applyAllLanguageTranslations($section['children'], $translations);
             }
         }
-    }
-
-    /**
-     * Strip dynamic elements from section recursively
-     * 
-     * Removes:
-     * - retrieved_data
-     * - condition_debug
-     * 
-     * @param array &$section Section array (passed by reference)
-     */
-    private function stripDynamicElements(array &$section): void
-    {
-        // Remove dynamic elements
-        unset($section['retrieved_data']);
-        unset($section['condition_debug']);
-
-        // Recursively process children
-        if (isset($section['children']) && is_array($section['children'])) {
-            foreach ($section['children'] as &$child) {
-                $this->stripDynamicElements($child);
-            }
-        }
+        unset($section);
     }
 }
 

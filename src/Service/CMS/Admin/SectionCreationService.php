@@ -14,8 +14,6 @@ use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
-use App\Service\ACL\ACLService;
-use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\LookupService;
@@ -37,7 +35,6 @@ class SectionCreationService extends BaseService
         private readonly PositionManagementService $positionManagementService,
         private readonly DataTableService $dataTableService,
         private readonly CacheService $cache,
-        private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
@@ -52,7 +49,7 @@ class SectionCreationService extends BaseService
      * @param int $pageId The ID of the page to add the section to
      * @param int $styleId The ID of the style to use for the section
      * @param int|null $position The position of the section on the page
-     * @return array The ID and position of the new section
+     * @return array<string, mixed> The ID and position of the new section
      * @throws ServiceException If the page or style is not found
      */
     public function createPageSection(int $pageId, int $styleId, ?int $position, ?string $name): array
@@ -95,7 +92,7 @@ class SectionCreationService extends BaseService
                 $this->dataTableService->createDataTableForFormSection($section);
             }
 
-            $this->positionManagementService->normalizePageSectionPositions($page->getId(), true);
+            $this->positionManagementService->normalizePageSectionPositions((int) $page->getId(), true);
 
             // Log the transaction
             $this->transactionService->logTransaction(
@@ -110,10 +107,10 @@ class SectionCreationService extends BaseService
             // Invalidate page and section caches
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
@@ -136,7 +133,7 @@ class SectionCreationService extends BaseService
      * @param int $parentSectionId The ID of the parent section
      * @param int $styleId The ID of the style to use for the section
      * @param int|null $position The position of the child section
-     * @return array The ID and position of the new section
+     * @return array<string, mixed> The ID and position of the new section
      * @throws ServiceException If the parent section or style is not found
      */
     public function createChildSection(?int $pageId, int $parentSectionId, int $styleId, ?int $position, ?string $name): array
@@ -214,7 +211,7 @@ class SectionCreationService extends BaseService
             // Invalidate section caches
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $parentSection->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);

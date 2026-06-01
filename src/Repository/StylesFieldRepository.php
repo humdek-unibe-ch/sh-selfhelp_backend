@@ -26,8 +26,8 @@ class StylesFieldRepository extends ServiceEntityRepository
      * Find default values for all fields of multiple styles in a single query
      * This method eliminates N+1 queries when fetching default values for multiple styles
      *
-     * @param array $styleIds Array of style IDs
-     * @return array Nested associative array with style ID as first key, field name as second key, and default value as value
+     * @param list<int> $styleIds Array of style IDs
+     * @return array<int|string, array<string, mixed>> Nested associative array with style ID as first key, field name as second key, and default value as value
      */
     public function findDefaultValuesByStyleIds(array $styleIds): array
     {
@@ -42,6 +42,7 @@ class StylesFieldRepository extends ServiceEntityRepository
             ->where('sf.style IN (:styleIds)')
             ->setParameter('styleIds', $styleIds);
 
+        /** @var list<array{style_id: int|string, field_name: string, defaultValue: mixed}> $results */
         $results = $qb->getQuery()->getResult();
         
         // Organize results by style ID and field name

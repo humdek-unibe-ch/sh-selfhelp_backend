@@ -8,7 +8,7 @@ This document provides comprehensive technical documentation for the SH-Selfhelp
 
 ## Project Overview and Architecture
 
-The SH-Selfhelp backend is a REST API server built with **Symfony 7.2.x** and **PHP 8.3+**. It implements a service-oriented architecture with clean separation of concerns, dynamic API routing, JWT-based authentication, and comprehensive JSON schema validation.
+The SH-Selfhelp backend is a REST API server built with **Symfony 7.4** and **PHP 8.4+**. It implements a service-oriented architecture with clean separation of concerns, dynamic API routing, JWT-based authentication, and comprehensive JSON schema validation.
 
 ### Core Principles
 * **Service-Oriented Architecture**: Business logic is encapsulated in services; controllers are thin delegates
@@ -327,29 +327,29 @@ Validation errors are automatically captured and returned in standardized format
 
 ### Core Dynamic Controller System (2025-05-21)
 
-The SH-Selfhelp Symfony backend uses a dynamic controller loading system as the core architectural component for handling API routes. This system allows routes to be defined in the database and loaded at runtime, without requiring code changes for new endpoints.
+The SH-Selfhelp Symfony backend uses a database-driven routing system as the core architectural component for handling API routes. Routes are defined in the database and loaded at runtime by a custom Symfony route loader, without requiring code changes for new endpoints.
 
 **Key Components:**
 
-1. **DynamicControllerService**: Core service that dynamically calls controllers based on route names
-   - Located at `src/Service/Dynamic/DynamicControllerService.php`
-   - Resolves controller class and method from database entries
-   - Handles dependency injection for controllers
-   - Integrates with ACL for permission checks
-   - Provides standardized API responses
-   - Uses caching for performance optimization
+1. **ApiRouteLoader**: Custom Symfony route loader that builds the routing table from the database
+   - Located at `src/Routing/ApiRouteLoader.php`
+   - Reads route rows from `api_routes` and maps each to its controller (`Class::method`) under `/cms-api`
+   - Filters out routes owned by disabled plugins at load time
+   - Cached via `php bin/console cache:clear-api-routes`
 
-2. **ApiRouteRepository**: Database access for route definitions
+2. **ApiSecurityListener**: Enforces per-route permissions using the route metadata and `UserPermissionService`
+
+3. **ApiRouteRepository**: Database access for route definitions
    - Maps route names to controller classes and methods
 
-3. **Database Table**: `api_routes` stores all route definitions
-   - Columns: `id`, `route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`
+4. **Database Table**: `api_routes` stores all route definitions
+   - Columns: `id`, `route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`, `id_plugins`
 
 **Example Flow:**
 
 ```
-Request → Router → DynamicControllerService.handle(routeName) → 
-  → Get route from DB → ACL check → Instantiate controller → Call method → Return response
+Request → Symfony Router (ApiRouteLoader-built routes) → ApiSecurityListener (permission check)
+  → Controller::method → ApiResponseFormatter → Response
 ```
 
 **Adding New Routes:**
@@ -363,7 +363,7 @@ INSERT INTO `api_routes` (`route_name`,`version`,`path`,`controller`,`methods`,`
 
 **Best Practices:**
 
-- Always use the dynamic controller system for API routes
+- Always register API routes through the `api_routes` table (loaded by `ApiRouteLoader`)
 - Keep controller methods focused on a single responsibility
 - Use standardized response formats via ApiResponseFormatter
 - Include proper error handling in all controller methods
@@ -514,8 +514,7 @@ Three moving parts:
    `Symfony\Component\Mercure\Jwt\LcobucciFactory`) scoped to the caller's
    per-user topic. Returns `{ hubUrl, topic, token, expiresIn }` —
    the discovery payload the frontend BFF needs to subscribe. Endpoint is
-   registered in `api_routes` by `migrations/Version20260425000000.php`
-   (mirrored in `db/update_scripts/api_routes.sql`) and authenticates
+   registered in `api_routes` by a Doctrine migration and authenticates
    manually via `UserContextService` (no `rel_api_routes_permissions` row).
 
 3. **Hub: `dunglas/mercure` container** (the `mercure` service in the root
@@ -2629,9 +2628,9 @@ This section outlines the setup for writing and running automated tests for the 
 - **Symfony `PantherTestCase`**: Can be used for end-to-end tests that require a real browser (optional, for more complex UI-driven API interactions if needed).
 
 ### Configuration Files
-- **`phpunit.xml.dist`**: Located in the project root (`d:\TPF\SelfHelp\sh-selfhelp\server\symfony\phpunit.xml.dist`). Configures PHPUnit, sets the `APP_ENV` to `test`, and bootstraps the Symfony environment via `tests/bootstrap.php`.
+- **`phpunit.xml.dist`**: Located at the repository root (`phpunit.xml.dist`). Configures PHPUnit, sets the `APP_ENV` to `test`, and bootstraps the Symfony environment via `tests/bootstrap.php`.
 - **`tests/bootstrap.php`**: Loads the test environment, including `.env.test`.
-- **`.env.test`**: Located in the project root (`d:\TPF\SelfHelp\sh-selfhelp\server\symfony\.env.test`). Contains environment-specific variables for testing:
+- **`.env.test`**: Located at the repository root (`.env.test`). Contains environment-specific variables for testing:
     - `APP_ENV=test`
     - `APP_SECRET`: **Crucial! Set this to a unique, strong random string.**
     - `DATABASE_URL`: Defines the database connection for tests. Defaults to SQLite (`sqlite:///%kernel.project_dir%/var/data.db.test`). You can change this to a dedicated test PostgreSQL or MySQL database.
@@ -2641,7 +2640,7 @@ This section outlines the setup for writing and running automated tests for the 
 - **`config/packages/test/framework.yaml`**: Contains framework-specific overrides for the test environment, such as using mock session storage and disabling the profiler for performance.
 
 ### Test Directory Structure
-- Tests reside in the `d:\TPF\SelfHelp\sh-selfhelp\server\symfony\tests\` directory.
+- Tests reside in the `tests/` directory at the repository root.
 - API controller tests are typically organized mirroring the `src/Controller/Api/` structure, e.g., `tests/Controller/Api/V1/AuthControllerTest.php`.
 - *Note*: If directories like `config/packages/test/` or `tests/Controller/Api/V1/` do not exist, they may need to be created manually if the development tools fail to create them automatically during file generation.
 
@@ -2658,7 +2657,7 @@ This section outlines the setup for writing and running automated tests for the 
     -   Alternatively, you can manually manage database state in your test `setUp()` / `tearDown()` methods by dropping/creating the database or truncating tables, but this is slower and more complex.
 
 ### Running Tests
-1.  Navigate to the Symfony project root in your terminal: `d:\TPF\SelfHelp\sh-selfhelp\server\symfony\`
+1.  Open a terminal at the repository root (the directory containing `composer.json`).
 2.  **Run all tests**:
     ```bash
     php bin/phpunit

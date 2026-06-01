@@ -103,7 +103,7 @@ class AdminCacheController extends AbstractController
         try {
             // Get request data
             $requestData = json_decode($request->getContent(), true);
-            if (!$requestData || !isset($requestData['category'])) {
+            if (!is_array($requestData) || !isset($requestData['category'])) {
                 return $this->responseFormatter->formatError(
                     'Validation failed: category is required',
                     Response::HTTP_BAD_REQUEST
@@ -113,7 +113,7 @@ class AdminCacheController extends AbstractController
             $category = $requestData['category'];
 
             // Validate category exists
-            if (!in_array($category, CacheService::ALL_CATEGORIES)) {
+            if (!is_string($category) || !in_array($category, CacheService::ALL_CATEGORIES)) {
                 return $this->responseFormatter->formatError(
                     'Invalid cache category',
                     Response::HTTP_BAD_REQUEST
@@ -152,7 +152,7 @@ class AdminCacheController extends AbstractController
         try {
             // Get request data
             $requestData = json_decode($request->getContent(), true);
-            if (!$requestData || !isset($requestData['user_id']) || !is_int($requestData['user_id']) || $requestData['user_id'] < 1) {
+            if (!is_array($requestData) || !isset($requestData['user_id']) || !is_int($requestData['user_id']) || $requestData['user_id'] < 1) {
                 return $this->responseFormatter->formatError(
                     'Validation failed: user_id must be a positive integer',
                     Response::HTTP_BAD_REQUEST
@@ -292,52 +292,6 @@ class AdminCacheController extends AbstractController
                 Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
-    }
-
-    /**
-     * Get cache recommendations based on statistics
-     */
-    private function getCacheRecommendations(array $stats): array
-    {
-        $recommendations = [];
-        $globalStats = $stats['global_stats'];
-        $categoryStats = $stats['category_stats'];
-
-        // Check overall hit rate
-        if ($globalStats['hit_rate'] < 60) {
-            $recommendations[] = [
-                'type' => 'performance',
-                'message' => 'Overall cache hit rate is below 60%. Consider increasing TTL values or reviewing cache invalidation strategies.',
-                'priority' => 'high'
-            ];
-        }
-
-        // Check for categories with low hit rates
-        foreach ($categoryStats as $category => $catStats) {
-            $categoryTotal = $catStats['hits'] + $catStats['misses'];
-            if ($categoryTotal > 50) { // Only check categories with enough data
-                $categoryHitRate = $categoryTotal > 0 ? ($catStats['hits'] / $categoryTotal) * 100 : 0;
-                if ($categoryHitRate < 40) {
-                    $recommendations[] = [
-                        'type' => 'category',
-                        'message' => "Category '{$category}' has low hit rate ({$categoryHitRate}%). Review caching strategy for this category.",
-                        'priority' => 'medium',
-                        'category' => $category
-                    ];
-                }
-            }
-        }
-
-        // Check for excessive invalidations
-        if ($globalStats['invalidations'] > ($globalStats['sets'] * 0.5)) {
-            $recommendations[] = [
-                'type' => 'invalidation',
-                'message' => 'High invalidation rate detected. Review invalidation strategies to reduce unnecessary cache clearing.',
-                'priority' => 'medium'
-            ];
-        }
-
-        return $recommendations;
     }
 
 }

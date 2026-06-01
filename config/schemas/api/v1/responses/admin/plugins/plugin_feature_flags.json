@@ -1,0 +1,28 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Plugin feature flags",
+    "description": "Response from /cms-api/v1/admin/plugins/{pluginId}/feature-flags. Resolved flag values for the plugin keyed by flag key.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "pluginId": { "type": "string" },
+                    "key": { "type": "string" },
+                    "description": { "type": ["string", "null"] },
+                    "defaultEnabled": { "type": "boolean" },
+                    "value": { "type": "boolean" },
+                    "scope": { "type": ["string", "null"], "enum": [null, "global", "user", "group"] },
+                    "scopeValue": { "type": ["string", "integer", "null"] }
+                },
+                "required": ["pluginId", "key", "defaultEnabled", "value"],
+                "additionalProperties": true
+            }
+        }
+    },
+    "required": ["data"]
+}

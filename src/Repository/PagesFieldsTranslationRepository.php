@@ -27,9 +27,9 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
      * Fetch all page field translations for a list of page IDs and specific language
      * Only fetches translations for fields with display=1 (title fields)
      *
-     * @param array $pageIds Array of page IDs
+     * @param list<int> $pageIds Array of page IDs
      * @param int $languageId Language ID
-     * @return array Associative array with page_id as key and translations as values
+     * @return array<int|string, array<string, mixed>> Associative array with page_id as key and translations as values
      */
     public function fetchTitleTranslationsForPages(array $pageIds, int $languageId): array
     {
@@ -48,6 +48,7 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
             ->setParameter('pageIds', $pageIds)
             ->setParameter('languageId', $languageId);
 
+        /** @var list<array{page_id: int|string, field_id: int|string, field_name: string, content: mixed}> $results */
         $results = $qb->getQuery()->getResult();
         
         // Organize results by page_id
@@ -74,10 +75,10 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
      * `<p class="single-line-paragraph"></p>`) silently winning over the
      * default-language value. See {@see TranslationContentHelper::isEffectivelyEmpty()}.
      *
-     * @param array $pageIds Array of page IDs
+     * @param list<int> $pageIds Array of page IDs
      * @param int $languageId Primary language ID
      * @param int|null $defaultLanguageId Default language ID for fallback
-     * @return array Associative array with page_id as key and translations as values
+     * @return array<int|string, array<string, mixed>> Associative array with page_id as key and translations as values
      */
     public function fetchTitleTranslationsWithFallback(array $pageIds, int $languageId, ?int $defaultLanguageId = null): array
     {

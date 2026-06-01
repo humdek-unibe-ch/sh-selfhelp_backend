@@ -17,16 +17,25 @@ class EntityUtil
      * Convert a Doctrine entity or any object to an array representation
      * 
      * @param object $entity The entity or object to convert
-     * @return array The array representation of the entity
+     * @return array<string, mixed> The array representation of the entity
      */
     public static function convertEntityToArray(object $entity): array
     {
         // If the entity has a toArray method, use it
         if (method_exists($entity, 'toArray')) {
-            return $entity->toArray();
+            $converted = $entity->toArray();
+            if (is_array($converted)) {
+                $normalized = [];
+                foreach ($converted as $key => $value) {
+                    $normalized[(string) $key] = $value;
+                }
+                return $normalized;
+            }
+            return [];
         }
         
-        // Start with public properties
+        // Start with public properties (object property names are always strings)
+        /** @var array<string, mixed> $result */
         $result = get_object_vars($entity);
         
         // Try to get all properties using reflection
@@ -45,7 +54,7 @@ class EntityUtil
             // Try to get the value
             try {
                 // Check if the property is initialized for typed properties
-                if (PHP_VERSION_ID >= 70400 && $property->hasType() && !$property->isInitialized($entity)) {
+                if ($property->hasType() && !$property->isInitialized($entity)) {
                     // Skip uninitialized typed properties to avoid errors
                     continue;
                 }
@@ -69,7 +78,7 @@ class EntityUtil
                             } else {
                                 // Collection is initialized or not a PersistentCollection
                                 $result[$name] = array_map(function($item) {
-                                    return method_exists($item, 'getId') ? $item->getId() : null;
+                                    return is_object($item) && method_exists($item, 'getId') ? $item->getId() : null;
                                 }, $value->toArray());
                             }
                         } catch (\Throwable $e) {
@@ -81,13 +90,8 @@ class EntityUtil
                     else {
                         if (method_exists($value, 'getId')) {
                             try {
-                                // Check if it's a Doctrine proxy to avoid lazy loading
-                                if (is_object($value) && str_contains(get_class($value), 'Proxy')) {
-                                    // For proxies, try to get ID without initializing
-                                    $result[$name] = $value->getId();
-                                } else {
-                                    $result[$name] = $value->getId();
-                                }
+                                // For proxies and regular entities alike, try to get the ID.
+                                $result[$name] = $value->getId();
                             } catch (\Throwable $e) {
                                 // Skip if lazy loading fails
                                 $result[$name] = null;
@@ -95,16 +99,11 @@ class EntityUtil
                         } else {
                             // Check if it's a lazy loading proxy
                             if ($value instanceof \Symfony\Component\VarExporter\Internal\LazyObjectState || 
-                                (is_object($value) && str_contains(get_class($value), 'Proxy'))) {
+                                str_contains(get_class($value), 'Proxy')) {
                                 // Skip lazy-loaded objects that can't be converted
                                 $result[$name] = 'Proxy[' . get_class($value) . ']';
                             } else {
-                                try {
-                                    $result[$name] = (string)$value;
-                                } catch (\Throwable $e) {
-                                    // If string conversion fails, set to null
-                                    $result[$name] = null;
-                                }
+                                $result[$name] = method_exists($value, '__toString') ? (string) $value : null;
                             }
                         }
                     }

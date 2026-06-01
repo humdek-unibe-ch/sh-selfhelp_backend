@@ -17,6 +17,8 @@ use Doctrine\Persistence\ManagerRegistry;
  *
  * Handles database operations for data access audit logs
  * Provides filtering and pagination for audit management APIs
+ *
+ * @extends ServiceEntityRepository<DataAccessAudit>
  */
 class DataAccessAuditRepository extends ServiceEntityRepository
 {
@@ -28,6 +30,8 @@ class DataAccessAuditRepository extends ServiceEntityRepository
     /**
      * Find audit logs with filtering and pagination
      * Returns array results for memory efficiency with timezone conversion in PHP
+     *
+     * @return array{data: list<array<string, mixed>>, total: int, page: int, pageSize: int, totalPages: int}
      */
     public function findAuditLogs(
         ?int $userId = null,
@@ -123,15 +127,18 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         $qb->setFirstResult(($page - 1) * $pageSize)
            ->setMaxResults($pageSize);
 
+        /** @var list<array<string, mixed>> $results */
         $results = $qb->getQuery()->getArrayResult();
 
         // Convert timezone for each result
         $timezone = new \DateTimeZone($timezoneCode);
         foreach ($results as &$result) {
-            if (isset($result['createdAt']) && $result['createdAt']) {
-                $result['createdAt'] = $result['createdAt']->setTimezone($timezone);
+            $createdAt = $result['createdAt'] ?? null;
+            if ($createdAt instanceof \DateTime || $createdAt instanceof \DateTimeImmutable) {
+                $result['createdAt'] = $createdAt->setTimezone($timezone);
             }
         }
+        unset($result);
 
         return [
             'data' => $results,
@@ -144,6 +151,8 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
     /**
      * Get audit statistics
+     *
+     * @return array<string, mixed>
      */
     public function getAuditStatistics(?string $dateFrom = null, ?string $dateTo = null, string $timezoneCode = 'UTC'): array
     {
@@ -167,6 +176,7 @@ class DataAccessAuditRepository extends ServiceEntityRepository
                ->setParameter('dateTo', new \DateTime($dateTo . ' 23:59:59'));
         }
 
+        /** @var array{totalLogs: int|string, deniedAttempts: int|string|null, uniqueResources: int|string, uniqueUsers: int|string} $result */
         $result = $qb->getQuery()->getSingleResult();
 
         // Get most accessed resources
@@ -187,6 +197,8 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
     /**
      * Get most accessed resources
+     *
+     * @return list<array<string, mixed>>
      */
     private function getMostAccessedResources(?string $dateFrom = null, ?string $dateTo = null, string $timezoneCode = 'UTC'): array
     {
@@ -212,21 +224,20 @@ class DataAccessAuditRepository extends ServiceEntityRepository
                ->setParameter('dateTo', new \DateTime($dateTo . ' 23:59:59'));
         }
 
+        /** @var list<array<string, mixed>> $results */
         $results = $qb->getQuery()->getResult();
 
         // Convert timezone for lastAccessed dates (Doctrine already returns DateTime objects)
         $timezone = new \DateTimeZone($timezoneCode);
         foreach ($results as &$result) {
-            if (!empty($result['lastAccessed'])) {
-                if ($result['lastAccessed'] instanceof \DateTimeInterface) {
-                    $date = $result['lastAccessed'];
-                } else {
-                    $date = new \DateTime($result['lastAccessed']);
-                }
-        
-                $result['lastAccessed'] = $date->setTimezone($timezone);
+            $lastAccessed = $result['lastAccessed'] ?? null;
+            if ($lastAccessed instanceof \DateTime || $lastAccessed instanceof \DateTimeImmutable) {
+                $result['lastAccessed'] = $lastAccessed->setTimezone($timezone);
+            } elseif (is_string($lastAccessed) && $lastAccessed !== '') {
+                $result['lastAccessed'] = (new \DateTime($lastAccessed))->setTimezone($timezone);
             }
         }
+        unset($result);
 
         return $results;
     }
@@ -234,9 +245,12 @@ class DataAccessAuditRepository extends ServiceEntityRepository
     /**
      * Get recent denied attempts
      * Uses Doctrine with timezone conversion in PHP
+     *
+     * @return list<array<string, mixed>>
      */
     private function getRecentDeniedAttempts(string $timezoneCode = 'UTC'): array
     {
+        /** @var list<array<string, mixed>> $results */
         $results = $this->createQueryBuilder('a')
             ->select([
                 'a.id',
@@ -267,10 +281,12 @@ class DataAccessAuditRepository extends ServiceEntityRepository
         // Convert timezone for createdAt dates
         $timezone = new \DateTimeZone($timezoneCode);
         foreach ($results as &$result) {
-            if (isset($result['createdAt']) && $result['createdAt']) {
-                $result['createdAt'] = $result['createdAt']->setTimezone($timezone);
+            $createdAt = $result['createdAt'] ?? null;
+            if ($createdAt instanceof \DateTime || $createdAt instanceof \DateTimeImmutable) {
+                $result['createdAt'] = $createdAt->setTimezone($timezone);
             }
         }
+        unset($result);
 
         return $results;
     }
@@ -278,9 +294,12 @@ class DataAccessAuditRepository extends ServiceEntityRepository
     /**
      * Find audit log by ID with relationships
      * Returns array result for memory efficiency with timezone conversion in PHP
+     *
+     * @return array<string, mixed>|null
      */
     public function findAuditLogById(int $id, string $timezoneCode = 'UTC'): ?array
     {
+        /** @var list<array<string, mixed>> $result */
         $result = $this->createQueryBuilder('a')
             ->select([
                 'a.id',
@@ -324,8 +343,9 @@ class DataAccessAuditRepository extends ServiceEntityRepository
 
         // Convert timezone for createdAt
         $timezone = new \DateTimeZone($timezoneCode);
-        if (isset($auditLog['createdAt']) && $auditLog['createdAt']) {
-            $auditLog['createdAt'] = $auditLog['createdAt']->setTimezone($timezone);
+        $createdAt = $auditLog['createdAt'] ?? null;
+        if ($createdAt instanceof \DateTime || $createdAt instanceof \DateTimeImmutable) {
+            $auditLog['createdAt'] = $createdAt->setTimezone($timezone);
         }
 
         return $auditLog;

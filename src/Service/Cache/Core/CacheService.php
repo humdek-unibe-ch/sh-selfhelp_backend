@@ -79,6 +79,9 @@ class CacheService
     /** @var string Cache category for condition evaluations */
     public const CATEGORY_CONDITIONS = 'conditions';
 
+    /** @var string Cache category for installed plugins, registry, feature flags */
+    public const CATEGORY_PLUGINS = 'plugins';
+
     /** @var string Cache category for API routes */
     public const CATEGORY_DEFAULT = 'default';
 
@@ -98,6 +101,7 @@ class CacheService
         self::CATEGORY_ACTIONS,
         self::CATEGORY_STYLES,
         self::CATEGORY_API_ROUTES,
+        self::CATEGORY_PLUGINS,
         self::CATEGORY_DATA_TABLES,
         self::CATEGORY_CONDITIONS,
         self::CATEGORY_DEFAULT,
@@ -169,10 +173,11 @@ class CacheService
      * paginated results, filtered lists, or any data that should be invalidated as a group.
      * Automatically records cache hit/miss and set statistics.
      * 
+     * @template T
      * @param string $key Unique identifier for this cache entry within the category
-     * @param callable $compute Callback function to compute the value if not cached: fn() => mixed
+     * @param callable(): T $compute Callback function to compute the value if not cached
      * @param int|null $ttlSeconds Optional TTL override (uses category default if null)
-     * @return mixed The cached or computed value
+     * @return T The cached or computed value
      * 
      * @example 
      * $actions = $cache->withCategory(CATEGORY_ACTIONS)->getList(
@@ -219,10 +224,11 @@ class CacheService
      * single entities, configuration values, or any data that changes independently.
      * Automatically records cache hit/miss and set statistics.
      * 
+     * @template T
      * @param string $key Unique identifier for this cache entry within the category
-     * @param callable $compute Callback function to compute the value if not cached: fn() => mixed
+     * @param callable(): T $compute Callback function to compute the value if not cached
      * @param int|null $ttlSeconds Optional TTL override (uses category default if null)
-     * @return mixed The cached or computed value
+     * @return T The cached or computed value
      * 
      * @example 
      * $action = $cache->withCategory(CATEGORY_ACTIONS)->getItem(
@@ -657,7 +663,7 @@ class CacheService
      * like batch updates, imports, or cascading changes.
      * 
      * @param string $entityType One of the ENTITY_SCOPE_* constants
-     * @param array $entityIds Array of entity IDs to invalidate
+     * @param array<int> $entityIds Array of entity IDs to invalidate
      * 
      * @throws \InvalidArgumentException If entityType is not supported or entityIds is empty
      * 
@@ -857,6 +863,8 @@ class CacheService
 
     /**
      * Generate tags for a user cache entry
+     *
+     * @return list<string>
      */
     private function tagsFor(): array
     {
@@ -938,6 +946,10 @@ class CacheService
      */
     private function incr(string $key): void
     {
+         // The injected cache pool is always a PSR-6 CacheItemPoolInterface at
+         // runtime (Symfony tag-aware adapter); assert it so the PSR-6 item API
+         // below resolves for static analysis. No runtime behaviour change.
+         assert($this->cache instanceof \Psr\Cache\CacheItemPoolInterface);
          // DO NOT CHANGE THIS CODE
          $item = $this->cache->getItem($key);  // ✅ fetch cache item
 
@@ -946,7 +958,8 @@ class CacheService
          }
 
          if ($item->isHit()) {
-             $current = (int) $item->get();
+             $stored = $item->get();
+             $current = is_scalar($stored) ? (int) $stored : -1;
          } else {
              $current = -1; // so first store becomes 0
          }

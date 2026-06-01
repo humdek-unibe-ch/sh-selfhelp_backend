@@ -7,10 +7,16 @@ The SelfHelp Symfony Backend uses a revolutionary database-driven routing system
 ## 🏗️ Architecture Components
 
 ### Core Components
-1. **`ApiRouteLoader`** - Custom Symfony route loader
-2. **`ApiRouteRepository`** - Database access for route definitions
-3. **`DynamicControllerService`** - Dynamic controller resolution and execution
-4. **`api_routes` table** - Database storage for route definitions
+1. **`ApiRouteLoader`** (`src/Routing/ApiRouteLoader.php`) — custom Symfony route loader that builds the `RouteCollection` from the database.
+2. **`ApiRouteRepository`** (`src/Repository/ApiRouteRepository.php`) — database access for route definitions (one optimized query that also joins each route's permissions).
+3. **`api_routes` + `rel_api_routes_permissions` tables** — database storage for route definitions and their permission links.
+4. **`ApiSecurityListener`** (`src/EventListener/ApiSecurityListener.php`) — enforces each route's required permissions on the `kernel.controller` event.
+
+> There is **no** custom "dynamic controller" dispatcher. Once
+> `ApiRouteLoader` has put the resolved `class::method` into the route's
+> `_controller` default, Symfony's standard HttpKernel + controller resolver
+> instantiate the controller (an autowired service) and call the method like
+> any other Symfony route.
 
 ## 📊 Database-Driven Route Loading
 
@@ -45,11 +51,22 @@ CREATE TABLE `api_routes` (
   `methods`      VARCHAR(50)     NOT NULL,
   `requirements` JSON            NULL,
   `params`       JSON            NULL,
+  `id_plugins`   INT             NULL,  -- NULL = core route; set = plugin-owned
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_route_name_version` (`route_name`, `version`),
-  UNIQUE KEY `uniq_version_path_methods` (`version`, `path`, `methods`)
+  UNIQUE KEY `uq_api_routes_route_name_version` (`route_name`, `version`),
+  UNIQUE KEY `uq_api_routes_version_path_methods` (`version`, `path`, `methods`),
+  KEY `idx_api_routes_id_plugins` (`id_plugins`),
+  CONSTRAINT `fk_api_routes_id_plugins` FOREIGN KEY (`id_plugins`)
+    REFERENCES `plugins` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
+
+> The canonical definition is the Doctrine entity `App\Entity\ApiRoute`
+> (mapped to `api_routes`); the SQL above is illustrative. `id_plugins`
+> links a route to its owning plugin (`App\Entity\Plugin\Plugin`); core
+> routes leave it `NULL`. `ApiRouteLoader` filters out routes whose owning
+> plugin is disabled, so disabling a plugin instantly takes its API offline
+> without deleting the route metadata.
 
 ### Field Descriptions
 - **`route_name`**: Unique identifier for the route (e.g., `admin_get_pages`)
@@ -70,43 +87,59 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `method
 ## 🔧 ApiRouteLoader Implementation
 
 ### Route Loading Process
+
+`load()` is called once during route loading. Outside `dev` it caches the
+whole `RouteCollection` under the `api_routes` cache category; in `dev` it
+rebuilds every time for instant feedback. `buildRouteCollection()` fetches
+**all** routes and their permissions in a single query, then registers them:
+
 ```php
 <?php
-// Simplified ApiRouteLoader::load() method
-public function load(mixed $resource, string $type = null): RouteCollection
+// ApiRouteLoader::load() (abridged — see src/Routing/ApiRouteLoader.php)
+public function load(mixed $resource, ?string $type = null): RouteCollection
+{
+    $useCache = $this->env !== 'dev';
+
+    return $useCache
+        ? $this->cache
+            ->withCategory(CacheService::CATEGORY_API_ROUTES)
+            ->getList('api_routes_collection', fn() => $this->buildRouteCollection())
+        : $this->buildRouteCollection();
+}
+
+private function buildRouteCollection(): RouteCollection
 {
     $routes = new RouteCollection();
-    
-    // Get all available versions
-    $versions = $this->apiRouteRepository->findAllVersions();
-    
-    foreach ($versions as $version) {
-        // Load routes for this version
-        $dbRoutes = $this->apiRouteRepository->findAllRoutesByVersion($version);
-        
-        foreach ($dbRoutes as $dbRoute) {
-            // Create Symfony Route object
-            $path = '/' . $version . $dbRoute->getPath();
-            $controller = $this->mapControllerToVersionedNamespace(
-                $dbRoute->getController(), 
-                $version
-            );
-            
-            $route = new Route(
-                $path,
-                ['_controller' => $controller, '_version' => $version],
-                $dbRoute->getRequirements() ?? [],
-                [],
-                '',
-                [],
-                explode(',', $dbRoute->getMethods())
-            );
-            
-            // Add route to collection
-            $routes->add($dbRoute->getRouteName() . '_' . $version, $route);
-        }
+
+    // One optimized query returns every route row + its permission names.
+    $allRoutesData = $this->apiRouteRepository->findAllRoutesWithPermissionsAsArray();
+
+    // Register STATIC paths (no `{placeholder}`) before DYNAMIC ones: the
+    // UrlMatcher takes the first match in collection order, so a static
+    // `/admin/plugins/available` must win over `/admin/plugins/{pluginId}`.
+    usort($allRoutesData, /* version, then static-before-dynamic, then id */ ...);
+
+    foreach ($allRoutesData as $row) {
+        $version    = (string) $row['version'];
+        $path       = '/' . $version . (string) $row['path'];
+        $controller = $this->mapControllerToVersionedNamespace((string) $row['controller'], $version);
+
+        $route = new Route(
+            $path,
+            [
+                '_controller' => $controller,
+                '_version'    => $version,
+                '_params'     => $row['params'] ?? [],
+            ],
+            $row['requirements'] ?? [],                 // requirements
+            ['permissions' => $row['permission_names'] ?? []], // options
+            '', [],                                     // host, schemes
+            explode(',', (string) $row['methods'])      // methods
+        );
+
+        $routes->add($row['route_name'] . '_' . $version, $route);
     }
-    
+
     return $routes;
 }
 ```
@@ -125,36 +158,57 @@ The system automatically maps database controller references to versioned namesp
 // 4. Map to versioned namespace: App\Controller\Api\{Version}\{Domain}\{Domain}Controller
 ```
 
-## 🎯 Dynamic Controller Resolution
+## 🎯 Controller Dispatch & Security
 
-### DynamicControllerService
+There is no custom dispatcher. The DB route stores a `_controller` value
+(`Class::method`); Symfony's standard kernel resolves and invokes it. The
+only SelfHelp-specific step is **`ApiSecurityListener`**, which runs on the
+`kernel.controller` event (priority 10), *after* `JWTTokenAuthenticator` has
+decoded the bearer token onto the request attributes:
+
 ```php
 <?php
-public function handle(string $routeName, Request $request, array $attributes = []): JsonResponse
+// ApiSecurityListener::onKernelController() (abridged)
+public function onKernelController(ControllerEvent $event): void
 {
-    // 1. Get route info from database
-    $route = $this->getRouteInfo($routeName);
-    
-    // 2. Perform ACL checks if required
-    if ($pageId !== null) {
-        $userId = $this->userContextService->getCurrentUser()->getId();
-        if (!$this->aclService->hasAccess($userId, $pageId, $accessMode)) {
-            return $this->createApiResponse(null, 403, 'Access denied by ACL');
-        }
+    $request = $event->getRequest();
+    if (!str_starts_with($request->getPathInfo(), '/cms-api/')) {
+        return;                       // only guards DB-backed API routes
     }
-    
-    // 3. Parse controller string
-    [$controllerClass, $method] = explode('::', $route['controller']);
-    
-    // 4. Instantiate controller
-    $controller = $this->container->has($controllerClass) 
-        ? $this->container->get($controllerClass)
-        : new $controllerClass();
-    
-    // 5. Call controller method
-    return $controller->$method($request, ...$attributes);
+    if ($request->getMethod() === 'OPTIONS') {
+        return;                       // CORS preflight
+    }
+
+    // (1) Impersonation: block high-risk routes + audit every mutation
+    //     performed under an impersonation JWT.
+    $this->handleImpersonation($request);
+
+    // (2) Permission check by route name (cached lookups).
+    $routeName = $request->attributes->get('_route');
+    $required  = $this->permissionService->getRoutePermissions($routeName);
+    if ($required === []) {
+        return;                       // public route, nothing to enforce
+    }
+
+    $user = $this->userContextService->getCurrentUser()
+        ?? throw new AccessDeniedException('User not authenticated.');
+
+    $userPerms = $this->permissionService->getUserPermissions($user);
+    if (!array_intersect($required, $userPerms)) {
+        throw new AccessDeniedException('You do not have permission to access this API endpoint.');
+    }
 }
 ```
+
+Notes:
+
+- Route-level access uses **permissions** (`rel_api_routes_permissions`),
+  not page ACL. Page/content ACL is a separate concern handled in the CMS
+  layer (`ACLService`, `PageService`) — see
+  [Authentication & Authorization](./03-authentication-authorization.md) and
+  [ACL System](./13-acl-system.md).
+- Any `AccessDeniedException` (and any other API error) is turned into the
+  standard JSON envelope by `ApiExceptionListener`.
 
 ## 🔐 Permission Integration
 
@@ -174,13 +228,33 @@ CREATE TABLE `rel_api_routes_permissions` (
 ```
 
 ### Permission Loading in Routes
-```php
-// ApiRouteLoader loads permissions as route options
-$permissions = $this->getRoutePermissions($dbRoute->getId());
-$route->setOption('permissions', $permissions);
-```
+At **load** time, `findAllRoutesWithPermissionsAsArray()` returns each
+route's permission names alongside the row, and the loader stores them in the
+route options (`['permissions' => [...]]`). At **request** time the
+enforcement does not read that option directly: `ApiSecurityListener` looks
+the required permissions up by route name through
+`UserPermissionService::getRoutePermissions($routeName)`, which is cached
+(see [Global Cache System](./17-global-cache-system.md)).
 
 ## 📋 Route Management Workflow
+
+This section describes the workflow for **core host routes**.
+
+Plugin routes are intentionally handled differently:
+
+- plugin packages declare routes in `plugin.json#apiRoutes`;
+- the host persists those rows into `api_routes` through
+  `PluginApiRouteSynchronizer` during install / update;
+- plugin migrations still own plugin-created permission rows, but they
+  do **not** insert `api_routes` rows directly.
+
+The reason for the split is lifecycle:
+
+- core routes are baseline host application data, so host Doctrine
+  migrations are the natural source of truth;
+- plugin routes belong to separately installed packages, so the host
+  must reconcile them on update and remove or hide them cleanly on
+  uninstall / disable.
 
 ### Adding New Routes
 1. **Insert into Database**:
@@ -191,7 +265,11 @@ VALUES ('admin_create_user', 'v1', '/admin/users', 'App\\Controller\\AdminUserCo
 ```
 
 2. **Add to Update Script**:
-All route changes must be added to `db/update_scripts/api_routes.sql`
+For core routes, add a Doctrine migration that inserts the route into
+`api_routes` and links it in `rel_api_routes_permissions`.
+
+Do **not** use this workflow for plugin package routes; those are
+declared in the plugin manifest and synchronized by the host.
 
 3. **Create Controller**:
 ```php
@@ -217,55 +295,43 @@ WHERE ar.route_name = 'admin_create_user'
 ```
 
 ### Route Caching
-Routes are cached in memory during request processing:
+Caching happens at two levels, both through the Redis-backed `CacheService`:
 
-```php
-private array $routeCache = [];
-
-private function getRouteInfo(string $routeName): ?array
-{
-    // Check cache first
-    if (isset($this->routeCache[$routeName])) {
-        return $this->routeCache[$routeName];
-    }
-    
-    // Get from database and cache
-    $route = $this->apiRouteRepository->findOneBy(['name' => $routeName]);
-    $this->routeCache[$routeName] = [
-        'controller' => $route->getController(),
-        'method' => $route->getMethod(),
-        'path' => $route->getPath(),
-    ];
-    
-    return $this->routeCache[$routeName];
-}
-```
+- **Route collection** — outside `dev`, `ApiRouteLoader::load()` caches the
+  entire built `RouteCollection` under the `api_routes` cache category
+  (`CacheService::CATEGORY_API_ROUTES`). In `dev` it rebuilds on every load
+  so route changes appear immediately. Invalidate it explicitly with
+  `php bin/console cache:clear-api-routes` after editing route rows.
+- **Route → permissions** — at request time `UserPermissionService`
+  caches the permission lookups used by `ApiSecurityListener`, so the
+  per-request permission check does not hit the database on every call.
 
 ## 🔄 Request Processing Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Symfony as Symfony Router
+    participant Kernel as Symfony HttpKernel
     participant Loader as ApiRouteLoader
     participant DB as Database
-    participant Dynamic as DynamicControllerService
+    participant Auth as JWTTokenAuthenticator
+    participant Sec as ApiSecurityListener
     participant Controller
-    
-    Note over Client,Controller: Application Bootstrap
-    Symfony->>Loader: Load routes
-    Loader->>DB: Query api_routes
-    DB-->>Loader: Route definitions
-    Loader-->>Symfony: RouteCollection
-    
-    Note over Client,Controller: Request Processing
-    Client->>Symfony: HTTP Request
-    Symfony->>Symfony: Match route
-    Symfony->>Dynamic: Route to dynamic handler
-    Dynamic->>DB: Get route details (cached)
-    Dynamic->>Controller: Instantiate & call
-    Controller-->>Dynamic: Response
-    Dynamic-->>Client: JSON Response
+
+    Note over Client,Controller: Route loading (once; cached outside dev)
+    Kernel->>Loader: Load routes (type api_database)
+    Loader->>DB: findAllRoutesWithPermissionsAsArray()
+    DB-->>Loader: Rows + permission names
+    Loader-->>Kernel: RouteCollection (_controller per route)
+
+    Note over Client,Controller: Request processing
+    Client->>Kernel: HTTP request (/cms-api/...)
+    Kernel->>Kernel: Match route -> _controller
+    Kernel->>Auth: Decode bearer JWT -> request attrs
+    Kernel->>Sec: kernel.controller (permission + impersonation guard)
+    Sec-->>Kernel: allow (or throw AccessDeniedException)
+    Kernel->>Controller: Invoke resolved Class::method
+    Controller-->>Client: ApiResponseFormatter JSON envelope
 ```
 
 ## ⚡ Performance Optimizations
@@ -287,38 +353,23 @@ sequenceDiagram
 
 ## 🚨 Error Handling
 
-### Route Not Found
-```php
-if (!$route) {
-    return $this->createApiResponse(
-        null,
-        Response::HTTP_NOT_FOUND,
-        sprintf('Route "%s" not found', $routeName)
-    );
-}
-```
+Because dispatch is plain Symfony, errors surface through the framework and
+are normalised into the standard JSON envelope by **`ApiExceptionListener`**
+(`src/EventListener/ApiExceptionListener.php`):
 
-### Controller Not Found
-```php
-if (!class_exists($controllerClass)) {
-    return $this->createApiResponse(
-        null,
-        Response::HTTP_INTERNAL_SERVER_ERROR,
-        sprintf('Controller "%s" not found', $controllerClass)
-    );
-}
-```
-
-### Method Not Found
-```php
-if (!method_exists($controller, $method)) {
-    return $this->createApiResponse(
-        null,
-        Response::HTTP_INTERNAL_SERVER_ERROR,
-        sprintf('Method "%s" not found in controller "%s"', $method, $controllerClass)
-    );
-}
-```
+- **No route matches** the request path/method → Symfony throws
+  `NotFoundHttpException` / `MethodNotAllowedHttpException`, which the
+  exception listener renders as a `404` / `405` envelope.
+- **Permission denied** → `ApiSecurityListener` throws `AccessDeniedException`
+  → rendered as a `403` envelope.
+- **Controller cannot be resolved** — only possible if a stored
+  `controller` string points at a class/method that does not exist. Core
+  rows are kept correct by migrations; plugin rows are validated by
+  `PluginApiRouteSynchronizer` at install/update time, and disabled-plugin
+  rows are filtered out at load. `ApiRouteLoader::mapControllerToVersionedNamespace()`
+  dispatches already-autoloadable classes (plugin or versioned controllers)
+  as-is and only rewrites legacy flat `App\Controller\XController::m` strings
+  to the versioned namespace.
 
 ## 🔧 Configuration
 
@@ -336,9 +387,10 @@ services:
 ### Route Loading Configuration
 ```yaml
 # config/routes/dynamic_api.yaml
-api_routes:
+api_dynamic:
     resource: .
-    type: api_route_loader
+    type: api_database      # matches ApiRouteLoader::supports()
+    prefix: /cms-api        # every DB route is served under /cms-api
 ```
 
 ## 🧪 Testing Dynamic Routes
@@ -347,7 +399,7 @@ api_routes:
 ```php
 public function testRouteLoading(): void
 {
-    $routes = $this->apiRouteLoader->load('.', 'api_route_loader');
+    $routes = $this->apiRouteLoader->load('.', 'api_database');
     $this->assertInstanceOf(RouteCollection::class, $routes);
     $this->assertGreaterThan(0, $routes->count());
 }

@@ -16,8 +16,6 @@ use App\Repository\UserRepository;
 use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
-use App\Service\Cache\Core\CacheService;
-use App\Service\Auth\UserContextService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,13 +28,10 @@ use Symfony\Component\HttpFoundation\Response;
 class AdminDataAccessService extends BaseService
 {
     public function __construct(
-        private readonly UserContextService $userContextService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
         private readonly UserRepository $userRepository,
-        private readonly LookupService $lookupService,
         private readonly TransactionService $transactionService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
-        private readonly CacheService $cache,
         private readonly EntityManagerInterface $entityManager
     ) {
     }
@@ -44,19 +39,23 @@ class AdminDataAccessService extends BaseService
     /**
      * Add or update a custom permission to a role (upsert operation)
      */
-    public function addRolePermission(int $roleId, object $permissionData): RoleDataAccess
+    public function addRolePermission(int $roleId, \stdClass $permissionData): RoleDataAccess
     {
         return $this->executeInTransaction(function () use ($roleId, $permissionData) {
+            $resourceTypeId = $this->asInt($permissionData->resource_type_id);
+            $resourceId = $this->asInt($permissionData->resource_id);
+            $crudPermissions = $this->asInt($permissionData->crud_permissions);
+
             // Check if permission already exists
             $existingPermission = $this->roleDataAccessRepository->findPermission(
                 $roleId,
-                $permissionData->resource_type_id,
-                $permissionData->resource_id
+                $resourceTypeId,
+                $resourceId
             );
 
             if ($existingPermission) {
                 // Update existing permission
-                $existingPermission->setCrudPermissions($permissionData->crud_permissions);
+                $existingPermission->setCrudPermissions($crudPermissions);
                 $existingPermission->setUpdatedAt(new \DateTime());
 
                 $this->entityManager->flush();
@@ -73,10 +72,10 @@ class AdminDataAccessService extends BaseService
                     true,
                     json_encode([[
                         'role_id' => $roleId,
-                        'resource_type_id' => $permissionData->resource_type_id,
-                        'resource_id' => $permissionData->resource_id,
-                        'crud_permissions' => $permissionData->crud_permissions
-                    ]]),
+                        'resource_type_id' => $resourceTypeId,
+                        'resource_id' => $resourceId,
+                        'crud_permissions' => $crudPermissions
+                    ]]) ?: null,
                 );
 
                 return $existingPermission;
@@ -87,12 +86,14 @@ class AdminDataAccessService extends BaseService
 
             // Get Role and Lookup entities
             $role = $this->entityManager->getReference(Role::class, $roleId);
-            $resourceTypeLookup = $this->entityManager->getReference(Lookup::class, $permissionData->resource_type_id);
+            assert($role instanceof Role);
+            $resourceTypeLookup = $this->entityManager->getReference(Lookup::class, $resourceTypeId);
+            assert($resourceTypeLookup instanceof Lookup);
 
             $permission->setRole($role);
             $permission->setResourceType($resourceTypeLookup);
-            $permission->setResourceId($permissionData->resource_id);
-            $permission->setCrudPermissions($permissionData->crud_permissions);
+            $permission->setResourceId($resourceId);
+            $permission->setCrudPermissions($crudPermissions);
 
             $this->entityManager->persist($permission);
             $this->entityManager->flush();
@@ -109,10 +110,10 @@ class AdminDataAccessService extends BaseService
                 true,
                 json_encode([[
                     'role_id' => $roleId,
-                    'resource_type_id' => $permissionData->resource_type_id,
-                    'resource_id' => $permissionData->resource_id,
-                    'crud_permissions' => $permissionData->crud_permissions
-                ]]),
+                    'resource_type_id' => $resourceTypeId,
+                    'resource_id' => $resourceId,
+                    'crud_permissions' => $crudPermissions
+                ]]) ?: null,
             );
 
             return $permission;
@@ -121,6 +122,8 @@ class AdminDataAccessService extends BaseService
 
     /**
      * Update an existing permission for a role
+     *
+     * @param array<string, mixed> $permissionData
      */
     public function updateRolePermission(int $roleId, int $permissionId, array $permissionData): RoleDataAccess
     {
@@ -135,8 +138,10 @@ class AdminDataAccessService extends BaseService
                 );
             }
 
+            $crudPermissions = $this->asInt($permissionData['crud_permissions'] ?? 0);
+
             // Update permission
-            $permission->setCrudPermissions($permissionData['crud_permissions']);
+            $permission->setCrudPermissions($crudPermissions);
             $permission->setUpdatedAt(new \DateTime());
 
             $this->entityManager->flush();
@@ -154,8 +159,8 @@ class AdminDataAccessService extends BaseService
                 json_encode([[
                     'role_id' => $roleId,
                     'permission_id' => $permissionId,
-                    'crud_permissions' => $permissionData['crud_permissions']
-                ]]),
+                    'crud_permissions' => $crudPermissions
+                ]]) ?: null,
             );
 
             return $permission;
@@ -194,13 +199,16 @@ class AdminDataAccessService extends BaseService
                 json_encode([[
                     'role_id' => $roleId,
                     'permission_id' => $permissionId
-                ]]),
+                ]]) ?: null,
             );
         });
     }
 
     /**
      * Set multiple permissions for a role (replaces all existing permissions)
+     *
+     * @param list<\stdClass> $permissions
+     * @return array<string, int>
      */
     public function setRolePermissions(int $roleId, array $permissions): array
     {
@@ -222,13 +230,16 @@ class AdminDataAccessService extends BaseService
 
             // Process new permissions
             foreach ($permissions as $permissionData) {
-                $key = $permissionData->resource_type_id . '_' . $permissionData->resource_id;
+                $resourceTypeId = $this->asInt($permissionData->resource_type_id);
+                $resourceId = $this->asInt($permissionData->resource_id);
+                $crudPermissions = $this->asInt($permissionData->crud_permissions);
+                $key = $resourceTypeId . '_' . $resourceId;
 
                 if (isset($existingMap[$key])) {
                     // Permission exists, check if it needs updating
                     $existing = $existingMap[$key];
-                    if ($existing->getCrudPermissions() !== $permissionData->crud_permissions) {
-                        $existing->setCrudPermissions($permissionData->crud_permissions);
+                    if ($existing->getCrudPermissions() !== $crudPermissions) {
+                        $existing->setCrudPermissions($crudPermissions);
                         $existing->setUpdatedAt(new \DateTime());
                         $updated[] = $existing;
 
@@ -241,10 +252,10 @@ class AdminDataAccessService extends BaseService
                             true,
                             json_encode([[
                                 'role_id' => $roleId,
-                                'resource_type_id' => $permissionData->resource_type_id,
-                                'resource_id' => $permissionData->resource_id,
-                                'crud_permissions' => $permissionData->crud_permissions
-                            ]])
+                                'resource_type_id' => $resourceTypeId,
+                                'resource_id' => $resourceId,
+                                'crud_permissions' => $crudPermissions
+                            ]]) ?: null
                         );
                     }
                     $toKeep[$key] = true;
@@ -252,12 +263,14 @@ class AdminDataAccessService extends BaseService
                     // Create new permission
                     $permission = new RoleDataAccess();
                     $role = $this->entityManager->getReference(Role::class, $roleId);
-                    $resourceTypeLookup = $this->entityManager->getReference(Lookup::class, $permissionData->resource_type_id);
+                    assert($role instanceof Role);
+                    $resourceTypeLookup = $this->entityManager->getReference(Lookup::class, $resourceTypeId);
+                    assert($resourceTypeLookup instanceof Lookup);
 
                     $permission->setRole($role);
                     $permission->setResourceType($resourceTypeLookup);
-                    $permission->setResourceId($permissionData->resource_id);
-                    $permission->setCrudPermissions($permissionData->crud_permissions);
+                    $permission->setResourceId($resourceId);
+                    $permission->setCrudPermissions($crudPermissions);
 
                     $this->entityManager->persist($permission);
                     $added[] = $permission;
@@ -271,10 +284,10 @@ class AdminDataAccessService extends BaseService
                         true,
                         json_encode([[
                             'role_id' => $roleId,
-                            'resource_type_id' => $permissionData->resource_type_id,
-                            'resource_id' => $permissionData->resource_id,
-                            'crud_permissions' => $permissionData->crud_permissions
-                        ]])
+                            'resource_type_id' => $resourceTypeId,
+                            'resource_id' => $resourceId,
+                            'crud_permissions' => $crudPermissions
+                        ]]) ?: null
                     );
 
                     $toKeep[$key] = true;
@@ -300,7 +313,7 @@ class AdminDataAccessService extends BaseService
                             'resource_type_id' => $existing->getIdResourceTypes(),
                             'resource_id' => $existing->getResourceId(),
                             'crud_permissions' => $existing->getCrudPermissions()
-                        ]])
+                        ]]) ?: null
                     );
                 }
             }
@@ -321,6 +334,8 @@ class AdminDataAccessService extends BaseService
 
     /**
      * Get effective permissions for a role (permissions defined for the role)
+     *
+     * @return array<string, mixed>
      */
     public function getRoleEffectivePermissions(int $roleId): array
     {
@@ -353,6 +368,11 @@ class AdminDataAccessService extends BaseService
 
     /**
      * Execute operation within a database transaction
+     */
+    /**
+     * @template T
+     * @param callable(): T $operation
+     * @return T
      */
     private function executeInTransaction(callable $operation): mixed
     {

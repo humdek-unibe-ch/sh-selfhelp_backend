@@ -74,6 +74,8 @@ class UserContextService
      * non-API requests where the listener never ran.
      *
      * Internal helper — domain code should call the typed accessors below.
+     *
+     * @return array<array-key, mixed>|null
      */
     private function getJwtPayload(): ?array
     {
@@ -111,15 +113,15 @@ class UserContextService
 
         if (isset($payload['act']) && is_array($payload['act'])) {
             $act = $payload['act'];
-            if (isset($act['id_users'])) {
+            if (isset($act['id_users']) && is_scalar($act['id_users'])) {
                 return (int) $act['id_users'];
             }
-            if (isset($act['sub'])) {
+            if (isset($act['sub']) && is_scalar($act['sub'])) {
                 return (int) $act['sub'];
             }
         }
 
-        if (isset($payload['impersonated_by'])) {
+        if (isset($payload['impersonated_by']) && is_scalar($payload['impersonated_by'])) {
             return (int) $payload['impersonated_by'];
         }
 

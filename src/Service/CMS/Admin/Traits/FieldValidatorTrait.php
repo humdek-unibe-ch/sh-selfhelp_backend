@@ -22,7 +22,7 @@ trait FieldValidatorTrait
     /**
      * Validate that fields belong to a page type
      * 
-     * @param array $fieldIds Array of field IDs to validate
+     * @param list<int> $fieldIds Array of field IDs to validate
      * @param int $pageTypeId The page type ID
      * @param EntityManagerInterface $entityManager
      * @throws ServiceException If any fields don't belong to the page type
@@ -34,7 +34,8 @@ trait FieldValidatorTrait
         }
 
         // Get all valid field IDs for this page type
-        $validFieldIds = $entityManager->getRepository(PageTypeField::class)
+        /** @var list<array<string, mixed>> $rows */
+        $rows = $entityManager->getRepository(PageTypeField::class)
             ->createQueryBuilder('ptf')
             ->select('f.id')
             ->leftJoin('ptf.field', 'f')
@@ -46,7 +47,7 @@ trait FieldValidatorTrait
             ->getQuery()
             ->getScalarResult();
 
-        $validFieldIds = array_column($validFieldIds, 'id');
+        $validFieldIds = array_map(fn ($v): int => $this->asInt($v), array_column($rows, 'id'));
         $invalidFieldIds = array_diff($fieldIds, $validFieldIds);
 
         if (!empty($invalidFieldIds)) {
@@ -64,7 +65,7 @@ trait FieldValidatorTrait
     /**
      * Validate that fields belong to a style
      * 
-     * @param array $fieldIds Array of field IDs to validate
+     * @param list<int> $fieldIds Array of field IDs to validate
      * @param int $styleId The style ID
      * @param EntityManagerInterface $entityManager
      * @throws ServiceException If any fields don't belong to the style
@@ -75,7 +76,8 @@ trait FieldValidatorTrait
             return;
         }
 
-        $validFieldIds = $entityManager->getRepository(StylesField::class)
+        /** @var list<array<array-key, mixed>> $rows */
+        $rows = $entityManager->getRepository(StylesField::class)
             ->createQueryBuilder('sf')
             ->select('IDENTITY(sf.field)')
             ->where('sf.style = :styleId')
@@ -85,7 +87,7 @@ trait FieldValidatorTrait
             ->getQuery()
             ->getScalarResult();
         
-        $validFieldIds = array_column($validFieldIds, 1); // Extract field IDs from result
+        $validFieldIds = array_map(fn ($v): int => $this->asInt($v), array_column($rows, 1)); // Extract field IDs from result
         $invalidFieldIds = array_diff($fieldIds, $validFieldIds);
         
         if (!empty($invalidFieldIds)) {

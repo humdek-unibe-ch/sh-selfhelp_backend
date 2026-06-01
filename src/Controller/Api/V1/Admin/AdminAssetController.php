@@ -14,6 +14,7 @@ use App\Service\JSON\JsonSchemaValidationService;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -99,7 +100,13 @@ class AdminAssetController extends AbstractController
                 $files = [$files];
             }
 
-            if (empty($files) || (count($files) === 1 && !$files[0])) {
+            // Keep only valid uploaded files (drops empty/invalid entries)
+            $uploadedFiles = array_values(array_filter(
+                $files,
+                static fn ($file): bool => $file instanceof UploadedFile
+            ));
+
+            if (empty($uploadedFiles)) {
                 return $this->responseFormatter->formatError('At least one file is required', Response::HTTP_BAD_REQUEST);
             }
 
@@ -109,11 +116,11 @@ class AdminAssetController extends AbstractController
                 'file_names' => $formData['file_names'] ?? []
             ];
 
-            $overwrite = $formData['overwrite'] ?? false;
+            $overwrite = (bool) ($formData['overwrite'] ?? false);
 
-            if (count($files) === 1) {
+            if (count($uploadedFiles) === 1) {
                 // Single file upload
-                $asset = $this->adminAssetService->createAsset($files[0], $data, $overwrite);
+                $asset = $this->adminAssetService->createAsset($uploadedFiles[0], $data, $overwrite);
                 return $this->responseFormatter->formatSuccess(
                     $asset,
                     'responses/admin/assets/asset_envelope',
@@ -121,7 +128,7 @@ class AdminAssetController extends AbstractController
                 );
             } else {
                 // Multiple file upload
-                $result = $this->adminAssetService->createMultipleAssets($files, $data, $overwrite);
+                $result = $this->adminAssetService->createMultipleAssets($uploadedFiles, $data, $overwrite);
                 
                 $statusCode = $result['failed_uploads'] > 0 ? 
                     Response::HTTP_PARTIAL_CONTENT : 
@@ -172,7 +179,7 @@ class AdminAssetController extends AbstractController
      * Validate asset form data against JSON schema
      * 
      * @param Request $request
-     * @return array
+     * @return array<string, mixed>
      * @throws RequestValidationException
      */
     private function validateAssetFormData(Request $request): array
@@ -189,10 +196,10 @@ class AdminAssetController extends AbstractController
             $formData['file_name'] = $request->request->get('file_name');
         }
         
-        // Handle file_names array
-        $fileNames = $request->request->get('file_names');
-        if (is_array($fileNames) && !empty($fileNames)) {
-            $formData['file_names'] = array_filter($fileNames, function($name) {
+        // Handle file_names array (InputBag::all() returns the array under the key)
+        $fileNames = $request->request->all('file_names');
+        if (!empty($fileNames)) {
+            $formData['file_names'] = array_filter($fileNames, function ($name) {
                 return !empty($name);
             });
         }

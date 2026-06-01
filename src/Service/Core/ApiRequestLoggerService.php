@@ -11,6 +11,7 @@ namespace App\Service\Core;
 use App\Entity\ApiRequestLog;
 use DateTime;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
@@ -34,7 +35,7 @@ class ApiRequestLoggerService
     private $tokenStorage;
 
     /**
-     * @var array Request start times indexed by request hash
+     * @var array<string, float> Request start times indexed by request hash
      */
     private $requestStartTimes = [];
 
@@ -87,7 +88,7 @@ class ApiRequestLoggerService
         // Get request start time and calculate duration
         $startTime = $this->requestStartTimes[$requestHash] ?? microtime(true);
         $endTime = microtime(true);
-        $duration = round(($endTime - $startTime) * 1000); // Duration in milliseconds
+        $duration = (int) round(($endTime - $startTime) * 1000); // Duration in milliseconds
         
         // Clean up the tracked request
         unset($this->requestStartTimes[$requestHash]);
@@ -98,7 +99,8 @@ class ApiRequestLoggerService
         if ($token !== null) {
             $user = $token->getUser();
             if ($user instanceof UserInterface && method_exists($user, 'getId')) {
-                $userId = $user->getId();
+                $id = $user->getId();
+                $userId = is_numeric($id) ? (int) $id : null;
             }
         }
         
@@ -114,13 +116,20 @@ class ApiRequestLoggerService
 
         // Prepare response data (truncate if too large)
         $responseContent = $response->getContent();
+        if ($responseContent === false) {
+            $responseContent = '';
+        }
         if (strlen($responseContent) > 10000) {
             $responseContent = substr($responseContent, 0, 10000) . '... [truncated]';
         }
 
+        $routeName = $request->attributes->get('_route');
+        $requestParamsJson = json_encode($requestParams);
+        $requestHeadersJson = json_encode($this->getHeadersArray($request));
+
         // Create log entity
         $log = new ApiRequestLog();
-        $log->setRouteName($request->attributes->get('_route'))
+        $log->setRouteName(is_string($routeName) ? $routeName : null)
             ->setPath($request->getPathInfo())
             ->setMethod($request->getMethod())
             ->setStatusCode($response->getStatusCode())
@@ -129,8 +138,8 @@ class ApiRequestLoggerService
             ->setRequestTime($requestDateTime)
             ->setResponseTime($responseDateTime)
             ->setDurationMs($duration)
-            ->setRequestParams(json_encode($requestParams))
-            ->setRequestHeaders(json_encode($this->getHeadersArray($request)))
+            ->setRequestParams($requestParamsJson === false ? null : $requestParamsJson)
+            ->setRequestHeaders($requestHeadersJson === false ? null : $requestHeadersJson)
             ->setResponseData($responseContent)
             ->setErrorMessage($errorMessage);
         
@@ -145,7 +154,7 @@ class ApiRequestLoggerService
      * Get request headers as array
      * 
      * @param Request $request
-     * @return array
+     * @return array<string, mixed>
      */
     private function getHeadersArray(Request $request): array
     {
@@ -163,7 +172,7 @@ class ApiRequestLoggerService
      * Sanitize request parameters, handling files and sensitive data
      * 
      * @param Request $request
-     * @return array
+     * @return array<string, mixed>
      */
     private function sanitizeRequestParams(Request $request): array
     {
@@ -198,7 +207,7 @@ class ApiRequestLoggerService
             foreach ($request->files->all() as $key => $file) {
                 if (is_array($file)) {
                     $params['files'][$key] = '[multiple files]';
-                } else {
+                } elseif ($file instanceof UploadedFile) {
                     $params['files'][$key] = [
                         'name' => $file->getClientOriginalName(),
                     ];
@@ -224,8 +233,8 @@ class ApiRequestLoggerService
     /**
      * Sanitize data, masking sensitive fields
      * 
-     * @param array $data
-     * @return array
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
      */
     private function sanitizeData(array $data): array
     {

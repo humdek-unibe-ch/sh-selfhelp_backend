@@ -14,10 +14,17 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'fields')]
 #[ORM\UniqueConstraint(name: 'uq_fields_name', columns: ['name'])]
 #[ORM\Index(name: 'idx_fields_id_field_types', columns: ['id_field_types'])]
+#[ORM\Index(name: 'idx_fields_id_plugins', columns: ['id_plugins'])]
 class Field
 {
+    public function __construct()
+    {
+        $this->stylesFields = new \Doctrine\Common\Collections\ArrayCollection();
+    }
+
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesField> */
     #[ORM\OneToMany(mappedBy: 'field', targetEntity: StylesField::class)]
-    private ?\Doctrine\Common\Collections\Collection $stylesFields = null;
+    private \Doctrine\Common\Collections\Collection $stylesFields;
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column(name: 'id', type: 'integer')]
@@ -33,8 +40,18 @@ class Field
     #[ORM\Column(name: 'display', type: 'boolean')]
     private bool $display = true;
 
+    /** @var array<string, mixed>|null */
     #[ORM\Column(name: 'config', type: 'json', nullable: true)]
     private ?array $config = null;
+
+    /**
+     * Plugin that owns this field row. NULL = core-owned.
+     * `ON DELETE SET NULL` so dropping a plugin row never silently
+     * deletes CMS field definitions.
+     */
+    #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
+    #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?\App\Entity\Plugin\Plugin $plugin = null;
 
     public function getId(): ?int
     {
@@ -65,6 +82,19 @@ class Field
         return $this;
     }
 
+    public function getPlugin(): ?\App\Entity\Plugin\Plugin
+    {
+        return $this->plugin;
+    }
+
+    public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
+    {
+        $this->plugin = $plugin;
+
+        return $this;
+    }
+
+    /** @return \Doctrine\Common\Collections\Collection<int, StylesField>|null */
     public function getStylesFields(): ?\Doctrine\Common\Collections\Collection
     {
         return $this->stylesFields;
@@ -72,9 +102,6 @@ class Field
 
     public function addStylesField(StylesField $stylesField): static
     {
-        if (!$this->stylesFields) {
-            $this->stylesFields = new \Doctrine\Common\Collections\ArrayCollection();
-        }
         if (!$this->stylesFields->contains($stylesField)) {
             $this->stylesFields[] = $stylesField;
             $stylesField->setField($this);
@@ -84,7 +111,7 @@ class Field
 
     public function removeStylesField(StylesField $stylesField): static
     {
-        if ($this->stylesFields && $this->stylesFields->contains($stylesField)) {
+        if ($this->stylesFields->contains($stylesField)) {
             $this->stylesFields->removeElement($stylesField);
             if ($stylesField->getField() === $this) {
                 $stylesField->setField(null);
@@ -105,11 +132,13 @@ class Field
         return $this;
     }
 
+    /** @return array<string, mixed>|null */
     public function getConfig(): ?array
     {
         return $this->config;
     }
 
+    /** @param array<string, mixed>|null $config */
     public function setConfig(?array $config): static
     {
         $this->config = $config;

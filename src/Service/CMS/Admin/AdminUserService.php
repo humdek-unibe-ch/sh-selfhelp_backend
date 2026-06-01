@@ -20,7 +20,6 @@ use App\Service\Core\LookupService;
 use App\Service\Core\BaseService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
-use App\Service\Auth\UserContextService;
 use App\Service\Auth\UserValidationService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Exception\ServiceException;
@@ -41,12 +40,10 @@ use Symfony\Component\HttpFoundation\Response;
 class AdminUserService extends BaseService
 {
     private const SYSTEM_USERS = ['admin', 'tpf'];
-    private const VALID_SORT_FIELDS = ['email', 'name', 'last_login', 'blocked', 'user_type', 'code', 'id'];
     private const MAX_PAGE_SIZE = 100;
     private const DEFAULT_PAGE_SIZE = 20;
 
     public function __construct(
-        private readonly UserContextService $userContextService,
         private readonly UserRepository $userRepository,
         private readonly LookupService $lookupService,
         private readonly UserPasswordHasherInterface $passwordHasher,
@@ -68,8 +65,10 @@ class AdminUserService extends BaseService
      * Get filtered users with permission-based access control
      * Includes proper caching with user scope
      * Uses RoleDataAccessRepository optimized methods
+     *
+     * @return array<string, mixed>
      */
-    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = 20, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
+    public function getFilteredUsers(int $userId, int $page = 1, int $pageSize = self::DEFAULT_PAGE_SIZE, ?string $search = null, ?string $sort = null, string $sortDirection = 'asc'): array
     {
         [$page, $pageSize, $sortDirection] = $this->validatePaginationParams($page, $pageSize, $sortDirection);
 
@@ -103,11 +102,13 @@ class AdminUserService extends BaseService
 
         // Check if user has permission to access ANY of the target user's groups
         foreach ($user->getUsersGroups() as $userGroup) {
+            $groupId = $userGroup->getGroup()?->getId();
             if (
-                $this->dataAccessSecurityService->hasPermission(
+                $groupId !== null
+                && $this->dataAccessSecurityService->hasPermission(
                     $userId,
                     LookupService::RESOURCE_TYPES_GROUP,
-                    $userGroup->getGroup()->getId(),
+                    $groupId,
                     $permission
                 )
             ) {
@@ -121,6 +122,8 @@ class AdminUserService extends BaseService
     /**
      * Fetch filtered users from repository with permission checking
      * Uses RoleDataAccessRepository optimized SQL queries with pagination
+     *
+     * @return array<string, mixed>
      */
     private function fetchFilteredUsersFromRepository(int $userId, int $page, int $pageSize, ?string $search, ?string $sort, string $sortDirection): array
     {
@@ -155,6 +158,8 @@ class AdminUserService extends BaseService
 
     /**
      * Get single user by ID with full details
+     *
+     * @return array<string, mixed>
      */
     public function getUserById(int $userId): array
     {
@@ -170,6 +175,9 @@ class AdminUserService extends BaseService
     /**
      * Create new user
      * Every user created will automatically require validation unless specified otherwise
+     *
+     * @param array<string, mixed> $userData
+     * @return array<string, mixed>
      */
     public function createUser(array $userData): array
     {
@@ -182,7 +190,7 @@ class AdminUserService extends BaseService
 
             // Handle validation code (legacy)
             if (isset($userData['validation_code'])) {
-                $this->handleValidationCode($user, $userData['validation_code']);
+                $this->handleValidationCode($user, $this->asString($userData['validation_code']));
             }
 
             // Handle relationships
@@ -208,7 +216,7 @@ class AdminUserService extends BaseService
             }
 
             // Invalidate caches
-            $this->invalidateUserCaches($user->getId());
+            $this->invalidateUserCaches((int) $user->getId());
 
             return [
                 'user' => $result,
@@ -220,7 +228,7 @@ class AdminUserService extends BaseService
         $validationResult = $created['validation'] ?? null;
 
         if ($validationResult && isset($validationResult['job_id'])) {
-            $emailSent = $this->userValidationService->executeScheduledValidationEmail((int) $validationResult['job_id']);
+            $emailSent = $this->userValidationService->executeScheduledValidationEmail($this->asInt($validationResult['job_id']));
 
             if ($emailSent) {
                 $validationResult['message'] = 'Validation email sent successfully.';
@@ -240,6 +248,9 @@ class AdminUserService extends BaseService
 
     /**
      * Update existing user
+     *
+     * @param array<string, mixed> $userData
+     * @return array<string, mixed>
      */
     public function updateUser(int $currentUserId, int $userId, array $userData): array
     {
@@ -272,13 +283,13 @@ class AdminUserService extends BaseService
             // Only invalidate related caches if the relationships were actually updated
             if (isset($userData['group_ids']) && is_array($userData['group_ids']) && !empty($userData['group_ids'])) {
                 $groupCache = $this->cache->withCategory(CacheService::CATEGORY_GROUPS);
-                $groupCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $userData['group_ids']);
+                $groupCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_GROUP, $this->normalizeIdList($userData['group_ids']));
                 $groupCache->invalidateAllListsInCategory();
             }
 
             if (isset($userData['role_ids']) && is_array($userData['role_ids']) && !empty($userData['role_ids'])) {
                 $roleCache = $this->cache->withCategory(CacheService::CATEGORY_ROLES);
-                $roleCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_ROLE, $userData['role_ids']);
+                $roleCache->invalidateEntityScopes(CacheService::ENTITY_SCOPE_ROLE, $this->normalizeIdList($userData['role_ids']));
                 $roleCache->invalidateAllListsInCategory();
             }
 
@@ -323,6 +334,8 @@ class AdminUserService extends BaseService
 
     /**
      * Block/Unblock user
+     *
+     * @return array<string, mixed>
      */
     public function toggleUserBlock(int $userId, bool $blocked): array
     {
@@ -351,6 +364,8 @@ class AdminUserService extends BaseService
 
     /**
      * Get user groups
+     *
+     * @return list<array<string, mixed>>
      */
     public function getUserGroups(int $userId): array
     {
@@ -365,6 +380,8 @@ class AdminUserService extends BaseService
 
     /**
      * Get user roles
+     *
+     * @return list<array<string, mixed>>
      */
     public function getUserRoles(int $userId): array
     {
@@ -380,8 +397,14 @@ class AdminUserService extends BaseService
     /**
      * Add groups to user
      */
+    /**
+     * @param array<mixed> $groupIds
+     * @return list<array<string, mixed>>
+     */
     public function addGroupsToUser(int $userId, array $groupIds): array
     {
+        $groupIds = $this->normalizeIdList($groupIds);
+
         return $this->executeInTransaction(function () use ($userId, $groupIds) {
             $user = $this->findUserOrThrow($userId);
 
@@ -409,8 +432,14 @@ class AdminUserService extends BaseService
     /**
      * Remove groups from user
      */
+    /**
+     * @param array<mixed> $groupIds
+     * @return list<array<string, mixed>>
+     */
     public function removeGroupsFromUser(int $userId, array $groupIds): array
     {
+        $groupIds = $this->normalizeIdList($groupIds);
+
         return $this->executeInTransaction(function () use ($userId, $groupIds) {
             $user = $this->findUserOrThrow($userId);
 
@@ -441,8 +470,14 @@ class AdminUserService extends BaseService
     /**
      * Add roles to user
      */
+    /**
+     * @param array<mixed> $roleIds
+     * @return list<array<string, mixed>>
+     */
     public function addRolesToUser(int $userId, array $roleIds): array
     {
+        $roleIds = $this->normalizeIdList($roleIds);
+
         return $this->executeInTransaction(function () use ($userId, $roleIds) {
             $user = $this->findUserOrThrow($userId);
 
@@ -469,8 +504,14 @@ class AdminUserService extends BaseService
     /**
      * Remove roles from user
      */
+    /**
+     * @param array<mixed> $roleIds
+     * @return list<array<string, mixed>>
+     */
     public function removeRolesFromUser(int $userId, array $roleIds): array
     {
+        $roleIds = $this->normalizeIdList($roleIds);
+
         return $this->executeInTransaction(function () use ($userId, $roleIds) {
             $user = $this->findUserOrThrow($userId);
 
@@ -499,6 +540,8 @@ class AdminUserService extends BaseService
 
     /**
      * Send activation mail with new validation URL
+     *
+     * @return array<string, mixed>
      */
     public function sendActivationMail(int $userId): array
     {
@@ -509,14 +552,14 @@ class AdminUserService extends BaseService
             $validationResult = $this->userValidationService->resendValidationEmail($userId);
 
             if (!$validationResult['success']) {
-                throw new ServiceException('Failed to send activation email: ' . $validationResult['error'], Response::HTTP_INTERNAL_SERVER_ERROR);
+                throw new ServiceException('Failed to send activation email: ' . $this->asString($validationResult['error']), Response::HTTP_INTERNAL_SERVER_ERROR);
             }
 
             // Log transaction
             $this->logUserTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 $user,
-                'Activation email sent: ' . $user->getEmail() . ' (token: ' . $validationResult['token'] . ', job_id: ' . $validationResult['job_id'] . ')'
+                'Activation email sent: ' . $user->getEmail() . ' (token: ' . $this->asString($validationResult['token']) . ', job_id: ' . $this->asString($validationResult['job_id']) . ')'
             );
 
             // Invalidate user list caches
@@ -568,6 +611,7 @@ class AdminUserService extends BaseService
      * specific reason.
      *
      * @throws ServiceException on any of the validation failures above
+     * @return array<string, mixed>
      */
     public function impersonateUser(int $currentUserId, int $targetUserId): array
     {
@@ -602,6 +646,7 @@ class AdminUserService extends BaseService
         // the user was already authenticated upstream so we know the row
         // exists; logUserTransaction only reads getId() / getName().
         $adminUser = $this->entityManager->getReference(\App\Entity\User::class, $currentUserId);
+        assert($adminUser instanceof User);
         $this->logUserTransaction(
             LookupService::TRANSACTION_TYPES_UPDATE,
             $adminUser,
@@ -619,14 +664,14 @@ class AdminUserService extends BaseService
         // its banner state without polling. Best-effort — a hub outage
         // does NOT abort the impersonation start; the client-side
         // setTimeout(expires_in) safety-net still tears the banner down.
-        $expiresAt = time() + (int) $tokenData['expires_in'];
+        $expiresAt = time() + $this->asInt($tokenData['expires_in']);
         $this->publishImpersonationEvent($targetUserId, [
             'active'         => true,
             'targetEmail'    => $targetUser->getEmail(),
             'targetUserId'   => $targetUserId,
             'adminUserId'    => $currentUserId,
             'expiresAt'      => $expiresAt,
-            'expiresIn'      => (int) $tokenData['expires_in'],
+            'expiresIn'      => $this->asInt($tokenData['expires_in']),
         ]);
 
         return [
@@ -647,6 +692,7 @@ class AdminUserService extends BaseService
      *                                  `act.sub` (or legacy `impersonated_by`)
      * @param int    $targetUserId      the user being impersonated (`id_users`)
      * @param string $impersonationToken the raw JWT we want to invalidate
+     * @return array<string, mixed>
      */
     public function stopImpersonateUser(
         int $adminUserId,
@@ -657,6 +703,7 @@ class AdminUserService extends BaseService
 
         // Audit log under the admin id (no SELECT needed — see impersonateUser).
         $adminUser = $this->entityManager->getReference(\App\Entity\User::class, $adminUserId);
+        assert($adminUser instanceof User);
         $this->logUserTransaction(
             LookupService::TRANSACTION_TYPES_UPDATE,
             $adminUser,
@@ -718,6 +765,11 @@ class AdminUserService extends BaseService
     /**
      * Execute operation within a database transaction
      */
+    /**
+     * @template T
+     * @param callable(): T $operation
+     * @return T
+     */
     private function executeInTransaction(callable $operation): mixed
     {
         $this->entityManager->beginTransaction();
@@ -734,11 +786,14 @@ class AdminUserService extends BaseService
 
     /**
      * Validate and normalize pagination parameters
+     *
+     * @return array{0: int, 1: int, 2: string}
      */
     private function validatePaginationParams(int $page, int $pageSize, string $sortDirection): array
     {
         $page = max(1, $page);
-        $pageSize = max(1, min(self::MAX_PAGE_SIZE, $pageSize)) ?: self::DEFAULT_PAGE_SIZE;
+        // max(1, ...) is always >= 1, so the result is always truthy.
+        $pageSize = max(1, min(self::MAX_PAGE_SIZE, $pageSize));
         $sortDirection = in_array($sortDirection, ['asc', 'desc']) ? $sortDirection : 'asc';
 
         return [$page, $pageSize, $sortDirection];
@@ -746,11 +801,14 @@ class AdminUserService extends BaseService
 
     /**
      * Build cache key from parameters
+     *
+     * @param mixed ...$params
      */
-    private function buildCacheKey(string $prefix, ...$params): string
+    private function buildCacheKey(string $prefix, mixed ...$params): string
     {
         $hashableParams = array_slice($params, 2); // Skip page and pageSize for hash
-        return $prefix . '_' . $params[0] . '_' . $params[1] . '_' . md5(implode('_', $hashableParams));
+        $hashable = array_map(fn (mixed $p): string => $this->asString($p), $hashableParams);
+        return $prefix . '_' . $this->asString($params[0] ?? '') . '_' . $this->asString($params[1] ?? '') . '_' . md5(implode('_', $hashable));
     }
 
     /**
@@ -767,38 +825,23 @@ class AdminUserService extends BaseService
 
 
     /**
-     * Build pagination information
-     */
-    private function buildPaginationInfo(int $page, int $pageSize, int $totalCount): array
-    {
-        $totalPages = (int) ceil($totalCount / $pageSize);
-
-        return [
-            'page' => $page,
-            'pageSize' => $pageSize,
-            'totalCount' => $totalCount,
-            'totalPages' => $totalPages,
-            'hasNext' => $page < $totalPages,
-            'hasPrevious' => $page > 1
-        ];
-    }
-
-    /**
      * Build user entity from data
+     *
+     * @param array<string, mixed> $userData
      */
     private function buildUserFromData(User $user, array $userData): User
     {
-        $user->setEmail($userData['email']);
-        $user->setName($userData['name'] ?? null);
-        $user->setUserName($userData['user_name'] ?? null);
+        $user->setEmail($this->asString($userData['email']));
+        $user->setName($this->asStringOrNull($userData['name'] ?? null));
+        $user->setUserName($this->asStringOrNull($userData['user_name'] ?? null));
 
         if (isset($userData['password'])) {
-            $hashedPassword = $this->passwordHasher->hashPassword($user, $userData['password']);
+            $hashedPassword = $this->passwordHasher->hashPassword($user, $this->asString($userData['password']));
             $user->setPassword($hashedPassword);
         }
 
         if (isset($userData['blocked'])) {
-            $user->setBlocked($userData['blocked']);
+            $user->setBlocked((bool) $userData['blocked']);
         }
 
         $this->setUserRelatedEntities($user, $userData);
@@ -808,24 +851,26 @@ class AdminUserService extends BaseService
 
     /**
      * Update user entity from data
+     *
+     * @param array<string, mixed> $userData
      */
     private function updateUserFromData(User $user, array $userData): void
     {
         if (isset($userData['email'])) {
-            $user->setEmail($userData['email']);
+            $user->setEmail($this->asString($userData['email']));
         }
         if (isset($userData['name'])) {
-            $user->setName($userData['name']);
+            $user->setName($this->asStringOrNull($userData['name']));
         }
         if (isset($userData['user_name'])) {
-            $user->setUserName($userData['user_name']);
+            $user->setUserName($this->asStringOrNull($userData['user_name']));
         }
         if (isset($userData['password']) && !empty($userData['password'])) {
-            $hashedPassword = $this->passwordHasher->hashPassword($user, $userData['password']);
+            $hashedPassword = $this->passwordHasher->hashPassword($user, $this->asString($userData['password']));
             $user->setPassword($hashedPassword);
         }
         if (isset($userData['blocked'])) {
-            $user->setBlocked($userData['blocked']);
+            $user->setBlocked((bool) $userData['blocked']);
         }
 
         $this->setUserRelatedEntities($user, $userData);
@@ -833,6 +878,8 @@ class AdminUserService extends BaseService
 
     /**
      * Set user related entities (language, user type)
+     *
+     * @param array<string, mixed> $userData
      */
     private function setUserRelatedEntities(User $user, array $userData): void
     {
@@ -842,7 +889,7 @@ class AdminUserService extends BaseService
         }
 
         if (isset($userData['user_type_id'])) {
-            $userType = $this->lookupService->findById($userData['user_type_id']);
+            $userType = $this->lookupService->findById($this->asInt($userData['user_type_id']));
             if (!$userType || $userType->getTypeCode() !== LookupService::USER_TYPES) {
                 throw new ServiceException('Invalid user type', Response::HTTP_BAD_REQUEST);
             }
@@ -858,20 +905,25 @@ class AdminUserService extends BaseService
 
     /**
      * Handle user relationships (groups and roles)
+     *
+     * @param array<string, mixed> $userData
      */
     private function handleUserRelationships(User $user, array $userData): void
     {
         if (isset($userData['group_ids']) && is_array($userData['group_ids'])) {
-            $this->syncUserGroups($user, $userData['group_ids']);
+            $this->syncUserGroups($user, $this->normalizeIdList($userData['group_ids']));
         }
 
         if (isset($userData['role_ids']) && is_array($userData['role_ids'])) {
-            $this->syncUserRoles($user, $userData['role_ids']);
+            $this->syncUserRoles($user, $this->normalizeIdList($userData['role_ids']));
         }
     }
 
     /**
      * Setup user validation if enabled
+     *
+     * @param array<string, mixed> $userData
+     * @return array<string, mixed>|null
      */
     private function setupUserValidation(User $user, array $userData): ?array
     {
@@ -881,13 +933,18 @@ class AdminUserService extends BaseService
             return null;
         }
 
+        $emailConfig = $userData['email_config'] ?? [];
+        if (!is_array($emailConfig)) {
+            $emailConfig = [];
+        }
+        /** @var array<string, mixed> $emailConfig */
         $validationResult = $this->userValidationService->setupUserValidation(
             $user,
-            $userData['email_config'] ?? []
+            $emailConfig
         );
 
         if (!$validationResult['success']) {
-            throw new ServiceException('Failed to setup user validation: ' . $validationResult['error'], Response::HTTP_INTERNAL_SERVER_ERROR);
+            throw new ServiceException('Failed to setup user validation: ' . $this->asString($validationResult['error']), Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         return $validationResult;
@@ -895,13 +952,15 @@ class AdminUserService extends BaseService
 
     /**
      * Build log message for user creation
+     *
+     * @param array<string, mixed>|null $validationResult
      */
     private function buildCreateLogMessage(User $user, ?array $validationResult): string
     {
         $logMessage = 'User created: ' . $user->getEmail();
 
         if ($validationResult && $validationResult['success']) {
-            $logMessage .= ' (with validation - token: ' . $validationResult['token'] . ', job_id: ' . $validationResult['job_id'] . ')';
+            $logMessage .= ' (with validation - token: ' . $this->asString($validationResult['token']) . ', job_id: ' . $this->asString($validationResult['job_id']) . ')';
         } elseif ($validationResult) {
             $logMessage .= ' (validation setup failed)';
         }
@@ -911,6 +970,9 @@ class AdminUserService extends BaseService
 
     /**
      * Format validation result for response
+     *
+     * @param array<string, mixed> $validationResult
+     * @return array<string, mixed>
      */
     private function formatValidationResult(array $validationResult): array
     {
@@ -924,66 +986,76 @@ class AdminUserService extends BaseService
 
     /**
      * Fetch user groups
+     *
+     * @return list<array<string, mixed>>
      */
     private function fetchUserGroups(int $userId): array
     {
         $user = $this->findUserOrThrow($userId);
 
-        return array_map(function (Group $group) {
+        return array_values(array_map(function (Group $group) {
             return [
                 'id' => $group->getId(),
                 'name' => $group->getName(),
                 'description' => $group->getDescription()
             ];
-        }, $user->getGroups()->toArray());
+        }, $user->getGroups()->toArray()));
     }
 
     /**
      * Fetch user roles
+     *
+     * @return list<array<string, mixed>>
      */
     private function fetchUserRoles(int $userId): array
     {
         $user = $this->findUserOrThrow($userId);
 
-        return array_map(function (Role $role) {
+        return array_values(array_map(function (Role $role) {
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
                 'description' => $role->getDescription()
             ];
-        }, $user->getUserRoles()->toArray());
+        }, $user->getUserRoles()->toArray()));
     }
 
     /**
      * Fetch user groups directly from entity (bypasses cache)
+     *
+     * @return list<array<string, mixed>>
      */
     private function fetchUserGroupsFromEntity(User $user): array
     {
-        return array_map(function (Group $group) {
+        return array_values(array_map(function (Group $group) {
             return [
                 'id' => $group->getId(),
                 'name' => $group->getName(),
                 'description' => $group->getDescription()
             ];
-        }, $user->getGroups()->toArray());
+        }, $user->getGroups()->toArray()));
     }
 
     /**
      * Fetch user roles directly from entity (bypasses cache)
+     *
+     * @return list<array<string, mixed>>
      */
     private function fetchUserRolesFromEntity(User $user): array
     {
-        return array_map(function (Role $role) {
+        return array_values(array_map(function (Role $role) {
             return [
                 'id' => $role->getId(),
                 'name' => $role->getName(),
                 'description' => $role->getDescription()
             ];
-        }, $user->getUserRoles()->toArray());
+        }, $user->getUserRoles()->toArray()));
     }
 
     /**
      * Format user for list view
+     *
+     * @return array<string, mixed>
      */
     private function formatUserForList(User $user): array
     {
@@ -1018,6 +1090,8 @@ class AdminUserService extends BaseService
 
     /**
      * Format user for detail view
+     *
+     * @return array<string, mixed>
      */
     private function formatUserForDetail(User $user, bool $fresh = false): array
     {
@@ -1027,8 +1101,8 @@ class AdminUserService extends BaseService
             'user_name' => $user->getUserName(),
             'id_languages' => $user->getLanguage()?->getId(),
             'id_user_types' => $user->getUserType()?->getId(),
-            'groups' => $fresh ? $this->fetchUserGroupsFromEntity($user) : $this->getUserGroups($user->getId()),
-            'roles' => $fresh ? $this->fetchUserRolesFromEntity($user) : $this->getUserRoles($user->getId())
+            'groups' => $fresh ? $this->fetchUserGroupsFromEntity($user) : $this->getUserGroups((int) $user->getId()),
+            'roles' => $fresh ? $this->fetchUserRolesFromEntity($user) : $this->getUserRoles((int) $user->getId())
         ]);
     }
 
@@ -1038,15 +1112,17 @@ class AdminUserService extends BaseService
     private function getValidationCode(User $user): string
     {
         if (in_array($user->getName(), self::SYSTEM_USERS)) {
-            return $user->getName();
+            return $this->asString($user->getName());
         }
 
         $activeCode = $user->getValidationCodes()->filter(fn($vc) => $vc->getConsumed() === null)->first();
-        return $activeCode ? $activeCode->getCode() : '-';
+        return $activeCode ? $this->asString($activeCode->getCode()) : '-';
     }
 
     /**
      * Validate user data for create/update operations
+     *
+     * @param array<string, mixed> $data
      */
     private function validateUserData(array $data, bool $isCreate, ?User $existingUser = null): void
     {
@@ -1060,6 +1136,8 @@ class AdminUserService extends BaseService
 
     /**
      * Validate email uniqueness
+     *
+     * @param array<string, mixed> $data
      */
     private function validateUniqueEmail(array $data, ?User $existingUser): void
     {
@@ -1067,7 +1145,7 @@ class AdminUserService extends BaseService
             return;
         }
 
-        $existingUserWithEmail = $this->userRepository->findOneByEmail($data['email']);
+        $existingUserWithEmail = $this->userRepository->findOneByEmail($this->asString($data['email']));
         if ($existingUserWithEmail && (!$existingUser || $existingUserWithEmail->getId() !== $existingUser->getId())) {
             throw new ServiceException('Email already exists', Response::HTTP_BAD_REQUEST);
         }
@@ -1075,6 +1153,8 @@ class AdminUserService extends BaseService
 
     /**
      * Validate username uniqueness
+     *
+     * @param array<string, mixed> $data
      */
     private function validateUniqueUserName(array $data, ?User $existingUser): void
     {
@@ -1113,6 +1193,8 @@ class AdminUserService extends BaseService
 
     /**
      * Synchronize user groups - handles both creation and updates intelligently
+     *
+     * @param array<int, int> $groupIds
      */
     private function syncUserGroups(User $user, array $groupIds): void
     {
@@ -1123,7 +1205,7 @@ class AdminUserService extends BaseService
         }
 
         // Get current group IDs
-        $currentGroupIds = array_map(fn($ug) => $ug->getGroup()->getId(), $user->getUsersGroups()->toArray());
+        $currentGroupIds = array_map(fn($ug) => (int) $ug->getGroup()?->getId(), $user->getUsersGroups()->toArray());
 
         // Determine what needs to be added and removed
         $groupIdsToAdd = array_diff($groupIds, $currentGroupIds);
@@ -1142,6 +1224,8 @@ class AdminUserService extends BaseService
 
     /**
      * Assign groups to user with optimized batch operations
+     *
+     * @param array<int, int> $groupIds
      */
     private function assignGroupsToUser(User $user, array $groupIds, bool $replace = true): void
     {
@@ -1179,9 +1263,13 @@ class AdminUserService extends BaseService
 
     /**
      * Batch load groups to avoid N+1 queries
+     *
+     * @param array<int, int> $groupIds
+     * @return array<int, Group>
      */
     private function batchLoadGroups(array $groupIds): array
     {
+        /** @var list<Group> $groups */
         $groups = $this->entityManager->getRepository(Group::class)
             ->createQueryBuilder('g')
             ->where('g.id IN (:groupIds)')
@@ -1191,7 +1279,7 @@ class AdminUserService extends BaseService
 
         $groupMap = [];
         foreach ($groups as $group) {
-            $groupMap[$group->getId()] = $group;
+            $groupMap[(int) $group->getId()] = $group;
         }
 
         return $groupMap;
@@ -1199,9 +1287,13 @@ class AdminUserService extends BaseService
 
     /**
      * Get existing user groups to avoid duplicates
+     *
+     * @param array<int, int> $groupIds
+     * @return array<int, true>
      */
     private function getExistingUserGroups(User $user, array $groupIds): array
     {
+        /** @var list<UsersGroup> $existingUserGroupEntities */
         $existingUserGroupEntities = $this->entityManager->getRepository(UsersGroup::class)
             ->createQueryBuilder('ug')
             ->where('ug.user = :user')
@@ -1213,7 +1305,7 @@ class AdminUserService extends BaseService
 
         $existingUserGroups = [];
         foreach ($existingUserGroupEntities as $existingUg) {
-            $existingUserGroups[$existingUg->getGroup()->getId()] = true;
+            $existingUserGroups[(int) $existingUg->getGroup()?->getId()] = true;
         }
 
         return $existingUserGroups;
@@ -1221,6 +1313,8 @@ class AdminUserService extends BaseService
 
     /**
      * Add user groups by IDs
+     *
+     * @param array<int, int> $groupIds
      */
     private function addUserGroupsByIds(User $user, array $groupIds): void
     {
@@ -1238,9 +1332,12 @@ class AdminUserService extends BaseService
 
     /**
      * Remove user groups by IDs
+     *
+     * @param array<int, int> $groupIds
      */
     private function removeUserGroupsByIds(User $user, array $groupIds): void
     {
+        /** @var list<UsersGroup> $userGroups */
         $userGroups = $this->entityManager->getRepository(UsersGroup::class)
             ->createQueryBuilder('ug')
             ->where('ug.user = :user')
@@ -1257,6 +1354,8 @@ class AdminUserService extends BaseService
 
     /**
      * Remove user group relationships
+     *
+     * @param array<int, int> $groupIds
      */
     private function removeUserGroupRelationships(User $user, array $groupIds): void
     {
@@ -1265,6 +1364,8 @@ class AdminUserService extends BaseService
 
     /**
      * Synchronize user roles - handles both creation and updates intelligently
+     *
+     * @param array<int, int> $roleIds
      */
     private function syncUserRoles(User $user, array $roleIds): void
     {
@@ -1277,7 +1378,7 @@ class AdminUserService extends BaseService
         }
 
         // Get current role IDs
-        $currentRoleIds = array_map(fn($role) => $role->getId(), $user->getUserRoles()->toArray());
+        $currentRoleIds = array_map(fn($role) => (int) $role->getId(), $user->getUserRoles()->toArray());
 
         // Determine what needs to be added and removed
         $roleIdsToAdd = array_diff($roleIds, $currentRoleIds);
@@ -1302,6 +1403,8 @@ class AdminUserService extends BaseService
 
     /**
      * Assign roles to user with optimized batch operations
+     *
+     * @param array<int, int> $roleIds
      */
     private function assignRolesToUser(User $user, array $roleIds, bool $replace = true): void
     {
@@ -1327,31 +1430,41 @@ class AdminUserService extends BaseService
 
     /**
      * Batch load roles to avoid N+1 queries
+     *
+     * @param array<int, int> $roleIds
+     * @return list<Role>
      */
     private function batchLoadRoles(array $roleIds): array
     {
-        return $this->entityManager->getRepository(Role::class)
+        /** @var list<Role> $roles */
+        $roles = $this->entityManager->getRepository(Role::class)
             ->createQueryBuilder('r')
             ->where('r.id IN (:roleIds)')
             ->setParameter('roleIds', $roleIds)
             ->getQuery()
             ->getResult();
+
+        return $roles;
     }
 
     /**
      * Get existing role IDs for user
+     *
+     * @return array<int, true>
      */
     private function getExistingRoleIds(User $user): array
     {
         $existingRoleIds = [];
         foreach ($user->getUserRoles() as $role) {
-            $existingRoleIds[$role->getId()] = true;
+            $existingRoleIds[(int) $role->getId()] = true;
         }
         return $existingRoleIds;
     }
 
     /**
      * Remove user role relationships
+     *
+     * @param array<int, int> $roleIds
      */
     private function removeUserRoleRelationships(User $user, array $roleIds): void
     {
@@ -1415,6 +1528,8 @@ class AdminUserService extends BaseService
 
     /**
      * Invalidate user and group caches
+     *
+     * @param array<int, int> $groupIds
      */
     private function invalidateUserGroupCaches(int $userId, array $groupIds): void
     {
@@ -1436,13 +1551,12 @@ class AdminUserService extends BaseService
 
     /**
      * Invalidate user and role caches
+     *
+     * @param array<int, int> $roleIds
      */
     private function invalidateUserRoleCaches(int $userId, array $roleIds): void
     {
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_USERS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->invalidateItemAndLists("users_roles_{$userId}");
+        $this->invalidateUserCaches($userId);
 
         $this->cache
             ->withCategory(CacheService::CATEGORY_ROLES)
@@ -1455,5 +1569,15 @@ class AdminUserService extends BaseService
         }
     }
 
-
+    /**
+     * Normalize a loosely-typed list of IDs (typically decoded JSON request
+     * input) into a clean re-indexed list of ints.
+     *
+     * @param array<mixed> $ids
+     * @return list<int>
+     */
+    private function normalizeIdList(array $ids): array
+    {
+        return array_values(array_map(fn (mixed $id): int => $this->asInt($id), $ids));
+    }
 }

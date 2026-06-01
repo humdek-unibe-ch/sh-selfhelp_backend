@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Create Plugin Source",
+  "additionalProperties": false,
+  "required": ["name", "kind", "url"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "kind": {
+      "type": "string",
+      "enum": ["public-registry", "private-registry", "git", "local"]
+    },
+    "url": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "authHeaderName": { "type": ["string", "null"], "maxLength": 100 },
+    "authSecretEnvVar": { "type": ["string", "null"], "maxLength": 100 },
+    "channel": {
+      "type": "string",
+      "enum": ["stable", "beta", "alpha", "nightly"]
+    },
+    "trustLevel": {
+      "type": "string",
+      "enum": ["official", "reviewed", "untrusted"]
+    },
+    "enabled": { "type": "boolean" }
+  }
+}

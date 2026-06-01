@@ -12,7 +12,6 @@ use App\Service\CMS\Admin\AdminSectionService;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
-use App\Service\CMS\Common\SectionUtilityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -25,7 +24,6 @@ class AdminSectionController extends AbstractController
         private readonly AdminSectionService $adminSectionService,
         private readonly ApiResponseFormatter $apiResponseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly SectionUtilityService $sectionUtilityService,
     ) {}
 
     /**
@@ -82,7 +80,7 @@ class AdminSectionController extends AbstractController
         );
 
         $isBulkRequest = isset($data['sections']);
-        $sections = $isBulkRequest ? $data['sections'] : [$data];
+        $sections = $isBulkRequest ? $this->asListOfArrays($data['sections']) : [$this->toAssocArray($data)];
 
         $results = $this->adminSectionService->addSectionToSection(
             $page_id,
@@ -135,15 +133,15 @@ class AdminSectionController extends AbstractController
         $data = $this->validateRequest($request, 'requests/section/create_page_section', $this->jsonSchemaValidationService);
 
         $isBulkRequest = array_is_list($data);
-        $items = $isBulkRequest ? $data : [$data];
+        $items = $isBulkRequest ? $this->asListOfArrays($data) : [$this->toAssocArray($data)];
         $results = [];
 
         foreach ($items as $item) {
             $results[] = $this->adminSectionService->createPageSection(
                 $page_id,
-                $item['styleId'],
-                $item['position'] ?? null,
-                $item['name'] ?? null
+                $this->asIntField($item, 'styleId'),
+                $this->asIntOrNullField($item, 'position'),
+                $this->asStringOrNullField($item, 'name')
             );
         }
 
@@ -166,20 +164,20 @@ class AdminSectionController extends AbstractController
         );
 
         $isBulkRequest = array_is_list($data);
-        $items = $isBulkRequest ? $data : [$data];
+        $items = $isBulkRequest ? $this->asListOfArrays($data) : [$this->toAssocArray($data)];
         $results = [];
 
         foreach ($items as $item) {
             $results[] = $this->adminSectionService->createChildSection(
                 $page_id,
                 $parent_section_id,
-                $item['styleId'],
-                $item['position'] ?? null,
-                $item['name'] ?? null
+                $this->asIntField($item, 'styleId'),
+                $this->asIntOrNullField($item, 'position'),
+                $this->asStringOrNullField($item, 'name')
             );
         }
 
-        $formattedResults = array_map(fn($r) => [
+        $formattedResults = array_map(fn(array $r): array => [
             'id' => $r['id'],
             'position' => $r['position'],
         ], $results);
@@ -199,7 +197,7 @@ class AdminSectionController extends AbstractController
         try {
             // Get raw request content to check if globalFields was explicitly sent
             $requestContent = json_decode($request->getContent(), true);
-            $globalFieldsProvided = array_key_exists('globalFields', $requestContent);
+            $globalFieldsProvided = is_array($requestContent) && array_key_exists('globalFields', $requestContent);
 
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/section/update_section', $this->jsonSchemaValidationService);
@@ -207,23 +205,23 @@ class AdminSectionController extends AbstractController
             // Determine globalFields value based on whether it was explicitly provided
             $globalFields = null;
             if ($globalFieldsProvided) {
-                $globalFields = $data['globalFields'] ?? [];
+                $globalFields = $this->asArrayField($data, 'globalFields');
             }
 
             // Update the section
             $section = $this->adminSectionService->updateSection(
                 $page_id,
                 $section_id,
-                isset($data['sectionName']) ? $data['sectionName'] : null,
-                $data['contentFields'],
-                $data['propertyFields'],
+                $this->asStringOrNullField($data, 'sectionName'),
+                $this->asListOfArrays($data['contentFields'] ?? null),
+                $this->asListOfArrays($data['propertyFields'] ?? null),
                 $globalFields
             );
             
             // Section cache is automatically invalidated by the service
             
             // Return updated section with fields
-            $sectionWithFields = $this->adminSectionService->getSection($page_id, $section->getId());
+            $sectionWithFields = $this->adminSectionService->getSection($page_id, (int) $section->getId());
             
             return $this->apiResponseFormatter->formatSuccess(
                 [
@@ -313,8 +311,8 @@ class AdminSectionController extends AbstractController
             // Import the sections
             $result = $this->adminSectionService->importSectionsToPage(
                 $page_id, 
-                $data['sections'], 
-                $data['position'] ?? null
+                $this->asListOfArrays($data['sections'] ?? null), 
+                $this->asIntOrNullField($data, 'position')
             );
             
             return $this->apiResponseFormatter->formatSuccess(
@@ -350,8 +348,8 @@ class AdminSectionController extends AbstractController
             $result = $this->adminSectionService->importSectionsToSection(
                 $page_id, 
                 $parent_section_id, 
-                $data['sections'], 
-                $data['position'] ?? null
+                $this->asListOfArrays($data['sections'] ?? null), 
+                $this->asIntOrNullField($data, 'position')
             );
             
             return $this->apiResponseFormatter->formatSuccess(

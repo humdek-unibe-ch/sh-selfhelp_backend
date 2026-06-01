@@ -133,7 +133,7 @@ class AdminGroupController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/create_group', $this->jsonSchemaValidationService);
             
-            $group = $this->adminGroupService->createGroup($data);
+            $group = $this->adminGroupService->createGroup($this->toAssocArray($data));
             
             return $this->responseFormatter->formatSuccess(
                 $group,
@@ -176,7 +176,7 @@ class AdminGroupController extends AbstractController
                 }
             }
 
-            $group = $this->adminGroupService->updateGroup($userId, $groupId, $data);
+            $group = $this->adminGroupService->updateGroup($userId, $groupId, $this->toAssocArray($data));
             // Group cache is automatically invalidated by the service
 
             return $this->responseFormatter->formatSuccess($group);
@@ -258,7 +258,7 @@ class AdminGroupController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/update_group_acls', $this->jsonSchemaValidationService);
             
-            $acls = $this->adminGroupService->updateGroupAcls($groupId, $data['acls']);
+            $acls = $this->adminGroupService->updateGroupAcls($groupId, $this->asListOfArrays($data['acls'] ?? null));
             
             // Permissions cache is automatically invalidated by the service
             
