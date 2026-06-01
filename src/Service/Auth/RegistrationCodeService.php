@@ -35,12 +35,12 @@ class RegistrationCodeService extends BaseService
         $params = [];
 
         if (!empty($filters['search'])) {
-            $where[]          = 'vc.code LIKE :search';
+            $where[] = 'vc.code LIKE :search';
             $params['search'] = '%' . $filters['search'] . '%';
         }
 
         if (!empty($filters['id_groups'])) {
-            $where[]             = 'vc.id_groups = :id_groups';
+            $where[] = 'vc.id_groups = :id_groups';
             $params['id_groups'] = $filters['id_groups'];
         }
 
@@ -51,19 +51,19 @@ class RegistrationCodeService extends BaseService
         }
 
         $allowedSort = ['created_at' => 'vc.created', 'consumed_at' => 'vc.consumed'];
-        $sortCol     = $allowedSort[$filters['sort'] ?? ''] ?? 'vc.created';
-        $sortDir     = strtoupper($filters['sortDirection'] ?? '') === 'ASC' ? 'ASC' : 'DESC';
+        $sortCol = $allowedSort[$filters['sort'] ?? ''] ?? 'vc.created';
+        $sortDir = strtoupper($filters['sortDirection'] ?? '') === 'ASC' ? 'ASC' : 'DESC';
 
         $whereClause = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
-        $rawCount   = $this->entityManager->getConnection()->fetchOne(
+        $rawCount = $this->entityManager->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM validation_codes vc' . $whereClause,
             $params
         );
         $totalCount = is_numeric($rawCount) ? (int) $rawCount : 0;
 
         $offset = ($page - 1) * $pageSize;
-        $rows   = $this->entityManager->getConnection()->fetchAllAssociative(
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
             'SELECT vc.code, vc.id_groups, g.name as group_name, vc.created, vc.consumed
                FROM validation_codes vc
                LEFT JOIN `groups` g ON g.id = vc.id_groups'
