@@ -36,9 +36,9 @@ final class Version20260529074436 extends AbstractMigration
             INSERT IGNORE INTO `api_routes`
                 (`route_name`, `version`, `methods`, `path`, `controller`, `requirements`, `params`)
             VALUES
-                ('admin_registration_codes_get_all', 'v1', 'GET',    '/admin/registration-codes',        'App\\Controller\\Api\\V1\\Admin\\AdminRegistrationCodeController::getAll', NULL, NULL),
-                ('admin_registration_codes_create',  'v1', 'POST',   '/admin/registration-codes',        'App\\Controller\\Api\\V1\\Admin\\AdminRegistrationCodeController::create', NULL, NULL),
-                ('admin_registration_codes_delete',  'v1', 'DELETE', '/admin/registration-codes/{code}', 'App\\Controller\\Api\\V1\\Admin\\AdminRegistrationCodeController::delete', NULL, NULL)
+                ('admin_registration_codes_get_all', 'v1', 'GET',    '/admin/registration-codes',        'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\AdminRegistrationCodeController::getAll', NULL, NULL),
+                ('admin_registration_codes_create',  'v1', 'POST',   '/admin/registration-codes',        'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\AdminRegistrationCodeController::create', NULL, NULL),
+                ('admin_registration_codes_delete',  'v1', 'DELETE', '/admin/registration-codes/{code}', 'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\AdminRegistrationCodeController::delete', NULL, NULL)
         SQL);
 
         $this->addSql(<<<SQL

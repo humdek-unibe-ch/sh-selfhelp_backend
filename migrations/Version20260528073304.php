@@ -36,7 +36,7 @@ final class Version20260528073304 extends AbstractMigration
                 'v1',
                 'POST',
                 '/auth/register',
-                'App\\Controller\\Api\\V1\\Auth\\AuthController::register',
+                'App\\\\Controller\\\\Api\\\\V1\\\\Auth\\\\AuthController::register',
                 NULL,
                 NULL
             )
