@@ -71,6 +71,7 @@ User authentication, profile management, and user data operations.
 - **[Groups](./08-admin-groups.md)** - Group management
 - **[Roles & Permissions](./09-admin-roles.md)** - Role and permission management
 - **[Data Access Control](./10-admin-data-access.md)** - Custom data access permissions
+- **[Registration Codes](./19-admin-registration-codes.md)** - Single-use codes that gate self-registration
 
 #### System Management
 - **[Cache Management](./11-admin-cache.md)** - Cache operations and monitoring

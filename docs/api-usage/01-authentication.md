@@ -259,6 +259,55 @@ Authorization: Bearer your_jwt_token
 
 **Permissions:** None (requires valid JWT token)
 
+### Self-Registration
+
+Create a new user account from a public register page. The new account is created blocked and an email-validation link is sent — the user activates the account through the validation flow (see [User Validation APIs](./03-user-validation.md)).
+
+**Endpoint:** `POST /cms-api/v1/auth/register`
+
+**Request Body:**
+[View JSON Schema](../../config/schemas/api/v1/requests/auth/register.json)
+```json
+{
+  "page_id": 92,
+  "email": "user@example.com",
+  "code": "INVITE123"
+}
+```
+
+- `page_id` (int, required): ID of the CMS register page. The backend locates the `register`-style section under this page and reads `open_registration` and `group` server-side. The client is never trusted to send the policy.
+- `email` (string, required): User's email address. Must not already be taken.
+- `code` (string, optional): Registration code. **Required** when the register section has `open_registration = 0`. Each code is single-use — it is marked consumed when the account is created and cannot be reused.
+
+**Success Response (`201 Created`):**
+```json
+{
+  "status": 201,
+  "message": "Created",
+  "error": null,
+  "logged_in": false,
+  "meta": {
+    "version": "v1",
+    "timestamp": "2026-06-01T10:30:00Z"
+  },
+  "data": []
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: `"An account with this email address already exists."`
+- `400 Bad Request`: `"No register section found for this page."`
+- `400 Bad Request`: `"A registration code is required."`
+- `400 Bad Request`: `"Invalid registration code."`
+- `400 Bad Request`: `"This registration code has already been used."`
+
+**Permissions:** None (public endpoint)
+
+**Notes:**
+- The user is assigned to the group associated with the registration code (when `open_registration = 0`) or to the section's configured group (when `open_registration = 1`).
+- A validation email is dispatched asynchronously via the job scheduler.
+- Registration codes are managed via the [Admin Registration Codes APIs](./19-admin-registration-codes.md).
+
 ## User Data & Profile Management
 
 ### Get Current User Data

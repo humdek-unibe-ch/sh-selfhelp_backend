@@ -65,6 +65,7 @@ Verify that a validation token is valid before showing the account setup form.
 
 **Error Responses:**
 - `400 Bad Request`: Invalid parameters or token doesn't match
+- `400 Bad Request`: `"Account is already active."` — the user has already completed validation
 - `404 Not Found`: User not found
 
 **Permissions:** None (public endpoint)
@@ -148,11 +149,20 @@ Complete the account setup process with user details.
 
 **Error Responses:**
 - `400 Bad Request`: Invalid token, validation errors
+- `400 Bad Request`: `"Account is already active."` — already validated
 - `404 Not Found`: User not found
-- `409 Conflict`: Account already validated or username taken
+- `409 Conflict`: Username taken
 - `422 Unprocessable Entity`: Field validation failed
 
 **Permissions:** None (public endpoint)
+
+**Side effects on success:**
+- The user's status is updated from `invited` to `active`.
+- The user's `blocked` flag is cleared.
+- The validation `token` is invalidated.
+- A welcome email is scheduled.
+
+**Re-entry protection:** Calling this endpoint (or requesting a new validation email via `setupUserValidation` / `resendValidationEmail`) for a user whose status is already `active` returns `400 "Account is already active."` — the activation flow cannot be replayed.
 
 ## Frontend Implementation
 
