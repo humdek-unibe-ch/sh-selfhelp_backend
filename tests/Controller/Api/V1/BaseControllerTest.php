@@ -7,10 +7,21 @@
 
 namespace App\Tests\Controller\Api\V1;
 
+use App\DataFixtures\Test\QaBaselineFixture;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Legacy base for the existing controller integration tests. It now logs in
+ * as the seeded QA personas instead of a developer's personal credentials.
+ *
+ * New controller tests should extend {@see \App\Tests\Support\QaWebTestCase}
+ * (richer envelope/permission helpers, fail-fast baseline check). This class
+ * deliberately keeps the polite "throw on missing admin" behaviour so
+ * {@see \App\Tests\Controller\Api\V1\Admin\Plugin\ManagedModeInstallTest}
+ * can skip in dev environments without a seeded baseline (plan §26).
+ */
 class BaseControllerTest extends WebTestCase
 {
     protected $jsonSchemaValidationService;
@@ -18,8 +29,7 @@ class BaseControllerTest extends WebTestCase
 
     private $adminAccessToken;
     private $userAccessToken;
-    
-    // Test page keyword to use for create/delete tests
+
     protected function setUp(): void
     {
         $this->client = static::createClient();
@@ -32,7 +42,7 @@ class BaseControllerTest extends WebTestCase
             return $this->adminAccessToken;
         }
 
-        // Use a real admin user from your fixtures
+        // Seeded QA admin persona (see QaBaselineFixture). No developer creds.
         $this->client->request(
             'POST',
             '/cms-api/v1/auth/login',
@@ -40,26 +50,25 @@ class BaseControllerTest extends WebTestCase
             [],
             ['CONTENT_TYPE' => 'application/json'],
             json_encode([
-                'email' => 'stefan.kodzhabashev@gmail.com',
-                'password' => 'q1w2e3r4',
+                'email' => QaBaselineFixture::QA_ADMIN_EMAIL,
+                'password' => QaBaselineFixture::QA_PASSWORD,
             ])
         );
         $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin login failed.');
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin login failed. Run: composer test:reset-db');
         $data = json_decode($response->getContent(), true);
         $this->assertArrayHasKey('access_token', $data['data']);
         $this->adminAccessToken = $data['data']['access_token'];
-        return $this->adminAccessToken; 
+        return $this->adminAccessToken;
     }
-    
+
     protected function getUserAccessToken(): string
     {
         if ($this->userAccessToken) {
             return $this->userAccessToken;
         }
 
-        // Use a regular user from your fixtures
-        // Note: This should be a non-admin user with limited permissions
+        // Seeded QA regular-user persona (non-admin). No developer creds.
         $this->client->request(
             'POST',
             '/cms-api/v1/auth/login',
@@ -67,16 +76,16 @@ class BaseControllerTest extends WebTestCase
             [],
             ['CONTENT_TYPE' => 'application/json'],
             json_encode([
-                'email' => 'user@example.com', // Replace with an actual regular user
-                'password' => 'password123',   // Replace with the actual password
+                'email' => QaBaselineFixture::QA_USER_EMAIL,
+                'password' => QaBaselineFixture::QA_PASSWORD,
             ])
         );
         $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'User login failed.');
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'User login failed. Run: composer test:reset-db');
         $data = json_decode($response->getContent(), true);
         $this->assertArrayHasKey('access_token', $data['data']);
         $this->userAccessToken = $data['data']['access_token'];
-        return $this->userAccessToken; 
+        return $this->userAccessToken;
     }
 
     /**
