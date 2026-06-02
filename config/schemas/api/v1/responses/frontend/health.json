@@ -1,0 +1,20 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Health probe (public)",
+    "description": "Response from /cms-api/v1/health. A minimal, unauthenticated deployment readiness signal (plan §18.3). Returns the same shape to anonymous and authenticated callers and leaks no version, host, schema, or secret information.",
+    "allOf": [
+        { "$ref": "../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "status": { "type": "string", "enum": ["ok"] },
+                "database": { "type": "string", "enum": ["ok"] }
+            },
+            "required": ["status", "database"],
+            "additionalProperties": false
+        }
+    },
+    "required": ["data"]
+}
