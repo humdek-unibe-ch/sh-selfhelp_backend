@@ -22,12 +22,14 @@ class RegistrationCodeService extends BaseService
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly int $totalMax = 10000,
+        private readonly int $requestMax = 10000,
     ) {
     }
 
     /**
      * @param array{search?: string|null, id_groups?: int|null, status?: string|null, sort?: string|null, sortDirection?: string|null} $filters
-     * @return array{codes: list<array{id: string, code: string, id_groups: int|null, group_name: string|null, created_at: string, consumed_at: string|null, is_consumed: bool}>, pagination: array{page: int, pageSize: int, totalCount: int, totalPages: int, hasNext: bool, hasPrevious: bool}}
+     * @return array{codes: list<array{id: string, code: string, id_groups: int|null, group_name: string|null, created_at: string, consumed_at: string|null, is_consumed: bool}>, pagination: array{page: int, pageSize: int, totalCount: int, totalPages: int, hasNext: bool, hasPrevious: bool}, config: array{generate_min: int, generate_max: int}}
      */
     public function getAll(array $filters = [], int $page = 1, int $pageSize = 20): array
     {
@@ -93,6 +95,10 @@ class RegistrationCodeService extends BaseService
                 'hasNext'     => $page < $totalPages,
                 'hasPrevious' => $page > 1,
             ],
+            'config' => [
+                'generate_min' => 1,
+                'generate_max' => $this->requestMax,
+            ],
         ];
     }
 
@@ -152,13 +158,24 @@ class RegistrationCodeService extends BaseService
      */
     public function generate(int $count, int $groupId): array
     {
-        if ($count < 1 || $count > 10000) {
-            throw new \InvalidArgumentException('Count must be between 1 and 10000.');
+        if ($count < 1 || $count > $this->requestMax) {
+            throw new \InvalidArgumentException("Count must be between 1 and {$this->requestMax}.");
         }
 
         $group = $this->entityManager->getRepository(Group::class)->find($groupId);
         if ($group === null) {
             throw new \InvalidArgumentException('Group not found.');
+        }
+
+        $rawTotal = $this->entityManager->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM validation_codes WHERE id_users IS NULL'
+        );
+        $currentTotal = is_numeric($rawTotal) ? (int) $rawTotal : 0;
+        if ($currentTotal + $count > $this->totalMax) {
+            $available = max(0, $this->totalMax - $currentTotal);
+            throw new \InvalidArgumentException(
+                "Cannot generate {$count} codes: the table limit of {$this->totalMax} would be exceeded. Currently {$currentTotal} codes exist; {$available} more can be created."
+            );
         }
 
         $groupIdResolved = $group->getId() ?? 0;
@@ -222,6 +239,7 @@ class RegistrationCodeService extends BaseService
         $results = [];
         foreach ($inserted as $code) {
             $results[] = [
+                'id'          => $code,
                 'code'        => $code,
                 'id_groups'   => $groupIdResolved,
                 'group_name'  => $groupName,

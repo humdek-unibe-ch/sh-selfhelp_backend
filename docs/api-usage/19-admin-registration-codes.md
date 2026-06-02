@@ -44,13 +44,13 @@ Retrieve a paginated list of registration codes with optional filtering.
   "data": {
     "codes": [
       {
-        "id": "INVITE123",
-        "code": "INVITE123",
+        "id": "A3BZ9K2W",
+        "code": "A3BZ9K2W",
         "id_groups": 3,
         "group_name": "Participants",
-        "created_at": "2026-05-01T10:00:00+00:00",
-        "consumed_at": "2026-05-10T14:23:00+00:00",
-        "is_consumed": true
+        "created_at": "2026-06-02 10:30:00",
+        "consumed_at": null,
+        "is_consumed": false
       }
     ],
     "pagination": {
@@ -60,6 +60,10 @@ Retrieve a paginated list of registration codes with optional filtering.
       "totalPages": 5,
       "hasNext": true,
       "hasPrevious": false
+    },
+    "config": {
+      "generate_min": 1,
+      "generate_max": 10000
     }
   }
 }
@@ -84,7 +88,7 @@ Generate one or more random 8-character alphanumeric codes, all bound to the sam
 }
 ```
 
-- `count` (int, required, 1–10000): Number of codes to generate.
+- `count` (int, required, 1–`config.generate_max`): Number of codes to generate. The upper bound is server-configured — read it from `config.generate_max` in the list response.
 - `id_groups` (int, required): Group the registering users will be assigned to.
 
 **Success Response (`201 Created`):**
@@ -115,14 +119,19 @@ Generate one or more random 8-character alphanumeric codes, all bound to the sam
 ```
 
 **Error Responses:**
-- `422 Unprocessable Entity`: `count` missing, not an integer, or outside 1–10000.
+- `422 Unprocessable Entity`: `count` missing, not an integer, or outside `1–config.generate_max`.
 - `422 Unprocessable Entity`: `id_groups` missing or group not found.
+- `422 Unprocessable Entity`: Table capacity would be exceeded — message includes current count and remaining slots:
+  ```
+  Cannot generate 500 codes: the table limit of 10000 would be exceeded. Currently 9800 codes exist; 200 more can be created.
+  ```
 
 **Permissions:** `admin.registration_code.create`
 
 **Notes:**
+- `config.generate_max` (from the list endpoint) is the per-request ceiling. A separate server-side total-table cap (`REGISTRATION_CODE_TOTAL_MAX`, default 10000) is checked before inserting — the table cannot exceed this limit regardless of how many requests are made.
 - Codes are generated using `INSERT IGNORE` in 500-row chunks. Rare PK collisions are silently retried until the full `count` is reached.
-- All codes share the same `created_at` timestamp (UTC).
+- All codes in a single request share the same `created_at` timestamp (UTC).
 
 ## Export Registration Codes
 
