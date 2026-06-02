@@ -33,7 +33,9 @@ final class AdminActionControllerTest extends QaWebTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->em = $em;
         $this->dataTableId = $this->resolveQaDataTableId();
     }
 
@@ -95,11 +97,11 @@ final class AdminActionControllerTest extends QaWebTestCase
         foreach ($triggers as $code) {
             $data = $this->createAction('trigger_' . $code, $code);
 
-            self::assertStringStartsWith('qa_action_trigger_' . $code, $data['name']);
-            self::assertSame($this->dataTableId, $data['data_table']['id'] ?? null);
+            self::assertStringStartsWith('qa_action_trigger_' . $code, $this->asString($data['name'] ?? null));
+            self::assertSame($this->dataTableId, $this->asArray($data['data_table'] ?? null)['id'] ?? null);
             self::assertSame(
                 $code,
-                $data['action_trigger_type']['lookup_code'] ?? null,
+                $this->asArray($data['action_trigger_type'] ?? null)['lookup_code'] ?? null,
                 "Created action should echo the {$code} trigger type"
             );
         }
@@ -108,7 +110,7 @@ final class AdminActionControllerTest extends QaWebTestCase
     public function testGetActionByIdReturnsDetail(): void
     {
         $created = $this->createAction('detail');
-        $actionId = (int) $created['id'];
+        $actionId = $this->asInt($created['id']);
 
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/actions/' . $actionId, null, $this->loginAsQaAdmin());
         $data = $this->assertEnvelopeSuccess($envelope);
@@ -122,7 +124,7 @@ final class AdminActionControllerTest extends QaWebTestCase
     public function testListActionsIncludesCreatedAction(): void
     {
         $created = $this->createAction('list');
-        $name = (string) $created['name'];
+        $name = $this->asString($created['name']);
 
         $envelope = $this->jsonRequest(
             'GET',
@@ -133,14 +135,14 @@ final class AdminActionControllerTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess($envelope);
 
         self::assertArrayHasKey('actions', $data);
-        $names = array_column($data['actions'], 'name');
+        $names = array_column($this->asList($data['actions']), 'name');
         self::assertContains($name, $names, 'Created action must appear in the filtered list');
     }
 
     public function testUpdateActionChangesName(): void
     {
         $created = $this->createAction('update');
-        $actionId = (int) $created['id'];
+        $actionId = $this->asInt($created['id']);
         $newName = 'qa_action_update_changed_' . uniqid('', false);
 
         $envelope = $this->jsonRequest(
@@ -158,7 +160,7 @@ final class AdminActionControllerTest extends QaWebTestCase
     public function testDeleteActionRemovesIt(): void
     {
         $created = $this->createAction('delete');
-        $actionId = (int) $created['id'];
+        $actionId = $this->asInt($created['id']);
         $token = $this->loginAsQaAdmin();
 
         $envelope = $this->jsonRequest('DELETE', '/cms-api/v1/admin/actions/' . $actionId, null, $token);

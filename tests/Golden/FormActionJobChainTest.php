@@ -68,11 +68,22 @@ final class FormActionJobChainTest extends QaWebTestCase
         parent::setUp();
 
         $container = self::getContainer();
-        $this->em = $container->get(EntityManagerInterface::class);
+        $em = $container->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->em = $em;
         $this->connection = $this->em->getConnection();
-        $this->dataService = $container->get(DataService::class);
-        $this->jobScheduler = $container->get(JobSchedulerService::class);
-        $this->mercure = $container->get(MercureTestRecorder::class);
+
+        $dataService = $container->get(DataService::class);
+        self::assertInstanceOf(DataService::class, $dataService);
+        $this->dataService = $dataService;
+
+        $jobScheduler = $container->get(JobSchedulerService::class);
+        self::assertInstanceOf(JobSchedulerService::class, $jobScheduler);
+        $this->jobScheduler = $jobScheduler;
+
+        $mercure = $container->get(MercureTestRecorder::class);
+        self::assertInstanceOf(MercureTestRecorder::class, $mercure);
+        $this->mercure = $mercure;
 
         $this->cleanup = new QaCleanupVerifier($this->connection);
         $this->cleanup->capture();
@@ -122,7 +133,8 @@ final class FormActionJobChainTest extends QaWebTestCase
         );
 
         // No real outbound: the email was captured but the transport is null.
-        RecordingNotifier::assertMailerIsNullTransport($_SERVER['MAILER_DSN'] ?? null);
+        $mailerDsn = $_SERVER['MAILER_DSN'] ?? null;
+        RecordingNotifier::assertMailerIsNullTransport(is_string($mailerDsn) ? $mailerDsn : null);
         $notifier = RecordingNotifier::fromMailerMessages(self::getMailerMessages());
         $notifier->assertEmailSentTo(QaBaselineFixture::QA_USER_EMAIL, 'QA welcome');
 
@@ -176,7 +188,8 @@ final class FormActionJobChainTest extends QaWebTestCase
         );
 
         // No real outbound; cleanup proof.
-        RecordingNotifier::assertMailerIsNullTransport($_SERVER['MAILER_DSN'] ?? null);
+        $mailerDsn = $_SERVER['MAILER_DSN'] ?? null;
+        RecordingNotifier::assertMailerIsNullTransport(is_string($mailerDsn) ? $mailerDsn : null);
         $this->cleanup->assertNoRealOutbound($this->mercure, expectedMercurePublishes: 0);
         $this->cleanup->verifyNoNonQaLeaks();
     }
@@ -276,7 +289,7 @@ final class FormActionJobChainTest extends QaWebTestCase
      */
     private function mailTransactionCount(string $transactionCode, int $jobId): int
     {
-        return (int) $this->connection->fetchOne(
+        return $this->coerceInt($this->connection->fetchOne(
             'SELECT COUNT(*) FROM transactions t '
             . 'JOIN lookups l ON l.id = t.id_transaction_types '
             . 'WHERE l.type_code = :type AND l.lookup_code = :code '
@@ -286,6 +299,6 @@ final class FormActionJobChainTest extends QaWebTestCase
                 'code' => $transactionCode,
                 'jobId' => $jobId,
             ],
-        );
+        ));
     }
 }

@@ -55,10 +55,18 @@ final class ActionOrchestratorHandleTest extends QaWebTestCase
         parent::setUp();
 
         $container = self::getContainer();
-        $this->em = $container->get(EntityManagerInterface::class);
+        $em = $container->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->em = $em;
         $this->connection = $this->em->getConnection();
-        $this->orchestrator = $container->get(ActionOrchestratorService::class);
-        $this->mercure = $container->get(MercureTestRecorder::class);
+
+        $orchestrator = $container->get(ActionOrchestratorService::class);
+        self::assertInstanceOf(ActionOrchestratorService::class, $orchestrator);
+        $this->orchestrator = $orchestrator;
+
+        $mercure = $container->get(MercureTestRecorder::class);
+        self::assertInstanceOf(MercureTestRecorder::class, $mercure);
+        $this->mercure = $mercure;
 
         $this->cleanup = new QaCleanupVerifier($this->connection);
         $this->cleanup->capture();
@@ -192,7 +200,7 @@ final class ActionOrchestratorHandleTest extends QaWebTestCase
 
     private function sendMailOkCount(int $jobId): int
     {
-        return (int) $this->connection->fetchOne(
+        return $this->coerceInt($this->connection->fetchOne(
             'SELECT COUNT(*) FROM transactions t '
             . 'JOIN lookups l ON l.id = t.id_transaction_types '
             . 'WHERE l.type_code = :type AND l.lookup_code = :code '
@@ -202,6 +210,6 @@ final class ActionOrchestratorHandleTest extends QaWebTestCase
                 'code' => LookupService::TRANSACTION_TYPES_SEND_MAIL_OK,
                 'jobId' => $jobId,
             ],
-        );
+        ));
     }
 }

@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Plugin;
 
+use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -33,13 +34,14 @@ use PHPUnit\Framework\TestCase;
  */
 final class PluginManifestShapeTest extends TestCase
 {
+    use NarrowsJson;
+
     private const SCHEMA_PATH = __DIR__ . '/../../../../../config/schemas/api/v1/responses/frontend/plugin_manifest.json';
     private const CONTROLLER_PATH = __DIR__ . '/../../../../../src/Controller/Api/V1/Plugin/PluginManifestController.php';
 
     public function testSchemaForbidsDeprecatedIdField(): void
     {
-        $schema = $this->loadSchema();
-        $itemProps = $schema['properties']['data']['properties']['plugins']['items']['properties'] ?? [];
+        $itemProps = $this->pluginItemProps();
 
         self::assertArrayNotHasKey(
             'id',
@@ -56,8 +58,7 @@ final class PluginManifestShapeTest extends TestCase
 
     public function testSchemaIsAdditionalPropertiesFalse(): void
     {
-        $schema = $this->loadSchema();
-        $item = $schema['properties']['data']['properties']['plugins']['items'] ?? [];
+        $item = $this->pluginItemSchema();
 
         self::assertArrayHasKey('additionalProperties', $item);
         self::assertFalse(
@@ -88,8 +89,7 @@ final class PluginManifestShapeTest extends TestCase
 
     public function testControllerFieldsMatchSchema(): void
     {
-        $schema = $this->loadSchema();
-        $schemaFields = array_keys($schema['properties']['data']['properties']['plugins']['items']['properties'] ?? []);
+        $schemaFields = array_keys($this->pluginItemProps());
         sort($schemaFields);
 
         $source = (string) file_get_contents(self::CONTROLLER_PATH);
@@ -131,8 +131,34 @@ final class PluginManifestShapeTest extends TestCase
     private function loadSchema(): array
     {
         $raw = (string) file_get_contents(self::SCHEMA_PATH);
-        $decoded = json_decode($raw, true);
-        self::assertIsArray($decoded, 'plugin_manifest.json is not valid JSON.');
-        return $decoded;
+
+        return self::asArray(json_decode($raw, true), 'plugin_manifest.json is not valid JSON.');
+    }
+
+    /**
+     * The `plugins[].items` sub-schema (object describing a single plugin entry).
+     *
+     * @return array<string, mixed>
+     */
+    private function pluginItemSchema(): array
+    {
+        return self::asArray($this->jsonGet(
+            $this->loadSchema(),
+            'properties',
+            'data',
+            'properties',
+            'plugins',
+            'items'
+        ));
+    }
+
+    /**
+     * The `properties` map of a single plugin item.
+     *
+     * @return array<string, mixed>
+     */
+    private function pluginItemProps(): array
+    {
+        return self::asArray($this->jsonGet($this->pluginItemSchema(), 'properties'));
     }
 }

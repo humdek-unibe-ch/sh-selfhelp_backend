@@ -12,6 +12,7 @@ namespace App\Tests\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 /**
  * Base class for kernel-level (service/integration) tests that need the
@@ -23,13 +24,16 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 abstract class QaKernelTestCase extends KernelTestCase
 {
     use InteractsWithQaBaseline;
+    use NarrowsJson;
 
     protected EntityManagerInterface $em;
 
     protected function setUp(): void
     {
         self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->em = $em;
         $this->assertQaBaselineLoaded($this->em);
     }
 
@@ -46,5 +50,19 @@ abstract class QaKernelTestCase extends KernelTestCase
         $service = self::getContainer()->get($id);
 
         return $service;
+    }
+
+    /**
+     * The booted kernel, narrowed to non-null. Use for APIs (Console
+     * {@see \Symfony\Bundle\FrameworkBundle\Console\Application},
+     * {@see \Symfony\Component\HttpKernel\Event\ExceptionEvent}) that reject the
+     * nullable static property type. Does not reboot (which would drop the DAMA
+     * transaction); relies on {@see setUp} having booted the kernel.
+     */
+    protected static function bootedKernel(): KernelInterface
+    {
+        self::assertNotNull(self::$kernel, 'Kernel must be booted (call parent::setUp() first).');
+
+        return self::$kernel;
     }
 }

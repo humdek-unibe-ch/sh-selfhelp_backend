@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Golden;
 
+use App\Service\JSON\JsonSchemaValidationService;
 use App\Tests\Support\QaWebTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -59,6 +60,19 @@ final class PageVersioningWorkflowTest extends QaWebTestCase
         $publishData = $this->assertEnvelopeSuccess($published, 201);
         self::assertIsInt($publishData['version_id'] ?? null, 'Publish must return the new version id');
         $versionId = (int) $publishData['version_id'];
+        // Contract: the publish response matches its (now-existing) schema.
+        $this->assertLastResponseMatchesSchema('responses/admin/page_version_published');
+
+        // 2b. Fetch the version details (covers the page_version_details schema).
+        $versionDetails = $this->jsonRequest(
+            'GET',
+            sprintf('/cms-api/v1/admin/pages/%d/versions/%d', $pageId, $versionId),
+            null,
+            $admin
+        );
+        $detailsData = $this->assertEnvelopeSuccess($versionDetails);
+        self::assertSame($versionId, $detailsData['id'] ?? null, 'Version details must return the requested version');
+        $this->assertLastResponseMatchesSchema('responses/admin/page_version_details');
 
         // 3. The published version is now visible through the versions list.
         $versions = $this->jsonRequest(
@@ -85,7 +99,7 @@ final class PageVersioningWorkflowTest extends QaWebTestCase
         self::assertArrayHasKey('draft', $comparisonData);
         self::assertArrayHasKey('published_version', $comparisonData);
         self::assertArrayHasKey('diff', $comparisonData);
-        self::assertSame($versionId, $comparisonData['published_version']['id'] ?? null, 'Comparison must reference the published version');
+        self::assertSame($versionId, $this->asArray($comparisonData['published_version'])['id'] ?? null, 'Comparison must reference the published version');
 
         // 5. Unpublish -> revert to draft mode.
         $unpublished = $this->jsonRequest(
@@ -95,6 +109,17 @@ final class PageVersioningWorkflowTest extends QaWebTestCase
             $admin
         );
         $this->assertEnvelopeSuccess($unpublished);
+        $this->assertLastResponseMatchesSchema('responses/admin/page_unpublished');
+
+        // 5b. Deleting the version exercises the page_version_deleted schema.
+        $versionDeleted = $this->jsonRequest(
+            'DELETE',
+            sprintf('/cms-api/v1/admin/pages/%d/versions/%d', $pageId, $versionId),
+            null,
+            $admin
+        );
+        $this->assertEnvelopeSuccess($versionDeleted);
+        $this->assertLastResponseMatchesSchema('responses/admin/page_version_deleted');
 
         // 6. Delete the page (cleanup through the API) and prove it is gone.
         $deleted = $this->jsonRequest(
@@ -115,6 +140,22 @@ final class PageVersioningWorkflowTest extends QaWebTestCase
     }
 
     /**
+     * Validate the most recent client response against a JSON schema. Decodes
+     * the raw response body as objects (the validator expects stdClass for
+     * "object" schemas) and asserts zero validation errors — proving the
+     * controller's live response matches its declared response schema.
+     */
+    private function assertLastResponseMatchesSchema(string $schemaName): void
+    {
+        $content = (string) $this->client->getResponse()->getContent();
+        $decoded = json_decode($content, false);
+        self::assertIsObject($decoded, 'Response body must be a JSON object.');
+
+        $errors = $this->service(JsonSchemaValidationService::class)->validate($decoded, $schemaName);
+        self::assertSame([], $errors, sprintf("Response does not match %s:\n%s", $schemaName, implode("\n", $errors)));
+    }
+
+    /**
      * The versions list payload shape varies (list vs {versions:[...]}); scan
      * defensively for the published version id rather than coupling to one shape.
      *
@@ -128,7 +169,7 @@ final class PageVersioningWorkflowTest extends QaWebTestCase
         }
 
         foreach ($candidates as $version) {
-            if (is_array($version) && (int) ($version['id'] ?? $version['version_id'] ?? 0) === $versionId) {
+            if (is_array($version) && $this->coerceInt($version['id'] ?? $version['version_id'] ?? 0) === $versionId) {
                 return true;
             }
         }

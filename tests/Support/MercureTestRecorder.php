@@ -87,7 +87,9 @@ final class MercureTestRecorder implements HubInterface
         $topics = [];
         foreach ($this->updates as $update) {
             foreach ($update->getTopics() as $topic) {
-                $topics[] = $topic;
+                if (is_string($topic)) {
+                    $topics[] = $topic;
+                }
             }
         }
 
@@ -110,7 +112,7 @@ final class MercureTestRecorder implements HubInterface
     {
         foreach ($this->getPublishedTopics() as $topic) {
             if (str_contains($topic, $needle)) {
-                Assert::assertTrue(true);
+                Assert::assertStringContainsString($needle, $topic);
 
                 return;
             }

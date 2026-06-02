@@ -70,7 +70,7 @@ class ManagedModeInstallTest extends BaseControllerTest
         // Track the CMS's own SDK version + a wide 8.x range that includes the
         // dev pre-release (8.0.0-dev) so the fixture never drifts out of
         // compatibility when the host bumps either value.
-        $sdkVersion = (string) self::getContainer()->getParameter('selfhelp.plugin_api_version');
+        $sdkVersion = $this->coerceString(self::getContainer()->getParameter('selfhelp.plugin_api_version'));
 
         return [
             'id' => self::TEST_PLUGIN_ID,
@@ -137,6 +137,7 @@ class ManagedModeInstallTest extends BaseControllerTest
         parent::tearDown();
     }
 
+    /** @return array<string, string> */
     private function adminHeaders(): array
     {
         return [
@@ -163,7 +164,7 @@ class ManagedModeInstallTest extends BaseControllerTest
             '/cms-api/v1/admin/plugins/install',
             [], [],
             $this->adminHeaders(),
-            json_encode(['source' => 'paste', 'manifest' => $this->manifest()]),
+            (string) json_encode(['source' => 'paste', 'manifest' => $this->manifest()]),
         );
 
         $this->assertSame(
@@ -173,9 +174,7 @@ class ManagedModeInstallTest extends BaseControllerTest
                 . $this->client->getResponse()->getContent(),
         );
 
-        $body = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertIsArray($body['data'] ?? null, 'install must return a plugin_operation data object');
-        $op = $body['data'];
+        $op = $this->asArray($this->decodeArray()['data'] ?? null, 'install must return a plugin_operation data object');
 
         $this->assertIsInt($op['id'] ?? null, 'install must record an operation id');
         $this->assertSame(self::TEST_PLUGIN_ID, $op['pluginId'] ?? null, 'operation must be scoped to this plugin');
@@ -206,12 +205,12 @@ class ManagedModeInstallTest extends BaseControllerTest
         );
 
         // The recorded operation is observable via the operations API.
-        $operationId = (int) $op['id'];
+        $operationId = $this->asInt($op['id']);
         $this->client->request('GET', '/cms-api/v1/admin/plugins/operations/' . $operationId, [], [], $this->adminHeaders());
         $this->assertResponseIsSuccessful();
-        $detail = json_decode($this->client->getResponse()->getContent(), true);
-        $this->assertSame($operationId, $detail['data']['id'] ?? null);
-        $this->assertSame(self::TEST_PLUGIN_ID, $detail['data']['pluginId'] ?? null);
+        $detailData = $this->asArray($this->decodeArray()['data'] ?? null);
+        $this->assertSame($operationId, $detailData['id'] ?? null);
+        $this->assertSame(self::TEST_PLUGIN_ID, $detailData['pluginId'] ?? null);
     }
 
     public function testInstallRejectsManifestMissingRequiredFields(): void
@@ -228,7 +227,7 @@ class ManagedModeInstallTest extends BaseControllerTest
             '/cms-api/v1/admin/plugins/install',
             [], [],
             $this->adminHeaders(),
-            json_encode(['source' => 'paste', 'manifest' => $broken]),
+            (string) json_encode(['source' => 'paste', 'manifest' => $broken]),
         );
 
         $status = $this->client->getResponse()->getStatusCode();
@@ -254,8 +253,8 @@ class ManagedModeInstallTest extends BaseControllerTest
         if (!$this->client->getResponse()->isSuccessful()) {
             return;
         }
-        $body = json_decode($this->client->getResponse()->getContent(), true);
-        $operations = is_array($body['data'] ?? null) ? $body['data'] : [];
+        $operationsRaw = $this->decodeArray()['data'] ?? [];
+        $operations = is_array($operationsRaw) ? $operationsRaw : [];
         foreach ($operations as $op) {
             if (!is_array($op) || ($op['pluginId'] ?? null) !== self::TEST_PLUGIN_ID) {
                 continue;
@@ -265,7 +264,7 @@ class ManagedModeInstallTest extends BaseControllerTest
             }
             $this->client->request(
                 'POST',
-                '/cms-api/v1/admin/plugins/operations/' . (int) $op['id'] . '/cancel',
+                '/cms-api/v1/admin/plugins/operations/' . $this->asInt($op['id']) . '/cancel',
                 [], [],
                 $headers,
             );

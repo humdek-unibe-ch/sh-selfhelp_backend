@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\CMS\Admin;
 
+use App\Entity\Page;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
 use App\Service\CMS\Admin\AdminSectionService;
@@ -33,8 +34,10 @@ class AdminSectionServiceTest extends QaWebTestCase
 {
     private function homePageId(): int
     {
-        $page = self::getContainer()->get(PageRepository::class)->findOneBy(['keyword' => 'home']);
-        self::assertNotNull($page, 'Seeded "home" page must exist.');
+        $repository = self::getContainer()->get(PageRepository::class);
+        self::assertInstanceOf(PageRepository::class, $repository);
+        $page = $repository->findOneBy(['keyword' => 'home']);
+        self::assertInstanceOf(Page::class, $page, 'Seeded "home" page must exist.');
 
         return (int) $page->getId();
     }
@@ -47,6 +50,7 @@ class AdminSectionServiceTest extends QaWebTestCase
     public function testGetSectionNotFoundThrows(): void
     {
         $service = self::getContainer()->get(AdminSectionService::class);
+        self::assertInstanceOf(AdminSectionService::class, $service);
 
         $this->expectException(ServiceException::class);
         $this->expectExceptionMessage('Section not found');
@@ -67,16 +71,19 @@ class AdminSectionServiceTest extends QaWebTestCase
             $this->markTestSkipped('Seeded home page has no sections to read.');
         }
 
-        $sectionId = (int) $data['sections'][0]['id'];
+        $sections = $this->asList($data['sections']);
+        $firstSection = $this->asArray($sections[0] ?? null);
+        $sectionId = $this->asInt($firstSection['id'] ?? null);
 
         $envelope = $this->jsonRequest('GET', "/cms-api/v1/admin/pages/{$pageId}/sections/{$sectionId}", null, $token);
         $section = $this->assertEnvelopeSuccess($envelope);
 
         self::assertArrayHasKey('section', $section);
         self::assertArrayHasKey('fields', $section);
-        self::assertSame($sectionId, $section['section']['id']);
-        self::assertIsString($section['section']['name']);
-        self::assertArrayHasKey('style', $section['section']);
+        $sectionData = $this->asArray($section['section']);
+        self::assertSame($sectionId, $sectionData['id'] ?? null);
+        self::assertIsString($sectionData['name'] ?? null);
+        self::assertArrayHasKey('style', $sectionData);
     }
 
     public function testGetSectionForNonexistentPageReturnsNotFound(): void

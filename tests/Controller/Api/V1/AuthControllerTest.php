@@ -83,7 +83,7 @@ final class AuthControllerTest extends QaWebTestCase
         self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $data = $this->assertEnvelopeSuccess($envelope);
         self::assertArrayHasKey('access_token', $data, 'Login must return data.access_token');
-        self::assertNotSame('', (string) $data['access_token'], 'access_token must be non-empty');
+        self::assertNotSame('', $this->asString($data['access_token']), 'access_token must be non-empty');
         self::assertTrue($envelope['logged_in'] ?? false, 'logged_in must be true on success');
     }
 
@@ -96,7 +96,7 @@ final class AuthControllerTest extends QaWebTestCase
 
         self::assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode());
         $this->assertEnvelope401($envelope);
-        self::assertNotSame('', (string) ($envelope['message'] ?? ''), 'A failed login must carry a message');
+        self::assertNotSame('', $this->coerceString($envelope['message'] ?? ''), 'A failed login must carry a message');
     }
 
     public function testTwoFactorRequiredGroupTriggersChallengeAndVerifySucceeds(): void
@@ -112,7 +112,7 @@ final class AuthControllerTest extends QaWebTestCase
         $loginData = $this->assertEnvelopeSuccess($login);
         self::assertTrue($loginData['requires_2fa'] ?? false, '2FA-group member must be challenged for 2FA');
         self::assertArrayNotHasKey('access_token', $loginData, 'No access token must be issued before 2FA verify');
-        self::assertSame($userId, (int) ($loginData['id_users'] ?? 0), 'Challenge must reference the same user');
+        self::assertSame($userId, $this->coerceInt($loginData['id_users'] ?? 0), 'Challenge must reference the same user');
 
         $code = $this->latestUnusedTwoFactorCode($userId);
 
@@ -124,7 +124,7 @@ final class AuthControllerTest extends QaWebTestCase
         self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $verifyData = $this->assertEnvelopeSuccess($verify);
         self::assertArrayHasKey('access_token', $verifyData, 'A valid 2FA code must yield an access token');
-        self::assertNotSame('', (string) $verifyData['access_token']);
+        self::assertNotSame('', $this->asString($verifyData['access_token']));
         self::assertTrue($verify['logged_in'] ?? false, 'logged_in must be true after a valid 2FA verify');
     }
 
@@ -146,7 +146,7 @@ final class AuthControllerTest extends QaWebTestCase
 
         self::assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode());
         $this->assertEnvelope401($verify);
-        self::assertSame('Invalid or expired verification code', (string) ($verify['error'] ?? ''));
+        self::assertSame('Invalid or expired verification code', $this->coerceString($verify['error'] ?? ''));
     }
 
     #[TestGroup('refresh_token')]
@@ -158,7 +158,7 @@ final class AuthControllerTest extends QaWebTestCase
         ]);
         $loginData = $this->assertEnvelopeSuccess($login);
         self::assertArrayHasKey('refresh_token', $loginData, 'Login must return a refresh token');
-        $oldRefresh = (string) $loginData['refresh_token'];
+        $oldRefresh = $this->asString($loginData['refresh_token']);
 
         $refresh = $this->jsonRequest('POST', '/cms-api/v1/auth/refresh-token', [
             'refresh_token' => $oldRefresh,
@@ -166,10 +166,10 @@ final class AuthControllerTest extends QaWebTestCase
 
         self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         $refreshData = $this->assertEnvelopeSuccess($refresh);
-        self::assertNotSame('', (string) ($refreshData['access_token'] ?? ''), 'Refresh must mint a new access token');
+        self::assertNotSame('', $this->coerceString($refreshData['access_token'] ?? ''), 'Refresh must mint a new access token');
         self::assertNotSame(
             $oldRefresh,
-            (string) ($refreshData['refresh_token'] ?? ''),
+            $this->coerceString($refreshData['refresh_token'] ?? ''),
             'Refresh must rotate the refresh token'
         );
     }
@@ -241,7 +241,7 @@ final class AuthControllerTest extends QaWebTestCase
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $this->assertEnvelope400($envelope);
-        self::assertStringContainsString('Invalid language ID', (string) ($envelope['error'] ?? ''));
+        self::assertStringContainsString('Invalid language ID', $this->coerceString($envelope['error'] ?? ''));
     }
 
     /**

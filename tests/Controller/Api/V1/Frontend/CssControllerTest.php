@@ -24,10 +24,9 @@ class CssControllerTest extends BaseControllerTest
         $this->assertEquals(Response::HTTP_OK, $response->getStatusCode());
         
         // Parse JSON response
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
         // Assert response structure
-        $this->assertIsArray($responseData);
         $this->assertArrayHasKey('status', $responseData);
         $this->assertArrayHasKey('message', $responseData);
         $this->assertArrayHasKey('error', $responseData);
@@ -39,15 +38,16 @@ class CssControllerTest extends BaseControllerTest
         $this->assertEquals(200, $responseData['status']);
         
         // Assert data contains classes array
-        $this->assertArrayHasKey('classes', $responseData['data']);
-        $this->assertIsArray($responseData['data']['classes']);
+        $data = $this->asArray($responseData['data']);
+        $this->assertArrayHasKey('classes', $data);
+        $classes = $this->asList($data['classes']);
         
         // Assert classes array is not empty (should have fallback classes at minimum)
-        $this->assertGreaterThan(0, count($responseData['data']['classes']));
+        $this->assertGreaterThan(0, count($classes));
         
         // Each class is a selectable option object: { value, text }.
-        foreach ($responseData['data']['classes'] as $class) {
-            $this->assertIsArray($class);
+        foreach ($classes as $classRaw) {
+            $class = $this->asArray($classRaw);
             $this->assertArrayHasKey('value', $class);
             $this->assertArrayHasKey('text', $class);
             $this->assertIsString($class['value']);
@@ -65,11 +65,11 @@ class CssControllerTest extends BaseControllerTest
         // Should return 200 even without authentication
         $this->assertEquals(Response::HTTP_OK, $response->getStatusCode());
         
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
         // Should indicate not logged in but still return data
         $this->assertFalse($responseData['logged_in']);
-        $this->assertArrayHasKey('classes', $responseData['data']);
+        $this->assertArrayHasKey('classes', $this->asArray($responseData['data']));
     }
 
     public function testGetCssClassesReturnsValidClasses(): void
@@ -77,16 +77,16 @@ class CssControllerTest extends BaseControllerTest
         $this->client->request('GET', '/cms-api/v1/frontend/css-classes');
         
         $response = $this->client->getResponse();
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
-        $classes = $responseData['data']['classes'];
+        $classes = $this->asList($this->jsonGet($responseData, 'data', 'classes'));
         
         // Just verify we get some valid CSS classes
         $this->assertGreaterThan(0, count($classes), "Should return at least one CSS class");
         
         // Check that all classes are valid option objects with a non-empty value
-        foreach ($classes as $class) {
-            $this->assertIsArray($class, "Each class should be an option object");
+        foreach ($classes as $classRaw) {
+            $class = $this->asArray($classRaw, "Each class should be an option object");
             $this->assertArrayHasKey('value', $class, "Each class must expose a value");
             $this->assertNotEmpty($class['value'], "Each class value should not be empty");
         }

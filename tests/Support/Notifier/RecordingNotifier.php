@@ -35,7 +35,7 @@ use Symfony\Component\Mime\RawMessage;
 final class RecordingNotifier
 {
     /**
-     * @param list<RawMessage> $mailerMessages typically WebTestCase::getMailerMessages()
+     * @param array<RawMessage> $mailerMessages typically WebTestCase::getMailerMessages()
      */
     public function __construct(
         private readonly array $mailerMessages,
@@ -43,7 +43,7 @@ final class RecordingNotifier
     }
 
     /**
-     * @param list<RawMessage> $mailerMessages
+     * @param array<RawMessage> $mailerMessages
      */
     public static function fromMailerMessages(array $mailerMessages): self
     {
@@ -77,7 +77,7 @@ final class RecordingNotifier
                 }
 
                 if ($containingSubject === null || str_contains((string) $message->getSubject(), $containingSubject)) {
-                    Assert::assertTrue(true);
+                    Assert::assertStringContainsStringIgnoringCase($email, $address->getAddress());
 
                     return;
                 }

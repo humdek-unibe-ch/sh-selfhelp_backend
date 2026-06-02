@@ -50,7 +50,7 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->application = new Application(self::$kernel);
+        $this->application = new Application(self::bootedKernel());
         $this->application->setAutoExit(false);
     }
 
@@ -88,10 +88,10 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
     private function countRows(string $table, int $userId): int
     {
         // $table is an internal literal (never user input); safe to interpolate.
-        return (int) $this->em->getConnection()->fetchOne(
+        return $this->coerceInt($this->em->getConnection()->fetchOne(
             "SELECT COUNT(*) FROM {$table} WHERE id_users = :u",
             ['u' => $userId],
-        );
+        ));
     }
 
     private function hasher(): UserPasswordHasherInterface
@@ -182,10 +182,10 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
         self::assertSame($firstId, (int) $second->getId(), 'Re-run must update the same user, not create a new one.');
         self::assertSame(
             1,
-            (int) $this->em->getConnection()->fetchOne(
+            $this->coerceInt($this->em->getConnection()->fetchOne(
                 'SELECT COUNT(*) FROM users WHERE email = :e',
                 ['e' => $email],
-            ),
+            )),
             'Re-run must not duplicate the user row.',
         );
         self::assertSame(1, $this->countRows('rel_groups_users', $firstId), 'Group membership must not be duplicated.');
@@ -253,7 +253,7 @@ final class CreateAdminUserCommandTest extends QaKernelTestCase
             'SELECT id_groups FROM rel_groups_users WHERE id_users = :u',
             ['u' => $userId],
         );
-        self::assertSame((int) $therapist->getId(), (int) $membershipGroupId, 'User must join the requested group.');
+        self::assertSame((int) $therapist->getId(), $this->coerceInt($membershipGroupId), 'User must join the requested group.');
         self::assertContains('ROLE_ADMIN', $user->getRoles(), 'User must hold the requested role.');
     }
 

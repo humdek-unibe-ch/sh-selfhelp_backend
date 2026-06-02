@@ -39,4 +39,9 @@ final class AdminScheduledJobPermissionTest extends QaWebTestCase
     {
         $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/scheduled-jobs/2147483600');
     }
+
+    public function testScheduledJobCancelIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/scheduled-jobs/2147483600/cancel');
+    }
 }

@@ -23,6 +23,7 @@ use App\Service\Action\ActionSchedulerService;
 use App\Service\Action\ActionTriggerContext;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
+use App\Tests\Support\NarrowsJson;
 use Doctrine\Common\Collections\ArrayCollection;
 use PHPUnit\Framework\TestCase;
 
@@ -33,6 +34,8 @@ use PHPUnit\Framework\TestCase;
  */
 final class ActionSchedulerServiceTest extends TestCase
 {
+    use NarrowsJson;
+
     public function testEmailNotificationJobIsScheduledAsEmailTypeForEachRecipient(): void
     {
         $executionDate = new \DateTimeImmutable('2026-01-01 10:00:00', new \DateTimeZone('UTC'));
@@ -93,7 +96,7 @@ final class ActionSchedulerServiceTest extends TestCase
                         && $jobData['action'] === $action
                         && $jobData['dataTable'] === $context->dataTable
                         && $jobData['dataRow'] === $context->dataRow
-                        && ($jobData['email_config']['recipient_emails'] ?? null) === 'qa.recipient@selfhelp.test';
+                        && (self::asArray($jobData['email_config'] ?? [])['recipient_emails'] ?? null) === 'qa.recipient@selfhelp.test';
                 }),
                 LookupService::TRANSACTION_BY_BY_SYSTEM,
             )

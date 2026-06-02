@@ -12,6 +12,7 @@ namespace App\Tests\Controller\Api\V1\Admin;
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\ScheduledJob;
 use App\Entity\User;
+use App\Service\Core\LookupService;
 use App\Tests\Support\Factories\ScheduledJobFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
@@ -41,7 +42,7 @@ final class AdminScheduledJobControllerTest extends QaWebTestCase
     {
         parent::setUp();
 
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->em = $this->service(EntityManagerInterface::class);
         $this->adminToken = $this->loginAsQaAdmin();
         $this->job = (new ScheduledJobFactory($this->em))
             ->createDueQueuedEmailJob($this->qaUser(), 'qa_admin_scheduled_job');
@@ -121,6 +122,24 @@ final class AdminScheduledJobControllerTest extends QaWebTestCase
         $this->assertEnvelopeSuccess($envelope);
 
         self::assertSame('OK', $envelope['message'] ?? null, 'Delete must return the OK envelope message.');
+    }
+
+    public function testCancelFlipsTheQueuedJobToCancelled(): void
+    {
+        $id = (int) $this->job->getId();
+        $envelope = $this->jsonRequest('POST', "/cms-api/v1/admin/scheduled-jobs/{$id}/cancel", null, $this->adminToken);
+        $this->assertEnvelopeSuccess($envelope);
+
+        // Public side effect: the persisted status flips to the cancelled lookup
+        // (JobSchedulerService::cancelJob) and the transaction log records it.
+        $this->em->clear();
+        $job = $this->em->getRepository(ScheduledJob::class)->find($id);
+        self::assertInstanceOf(ScheduledJob::class, $job, 'Cancelled job must still exist (cancel is not delete).');
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_CANCELLED,
+            $job->getStatus()->getLookupCode(),
+            'Cancel must flip the queued job to the cancelled status lookup.',
+        );
     }
 
     private function qaUser(): User

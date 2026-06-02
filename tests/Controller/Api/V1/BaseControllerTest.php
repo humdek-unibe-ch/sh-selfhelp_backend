@@ -8,6 +8,8 @@
 namespace App\Tests\Controller\Api\V1;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Tests\Support\NarrowsJson;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,16 +26,20 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class BaseControllerTest extends WebTestCase
 {
-    protected $jsonSchemaValidationService;
-    protected $client;
+    use NarrowsJson;
 
-    private $adminAccessToken;
-    private $userAccessToken;
+    protected JsonSchemaValidationService $jsonSchemaValidationService;
+    protected KernelBrowser $client;
+
+    private ?string $adminAccessToken = null;
+    private ?string $userAccessToken = null;
 
     protected function setUp(): void
     {
         $this->client = static::createClient();
-        $this->jsonSchemaValidationService = self::getContainer()->get(JsonSchemaValidationService::class);
+        $service = self::getContainer()->get(JsonSchemaValidationService::class);
+        self::assertInstanceOf(JsonSchemaValidationService::class, $service);
+        $this->jsonSchemaValidationService = $service;
     }
 
     protected function getAdminAccessToken(): string
@@ -49,16 +55,14 @@ class BaseControllerTest extends WebTestCase
             [],
             [],
             ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
+            (string) json_encode([
                 'email' => QaBaselineFixture::QA_ADMIN_EMAIL,
                 'password' => QaBaselineFixture::QA_PASSWORD,
             ])
         );
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin login failed. Run: composer test:reset-db');
-        $data = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('access_token', $data['data']);
-        $this->adminAccessToken = $data['data']['access_token'];
+        $this->adminAccessToken = $this->extractAccessToken($response);
         return $this->adminAccessToken;
     }
 
@@ -75,17 +79,44 @@ class BaseControllerTest extends WebTestCase
             [],
             [],
             ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
+            (string) json_encode([
                 'email' => QaBaselineFixture::QA_USER_EMAIL,
                 'password' => QaBaselineFixture::QA_PASSWORD,
             ])
         );
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'User login failed. Run: composer test:reset-db');
-        $data = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('access_token', $data['data']);
-        $this->userAccessToken = $data['data']['access_token'];
+        $this->userAccessToken = $this->extractAccessToken($response);
         return $this->userAccessToken;
+    }
+
+    /**
+     * Decode the current client response body as a JSON object (stdClass),
+     * matching the legacy `json_decode($response->getContent())` usage.
+     */
+    protected function decodeObject(): \stdClass
+    {
+        return $this->asObject(json_decode((string) $this->client->getResponse()->getContent()));
+    }
+
+    /**
+     * Decode the current client response body as a string-keyed array,
+     * matching the legacy `json_decode($response->getContent(), true)` usage.
+     *
+     * @return array<string, mixed>
+     */
+    protected function decodeArray(): array
+    {
+        return $this->asArray(json_decode((string) $this->client->getResponse()->getContent(), true));
+    }
+
+    private function extractAccessToken(Response $response): string
+    {
+        $data = $this->asArray(json_decode((string) $response->getContent(), true));
+        $tokenData = $this->asArray($data['data'] ?? null, 'Login response missing "data"');
+        $this->assertArrayHasKey('access_token', $tokenData);
+
+        return $this->asString($tokenData['access_token'], 'access_token must be a string');
     }
 
     /**
@@ -93,6 +124,10 @@ class BaseControllerTest extends WebTestCase
      */
     public function testSmokeTest(): void
     {
-        $this->assertTrue(true, 'Basic assertion to ensure tests can run.');
+        $this->assertSame(
+            'test',
+            $this->client->getKernel()->getEnvironment(),
+            'Controller tests must run in the test environment.'
+        );
     }
 }

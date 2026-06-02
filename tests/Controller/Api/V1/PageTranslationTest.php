@@ -25,14 +25,14 @@ class PageTranslationTest extends BaseControllerTest
         
         $response = $this->client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
         $this->assertArrayHasKey('data', $responseData);
-        $this->assertIsArray($responseData['data']);
+        $pages = $this->asList($responseData['data']);
         
         // Check if pages have title field (if any pages exist)
-        if (!empty($responseData['data'])) {
-            $firstPage = $responseData['data'][0];
+        if (!empty($pages)) {
+            $firstPage = $this->asArray($pages[0]);
             $this->assertArrayHasKey('title', $firstPage);
         }
     }
@@ -49,14 +49,14 @@ class PageTranslationTest extends BaseControllerTest
         
         $response = $this->client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
         $this->assertArrayHasKey('data', $responseData);
-        $this->assertIsArray($responseData['data']);
+        $pages = $this->asList($responseData['data']);
         
         // Check if pages have title field (if any pages exist)
-        if (!empty($responseData['data'])) {
-            $firstPage = $responseData['data'][0];
+        if (!empty($pages)) {
+            $firstPage = $this->asArray($pages[0]);
             $this->assertArrayHasKey('title', $firstPage);
         }
     }
@@ -71,14 +71,14 @@ class PageTranslationTest extends BaseControllerTest
         
         $response = $this->client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
         $this->assertArrayHasKey('data', $responseData);
-        $this->assertIsArray($responseData['data']);
+        $pages = $this->asList($responseData['data']);
         
         // Check if pages have title field (if any pages exist)
-        if (!empty($responseData['data'])) {
-            $firstPage = $responseData['data'][0];
+        if (!empty($pages)) {
+            $firstPage = $this->asArray($pages[0]);
             $this->assertArrayHasKey('title', $firstPage);
         }
     }
@@ -99,15 +99,15 @@ class PageTranslationTest extends BaseControllerTest
         
         $response = $this->client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
         
         $this->assertArrayHasKey('data', $responseData);
-        $this->assertIsArray($responseData['data']);
+        $pages = $this->asList($responseData['data']);
         
         // Admin page list items follow the _admin_page_definition shape
         // (keyword/id_pages/crud), not the public-rendered "title" shape.
-        if (!empty($responseData['data'])) {
-            $firstPage = $responseData['data'][0];
+        if (!empty($pages)) {
+            $firstPage = $this->asArray($pages[0]);
             $this->assertArrayHasKey('keyword', $firstPage);
         }
     }
@@ -120,23 +120,26 @@ class PageTranslationTest extends BaseControllerTest
         // First get all pages to find a valid page keyword
         $this->client->request('GET', '/cms-api/v1/pages');
         $response = $this->client->getResponse();
-        $responseData = json_decode($response->getContent(), true);
+        $responseData = $this->decodeArray();
+        $pages = $this->asList($responseData['data']);
         
-        if (!empty($responseData['data'])) {
-            $firstPage = $responseData['data'][0];
-            $pageKeyword = $firstPage['keyword'];
+        if (!empty($pages)) {
+            $firstPage = $this->asArray($pages[0]);
+            $pageKeyword = $this->asString($firstPage['keyword']);
             
             // Now get the specific page with language_id parameter (keyword lookup)
             $this->client->request('GET', '/cms-api/v1/pages/by-keyword/' . $pageKeyword . '?language_id=2');
             
             $pageResponse = $this->client->getResponse();
             $this->assertSame(200, $pageResponse->getStatusCode());
-            $pageResponseData = json_decode($pageResponse->getContent(), true);
+            $pageResponseData = $this->decodeArray();
             
             $this->assertArrayHasKey('data', $pageResponseData);
-            $this->assertArrayHasKey('page', $pageResponseData['data']);
-            $this->assertArrayHasKey('keyword', $pageResponseData['data']['page']);
-            $this->assertEquals($pageKeyword, $pageResponseData['data']['page']['keyword']);
+            $pageData = $this->asArray($pageResponseData['data']);
+            $this->assertArrayHasKey('page', $pageData);
+            $pageObj = $this->asArray($pageData['page']);
+            $this->assertArrayHasKey('keyword', $pageObj);
+            $this->assertEquals($pageKeyword, $pageObj['keyword']);
         } else {
             $this->markTestSkipped('No pages available for testing');
         }

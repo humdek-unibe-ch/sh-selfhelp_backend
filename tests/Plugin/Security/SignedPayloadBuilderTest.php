@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Plugin\Security;
 
 use App\Plugin\Security\SignedPayloadBuilder;
+use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -22,6 +23,8 @@ use PHPUnit\Framework\TestCase;
  */
 final class SignedPayloadBuilderTest extends TestCase
 {
+    use NarrowsJson;
+
     private SignedPayloadBuilder $builder;
 
     protected function setUp(): void
@@ -32,7 +35,7 @@ final class SignedPayloadBuilderTest extends TestCase
     #[DataProvider('fixtures')]
     public function testProducesByteIdenticalCanonicalPayload(string $inputPath, string $expectedPath): void
     {
-        $input = json_decode((string) file_get_contents($inputPath), true);
+        $input = self::asArray(json_decode((string) file_get_contents($inputPath), true));
         $expected = (string) file_get_contents($expectedPath);
 
         $actual = $this->builder->build($input);

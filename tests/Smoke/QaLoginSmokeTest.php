@@ -67,6 +67,6 @@ final class QaLoginSmokeTest extends QaWebTestCase
 
         self::assertArrayHasKey('logged_in', $envelope);
         self::assertTrue($envelope['logged_in'], 'Authenticated admin request must report logged_in=true');
-        self::assertIsArray($data, 'Admin pages list must return an array payload');
+        self::assertNotEmpty($this->asList($data), 'Admin pages list must return a non-empty array payload');
     }
 }

@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Plugin\Security;
 
 use App\Plugin\Security\SignedPayloadBuilder;
+use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
 
@@ -33,6 +34,8 @@ use Symfony\Component\Process\Process;
  */
 final class CrossImplPayloadParityTest extends TestCase
 {
+    use NarrowsJson;
+
     public function testNodeBuildPayloadMatchesPhp(): void
     {
         $node = $this->findNode();
@@ -55,7 +58,7 @@ final class CrossImplPayloadParityTest extends TestCase
         foreach ($inputs as $inputPath) {
             $name = basename($inputPath, '.input.json');
             $input = (string) file_get_contents($inputPath);
-            $expected = $php->build(json_decode($input, true));
+            $expected = $php->build(self::asArray(json_decode($input, true)));
 
             $proc = new Process([$node, $script, 'build-payload', '--input', $inputPath]);
             $proc->run();

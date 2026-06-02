@@ -9,9 +9,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Admin;
 
+use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
 use App\Tests\Support\QaWebTestCase;
 use App\Tests\Support\Security\PermissionMatrixProvider;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -76,6 +79,62 @@ final class AdminCacheControllerTest extends QaWebTestCase
         );
 
         $this->assertEnvelope400($envelope);
+    }
+
+    public function testResetCacheStatsSucceeds(): void
+    {
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/admin/cache/stats/reset', [], $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertTrue($data['reset'] ?? null, 'stats/reset must report reset=true');
+    }
+
+    public function testClearApiRoutesCacheSucceeds(): void
+    {
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/admin/cache/api-routes/clear', [], $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertTrue($data['cleared'] ?? null, 'api-routes/clear must report cleared=true');
+        self::assertSame('api_routes', $data['cache_type'] ?? null);
+    }
+
+    public function testClearUserCacheSucceedsForAPositiveUserId(): void
+    {
+        $userId = $this->qaUserId();
+
+        $envelope = $this->jsonRequest(
+            'POST',
+            '/cms-api/v1/admin/cache/clear/user',
+            ['user_id' => $userId],
+            $this->loginAsQaAdmin()
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertSame($userId, $data['user_id'] ?? null);
+        self::assertTrue($data['cleared'] ?? null, 'clear/user must report cleared=true');
+    }
+
+    public function testClearUserCacheRejectsMissingUserId(): void
+    {
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/admin/cache/clear/user', [], $this->loginAsQaAdmin());
+
+        $this->assertEnvelope400($envelope);
+    }
+
+    #[Group('security')]
+    public function testClearApiRoutesCacheForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', '/cms-api/v1/admin/cache/api-routes/clear', []);
+    }
+
+    private function qaUserId(): int
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $user = $em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);
+        self::assertInstanceOf(User::class, $user, 'qa.user must be seeded. Run: composer test:reset-db');
+
+        return (int) $user->getId();
     }
 
     #[Group('security')]

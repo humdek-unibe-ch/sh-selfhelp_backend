@@ -35,8 +35,7 @@ final class PluginCliCommandsTest extends KernelTestCase
 
     protected function setUp(): void
     {
-        self::bootKernel();
-        $this->application = new Application(self::$kernel);
+        $this->application = new Application(self::bootKernel());
         $this->application->setAutoExit(false);
     }
 

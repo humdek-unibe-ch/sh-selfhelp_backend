@@ -10,6 +10,7 @@ namespace App\Tests\Controller\Api\V1\Traits;
 
 use App\Entity\Page;
 use App\Service\Core\LookupService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -29,7 +30,8 @@ trait ManagesTestPagesTrait
      */
     protected function resolvePageIdByKeyword(string $pageKeyword): ?int
     {
-        $em = self::getContainer()->get('doctrine')->getManager();
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
         $page = $em->getRepository(Page::class)->findOneBy(['keyword' => $pageKeyword]);
 
         return $page?->getId();
@@ -39,7 +41,7 @@ trait ManagesTestPagesTrait
      *
      * @param string $pageKeyword The unique keyword for the page.
      * @param string $pageAccessTypeCode The access type code (e.g., LookupService::PAGE_ACCESS_TYPES_MOBILE_AND_WEB).
-     * @param array $overridePayload Optional payload to override defaults.
+     * @param array<string, mixed> $overridePayload Optional payload to override defaults.
      */
     protected function createTestPageWithKeyword(string $pageKeyword, ?string $pageAccessTypeCode = null, array $overridePayload = []): void
     {
@@ -68,17 +70,19 @@ trait ManagesTestPagesTrait
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-            json_encode($payload)
+            json_encode($payload, JSON_THROW_ON_ERROR)
         );
 
         $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode(), "Failed to create test page '{$pageKeyword}': " . $response->getContent());
+        $content = (string) $response->getContent();
+        $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode(), "Failed to create test page '{$pageKeyword}': " . $content);
 
         // Basic validation of the response structure
-        $data = json_decode($response->getContent());
+        $data = $this->asObject(json_decode($content));
         $this->assertTrue(property_exists($data, 'data'), 'Create page response does not have data property for ' . $pageKeyword);
-        $this->assertTrue(property_exists($data->data, 'keyword'), 'Create page response data does not have keyword property for ' . $pageKeyword);
-        $this->assertSame($pageKeyword, $data->data->keyword, 'Returned page keyword does not match for ' . $pageKeyword);
+        $pageData = $this->asObject($data->data);
+        $this->assertTrue(property_exists($pageData, 'keyword'), 'Create page response data does not have keyword property for ' . $pageKeyword);
+        $this->assertSame($pageKeyword, $pageData->keyword, 'Returned page keyword does not match for ' . $pageKeyword);
         
         // Schema validation (optional, can be added if a generic 'page_created' schema exists)
         // $validationErrors = $this->jsonSchemaValidationService->validate($data, 'responses/admin/page_created_success'); // Example schema
@@ -110,13 +114,15 @@ trait ManagesTestPagesTrait
         // For now, strict check for HTTP_OK which implies it existed and was deleted.
         // If the page might not exist, consider checking for [Response::HTTP_OK, Response::HTTP_NOT_FOUND]
         // or use deleteTestPageIfExistsWithKeyword.
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), "Failed to delete test page '{$pageKeyword}': " . $response->getContent());
+        $content = (string) $response->getContent();
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), "Failed to delete test page '{$pageKeyword}': " . $content);
 
         // Basic validation of the response structure
-        $data = json_decode($response->getContent());
+        $data = $this->asObject(json_decode($content));
         $this->assertTrue(property_exists($data, 'data'), 'Delete page response does not have data property for ' . $pageKeyword);
-        $this->assertTrue(property_exists($data->data, 'keyword'), 'Delete page response data does not have keyword property for ' . $pageKeyword);
-        $this->assertSame($pageKeyword, $data->data->keyword, 'Returned keyword does not match on delete for ' . $pageKeyword);
+        $pageData = $this->asObject($data->data);
+        $this->assertTrue(property_exists($pageData, 'keyword'), 'Delete page response data does not have keyword property for ' . $pageKeyword);
+        $this->assertSame($pageKeyword, $pageData->keyword, 'Returned keyword does not match on delete for ' . $pageKeyword);
     }
 
     /**
@@ -142,6 +148,6 @@ trait ManagesTestPagesTrait
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
         );
         $deleteResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $deleteResponse->getStatusCode(), "Failed to delete existing page '{$pageKeyword}' during cleanup: " . $deleteResponse->getContent());
+        $this->assertSame(Response::HTTP_OK, $deleteResponse->getStatusCode(), "Failed to delete existing page '{$pageKeyword}' during cleanup: " . (string) $deleteResponse->getContent());
     }
 }

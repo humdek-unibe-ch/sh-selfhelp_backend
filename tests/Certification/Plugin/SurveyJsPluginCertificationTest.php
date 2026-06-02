@@ -43,6 +43,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  */
 final class SurveyJsPluginCertificationTest extends KernelTestCase
 {
+    use \App\Tests\Support\NarrowsJson;
+
     private const PLUGIN_ID = 'sh2-shp-survey-js';
 
     /**
@@ -51,7 +53,7 @@ final class SurveyJsPluginCertificationTest extends KernelTestCase
     private function loadManifest(): array
     {
         self::bootKernel();
-        $projectDir = (string) self::getContainer()->getParameter('kernel.project_dir');
+        $projectDir = $this->coerceString(self::getContainer()->getParameter('kernel.project_dir'));
         // Sibling layout: <root>/sh-selfhelp_backend + <root>/plugins/sh2-shp-survey-js.
         $candidates = [
             $projectDir . '/../plugins/' . self::PLUGIN_ID . '/plugin.json',
@@ -90,10 +92,10 @@ final class SurveyJsPluginCertificationTest extends KernelTestCase
 
         $report = $validator->check($manifest);
         self::assertTrue(
-            $report['compatible'] ?? false,
-            "SurveyJS must be compatible with this host. Reasons:\n" . implode("\n", $report['reasons'] ?? []),
+            $report['compatible'],
+            "SurveyJS must be compatible with this host. Reasons:\n" . implode("\n", $report['reasons']),
         );
-        self::assertSame([], $report['reasons'] ?? null);
+        self::assertSame([], $report['reasons']);
     }
 
     public function testRealManifestPassesTheCapabilityVsTrustLevelContract(): void

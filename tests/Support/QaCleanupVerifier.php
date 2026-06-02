@@ -55,9 +55,10 @@ final class QaCleanupVerifier
     public function capture(): void
     {
         foreach (array_keys(self::TABLES) as $table) {
-            $this->baseline[$table] = (int) $this->connection->fetchOne(
+            $max = $this->connection->fetchOne(
                 sprintf('SELECT COALESCE(MAX(id), 0) FROM %s', $table)
             );
+            $this->baseline[$table] = is_numeric($max) ? (int) $max : 0;
         }
     }
 
@@ -77,13 +78,16 @@ final class QaCleanupVerifier
             );
 
             foreach ($rows as $row) {
-                $ident = (string) ($row['ident'] ?? '');
+                $identRaw = $row['ident'] ?? '';
+                $ident = is_scalar($identRaw) ? (string) $identRaw : '';
+                $idRaw = $row['id'] ?? '';
+                $id = is_scalar($idRaw) ? (string) $idRaw : '';
                 Assert::assertTrue(
                     $this->isQaIdentifier($ident),
                     sprintf(
                         'Leak detected: %s#%s has non-qa %s "%s". Tests must only create qa-prefixed business data.',
                         $table,
-                        (string) $row['id'],
+                        $id,
                         $column,
                         $ident
                     )

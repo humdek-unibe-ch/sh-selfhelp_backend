@@ -44,7 +44,7 @@ final class CertFixturePluginCertificationTest extends InstallLifecycleCertifica
         // Track the CMS's own SDK version so the fixture never drifts out of
         // compatibility when the host bumps it. The selfhelp constraint is a
         // wide 8.x range that includes the dev pre-release (`8.0.0-dev`).
-        $sdkVersion = (string) self::getContainer()->getParameter('selfhelp.plugin_api_version');
+        $sdkVersion = $this->coerceString(self::getContainer()->getParameter('selfhelp.plugin_api_version'));
 
         return [
             'id' => self::PLUGIN_ID,

@@ -47,7 +47,8 @@ abstract class MigrationRoundTripTestCase extends TestCase
     {
         $this->projectDir = dirname(__DIR__, 2);
 
-        $baseUrl = (string) ($_SERVER['DATABASE_URL'] ?? $_ENV['DATABASE_URL'] ?? getenv('DATABASE_URL') ?: '');
+        $rawUrl = $_SERVER['DATABASE_URL'] ?? $_ENV['DATABASE_URL'] ?? getenv('DATABASE_URL') ?: '';
+        $baseUrl = is_string($rawUrl) ? $rawUrl : '';
         if ($baseUrl === '') {
             self::markTestSkipped('DATABASE_URL is not set; migration round-trip needs a reachable test DB server.');
         }

@@ -30,7 +30,9 @@ class AdminUserControllerTest extends BaseControllerTest
     protected function setUp(): void
     {
         parent::setUp();
-        $this->entityManager = self::getContainer()->get('doctrine')->getManager();
+        $em = self::getContainer()->get(\Doctrine\ORM\EntityManagerInterface::class);
+        self::assertInstanceOf(\Doctrine\ORM\EntityManagerInterface::class, $em);
+        $this->entityManager = $em;
     }
 
     /** Unique qa.-prefixed e-mail for a throwaway user created inside one test. */
@@ -64,7 +66,7 @@ class AdminUserControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json',
             ],
-            json_encode($payload)
+            (string) json_encode($payload)
         );
 
         $response = $this->client->getResponse();
@@ -74,11 +76,12 @@ class AdminUserControllerTest extends BaseControllerTest
             'User creation failed: ' . (string) $response->getContent()
         );
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('id', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('id', $payload);
 
-        return $data['data'];
+        return $payload;
     }
 
     /**
@@ -100,16 +103,17 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate response structure
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('users', $data['data']);
-        $this->assertArrayHasKey('pagination', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('users', $payload);
+        $this->assertArrayHasKey('pagination', $payload);
         
         // Validate pagination structure
-        $pagination = $data['data']['pagination'];
+        $pagination = $this->asArray($payload['pagination']);
         $this->assertArrayHasKey('page', $pagination);
         $this->assertArrayHasKey('pageSize', $pagination);
         $this->assertArrayHasKey('totalCount', $pagination);
@@ -118,10 +122,10 @@ class AdminUserControllerTest extends BaseControllerTest
         $this->assertArrayHasKey('hasPrevious', $pagination);
         
         // Validate users array
-        $this->assertIsArray($data['data']['users']);
+        $users = $this->asList($payload['users']);
         
-        if (!empty($data['data']['users'])) {
-            $user = $data['data']['users'][0];
+        if (!empty($users)) {
+            $user = $this->asArray($users[0]);
             $this->assertArrayHasKey('id', $user);
             $this->assertArrayHasKey('email', $user);
             $this->assertArrayHasKey('name', $user);
@@ -155,10 +159,12 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertLessThanOrEqual(5, count($data['data']['users']));
-        $this->assertSame(1, $data['data']['pagination']['page']);
-        $this->assertSame(5, $data['data']['pagination']['pageSize']);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $this->assertLessThanOrEqual(5, count($this->asList($payload['users'])));
+        $pagination = $this->asArray($payload['pagination']);
+        $this->assertSame(1, $pagination['page']);
+        $this->assertSame(5, $pagination['pageSize']);
     }
 
     /**
@@ -180,19 +186,19 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertIsArray($data['data']['users']);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $users = $this->asList($payload['users']);
         
         // Verify search results contain the search term
-        if (!empty($data['data']['users'])) {
-            foreach ($data['data']['users'] as $user) {
-                $containsSearch = (isset($user['email']) && stripos($user['email'], 'admin') !== false) ||
-                                (isset($user['name']) && stripos($user['name'], 'admin') !== false) ||
-                                (isset($user['user_name']) && stripos($user['user_name'], 'admin') !== false) ||
-                                (isset($user['code']) && stripos($user['code'], 'admin') !== false) ||
-                                (isset($user['roles']) && stripos($user['roles'], 'admin') !== false);
-                $this->assertTrue($containsSearch, 'Search result should contain search term in email, name, user_name, code, or roles');
-            }
+        foreach ($users as $userRaw) {
+            $user = $this->asArray($userRaw);
+            $containsSearch = (isset($user['email']) && stripos($this->asString($user['email']), 'admin') !== false) ||
+                            (isset($user['name']) && stripos($this->asString($user['name']), 'admin') !== false) ||
+                            (isset($user['user_name']) && stripos($this->asString($user['user_name']), 'admin') !== false) ||
+                            (isset($user['code']) && stripos($this->asString($user['code']), 'admin') !== false) ||
+                            (isset($user['roles']) && stripos($this->asString($user['roles']), 'admin') !== false);
+            $this->assertTrue($containsSearch, 'Search result should contain search term in email, name, user_name, code, or roles');
         }
     }
 
@@ -215,12 +221,13 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertIsArray($data['data']['users']);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $users = $this->asList($payload['users']);
         
         // Verify sorting - emails should be in ascending order
-        if (count($data['data']['users']) > 1) {
-            $emails = array_column($data['data']['users'], 'email');
+        if (count($users) > 1) {
+            $emails = array_column($users, 'email');
             $sortedEmails = $emails;
             sort($sortedEmails);
             $this->assertSame($sortedEmails, $emails, 'Users should be sorted by email in ascending order');
@@ -261,7 +268,7 @@ class AdminUserControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($userData)
+            (string) json_encode($userData)
         );
 
         $response = $this->client->getResponse();
@@ -287,7 +294,7 @@ class AdminUserControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($userData)
+            (string) json_encode($userData)
         );
 
         $response = $this->client->getResponse();
@@ -300,7 +307,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testGetUserByIdSuccess(): void
     {
         $created = $this->createTestUser('getbyid');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->client->request(
             'GET',
@@ -316,16 +323,17 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertSame($userId, $data['data']['id']);
-        $this->assertSame($created['email'], $data['data']['email']);
+        $payload = $this->asArray($data['data']);
+        $this->assertSame($userId, $payload['id']);
+        $this->assertSame($created['email'], $payload['email']);
         
         // Verify detail view includes additional fields
-        $this->assertArrayHasKey('groups', $data['data']);
-        $this->assertArrayHasKey('roles', $data['data']);
-        $this->assertIsArray($data['data']['groups']);
-        $this->assertIsArray($data['data']['roles']);
+        $this->assertArrayHasKey('groups', $payload);
+        $this->assertArrayHasKey('roles', $payload);
+        $this->assertIsArray($payload['groups']);
+        $this->assertIsArray($payload['roles']);
     }
 
     /**
@@ -354,7 +362,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testUpdateUserSuccess(): void
     {
         $created = $this->createTestUser('update');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $updateData = [
             'name' => 'qa_user_update_changed',
@@ -370,16 +378,17 @@ class AdminUserControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($updateData)
+            (string) json_encode($updateData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertSame($updateData['name'], $data['data']['name']);
-        $this->assertSame($updateData['blocked'], $data['data']['blocked']);
+        $payload = $this->asArray($data['data']);
+        $this->assertSame($updateData['name'], $payload['name']);
+        $this->assertSame($updateData['blocked'], $payload['blocked']);
     }
 
     /**
@@ -388,7 +397,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testToggleUserBlockSuccess(): void
     {
         $created = $this->createTestUser('block');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->client->request(
             'PATCH',
@@ -399,15 +408,16 @@ class AdminUserControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode(['blocked' => false])
+            (string) json_encode(['blocked' => false])
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertSame(false, $data['data']['blocked']);
+        $payload = $this->asArray($data['data']);
+        $this->assertSame(false, $payload['blocked']);
     }
 
     /**
@@ -416,7 +426,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testGetUserGroupsSuccess(): void
     {
         $created = $this->createTestUser('groups');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->client->request(
             'GET',
@@ -432,7 +442,7 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
         $this->assertIsArray($data['data']);
     }
@@ -443,7 +453,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testGetUserRolesSuccess(): void
     {
         $created = $this->createTestUser('roles');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->client->request(
             'GET',
@@ -459,7 +469,7 @@ class AdminUserControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
         $this->assertIsArray($data['data']);
     }
@@ -476,9 +486,9 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testAssignAndRemoveUserRoleReflectsInResponse(): void
     {
         $created = $this->createTestUser('roleassign');
-        $userId = (int) $created['id'];
-        $roleId = (int) $this->entityManager->getConnection()
-            ->fetchOne('SELECT id FROM roles ORDER BY id ASC LIMIT 1');
+        $userId = $this->asInt($created['id']);
+        $roleId = $this->coerceInt($this->entityManager->getConnection()
+            ->fetchOne('SELECT id FROM roles ORDER BY id ASC LIMIT 1'));
         $this->assertGreaterThan(0, $roleId, 'A seeded role is required for the assignment test');
 
         // Baseline: the fresh user does not yet hold the role.
@@ -503,9 +513,9 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testAssignAndRemoveUserGroupReflectsInResponse(): void
     {
         $created = $this->createTestUser('groupassign');
-        $userId = (int) $created['id'];
-        $groupId = (int) $this->entityManager->getConnection()
-            ->fetchOne('SELECT id FROM `groups` ORDER BY id ASC LIMIT 1');
+        $userId = $this->asInt($created['id']);
+        $groupId = $this->coerceInt($this->entityManager->getConnection()
+            ->fetchOne('SELECT id FROM `groups` ORDER BY id ASC LIMIT 1'));
         $this->assertGreaterThan(0, $groupId, 'A seeded group is required for the assignment test');
 
         $this->assertNotContains($groupId, $this->fetchUserGroupIds($userId), 'New user should start without the group');
@@ -532,9 +542,11 @@ class AdminUserControllerTest extends BaseControllerTest
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()]
         );
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
-        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $rows = is_array($payload['roles'] ?? null) ? $payload['roles'] : [];
 
-        return array_map('intval', array_column($data['data']['roles'] ?? [], 'id'));
+        return array_map(static fn (mixed $v): int => self::coerceInt($v), array_column($rows, 'id'));
     }
 
     /**
@@ -550,9 +562,11 @@ class AdminUserControllerTest extends BaseControllerTest
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken()]
         );
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
-        $data = json_decode($this->client->getResponse()->getContent(), true);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $rows = is_array($payload['groups'] ?? null) ? $payload['groups'] : [];
 
-        return array_map('intval', array_column($data['data']['groups'] ?? [], 'id'));
+        return array_map(static fn (mixed $v): int => self::coerceInt($v), array_column($rows, 'id'));
     }
 
     /**
@@ -566,7 +580,7 @@ class AdminUserControllerTest extends BaseControllerTest
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(), 'CONTENT_TYPE' => 'application/json'],
-            json_encode(['role_ids' => [$roleId]])
+            (string) json_encode(['role_ids' => [$roleId]])
         );
         $response = $this->client->getResponse();
         $this->assertSame(
@@ -574,9 +588,11 @@ class AdminUserControllerTest extends BaseControllerTest
             $response->getStatusCode(),
             sprintf('%s roles failed: %s', $method, (string) $response->getContent())
         );
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $rows = is_array($payload['roles'] ?? null) ? $payload['roles'] : [];
 
-        return array_map('intval', array_column($data['data']['roles'] ?? [], 'id'));
+        return array_map(static fn (mixed $v): int => self::coerceInt($v), array_column($rows, 'id'));
     }
 
     /**
@@ -590,7 +606,7 @@ class AdminUserControllerTest extends BaseControllerTest
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(), 'CONTENT_TYPE' => 'application/json'],
-            json_encode(['group_ids' => [$groupId]])
+            (string) json_encode(['group_ids' => [$groupId]])
         );
         $response = $this->client->getResponse();
         $this->assertSame(
@@ -598,9 +614,11 @@ class AdminUserControllerTest extends BaseControllerTest
             $response->getStatusCode(),
             sprintf('%s groups failed: %s', $method, (string) $response->getContent())
         );
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $rows = is_array($payload['groups'] ?? null) ? $payload['groups'] : [];
 
-        return array_map('intval', array_column($data['data']['groups'] ?? [], 'id'));
+        return array_map(static fn (mixed $v): int => self::coerceInt($v), array_column($rows, 'id'));
     }
 
     /**
@@ -626,7 +644,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testDeleteUserSuccess(): void
     {
         $created = $this->createTestUser('delete');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->client->request(
             'DELETE',
@@ -641,8 +659,9 @@ class AdminUserControllerTest extends BaseControllerTest
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
-        $data = json_decode($response->getContent(), true);
-        $this->assertTrue($data['data']['deleted']);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $this->assertTrue($payload['deleted']);
 
         // Verify user is deleted
         $this->client->request(
@@ -671,7 +690,7 @@ class AdminUserControllerTest extends BaseControllerTest
     public function testDeleteSystemUserForbidden(): void
     {
         $created = $this->createTestUser('sysguard');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $entity = $this->entityManager->getRepository(User::class)->find($userId);
         self::assertInstanceOf(User::class, $entity);
@@ -717,7 +736,7 @@ class AdminUserControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode([
+            (string) json_encode([
                 'email' => $email,
                 'name' => 'qa_user_dup_2',
                 'password' => QaBaselineFixture::QA_PASSWORD,

@@ -128,9 +128,15 @@ final class LockFileAssertion
 
         $out = [];
         foreach ($plugins as $entry) {
-            if (is_array($entry)) {
-                $out[] = $entry;
+            if (!is_array($entry)) {
+                continue;
             }
+
+            $normalized = [];
+            foreach ($entry as $key => $value) {
+                $normalized[(string) $key] = $value;
+            }
+            $out[] = $normalized;
         }
 
         return $out;

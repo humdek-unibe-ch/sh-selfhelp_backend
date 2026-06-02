@@ -13,6 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminAssetControllerTest extends BaseControllerTest
 {
+    /** @var list<int> */
     private array $createdAssetIds = [];
 
     /**
@@ -34,16 +35,17 @@ class AdminAssetControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate response structure with pagination
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('assets', $data['data']);
-        $this->assertArrayHasKey('pagination', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('assets', $payload);
+        $this->assertArrayHasKey('pagination', $payload);
         
         // Validate pagination structure
-        $pagination = $data['data']['pagination'];
+        $pagination = $this->asArray($payload['pagination']);
         $this->assertArrayHasKey('page', $pagination);
         $this->assertArrayHasKey('pageSize', $pagination);
         $this->assertArrayHasKey('total', $pagination);
@@ -53,10 +55,10 @@ class AdminAssetControllerTest extends BaseControllerTest
         $this->assertIsInt($pagination['total']);
         
         // Validate assets array
-        $this->assertIsArray($data['data']['assets']);
+        $assets = $this->asList($payload['assets']);
         
-        if (!empty($data['data']['assets'])) {
-            $asset = $data['data']['assets'][0];
+        if (!empty($assets)) {
+            $asset = $this->asArray($assets[0]);
             $this->assertArrayHasKey('id', $asset);
             $this->assertArrayHasKey('asset_type', $asset);
             $this->assertArrayHasKey('folder', $asset);
@@ -88,15 +90,16 @@ class AdminAssetControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
         
         // Validate pagination reflects requested parameters
-        $pagination = $data['data']['pagination'];
+        $pagination = $this->asArray($payload['pagination']);
         $this->assertSame(1, $pagination['page']);
         $this->assertSame(5, $pagination['pageSize']);
         
         // Validate assets array size doesn't exceed pageSize
-        $this->assertLessThanOrEqual(5, count($data['data']['assets']));
+        $this->assertLessThanOrEqual(5, count($this->asList($payload['assets'])));
     }
 
     /**
@@ -106,6 +109,7 @@ class AdminAssetControllerTest extends BaseControllerTest
     {
         // Create a temporary test file
         $testFilePath = tempnam(sys_get_temp_dir(), 'test_image');
+        self::assertNotFalse($testFilePath, 'Failed to create temp file');
         file_put_contents($testFilePath, 'test image content');
         
         $uploadedFile = new UploadedFile(
@@ -132,23 +136,24 @@ class AdminAssetControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate response structure
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('id', $data['data']);
-        $this->assertArrayHasKey('file_name', $data['data']);
-        $this->assertArrayHasKey('folder', $data['data']);
-        $this->assertArrayHasKey('url', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('id', $payload);
+        $this->assertArrayHasKey('file_name', $payload);
+        $this->assertArrayHasKey('folder', $payload);
+        $this->assertArrayHasKey('url', $payload);
         
         // Validate data
-        $this->assertSame('test-upload.jpg', $data['data']['file_name']);
-        $this->assertSame('test', $data['data']['folder']);
-        $this->assertStringContainsString('test-upload.jpg', $data['data']['file_path']);
+        $this->assertSame('test-upload.jpg', $payload['file_name']);
+        $this->assertSame('test', $payload['folder']);
+        $this->assertStringContainsString('test-upload.jpg', $this->asString($payload['file_path']));
         
         // Store for cleanup
-        $this->createdAssetIds[] = $data['data']['id'];
+        $this->createdAssetIds[] = $this->asInt($payload['id']);
     }
 
     /**
@@ -158,6 +163,7 @@ class AdminAssetControllerTest extends BaseControllerTest
     {
         // Create first asset
         $testFilePath1 = tempnam(sys_get_temp_dir(), 'test_image1');
+        self::assertNotFalse($testFilePath1, 'Failed to create temp file');
         file_put_contents($testFilePath1, 'test image content 1');
         
         $uploadedFile1 = new UploadedFile(
@@ -184,11 +190,12 @@ class AdminAssetControllerTest extends BaseControllerTest
         $firstResponse = $this->client->getResponse();
         $this->assertSame(Response::HTTP_CREATED, $firstResponse->getStatusCode());
         
-        $firstData = json_decode($firstResponse->getContent(), true);
-        $this->createdAssetIds[] = $firstData['data']['id'];
+        $firstData = $this->decodeArray();
+        $this->createdAssetIds[] = $this->asInt($this->jsonGet($firstData, 'data', 'id'));
 
         // Try to create second asset with same name (should fail without overwrite)
         $testFilePath2 = tempnam(sys_get_temp_dir(), 'test_image2');
+        self::assertNotFalse($testFilePath2, 'Failed to create temp file');
         file_put_contents($testFilePath2, 'test image content 2');
         
         $uploadedFile2 = new UploadedFile(
@@ -217,6 +224,7 @@ class AdminAssetControllerTest extends BaseControllerTest
 
         // Now try with overwrite flag
         $testFilePath3 = tempnam(sys_get_temp_dir(), 'test_image3');
+        self::assertNotFalse($testFilePath3, 'Failed to create temp file');
         file_put_contents($testFilePath3, 'test image content 3');
         
         $uploadedFile3 = new UploadedFile(
@@ -252,6 +260,7 @@ class AdminAssetControllerTest extends BaseControllerTest
     {
         // Create a temporary test file with invalid extension
         $testFilePath = tempnam(sys_get_temp_dir(), 'test_invalid');
+        self::assertNotFalse($testFilePath, 'Failed to create temp file');
         file_put_contents($testFilePath, 'invalid file content');
         
         $uploadedFile = new UploadedFile(
@@ -307,6 +316,7 @@ class AdminAssetControllerTest extends BaseControllerTest
     {
         // First create an asset
         $testFilePath = tempnam(sys_get_temp_dir(), 'test_get_by_id');
+        self::assertNotFalse($testFilePath, 'Failed to create temp file');
         file_put_contents($testFilePath, 'test content for get by id');
         
         $uploadedFile = new UploadedFile(
@@ -331,8 +341,8 @@ class AdminAssetControllerTest extends BaseControllerTest
         );
 
         $createResponse = $this->client->getResponse();
-        $createData = json_decode($createResponse->getContent(), true);
-        $assetId = $createData['data']['id'];
+        $createData = $this->decodeArray();
+        $assetId = $this->asInt($this->jsonGet($createData, 'data', 'id'));
         $this->createdAssetIds[] = $assetId;
 
         // Now get the asset by ID
@@ -350,14 +360,15 @@ class AdminAssetControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate response structure
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertSame($assetId, $data['data']['id']);
-        $this->assertSame('get-by-id-test.txt', $data['data']['file_name']);
-        $this->assertSame('test', $data['data']['folder']);
+        $payload = $this->asArray($data['data']);
+        $this->assertSame($assetId, $payload['id']);
+        $this->assertSame('get-by-id-test.txt', $payload['file_name']);
+        $this->assertSame('test', $payload['folder']);
     }
 
     /**
@@ -387,6 +398,7 @@ class AdminAssetControllerTest extends BaseControllerTest
     {
         // First create an asset
         $testFilePath = tempnam(sys_get_temp_dir(), 'test_delete');
+        self::assertNotFalse($testFilePath, 'Failed to create temp file');
         file_put_contents($testFilePath, 'test content for delete');
         
         $uploadedFile = new UploadedFile(
@@ -411,8 +423,8 @@ class AdminAssetControllerTest extends BaseControllerTest
         );
 
         $createResponse = $this->client->getResponse();
-        $createData = json_decode($createResponse->getContent(), true);
-        $assetId = $createData['data']['id'];
+        $createData = $this->decodeArray();
+        $assetId = $this->asInt($this->jsonGet($createData, 'data', 'id'));
 
         // Now delete the asset
         $this->client->request(
@@ -429,9 +441,10 @@ class AdminAssetControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertTrue($data['data']['deleted']);
+        $payload = $this->asArray($data['data']);
+        $this->assertTrue($payload['deleted']);
 
         // Verify asset is deleted
         $this->client->request(
@@ -497,6 +510,7 @@ class AdminAssetControllerTest extends BaseControllerTest
         $testFiles = [];
         for ($i = 1; $i <= 3; $i++) {
             $testFilePath = tempnam(sys_get_temp_dir(), "test_image_$i");
+            self::assertNotFalse($testFilePath, 'Failed to create temp file');
             file_put_contents($testFilePath, "test image content $i");
             
             $testFiles[] = new UploadedFile(
@@ -524,27 +538,30 @@ class AdminAssetControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate multiple upload response structure
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('uploaded', $data['data']);
-        $this->assertArrayHasKey('errors', $data['data']);
-        $this->assertArrayHasKey('total_files', $data['data']);
-        $this->assertArrayHasKey('successful_uploads', $data['data']);
-        $this->assertArrayHasKey('failed_uploads', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('uploaded', $payload);
+        $this->assertArrayHasKey('errors', $payload);
+        $this->assertArrayHasKey('total_files', $payload);
+        $this->assertArrayHasKey('successful_uploads', $payload);
+        $this->assertArrayHasKey('failed_uploads', $payload);
         
         // Validate upload statistics
-        $this->assertSame(3, $data['data']['total_files']);
-        $this->assertSame(3, $data['data']['successful_uploads']);
-        $this->assertSame(0, $data['data']['failed_uploads']);
-        $this->assertEmpty($data['data']['errors']);
+        $this->assertSame(3, $payload['total_files']);
+        $this->assertSame(3, $payload['successful_uploads']);
+        $this->assertSame(0, $payload['failed_uploads']);
+        $this->assertEmpty($payload['errors']);
         
         // Validate uploaded assets
-        $this->assertCount(3, $data['data']['uploaded']);
+        $uploaded = $this->asList($payload['uploaded']);
+        $this->assertCount(3, $uploaded);
         
-        foreach ($data['data']['uploaded'] as $index => $asset) {
+        foreach ($uploaded as $index => $assetRaw) {
+            $asset = $this->asArray($assetRaw);
             $this->assertArrayHasKey('id', $asset);
             $this->assertArrayHasKey('file_name', $asset);
             $this->assertArrayHasKey('folder', $asset);
@@ -552,7 +569,7 @@ class AdminAssetControllerTest extends BaseControllerTest
             $this->assertSame("custom-" . ($index + 1) . ".jpg", $asset['file_name']);
             
             // Store for cleanup
-            $this->createdAssetIds[] = $asset['id'];
+            $this->createdAssetIds[] = $this->asInt($asset['id']);
         }
     }
 

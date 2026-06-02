@@ -38,7 +38,7 @@ class AdminPageControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin get page sections failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
 
         // Validate response against JSON schema
@@ -67,7 +67,7 @@ class AdminPageControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin get pages failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
 
         // Validate response against JSON schema
@@ -98,11 +98,12 @@ class AdminPageControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin get page fields failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
-        $this->assertTrue(property_exists($data->data, 'page'), 'Response data does not have page property');
-        $this->assertTrue(property_exists($data->data, 'fields'), 'Response data does not have fields property');
-        $this->assertIsArray($data->data->fields, 'Fields property is not an array');
+        $dataData = $this->asObject($data->data);
+        $this->assertTrue(property_exists($dataData, 'page'), 'Response data does not have page property');
+        $this->assertTrue(property_exists($dataData, 'fields'), 'Response data does not have fields property');
+        $this->assertIsArray($dataData->fields, 'Fields property is not an array');
 
         // Validate response against JSON schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
@@ -150,9 +151,9 @@ class AdminPageControllerTest extends BaseControllerTest
             $getResponse = $this->client->getResponse();
             $this->assertSame(Response::HTTP_OK, $getResponse->getStatusCode(), 'Failed to get test page fields');
             
-            $pageData = json_decode($getResponse->getContent(), true);
+            $pageData = $this->decodeArray();
             $this->assertArrayHasKey('data', $pageData);
-            $this->assertArrayHasKey('fields', $pageData['data']);
+            $this->assertArrayHasKey('fields', $this->asArray($pageData['data']));
             
             // This test will update basic page properties without fields
             // since test pages may not have fields associated with them
@@ -173,7 +174,7 @@ class AdminPageControllerTest extends BaseControllerTest
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-                json_encode($basicUpdateData)
+                (string) json_encode($basicUpdateData)
             );
             
             $basicResponse = $this->client->getResponse();
@@ -192,8 +193,8 @@ class AdminPageControllerTest extends BaseControllerTest
             $this->assertSame(Response::HTTP_OK, $verifyResponse->getStatusCode(), 'Failed to fetch updated test page');
             
             // Check that the changes were applied
-            $verifiedPageData = json_decode($verifyResponse->getContent(), true);
-            $this->assertTrue($verifiedPageData['data']['page']['headless'], 'headless should be true after update');
+            $verifiedPageData = $this->decodeArray();
+            $this->assertTrue($this->jsonGet($verifiedPageData, 'data', 'page', 'headless'), 'headless should be true after update');
             
             // Test is successful - basic page update functionality works
             return;
@@ -243,15 +244,15 @@ class AdminPageControllerTest extends BaseControllerTest
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-                json_encode($updateData)
+                (string) json_encode($updateData)
             );
             
             $response = $this->client->getResponse();
             $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode(), 'Should have failed with invalid field ID');
             
-            $responseData = json_decode($response->getContent(), true);
+            $responseData = $this->decodeArray();
             $this->assertArrayHasKey('error', $responseData, 'Response should have error key');
-            $this->assertStringContainsString('do not belong to page', $responseData['error'], 'Error message should mention invalid fields');
+            $this->assertStringContainsString('do not belong to page', $this->asString($responseData['error']), 'Error message should mention invalid fields');
             
         } finally {
             // Clean up: delete the test page

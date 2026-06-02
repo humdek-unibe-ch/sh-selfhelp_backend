@@ -44,4 +44,29 @@ final class AdminSectionPermissionTest extends QaWebTestCase
     {
         $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/pages/2147483600/sections/2147483601');
     }
+
+    public function testSectionForceDeleteIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins(
+            'DELETE',
+            '/cms-api/v1/admin/pages/2147483600/sections/2147483601/force-delete',
+        );
+    }
+
+    public function testSectionRestoreFromVersionIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins(
+            'POST',
+            '/cms-api/v1/admin/pages/2147483600/sections/restore-from-version/2147483601',
+        );
+    }
+
+    public function testBulkRemoveSectionsIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins(
+            'DELETE',
+            '/cms-api/v1/admin/pages/2147483600/sections',
+            ['sectionIds' => [2147483601]],
+        );
+    }
 }

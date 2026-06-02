@@ -34,8 +34,9 @@ final class ActionConfigTest extends TestCase
         $constants = (new \ReflectionClass(ActionConfig::class))->getConstants();
         self::assertNotEmpty($constants);
 
+        $stringValues = array_filter($constants, 'is_string');
         $duplicateValues = array_keys(array_filter(
-            array_count_values(array_values($constants)),
+            array_count_values($stringValues),
             static fn (int $count): bool => $count > 1
         ));
 

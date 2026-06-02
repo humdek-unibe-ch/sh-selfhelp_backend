@@ -14,12 +14,15 @@ use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Auth\MailTemplateService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\InterpolationService;
+use App\Tests\Support\NarrowsJson;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 class MailTemplateServiceTest extends TestCase
 {
+    use NarrowsJson;
+
     public function testBuildEmailConfigPrefersSupportedRecipientLocale(): void
     {
         $connection = $this->createMock(Connection::class);
@@ -57,7 +60,7 @@ class MailTemplateServiceTest extends TestCase
             MailTemplateDefaults::getSubject(MailTemplateDefaults::TYPE_CONFIRM, 'de-CH'),
             $config['subject']
         );
-        $this->assertStringContainsString('http://localhost:3000/validate/1/token', $config['body']);
+        $this->assertStringContainsString('http://localhost:3000/validate/1/token', $this->coerceString($config['body']));
         $this->assertSame('stefan@example.com', $config['recipient_emails']);
     }
 
@@ -107,6 +110,6 @@ class MailTemplateServiceTest extends TestCase
             MailTemplateDefaults::getSubject(MailTemplateDefaults::TYPE_WELCOME, 'de-CH'),
             $config['subject']
         );
-        $this->assertStringContainsString('http://localhost:3000/', $config['body']);
+        $this->assertStringContainsString('http://localhost:3000/', $this->coerceString($config['body']));
     }
 }

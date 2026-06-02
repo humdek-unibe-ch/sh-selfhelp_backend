@@ -29,6 +29,7 @@ use Symfony\Component\HttpFoundation\Response;
 abstract class QaWebTestCase extends WebTestCase
 {
     use InteractsWithQaBaseline;
+    use NarrowsJson;
 
     protected KernelBrowser $client;
 
@@ -69,9 +70,13 @@ abstract class QaWebTestCase extends WebTestCase
         );
 
         $data = $this->decode($response);
-        self::assertArrayHasKey('access_token', $data['data'] ?? [], 'Login response missing data.access_token');
+        $payload = $data['data'] ?? null;
+        self::assertIsArray($payload, 'Login response missing data');
+        self::assertArrayHasKey('access_token', $payload, 'Login response missing data.access_token');
+        $accessToken = $payload['access_token'];
+        self::assertIsString($accessToken, 'access_token must be a string');
 
-        return $this->tokenCache[$email] = (string) $data['data']['access_token'];
+        return $this->tokenCache[$email] = $accessToken;
     }
 
     protected function loginAsQaAdmin(): string
@@ -92,6 +97,23 @@ abstract class QaWebTestCase extends WebTestCase
     protected function loginAsQaGuest(): string
     {
         return $this->loginAs(QaBaselineFixture::QA_GUEST_EMAIL);
+    }
+
+    // -- Container helpers --------------------------------------------------
+
+    /**
+     * Fetch a public service from the test container with a precise type.
+     *
+     * @template T of object
+     * @param class-string<T> $id
+     * @return T
+     */
+    protected function service(string $id): object
+    {
+        /** @var T $service */
+        $service = self::getContainer()->get($id);
+
+        return $service;
     }
 
     // -- Request helpers ----------------------------------------------------
@@ -142,7 +164,14 @@ abstract class QaWebTestCase extends WebTestCase
         $decoded = json_decode($content, true);
         self::assertIsArray($decoded, 'Response body was not a JSON object: ' . $content);
 
-        return $decoded;
+        // Rebuild with string keys so the type is a precise array<string, mixed>
+        // (json_decode of a JSON object always yields string keys at runtime).
+        $result = [];
+        foreach ($decoded as $key => $value) {
+            $result[(string) $key] = $value;
+        }
+
+        return $result;
     }
 
     // -- Envelope assertions (plan §13) -------------------------------------
@@ -163,7 +192,17 @@ abstract class QaWebTestCase extends WebTestCase
         self::assertArrayHasKey('meta', $envelope, 'Envelope missing "meta"');
         self::assertArrayHasKey('data', $envelope, 'Envelope missing "data"');
 
-        return is_array($envelope['data']) ? $envelope['data'] : [];
+        $payload = $envelope['data'];
+        if (!is_array($payload)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($payload as $key => $value) {
+            $result[(string) $key] = $value;
+        }
+
+        return $result;
     }
 
     /**

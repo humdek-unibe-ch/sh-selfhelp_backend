@@ -121,14 +121,14 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         // and the response carries `signature.unknownKey`.
         $first = $this->postInspect();
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode(), 'inspect must always return 200 (errors are reported in body).');
-        $this->assertFalse($first['data']['ok']);
-        $this->assertSame('invalid', $first['data']['signature']['status']);
-        $this->assertIsArray($first['data']['signature']);
-        $this->assertSame('invalid', $first['data']['signature']['status']);
-        $this->assertSame(self::KEY_ID, $first['data']['signature']['keyId']);
-        $this->assertNotNull($first['data']['signature']['unknownKey'], 'The empty-trusted-keys path is recoverable; unknownKey must be populated.');
-        $this->assertSame(self::KEY_ID, $first['data']['signature']['unknownKey']['keyId']);
-        $this->assertStringContainsString(self::KEY_ID, $first['data']['signature']['unknownKey']['envSnippet']);
+        $firstData = $this->asArray($first['data'] ?? null);
+        $this->assertFalse($firstData['ok'] ?? null);
+        $firstSig = $this->asArray($firstData['signature'] ?? null);
+        $this->assertSame('invalid', $firstSig['status'] ?? null);
+        $this->assertSame(self::KEY_ID, $firstSig['keyId'] ?? null);
+        $unknownKey = $this->asArray($firstSig['unknownKey'] ?? null, 'The empty-trusted-keys path is recoverable; unknownKey must be populated.');
+        $this->assertSame(self::KEY_ID, $unknownKey['keyId'] ?? null);
+        $this->assertStringContainsString(self::KEY_ID, $this->asString($unknownKey['envSnippet'] ?? null));
 
         // Step 2 — re-post with the matching override. Verification
         // now succeeds for this single request only; env / lock files
@@ -138,8 +138,9 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             'trustedKeyBase64' => $this->publicKeyBase64,
         ]);
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
-        $this->assertSame('verified', $second['data']['signature']['status']);
-        $this->assertNull($second['data']['signature']['unknownKey'], 'unknownKey must clear on a successful verify.');
+        $secondSig = $this->asArray($this->asArray($second['data'] ?? null)['signature'] ?? null);
+        $this->assertSame('verified', $secondSig['status'] ?? null);
+        $this->assertNull($secondSig['unknownKey'] ?? null, 'unknownKey must clear on a successful verify.');
     }
 
     public function testRejectsInvalidTrustedKeyBase64(): void
@@ -158,7 +159,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         $this->assertNotNull($body, 'Response body must be JSON.');
-        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
+        $message = is_array($body) && isset($body['error']) ? $this->coerceString($body['error']) : '';
         $this->assertStringContainsString('trustedKeyBase64', $message);
     }
 
@@ -179,7 +180,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
+        $message = is_array($body) && isset($body['error']) ? $this->coerceString($body['error']) : '';
         $this->assertStringContainsString('32 bytes', $message);
     }
 
@@ -195,7 +196,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
+        $message = is_array($body) && isset($body['error']) ? $this->coerceString($body['error']) : '';
         $this->assertStringContainsString('must be provided together', $message);
     }
 
@@ -211,7 +212,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
+        $message = is_array($body) && isset($body['error']) ? $this->coerceString($body['error']) : '';
         $this->assertStringContainsString('must be provided together', $message);
     }
 
@@ -287,7 +288,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         $this->assertSame(
             'verified',
             $result['signature']['status'],
-            'Env-pinned trusted key MUST win over a same-keyId per-request override. errors=' . json_encode($result['errors'] ?? []),
+            'Env-pinned trusted key MUST win over a same-keyId per-request override. errors=' . json_encode($result['errors']),
         );
         $this->assertNull($result['signature']['unknownKey']);
     }
@@ -306,9 +307,8 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             ['HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()],
         );
         $raw = (string) $this->client->getResponse()->getContent();
-        $decoded = json_decode($raw, true);
-        $this->assertIsArray($decoded, 'Response was not JSON: ' . $raw);
-        return $decoded;
+
+        return $this->asArray(json_decode($raw, true), 'Response was not JSON: ' . $raw);
     }
 
     private function uploadedArchive(): UploadedFile
@@ -393,7 +393,11 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             'archive' => ['mode' => 'connected'],
         ]);
 
-        $signature = base64_encode(sodium_crypto_sign_detached($signedPayload, $this->privateKey));
+        $privateKey = $this->privateKey;
+        if ($privateKey === '') {
+            self::fail('Test Ed25519 private key must not be empty.');
+        }
+        $signature = base64_encode(sodium_crypto_sign_detached($signedPayload, $privateKey));
         file_put_contents(
             $stagingDir . '/signature.json',
             json_encode([

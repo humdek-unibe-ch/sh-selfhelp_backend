@@ -144,7 +144,7 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
     public function testRecordedInstallOperationIsVisibleViaTheOperationsApi(): void
     {
         $op = $this->requestInstall();
-        $operationId = (int) $op['id'];
+        $operationId = $this->asInt($op['id']);
 
         $this->client->request(
             'GET',
@@ -153,15 +153,15 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
             $this->adminHeaders(),
         );
         self::assertResponseIsSuccessful();
-        $body = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertSame($operationId, $body['data']['id'] ?? null);
-        self::assertSame($this->pluginId(), $body['data']['pluginId'] ?? null);
+        $data = $this->asArray($this->decodeArray()['data'] ?? null);
+        self::assertSame($operationId, $data['id'] ?? null);
+        self::assertSame($this->pluginId(), $data['pluginId'] ?? null);
     }
 
     public function testConcurrencyGuardRejectsASecondOperationAndCancelClearsIt(): void
     {
         $op = $this->requestInstall();
-        $operationId = (int) $op['id'];
+        $operationId = $this->asInt($op['id']);
 
         // A second lifecycle action while one is active must be refused by the
         // concurrency guard (public, observable contract — Rule 18 negatives).
@@ -182,8 +182,8 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
             $this->adminHeaders(),
         );
         self::assertResponseIsSuccessful();
-        $cancelled = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertSame('cancelled', $cancelled['data']['status'] ?? null, 'cancel must mark the operation cancelled');
+        $cancelled = $this->asArray($this->decodeArray()['data'] ?? null);
+        self::assertSame('cancelled', $cancelled['status'] ?? null, 'cancel must mark the operation cancelled');
     }
 
     // --- helpers -----------------------------------------------------------
@@ -224,7 +224,7 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
             '/cms-api/v1/admin/plugins/install',
             [], [],
             $this->adminHeaders(),
-            json_encode(['source' => 'paste', 'manifest' => $this->pluginManifest()]),
+            (string) json_encode(['source' => 'paste', 'manifest' => $this->pluginManifest()]),
         );
         self::assertSame(
             Response::HTTP_ACCEPTED,
@@ -232,10 +232,8 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
             'install must return 202 Accepted (manifest passed signature + compatibility + capability checks). Body: '
                 . $this->client->getResponse()->getContent(),
         );
-        $body = json_decode($this->client->getResponse()->getContent(), true);
-        self::assertIsArray($body['data'] ?? null, 'install must return a plugin_operation data object');
 
-        return $body['data'];
+        return $this->asArray($this->decodeArray()['data'] ?? null, 'install must return a plugin_operation data object');
     }
 
     /**
@@ -254,12 +252,14 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
         if (!$this->client->getResponse()->isSuccessful()) {
             return;
         }
-        $body = json_decode($this->client->getResponse()->getContent(), true);
-        $operations = $body['data'] ?? [];
+        $operations = $this->decodeArray()['data'] ?? [];
         if (!is_array($operations)) {
             return;
         }
         foreach ($operations as $op) {
+            if (!is_array($op)) {
+                continue;
+            }
             if (($op['pluginId'] ?? null) !== $this->pluginId()) {
                 continue;
             }
@@ -268,7 +268,7 @@ abstract class InstallLifecycleCertificationTestCase extends BaseControllerTest
             }
             $this->client->request(
                 'POST',
-                '/cms-api/v1/admin/plugins/operations/' . (int) $op['id'] . '/cancel',
+                '/cms-api/v1/admin/plugins/operations/' . $this->asInt($op['id']) . '/cancel',
                 [], [],
                 $headers,
             );

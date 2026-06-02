@@ -75,7 +75,7 @@ class AdminUserServiceTest extends QaKernelTestCase
         $this->assertIsArray($result['users']);
         $this->assertArrayHasKey('pagination', $result);
 
-        $pagination = $result['pagination'];
+        $pagination = $this->asArray($result['pagination']);
         foreach (['page', 'pageSize', 'totalCount', 'totalPages', 'hasNext', 'hasPrevious'] as $key) {
             $this->assertArrayHasKey($key, $pagination);
         }
@@ -93,9 +93,10 @@ class AdminUserServiceTest extends QaKernelTestCase
     {
         $result = $this->adminUserService->getFilteredUsers($this->adminId, 1, 2);
 
-        $this->assertLessThanOrEqual(2, count($result['users']));
-        $this->assertSame(1, $result['pagination']['page']);
-        $this->assertSame(2, $result['pagination']['pageSize']);
+        $this->assertLessThanOrEqual(2, count($this->asList($result['users'])));
+        $pagination = $this->asArray($result['pagination']);
+        $this->assertSame(1, $pagination['page']);
+        $this->assertSame(2, $pagination['pageSize']);
     }
 
     /**
@@ -139,7 +140,7 @@ class AdminUserServiceTest extends QaKernelTestCase
         $this->assertSame('qa_svc_create', $result['name']);
         $this->assertFalse($result['blocked']);
 
-        $this->adminUserService->deleteUser($this->adminId, (int) $result['id']);
+        $this->adminUserService->deleteUser($this->adminId, $this->asInt($result['id']));
     }
 
     /**
@@ -173,7 +174,7 @@ class AdminUserServiceTest extends QaKernelTestCase
                 'enable_validation' => false,
             ]);
         } finally {
-            $this->adminUserService->deleteUser($this->adminId, (int) $first['id']);
+            $this->adminUserService->deleteUser($this->adminId, $this->asInt($first['id']));
         }
     }
 
@@ -183,7 +184,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testGetUserByIdReturnsDetailWithGroupsAndRoles(): void
     {
         $created = $this->createQaUser('getbyid');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $result = $this->adminUserService->getUserById($userId);
 
@@ -215,7 +216,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testUpdateUserSuccess(): void
     {
         $created = $this->createQaUser('update', ['name' => 'qa_svc_update']);
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $result = $this->adminUserService->updateUser($this->adminId, $userId, [
             'name' => 'qa_svc_update_changed',
@@ -248,7 +249,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testToggleUserBlockSuccess(): void
     {
         $created = $this->createQaUser('block');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $blocked = $this->adminUserService->toggleUserBlock($userId, true);
         $this->assertTrue($blocked['blocked']);
@@ -265,7 +266,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testDeleteUserSuccess(): void
     {
         $created = $this->createQaUser('delete');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->assertTrue($this->adminUserService->deleteUser($this->adminId, $userId));
 
@@ -295,7 +296,7 @@ class AdminUserServiceTest extends QaKernelTestCase
         // throwaway qa user to a protected name at the entity level (DAMA rolls
         // it back) to exercise AdminUserService::SYSTEM_USERS deletion guard.
         $created = $this->createQaUser('sysguard');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $entity = $this->em->getRepository(User::class)->find($userId);
         self::assertInstanceOf(User::class, $entity);
@@ -315,10 +316,10 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testGetUserGroupsAndRolesReturnArrays(): void
     {
         $created = $this->createQaUser('relations');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
-        $this->assertIsArray($this->adminUserService->getUserGroups($userId));
-        $this->assertIsArray($this->adminUserService->getUserRoles($userId));
+        $this->assertGreaterThanOrEqual(0, count($this->adminUserService->getUserGroups($userId)));
+        $this->assertGreaterThanOrEqual(0, count($this->adminUserService->getUserRoles($userId)));
 
         $this->adminUserService->deleteUser($this->adminId, $userId);
     }
@@ -330,9 +331,9 @@ class AdminUserServiceTest extends QaKernelTestCase
     {
         // validatePaginationParams clamps via max(1, min(MAX_PAGE_SIZE, n)):
         // page floors at 1, pageSize is clamped into [1, 100].
-        $this->assertSame(1, $this->adminUserService->getFilteredUsers($this->adminId, 0, 20)['pagination']['page']);
-        $this->assertSame(1, $this->adminUserService->getFilteredUsers($this->adminId, 1, 0)['pagination']['pageSize']);
-        $this->assertSame(100, $this->adminUserService->getFilteredUsers($this->adminId, 1, 150)['pagination']['pageSize']);
+        $this->assertSame(1, $this->jsonGet($this->adminUserService->getFilteredUsers($this->adminId, 0, 20), 'pagination', 'page'));
+        $this->assertSame(1, $this->jsonGet($this->adminUserService->getFilteredUsers($this->adminId, 1, 0), 'pagination', 'pageSize'));
+        $this->assertSame(100, $this->jsonGet($this->adminUserService->getFilteredUsers($this->adminId, 1, 150), 'pagination', 'pageSize'));
     }
 
     /**
@@ -352,7 +353,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testSendActivationMailReturnsSuccessWithoutRealOutbound(): void
     {
         $created = $this->createQaUser('activation', ['enable_validation' => false]);
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         // Simulate a user awaiting activation.
         $entity = $this->em->getRepository(User::class)->find($userId);
@@ -379,7 +380,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testCleanUserDataReturnsTrue(): void
     {
         $created = $this->createQaUser('clean');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $this->assertTrue($this->adminUserService->cleanUserData($userId));
 
@@ -392,7 +393,7 @@ class AdminUserServiceTest extends QaKernelTestCase
     public function testImpersonateUserReturnsToken(): void
     {
         $created = $this->createQaUser('impersonate');
-        $userId = (int) $created['id'];
+        $userId = $this->asInt($created['id']);
 
         $result = $this->adminUserService->impersonateUser($this->adminId, $userId);
 

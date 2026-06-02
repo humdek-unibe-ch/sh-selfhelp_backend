@@ -16,13 +16,16 @@ class AdminRoleControllerTest extends BaseControllerTest
 {
     private ?int $testRoleId = null;
     private string $testRoleName = 'qa_role_api_test';
+    /** @var list<int|null> */
     private array $testPermissionIds = [];
-    private $entityManager;
+    private \Doctrine\ORM\EntityManagerInterface $entityManager;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->entityManager = self::getContainer()->get('doctrine')->getManager();
+        $em = self::getContainer()->get(\Doctrine\ORM\EntityManagerInterface::class);
+        self::assertInstanceOf(\Doctrine\ORM\EntityManagerInterface::class, $em);
+        $this->entityManager = $em;
         $this->createTestPermissions();
     }
 
@@ -90,16 +93,17 @@ class AdminRoleControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate response structure
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('roles', $data['data']);
-        $this->assertArrayHasKey('pagination', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('roles', $payload);
+        $this->assertArrayHasKey('pagination', $payload);
         
         // Validate pagination structure
-        $pagination = $data['data']['pagination'];
+        $pagination = $this->asArray($payload['pagination']);
         $this->assertArrayHasKey('page', $pagination);
         $this->assertArrayHasKey('pageSize', $pagination);
         $this->assertArrayHasKey('totalCount', $pagination);
@@ -108,10 +112,10 @@ class AdminRoleControllerTest extends BaseControllerTest
         $this->assertArrayHasKey('hasPrevious', $pagination);
         
         // Validate roles array
-        $this->assertIsArray($data['data']['roles']);
+        $roles = $this->asList($payload['roles']);
         
-        if (!empty($data['data']['roles'])) {
-            $role = $data['data']['roles'][0];
+        if (!empty($roles)) {
+            $role = $this->asArray($roles[0]);
             $this->assertArrayHasKey('id', $role);
             $this->assertArrayHasKey('name', $role);
             $this->assertArrayHasKey('description', $role);
@@ -139,10 +143,12 @@ class AdminRoleControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertLessThanOrEqual(5, count($data['data']['roles']));
-        $this->assertSame(1, $data['data']['pagination']['page']);
-        $this->assertSame(5, $data['data']['pagination']['pageSize']);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $this->assertLessThanOrEqual(5, count($this->asList($payload['roles'])));
+        $pagination = $this->asArray($payload['pagination']);
+        $this->assertSame(1, $pagination['page']);
+        $this->assertSame(5, $pagination['pageSize']);
     }
 
     /**
@@ -164,8 +170,8 @@ class AdminRoleControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('roles', $data['data']);
+        $data = $this->decodeArray();
+        $this->assertArrayHasKey('roles', $this->asArray($data['data']));
     }
 
     /**
@@ -187,16 +193,16 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($roleData)
+            (string) json_encode($roleData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
         
-        $role = $data['data'];
+        $role = $this->asArray($data['data']);
         $this->assertArrayHasKey('id', $role);
         $this->assertArrayHasKey('name', $role);
         $this->assertArrayHasKey('description', $role);
@@ -209,7 +215,7 @@ class AdminRoleControllerTest extends BaseControllerTest
         $this->assertSame($roleData['description'], $role['description']);
         
         // Store the created role ID for other tests
-        $this->testRoleId = $role['id'];
+        $this->testRoleId = $this->asInt($role['id']);
     }
 
     /**
@@ -234,8 +240,8 @@ class AdminRoleControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $role = $data['data'];
+        $data = $this->decodeArray();
+        $role = $this->asArray($data['data']);
         
         $this->assertSame($this->testRoleId, $role['id']);
         $this->assertSame($this->testRoleName, $role['name']);
@@ -268,14 +274,14 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($updateData)
+            (string) json_encode($updateData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $role = $data['data'];
+        $data = $this->decodeArray();
+        $role = $this->asArray($data['data']);
         
         // Name stays the original (immutable); description changes.
         $this->assertSame($this->testRoleName, $role['name']);
@@ -304,10 +310,11 @@ class AdminRoleControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('permissions', $data['data']);
-        $this->assertIsArray($data['data']['permissions']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('permissions', $payload);
+        $this->assertIsArray($payload['permissions']);
     }
 
     /**
@@ -331,16 +338,17 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($permissionData)
+            (string) json_encode($permissionData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('permissions', $data['data']);
-        $this->assertCount(2, $data['data']['permissions']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('permissions', $payload);
+        $this->assertCount(2, $this->asArray($payload['permissions']));
     }
 
     /**
@@ -364,16 +372,17 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($permissionData)
+            (string) json_encode($permissionData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('permissions', $data['data']);
-        $this->assertCount(1, $data['data']['permissions']); // Should have 1 permission left
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('permissions', $payload);
+        $this->assertCount(1, $this->asArray($payload['permissions'])); // Should have 1 permission left
     }
 
     /**
@@ -397,16 +406,17 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($permissionData)
+            (string) json_encode($permissionData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('permissions', $data['data']);
-        $this->assertCount(3, $data['data']['permissions']); // Should have all 3 permissions
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('permissions', $payload);
+        $this->assertCount(3, $this->asArray($payload['permissions'])); // Should have all 3 permissions
     }
 
     /**
@@ -432,7 +442,7 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($roleData)
+            (string) json_encode($roleData)
         );
 
         // Duplicate role name is a resource conflict (409), not a 400.
@@ -458,7 +468,7 @@ class AdminRoleControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($roleData)
+            (string) json_encode($roleData)
         );
 
         $response = $this->client->getResponse();
@@ -540,24 +550,5 @@ class AdminRoleControllerTest extends BaseControllerTest
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
-    }
-
-    private function getAdminRole(): array
-    {
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/roles?search=admin',
-            [],
-            [],
-            [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
-                'CONTENT_TYPE' => 'application/json'
-            ]
-        );
-
-        $response = $this->client->getResponse();
-        $data = json_decode($response->getContent(), true);
-        
-        return !empty($data['data']['roles']) ? $data['data']['roles'][0] : [];
     }
 } 
