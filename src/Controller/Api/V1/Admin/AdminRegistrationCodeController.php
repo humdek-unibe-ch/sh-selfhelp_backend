@@ -116,24 +116,4 @@ class AdminRegistrationCodeController extends AbstractController
         }
     }
 
-    /**
-     * @route DELETE /admin/registration-codes/{code}
-     */
-    public function delete(Request $request): JsonResponse
-    {
-        try {
-            $code = $request->attributes->get('code');
-            if (!is_string($code) || $code === '') {
-                return $this->responseFormatter->formatError('Invalid code parameter.', Response::HTTP_BAD_REQUEST);
-            }
-
-            $this->registrationCodeService->delete($code);
-
-            return $this->responseFormatter->formatSuccess([], null, Response::HTTP_OK, true);
-        } catch (\InvalidArgumentException $e) {
-            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_NOT_FOUND);
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError('Failed to delete registration code.', Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
 }

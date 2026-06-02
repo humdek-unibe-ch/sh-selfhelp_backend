@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace App\Service\Auth;
 
 use App\Entity\Group;
-use App\Entity\ValidationCode;
 use App\Service\Core\BaseService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -250,16 +249,5 @@ class RegistrationCodeService extends BaseService
         }
 
         return ['codes' => $results];
-    }
-
-    public function delete(string $code): void
-    {
-        $vc = $this->entityManager->getRepository(ValidationCode::class)->find($code);
-        if ($vc === null) {
-            throw new \InvalidArgumentException('Registration code not found.');
-        }
-
-        $this->entityManager->remove($vc);
-        $this->entityManager->flush();
     }
 }
