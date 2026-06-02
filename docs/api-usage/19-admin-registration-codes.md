@@ -4,7 +4,7 @@
 
 Registration codes are admin-issued, single-use strings that gate self-registration on register pages where `open_registration = 0`. Each code carries a target group: when a user registers with the code, the new account is assigned to that group and the code is marked consumed and cannot be reused.
 
-The codes are stored in `validation_codes`. The admin endpoints expose CRUD operations over the registration-code subset of that table.
+The codes are stored in `validation_codes`. The admin endpoints expose read, generate, and export operations over the registration-code subset of that table.
 
 ## Core Concepts
 
@@ -167,37 +167,6 @@ X7QP1NR4,Participants,Used,2026-06-01 08:00:00,2026-06-01 09:15:22
 
 **Permissions:** `admin.registration_code.read`
 
-## Delete Registration Code
-
-Delete a registration code by its value. Consumed codes can also be deleted — this only removes the audit row.
-
-**Endpoint:** `DELETE /cms-api/v1/admin/registration-codes/{code}`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Path Parameters:**
-- `code` (string): The registration code value.
-
-**Success Response:**
-```json
-{
-  "status": 200,
-  "message": "OK",
-  "error": null,
-  "logged_in": true,
-  "meta": {
-    "version": "v1",
-    "timestamp": "2026-06-01T10:30:00Z"
-  },
-  "data": []
-}
-```
-
-**Error Responses:**
-- `404 Not Found`: `"Registration code not found."`
-
-**Permissions:** `admin.registration_code.delete`
-
 ## Permissions
 
 | Permission                          | Endpoint                                           |
@@ -205,9 +174,8 @@ Delete a registration code by its value. Consumed codes can also be deleted — 
 | `admin.registration_code.read`      | `GET /admin/registration-codes`                    |
 | `admin.registration_code.read`      | `GET /admin/registration-codes/export`             |
 | `admin.registration_code.create`    | `POST /admin/registration-codes/generate`          |
-| `admin.registration_code.delete`    | `DELETE /admin/registration-codes/{code}`          |
 
-All three permissions are granted to the `admin` role by default (see migrations `Version20260529074436` and `Version20260601120000`).
+Both permissions are granted to the `admin` role by default (see migrations `Version20260529074436` and `Version20260601120000`).
 
 ## Related
 
