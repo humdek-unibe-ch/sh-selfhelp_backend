@@ -56,11 +56,17 @@ final class PermissionCoverageChecklistTest extends QaKernelTestCase
 
         // --- additional covered admin groups ---
         'admin actions' => ['prefix' => '/admin/actions', 'test' => \App\Tests\Controller\Api\V1\Admin\ActionPermissionTest::class],
+        'admin ai' => ['prefix' => '/admin/ai', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminAiPermissionTest::class],
+        'admin api-routes' => ['prefix' => '/admin/api-routes', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminApiRoutePermissionTest::class],
         'admin assets' => ['prefix' => '/admin/assets', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminAssetPermissionTest::class],
         'admin audit' => ['prefix' => '/admin/audit', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminAuditControllerTest::class],
         'admin cms-preferences' => ['prefix' => '/admin/cms-preferences', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminCmsPreferenceControllerTest::class],
         'admin groups' => ['prefix' => '/admin/groups', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminGroupPermissionTest::class],
+        'admin languages' => ['prefix' => '/admin/languages', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminLanguagePermissionTest::class],
+        'admin page-keywords' => ['prefix' => '/admin/page-keywords', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminPageKeywordPermissionTest::class],
+        'admin permissions' => ['prefix' => '/admin/permissions', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminPermissionsPermissionTest::class],
         'admin roles' => ['prefix' => '/admin/roles', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminRolePermissionTest::class],
+        'admin styles' => ['prefix' => '/admin/styles', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminStylePermissionTest::class],
         'admin users' => ['prefix' => '/admin/users', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminUserPermissionTest::class],
     ];
 
@@ -86,16 +92,20 @@ final class PermissionCoverageChecklistTest extends QaKernelTestCase
      * permission-matrix test yet. This list MUST only shrink — each entry is a
      * tracked gap to be covered by a later phase, not a silent omission.
      *
-     * @var list<string>
+     * It is currently EMPTY: every protected core admin route group has a
+     * permission test on the CHECKLIST above. Do NOT add a new entry to silence
+     * a missing test — add the permission-matrix test + CHECKLIST entry instead.
+     *
+     * Modelled as a method (not a `const []`) so the type stays `list<string>`
+     * for the consumers below; a literal empty constant would make PHPStan flag
+     * the allowlist lookups as dead the moment the ratchet reaches zero.
+     *
+     * @return list<string>
      */
-    private const UNCOVERED_ALLOWLIST = [
-        'ai',
-        'api-routes',
-        'languages',
-        'page-keywords',
-        'permissions',
-        'styles',
-    ];
+    private function uncoveredAllowlist(): array
+    {
+        return [];
+    }
 
     public function testRequiredGroupsAreOnTheChecklist(): void
     {
@@ -140,7 +150,7 @@ final class PermissionCoverageChecklistTest extends QaKernelTestCase
             if (in_array($group, $coveredAdminGroups, true)) {
                 continue;
             }
-            if (in_array($group, self::UNCOVERED_ALLOWLIST, true)) {
+            if (in_array($group, $this->uncoveredAllowlist(), true)) {
                 continue;
             }
             $uncovered[] = $group;
@@ -161,7 +171,7 @@ final class PermissionCoverageChecklistTest extends QaKernelTestCase
         $protectedGroups = $this->protectedAdminGroupsFromDatabase();
 
         $stale = [];
-        foreach (self::UNCOVERED_ALLOWLIST as $group) {
+        foreach ($this->uncoveredAllowlist() as $group) {
             if (!array_key_exists($group, $protectedGroups)) {
                 $stale[] = $group . ' (no longer a protected admin group)';
             } elseif (in_array($group, $coveredAdminGroups, true)) {
