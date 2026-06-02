@@ -68,8 +68,9 @@ class PublicControllerTest extends BaseControllerTest
         $pageKeyword = $pageWithSlug['keyword'];
         $this->assertNotEmpty($pageKeyword, 'Could not determine page keyword from response');
 
-        // Now request the specific page using the fetched keyword
-        $this->client->request('GET', '/cms-api/v1/pages/' . $pageKeyword);
+        // Now request the specific page using the fetched keyword. Page id
+        // routes are numeric ([0-9]+); keyword lookups use /pages/by-keyword.
+        $this->client->request('GET', '/cms-api/v1/pages/by-keyword/' . $pageKeyword);
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Public get page by keyword (' . $pageKeyword . ') failed: ' . $response->getContent());
         

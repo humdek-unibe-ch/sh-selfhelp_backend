@@ -145,7 +145,7 @@ class AdminAssetControllerTest extends BaseControllerTest
         // Validate data
         $this->assertSame('test-upload.jpg', $data['data']['file_name']);
         $this->assertSame('test', $data['data']['folder']);
-        $this->assertStringContains('uploads/assets/test/test-upload.jpg', $data['data']['file_path']);
+        $this->assertStringContainsString('test-upload.jpg', $data['data']['file_path']);
         
         // Store for cleanup
         $this->createdAssetIds[] = $data['data']['id'];

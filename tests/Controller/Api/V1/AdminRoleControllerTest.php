@@ -15,7 +15,7 @@ use App\Entity\Permission;
 class AdminRoleControllerTest extends BaseControllerTest
 {
     private ?int $testRoleId = null;
-    private string $testRoleName = 'Test Role for API Tests';
+    private string $testRoleName = 'qa_role_api_test';
     private array $testPermissionIds = [];
     private $entityManager;
 
@@ -35,8 +35,9 @@ class AdminRoleControllerTest extends BaseControllerTest
     private function createTestPermissions(): void
     {
         // Create test permissions if they don't exist
-        $permissionNames = ['test_permission_1', 'test_permission_2', 'test_permission_3'];
+        $permissionNames = ['qa_perm_api_1', 'qa_perm_api_2', 'qa_perm_api_3'];
         
+        $permissions = [];
         foreach ($permissionNames as $name) {
             $permission = $this->entityManager->getRepository(Permission::class)
                 ->findOneBy(['name' => $name]);
@@ -47,10 +48,16 @@ class AdminRoleControllerTest extends BaseControllerTest
                 $permission->setDescription('Test permission: ' . $name);
                 $this->entityManager->persist($permission);
             }
-            $this->testPermissionIds[] = $permission->getId();
+            $permissions[] = $permission;
         }
         
+        // Flush first: a newly persisted entity has no id until the insert runs,
+        // so collecting getId() before flush would yield nulls.
         $this->entityManager->flush();
+
+        foreach ($permissions as $permission) {
+            $this->testPermissionIds[] = $permission->getId();
+        }
     }
 
     private function cleanupTestRole(): void
@@ -246,6 +253,7 @@ class AdminRoleControllerTest extends BaseControllerTest
         // First create a role for this test
         $this->testCreateRoleSuccess();
         
+        // Role name is an immutable identifier; updateRole only mutates description.
         $updateData = [
             'name' => $this->testRoleName . ' Updated',
             'description' => 'Updated description'
@@ -269,7 +277,8 @@ class AdminRoleControllerTest extends BaseControllerTest
         $data = json_decode($response->getContent(), true);
         $role = $data['data'];
         
-        $this->assertSame($updateData['name'], $role['name']);
+        // Name stays the original (immutable); description changes.
+        $this->assertSame($this->testRoleName, $role['name']);
         $this->assertSame($updateData['description'], $role['description']);
     }
 
@@ -426,8 +435,9 @@ class AdminRoleControllerTest extends BaseControllerTest
             json_encode($roleData)
         );
 
+        // Duplicate role name is a resource conflict (409), not a 400.
         $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $this->assertSame(Response::HTTP_CONFLICT, $response->getStatusCode());
     }
 
     /**

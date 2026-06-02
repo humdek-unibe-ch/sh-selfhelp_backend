@@ -91,7 +91,7 @@ class InterpolationServiceTest extends TestCase
                 'text' => '2'
             ],
             'system' => [
-                'user_name' => 'stefan.kodzhabashev@gmail.com',
+                'user_name' => 'qa.user@selfhelp.test',
                 'language' => 3,
                 'current_date' => '2025-10-24'
             ],
@@ -105,7 +105,7 @@ class InterpolationServiceTest extends TestCase
 
         $result = $this->interpolationService->interpolate($content, $data);
 
-        $this->assertEquals('My var: english, Test: 2, Parent: 2, User: stefan.kodzhabashev@gmail.com', $result);
+        $this->assertEquals('My var: english, Test: 2, Parent: 2, User: qa.user@selfhelp.test', $result);
     }
 
     /**

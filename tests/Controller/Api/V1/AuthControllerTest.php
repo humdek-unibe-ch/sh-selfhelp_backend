@@ -5,459 +5,292 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1;
 
-use Symfony\Component\HttpFoundation\Response;
+use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\Group;
+use App\Entity\User;
 use App\Entity\Users2faCode;
+use App\Entity\UsersGroup;
+use App\Service\Auth\JWTService;
+use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
-use App\Tests\Controller\Api\V1\BaseControllerTest;
+use PHPUnit\Framework\Attributes\Group as TestGroup;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Contracts\Cache\CacheInterface;
 
-class AuthControllerTest extends BaseControllerTest
-{    
-    public function testLoginPageIsReachable(): void
-    {
-        // This is a very basic test.
-        // Your actual login endpoint might be POST only and expect JSON.
-        // This test just checks if the route *could* be matched by a GET request
-        // if it were defined, or if a POST to it doesn't immediately 500.
-        // Adjust according to your actual login route definition.
-        $this->client->request('GET', '/cms-api/v1/auth/login'); // Or POST if GET is not allowed
-        
-        // We expect either a 200 (if GET shows a form, unlikely for API)
-        // or 405 (Method Not Allowed, if GET is not supported for a POST-only endpoint)
-        // or 400/422 if it's POST and requires a body.
-        // This is a loose assertion just to see if the route is recognized.
-        $this->assertNotEquals(Response::HTTP_NOT_FOUND, $this->client->getResponse()->getStatusCode(), "Login route should exist.");
-    }
-
+/**
+ * Auth endpoint behaviour exercised against the seeded QA personas — no
+ * developer credentials (plan §22 DoD #7 / canonical Testing Rule 7). Covers
+ * the login / 2FA / refresh / logout / set-language surface including the
+ * security-regression negatives (wrong password, invalid 2FA code, invalid
+ * refresh token, post-logout token invalidation — plan §29), so the class is
+ * tagged `security` for the CI `--group=security` tier.
+ *
+ * 2FA is group-driven (`User::isTwoFactorRequired()` checks
+ * `Group::isRequires2fa()`), so the 2FA tests opt a QA persona into a
+ * `qa_`-prefixed 2FA group created in-test. DAMA rolls the write back, and
+ * the null mailer (config/packages/test/mailer.yaml) keeps the 2FA email
+ * in-process.
+ */
+#[TestGroup('security')]
+final class AuthControllerTest extends QaWebTestCase
+{
     /**
-     * @group auth
+     * A token blacklisted by a logout test escapes the DAMA transaction (the
+     * blacklist lives in the Redis-backed cache.app pool). Because two logins
+     * for the same persona within the same second yield an IDENTICAL JWT,
+     * leaving it blacklisted would poison any sibling test that reuses that
+     * persona's token (order-dependence — plan §10). The logout test records
+     * its token here and tearDown clears the blacklist entry (plan §8:
+     * explicitly clean up effects that escape the transaction).
      */
-    public function testLoginSuccessWithValidCredentials(): void
-    {
-        // IMPORTANT: You need a test user in your database for this to work.
-        // Load fixtures or ensure a user exists.
-        // Replace with actual test user credentials.
-        $testUserEmail = 'stefan.kodzhabashev@gmail.com'; 
-        $testUserPassword = 'q1w2e3r4';
-
-        // Create a user for testing if one doesn't exist or load fixtures
-        // For now, this test assumes the user exists.
-
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/login', // Your actual login endpoint
-            [], // Parameters
-            [], // Files
-            ['CONTENT_TYPE' => 'application/json'], // Server environment
-            json_encode([ // Raw body
-                'email' => $testUserEmail,
-                'password' => $testUserPassword,
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), "Expected HTTP 200 OK. Got: " . $response->getStatusCode() . " Response: " . $response->getContent());
-
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertIsArray($responseData, 'Response is not valid JSON. Response: ' . $response->getContent());
-        $this->assertSame(Response::HTTP_OK, $responseData['status'] ?? null, 'JSON status field should be HTTP 200. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('data', $responseData, 'Response data key missing. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('access_token', $responseData['data'], 'Access token (access_token) missing in response data.');
-        $this->assertNotEmpty($responseData['data']['access_token'], 'Access token (access_token) is empty.');
-
-        // Further assertions based on your 'auth_login_success_response.json' schema
-        // For example, checking 'meta', 'logged_in' fields
-        $this->assertTrue($responseData['logged_in'] ?? false, 'Logged in flag should be true at the root level.');
-    }
-
-    /**
-     * @group auth
-     */
-    public function testLoginFailureWithInvalidCredentials(): void
-    {
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'email' => 'stefan.kodzhabashev@gmail.com',
-                'password' => 'wrongpassword',
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode(), "Expected HTTP 401 Unauthorized. Got: " . $response->getStatusCode() . " Response: " . $response->getContent());
-
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertIsArray($responseData, 'Response is not valid JSON. Response: ' . $response->getContent());
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $responseData['status'] ?? null, 'JSON status field should be HTTP 401. Response: ' . $response->getContent());
-        $this->assertNotEmpty($responseData['message'] ?? '', 'Error message should not be empty.');
-    }
-
-    // Add more tests:
-    // - Login with 2FA required (if applicable)
-    // - 2FA verification success/failure
-    // - Refresh token success/failure
-    // - Logout
-    // - Accessing protected routes with/without valid token
-    // - Testing JSON schema validation for request payloads
-
-    /**
-     * @group auth
-     * @group 2fa
-     */
-    public function testTwoFactorAuthenticationSuccess(): void
-    {
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'email' => 'stefankod@abv.bg', // User with 2FA enabled
-                'password' => 'q1w2e3r4',
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Initial login for 2FA user should be HTTP 200. Response: ' . $response->getContent());
-
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertIsArray($responseData, 'Initial 2FA login response is not valid JSON. Response: ' . $response->getContent());
-        $this->assertSame(Response::HTTP_OK, $responseData['status'] ?? null, 'Initial 2FA login JSON status should be 200. Response: ' . $response->getContent());
-        $this->assertTrue($responseData['data']['requires_2fa'] ?? false, 'requires_2fa flag should be true. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('id_users', $responseData['data'], 'id_users missing in 2FA response data. Response: ' . $response->getContent());
-        $this->assertNotEmpty($responseData['data']['id_users'], 'id_users should not be empty in 2FA response data. Response: ' . $response->getContent());
-
-        $userId = $responseData['data']['id_users'];
-
-        // Fetch the 2FA code from the database
-        /** @var EntityManagerInterface $entityManager */
-        $entityManager = $this->client->getContainer()->get('doctrine.orm.entity_manager');
-        $twoFactorCodeEntity = $entityManager->getRepository(Users2faCode::class)->findOneBy(
-            ['user' => $userId, 'isUsed' => false],
-            ['createdAt' => 'DESC'] // Get the latest valid code
-        );
-
-        $this->assertNotNull($twoFactorCodeEntity, '2FA code entity not found in database for user ID: ' . $userId);
-        $correctTwoFactorCode = $twoFactorCodeEntity->getCode();
-        $this->assertNotEmpty($correctTwoFactorCode, 'Fetched 2FA code from database is empty.');
-
-        // Step 2: Verify 2FA code
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/two-factor-verify',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'id_users' => $userId,
-                'code' => $correctTwoFactorCode,
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), '2FA verification success should be HTTP 200. Response: ' . $response->getContent());
-
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertIsArray($responseData, '2FA verification success response is not valid JSON. Response: ' . $response->getContent());
-        $this->assertSame(Response::HTTP_OK, $responseData['status'] ?? null, '2FA success JSON status should be 200. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('data', $responseData, 'Response data key missing after 2FA. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('access_token', $responseData['data'], 'Access token missing after 2FA. Response: ' . $response->getContent());
-        $this->assertNotEmpty($responseData['data']['access_token'], 'Access token should not be empty after 2FA. Response: ' . $response->getContent());
-        $this->assertTrue($responseData['logged_in'] ?? false, 'Logged in flag should be true after 2FA. Response: ' . $response->getContent());
-    }
-
-    /**
-     * @group auth
-     * @group 2fa
-     */
-    public function testTwoFactorAuthenticationFailureInvalidCode(): void
-    {
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'email' => 'stefankod@abv.bg', // User with 2FA enabled
-                'password' => 'q1w2e3r4',
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Initial login for 2FA user (failure test) should be HTTP 200. Response: ' . $response->getContent());
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertTrue($responseData['data']['requires_2fa'] ?? false, 'requires_2fa flag should be true (failure test). Response: ' . $response->getContent());
-        $userId = $responseData['data']['id_users'] ?? null;
-        $this->assertNotNull($userId, 'User ID should be present for 2FA failure test. Response: ' . $response->getContent());
-
-        $incorrectTwoFactorCode = '654321'; // Incorrect 2FA code
-
-        // Step 2: Verify 2FA code with incorrect code
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/two-factor-verify',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'id_users' => $userId,
-                'code' => $incorrectTwoFactorCode,
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode(), '2FA verification with invalid code should be HTTP 401. Response: ' . $response->getContent());
-
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertIsArray($responseData, '2FA verification failure response is not valid JSON. Response: ' . $response->getContent());
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $responseData['status'] ?? null, '2FA failure JSON status should be 401. Response: ' . $response->getContent());
-        $this->assertNotEmpty($responseData['message'] ?? '', 'Main error message should not be empty for 2FA failure. Response: ' . $response->getContent());
-        $this->assertEquals('Unauthorized', $responseData['message'] ?? '', 'Incorrect main error message for 2FA failure. Response: ' . $response->getContent());
-        $this->assertNotEmpty($responseData['error'] ?? '', 'Detailed error content should not be empty for 2FA failure. Response: ' . $response->getContent());
-        $this->assertEquals('Invalid or expired verification code', $responseData['error'] ?? '', 'Incorrect detailed error content for 2FA failure. Response: ' . $response->getContent());
-    }
-
-    /**
-     * @group auth
-     * @group refresh_token
-     */
-    public function testRefreshTokenSuccess(): void
-    {
-        // Step 1: Login to get initial tokens (using a non-2FA user for simplicity here)
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'email' => 'stefan.kodzhabashev@gmail.com', // Assuming this user does not have 2FA
-                'password' => 'q1w2e3r4',
-            ])
-        );
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Login for refresh token test failed. Response: ' . $response->getContent());
-        $loginData = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('refresh_token', $loginData['data'], 'Refresh token missing from login response.');
-        $refreshToken = $loginData['data']['refresh_token'];
-
-        // Step 2: Use refresh token
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/refresh-token',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'refresh_token' => $refreshToken,
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Refresh token request failed. Response: ' . $response->getContent());
-        $refreshData = json_decode($response->getContent(), true);
-        $this->assertSame(Response::HTTP_OK, $refreshData['status'] ?? null, 'Refresh token JSON status should be 200. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('access_token', $refreshData['data'], 'New access token missing from refresh response.');
-        $this->assertNotEmpty($refreshData['data']['access_token'], 'New access token is empty.');
-        $this->assertArrayHasKey('refresh_token', $refreshData['data'], 'New refresh token missing from refresh response.');
-        $this->assertNotEmpty($refreshData['data']['refresh_token'], 'New refresh token is empty.');
-        $this->assertNotEquals($refreshToken, $refreshData['data']['refresh_token'], 'New refresh token should be different from the old one.');
-    }
-
-    /**
-     * @group auth
-     * @group refresh_token
-     */
-    public function testRefreshTokenFailureInvalidToken(): void
-    {
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/refresh-token',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'refresh_token' => 'invalid.refresh.token.string',
-            ])
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode(), 'Refresh token with invalid token should fail. Response: ' . $response->getContent());
-        $responseData = json_decode($response->getContent(), true);
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $responseData['status'] ?? null, 'Refresh token failure JSON status should be 401. Response: ' . $response->getContent());
-    }
-
-    /**
-     * @group auth
-     * @group logout
-     */
-    public function testLogoutSuccess(): void
-    {
-        // Step 1: Login to get an access token
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/login',
-            [],
-            [],
-            ['CONTENT_TYPE' => 'application/json'],
-            json_encode([
-                'email' => 'stefan.kodzhabashev@gmail.com',
-                'password' => 'q1w2e3r4',
-            ])
-        );
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Login for logout test failed. Response: ' . $response->getContent());
-        $loginData = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('access_token', $loginData['data'], 'Access token missing from login response for logout test.');
-        $accessToken = $loginData['data']['access_token'];
-
-        // Step 2: Logout
-        $this->client->request(
-            'POST',
-            '/cms-api/v1/auth/logout',
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $accessToken, 'CONTENT_TYPE' => 'application/json']
-        );
-
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Logout request failed. Response: ' . $response->getContent());
-        $logoutData = json_decode($response->getContent(), true);
-
-        $this->assertSame(Response::HTTP_OK, $logoutData['status'] ?? null, 'Logout JSON status should be 200. Response: ' . $response->getContent());
-        $this->assertEquals('OK', $logoutData['message'] ?? '', 'Logout message incorrect. Expected "OK". Response: ' . $response->getContent());
-        // The 'logged_in' flag in the logout response itself might be true, as it reflects the state *before* logout for that specific request.
-        // The crucial part is that the token is no longer valid for subsequent requests.
-        $this->assertTrue($logoutData['logged_in'] ?? false, 'Logout JSON logged_in flag should be true in the response. Response: ' . $response->getContent());
-        $this->assertArrayHasKey('data', $logoutData, 'Logout response should contain a data field.');
-        $this->assertIsArray($logoutData['data'], 'Logout data field should be an array.');
-        $this->assertEquals('Access token was blacklisted. No refresh token was sent.', $logoutData['data']['message'] ?? '', 'Logout data message incorrect. Response: ' . $response->getContent());
-
-
-        // Step 3: Verify token is invalidated by trying to access a protected route
-        // Attempt to use the token again, e.g., to get user profile
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/pages', // Using a protected admin route
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $accessToken, 'CONTENT_TYPE' => 'application/json']
-        );
-        // After logout, accessing a protected route should result in an unauthorized error (401)
-        $this->assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode(), 'Access token should be invalid after logout. Attempt to access /cms-api/v1/admin/pages did not return 401.');
-    }
-
-    /**
-     * Test login includes user language information
-     */
-    public function testLoginIncludesLanguageInfo(): void
-    {
-        // Make login request
-        $this->client->request('POST', '/cms-api/v1/auth/login', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'email' => 'stefan.kodzhabashev@gmail.com',
-            'password' => 'q1w2e3r4'
-        ]));
-        
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
-        
-        $this->assertArrayHasKey('data', $responseData);
-        $this->assertArrayHasKey('user', $responseData['data']);
-        $this->assertArrayHasKey('language_id', $responseData['data']['user']);
-        $this->assertArrayHasKey('language_locale', $responseData['data']['user']);
-        
-        // Verify language information is present
-        $user = $responseData['data']['user'];
-        $this->assertIsInt($user['language_id']);
-        $this->assertIsString($user['language_locale']);
-    }
-    
-    /**
-     * Test setting user language
-     */
-    public function testSetUserLanguage(): void
-    {
-        // First login to get access token
-        $this->client->request('POST', '/cms-api/v1/auth/login', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'email' => 'stefan.kodzhabashev@gmail.com',
-            'password' => 'q1w2e3r4'
-        ]));
-        
-        $loginResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $loginResponse->getStatusCode());
-        $loginData = json_decode($loginResponse->getContent(), true);
-        $accessToken = $loginData['data']['access_token'];
-        
-        // Now set user language
-        $this->client->request('POST', '/cms-api/v1/auth/set-language', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $accessToken,
-        ], json_encode([
-            'language_id' => 2 // Assuming language ID 2 exists
-        ]));
-        
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
-        
-        $this->assertArrayHasKey('data', $responseData);
-        $this->assertArrayHasKey('language_id', $responseData['data']);
-        $this->assertArrayHasKey('language_locale', $responseData['data']);
-        $this->assertArrayHasKey('language_name', $responseData['data']);
-        $this->assertEquals(2, $responseData['data']['language_id']);
-    }
-    
-    /**
-     * Test setting invalid language ID
-     */
-    public function testSetInvalidLanguageId(): void
-    {
-        // First login to get access token
-        $this->client->request('POST', '/cms-api/v1/auth/login', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'email' => 'stefan.kodzhabashev@gmail.com',
-            'password' => 'q1w2e3r4'
-        ]));
-        
-        $loginResponse = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_OK, $loginResponse->getStatusCode());
-        $loginData = json_decode($loginResponse->getContent(), true);
-        $accessToken = $loginData['data']['access_token'];
-        
-        // Try to set invalid language ID
-        $this->client->request('POST', '/cms-api/v1/auth/set-language', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $accessToken,
-        ], json_encode([
-            'language_id' => 999999 // Invalid language ID
-        ]));
-        
-        $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
-        $responseData = json_decode($response->getContent(), true);
-        
-        $this->assertArrayHasKey('error', $responseData);
-        $this->assertStringContainsString('Invalid language ID', $responseData['error']);
-    }
+    private ?string $tokenToUnblacklist = null;
 
     protected function tearDown(): void
     {
+        if ($this->tokenToUnblacklist !== null) {
+            $cache = self::getContainer()->get('cache.app');
+            if ($cache instanceof CacheInterface) {
+                $cache->delete(JWTService::BLACKLIST_PREFIX . md5($this->tokenToUnblacklist));
+            }
+            $this->tokenToUnblacklist = null;
+        }
+
         parent::tearDown();
-        // Avoid memory leaks
-        $this->client = null;
+    }
+
+    public function testLoginRouteIsRegistered(): void
+    {
+        $this->client->request('GET', '/cms-api/v1/auth/login');
+
+        self::assertNotSame(
+            Response::HTTP_NOT_FOUND,
+            $this->client->getResponse()->getStatusCode(),
+            'The login route must be registered.'
+        );
+    }
+
+    public function testLoginSucceedsForSeededQaAdmin(): void
+    {
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_ADMIN_EMAIL,
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
+
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertArrayHasKey('access_token', $data, 'Login must return data.access_token');
+        self::assertNotSame('', (string) $data['access_token'], 'access_token must be non-empty');
+        self::assertTrue($envelope['logged_in'] ?? false, 'logged_in must be true on success');
+    }
+
+    public function testLoginFailsForWrongPassword(): void
+    {
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_ADMIN_EMAIL,
+            'password' => 'definitely-not-the-qa-password',
+        ]);
+
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode());
+        $this->assertEnvelope401($envelope);
+        self::assertNotSame('', (string) ($envelope['message'] ?? ''), 'A failed login must carry a message');
+    }
+
+    public function testTwoFactorRequiredGroupTriggersChallengeAndVerifySucceeds(): void
+    {
+        $userId = $this->optPersonaIntoTwoFactorGroup(QaBaselineFixture::QA_USER_EMAIL);
+
+        $login = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_USER_EMAIL,
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
+
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $loginData = $this->assertEnvelopeSuccess($login);
+        self::assertTrue($loginData['requires_2fa'] ?? false, '2FA-group member must be challenged for 2FA');
+        self::assertArrayNotHasKey('access_token', $loginData, 'No access token must be issued before 2FA verify');
+        self::assertSame($userId, (int) ($loginData['id_users'] ?? 0), 'Challenge must reference the same user');
+
+        $code = $this->latestUnusedTwoFactorCode($userId);
+
+        $verify = $this->jsonRequest('POST', '/cms-api/v1/auth/two-factor-verify', [
+            'id_users' => $userId,
+            'code' => $code,
+        ]);
+
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $verifyData = $this->assertEnvelopeSuccess($verify);
+        self::assertArrayHasKey('access_token', $verifyData, 'A valid 2FA code must yield an access token');
+        self::assertNotSame('', (string) $verifyData['access_token']);
+        self::assertTrue($verify['logged_in'] ?? false, 'logged_in must be true after a valid 2FA verify');
+    }
+
+    public function testTwoFactorVerifyFailsForInvalidCode(): void
+    {
+        $userId = $this->optPersonaIntoTwoFactorGroup(QaBaselineFixture::QA_USER_EMAIL);
+
+        $login = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_USER_EMAIL,
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
+        $loginData = $this->assertEnvelopeSuccess($login);
+        self::assertTrue($loginData['requires_2fa'] ?? false);
+
+        $verify = $this->jsonRequest('POST', '/cms-api/v1/auth/two-factor-verify', [
+            'id_users' => $userId,
+            'code' => '000000',
+        ]);
+
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode());
+        $this->assertEnvelope401($verify);
+        self::assertSame('Invalid or expired verification code', (string) ($verify['error'] ?? ''));
+    }
+
+    #[TestGroup('refresh_token')]
+    public function testRefreshTokenRotatesForSeededQaUser(): void
+    {
+        $login = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_USER_EMAIL,
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
+        $loginData = $this->assertEnvelopeSuccess($login);
+        self::assertArrayHasKey('refresh_token', $loginData, 'Login must return a refresh token');
+        $oldRefresh = (string) $loginData['refresh_token'];
+
+        $refresh = $this->jsonRequest('POST', '/cms-api/v1/auth/refresh-token', [
+            'refresh_token' => $oldRefresh,
+        ]);
+
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $refreshData = $this->assertEnvelopeSuccess($refresh);
+        self::assertNotSame('', (string) ($refreshData['access_token'] ?? ''), 'Refresh must mint a new access token');
+        self::assertNotSame(
+            $oldRefresh,
+            (string) ($refreshData['refresh_token'] ?? ''),
+            'Refresh must rotate the refresh token'
+        );
+    }
+
+    #[TestGroup('refresh_token')]
+    public function testRefreshTokenFailsForInvalidToken(): void
+    {
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/refresh-token', [
+            'refresh_token' => 'invalid.refresh.token.string',
+        ]);
+
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $this->client->getResponse()->getStatusCode());
+        $this->assertEnvelope401($envelope);
+    }
+
+    #[TestGroup('logout')]
+    public function testLogoutInvalidatesAccessToken(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        // Record so tearDown can clear the Redis blacklist entry this test creates.
+        $this->tokenToUnblacklist = $token;
+
+        $logout = $this->jsonRequest('POST', '/cms-api/v1/auth/logout', null, $token);
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        self::assertSame(Response::HTTP_OK, $logout['status'] ?? null, 'Logout envelope status must be 200');
+
+        // Public effect: the blacklisted token can no longer reach a protected route.
+        $afterLogout = $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $token);
+        self::assertSame(
+            Response::HTTP_UNAUTHORIZED,
+            $this->client->getResponse()->getStatusCode(),
+            'A blacklisted access token must be rejected after logout.'
+        );
+        $this->assertEnvelope401($afterLogout);
+    }
+
+    public function testLoginIncludesLanguageInfoForSeededQaAdmin(): void
+    {
+        $login = $this->jsonRequest('POST', '/cms-api/v1/auth/login', [
+            'email' => QaBaselineFixture::QA_ADMIN_EMAIL,
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
+
+        $data = $this->assertEnvelopeSuccess($login);
+        self::assertArrayHasKey('user', $data, 'Login data must contain the user object');
+        self::assertIsArray($data['user']);
+        self::assertIsInt($data['user']['language_id'] ?? null, 'user.language_id must be an int');
+        self::assertIsString($data['user']['language_locale'] ?? null, 'user.language_locale must be a string');
+    }
+
+    public function testSetUserLanguageUpdatesThePreference(): void
+    {
+        $token = $this->loginAsQaAdmin();
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/set-language', ['language_id' => 2], $token);
+
+        self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertSame(2, $data['language_id'] ?? null, 'The updated language_id must be echoed back');
+        self::assertArrayHasKey('language_locale', $data);
+        self::assertArrayHasKey('language_name', $data);
+    }
+
+    public function testSetInvalidLanguageIdIsRejected(): void
+    {
+        $token = $this->loginAsQaAdmin();
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/auth/set-language', ['language_id' => 999999], $token);
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
+        $this->assertEnvelope400($envelope);
+        self::assertStringContainsString('Invalid language ID', (string) ($envelope['error'] ?? ''));
+    }
+
+    /**
+     * Opt a seeded QA persona into a `qa_`-prefixed 2FA-required group so the
+     * real login flow challenges for 2FA. The write is DAMA-rolled-back and
+     * never touches a non-QA group (canonical Testing Rule 9).
+     */
+    private function optPersonaIntoTwoFactorGroup(string $email): int
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+
+        $user = $em->getRepository(User::class)->findOneBy(['email' => $email]);
+        self::assertInstanceOf(User::class, $user, sprintf('QA persona %s must be seeded', $email));
+
+        $group = new Group();
+        $group->setName('qa_2fa_group');
+        $group->setDescription('qa 2fa-required group (test-only, DAMA rolled back)');
+        $group->setRequires2fa(true);
+        $em->persist($group);
+
+        $membership = new UsersGroup();
+        $membership->setUser($user);
+        $membership->setGroup($group);
+        $em->persist($membership);
+
+        $em->flush();
+
+        return (int) $user->getId();
+    }
+
+    private function latestUnusedTwoFactorCode(int $userId): string
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+
+        $codeEntity = $em->getRepository(Users2faCode::class)->findOneBy(
+            ['user' => $userId, 'isUsed' => false],
+            ['createdAt' => 'DESC']
+        );
+
+        self::assertInstanceOf(
+            Users2faCode::class,
+            $codeEntity,
+            sprintf('A 2FA code must have been stored for user %d', $userId)
+        );
+        $code = (string) $codeEntity->getCode();
+        self::assertNotSame('', $code, 'The stored 2FA code must be non-empty');
+
+        return $code;
     }
 }

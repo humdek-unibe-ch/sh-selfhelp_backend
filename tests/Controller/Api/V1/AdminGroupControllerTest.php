@@ -11,12 +11,12 @@ namespace App\Tests\Controller\Api\V1;
 use Symfony\Component\HttpFoundation\Response;
 use App\Entity\Group;
 use App\Entity\Page;
-use App\Entity\AclGroup;
+use App\Entity\PageAclGroup;
 
 class AdminGroupControllerTest extends BaseControllerTest
 {
     private ?int $testGroupId = null;
-    private string $testGroupName = 'Test Group for API Tests';
+    private string $testGroupName = 'qa_group_api_test';
     private array $testPageIds = [];
     private $entityManager;
 
@@ -65,7 +65,7 @@ class AdminGroupControllerTest extends BaseControllerTest
             $group = $this->entityManager->getRepository(Group::class)->find($this->testGroupId);
             if ($group) {
                 // Remove ACLs first
-                $acls = $this->entityManager->getRepository(AclGroup::class)
+                $acls = $this->entityManager->getRepository(PageAclGroup::class)
                     ->findBy(['group' => $group]);
                 foreach ($acls as $acl) {
                     $this->entityManager->remove($acl);
@@ -261,6 +261,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         // First create a group for this test
         $this->testCreateGroupSuccess();
         
+        // Group name is an immutable permission identifier: updateGroup only
+        // mutates description / requires_2fa / id_group_types, never the name.
         $updateData = [
             'name' => $this->testGroupName . ' Updated',
             'description' => 'Updated description',
@@ -285,7 +287,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         $data = json_decode($response->getContent(), true);
         $group = $data['data'];
         
-        $this->assertSame($updateData['name'], $group['name']);
+        // Name stays the original (immutable); description + requires_2fa change.
+        $this->assertSame($this->testGroupName, $group['name']);
         $this->assertSame($updateData['description'], $group['description']);
         $this->assertSame($updateData['requires_2fa'], $group['requires_2fa']);
     }
@@ -397,8 +400,9 @@ class AdminGroupControllerTest extends BaseControllerTest
             json_encode($groupData)
         );
 
+        // Duplicate group name is a resource conflict (409), not a 400.
         $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $this->assertSame(Response::HTTP_CONFLICT, $response->getStatusCode());
     }
 
     /**

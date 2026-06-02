@@ -8,6 +8,7 @@
 
 namespace App\Tests\Controller\Api\V1\Traits;
 
+use App\Entity\Page;
 use App\Service\Core\LookupService;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -15,9 +16,24 @@ use Symfony\Component\HttpFoundation\Response;
  * Trait ManagesTestPagesTrait
  * 
  * Provides common methods for creating and deleting test pages in API controller tests.
+ *
+ * The admin page API is addressed by numeric page id ( /admin/pages/{page_id} ),
+ * not by keyword, so these helpers resolve a keyword to its id before issuing
+ * GET/PUT/DELETE requests.
  */
 trait ManagesTestPagesTrait
 {
+    /**
+     * Resolve a page keyword to its numeric id, or null if it does not exist.
+     * Uses the shared DAMA transaction connection so freshly created pages are visible.
+     */
+    protected function resolvePageIdByKeyword(string $pageKeyword): ?int
+    {
+        $em = self::getContainer()->get('doctrine')->getManager();
+        $page = $em->getRepository(Page::class)->findOneBy(['keyword' => $pageKeyword]);
+
+        return $page?->getId();
+    }
     /**
      * Creates a test page with the given keyword.
      *
@@ -78,9 +94,12 @@ trait ManagesTestPagesTrait
     {
         $token = $this->getAdminAccessToken();
 
+        $pageId = $this->resolvePageIdByKeyword($pageKeyword);
+        $this->assertNotNull($pageId, "Cannot delete test page '{$pageKeyword}': it does not exist.");
+
         $this->client->request(
             'DELETE',
-            '/cms-api/v1/admin/pages/' . $pageKeyword,
+            '/cms-api/v1/admin/pages/' . $pageId,
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -110,28 +129,19 @@ trait ManagesTestPagesTrait
     {
         $token = $this->getAdminAccessToken();
 
+        $pageId = $this->resolvePageIdByKeyword($pageKeyword);
+        if ($pageId === null) {
+            return;
+        }
+
         $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/pages/' . $pageKeyword,
+            'DELETE',
+            '/cms-api/v1/admin/pages/' . $pageId,
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
         );
-
-        $response = $this->client->getResponse();
-
-        if ($response->getStatusCode() === Response::HTTP_OK) {
-            $this->client->request(
-                'DELETE',
-                '/cms-api/v1/admin/pages/' . $pageKeyword,
-                [],
-                [],
-                ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
-            );
-            $deleteResponse = $this->client->getResponse();
-            $this->assertSame(Response::HTTP_OK, $deleteResponse->getStatusCode(), "Failed to delete existing page '{$pageKeyword}' during cleanup: " . $deleteResponse->getContent());
-            // Consider a small sleep if there are race conditions with immediate recreation, though ideally not needed.
-            // sleep(1);
-        }
+        $deleteResponse = $this->client->getResponse();
+        $this->assertSame(Response::HTTP_OK, $deleteResponse->getStatusCode(), "Failed to delete existing page '{$pageKeyword}' during cleanup: " . $deleteResponse->getContent());
     }
 }

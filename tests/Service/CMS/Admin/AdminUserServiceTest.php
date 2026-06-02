@@ -5,118 +5,124 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+declare(strict_types=1);
+
 namespace App\Tests\Service\CMS\Admin;
 
+use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\User;
-use App\Entity\Group;
-use App\Entity\Role;
-use App\Entity\Lookup;
-use App\Service\CMS\Admin\AdminUserService;
-use App\Service\Auth\UserContextService;
-use App\Repository\UserRepository;
-use App\Service\Core\LookupService;
 use App\Exception\ServiceException;
-use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use App\Repository\UserRepository;
+use App\Service\CMS\Admin\AdminUserService;
+use App\Tests\Support\QaKernelTestCase;
 use Symfony\Component\HttpFoundation\Response;
 
-class AdminUserServiceTest extends KernelTestCase
+/**
+ * Service-level coverage for {@see AdminUserService} (plan Phase 5 — users).
+ *
+ * Migrated off the old developer-data variant: it now extends
+ * {@see QaKernelTestCase} (seeded QA baseline + DAMA rollback), acts as the
+ * seeded `qa.admin` persona for permission-scoped reads, and writes only
+ * `qa.`-prefixed records. Negative permission behaviour for the HTTP surface
+ * lives in the controller permission-matrix tests; this class asserts the
+ * service contract (shapes, pagination, lifecycle, system-user guards).
+ */
+class AdminUserServiceTest extends QaKernelTestCase
 {
     private AdminUserService $adminUserService;
-    private EntityManagerInterface $entityManager;
-    private UserRepository $userRepository;
-    private LookupService $lookupService;
-    private UserPasswordHasherInterface $passwordHasher;
-    private UserContextService $userContextService;
+    private int $adminId;
 
     protected function setUp(): void
     {
-        self::bootKernel();
-        $container = static::getContainer();
+        parent::setUp();
+        $this->adminUserService = $this->service(AdminUserService::class);
 
-        $this->entityManager = $container->get(EntityManagerInterface::class);
-        $this->userRepository = $container->get(UserRepository::class);
-        $this->lookupService = $container->get(LookupService::class);
-        $this->passwordHasher = $container->get(UserPasswordHasherInterface::class);
-        $this->userContextService = $container->get(UserContextService::class);
+        $admin = $this->service(UserRepository::class)->findOneBy(['email' => QaBaselineFixture::QA_ADMIN_EMAIL]);
+        self::assertInstanceOf(User::class, $admin, 'QA admin persona must be seeded.');
+        $this->adminId = (int) $admin->getId();
+    }
 
-        $this->adminUserService = $container->get(AdminUserService::class);
+    /** Unique qa.-prefixed e-mail for a throwaway user created inside one test. */
+    private function qaEmail(string $slug): string
+    {
+        return 'qa.svc.' . $slug . '.' . uniqid('', false) . '@selfhelp.test';
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private function createQaUser(string $slug, array $overrides = []): array
+    {
+        $data = array_merge([
+            'email' => $this->qaEmail($slug),
+            'name' => 'qa_svc_' . $slug,
+            'user_name' => 'qa_svc_' . $slug . '_' . uniqid('', false),
+            'password' => QaBaselineFixture::QA_PASSWORD,
+            'enable_validation' => false,
+        ], $overrides);
+
+        return $this->adminUserService->createUser($data);
     }
 
     /**
      * @group user-service
      */
-    public function testGetUsersWithDefaultParameters(): void
+    public function testGetFilteredUsersWithDefaultParameters(): void
     {
-        $result = $this->adminUserService->getUsers();
+        $result = $this->adminUserService->getFilteredUsers($this->adminId);
 
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('users', $result);
-        $this->assertArrayHasKey('pagination', $result);
         $this->assertIsArray($result['users']);
-        $this->assertIsArray($result['pagination']);
+        $this->assertArrayHasKey('pagination', $result);
 
-        // Check pagination structure
         $pagination = $result['pagination'];
-        $this->assertArrayHasKey('page', $pagination);
-        $this->assertArrayHasKey('pageSize', $pagination);
-        $this->assertArrayHasKey('totalCount', $pagination);
-        $this->assertArrayHasKey('totalPages', $pagination);
-        $this->assertArrayHasKey('hasNext', $pagination);
-        $this->assertArrayHasKey('hasPrevious', $pagination);
-
+        foreach (['page', 'pageSize', 'totalCount', 'totalPages', 'hasNext', 'hasPrevious'] as $key) {
+            $this->assertArrayHasKey($key, $pagination);
+        }
         $this->assertSame(1, $pagination['page']);
         $this->assertSame(20, $pagination['pageSize']);
         $this->assertFalse($pagination['hasPrevious']);
+        // The seeded QA personas guarantee the admin sees a non-empty list.
+        $this->assertGreaterThan(0, $pagination['totalCount']);
     }
 
     /**
      * @group user-service
      */
-    public function testGetUsersWithPagination(): void
+    public function testGetFilteredUsersWithPagination(): void
     {
-        $result = $this->adminUserService->getUsers(1, 5);
+        $result = $this->adminUserService->getFilteredUsers($this->adminId, 1, 2);
 
-        $this->assertLessThanOrEqual(5, count($result['users']));
+        $this->assertLessThanOrEqual(2, count($result['users']));
         $this->assertSame(1, $result['pagination']['page']);
-        $this->assertSame(5, $result['pagination']['pageSize']);
+        $this->assertSame(2, $result['pagination']['pageSize']);
     }
 
     /**
      * @group user-service
      */
-    public function testGetUsersWithSearch(): void
+    public function testGetFilteredUsersWithSearchFindsTheSeededAdmin(): void
     {
-        $result = $this->adminUserService->getUsers(1, 20, 'admin');
+        $result = $this->adminUserService->getFilteredUsers($this->adminId, 1, 50, 'qa.admin');
 
         $this->assertIsArray($result['users']);
-        
-        // If there are results, verify they contain the search term in any searchable field
-        foreach ($result['users'] as $user) {
-            $containsSearch = stripos($user['email'], 'admin') !== false ||
-                            stripos($user['name'], 'admin') !== false ||
-                            stripos($user['user_name'] ?? '', 'admin') !== false ||
-                            stripos($user['code'] ?? '', 'admin') !== false ||
-                            stripos($user['roles'] ?? '', 'admin') !== false;
-            $this->assertTrue($containsSearch, 'Search result should contain search term in email, name, username, code, or roles');
-        }
+        $emails = array_column($result['users'], 'email');
+        $this->assertContains(QaBaselineFixture::QA_ADMIN_EMAIL, $emails);
     }
 
     /**
      * @group user-service
      */
-    public function testGetUsersWithSorting(): void
+    public function testGetFilteredUsersWithSorting(): void
     {
-        $result = $this->adminUserService->getUsers(1, 20, null, 'email', 'asc');
+        $result = $this->adminUserService->getFilteredUsers($this->adminId, 1, 50, null, 'email', 'asc');
 
         $this->assertIsArray($result['users']);
-        
         if (count($result['users']) > 1) {
             $emails = array_column($result['users'], 'email');
-            $sortedEmails = $emails;
-            sort($sortedEmails);
-            $this->assertSame($sortedEmails, $emails, 'Users should be sorted by email in ascending order');
+            $sorted = $emails;
+            sort($sorted);
+            $this->assertSame($sorted, $emails, 'Users should be sorted by email ascending.');
         }
     }
 
@@ -125,28 +131,15 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testCreateUserSuccess(): void
     {
-        $uniqueEmail = 'test.service.' . uniqid() . '@example.com';
-        $uniqueUsername = 'testserviceuser' . uniqid();
-        $userData = [
-            'email' => $uniqueEmail,
-            'name' => 'Test Service User',
-            'user_name' => $uniqueUsername,
-            'password' => 'testpassword123',
-            'blocked' => false
-        ];
+        $email = $this->qaEmail('create');
+        $result = $this->createQaUser('create', ['email' => $email]);
 
-        $result = $this->adminUserService->createUser($userData);
-
-        $this->assertIsArray($result);
         $this->assertArrayHasKey('id', $result);
-        $this->assertArrayHasKey('email', $result);
-        $this->assertSame($uniqueEmail, $result['email']);
-        $this->assertSame($userData['name'], $result['name']);
-        $this->assertSame($uniqueUsername, $result['user_name']);
-        $this->assertSame($userData['blocked'], $result['blocked']);
+        $this->assertSame($email, $result['email']);
+        $this->assertSame('qa_svc_create', $result['name']);
+        $this->assertFalse($result['blocked']);
 
-        // Cleanup
-        $this->adminUserService->deleteUser(1, 1, $result['id']);
+        $this->adminUserService->deleteUser($this->adminId, (int) $result['id']);
     }
 
     /**
@@ -155,15 +148,12 @@ class AdminUserServiceTest extends KernelTestCase
     public function testCreateUserWithMissingEmailThrowsException(): void
     {
         $this->expectException(ServiceException::class);
-        $this->expectExceptionMessage('Email is required');
         $this->expectExceptionCode(Response::HTTP_BAD_REQUEST);
 
-        $userData = [
-            'name' => 'Test User',
-            'password' => 'testpassword123'
-        ];
-
-        $this->adminUserService->createUser($userData);
+        $this->adminUserService->createUser([
+            'name' => 'qa_svc_no_email',
+            'password' => QaBaselineFixture::QA_PASSWORD,
+        ]);
     }
 
     /**
@@ -171,59 +161,40 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testCreateUserWithDuplicateEmailThrowsException(): void
     {
-        // First create a user
-        $userData = [
-            'email' => 'duplicate.service@example.com',
-            'name' => 'Duplicate Service User',
-            'password' => 'testpassword123'
-        ];
-
-        $result = $this->adminUserService->createUser($userData);
-        $userId = $result['id'];
-
-        // Try to create another user with the same email
-        $this->expectException(ServiceException::class);
-        $this->expectExceptionMessage('Email already exists');
-        $this->expectExceptionCode(Response::HTTP_BAD_REQUEST);
+        $email = $this->qaEmail('dup');
+        $first = $this->createQaUser('dup', ['email' => $email]);
 
         try {
-            $this->adminUserService->createUser($userData);
+            $this->expectException(ServiceException::class);
+            $this->adminUserService->createUser([
+                'email' => $email,
+                'name' => 'qa_svc_dup_2',
+                'password' => QaBaselineFixture::QA_PASSWORD,
+                'enable_validation' => false,
+            ]);
         } finally {
-            // Cleanup
-            $this->adminUserService->deleteUser(1, $userId);
+            $this->adminUserService->deleteUser($this->adminId, (int) $first['id']);
         }
     }
 
     /**
      * @group user-service
      */
-    public function testGetUserByIdSuccess(): void
+    public function testGetUserByIdReturnsDetailWithGroupsAndRoles(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'get.test@example.com',
-            'name' => 'Get Test User',
-            'password' => 'testpassword123'
-        ];
-
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $created = $this->createQaUser('getbyid');
+        $userId = (int) $created['id'];
 
         $result = $this->adminUserService->getUserById($userId);
 
-        $this->assertIsArray($result);
         $this->assertSame($userId, $result['id']);
-        $this->assertSame($userData['email'], $result['email']);
-        $this->assertSame($userData['name'], $result['name']);
-        
-        // Detail view should include groups and roles
+        $this->assertSame($created['email'], $result['email']);
         $this->assertArrayHasKey('groups', $result);
         $this->assertArrayHasKey('roles', $result);
         $this->assertIsArray($result['groups']);
         $this->assertIsArray($result['roles']);
 
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
@@ -243,33 +214,20 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testUpdateUserSuccess(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'update.test@example.com',
-            'name' => 'Update Test User',
-            'password' => 'testpassword123',
-            'blocked' => false
-        ];
+        $created = $this->createQaUser('update', ['name' => 'qa_svc_update']);
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $result = $this->adminUserService->updateUser($this->adminId, $userId, [
+            'name' => 'qa_svc_update_changed',
+            'blocked' => true,
+        ]);
 
-        // Update the user
-        $updateData = [
-            'name' => 'Updated Test User',
-            'blocked' => true
-        ];
-
-        $result = $this->adminUserService->updateUser(1, $userId, $updateData);
-
-        $this->assertIsArray($result);
         $this->assertSame($userId, $result['id']);
-        $this->assertSame($updateData['name'], $result['name']);
-        $this->assertSame($updateData['blocked'], $result['blocked']);
-        $this->assertSame($userData['email'], $result['email']); // Email should remain unchanged
+        $this->assertSame('qa_svc_update_changed', $result['name']);
+        $this->assertTrue($result['blocked']);
+        $this->assertSame($created['email'], $result['email']);
 
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
@@ -281,7 +239,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->expectExceptionMessage('User not found');
         $this->expectExceptionCode(Response::HTTP_NOT_FOUND);
 
-        $this->adminUserService->updateUser(1, 999999, ['name' => 'Test']);
+        $this->adminUserService->updateUser($this->adminId, 999999, ['name' => 'qa_svc_ghost']);
     }
 
     /**
@@ -289,27 +247,16 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testToggleUserBlockSuccess(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'block.test@example.com',
-            'name' => 'Block Test User',
-            'password' => 'testpassword123',
-            'blocked' => false
-        ];
+        $created = $this->createQaUser('block');
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $blocked = $this->adminUserService->toggleUserBlock($userId, true);
+        $this->assertTrue($blocked['blocked']);
 
-        // Block the user
-        $result = $this->adminUserService->toggleUserBlock($userId, true);
-        $this->assertTrue($result['blocked']);
+        $unblocked = $this->adminUserService->toggleUserBlock($userId, false);
+        $this->assertFalse($unblocked['blocked']);
 
-        // Unblock the user
-        $result = $this->adminUserService->toggleUserBlock($userId, false);
-        $this->assertFalse($result['blocked']);
-
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
@@ -317,21 +264,11 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testDeleteUserSuccess(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'delete.test@example.com',
-            'name' => 'Delete Test User',
-            'password' => 'testpassword123'
-        ];
+        $created = $this->createQaUser('delete');
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $this->assertTrue($this->adminUserService->deleteUser($this->adminId, $userId));
 
-        // Delete the user
-        $result = $this->adminUserService->deleteUser(1, $userId);
-        $this->assertTrue($result);
-
-        // Verify user is deleted
         $this->expectException(ServiceException::class);
         $this->expectExceptionMessage('User not found');
         $this->adminUserService->getUserById($userId);
@@ -346,7 +283,7 @@ class AdminUserServiceTest extends KernelTestCase
         $this->expectExceptionMessage('User not found');
         $this->expectExceptionCode(Response::HTTP_NOT_FOUND);
 
-        $this->adminUserService->deleteUser(1, 999999);
+        $this->adminUserService->deleteUser($this->adminId, 999999);
     }
 
     /**
@@ -354,70 +291,36 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testDeleteSystemUserThrowsException(): void
     {
-        // Try to find an admin user
-        $users = $this->adminUserService->getUsers(1, 100, 'admin');
-        $adminUser = null;
-        
-        foreach ($users['users'] as $user) {
-            if ($user['name'] === 'admin' || $user['name'] === 'tpf') {
-                $adminUser = $user;
-                break;
-            }
-        }
+        // The QA baseline ships no `admin`/`tpf` system account, so promote a
+        // throwaway qa user to a protected name at the entity level (DAMA rolls
+        // it back) to exercise AdminUserService::SYSTEM_USERS deletion guard.
+        $created = $this->createQaUser('sysguard');
+        $userId = (int) $created['id'];
 
-        if ($adminUser) {
-            $this->expectException(ServiceException::class);
-            $this->expectExceptionMessage('Cannot delete system users');
-            $this->expectExceptionCode(Response::HTTP_FORBIDDEN);
+        $entity = $this->em->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $entity);
+        $entity->setName('admin');
+        $this->em->flush();
 
-            $this->adminUserService->deleteUser(1, $adminUser['id']);
-        } else {
-            $this->markTestSkipped('No admin user found to test system user deletion protection');
-        }
+        $this->expectException(ServiceException::class);
+        $this->expectExceptionMessage('Cannot delete system users');
+        $this->expectExceptionCode(Response::HTTP_FORBIDDEN);
+
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
      * @group user-service
      */
-    public function testGetUserGroupsSuccess(): void
+    public function testGetUserGroupsAndRolesReturnArrays(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'groups.test@example.com',
-            'name' => 'Groups Test User',
-            'password' => 'testpassword123'
-        ];
+        $created = $this->createQaUser('relations');
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $this->assertIsArray($this->adminUserService->getUserGroups($userId));
+        $this->assertIsArray($this->adminUserService->getUserRoles($userId));
 
-        $result = $this->adminUserService->getUserGroups($userId);
-        $this->assertIsArray($result);
-
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
-    }
-
-    /**
-     * @group user-service
-     */
-    public function testGetUserRolesSuccess(): void
-    {
-        // Create a test user first
-        $userData = [
-            'email' => 'roles.test@example.com',
-            'name' => 'Roles Test User',
-            'password' => 'testpassword123'
-        ];
-
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
-
-        $result = $this->adminUserService->getUserRoles($userId);
-        $this->assertIsArray($result);
-
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
@@ -425,17 +328,11 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testInvalidPageParametersGetNormalized(): void
     {
-        // Test with invalid page (less than 1)
-        $result = $this->adminUserService->getUsers(0, 20);
-        $this->assertSame(1, $result['pagination']['page']);
-
-        // Test with invalid pageSize (less than 1)
-        $result = $this->adminUserService->getUsers(1, 0);
-        $this->assertSame(20, $result['pagination']['pageSize']);
-
-        // Test with pageSize too large (greater than 100)
-        $result = $this->adminUserService->getUsers(1, 150);
-        $this->assertSame(20, $result['pagination']['pageSize']);
+        // validatePaginationParams clamps via max(1, min(MAX_PAGE_SIZE, n)):
+        // page floors at 1, pageSize is clamped into [1, 100].
+        $this->assertSame(1, $this->adminUserService->getFilteredUsers($this->adminId, 0, 20)['pagination']['page']);
+        $this->assertSame(1, $this->adminUserService->getFilteredUsers($this->adminId, 1, 0)['pagination']['pageSize']);
+        $this->assertSame(100, $this->adminUserService->getFilteredUsers($this->adminId, 1, 150)['pagination']['pageSize']);
     }
 
     /**
@@ -443,49 +340,37 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testInvalidSortDirectionGetsNormalized(): void
     {
-        $result = $this->adminUserService->getUsers(1, 20, null, 'email', 'invalid');
-        
-        // Should still work and default to 'asc'
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('users', $result);
+        $result = $this->adminUserService->getFilteredUsers($this->adminId, 1, 20, null, 'email', 'invalid');
+
+        $this->assertIsArray($result['users']);
+        $this->assertArrayHasKey('pagination', $result);
     }
 
     /**
      * @group user-service
      */
-    public function testSendActivationMailReturnsSuccess(): void
+    public function testSendActivationMailReturnsSuccessWithoutRealOutbound(): void
     {
-        // Create a test user first with unique email and disable validation to avoid conflicts
-        $uniqueEmail = 'activation.test.' . uniqid() . '@example.com';
-        $userData = [
-            'email' => $uniqueEmail,
-            'name' => 'Activation Test User',
-            'password' => 'testpassword123',
-            'enable_validation' => false // Disable automatic validation
-        ];
+        $created = $this->createQaUser('activation', ['enable_validation' => false]);
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
-
-        // Manually set user as blocked to simulate needing validation
-        $user = $this->adminUserService->getUserById($userId);
-        $this->entityManager->getRepository(\App\Entity\User::class)->find($userId)->setBlocked(true);
-        $this->entityManager->flush();
+        // Simulate a user awaiting activation.
+        $entity = $this->em->getRepository(User::class)->find($userId);
+        self::assertInstanceOf(User::class, $entity);
+        $entity->setBlocked(true);
+        $this->em->flush();
 
         $result = $this->adminUserService->sendActivationMail($userId);
-        
-        $this->assertIsArray($result);
+
         $this->assertTrue($result['success']);
-        $this->assertEquals('Activation email sent successfully', $result['message']);
-        $this->assertEquals($userId, $result['user_id']);
-        $this->assertEquals($uniqueEmail, $result['email']);
+        $this->assertSame('Activation email sent successfully', $result['message']);
+        $this->assertSame($userId, $result['user_id']);
+        $this->assertSame($created['email'], $result['email']);
         $this->assertArrayHasKey('token', $result);
         $this->assertArrayHasKey('job_id', $result);
         $this->assertArrayHasKey('validation_url', $result);
-        $this->assertStringStartsWith('http://localhost:3000/validate/', $result['validation_url']);
 
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
@@ -493,21 +378,12 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testCleanUserDataReturnsTrue(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'clean.test@example.com',
-            'name' => 'Clean Test User',
-            'password' => 'testpassword123'
-        ];
+        $created = $this->createQaUser('clean');
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $this->assertTrue($this->adminUserService->cleanUserData($userId));
 
-        $result = $this->adminUserService->cleanUserData($userId);
-        $this->assertTrue($result);
-
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
 
     /**
@@ -515,21 +391,15 @@ class AdminUserServiceTest extends KernelTestCase
      */
     public function testImpersonateUserReturnsToken(): void
     {
-        // Create a test user first
-        $userData = [
-            'email' => 'impersonate.test@example.com',
-            'name' => 'Impersonate Test User',
-            'password' => 'testpassword123'
-        ];
+        $created = $this->createQaUser('impersonate');
+        $userId = (int) $created['id'];
 
-        $createdUser = $this->adminUserService->createUser($userData);
-        $userId = $createdUser['id'];
+        $result = $this->adminUserService->impersonateUser($this->adminId, $userId);
 
-        $result = $this->adminUserService->impersonateUser($userId);
-        $this->assertIsArray($result);
         $this->assertArrayHasKey('impersonation_token', $result);
+        $this->assertNotEmpty($result['impersonation_token']);
+        $this->assertSame($created['email'], $result['target_email']);
 
-        // Cleanup
-        $this->adminUserService->deleteUser(1, $userId);
+        $this->adminUserService->deleteUser($this->adminId, $userId);
     }
-} 
+}

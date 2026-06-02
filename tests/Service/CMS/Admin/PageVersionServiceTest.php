@@ -101,9 +101,9 @@ class PageVersionServiceTest extends KernelTestCase
         $this->entityManager->refresh($page);
         $this->assertEquals($version->getId(), $page->getPublishedVersionId());
 
-        // Cleanup
-        $page->setPublishedVersionId(null);
-        $this->entityManager->persist($page);
+        // Cleanup: the published pointer is managed through the service
+        // (the direct Page::setPublishedVersionId setter no longer exists).
+        $this->pageVersionService->unpublishPage($pageId);
         $this->entityManager->remove($version);
         $this->entityManager->flush();
     }

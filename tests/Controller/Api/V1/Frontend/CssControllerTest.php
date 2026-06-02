@@ -45,9 +45,13 @@ class CssControllerTest extends BaseControllerTest
         // Assert classes array is not empty (should have fallback classes at minimum)
         $this->assertGreaterThan(0, count($responseData['data']['classes']));
         
-        // Assert all classes are strings
+        // Each class is a selectable option object: { value, text }.
         foreach ($responseData['data']['classes'] as $class) {
-            $this->assertIsString($class);
+            $this->assertIsArray($class);
+            $this->assertArrayHasKey('value', $class);
+            $this->assertArrayHasKey('text', $class);
+            $this->assertIsString($class['value']);
+            $this->assertIsString($class['text']);
         }
     }
 
@@ -80,10 +84,11 @@ class CssControllerTest extends BaseControllerTest
         // Just verify we get some valid CSS classes
         $this->assertGreaterThan(0, count($classes), "Should return at least one CSS class");
         
-        // Check that all classes are valid strings
+        // Check that all classes are valid option objects with a non-empty value
         foreach ($classes as $class) {
-            $this->assertIsString($class, "Each class should be a string");
-            $this->assertNotEmpty($class, "Each class should not be empty");
+            $this->assertIsArray($class, "Each class should be an option object");
+            $this->assertArrayHasKey('value', $class, "Each class must expose a value");
+            $this->assertNotEmpty($class['value'], "Each class value should not be empty");
         }
     }
 } 

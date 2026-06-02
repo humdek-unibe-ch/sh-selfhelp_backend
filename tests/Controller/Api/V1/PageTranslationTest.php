@@ -42,8 +42,10 @@ class PageTranslationTest extends BaseControllerTest
      */
     public function testGetPagesWithLanguageId(): void
     {
-        // Make request to get pages with language ID 2 (English)
-        $this->client->request('GET', '/cms-api/v1/pages/2');
+        // English is language id 3 (en-GB). Pages filtered by language use the
+        // dedicated /pages/language/{language_id} route ( /pages/{page_id} is
+        // a single page by numeric id).
+        $this->client->request('GET', '/cms-api/v1/pages/language/3');
         
         $response = $this->client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
@@ -64,8 +66,8 @@ class PageTranslationTest extends BaseControllerTest
      */
     public function testGetPagesWithGermanLanguageId(): void
     {
-        // Make request to get pages with German language ID (assuming ID 3 is German)
-        $this->client->request('GET', '/cms-api/v1/pages/3');
+        // German is language id 2 (de-CH).
+        $this->client->request('GET', '/cms-api/v1/pages/language/2');
         
         $response = $this->client->getResponse();
         $this->assertSame(200, $response->getStatusCode());
@@ -89,8 +91,8 @@ class PageTranslationTest extends BaseControllerTest
         // First login as admin to get access token
         $accessToken = $this->getAdminAccessToken();
         
-        // Make request to get admin pages with language ID 2
-        $this->client->request('GET', '/cms-api/v1/admin/pages/2', [], [], [
+        // Admin pages filtered by language use /admin/pages/language/{language_id}.
+        $this->client->request('GET', '/cms-api/v1/admin/pages/language/2', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $accessToken,
             'CONTENT_TYPE' => 'application/json'
         ]);
@@ -102,10 +104,11 @@ class PageTranslationTest extends BaseControllerTest
         $this->assertArrayHasKey('data', $responseData);
         $this->assertIsArray($responseData['data']);
         
-        // Check if pages have title field (if any pages exist)
+        // Admin page list items follow the _admin_page_definition shape
+        // (keyword/id_pages/crud), not the public-rendered "title" shape.
         if (!empty($responseData['data'])) {
             $firstPage = $responseData['data'][0];
-            $this->assertArrayHasKey('title', $firstPage);
+            $this->assertArrayHasKey('keyword', $firstPage);
         }
     }
 
@@ -123,8 +126,8 @@ class PageTranslationTest extends BaseControllerTest
             $firstPage = $responseData['data'][0];
             $pageKeyword = $firstPage['keyword'];
             
-            // Now get the specific page with language_id parameter
-            $this->client->request('GET', '/cms-api/v1/pages/' . $pageKeyword . '?language_id=2');
+            // Now get the specific page with language_id parameter (keyword lookup)
+            $this->client->request('GET', '/cms-api/v1/pages/by-keyword/' . $pageKeyword . '?language_id=2');
             
             $pageResponse = $this->client->getResponse();
             $this->assertSame(200, $pageResponse->getStatusCode());

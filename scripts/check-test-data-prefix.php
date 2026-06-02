@@ -46,9 +46,7 @@ $strict = in_array('--all', array_slice($argv, 1), true);
  */
 const LEGACY_ALLOWLIST = [
     'tests/Service/Auth/MailTemplateServiceTest.php',
-    'tests/Service/CMS/Admin/AdminUserServiceTest.php',
     'tests/Service/Core/InterpolationServiceTest.php',
-    'tests/Controller/Api/V1/AdminUserControllerTest.php',
     'tests/Controller/Api/V1/AdminPageControllerTest.php',
 ];
 

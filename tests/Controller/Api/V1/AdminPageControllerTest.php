@@ -15,18 +15,21 @@ class AdminPageControllerTest extends BaseControllerTest
 {
     use ManagesTestPagesTrait; // Use the trait
     
-    private const TEST_PAGE_KEYWORD = "test_test";
+    private const TEST_PAGE_KEYWORD = "qa_test_test";
 
     /**
      * @group admin
      */
     public function testGetPageSections(): void
     {
-        // Authenticate as admin and request /cms-api/v1/admin/pages/home/sections
+        // Authenticate as admin and request sections for the seeded 'home' page.
+        // The admin API addresses pages by numeric id, so resolve the keyword first.
         $token = $this->getAdminAccessToken();
+        $homeId = $this->resolvePageIdByKeyword('home');
+        $this->assertNotNull($homeId, "Seeded 'home' page not found. Run: composer test:reset-db");
         $this->client->request(
             'GET',
-            '/cms-api/v1/admin/pages/home/sections',
+            '/cms-api/v1/admin/pages/' . $homeId . '/sections',
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -80,11 +83,13 @@ class AdminPageControllerTest extends BaseControllerTest
      */
     public function testGetPageFields(): void
     {
-        // Authenticate as admin and request page fields for 'home' page
+        // Authenticate as admin and request page fields for the seeded 'home' page (by id).
         $token = $this->getAdminAccessToken();
+        $homeId = $this->resolvePageIdByKeyword('home');
+        $this->assertNotNull($homeId, "Seeded 'home' page not found. Run: composer test:reset-db");
         $this->client->request(
             'GET',
-            '/cms-api/v1/admin/pages/home',
+            '/cms-api/v1/admin/pages/' . $homeId,
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -130,11 +135,13 @@ class AdminPageControllerTest extends BaseControllerTest
 
         try {
             $token = $this->getAdminAccessToken();
+            $pageId = $this->resolvePageIdByKeyword(self::TEST_PAGE_KEYWORD);
+            $this->assertNotNull($pageId, 'Created test page could not be resolved to an id');
             
             // First, get the page fields to find a valid field ID
             $this->client->request(
                 'GET',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -162,7 +169,7 @@ class AdminPageControllerTest extends BaseControllerTest
             // Send the basic update request
             $this->client->request(
                 'PUT',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
@@ -175,7 +182,7 @@ class AdminPageControllerTest extends BaseControllerTest
             // Verify the page was updated by fetching it
             $this->client->request(
                 'GET',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -212,6 +219,8 @@ class AdminPageControllerTest extends BaseControllerTest
 
         try {
             $token = $this->getAdminAccessToken();
+            $pageId = $this->resolvePageIdByKeyword(self::TEST_PAGE_KEYWORD);
+            $this->assertNotNull($pageId, 'Created test page could not be resolved to an id');
             
             // Try to update the page with invalid field IDs (fields that don't belong to the page)
             $updateData = [
@@ -230,7 +239,7 @@ class AdminPageControllerTest extends BaseControllerTest
             // Send the update request
             $this->client->request(
                 'PUT',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],

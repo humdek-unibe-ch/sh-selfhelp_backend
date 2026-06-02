@@ -122,7 +122,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         $first = $this->postInspect();
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode(), 'inspect must always return 200 (errors are reported in body).');
         $this->assertFalse($first['data']['ok']);
-        $this->assertSame('invalid', $first['data']['signatureStatus']);
+        $this->assertSame('invalid', $first['data']['signature']['status']);
         $this->assertIsArray($first['data']['signature']);
         $this->assertSame('invalid', $first['data']['signature']['status']);
         $this->assertSame(self::KEY_ID, $first['data']['signature']['keyId']);
@@ -138,7 +138,6 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             'trustedKeyBase64' => $this->publicKeyBase64,
         ]);
         $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
-        $this->assertSame('verified', $second['data']['signatureStatus']);
         $this->assertSame('verified', $second['data']['signature']['status']);
         $this->assertNull($second['data']['signature']['unknownKey'], 'unknownKey must clear on a successful verify.');
     }
@@ -159,7 +158,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         $this->assertNotNull($body, 'Response body must be JSON.');
-        $message = is_array($body) && isset($body['message']) ? (string) $body['message'] : '';
+        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
         $this->assertStringContainsString('trustedKeyBase64', $message);
     }
 
@@ -180,7 +179,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        $message = is_array($body) && isset($body['message']) ? (string) $body['message'] : '';
+        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
         $this->assertStringContainsString('32 bytes', $message);
     }
 
@@ -196,7 +195,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        $message = is_array($body) && isset($body['message']) ? (string) $body['message'] : '';
+        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
         $this->assertStringContainsString('must be provided together', $message);
     }
 
@@ -212,7 +211,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         );
         $this->assertSame(Response::HTTP_BAD_REQUEST, $this->client->getResponse()->getStatusCode());
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
-        $message = is_array($body) && isset($body['message']) ? (string) $body['message'] : '';
+        $message = is_array($body) && isset($body['error']) ? (string) $body['error'] : '';
         $this->assertStringContainsString('must be provided together', $message);
     }
 
@@ -253,6 +252,8 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
         $compatibility = $container->get(PluginCompatibilityValidator::class);
         /** @var PluginCapabilityValidator $capabilities */
         $capabilities = $container->get(PluginCapabilityValidator::class);
+        /** @var \App\Plugin\Lifecycle\PluginApiRouteSynchronizer $apiRouteSynchronizer */
+        $apiRouteSynchronizer = $container->get(\App\Plugin\Lifecycle\PluginApiRouteSynchronizer::class);
 
         // Pre-seeded verifier mirrors what the env-resolved verifier
         // would look like if SELFHELP_PLUGIN_TRUSTED_KEYS contained
@@ -274,6 +275,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             $compatibility,
             $capabilities,
             $envVerifier,
+            $apiRouteSynchronizer,
         );
 
         $upload = $this->uploadedArchive();
@@ -284,7 +286,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
 
         $this->assertSame(
             'verified',
-            $result['signatureStatus'],
+            $result['signature']['status'],
             'Env-pinned trusted key MUST win over a same-keyId per-request override. errors=' . json_encode($result['errors'] ?? []),
         );
         $this->assertNull($result['signature']['unknownKey']);
@@ -365,6 +367,13 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
                 'trustLevel' => 'reviewed',
                 'capabilities' => ['backendBundle', 'frontendStyles'],
             ],
+            // Connected archive: the backend Composer package is resolved from
+            // Packagist/VCS, the archive itself only ships the frontend bundle.
+            // The block is part of the canonical signed payload (see
+            // SignedPayloadBuilder + tests/fixtures/signed-payload), so it must
+            // be present in the manifest for the validator to re-derive
+            // byte-equality.
+            'archive' => ['mode' => 'connected'],
         ];
         file_put_contents(
             $stagingDir . '/plugin.json',
@@ -379,6 +388,9 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             'runtime' => ['entrypointUrl' => 'artifacts/plugin.esm.js', 'format' => 'esm'],
             'checksums' => ['frontendEsm' => 'sha256-' . $esmHash],
             'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0', 'php' => '^8.4'],
+            // Matches the manifest's connected archive block so the host's
+            // PluginArchiveValidator recomputes the identical canonical payload.
+            'archive' => ['mode' => 'connected'],
         ]);
 
         $signature = base64_encode(sodium_crypto_sign_detached($signedPayload, $this->privateKey));
