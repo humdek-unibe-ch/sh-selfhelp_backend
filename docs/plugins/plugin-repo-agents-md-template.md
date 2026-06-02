@@ -47,6 +47,8 @@ When editing files in this plugin repo, also re-read:
 
 The canonical Multi-Repository AGENTS.md Rule lives at `sh-selfhelp_backend/docs/plugins/multi-repo-agents-md.md`. All paths are repository-relative inside the operator's workspace; never hard-code absolute paths.
 
+For how your plugin's `compatibility` block lines up with the host CMS version, the host plugin-API version and `@selfhelp/shared`, see the [Cross-repo compatibility matrix](../developer/cross-repo-compatibility-matrix.md) (and [Versioning & Compatibility](./versioning-and-compatibility.md)). Bump your plugin version and `compatibility` ranges in lockstep with the contracts you consume.
+
 ## Extension points only
 
 Plugins may only extend SelfHelp through documented extension points:

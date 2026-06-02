@@ -204,8 +204,18 @@ final class Version20260602081706RoundTripTest extends MigrationRoundTripTestCas
 - `.github/workflows/plugin-host-check.yml` — static analysis + schema + migration + plugin-host gate.
 - `.github/workflows/migration-test.yml` — migration round-trip gate (release-tier / when migrations change): runs `composer test:migration` against an isolated throwaway DB.
 - `.github/workflows/post-deploy-smoke.yml` — **post-deploy tier** (plan §18.3). Reuses the backend-tests service/env setup, resets the DB (migrate + seed), and runs `composer test:smoke` — now including `HealthSmokeTest`, which hits the public `/cms-api/v1/health` probe, performs a real qa.admin login, round-trips a throwaway qa page (create → delete), executes a due scheduled job to `done`, and asserts one `acl-changed` Mercure publish, all under the 60s budget. Invoke it from the deployment pipeline (`workflow_dispatch` with the deployed `ref`) right after a release is promoted; roll back on failure.
+- `.github/workflows/ecosystem-compat.yml` — **cross-repo tier** (nightly + `workflow_dispatch`, not a PR gate). Checks the repos *together*: builds `@selfhelp/shared`, runs schema parity against the backend, boots the backend smoke + golden suites, and type-checks/tests the frontend and mobile against the **unreleased** shared build. Catches "green alone, broken together" regressions before publishing. See [Cross-repo compatibility matrix](./cross-repo-compatibility-matrix.md).
 
 Keep them green before merging.
+
+> **CI shape note (accepted deviation).** The original plan suggested extending
+> the existing plugin-check workflows in place. The implemented gates are split
+> into focused per-concern workflows (`backend-tests`, `core-backend-check`,
+> `migration-test`, `plugin-host-check` in the backend; `shared-tests`,
+> `frontend-tests`, `plugin-mobile-check`, etc. in the sibling repos) plus the
+> cross-repo `ecosystem-compat`. This is intentional: each workflow owns one
+> quality gate, runs on its own triggers, and fails with a focused signal. The
+> deviation is accepted; do not consolidate them back without a clear reason.
 
 ### Branch protection (required checks)
 

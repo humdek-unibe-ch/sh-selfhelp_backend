@@ -403,7 +403,7 @@ Required-before-coding checklist for multi-repo work:
 - [ ] Run validation commands from the matching repository.
 - [ ] Do not mix backend, frontend, shared, mobile, and plugin rules.
 
-Canonical document: `docs/plugins/multi-repo-agents-md.md`. Plugin repo `AGENTS.md` template: `docs/plugins/plugin-repo-agents-md-template.md`.
+Canonical document: `docs/plugins/multi-repo-agents-md.md`. Plugin repo `AGENTS.md` template: `docs/plugins/plugin-repo-agents-md-template.md`. Cross-repo version alignment (how `@selfhelp/shared` semver anchors backend/frontend/mobile/plugin compatibility, and what to update when a contract changes): `docs/developer/cross-repo-compatibility-matrix.md`.
 
 ### Extension points only
 
