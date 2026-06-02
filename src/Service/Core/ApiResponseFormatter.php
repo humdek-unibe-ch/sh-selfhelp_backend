@@ -67,6 +67,8 @@ class ApiResponseFormatter
         if ($this->validateResponseSchema && $responseSchemaName !== null) {
             try {
                 // Deep convert arrays to objects for proper JSON Schema validation
+                // The response envelope is always an associative array, so the result is a stdClass.
+                /** @var object $responseDataForValidation */
                 $responseDataForValidation = $this->arrayToObject($responseData);
 
                 // Validate the entire responseData object
@@ -100,7 +102,7 @@ class ApiResponseFormatter
      * @param string $error The error message
      * @param int $status The HTTP status code
      * @param mixed $data Additional error data
-     * @param array|null $validationErrors Optional validation errors
+     * @param array<array-key, mixed>|null $validationErrors Optional validation errors
      * @return JsonResponse The formatted response
      */
     public function formatError(string $error, int $status = Response::HTTP_BAD_REQUEST, $data = null, ?array $validationErrors = null): JsonResponse
@@ -129,6 +131,8 @@ class ApiResponseFormatter
         if ($this->validateResponseSchema) {
             try {
                 // Deep convert arrays to objects for proper JSON Schema validation
+                // The response envelope is always an associative array, so the result is a stdClass.
+                /** @var object $responseDataForValidation */
                 $responseDataForValidation = $this->arrayToObject($responseData);
                 
                 // Determine which schema to use based on status code

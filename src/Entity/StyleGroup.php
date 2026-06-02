@@ -16,8 +16,14 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'uq_style_groups_name', columns: ['name'])]
 class StyleGroup
 {
+    public function __construct()
+    {
+        $this->styles = new \Doctrine\Common\Collections\ArrayCollection();
+    }
+
+    /** @var \Doctrine\Common\Collections\Collection<int, Style> */
     #[ORM\OneToMany(mappedBy: 'group', targetEntity: Style::class)]
-    private ?\Doctrine\Common\Collections\Collection $styles = null;
+    private \Doctrine\Common\Collections\Collection $styles;
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column(name: 'id', type: 'integer')]
@@ -73,6 +79,7 @@ class StyleGroup
         return $this;
     }
 
+    /** @return \Doctrine\Common\Collections\Collection<int, Style>|null */
     public function getStyles(): ?\Doctrine\Common\Collections\Collection
     {
         return $this->styles;
@@ -80,9 +87,6 @@ class StyleGroup
 
     public function addStyle(Style $style): static
     {
-        if (!$this->styles) {
-            $this->styles = new \Doctrine\Common\Collections\ArrayCollection();
-        }
         if (!$this->styles->contains($style)) {
             $this->styles[] = $style;
             $style->setGroup($this);
@@ -92,7 +96,7 @@ class StyleGroup
 
     public function removeStyle(Style $style): static
     {
-        if ($this->styles && $this->styles->contains($style)) {
+        if ($this->styles->contains($style)) {
             $this->styles->removeElement($style);
             if ($style->getGroup() === $this) {
                 $style->setGroup(null);

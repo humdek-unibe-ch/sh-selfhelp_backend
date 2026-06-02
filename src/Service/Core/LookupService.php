@@ -235,7 +235,8 @@ final class LookupService
      */
     private function mergePluginLookupContributions(string $typeCode, array $persisted): array
     {
-        $event = $this->eventDispatcher->dispatch(new LookupRegistryEvent($typeCode));
+        $event = new LookupRegistryEvent($typeCode);
+        $this->eventDispatcher->dispatch($event);
         $contributions = $event->getContributions();
         if ($contributions === []) {
             return $persisted;
@@ -349,15 +350,19 @@ final class LookupService
             ->getItem(
                 "lookup-id_by_type_and_code_{$typeCode}_{$lookupCode}",
                 function () use ($typeCode, $lookupCode) {
-                    return $this->lookupRepository->createQueryBuilder('l')
+                    $lookup = $this->lookupRepository->createQueryBuilder('l')
                         ->where('l.typeCode = :typeCode')
                         ->andWhere('l.lookupCode = :lookupCode')
                         ->setParameter('typeCode', $typeCode)
                         ->setParameter('lookupCode', $lookupCode)
                         ->getQuery()
-                        ->getOneOrNullResult()->getId();
+                        ->getOneOrNullResult();
+                    return $lookup instanceof Lookup ? $lookup->getId() : null;
                 }
             );
+        if (!is_int($lookup_id)) {
+            return null;
+        }
         return $this->findById($lookup_id);
     }
 
@@ -380,14 +385,15 @@ final class LookupService
      */
     public function getLookupCodeById(int $id): ?string
     {
-        return $this->cache
+        $lookup = $this->cache
             ->withCategory(CacheService::CATEGORY_LOOKUPS)
             ->getItem(
                 "lookup_code_by_id_{$id}",
                 function () use ($id) {
                     return $this->lookupRepository->find($id);
                 }
-            )->getLookupCode();
+            );
+        return $lookup instanceof Lookup ? $lookup->getLookupCode() : null;
     }
 
 }

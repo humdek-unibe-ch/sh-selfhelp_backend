@@ -33,46 +33,85 @@ final class PluginManifest
     {
     }
 
+    /**
+     * Annotation-only string narrowing that preserves the previous inline
+     * `(string) $value` casts: for the scalar values the manifest schema
+     * guarantees the result is identical, and the cast itself is unchanged
+     * at runtime. Non-scalars (impossible for these schema-validated
+     * fields) collapse to '' instead of triggering a cast warning.
+     *
+     * @param mixed $value
+     */
+    private static function asString($value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
+    }
+
+    /**
+     * Read a value from the raw manifest by key path, returning null when an
+     * intermediate segment is absent or not an array. Mirrors the previous
+     * `$this->data['a']['b'] ?? null` reads, which already tolerated missing
+     * sub-trees through the null-coalescing operator.
+     *
+     * @return mixed
+     */
+    private function raw(string ...$keys)
+    {
+        $value = $this->data;
+        foreach ($keys as $key) {
+            if (!is_array($value) || !array_key_exists($key, $value)) {
+                return null;
+            }
+            $value = $value[$key];
+        }
+
+        return $value;
+    }
+
     public function getPluginId(): string
     {
-        return (string) $this->data['id'];
+        return self::asString($this->data['id'] ?? null);
     }
 
     public function getName(): string
     {
-        return (string) $this->data['name'];
+        return self::asString($this->data['name'] ?? null);
     }
 
     public function getDescription(): ?string
     {
-        return isset($this->data['description']) ? (string) $this->data['description'] : null;
+        $description = $this->data['description'] ?? null;
+        return $description !== null ? self::asString($description) : null;
     }
 
     public function getVersion(): string
     {
-        return (string) $this->data['version'];
+        return self::asString($this->data['version'] ?? null);
     }
 
     public function getPluginApiVersion(): string
     {
-        return (string) $this->data['pluginApiVersion'];
+        return self::asString($this->data['pluginApiVersion'] ?? null);
     }
 
     public function getCmsCompatibilityRange(): string
     {
-        return (string) ($this->data['compatibility']['selfhelp'] ?? '*');
+        return self::asString($this->raw('compatibility', 'selfhelp') ?? '*');
     }
 
     public function getTrustLevel(): string
     {
-        return (string) ($this->data['security']['trustLevel'] ?? 'untrusted');
+        return self::asString($this->raw('security', 'trustLevel') ?? 'untrusted');
     }
 
     /** @return array<int,string> */
     public function getCapabilities(): array
     {
-        $caps = $this->data['security']['capabilities'] ?? [];
-        return is_array($caps) ? array_values(array_map('strval', $caps)) : [];
+        $caps = $this->raw('security', 'capabilities') ?? [];
+        if (!is_array($caps)) {
+            return [];
+        }
+        return array_values(array_map(static fn ($value): string => self::asString($value), $caps));
     }
 
     public function hasCapability(string $capability): bool
@@ -84,14 +123,24 @@ final class PluginManifest
     public function getDependencies(): array
     {
         $deps = $this->data['dependencies'] ?? [];
-        return is_array($deps) ? array_values($deps) : [];
+        if (!is_array($deps)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($deps);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getConflicts(): array
     {
         $conflicts = $this->data['conflicts'] ?? [];
-        return is_array($conflicts) ? array_values($conflicts) : [];
+        if (!is_array($conflicts)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($conflicts);
+        return $list;
     }
 
     /**
@@ -99,7 +148,7 @@ final class PluginManifest
      */
     public function getBackendPackage(): ?string
     {
-        $pkg = $this->data['backend']['composer']['package'] ?? null;
+        $pkg = $this->raw('backend', 'composer', 'package');
         return is_string($pkg) && $pkg !== '' ? $pkg : null;
     }
 
@@ -108,7 +157,7 @@ final class PluginManifest
      */
     public function getBackendComposerVersion(): ?string
     {
-        $v = $this->data['backend']['composer']['version'] ?? null;
+        $v = $this->raw('backend', 'composer', 'version');
         return is_string($v) && $v !== '' ? $v : null;
     }
 
@@ -117,7 +166,7 @@ final class PluginManifest
      */
     public function getBackendComposerRepository(): ?array
     {
-        $repo = $this->data['backend']['composer']['repository'] ?? null;
+        $repo = $this->raw('backend', 'composer', 'repository');
         if (!is_array($repo)) {
             return null;
         }
@@ -135,7 +184,8 @@ final class PluginManifest
 
     public function getBackendBundleClass(): ?string
     {
-        return isset($this->data['backend']['bundleClass']) ? (string) $this->data['backend']['bundleClass'] : null;
+        $bundleClass = $this->raw('backend', 'bundleClass');
+        return $bundleClass !== null ? self::asString($bundleClass) : null;
     }
 
     /**
@@ -148,7 +198,7 @@ final class PluginManifest
      */
     public function getBackendMigrationsNamespace(): ?string
     {
-        $ns = $this->data['backend']['migrationsNamespace'] ?? null;
+        $ns = $this->raw('backend', 'migrationsNamespace');
         if (is_string($ns) && $ns !== '') {
             return $ns;
         }
@@ -171,48 +221,50 @@ final class PluginManifest
      */
     public function getFrontendRuntimeEntrypoint(): ?string
     {
-        $v = $this->data['frontend']['runtime']['entrypoint'] ?? null;
+        $v = $this->raw('frontend', 'runtime', 'entrypoint');
         return is_string($v) && $v !== '' ? $v : null;
     }
 
     public function getFrontendRuntimeStylesheet(): ?string
     {
-        $v = $this->data['frontend']['runtime']['stylesheet'] ?? null;
+        $v = $this->raw('frontend', 'runtime', 'stylesheet');
         return is_string($v) && $v !== '' ? $v : null;
     }
 
     public function getFrontendRuntimeFormat(): string
     {
-        $v = $this->data['frontend']['runtime']['format'] ?? null;
+        $v = $this->raw('frontend', 'runtime', 'format');
         return is_string($v) && $v !== '' ? $v : 'esm';
     }
 
     public function getFrontendRuntimeIntegrity(): ?string
     {
-        $v = $this->data['frontend']['runtime']['integrity'] ?? null;
+        $v = $this->raw('frontend', 'runtime', 'integrity');
         return is_string($v) && $v !== '' ? $v : null;
     }
 
     public function getFrontendRuntimeStylesheetIntegrity(): ?string
     {
-        $v = $this->data['frontend']['runtime']['stylesheetIntegrity'] ?? null;
+        $v = $this->raw('frontend', 'runtime', 'stylesheetIntegrity');
         return is_string($v) && $v !== '' ? $v : null;
     }
 
     public function getFrontendDevEntrypointUrl(): ?string
     {
-        $v = $this->data['frontend']['runtime']['devEntrypointUrl'] ?? null;
+        $v = $this->raw('frontend', 'runtime', 'devEntrypointUrl');
         return is_string($v) && $v !== '' ? $v : null;
     }
 
     public function getMobilePackage(): ?string
     {
-        return isset($this->data['mobile']['package']) ? (string) $this->data['mobile']['package'] : null;
+        $package = $this->raw('mobile', 'package');
+        return $package !== null ? self::asString($package) : null;
     }
 
     public function getMobilePackageVersion(): ?string
     {
-        return isset($this->data['mobile']['version']) ? (string) $this->data['mobile']['version'] : null;
+        $version = $this->raw('mobile', 'version');
+        return $version !== null ? self::asString($version) : null;
     }
 
     /**
@@ -223,7 +275,7 @@ final class PluginManifest
      */
     public function getSigningRequired(): bool
     {
-        return (bool) ($this->data['security']['signing']['required'] ?? false);
+        return (bool) ($this->raw('security', 'signing', 'required') ?? false);
     }
 
     /**
@@ -231,87 +283,143 @@ final class PluginManifest
      */
     public function getSigningAcceptedKeyIds(): array
     {
-        $ids = $this->data['security']['signing']['acceptedKeyIds'] ?? [];
-        return is_array($ids) ? array_values(array_map('strval', $ids)) : [];
+        $ids = $this->raw('security', 'signing', 'acceptedKeyIds') ?? [];
+        if (!is_array($ids)) {
+            return [];
+        }
+        return array_values(array_map(static fn ($value): string => self::asString($value), $ids));
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getPermissions(): array
     {
         $perms = $this->data['permissions'] ?? [];
-        return is_array($perms) ? array_values($perms) : [];
+        if (!is_array($perms)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($perms);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getStyles(): array
     {
         $styles = $this->data['styles'] ?? [];
-        return is_array($styles) ? array_values($styles) : [];
+        if (!is_array($styles)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($styles);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getApiRoutes(): array
     {
         $routes = $this->data['apiRoutes'] ?? [];
-        return is_array($routes) ? array_values($routes) : [];
+        if (!is_array($routes)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($routes);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getAdminPages(): array
     {
         $pages = $this->data['adminPages'] ?? [];
-        return is_array($pages) ? array_values($pages) : [];
+        if (!is_array($pages)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($pages);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getRealtimeTopics(): array
     {
         $topics = $this->data['realtimeTopics'] ?? [];
-        return is_array($topics) ? array_values($topics) : [];
+        if (!is_array($topics)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($topics);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getFeatureFlags(): array
     {
         $flags = $this->data['featureFlags'] ?? [];
-        return is_array($flags) ? array_values($flags) : [];
+        if (!is_array($flags)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($flags);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getLookupExtensions(): array
     {
-        $lookups = $this->data['lookups']['extends'] ?? [];
-        return is_array($lookups) ? array_values($lookups) : [];
+        $lookups = $this->raw('lookups', 'extends') ?? [];
+        if (!is_array($lookups)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($lookups);
+        return $list;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getScheduledJobs(): array
     {
         $jobs = $this->data['scheduledJobs'] ?? [];
-        return is_array($jobs) ? array_values($jobs) : [];
+        if (!is_array($jobs)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($jobs);
+        return $list;
     }
 
     /** @return array<string, array<string>> */
     public function getCspRules(): array
     {
-        $csp = $this->data['security']['cspRules'] ?? [];
-        return is_array($csp) ? $csp : [];
+        $csp = $this->raw('security', 'cspRules') ?? [];
+        if (!is_array($csp)) {
+            return [];
+        }
+        /** @var array<string, array<string>> $csp */
+        return $csp;
     }
 
     /** @return array<int, array<string,mixed>> */
     public function getExternalHosts(): array
     {
-        $hosts = $this->data['security']['externalHosts'] ?? [];
-        return is_array($hosts) ? array_values($hosts) : [];
+        $hosts = $this->raw('security', 'externalHosts') ?? [];
+        if (!is_array($hosts)) {
+            return [];
+        }
+        /** @var array<int, array<string,mixed>> $list */
+        $list = array_values($hosts);
+        return $list;
     }
 
     /**
-     * @return array{read?: array<int,string>, write?: array<int,string>, delete?: array<int,string>}
+     * @return array<string, mixed>
      */
     public function getDataAccess(): array
     {
         $access = $this->data['dataAccess'] ?? [];
-        return is_array($access) ? $access : [];
+        if (!is_array($access)) {
+            return [];
+        }
+        /** @var array<string, mixed> $access */
+        return $access;
     }
 
     /**
@@ -321,7 +429,10 @@ final class PluginManifest
     {
         $access = $this->getDataAccess();
         $list = $access['read'] ?? [];
-        return is_array($list) ? array_values(array_map('strval', $list)) : [];
+        if (!is_array($list)) {
+            return [];
+        }
+        return array_values(array_map(static fn ($value): string => self::asString($value), $list));
     }
 
     /**
@@ -331,7 +442,10 @@ final class PluginManifest
     {
         $access = $this->getDataAccess();
         $list = $access['write'] ?? [];
-        return is_array($list) ? array_values(array_map('strval', $list)) : [];
+        if (!is_array($list)) {
+            return [];
+        }
+        return array_values(array_map(static fn ($value): string => self::asString($value), $list));
     }
 
     /**
@@ -341,7 +455,10 @@ final class PluginManifest
     {
         $access = $this->getDataAccess();
         $list = $access['ownedTables'] ?? [];
-        return is_array($list) ? array_values(array_map('strval', $list)) : [];
+        if (!is_array($list)) {
+            return [];
+        }
+        return array_values(array_map(static fn ($value): string => self::asString($value), $list));
     }
 
     /**
@@ -376,7 +493,8 @@ final class PluginManifest
      */
     public function getHealthEndpoint(): ?string
     {
-        return isset($this->data['healthEndpoint']) ? (string) $this->data['healthEndpoint'] : null;
+        $healthEndpoint = $this->data['healthEndpoint'] ?? null;
+        return $healthEndpoint !== null ? self::asString($healthEndpoint) : null;
     }
 
     /** @return RawManifest */

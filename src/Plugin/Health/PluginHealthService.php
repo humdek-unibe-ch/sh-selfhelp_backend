@@ -76,7 +76,8 @@ final class PluginHealthService
      */
     public function getRealtimeTopicCatalog(): array
     {
-        $event = $this->eventDispatcher->dispatch(new PluginRealtimeTopicRegistryEvent());
+        $event = new PluginRealtimeTopicRegistryEvent();
+        $this->eventDispatcher->dispatch($event);
         return $event->getTopics();
     }
 
@@ -223,7 +224,7 @@ final class PluginHealthService
         foreach ($plugins as $plugin) {
             $manifest = new PluginManifest($plugin->getManifestJson());
             $declared = array_map(
-                static fn(array $t): string => (string) ($t['key'] ?? ''),
+                static fn(array $t): string => is_scalar($t['key'] ?? null) ? (string) $t['key'] : '',
                 $manifest->getRealtimeTopics(),
             );
             $declared = array_values(array_filter($declared, static fn(string $k): bool => $k !== ''));

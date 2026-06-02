@@ -79,9 +79,11 @@ final class StandaloneArchiveComposerHelper
             (string) $resolved->archiveStagingDir,
             $manifestArray,
         );
+        $promotedId = $manifestArray['id'] ?? '';
+        $promotedVersion = $manifestArray['version'] ?? '';
         $promotedBackendDir = $this->archivePromoter->installedDir(
-            (string) ($manifestArray['id'] ?? ''),
-            (string) ($manifestArray['version'] ?? ''),
+            is_scalar($promotedId) ? (string) $promotedId : '',
+            is_scalar($promotedVersion) ? (string) $promotedVersion : '',
         ) . DIRECTORY_SEPARATOR . 'backend' . DIRECTORY_SEPARATOR . 'package';
         if (!is_dir($promotedBackendDir)) {
             $this->recorder->fail(

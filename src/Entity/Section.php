@@ -20,6 +20,11 @@ class Section
     #[ORM\Column(name: 'id', type: 'integer')]
     private ?int $id = null;
 
+    // Scalar mirror of the id_styles FK (also mapped via the $style
+    // association below). Kept because repository DQL projects/filters it
+    // by field name (e.g. `s.idStyles`); Doctrine hydrates it and DQL
+    // reads it, both invisible to PHPStan — see the documented
+    // property.onlyRead ignore in phpstan.dist.neon.
     #[ORM\Column(name: 'id_styles', type: 'integer')]
     private int $idStyles;
 
@@ -27,7 +32,7 @@ class Section
     private string $name;
 
     #[ORM\Column(name: 'debug', type: 'boolean', nullable: true, options: ['default' => 0])]
-    private bool $debug = false;
+    private ?bool $debug = false;
 
     #[ORM\Column(name: '`condition`', type: 'text', nullable: true, options: ['default' => null])]
     private ?string $condition = null;
@@ -50,11 +55,6 @@ class Section
         return $this->id;
     }
 
-    public function getIdStyles(): ?int
-    {
-        return $this->idStyles;
-    }
-
     public function getName(): ?string
     {
         return $this->name;
@@ -69,7 +69,7 @@ class Section
 
     public function isDebug(): bool
     {
-        return $this->debug;
+        return $this->debug ?? false;
     }
 
     public function setDebug(bool $debug): static

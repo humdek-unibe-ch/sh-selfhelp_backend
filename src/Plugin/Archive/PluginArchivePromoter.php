@@ -47,8 +47,8 @@ final class PluginArchivePromoter
         if (!is_dir($stagingDir)) {
             throw new PluginArchiveException(sprintf('Staging dir "%s" does not exist.', $stagingDir));
         }
-        $pluginId = (string) ($manifestArray['id'] ?? '');
-        $version = (string) ($manifestArray['version'] ?? '');
+        $pluginId = is_scalar($manifestArray['id'] ?? null) ? (string) $manifestArray['id'] : '';
+        $version = is_scalar($manifestArray['version'] ?? null) ? (string) $manifestArray['version'] : '';
         if ($pluginId === '' || $version === '') {
             throw new PluginArchiveException('Manifest must have id + version to promote artifacts.');
         }
@@ -77,10 +77,14 @@ final class PluginArchivePromoter
             },
         );
 
-        $manifestArray['frontend']['runtime']['entrypoint'] = $this->publicEntrypoint($pluginId, $version, 'plugin.esm.js');
+        $frontend = is_array($manifestArray['frontend'] ?? null) ? $manifestArray['frontend'] : [];
+        $runtime = is_array($frontend['runtime'] ?? null) ? $frontend['runtime'] : [];
+        $runtime['entrypoint'] = $this->publicEntrypoint($pluginId, $version, 'plugin.esm.js');
         if (is_file($publicDir . '/plugin.css')) {
-            $manifestArray['frontend']['runtime']['stylesheet'] = $this->publicEntrypoint($pluginId, $version, 'plugin.css');
+            $runtime['stylesheet'] = $this->publicEntrypoint($pluginId, $version, 'plugin.css');
         }
+        $frontend['runtime'] = $runtime;
+        $manifestArray['frontend'] = $frontend;
 
         return $manifestArray;
     }

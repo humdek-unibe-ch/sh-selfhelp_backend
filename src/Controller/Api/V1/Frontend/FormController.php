@@ -16,7 +16,6 @@ use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Auth\UserContextService;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -36,8 +35,7 @@ class FormController extends AbstractController
         private readonly FormFileUploadService $formFileUploadService,
         private readonly ApiResponseFormatter $apiResponseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly UserContextService $userContextService,
-        private readonly EntityManagerInterface $entityManager
+        private readonly UserContextService $userContextService
     ) {}
 
     /**
@@ -53,9 +51,9 @@ class FormController extends AbstractController
             if (str_starts_with($request->headers->get('Content-Type', ''), 'application/json')) {
                 // JSON request
                 $requestData = $this->validateRequest($request, 'requests/frontend/submit_form', $this->jsonSchemaValidationService);
-                $pageId = $requestData['page_id'];
-                $sectionId = $requestData['section_id'];
-                $formData = $requestData['form_data'];
+                $pageId = $this->asIntField($requestData, 'page_id');
+                $sectionId = $this->asIntField($requestData, 'section_id');
+                $formData = $this->asArrayField($requestData, 'form_data');
             } else {
                 // Multipart form data request
                 $pageId = (int) $request->request->get('page_id');
@@ -65,7 +63,7 @@ class FormController extends AbstractController
                 $formData = [];
                 foreach ($request->request->all() as $key => $value) {
                     if (!in_array($key, ['page_id', 'section_id', '__id_sections'])) {
-                        $formData[$key] = $value;
+                        $formData[(string) $key] = $value;
                     }
                 }
                 
@@ -78,7 +76,7 @@ class FormController extends AbstractController
             // Determine if user is authenticated
             $currentUser = $this->userContextService->getCurrentUser();
             $isAuthenticated = $currentUser !== null;
-            $userId = $currentUser ? $currentUser->getId() : 1; // Guest user fallback
+            $userId = $currentUser ? (int) $currentUser->getId() : 1; // Guest user fallback
 
             // Validate form submission
             if ($isAuthenticated) {
@@ -133,11 +131,11 @@ class FormController extends AbstractController
     /**
      * Process file uploads from form data
      *
-     * @param array $formData The form data
+     * @param array<string, mixed> $formData The form data
      * @param Request $request The HTTP request
      * @param int $userId The user ID
      * @param int $sectionId The section ID
-     * @return array The processed form data with file paths
+     * @return array<string, mixed> The processed form data with file paths
      */
     private function processFileUploads(array $formData, Request $request, int $userId, int $sectionId): array
     {
@@ -273,7 +271,7 @@ class FormController extends AbstractController
      * Parse file names from various formats
      *
      * @param mixed $value The value containing filenames (JSON string, array, or object)
-     * @return array Array of filenames
+     * @return list<string> Array of filenames
      * @throws \Exception If parsing fails
      */
     private function parseFileNames(mixed $value): array
@@ -291,27 +289,41 @@ class FormController extends AbstractController
             if (!is_array($decoded)) {
                 throw new \Exception('Invalid JSON format for file names');
             }
-            return array_filter($decoded, function($name) {
-                return is_string($name) && !empty(trim($name));
-            });
+            return $this->filterFileNames($decoded);
         }
 
         // Handle arrays directly
         if (is_array($value)) {
-            return array_filter($value, function($name) {
-                return is_string($name) && !empty(trim($name));
-            });
+            return $this->filterFileNames($value);
         }
 
         throw new \Exception('Invalid format for file names');
     }
 
     /**
+     * Keep only non-empty string filenames from a decoded list.
+     *
+     * @param array<array-key, mixed> $names
+     * @return list<string>
+     */
+    private function filterFileNames(array $names): array
+    {
+        $result = [];
+        foreach ($names as $name) {
+            if (is_string($name) && !empty(trim($name))) {
+                $result[] = $name;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * Find uploaded files that match the filenames in the form data
      *
-     * @param array $fileNames Array of expected filenames
-     * @param array $uploadedFiles Array of uploaded files
-     * @return array Array of matching UploadedFile objects keyed by field name
+     * @param list<string> $fileNames Array of expected filenames
+     * @param array<string, mixed> $uploadedFiles Array of uploaded files
+     * @return array<string, mixed> Array of matching UploadedFile objects keyed by field name
      */
     private function findMatchingUploadedFiles(array $fileNames, array $uploadedFiles): array
     {
@@ -330,10 +342,12 @@ class FormController extends AbstractController
                     foreach ($uploadedFile as $file) {
                         if ($file instanceof \Symfony\Component\HttpFoundation\File\UploadedFile &&
                             $file->getClientOriginalName() === $fileName) {
-                            if (!isset($matchingFiles[$fieldName])) {
-                                $matchingFiles[$fieldName] = [];
+                            $existing = $matchingFiles[$fieldName] ?? [];
+                            if (!is_array($existing)) {
+                                $existing = [$existing];
                             }
-                            $matchingFiles[$fieldName][] = $file;
+                            $existing[] = $file;
+                            $matchingFiles[$fieldName] = $existing;
                             break 2;
                         }
                     }
@@ -366,10 +380,10 @@ class FormController extends AbstractController
             if (str_starts_with($request->headers->get('Content-Type', ''), 'application/json')) {
                 // JSON request
                 $requestData = $this->validateRequest($request, 'requests/frontend/update_form', $this->jsonSchemaValidationService);
-                $pageId = $requestData['page_id'];
-                $sectionId = $requestData['section_id'];
-                $formData = $requestData['form_data'];
-                $updateBasedOn = $requestData['update_based_on'] ?? null;
+                $pageId = $this->asIntField($requestData, 'page_id');
+                $sectionId = $this->asIntField($requestData, 'section_id');
+                $formData = $this->asArrayField($requestData, 'form_data');
+                $updateBasedOn = $this->asNullableArrayField($requestData, 'update_based_on');
             } else {
                 // Multipart form data request
                 $pageId = (int) $request->request->get('page_id');
@@ -379,13 +393,20 @@ class FormController extends AbstractController
                 $formData = [];
                 foreach ($request->request->all() as $key => $value) {
                     if (!in_array($key, ['page_id', 'section_id', 'update_based_on', '__id_sections'])) {
-                        $formData[$key] = $value;
+                        $formData[(string) $key] = $value;
                     }
                 }
                 
                 // Handle update_based_on for multipart requests
                 $updateBasedOnJson = $request->request->get('update_based_on');
-                $updateBasedOn = $updateBasedOnJson ? json_decode($updateBasedOnJson, true) : null;
+                $decodedUpdateBasedOn = is_string($updateBasedOnJson) ? json_decode($updateBasedOnJson, true) : null;
+                $updateBasedOn = null;
+                if (is_array($decodedUpdateBasedOn)) {
+                    $updateBasedOn = [];
+                    foreach ($decodedUpdateBasedOn as $k => $v) {
+                        $updateBasedOn[(string) $k] = $v;
+                    }
+                }
                 
                 // Validate required fields
                 if (!$pageId || !$sectionId) {
@@ -397,7 +418,7 @@ class FormController extends AbstractController
             $validationResult = $this->formValidationService->validateFormSubmission($pageId, $sectionId, $formData);
 
             // Process file uploads if any file fields are present
-            $processedFormData = $this->processFileUploads($formData, $request, $currentUser->getId(), $sectionId);
+            $processedFormData = $this->processFileUploads($formData, $request, (int) $currentUser->getId(), $sectionId);
 
             // Update form data
             $recordId = $this->dataService->saveData(
@@ -458,9 +479,9 @@ class FormController extends AbstractController
 
             // Validate request schema (DELETE with JSON body)
             $requestData = $this->validateRequest($request, 'requests/frontend/delete_form', $this->jsonSchemaValidationService);
-            $recordId = (int) $requestData['record_id'];
-            $pageId = (int) $requestData['page_id'];
-            $sectionId = (int) $requestData['section_id'];
+            $recordId = $this->asIntField($requestData, 'record_id');
+            $pageId = $this->asIntField($requestData, 'page_id');
+            $sectionId = $this->asIntField($requestData, 'section_id');
 
             // Validate ACL delete access and that section belongs to page and is correct type
             $this->formValidationService->validateFormDeletion($pageId, $sectionId);

@@ -1,5 +1,16 @@
 # Versioning Strategy
 
+> ⚠️ **Document status.** The database-schema versioning mechanics described
+> below (a custom `version` table plus `db/update_scripts/NN_update_*.sql`
+> files) are the **legacy** SelfHelp approach and are kept for historical
+> context. The current backend versions the schema with **Doctrine
+> migrations** (`migrations/`, tracked in `doctrine_migration_versions`) —
+> see [Development Workflow](./14-development-workflow.md) and
+> [Database Design](./04-database-design.md). `db/legacy/*.sql` is deprecated
+> reference only. The **semantic-versioning concepts** (major = schema
+> change, minor/patch) and the **API `/cms-api/{version}` versioning** below
+> still apply.
+
 ## 🔄 Overview
 
 The SelfHelp Symfony Backend implements a comprehensive versioning strategy that covers database schema, API endpoints, and system components. This ensures smooth evolution of the system.

@@ -16,7 +16,6 @@ use App\Service\CMS\Admin\Traits\RelationshipManagerTrait;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
-use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
@@ -36,7 +35,6 @@ class SectionRelationshipService extends BaseService
         private readonly PositionManagementService $positionManagementService,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
-        private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly UserContextAwareService $userContextAwareService
@@ -53,7 +51,7 @@ class SectionRelationshipService extends BaseService
      * the single-section flow in a loop from the controller.
      *
      * @param int   $pageId   The ID of the page to attach the sections to
-     * @param array $sections Batch of section payloads. Each item must contain
+     * @param list<array<string, mixed>> $sections Batch of section payloads. Each item must contain
      *                        `sectionId` and may include `position` and
      *                        `oldParentSectionId`.
      * @return array<int, array{id: int, position: int|null, sectionId: int}>
@@ -80,9 +78,9 @@ class SectionRelationshipService extends BaseService
             $sectionRepository = $this->entityManager->getRepository(Section::class);
 
             foreach ($sections as $section) {
-                $sectionId = (int) $section['sectionId'];
-                $position = $section['position'] ?? null;
-                $oldParentSectionId = $section['oldParentSectionId'] ?? null;
+                $sectionId = $this->asInt($section['sectionId'] ?? null);
+                $position = $this->asIntOrNull($section['position'] ?? null);
+                $oldParentSectionId = $this->asIntOrNull($section['oldParentSectionId'] ?? null);
 
                 $childSection = $sectionRepository->find($sectionId);
                 if (!$childSection) {
@@ -104,7 +102,7 @@ class SectionRelationshipService extends BaseService
                 );
 
                 $results[] = [
-                    'id'        => $pageSection->getSection()->getId(),
+                    'id'        => (int) $pageSection->getSection()?->getId(),
                     'position'  => $pageSection->getPosition(),
                     'sectionId' => $sectionId,
                 ];
@@ -172,7 +170,7 @@ class SectionRelationshipService extends BaseService
      *
      * @param int   $pageId          The page the parent section belongs to
      * @param int   $parentSectionId The section to nest the child sections under
-     * @param array $sections        Batch of section payloads. Each item must
+     * @param list<array<string, mixed>> $sections        Batch of section payloads. Each item must
      *                               contain `sectionId` (or legacy `childSectionId`)
      *                               and may include `position`, `oldParentPageId`,
      *                               and `oldParentSectionId`.
@@ -199,10 +197,10 @@ class SectionRelationshipService extends BaseService
 
             $results = [];
             foreach ($sections as $section) {
-                $childSectionId = (int) ($section['sectionId'] ?? $section['childSectionId']);
-                $position = $section['position'] ?? null;
-                $oldParentPageId = $section['oldParentPageId'] ?? null;
-                $oldParentSectionId = $section['oldParentSectionId'] ?? null;
+                $childSectionId = $this->asInt($section['sectionId'] ?? $section['childSectionId'] ?? null);
+                $position = $this->asIntOrNull($section['position'] ?? null);
+                $oldParentPageId = $this->asIntOrNull($section['oldParentPageId'] ?? null);
+                $oldParentSectionId = $this->asIntOrNull($section['oldParentSectionId'] ?? null);
 
                 $childSection = $this->sectionRepository->find($childSectionId);
                 if (!$childSection) {
@@ -228,7 +226,7 @@ class SectionRelationshipService extends BaseService
                 );
 
                 $results[] = [
-                    'id'        => $sectionHierarchy->getChildSection()->getId(),
+                    'id'        => (int) $sectionHierarchy->getChildSection()?->getId(),
                     'position'  => $sectionHierarchy->getPosition(),
                     'sectionId' => $childSectionId,
                 ];
@@ -261,7 +259,7 @@ class SectionRelationshipService extends BaseService
             // Cache invalidation: parent + every touched child + page + lists
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $parentSection->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
@@ -320,7 +318,7 @@ class SectionRelationshipService extends BaseService
                 // Direct page section - just remove the association
                 $this->entityManager->remove($pageSection);
                 $this->entityManager->flush();
-                $this->positionManagementService->normalizePageSectionPositions($page->getId());
+                $this->positionManagementService->normalizePageSectionPositions((int) $page->getId());
 
                 // Page-level audit entry — the page tree was modified even
                 // though the section row itself still exists.
@@ -342,7 +340,7 @@ class SectionRelationshipService extends BaseService
                 // Invalidate page cache
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
                     ->invalidateAllListsInCategory();
@@ -359,7 +357,7 @@ class SectionRelationshipService extends BaseService
                 }
                 
                 // Store the section ID before removal for cache invalidation
-                $sectionIdToInvalid = $section->getId();
+                $sectionIdToInvalid = (int) $section->getId();
                 $sectionNameToInvalid = $section->getName();
 
                 // Log the deletion BEFORE removal so the entity snapshot is
@@ -398,7 +396,7 @@ class SectionRelationshipService extends BaseService
                 // Invalidate page and section caches
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_PAGES)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
                     ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionIdToInvalid);
@@ -418,7 +416,8 @@ class SectionRelationshipService extends BaseService
      * Remove multiple sections from a page
      * 
      * @param int $pageId The ID of the page
-     * @param array $sectionIds The List of IDs of the sections to remove
+     * @param list<int> $sectionIds The List of IDs of the sections to remove
+     * @return array<string, mixed>
      * @throws ServiceException If the relationship does not exist
      */
     public function bulkRemoveSections(int $pageId, array $sectionIds): array
@@ -479,6 +478,7 @@ class SectionRelationshipService extends BaseService
                     continue;
                 }
 
+                /** @var list<array<string, mixed>> $parentRows */
                 $parentRows = $this->entityManager
                     ->createQueryBuilder()
                     ->select('IDENTITY(sh.parentSection) AS parent_id')
@@ -490,7 +490,7 @@ class SectionRelationshipService extends BaseService
 
                 foreach ($parentRows as $parentRow) {
                     if (isset($parentRow['parent_id'])) {
-                        $parentSectionIdsToNormalize[] = (int) $parentRow['parent_id'];
+                        $parentSectionIdsToNormalize[] = $this->asInt($parentRow['parent_id']);
                     }
                 }
 
@@ -558,7 +558,7 @@ class SectionRelationshipService extends BaseService
             );
 
             if ($pageSectionsToRemove !== []) {
-                $this->positionManagementService->normalizePageSectionPositions($page->getId());
+                $this->positionManagementService->normalizePageSectionPositions((int) $page->getId());
             }
 
             foreach (array_unique($parentSectionIdsToNormalize) as $parentSectionId) {
@@ -641,27 +641,27 @@ class SectionRelationshipService extends BaseService
             // Invalidate section caches
             $parentSection = $this->sectionRepository->find($parentSectionId);
             $childSection = $this->sectionRepository->find($childSectionId);
-            if ($parentSection) {
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateItem("section_fields_{$parentSection->getId()}");
-            }
-            if ($childSection) {
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateItem("section_fields_{$childSection->getId()}");
-            }
 
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
 
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $parentSection->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $childSection->getId());
+            if ($parentSection) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateItem("section_fields_{$parentSection->getId()}");
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $parentSection->getId());
+            }
+            if ($childSection) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateItem("section_fields_{$childSection->getId()}");
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $childSection->getId());
+            }
 
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
@@ -738,10 +738,10 @@ class SectionRelationshipService extends BaseService
             // Invalidate page and section caches
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
@@ -804,10 +804,10 @@ class SectionRelationshipService extends BaseService
             // Invalidate page and section caches
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section->getId());
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
@@ -837,10 +837,10 @@ class SectionRelationshipService extends BaseService
             $this->throwNotFound('Page not found');
         }
         // Fetch all sections (flat) for this page
-        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
+        $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
         // Extract all section IDs
         $sectionIds = array_map(function ($section) {
-            return is_array($section) && isset($section['id']) ? (int) $section['id'] : null;
+            return isset($section['id']) ? $this->asInt($section['id']) : null;
         }, $flatSections);
         if (!in_array($sectionId, $sectionIds, true)) {
             $this->throwForbidden('Access denied: Section does not belong to page');

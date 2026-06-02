@@ -121,10 +121,14 @@ final class PluginArchiveExtractor
             if (!is_array($manifest)) {
                 throw new PluginArchiveException('plugin.json in archive is not a JSON object.');
             }
-            $pluginId = $this->requireManifestString($manifest, 'id');
-            $version = $this->requireManifestString($manifest, 'version');
+            $manifestData = [];
+            foreach ($manifest as $manifestKey => $manifestValue) {
+                $manifestData[(string) $manifestKey] = $manifestValue;
+            }
+            $pluginId = $this->requireManifestString($manifestData, 'id');
+            $version = $this->requireManifestString($manifestData, 'version');
 
-            $archiveMode = $this->readArchiveMode($manifest);
+            $archiveMode = $this->readArchiveMode($manifestData);
             if ($archiveMode === 'standalone') {
                 $this->assertRequiredEntries($zip, self::STANDALONE_REQUIRED_FILES);
             }
@@ -185,7 +189,7 @@ final class PluginArchiveExtractor
             ));
         }
         $size = $file->getSize();
-        if ($size === false || $size === null) {
+        if ($size === false) {
             throw new PluginArchiveException('Uploaded archive size is unknown.');
         }
         if ($size <= 0) {

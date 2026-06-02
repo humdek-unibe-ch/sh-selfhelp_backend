@@ -40,6 +40,7 @@ class Permission
     #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?\App\Entity\Plugin\Plugin $plugin = null;
 
+    /** @var Collection<int, Role> */
     #[ORM\ManyToMany(targetEntity: Role::class, inversedBy: 'permissions')]
     #[ORM\JoinTable(name: 'rel_permissions_roles',
         joinColumns: [new ORM\JoinColumn(name: 'id_permissions', referencedColumnName: 'id', onDelete: 'CASCADE')],
@@ -47,6 +48,7 @@ class Permission
     )]
     private Collection $roles;
     
+    /** @var Collection<int, ApiRoute> */
     #[ORM\ManyToMany(targetEntity: ApiRoute::class, mappedBy: 'permissions')]
     private Collection $apiRoutes;
 

@@ -14,7 +14,6 @@ use App\Entity\Plugin\Plugin;
 use App\Entity\Plugin\PluginOperation;
 use App\Entity\User;
 use App\Plugin\Event\Lifecycle\PluginOperationProgressEvent;
-use App\Repository\Plugin\PluginOperationRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -44,7 +43,6 @@ final class PluginOperationRecorder
 {
     public function __construct(
         private readonly EntityManagerInterface $em,
-        private readonly PluginOperationRepository $operations,
         private readonly UserContextService $userContext,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
@@ -101,6 +99,9 @@ final class PluginOperationRecorder
         $this->emitProgress($operation, $stage ?? 'Running', 5);
     }
 
+    /**
+     * @param array<string,mixed> $snapshot
+     */
     public function snapshot(PluginOperation $operation, array $snapshot): void
     {
         $existing = $operation->getSnapshotsJson() ?? [];
@@ -108,12 +109,18 @@ final class PluginOperationRecorder
         $this->em->flush();
     }
 
+    /**
+     * @param array<string,mixed> $plan
+     */
     public function setRollbackPlan(PluginOperation $operation, array $plan): void
     {
         $operation->setRollbackPlanJson($plan);
         $this->em->flush();
     }
 
+    /**
+     * @param array<string,mixed> $extra
+     */
     public function appendLog(PluginOperation $operation, string $stage, array $extra = [], ?int $percent = null): void
     {
         $entry = array_merge(['stage' => $stage], $extra);

@@ -21,11 +21,9 @@ use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
-use App\Service\ACL\ACLService;
 use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\UserContextAwareService;
-use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Service\CMS\FormFileUploadService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -45,11 +43,9 @@ class DataService extends BaseService
         private readonly TransactionService $transactionService,
         private readonly DataTableRepository $dataTableRepository,
         private readonly LookupService $lookupService,
-        private readonly ACLService $aclService,
         private readonly UserContextService $userContextService,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly CacheService $cache,
-        private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly FormFileUploadService $formFileUploadService,
         private readonly CmsPreferenceService $cmsPreferenceService,
@@ -63,9 +59,9 @@ class DataService extends BaseService
      * Save form data to database with proper transaction handling
      * 
      * @param string $tableName The name of the data table
-     * @param array $data The form data to save
+     * @param array<string, mixed> $data The form data to save
      * @param string $transactionBy Who initiated the transaction
-     * @param array|null $updateBasedOn Optional fields to update existing record
+     * @param array<string, mixed>|null $updateBasedOn Optional fields to update existing record
      * @param bool $ownEntriesOnly Whether to restrict updates to user's own entries
      * @return int|false The record ID on success or false on failure
      * @throws ServiceException
@@ -97,13 +93,14 @@ class DataService extends BaseService
             }
 
             $actionPayload = $data;
-            $actionTriggerType = $data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED;
+            $actionTriggerType = $this->asString($data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED);
+            $payloadUserId = $this->asIntOrNull($actionPayload['id_users'] ?? null);
 
             // Check for existing record to update
             if ($updateBasedOn !== null) {
                 // Special handling for record_id - look up directly by DataRow ID
                 if (isset($updateBasedOn['record_id'])) {
-                    $recordId = (int) $updateBasedOn['record_id'];
+                    $recordId = $this->asInt($updateBasedOn['record_id']);
                     $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
 
                     if ($dataRow) {
@@ -127,7 +124,7 @@ class DataService extends BaseService
                             $updatedRecordId,
                             $actionPayload,
                             $actionTriggerType,
-                            $currentUser ? $currentUser->getId() : ($actionPayload['id_users'] ?? null),
+                            $currentUser ? $currentUser->getId() : $payloadUserId,
                             $transactionBy
                         );
 
@@ -141,13 +138,13 @@ class DataService extends BaseService
                     // Handle other types of update filters using the stored procedure
                     $filter = '';
                     foreach ($updateBasedOn as $key => $value) {
-                        $filter = $filter . ' AND ' . $key . ' = "' . $value . '"';
+                        $filter = $filter . ' AND ' . $key . ' = "' . $this->asString($value) . '"';
                     }
 
-                    $existingRecord = $this->getData($dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
+                    $existingRecord = $this->getData((int) $dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
 
                     if ($existingRecord) {
-                        $recordId = $this->updateExistingRecord($existingRecord['record_id'], $data, $transactionBy);
+                        $recordId = $this->updateExistingRecord($this->asInt($existingRecord['record_id']), $data, $transactionBy);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -158,7 +155,7 @@ class DataService extends BaseService
                             $recordId,
                             $actionPayload,
                             $actionTriggerType,
-                            $currentUser ? $currentUser->getId() : ($actionPayload['id_users'] ?? null),
+                            $currentUser ? $currentUser->getId() : $payloadUserId,
                             $transactionBy
                         );
 
@@ -184,7 +181,7 @@ class DataService extends BaseService
                 $recordId,
                 $actionPayload,
                 $actionTriggerType,
-                $currentUser ? $currentUser->getId() : ($actionPayload['id_users'] ?? null),
+                $currentUser ? $currentUser->getId() : $payloadUserId,
                 $transactionBy
             );
 
@@ -229,6 +226,11 @@ class DataService extends BaseService
                 }
             }
 
+            $dataTable = $dataRow->getDataTable();
+            if (!$dataTable) {
+                $this->throwNotFound('Data table not found for record');
+            }
+
             // Extract file data before marking as deleted
             $fileData = $this->extractFileDataFromRecord($dataRow);
 
@@ -242,7 +244,7 @@ class DataService extends BaseService
                 'delete',
                 LookupService::TRANSACTION_BY_BY_USER,
                 'data_tables',
-                $dataRow->getDataTable()?->getId()
+                $dataTable->getId()
             );
 
             $this->entityManager->flush();
@@ -259,11 +261,11 @@ class DataService extends BaseService
             }
 
             // Invalidate data table cache after deleting record
-            $this->invalidateDataTableCache($dataRow->getDataTable(), $currentUser ? $currentUser->getId() : null);
+            $this->invalidateDataTableCache($dataTable, $currentUser ? $currentUser->getId() : null);
 
             $this->runActionOrchestration(
-                $dataRow->getDataTable(),
-                $dataRow->getId(),
+                $dataTable,
+                (int) $dataRow->getId(),
                 $deletedValues,
                 LookupService::ACTION_TRIGGER_TYPES_DELETED,
                 $currentUser ? $currentUser->getId() : $dataRow->getIdUsers(),
@@ -286,7 +288,7 @@ class DataService extends BaseService
      * Extract file data from a data record
      *
      * @param DataRow $dataRow The data row to extract files from
-     * @return array Array of file paths keyed by field name
+     * @return array<string, mixed> Array of file paths keyed by field name
      */
     private function extractFileDataFromRecord(DataRow $dataRow): array
     {
@@ -298,14 +300,14 @@ class DataService extends BaseService
         ]);
 
         foreach ($dataCells as $dataCell) {
-            $fieldName = $dataCell->getDataCol()->getName();
+            $fieldName = $this->asString($dataCell->getDataCol()?->getName());
             $fieldValue = $dataCell->getValue();
 
             // Check if this field contains file information
-            if ($this->formFileUploadService->isFileInputField($fieldName, $dataRow->getDataTable()->getId())) {
+            if ($this->formFileUploadService->isFileInputField($fieldName, (int) $dataRow->getDataTable()?->getId())) {
                 try {
                     // Try to decode as JSON (for multiple files)
-                    $decoded = json_decode($fieldValue, true);
+                    $decoded = json_decode((string) $fieldValue, true);
                     if (is_array($decoded)) {
                         // Multiple files
                         $fileData[$fieldName] = array_filter($decoded, function ($path) {
@@ -343,7 +345,7 @@ class DataService extends BaseService
         ]);
 
         foreach ($dataCells as $dataCell) {
-            $fieldName = $dataCell->getDataCol()->getName();
+            $fieldName = $this->asString($dataCell->getDataCol()?->getName());
             $language = $dataCell->getLanguage()?->getId();
 
             if ($language && $language !== 1) {
@@ -430,7 +432,7 @@ class DataService extends BaseService
      * Update existing record
      * 
      * @param int $recordId The ID of the record to update
-     * @param array $data New data
+     * @param array<string, mixed> $data New data
      * @param string $transactionBy Transaction initiator
      * @return int Record ID
      */
@@ -442,9 +444,14 @@ class DataService extends BaseService
             $this->throwNotFound('Record not found');
         }
 
+        $dataTable = $dataRow->getDataTable();
+        if (!$dataTable) {
+            $this->throwNotFound('Data table not found for record');
+        }
+
         // Update timestamp and trigger type (use UTC for consistency)
         $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
-        $dataRow->setIdUsers($data['id_users']);
+        $dataRow->setIdUsers($this->asIntOrNull($data['id_users'] ?? null));
 
         $triggerTypeId = $this->getTriggerTypeId($data);
         $dataRow->setIdActionTriggerTypes($triggerTypeId);
@@ -453,16 +460,16 @@ class DataService extends BaseService
         unset($data['id_users']);
 
         // Get or create columns and update cells
-        $columns = $this->getOrCreateColumns($dataRow->getDataTable(), $data);
+        $columns = $this->getOrCreateColumns($dataTable, $data);
 
         foreach ($data as $fieldName => $fieldValue) {
             $column = $columns[$fieldName];
 
             // Handle language-specific data
-            if (is_array($fieldValue) && !empty($fieldValue) && isset($fieldValue[0]['language_id'])) {
+            if (is_array($fieldValue) && isset($fieldValue[0]) && is_array($fieldValue[0]) && isset($fieldValue[0]['language_id'])) {
                 // Multi-language field: array of {language_id, value} objects
                 foreach ($fieldValue as $languageData) {
-                    if (isset($languageData['language_id']) && isset($languageData['value'])) {
+                    if (is_array($languageData) && isset($languageData['language_id']) && isset($languageData['value'])) {
                         $language = $this->entityManager->getRepository(Language::class)->find($languageData['language_id']);
                         if ($language) {
                             // Find existing cell or create new one for this language
@@ -477,7 +484,7 @@ class DataService extends BaseService
                                 $this->entityManager->persist($dataCell);
                             }
 
-                            $dataCell->setValue($languageData['value'] ?? '');
+                            $dataCell->setValue($this->asString($languageData['value']));
                         }
                     }
                 }
@@ -501,7 +508,7 @@ class DataService extends BaseService
                     if (is_array($fieldValue) && empty($fieldValue)) {
                         $fieldValue = '[]';
                     }
-                    $dataCell->setValue($fieldValue ?? '');
+                    $dataCell->setValue($this->asString($fieldValue));
                 }
             }
         }
@@ -511,19 +518,19 @@ class DataService extends BaseService
             'update',
             $transactionBy,
             'data_tables',
-            $dataRow->getDataTable()?->getId()
+            $dataTable->getId()
         );
 
         $this->entityManager->flush();
 
-        return $dataRow->getId();
+        return (int) $dataRow->getId();
     }
 
     /**
      * Create new record
      * 
      * @param DataTable $dataTable The data table
-     * @param array $data Form data
+     * @param array<string, mixed> $data Form data
      * @param string $transactionBy Transaction initiator
      * @return int Record ID
      */
@@ -534,7 +541,7 @@ class DataService extends BaseService
         $dataRow->setDataTable($dataTable);
         // DataRow constructor already sets UTC timestamp, but override if needed
         $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
-        $dataRow->setIdUsers($data['id_users']);
+        $dataRow->setIdUsers($this->asIntOrNull($data['id_users'] ?? null));
 
         $triggerTypeId = $this->getTriggerTypeId($data);
         $dataRow->setIdActionTriggerTypes($triggerTypeId);
@@ -553,17 +560,17 @@ class DataService extends BaseService
             $column = $columns[$fieldName];
 
             // Handle language-specific data
-            if (is_array($fieldValue) && !empty($fieldValue) && isset($fieldValue[0]['language_id'])) {
+            if (is_array($fieldValue) && isset($fieldValue[0]) && is_array($fieldValue[0]) && isset($fieldValue[0]['language_id'])) {
                 // Multi-language field: array of {language_id, value} objects
                 foreach ($fieldValue as $languageData) {
-                    if (isset($languageData['language_id']) && isset($languageData['value'])) {
+                    if (is_array($languageData) && isset($languageData['language_id']) && isset($languageData['value'])) {
                         $language = $this->entityManager->getRepository(Language::class)->find($languageData['language_id']);
                         if ($language) {
                             $dataCell = new DataCell();
                             $dataCell->setDataRow($dataRow);
                             $dataCell->setDataCol($column);
                             $dataCell->setLanguage($language);
-                            $dataCell->setValue($languageData['value'] ?? '');
+                            $dataCell->setValue($this->asString($languageData['value']));
                             $this->entityManager->persist($dataCell);
                         }
                     }
@@ -580,7 +587,7 @@ class DataService extends BaseService
                     if (is_array($fieldValue) && empty($fieldValue)) {
                         $fieldValue = '[]';
                     }
-                    $dataCell->setValue($fieldValue ?? '');
+                    $dataCell->setValue($this->asString($fieldValue));
                     $this->entityManager->persist($dataCell);
                 }
             }
@@ -596,14 +603,14 @@ class DataService extends BaseService
 
         $this->entityManager->flush();
 
-        return $dataRow->getId();
+        return (int) $dataRow->getId();
     }
 
     /**
      * Get or create columns for data table
      * 
      * @param DataTable $dataTable The data table
-     * @param array $data Form data to extract column names
+     * @param array<string, mixed> $data Form data to extract column names
      * @return array<string, DataCol> Array of column name => DataCol
      */
     private function getOrCreateColumns(DataTable $dataTable, array $data): array
@@ -631,12 +638,12 @@ class DataService extends BaseService
     /**
      * Get trigger type ID from form data
      * 
-     * @param array $data Form data
+     * @param array<string, mixed> $data Form data
      * @return int Trigger type ID
      */
     private function getTriggerTypeId(array $data): int
     {
-        $triggerType = $data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED;
+        $triggerType = $this->asString($data['trigger_type'] ?? LookupService::ACTION_TRIGGER_TYPES_FINISHED);
 
         $validTriggerTypes = [
             LookupService::ACTION_TRIGGER_TYPES_STARTED,
@@ -645,11 +652,11 @@ class DataService extends BaseService
             LookupService::ACTION_TRIGGER_TYPES_FINISHED
         ];
 
-        if (!in_array($triggerType, $validTriggerTypes)) {
+        if (!in_array($triggerType, $validTriggerTypes, true)) {
             $triggerType = LookupService::ACTION_TRIGGER_TYPES_FINISHED;
         }
 
-        return $this->lookupService->getLookupIdByValue('actionTriggerTypes', $triggerType);
+        return $this->asInt($this->lookupService->getLookupIdByValue('actionTriggerTypes', $triggerType));
     }
 
     /**
@@ -678,7 +685,7 @@ class DataService extends BaseService
      * Get the last record of a data table
      * 
      * @param string $dataTableName Data table name
-     * @return array
+     * @return array<array-key, mixed>
      */
     public function getFormRecordData(string $dataTableName): array
     {
@@ -686,8 +693,8 @@ class DataService extends BaseService
         if (!$dataTable) {
             return [];
         }
-        $dataTableId = $dataTable->getId();
-        $data = $this->getData($dataTableId, 'ORDER BY record_id DESC LIMIT 1', true, $this->userContextService->getCurrentUser()->getId(), false, true);
+        $dataTableId = (int) $dataTable->getId();
+        $data = $this->getData($dataTableId, 'ORDER BY record_id DESC LIMIT 1', true, $this->userContextService->getCurrentUser()?->getId(), false, true);
         return $data;
     }
 
@@ -695,7 +702,7 @@ class DataService extends BaseService
      * Get form record data with all languages
      *
      * @param string $dataTableName Data table name
-     * @return array
+     * @return array<array-key, mixed>
      */
     public function getFormRecordDataWithAllLanguages(string $dataTableName): array
     {
@@ -704,7 +711,7 @@ class DataService extends BaseService
             return [];
         }
 
-        $dataTableId = $dataTable->getId();
+        $dataTableId = (int) $dataTable->getId();
         $currentUser = $this->userContextService->getCurrentUser();
         $userId = $currentUser ? $currentUser->getId() : null;
 
@@ -731,6 +738,8 @@ class DataService extends BaseService
      * - When ownEntriesOnly is true and userId is not provided, current user is used (or -1 if not available)
      * - When ownEntriesOnly is false and userId is not provided, -1 is used to fetch all users
      * - When dbFirst is true, the first row (or empty array) is returned
+     *
+     * @return array<array-key, mixed>
      */
     public function getData(
         int $dataTableId,
@@ -752,7 +761,7 @@ class DataService extends BaseService
             if ($resolvedUserId === null) {
                 if ($ownEntriesOnly) {
                     $currentUser = $this->userContextService->getCurrentUser();
-                    $resolvedUserId = $currentUser ? $currentUser->getId() : -1;
+                    $resolvedUserId = $currentUser ? (int) $currentUser->getId() : -1;
                 } else {
                     $resolvedUserId = -1; // all users
                 }
@@ -791,7 +800,7 @@ class DataService extends BaseService
      * @param string $filter Filter string
      * @param bool $excludeDeleted Whether to exclude deleted records
      * @param int $languageId Language ID for translations
-     * @return array
+     * @return list<array<string, mixed>>
      */
     public function getDataWithUserGroupFilter(
         int $dataTableId,
@@ -835,7 +844,7 @@ class DataService extends BaseService
      * @param int|null $userId User ID for filtering
      * @param bool $dbFirst Return only first record
      * @param bool $excludeDeleted Whether to exclude deleted records
-     * @return array
+     * @return array<array-key, mixed>
      */
     public function getDataWithAllLanguages(
         int $dataTableId,
@@ -856,7 +865,7 @@ class DataService extends BaseService
             if ($resolvedUserId === null) {
                 if ($ownEntriesOnly) {
                     $currentUser = $this->userContextService->getCurrentUser();
-                    $resolvedUserId = $currentUser ? $currentUser->getId() : -1;
+                    $resolvedUserId = $currentUser ? (int) $currentUser->getId() : -1;
                 } else {
                     $resolvedUserId = -1; // all users
                 }
@@ -892,7 +901,7 @@ class DataService extends BaseService
      */
     private function invalidateDataTableCache(DataTable $dataTable, ?int $userId): void
     {
-        $config = $this->getDataTableCurrentUserConfig($dataTable->getId());
+        $config = $this->getDataTableCurrentUserConfig((int) $dataTable->getId());
 
         // Always invalidate data table lists (this affects data table metadata)
         $this->cache
@@ -907,7 +916,7 @@ class DataService extends BaseService
         // the has_global_config / has_current_user_config flags below).
         $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId());
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
 
         // If the data table has user-specific configs (current_user: true) and we have a user,
         // invalidate the user-specific scope for this user
@@ -936,7 +945,7 @@ class DataService extends BaseService
         // Invalidate the specific form-record cache entry
         $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTable->getId())
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId())
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->invalidateItem("form_record_data_{$dataTable->getName()}_{$userId}");
     }
@@ -946,7 +955,7 @@ class DataService extends BaseService
      * Check if a data table has current_user configurations
      *
      * @param int $dataTableId The data table ID to check
-     * @return array Array with 'has_current_user_config' and 'has_global_config' boolean flags
+     * @return array{has_current_user_config: bool, has_global_config: bool} Array with 'has_current_user_config' and 'has_global_config' boolean flags
      */
     public function getDataTableCurrentUserConfig(int $dataTableId): array
     {
@@ -970,14 +979,12 @@ class DataService extends BaseService
                     }
 
                     // Parse data_config as JSON string to array
-                    $dataConfigArray = is_string($dataConfig)
-                        ? json_decode($dataConfig, true)
-                        : [];
+                    $dataConfigArray = json_decode($dataConfig, true);
 
                     if (is_array($dataConfigArray)) {
                         foreach ($dataConfigArray as $config) {
-                            if (isset($config['table'])) {
-                                $tableName = $config['table'];
+                            if (is_array($config) && isset($config['table'])) {
+                                $tableName = $this->asString($config['table']);
 
                                 // Get data table by name to compare with our target
                                 try {

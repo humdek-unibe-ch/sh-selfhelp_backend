@@ -9,24 +9,17 @@
 namespace App\Service\CMS\Admin;
 
 use App\Repository\LanguageRepository;
-use App\Repository\PageRepository;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
-use App\Service\Core\LookupService;
-use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
 use App\Exception\ServiceException;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 class AdminCmsPreferenceService extends BaseService
 {
     public function __construct(
         private readonly CmsPreferenceService $cmsPreferenceService,
-        private readonly PageRepository $pageRepository,
         private readonly LanguageRepository $languageRepository,
-        private readonly EntityManagerInterface $entityManager,
-        private readonly TransactionService $transactionService,
         private readonly CacheService $cache
     ) {
     }
@@ -34,7 +27,7 @@ class AdminCmsPreferenceService extends BaseService
     /**
      * Get CMS preferences with entity scope caching
      *
-     * @return array
+     * @return array<string, mixed>
      */
     public function getCmsPreferences(): array
     {
@@ -64,7 +57,7 @@ class AdminCmsPreferenceService extends BaseService
                     // Add entity scope for the CMS preferences page
                     $this->cache
                         ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
-                        ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $preferences['id'])
+                        ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $this->asInt($preferences['id']))
                         ->setItem('cms_preferences_scoped', [
                             'id' => $preferences['id'],
                             'default_language_id' => $preferences['default_language_id'],

@@ -48,3 +48,4 @@ AGENTS.local.md
 /selfhelp.plugins.lock.json
 /selfhelp.plugins.lock.json.bak
 /selfhelp.plugins.lock.json.tmp
+node_modules/

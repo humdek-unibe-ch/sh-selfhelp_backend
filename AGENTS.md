@@ -125,6 +125,7 @@ Prefer consistency with surrounding code over a newer or cleaner pattern that is
 - Establish clear verification criteria before changing code.
 - For bug fixes: reproduce when possible, identify the minimal cause, implement the smallest reasonable fix, verify it, then stop.
 - For features: define success criteria, implement minimally, verify behavior, then stop.
+- Satisfy the PHPStan gate. After any code change, `composer phpstan` (the auto-discovered default `phpstan.dist.neon`, level max, no baseline) MUST report **0 errors** before you finish — never silence findings or add a baseline. See "Static Analysis (PHPStan) Rules".
 
 ## AI Change Response Expectations
 When making changes, explain:
@@ -242,18 +243,52 @@ When making changes, explain:
 ## Testing Rules
 - Main command: `composer test` or `php bin/phpunit --testdox`.
 - Run focused tests with `php bin/phpunit tests/path/to/Test.php`.
-- Static analysis: `composer phpstan`.
+- Static analysis: `composer phpstan` — must be **0 errors**. It runs `phpstan analyse` against the auto-discovered default `phpstan.dist.neon` (level max, whole core `bin/ config/ public/ src/`, shipmonk dead-code detector off, no baseline). This is the exact command the `core-backend-check` CI job runs. See "Static Analysis (PHPStan) Rules" below.
 - Database schema validation: `composer validate-db`.
 - Some controller/API tests depend on a prepared test database and real login flow.
 - Prefer endpoint/integration tests for API behavior. Unit tests with mocks are acceptable for isolated service logic where existing tests already use that pattern.
 - Do not run the full DB-dependent suite casually if the environment is not prepared.
+
+## Static Analysis (PHPStan) Rules
+
+PHPStan is a hard quality gate, not advisory. Every change MUST keep the
+static-analysis gate green.
+
+- **One command, one config:** `composer phpstan`. It runs `phpstan analyse`
+  against the auto-discovered default `phpstan.dist.neon` (level max, whole
+  core `bin/ config/ public/ src/`, shipmonk dead-code detector off, **no
+  baseline**). It MUST print `[OK] No errors` before a task is considered done
+  or pushed. This is the exact command + config the `core-backend-check`
+  GitHub Action runs, so a local green guarantees a green gate. There is no
+  `--configuration` flag to remember and no separate "core" config — the
+  earlier `phpstan.core.neon` / `phpstan.ci.neon` / `phpstan-baseline.neon`
+  were removed; `phpstan.dist.neon` is the single source of truth.
+- **The dead-code detector is intentionally off** because in this
+  DI + Doctrine + reflection codebase its findings are false positives
+  (services, commands and controllers are wired at runtime, not statically).
+  Do not re-enable it to "find unused code". `phpstan.neon` is git-ignored —
+  use it only for a throwaway local override; never commit one.
+- **Fix the cause, behaviour-preserving.** Prefer, in order: precise PHPDoc
+  (`array<string, mixed>`, `list<T>`, array shapes, `non-empty-string`);
+  generics (`@extends ServiceEntityRepository<Entity>`); local narrowing
+  (`is_string`/`is_int`/`is_array`/`instanceof`, or a small typed helper);
+  improving an accurate return/param type; removing confirmed-dead code.
+- **Never silence errors.** No new `@phpstan-ignore`, no `@var`/`assert()` used
+  only to override an inferred type, no casts added just to quiet the analyser,
+  no level/scope reduction, and **never add a baseline** (the gate is
+  intentionally baseline-free).
+- **If an error reveals a real bug, stop and fix the bug** (or flag it) instead
+  of papering over the type.
+- While iterating on one file (config is still auto-discovered):
+  `php -d memory_limit=3G vendor/bin/phpstan analyse <path> --no-progress`.
+- Full reference: `docs/developer/24-core-phpstan-gate.md`.
 
 ## Build / Dev Commands
 - Install PHP dependencies: `composer install`.
 - Start local PHP server: `composer dev`.
 - Clear Symfony cache: `composer clear`.
 - Run tests: `composer test`.
-- Run PHPStan: `composer phpstan`.
+- Run PHPStan (the gate, MUST be 0 errors): `composer phpstan` (or `vendor/bin/phpstan analyse`).
 - Validate schema mapping: `composer validate-db`.
 - Show pending schema SQL: `composer update-db`.
 - Check headers: `composer headers:check`.

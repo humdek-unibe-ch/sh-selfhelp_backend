@@ -27,22 +27,28 @@ class PluginOperationRepository extends ServiceEntityRepository
     /** @return list<PluginOperation> */
     public function findActive(): array
     {
-        return $this->createQueryBuilder('o')
+        /** @var list<PluginOperation> $result */
+        $result = $this->createQueryBuilder('o')
             ->where('o.status IN (:active)')
             ->setParameter('active', [PluginOperation::STATUS_REQUESTED, PluginOperation::STATUS_RUNNING])
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 
     /** @return list<PluginOperation> */
     public function findByPluginId(string $pluginId, int $limit = 50): array
     {
-        return $this->createQueryBuilder('o')
+        /** @var list<PluginOperation> $result */
+        $result = $this->createQueryBuilder('o')
             ->where('o.pluginId = :pid')
             ->setParameter('pid', $pluginId)
             ->orderBy('o.createdAt', 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
+
+        return $result;
     }
 }

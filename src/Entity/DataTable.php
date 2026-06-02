@@ -63,7 +63,7 @@ class DataTable
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection|DataRow[]
+     * @return \Doctrine\Common\Collections\Collection<int, DataRow>
      */
     public function getDataRows(): \Doctrine\Common\Collections\Collection
     {
@@ -88,7 +88,7 @@ class DataTable
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection|DataCol[]
+     * @return \Doctrine\Common\Collections\Collection<int, DataCol>
      */
     public function getDataCols(): \Doctrine\Common\Collections\Collection
     {

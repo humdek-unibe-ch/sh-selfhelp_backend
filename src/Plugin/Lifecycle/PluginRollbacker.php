@@ -85,7 +85,8 @@ final class PluginRollbacker
 
             try {
                 if (($rollback['restoreLockFile'] ?? false) && array_key_exists('lockFileBefore', $snapshots)) {
-                    $this->lockFileWriter->restore($snapshots['lockFileBefore']);
+                    $lockFileBefore = $snapshots['lockFileBefore'];
+                    $this->lockFileWriter->restore(is_array($lockFileBefore) ? $lockFileBefore : null);
                     $this->recorder->appendLog($rollbackOp, 'Restored selfhelp.plugins.lock.json');
                 }
 

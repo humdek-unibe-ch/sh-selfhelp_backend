@@ -89,14 +89,18 @@ final class PluginArchiveValidator
         $this->verifyArtifactHashes($stagingDir, $checksums);
 
         $manifestData = $manifest->toArray();
-        $runtime = $manifestData['frontend']['runtime'] ?? null;
-        if (!is_array($runtime)) {
+        $frontend = is_array($manifestData['frontend'] ?? null) ? $manifestData['frontend'] : [];
+        $runtimeRaw = $frontend['runtime'] ?? null;
+        if (!is_array($runtimeRaw)) {
             throw new PluginArchiveException('plugin.json in archive is missing frontend.runtime.');
         }
-        $composer = $manifestData['backend']['composer'] ?? null;
-        if (!is_array($composer)) {
+        $runtime = $this->assocArray($runtimeRaw);
+        $backend = is_array($manifestData['backend'] ?? null) ? $manifestData['backend'] : [];
+        $composerRaw = $backend['composer'] ?? null;
+        if (!is_array($composerRaw)) {
             throw new PluginArchiveException('plugin.json in archive is missing backend.composer.');
         }
+        $composer = $this->assocArray($composerRaw);
         $compat = $manifestData['compatibility'] ?? null;
         if (!is_array($compat)) {
             throw new PluginArchiveException('plugin.json in archive is missing compatibility.');
@@ -141,7 +145,7 @@ final class PluginArchiveValidator
             'composer' => $composer,
             'runtime' => [
                 'entrypointUrl' => 'artifacts/plugin.esm.js',
-                'format' => (string) ($runtime['format'] ?? 'esm'),
+                'format' => is_scalar($runtime['format'] ?? null) ? (string) $runtime['format'] : 'esm',
             ],
             'checksums' => [
                 'frontendEsm' => $this->normaliseChecksum($checksums['artifacts/plugin.esm.js'] ?? ''),
@@ -245,15 +249,22 @@ final class PluginArchiveValidator
         if (!is_array($data)) {
             throw new PluginArchiveException('signature.json is not a JSON object.');
         }
-        foreach (['keyId', 'signature', 'signedPayload'] as $required) {
-            if (!isset($data[$required]) || !is_string($data[$required]) || $data[$required] === '') {
-                throw new PluginArchiveException(sprintf('signature.json is missing "%s".', $required));
-            }
+        $keyId = $data['keyId'] ?? null;
+        $signature = $data['signature'] ?? null;
+        $signedPayload = $data['signedPayload'] ?? null;
+        if (!is_string($keyId) || $keyId === '') {
+            throw new PluginArchiveException(sprintf('signature.json is missing "%s".', 'keyId'));
+        }
+        if (!is_string($signature) || $signature === '') {
+            throw new PluginArchiveException(sprintf('signature.json is missing "%s".', 'signature'));
+        }
+        if (!is_string($signedPayload) || $signedPayload === '') {
+            throw new PluginArchiveException(sprintf('signature.json is missing "%s".', 'signedPayload'));
         }
         return [
-            'keyId' => (string) $data['keyId'],
-            'signature' => (string) $data['signature'],
-            'signedPayload' => (string) $data['signedPayload'],
+            'keyId' => $keyId,
+            'signature' => $signature,
+            'signedPayload' => $signedPayload,
         ];
     }
 
@@ -537,5 +548,22 @@ final class PluginArchiveValidator
             return 'sha256-' . substr($value, 7);
         }
         return 'sha256-' . $value;
+    }
+
+    /**
+     * Coerce a mixed value (typically a nested decoded JSON object) to a
+     * string-keyed array. Integer keys are stringified so the result
+     * satisfies array<string, mixed>; runtime values are unchanged.
+     *
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
+    private function assocArray(array $value): array
+    {
+        $out = [];
+        foreach ($value as $k => $v) {
+            $out[(string) $k] = $v;
+        }
+        return $out;
     }
 }

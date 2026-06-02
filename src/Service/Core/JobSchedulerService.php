@@ -16,7 +16,6 @@ use App\Entity\ScheduledJobReminder;
 use App\Entity\User;
 use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
 use App\Service\Auth\MailTemplateDefaults;
-use App\Service\Auth\UserDataService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -38,7 +37,6 @@ class JobSchedulerService extends BaseService
         private readonly EntityManagerInterface $em,
         private readonly TransactionService $transactionService,
         private readonly LookupService $lookupService,
-        private readonly UserDataService $userDataService,
         private readonly CmsPreferenceService $cmsPreferences,
         private readonly ConditionService $conditionService,
         private readonly TaskJobExecutorService $taskJobExecutorService,
@@ -101,7 +99,7 @@ class JobSchedulerService extends BaseService
                 'scheduled_jobs',
                 $job->getId(),
                 $job,
-                'Job scheduled: ' . ($jobData['description'] ?? $jobData['type'])
+                'Job scheduled: ' . $this->asString($jobData['description'] ?? $jobData['type'] ?? '')
             );
 
             $this->cache
@@ -184,6 +182,9 @@ class JobSchedulerService extends BaseService
                 'typeCode' => LookupService::SCHEDULED_JOBS_STATUS,
                 'lookupCode' => LookupService::SCHEDULED_JOBS_STATUS_RUNNING,
             ]);
+            if ($runningStatus === null) {
+                throw new \RuntimeException('Missing scheduled-job status lookup: ' . LookupService::SCHEDULED_JOBS_STATUS_RUNNING);
+            }
             $job->setStatus($runningStatus);
             $this->em->flush();
 
@@ -195,6 +196,9 @@ class JobSchedulerService extends BaseService
                 'typeCode' => LookupService::SCHEDULED_JOBS_STATUS,
                 'lookupCode' => $success ? LookupService::SCHEDULED_JOBS_STATUS_DONE : LookupService::SCHEDULED_JOBS_STATUS_FAILED,
             ]);
+            if ($finalStatus === null) {
+                throw new \RuntimeException('Missing scheduled-job status lookup');
+            }
 
             $job->setStatus($finalStatus);
             $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
@@ -223,9 +227,11 @@ class JobSchedulerService extends BaseService
                         'typeCode' => LookupService::SCHEDULED_JOBS_STATUS,
                         'lookupCode' => LookupService::SCHEDULED_JOBS_STATUS_FAILED,
                     ]);
-                    $job->setStatus($failedStatus);
-                    $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
-                    $this->em->flush();
+                    if ($failedStatus !== null) {
+                        $job->setStatus($failedStatus);
+                        $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
+                        $this->em->flush();
+                    }
                 }
             } catch (\Throwable $statusError) {
                 $this->logger->error('Failed to update job status after execution error', [
@@ -277,6 +283,9 @@ class JobSchedulerService extends BaseService
                 LookupService::SCHEDULED_JOBS_STATUS,
                 LookupService::SCHEDULED_JOBS_STATUS_CANCELLED
             );
+            if ($cancelledStatus === null) {
+                throw new \RuntimeException('Missing scheduled-job status lookup: ' . LookupService::SCHEDULED_JOBS_STATUS_CANCELLED);
+            }
             $job->setStatus($cancelledStatus);
             $this->em->flush();
 
@@ -329,6 +338,9 @@ class JobSchedulerService extends BaseService
                 LookupService::SCHEDULED_JOBS_STATUS,
                 LookupService::SCHEDULED_JOBS_STATUS_DELETED
             );
+            if ($deletedStatus === null) {
+                throw new \RuntimeException('Missing scheduled-job status lookup: ' . LookupService::SCHEDULED_JOBS_STATUS_DELETED);
+            }
             $job->setStatus($deletedStatus);
             $this->em->flush();
 
@@ -387,7 +399,7 @@ class JobSchedulerService extends BaseService
 
         $job = $this->scheduleJob($jobData, LookupService::TRANSACTION_BY_BY_SYSTEM);
 
-        return $job ? $job->getId() : false;
+        return $job ? (int) $job->getId() : false;
     }
 
     /**
@@ -410,20 +422,29 @@ class JobSchedulerService extends BaseService
             ]);
 
             if (!$jobType) {
-                throw new \RuntimeException('Invalid job type: ' . $jobData['type']);
+                throw new \RuntimeException('Invalid job type: ' . $this->asString($jobData['type'] ?? ''));
             }
 
             $status = $this->em->getRepository(Lookup::class)->findOneBy([
                 'typeCode' => LookupService::SCHEDULED_JOBS_STATUS,
                 'lookupCode' => LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
             ]);
+            if ($status === null) {
+                throw new \RuntimeException('Missing scheduled-job status lookup: ' . LookupService::SCHEDULED_JOBS_STATUS_QUEUED);
+            }
+
+            $dateToBeExecuted = $jobData['date_to_be_executed'] ?? null;
 
             $scheduledJob = new ScheduledJob();
             $scheduledJob->setUser($user);
             $scheduledJob->setJobType($jobType);
             $scheduledJob->setStatus($status);
-            $scheduledJob->setDescription($jobData['description'] ?? '');
-            $scheduledJob->setDateToBeExecuted($jobData['date_to_be_executed'] ?? new \DateTime('now', new \DateTimeZone('UTC')));
+            $scheduledJob->setDescription($this->asString($jobData['description'] ?? ''));
+            $scheduledJob->setDateToBeExecuted(
+                $dateToBeExecuted instanceof \DateTimeInterface
+                    ? $dateToBeExecuted
+                    : new \DateTime('now', new \DateTimeZone('UTC'))
+            );
 
             if (isset($jobData['action']) && $jobData['action'] instanceof Action) {
                 $scheduledJob->setAction($jobData['action']);
@@ -550,6 +571,9 @@ class JobSchedulerService extends BaseService
         if ($condition === null || $condition === '') {
             return true;
         }
+        if (!is_array($condition) && !is_string($condition)) {
+            return false;
+        }
 
         return (bool) ($this->conditionService->evaluateCondition(
             $condition,
@@ -604,8 +628,9 @@ class JobSchedulerService extends BaseService
      */
     private function executeEmailJob(ScheduledJob $job, string $transactionBy): bool
     {
-        $emailConfig = $job->getConfig()['email'] ?? [];
-        $recipients = trim((string) ($emailConfig['recipient_emails'] ?? $job->getUser()?->getEmail() ?? ''));
+        $config = $job->getConfig() ?? [];
+        $emailConfig = isset($config['email']) && is_array($config['email']) ? $config['email'] : [];
+        $recipients = trim($this->asString($emailConfig['recipient_emails'] ?? $job->getUser()?->getEmail() ?? ''));
         if ($recipients === '') {
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_SEND_MAIL_FAIL,
@@ -618,11 +643,11 @@ class JobSchedulerService extends BaseService
             return false;
         }
 
-        $subject = (string) ($emailConfig['subject'] ?? '');
-        $body = (string) ($emailConfig['body'] ?? '');
-        $fromEmail = (string) ($emailConfig['from_email'] ?? MailTemplateDefaults::FROM_EMAIL);
-        $fromName = (string) ($emailConfig['from_name'] ?? MailTemplateDefaults::FROM_NAME);
-        $replyTo = (string) ($emailConfig['reply_to'] ?? $fromEmail);
+        $subject = $this->asString($emailConfig['subject'] ?? '');
+        $body = $this->asString($emailConfig['body'] ?? '');
+        $fromEmail = $this->asString($emailConfig['from_email'] ?? MailTemplateDefaults::FROM_EMAIL);
+        $fromName = $this->asString($emailConfig['from_name'] ?? MailTemplateDefaults::FROM_NAME);
+        $replyTo = $this->asString($emailConfig['reply_to'] ?? $fromEmail);
         $isHtml = (bool) ($emailConfig['is_html'] ?? MailTemplateDefaults::IS_HTML);
         $attachments = is_array($emailConfig['attachments'] ?? null) ? $emailConfig['attachments'] : [];
 
@@ -636,9 +661,13 @@ class JobSchedulerService extends BaseService
             $isHtml ? $email->html($body) : $email->text($body);
 
             foreach ($attachments as $attachment) {
+                if (!is_array($attachment)) {
+                    continue;
+                }
                 $path = $attachment['path'] ?? '';
                 if (is_string($path) && $path !== '' && is_file($path)) {
-                    $email->attachFromPath($path, $attachment['filename'] ?? null);
+                    $filename = $attachment['filename'] ?? null;
+                    $email->attachFromPath($path, is_string($filename) ? $filename : null);
                 }
             }
 
@@ -677,7 +706,8 @@ class JobSchedulerService extends BaseService
      */
     private function executeNotificationJob(ScheduledJob $job, string $transactionBy): bool
     {
-        $notificationConfig = $job->getConfig()['notification'] ?? [];
+        $config = $job->getConfig() ?? [];
+        $notificationConfig = isset($config['notification']) && is_array($config['notification']) ? $config['notification'] : [];
         $user = $job->getUser();
 
         if (!$user || !$user->getDeviceToken()) {
@@ -719,17 +749,17 @@ class JobSchedulerService extends BaseService
             'message' => [
                 'token' => $user->getDeviceToken(),
                 'notification' => [
-                    'title' => (string) ($notificationConfig['subject'] ?? ''),
-                    'body' => (string) ($notificationConfig['body'] ?? ''),
+                    'title' => $this->asString($notificationConfig['subject'] ?? ''),
+                    'body' => $this->asString($notificationConfig['body'] ?? ''),
                 ],
                 'data' => [
-                    'url' => (string) ($notificationConfig['url'] ?? ''),
+                    'url' => $this->asString($notificationConfig['url'] ?? ''),
                 ],
             ],
         ];
 
         $response = $this->postJson(
-            sprintf('https://fcm.googleapis.com/v1/projects/%s/messages:send', $serviceAccount['project_id']),
+            sprintf('https://fcm.googleapis.com/v1/projects/%s/messages:send', $this->asString($serviceAccount['project_id'] ?? '')),
             $payload,
             [
                 'Authorization: Bearer ' . $accessToken,
@@ -781,6 +811,7 @@ class JobSchedulerService extends BaseService
             return null;
         }
 
+        /** @var array<string, mixed> $decoded */
         return $decoded;
     }
 
@@ -794,8 +825,8 @@ class JobSchedulerService extends BaseService
     private function createFirebaseAccessToken(array $serviceAccount): ?string
     {
         $now = time();
-        $header = $this->base64UrlEncode(json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
-        $payload = $this->base64UrlEncode(json_encode([
+        $header = $this->base64UrlEncode((string) json_encode(['alg' => 'RS256', 'typ' => 'JWT']));
+        $payload = $this->base64UrlEncode((string) json_encode([
             'iss' => $serviceAccount['client_email'],
             'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
             'aud' => 'https://oauth2.googleapis.com/token',
@@ -804,7 +835,7 @@ class JobSchedulerService extends BaseService
         ]));
 
         $unsignedJwt = $header . '.' . $payload;
-        $privateKey = openssl_pkey_get_private($serviceAccount['private_key']);
+        $privateKey = openssl_pkey_get_private($this->asString($serviceAccount['private_key'] ?? ''));
         if ($privateKey === false) {
             $this->logger->error('Failed to load Firebase private key');
             return null;
@@ -816,7 +847,7 @@ class JobSchedulerService extends BaseService
             return null;
         }
 
-        $assertion = $unsignedJwt . '.' . $this->base64UrlEncode($signature);
+        $assertion = $unsignedJwt . '.' . $this->base64UrlEncode($this->asString($signature));
         $response = $this->postForm('https://oauth2.googleapis.com/token', [
             'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
             'assertion' => $assertion,
@@ -828,7 +859,7 @@ class JobSchedulerService extends BaseService
             return null;
         }
 
-        return (string) $decoded['access_token'];
+        return $this->asString($decoded['access_token']);
     }
 
     /**
@@ -861,7 +892,7 @@ class JobSchedulerService extends BaseService
     /**
      * @param array<string, mixed> $payload
      *   JSON payload to send.
-     * @param string[] $headers
+     * @param list<string> $headers
      *   HTTP headers to include with the request.
      * @return array{status: int, body: string}
      *   HTTP status and response body.
@@ -872,7 +903,7 @@ class JobSchedulerService extends BaseService
     }
 
     /**
-     * @param string[] $headers
+     * @param list<string> $headers
      *   HTTP headers to include with the request.
      * @return array{status: int, body: string}
      *   HTTP status and response body.

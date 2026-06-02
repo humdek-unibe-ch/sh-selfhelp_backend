@@ -27,6 +27,8 @@ class AdminAuditService extends BaseService
     /**
      * Get data access audit logs with filtering and pagination
      * Processes array results from repository for memory efficiency
+     *
+     * @return array<string, mixed>
      */
     public function getDataAccessLogs(Request $request): array
     {
@@ -63,6 +65,8 @@ class AdminAuditService extends BaseService
 
     /**
      * Get specific audit log details by ID
+     *
+     * @return array<string, mixed>|null
      */
     public function getDataAccessLog(int $id): ?array
     {
@@ -77,6 +81,8 @@ class AdminAuditService extends BaseService
 
     /**
      * Get audit statistics and summaries
+     *
+     * @return array<string, mixed>
      */
     public function getDataAccessStats(Request $request): array
     {
@@ -95,6 +101,9 @@ class AdminAuditService extends BaseService
     /**
      * Format audit log array data for API response
      * Timezone conversion is now handled in PHP loops
+     *
+     * @param array<string, mixed> $auditLog
+     * @return array<string, mixed>
      */
     private function formatAuditLogForApi(array $auditLog): array
     {

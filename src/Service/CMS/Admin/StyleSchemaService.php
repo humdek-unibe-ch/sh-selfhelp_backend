@@ -70,8 +70,13 @@ class StyleSchemaService
                     $defaults = [];
                     foreach ($this->getSchema() as $styleName => $styleMeta) {
                         $defaults[$styleName] = [];
-                        foreach ($styleMeta['fields'] as $fieldName => $fieldMeta) {
-                            $defaults[$styleName][$fieldName] = $fieldMeta['default_value'];
+                        $fields = $styleMeta['fields'] ?? null;
+                        if (!is_array($fields)) {
+                            continue;
+                        }
+                        foreach ($fields as $fieldName => $fieldMeta) {
+                            $defaultValue = is_array($fieldMeta) ? ($fieldMeta['default_value'] ?? null) : null;
+                            $defaults[$styleName][(string) $fieldName] = is_string($defaultValue) ? $defaultValue : null;
                         }
                     }
                     return $defaults;

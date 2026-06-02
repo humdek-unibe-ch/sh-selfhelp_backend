@@ -39,7 +39,7 @@ class ActionImmediateExecutorService
                 continue;
             }
 
-            $this->jobSchedulerService->executeJob($job->getId(), $transactionBy);
+            $this->jobSchedulerService->executeJob((int) $job->getId(), $transactionBy);
         }
     }
 }

@@ -22,6 +22,7 @@ class Style
         $this->allowedChildrenRelationships = new \Doctrine\Common\Collections\ArrayCollection();
         $this->allowedParentsRelationships = new \Doctrine\Common\Collections\ArrayCollection();
     }
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesField> */
     #[ORM\OneToMany(mappedBy: 'style', targetEntity: StylesField::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $stylesFields;
     #[ORM\Id]
@@ -35,9 +36,7 @@ class Style
     #[ORM\Column(name: 'can_have_children', type: 'boolean', options: ['default' => 0])]
     private bool $canHaveChildren = false;
 
-    #[ORM\Column(name: 'id_style_groups', type: 'integer')]
-    private int $idStyleGroups;
-
+    // id_style_groups is mapped through the $group association below.
     #[ORM\Column(name: 'description', type: 'text', nullable: true)]
     private ?string $description = null;
 
@@ -45,9 +44,11 @@ class Style
     #[ORM\JoinColumn(name: 'id_style_groups', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private ?StyleGroup $group = null;
 
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesAllowedRelationship> */
     #[ORM\OneToMany(mappedBy: 'parentStyle', targetEntity: StylesAllowedRelationship::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $allowedChildrenRelationships;
 
+    /** @var \Doctrine\Common\Collections\Collection<int, StylesAllowedRelationship> */
     #[ORM\OneToMany(mappedBy: 'childStyle', targetEntity: StylesAllowedRelationship::class, cascade: ['persist', 'remove'])]
     private \Doctrine\Common\Collections\Collection $allowedParentsRelationships;
 
@@ -77,18 +78,6 @@ class Style
 
         return $this;
     }
-
-
-    public function getIdGroup(): ?int
-    {
-        return $this->idStyleGroups;
-    }
-
-    public function getIdStyleGroups(): ?int
-    {
-        return $this->idStyleGroups;
-    }
-
 
 
     public function getDescription(): ?string
@@ -140,6 +129,7 @@ class Style
         return $this;
     }
 
+    /** @return \Doctrine\Common\Collections\Collection<int, StylesField>|null */
     public function getStylesFields(): ?\Doctrine\Common\Collections\Collection
     {
         return $this->stylesFields;
@@ -147,9 +137,6 @@ class Style
 
     public function addStylesField(StylesField $stylesField): static
     {
-        if (!$this->stylesFields) {
-            $this->stylesFields = new \Doctrine\Common\Collections\ArrayCollection();
-        }
         if (!$this->stylesFields->contains($stylesField)) {
             $this->stylesFields[] = $stylesField;
             $stylesField->setStyle($this);
@@ -159,7 +146,7 @@ class Style
 
     public function removeStylesField(StylesField $stylesField): static
     {
-        if ($this->stylesFields && $this->stylesFields->contains($stylesField)) {
+        if ($this->stylesFields->contains($stylesField)) {
             $this->stylesFields->removeElement($stylesField);
             if ($stylesField->getStyle() === $this) {
                 $stylesField->setStyle(null);

@@ -67,7 +67,7 @@ class DataCol
     }
 
     /**
-     * @return \Doctrine\Common\Collections\Collection|DataCell[]
+     * @return \Doctrine\Common\Collections\Collection<int, DataCell>
      */
     public function getDataCells(): \Doctrine\Common\Collections\Collection
     {

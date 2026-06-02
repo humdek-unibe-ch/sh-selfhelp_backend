@@ -11,7 +11,6 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Action;
 use App\Entity\ActionTranslation;
 use App\Entity\Language;
-use App\Repository\ActionRepository;
 use App\Repository\ActionTranslationRepository;
 use App\Repository\LanguageRepository;
 use App\Service\Cache\Core\CacheService;
@@ -34,7 +33,6 @@ class AdminActionTranslationService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TransactionService $transactionService,
-        private readonly ActionRepository $actionRepository,
         private readonly ActionTranslationRepository $actionTranslationRepository,
         private readonly LanguageRepository $languageRepository,
         private readonly CacheService $cache,
@@ -103,23 +101,27 @@ class AdminActionTranslationService extends BaseService
             $updatedTranslations = [];
 
             foreach ($translations as $translationData) {
+                $languageId = $this->asInt($translationData['id_languages'] ?? null);
+                $translationKey = $this->asString($translationData['translation_key'] ?? null);
+                $content = $this->asString($translationData['content'] ?? null);
+
                 // Verify language exists
-                $language = $this->languageRepository->find($translationData['id_languages']);
+                $language = $this->languageRepository->find($languageId);
                 if (!$language instanceof Language) {
-                    throw new ServiceException('Language not found: ' . $translationData['id_languages'], Response::HTTP_BAD_REQUEST);
+                    throw new ServiceException('Language not found: ' . $languageId, Response::HTTP_BAD_REQUEST);
                 }
 
                 // Check if translation already exists
                 $existingTranslation = $this->actionTranslationRepository->findByActionKeyAndLanguage(
                     $actionId,
-                    $translationData['translation_key'],
-                    $translationData['id_languages']
+                    $translationKey,
+                    $languageId
                 );
 
                 if ($existingTranslation) {
                     // Update existing
                     $originalTranslation = clone $existingTranslation;
-                    $existingTranslation->setContent($translationData['content']);
+                    $existingTranslation->setContent($content);
                     $existingTranslation->setUpdatedAt(new \DateTimeImmutable());
                     $updatedTranslations[] = $this->formatTranslation($existingTranslation);
                 } else {
@@ -127,8 +129,8 @@ class AdminActionTranslationService extends BaseService
                     $translation = new ActionTranslation();
                     $translation->setAction($action);
                     $translation->setLanguage($language);
-                    $translation->setTranslationKey($translationData['translation_key']);
-                    $translation->setContent($translationData['content']);
+                    $translation->setTranslationKey($translationKey);
+                    $translation->setContent($content);
 
                     $this->entityManager->persist($translation);
                     $createdTranslations[] = $this->formatTranslation($translation);
@@ -190,7 +192,10 @@ class AdminActionTranslationService extends BaseService
         );
 
         if ($translation) {
-            return $translation->getContent();
+            $content = $translation->getContent();
+            if ($content !== null) {
+                return $content;
+            }
         }
 
         $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
@@ -202,7 +207,10 @@ class AdminActionTranslationService extends BaseService
             );
 
             if ($translation) {
-                return $translation->getContent();
+                $content = $translation->getContent();
+                if ($content !== null) {
+                    return $content;
+                }
             }
         }
 
@@ -225,69 +233,6 @@ class AdminActionTranslationService extends BaseService
     {
         $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
         return $this->resolveTranslation($actionId, $translationKey, $defaultLanguageId);
-    }
-
-    /**
-     * Extract translation keys from a decoded action config.
-     *
-     * @param array<string, mixed> $config
-     *   The decoded action configuration.
-     *
-     * @return string[]
-     *   Translation keys referenced by the action config.
-     */
-    private function extractTranslationKeysFromConfig(array $config): array
-    {
-        $keys = [];
-
-        if (isset($config['blocks']) && is_array($config['blocks'])) {
-            foreach ($config['blocks'] as $blockIndex => $block) {
-                if (isset($block['block_name']) && is_string($block['block_name'])) {
-                    $keys[] = "block_{$blockIndex}.name";
-                }
-
-                if (isset($block['jobs']) && is_array($block['jobs'])) {
-                    foreach ($block['jobs'] as $jobIndex => $job) {
-                        if (isset($job['job_name']) && is_string($job['job_name'])) {
-                            $keys[] = "block_{$blockIndex}.job_{$jobIndex}.name";
-                        }
-
-                        if (isset($job['notification']) && is_array($job['notification'])) {
-                            $keys = array_merge($keys, $this->extractNotificationKeys($job['notification'], $blockIndex, $jobIndex));
-                        }
-                    }
-                }
-            }
-        }
-
-        return $keys;
-    }
-
-    /**
-     * Extract translation keys from a job notification definition.
-     *
-     * @param array<string, mixed> $notification
-     *   The notification subsection of a job config.
-     * @param int $blockIndex
-     *   The zero-based index of the parent block.
-     * @param int $jobIndex
-     *   The zero-based index of the job within the block.
-     *
-     * @return string[]
-     *   Translation keys generated from notification fields.
-     */
-    private function extractNotificationKeys(array $notification, int $blockIndex, int $jobIndex): array
-    {
-        $keys = [];
-        $translatableFields = ['subject', 'body', 'from_name', 'from_email'];
-
-        foreach ($translatableFields as $field) {
-            if (isset($notification[$field]) && is_string($notification[$field])) {
-                $keys[] = "block_{$blockIndex}.job_{$jobIndex}.notification.{$field}";
-            }
-        }
-
-        return $keys;
     }
 
     /**
@@ -314,6 +259,8 @@ class AdminActionTranslationService extends BaseService
             $updatedAt = $updatedAt->setTimezone($cmsTimezone);
         }
 
+        $language = $translation->getLanguage();
+
         return [
             'id' => $translation->getId(),
             'translation_key' => $translation->getTranslationKey(),
@@ -321,9 +268,9 @@ class AdminActionTranslationService extends BaseService
             'created_at' => $createdAt?->format('Y-m-d H:i:s'),
             'updated_at' => $updatedAt?->format('Y-m-d H:i:s'),
             'language' => [
-                'id' => $translation->getLanguage()->getId(),
-                'locale' => $translation->getLanguage()->getLocale(),
-                'language' => $translation->getLanguage()->getLanguage(),
+                'id' => $language?->getId(),
+                'locale' => $language?->getLocale(),
+                'language' => $language?->getLanguage(),
             ],
         ];
     }

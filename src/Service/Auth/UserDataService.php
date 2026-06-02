@@ -17,7 +17,6 @@ use App\Service\CMS\UserPermissionService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use Doctrine\ORM\EntityManagerInterface;
-use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
@@ -31,7 +30,6 @@ class UserDataService
         private readonly UserPermissionService $userPermissionService,
         private readonly CacheService $cache,
         private readonly TransactionService $transactionService,
-        private readonly LoggerInterface $logger,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly LookupService $lookupService
     ) {
@@ -42,27 +40,29 @@ class UserDataService
      *
      * Enhanced caching with entity scopes for roles and groups to ensure
      * proper invalidation when role/group permissions change.
+     *
+     * @return array<string, mixed>
      */
     public function getUserData(User $user): array
     {
         $cacheKey = 'user_data_' . $user->getId();
 
         // Fetch user with roles and groups to build entity scopes
-        $user = $this->entityManager->getRepository(User::class)->find($user->getId());
+        $user = $this->entityManager->getRepository(User::class)->find($user->getId()) ?? $user;
 
         // Build entity scopes for all roles and groups this user has
         $cacheBuilder = $this->cache
             ->withCategory(CacheService::CATEGORY_USERS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, (int) $user->getId());
 
         // Add entity scopes for each role
         foreach ($user->getUserRoles() as $role) {
-            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, $role->getId());
+            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_ROLE, (int) $role->getId());
         }
 
         // Add entity scopes for each group
         foreach ($user->getGroups() as $group) {
-            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, $group->getId());
+            $cacheBuilder = $cacheBuilder->withEntityScope(CacheService::ENTITY_SCOPE_GROUP, (int) $group->getId());
         }
 
         return $cacheBuilder->getList($cacheKey, function () use ($user) {
@@ -84,6 +84,8 @@ class UserDataService
 
     /**
      * Get user language information with fallback to CMS preferences
+     *
+     * @return array<string, mixed>
      */
     public function getUserLanguageInfo(User $user): array
     {
@@ -137,6 +139,8 @@ class UserDataService
 
     /**
      * Get user timezone information
+     *
+     * @return array<string, mixed>|null
      */
     public function getUserTimezoneInfo(User $user): ?array
     {
@@ -188,6 +192,8 @@ class UserDataService
 
     /**
      * Get user roles
+     *
+     * @return array<int, array<string, mixed>>
      */
     private function getUserRoles(User $user): array
     {
@@ -202,6 +208,8 @@ class UserDataService
 
     /**
      * Get user permissions via the specialized cache service
+     *
+     * @return list<string>
      */
     private function getUserPermissions(User $user): array
     {
@@ -210,6 +218,8 @@ class UserDataService
 
     /**
      * Get user groups
+     *
+     * @return array<int, array<string, mixed>>
      */
     private function getUserGroups(User $user): array
     {
@@ -227,7 +237,7 @@ class UserDataService
      *
      * @param User $user
      * @param int $languageId
-     * @return array Response data containing language information
+     * @return array<string, mixed> Response data containing language information
      * @throws \InvalidArgumentException When language is not found
      */
     public function setUserLanguage(User $user, int $languageId): array
@@ -263,8 +273,8 @@ class UserDataService
 
             $this->entityManager->commit();
 
-            $this->cache                
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, $user->getId());
+            $this->cache
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_USER, (int) $user->getId());
 
             $this->cache
                 ->withCategory(CacheService::CATEGORY_USERS)

@@ -228,7 +228,7 @@ final class PluginApiRouteSynchronizer
      *     controller: string,
      *     methods: string,
      *     requirements: array<string,string>|null,
-     *     params: array<int|string,mixed>|null,
+     *     params: array<string,mixed>|null,
      *     version: string,
      *     permissions: list<Permission>,
      * }>
@@ -269,7 +269,13 @@ final class PluginApiRouteSynchronizer
             $methods = $this->normaliseMethods($pluginId, $name, $raw['methods'] ?? []);
 
             $requirements = $this->normaliseAssocStringArray($raw['requirements'] ?? null);
-            $params = isset($raw['params']) && is_array($raw['params']) ? $raw['params'] : null;
+            $params = null;
+            if (isset($raw['params']) && is_array($raw['params'])) {
+                $params = [];
+                foreach ($raw['params'] as $paramKey => $paramValue) {
+                    $params[(string) $paramKey] = $paramValue;
+                }
+            }
             $permissions = $this->resolvePermissions($pluginId, $name, $raw);
 
             $key = $this->routeKey($name, $version);
@@ -382,9 +388,9 @@ final class PluginApiRouteSynchronizer
         }
 
         $repo = $manifest->getBackendComposerRepository();
-        if ($repo !== null && ($repo['type'] ?? null) === 'path') {
-            $path = $repo['url'] ?? null;
-            if (is_string($path) && $path !== '' && is_dir($path)) {
+        if ($repo !== null && $repo['type'] === 'path') {
+            $path = $repo['url'];
+            if ($path !== '' && is_dir($path)) {
                 return $path;
             }
         }
@@ -414,7 +420,8 @@ final class PluginApiRouteSynchronizer
 
         $composerRaw = file_get_contents($composerPath);
         $composer = is_string($composerRaw) ? json_decode($composerRaw, true) : null;
-        $psr4 = is_array($composer['autoload']['psr-4'] ?? null) ? $composer['autoload']['psr-4'] : [];
+        $autoload = is_array($composer) && is_array($composer['autoload'] ?? null) ? $composer['autoload'] : [];
+        $psr4 = is_array($autoload['psr-4'] ?? null) ? $autoload['psr-4'] : [];
         $controllerFile = $this->resolvePsr4ClassFile($backendSourceDir, $controllerClass, $psr4);
         if ($controllerFile === null || !is_file($controllerFile)) {
             throw new \RuntimeException(sprintf(
@@ -452,7 +459,7 @@ final class PluginApiRouteSynchronizer
     }
 
     /**
-     * @param array<string,mixed> $psr4
+     * @param array<array-key,mixed> $psr4
      */
     private function resolvePsr4ClassFile(string $backendSourceDir, string $className, array $psr4): ?string
     {

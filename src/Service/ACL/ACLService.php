@@ -13,7 +13,6 @@ use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\User;
 use App\Service\Cache\Core\CacheService;
-use Doctrine\DBAL\Connection;
 use App\Repository\AclRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -28,7 +27,6 @@ class ACLService
      * Constructor
      */
     public function __construct(
-        private readonly Connection $connection,
         private readonly AclRepository $aclRepository,
         private readonly CacheService $cache,
     ) {
@@ -44,20 +42,14 @@ class ACLService
      */
     public function hasAccess(int|string|null $userId, int $pageId, string $accessType = 'select'): bool
     {
+        // Normalize userId: null becomes the guest user, strings are coerced to int.
+        $userId = $userId === null ? 1 : (is_int($userId) ? $userId : (int) $userId);
 
         $cacheKey = "user_acl_{$pageId}";
         return $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getItem($cacheKey, function () use ($userId, $pageId, $accessType) {
-                // Handle null or non-integer userId
-                if ($userId === null) {
-                    $userId = 1; // Guest user ID
-                } elseif (!is_int($userId)) {
-                    // Convert string user ID to int if needed
-                    $userId = (int) $userId;
-                }
-
                 // Map accessType to column
                 $modeMap = [
                     'select' => 'acl_select',
@@ -82,15 +74,16 @@ class ACLService
 
                 // The repository returns an array of pages, but since we're querying for a specific page,
                 // we should only have one result
-                $result = $results[0] ?? null;
+                $result = $results[0];
 
-                // If no result or ACL column doesn't exist, deny access
-                if (!$result || !array_key_exists($aclColumn, $result)) {
+                // If ACL column doesn't exist, deny access
+                if (!array_key_exists($aclColumn, $result)) {
                     return false;
                 }
 
                 // Grant if column is 1
-                return (int) $result[$aclColumn] === 1;
+                $aclValue = $result[$aclColumn];
+                return is_scalar($aclValue) && (int) $aclValue === 1;
             });
     }
 
@@ -101,7 +94,7 @@ class ACLService
      * so it's efficient to call multiple times
      *
      * @param int|string|null $userId The user ID
-     * @return array Array of pages with ACL information
+     * @return list<array<string, mixed>> Array of pages with ACL information
      */
     public function getAllUserAcls(int|string|null $userId): array
     {
@@ -134,8 +127,8 @@ class ACLService
         $em->persist($aclGroup);
         
         // Invalidate entity scopes for affected entities
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, $group->getId());
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, (int) $group->getId());
+        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
         
         // Invalidate permission lists
         $this->cache

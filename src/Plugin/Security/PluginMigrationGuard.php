@@ -79,7 +79,7 @@ final class PluginMigrationGuard
         // DELETE FROM protected_table without an id_plugins predicate.
         if (preg_match('/\bdelete\s+from\s+[`"\[]?([a-z0-9_]+)[`"\]]?(.*)$/is', $normalized, $matches) === 1) {
             $table = $matches[1];
-            $rest = $matches[2] ?? '';
+            $rest = $matches[2];
             if (ProtectedTablesPolicy::isProtected($table)) {
                 if (!preg_match('/\bid_plugins\b/i', $rest)) {
                     throw new PluginMigrationGuardException(sprintf(

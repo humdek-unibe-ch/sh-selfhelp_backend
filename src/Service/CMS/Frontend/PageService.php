@@ -10,7 +10,6 @@ namespace App\Service\CMS\Frontend;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
-use App\Repository\StylesFieldRepository;
 use App\Repository\PagesFieldsTranslationRepository;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
@@ -22,7 +21,6 @@ use App\Service\Core\BaseService;
 use App\Service\Core\ConditionService;
 use App\Service\Core\InterpolationService;
 use App\Service\Core\UserContextAwareService;
-use Doctrine\ORM\EntityManagerInterface;
 
 class PageService extends BaseService
 {
@@ -44,8 +42,6 @@ class PageService extends BaseService
         private readonly ACLService $aclService,
         private readonly PageRepository $pageRepository,
         private readonly SectionsFieldsTranslationRepository $translationRepository,
-        private readonly EntityManagerInterface $entityManager,
-        private readonly StylesFieldRepository $stylesFieldRepository,
         private readonly SectionUtilityService $sectionUtilityService,
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CacheService $cache,
@@ -61,34 +57,43 @@ class PageService extends BaseService
     /**
      * Recursively sorts pages by nav_position
      * Pages with null nav_position will be placed at the end and sorted alphabetically by keyword
+     *
+     * @param list<array<string, mixed>> $pages
      */
     private function sortPagesRecursively(array &$pages): void
     {
-        usort($pages, function ($a, $b) {
+        usort($pages, function (array $a, array $b): int {
+            $aPos = $a['nav_position'] ?? null;
+            $bPos = $b['nav_position'] ?? null;
+
             // If both positions are null, sort alphabetically by keyword
-            if ($a['nav_position'] === null && $b['nav_position'] === null) {
-                return strcasecmp($a['keyword'] ?? '', $b['keyword'] ?? '');
+            if ($aPos === null && $bPos === null) {
+                return strcasecmp($this->asString($a['keyword'] ?? ''), $this->asString($b['keyword'] ?? ''));
             }
 
             // If only a's position is null, it should go after b
-            if ($a['nav_position'] === null) {
+            if ($aPos === null) {
                 return 1;
             }
 
             // If only b's position is null, it should go after a
-            if ($b['nav_position'] === null) {
+            if ($bPos === null) {
                 return -1;
             }
 
             // If both have positions, compare them normally
-            return $a['nav_position'] <=> $b['nav_position'];
+            return $aPos <=> $bPos;
         });
 
         foreach ($pages as &$page) {
-            if (!empty($page['children'])) {
-                $this->sortPagesRecursively($page['children']);
+            if (isset($page['children']) && is_array($page['children']) && !empty($page['children'])) {
+                /** @var list<array<string, mixed>> $children */
+                $children = $page['children'];
+                $this->sortPagesRecursively($children);
+                $page['children'] = $children;
             }
         }
+        unset($page);
     }
 
     /**
@@ -96,14 +101,14 @@ class PageService extends BaseService
      *
      * @param string $mode Either 'web' or 'mobile'
      * @param int|null $language_id Optional language ID for translations
-     * @return array
+     * @return list<array<string, mixed>>
      */
     public function getAllAccessiblePagesForUser(string $mode, bool $admin, ?int $language_id = null): array
     {
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = 1; // guest user
         if ($user) {
-            $userId = $user->getId();
+            $userId = (int) $user->getId();
         }
 
         // Determine which language ID to use for translations
@@ -121,6 +126,7 @@ class PageService extends BaseService
                 // The `get_user_acl` stored procedure returns canonical snake_case
                 // columns (id_parent_page, id_page_types, id_page_access_types)
                 // — no key normalization is needed.
+                /** @var list<array<string, mixed>> $allPages */
                 $allPages = $this->aclService->getAllUserAcls($userId);
 
                 // Determine which type to remove based on mode
@@ -128,7 +134,7 @@ class PageService extends BaseService
                 $removeTypeId = $this->lookupService->getLookupIdByCode(LookupService::PAGE_ACCESS_TYPES, $removeType);
 
                 // If mode is both, do not remove any type
-                $filteredPages = array_values(array_filter($allPages, function ($item) use ($removeTypeId, $mode, $admin) {
+                $filteredPages = array_values(array_filter($allPages, function (array $item) use ($removeTypeId, $mode, $admin) {
 
                     // Base ACL check
                     if ($item['acl_select'] != 1) {
@@ -159,7 +165,7 @@ class PageService extends BaseService
                 }
 
                 // Extract page IDs for fetching translations
-                $pageIds = array_column($filteredPages, 'id_pages');
+                $pageIds = array_map(fn (mixed $id): int => $this->asInt($id), array_column($filteredPages, 'id_pages'));
 
                 // Fetch all page title translations in one query
                 $pageTitleTranslations = [];
@@ -180,7 +186,7 @@ class PageService extends BaseService
                     // (user-visible, translatable) and are needed by the frontend
                     // for <title> / <meta name="description"> generation without a
                     // second round-trip per page.
-                    $pageId = $page['id_pages'];
+                    $pageId = $this->asInt($page['id_pages']);
                     $translations = $pageTitleTranslations[$pageId] ?? [];
 
                     $page['title'] = null;
@@ -196,16 +202,17 @@ class PageService extends BaseService
                         : null;
 
                     $page['children'] = []; // Initialize children array
-                    $pagesMap[$page['id_pages']] = &$page;
+                    $pagesMap[$pageId] = &$page;
                 }
                 unset($page); // Break the reference
     
                 // Build the hierarchy
                 $nestedPages = [];
                 foreach ($pagesMap as $id => &$page) {
-                    if (isset($page['id_parent_page']) && $page['id_parent_page'] !== null && isset($pagesMap[$page['id_parent_page']])) {
+                    $parentId = isset($page['id_parent_page']) ? $this->asInt($page['id_parent_page']) : null;
+                    if ($parentId !== null && isset($pagesMap[$parentId])) {
                         // This is a child page, add it to its parent's children array
-                        $pagesMap[$page['id_parent_page']]['children'][] = &$page;
+                        $pagesMap[$parentId]['children'][] = &$page;
                     } else {
                         // This is a root level page
                         $nestedPages[] = &$page;
@@ -233,7 +240,7 @@ class PageService extends BaseService
      * @param int $page_id The page ID
      * @param int|null $language_id Optional language ID for translations
      * @param bool $preview Force draft serving (bypasses published version)
-     * @return array The page object with translated sections
+     * @return array<string, mixed> The page object with translated sections
      * @throws \App\Exception\ServiceException If page not found or access denied
      */
     public function getPage(int $page_id, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
@@ -262,6 +269,8 @@ class PageService extends BaseService
      * mobile_and_web). If supplied, the page's own access type must be
      * compatible (`mobile_and_web` is universal). Mismatches throw 404 to
      * avoid leaking page metadata across platforms.
+     *
+     * @return array<string, mixed>
      */
     public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
     {
@@ -272,7 +281,7 @@ class PageService extends BaseService
             $this->throwNotFound('Page not found');
         }
 
-        return $this->resolvePageResponse($page, $page->getId(), $languageId, $preview, $mode);
+        return $this->resolvePageResponse($page, (int) $page->getId(), $languageId, $preview, $mode);
     }
 
     /**
@@ -286,6 +295,8 @@ class PageService extends BaseService
      *   check is skipped for back-compat.
      * - Pages with no `id_page_access_types` are treated as `web` (legacy
      *   default).
+     *
+     * @return array<string, mixed>
      */
     private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array
     {
@@ -294,7 +305,7 @@ class PageService extends BaseService
         }
 
         // Check if user has access to the page
-        $this->userContextAwareService->checkAclAccess($page->getKeyword(), 'select');
+        $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), 'select');
 
         // If preview mode is disabled and a published version exists, serve it
         if (!$preview && $page->getPublishedVersionId()) {
@@ -341,12 +352,15 @@ class PageService extends BaseService
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
-     * @return array The hydrated page data
+     * @return array<string, mixed> The hydrated page data
      */
     private function servePublishedVersion(int $page_id, int $languageId): array
     {
         // Get the published version from database
         $page = $this->pageRepository->find($page_id);
+        if (!$page) {
+            $this->throwNotFound('Page not found');
+        }
         $versionId = $page->getPublishedVersionId();
         
         $publishedVersion = $this->pageVersionRepository->find($versionId);
@@ -387,17 +401,18 @@ class PageService extends BaseService
      * 3. Re-evaluates conditions
      * 4. Applies variable interpolation
      * 
-     * @param array $storedPageData The stored page JSON structure with ALL languages
+     * @param array<string, mixed> $storedPageData The stored page JSON structure with ALL languages
      * @param int $languageId The language ID to extract and serve
-     * @return array The hydrated page data with single language
+     * @return array<string, mixed> The hydrated page data with single language
      */
     private function hydratePublishedPage(array $storedPageData, int $languageId): array
     {
         // Extract sections from stored data
-        if (!isset($storedPageData['page']['sections'])) {
+        if (!isset($storedPageData['page']) || !is_array($storedPageData['page']) || !isset($storedPageData['page']['sections']) || !is_array($storedPageData['page']['sections'])) {
             return $storedPageData;
         }
 
+        /** @var array<int, array<string, mixed>> $sections */
         $sections = $storedPageData['page']['sections'];
 
         // Step 1: Extract language-specific translations from multi-language data
@@ -405,7 +420,7 @@ class PageService extends BaseService
 
         // Step 2: Re-process sections with dynamic element refresh (data retrieval, conditions, interpolation)
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? $user->getId() : null;
+        $userId = $user ? (int) $user->getId() : null;
         
         $hydratedSections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
 
@@ -427,7 +442,7 @@ class PageService extends BaseService
      * IMPORTANT: This method ONLY adds/overrides translatable fields.
      * All other section fields (structure, config, etc.) are preserved.
      * 
-     * @param array &$sections Sections array (passed by reference)
+     * @param array<int, array<string, mixed>> &$sections Sections array (passed by reference)
      * @param int $languageId Language ID to extract
      */
     private function extractLanguageTranslations(array &$sections, int $languageId): void
@@ -435,7 +450,7 @@ class PageService extends BaseService
         foreach ($sections as &$section) {
             // If section has translations data, extract the specific language
             if (isset($section['translations']) && is_array($section['translations'])) {
-                if (isset($section['translations'][$languageId])) {
+                if (isset($section['translations'][$languageId]) && is_array($section['translations'][$languageId])) {
                     // Apply the language-specific translations as direct fields
                     // This OVERRIDES existing field values but doesn't remove other fields
                     foreach ($section['translations'][$languageId] as $fieldName => $fieldData) {
@@ -449,9 +464,13 @@ class PageService extends BaseService
 
             // Recursively process children
             if (isset($section['children']) && is_array($section['children'])) {
-                $this->extractLanguageTranslations($section['children'], $languageId);
+                /** @var array<int, array<string, mixed>> $children */
+                $children = $section['children'];
+                $this->extractLanguageTranslations($children, $languageId);
+                $section['children'] = $children;
             }
         }
+        unset($section);
     }
 
     /**
@@ -462,18 +481,19 @@ class PageService extends BaseService
      * @param int $page_id The page ID
      * @param int $languageId The language ID
      * @param \App\Entity\Page $page The page entity
-     * @return array The page data
+     * @return array<string, mixed> The page data
      */
     private function serveDraftVersion(int $page_id, int $languageId, \App\Entity\Page $page): array
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? $user->getId() : 1; // guest user
+        $userId = $user ? (int) $user->getId() : 1; // guest user
 
         // Try to get from cache first
         $cacheKey = "page_draft_{$page_id}_{$languageId}";
 
         // Get flat sections to extract data table dependencies for page-level cache
+        /** @var list<array<string, mixed>> $flatSections */
         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
         $dataTableConfigs = $this->extractDataTableDependencies($flatSections, $page_id);
 
@@ -482,29 +502,29 @@ class PageService extends BaseService
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_LANGUAGE, $languageId)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page->getId());
+            ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
 
         // Add data table entity scopes for each data table this page depends on
         foreach ($dataTableConfigs as $dataTableId => $config) {
             // Always add data table scope for global configs (current_user: false)
-            if ($config['has_global_config']) {
+            if (!empty($config['has_global_config'])) {
                 $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
             }
 
             // For user-specific configs (current_user: true), add user-data-table combined scope
-            if ($config['has_current_user_config']) {
+            if (!empty($config['has_current_user_config'])) {
                 $cacheService = $cacheService
                     ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
                     ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId);
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($page_id, $languageId, $page, $flatSections) {
+        return $cacheService->getItem($cacheKey, function () use ($languageId, $page) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
             // / <meta name="description">.
-            $seo = $this->resolvePageSeoFields($page->getId(), $languageId);
+            $seo = $this->resolvePageSeoFields((int) $page->getId(), $languageId);
 
             $pageData = [
                 'page' => [
@@ -517,7 +537,7 @@ class PageService extends BaseService
                     'footer_position' => $page->getFooterPosition(),
                     'title' => $seo['title'],
                     'description' => $seo['description'],
-                    'sections' => $this->getPageSections($page->getId(), $languageId)
+                    'sections' => $this->getPageSections((int) $page->getId(), $languageId)
                 ]
             ];
 
@@ -556,17 +576,17 @@ class PageService extends BaseService
 
         $entry = $translations[$pageId] ?? [];
         return [
-            'title'       => isset($entry['title']) ? $entry['title'] : null,
-            'description' => isset($entry['description']) ? $entry['description'] : null,
+            'title'       => isset($entry['title']) ? $this->asStringOrNull($entry['title']) : null,
+            'description' => isset($entry['description']) ? $this->asStringOrNull($entry['description']) : null,
         ];
     }
 
     /**
      * Extract data table dependencies from sections (with caching)
      *
-     * @param array $flatSections Flat sections array from repository
+     * @param list<array<string, mixed>> $flatSections Flat sections array from repository
      * @param int $pageId The page ID for caching key
-     * @return array Associative array with data table IDs as keys and config info as values
+     * @return array<int, array{has_current_user_config: bool, has_global_config: bool}> Associative array with data table IDs as keys and config info as values
      */
     /**
      * Returns true when the keyword is in the fallback whitelist AND no section
@@ -595,10 +615,11 @@ class PageService extends BaseService
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId)
             ->getList($cacheKey, function () use ($flatSections) {
+                /** @var array<int, array{has_current_user_config: bool, has_global_config: bool}> $dataTableConfigs */
                 $dataTableConfigs = [];
 
                 foreach ($flatSections as $section) {
-                    if (isset($section['data_config']) && $section['data_config'] !== null) {
+                    if (isset($section['data_config'])) {
                         // Parse data_config as JSON string to array
                         $dataConfigArray = is_string($section['data_config'])
                             ? json_decode($section['data_config'], true)
@@ -607,14 +628,14 @@ class PageService extends BaseService
                         if (is_array($dataConfigArray)) {
                             // data_config is an array of configuration objects, process each one
                             foreach ($dataConfigArray as $config) {
-                                if (isset($config['table'])) {
-                                    $tableName = $config['table'];
+                                if (is_array($config) && isset($config['table'])) {
+                                    $tableName = $this->asString($config['table']);
 
                                     // Get data table by name to get its ID
                                     try {
                                         $dataTable = $this->dataService->getDataTableByName($tableName);
                                         if ($dataTable) {
-                                            $dataTableId = $dataTable->getId();
+                                            $dataTableId = (int) $dataTable->getId();
                                             $currentUser = $config['current_user'] ?? true; // Default to true
 
                                             // If we haven't seen this data table before, initialize it
@@ -651,17 +672,18 @@ class PageService extends BaseService
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
-     * @return array The page sections in a hierarchical structure with translations
+     * @return list<array<string, mixed>> The page sections in a hierarchical structure with translations
      */
     public function getPageSections(int $page_id, int $languageId): array
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? $user->getId() : 1; // guest user
+        $userId = $user ? (int) $user->getId() : 1; // guest user
 
         $cacheKey = "page_sections_{$page_id}_{$languageId}";
 
         // Get flat sections first to extract data table dependencies
+        /** @var list<array<string, mixed>> $flatSections */
         $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
 
         // Extract data table dependencies for cache scoping
@@ -723,7 +745,7 @@ class PageService extends BaseService
             // Process sections recursively with proper data inheritance and sequential operations
             // This replaces the bulk applySectionsData, interpolation, and condition filtering
             $user = $this->userContextAwareService->getCurrentUser();
-            $userId = $user ? $user->getId() : null;
+            $userId = $user ? (int) $user->getId() : null;
             $sections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
 
             return $sections;
@@ -745,13 +767,14 @@ class PageService extends BaseService
 
         // If user is logged in, use their preferred language
         $user = $this->userContextAwareService->getCurrentUser();
-        if ($user && $user->getLanguage()) {
-            return $user->getLanguage()->getId();
+        $userLanguage = $user?->getLanguage();
+        if ($userLanguage !== null) {
+            return (int) $userLanguage->getId();
         }
 
         // Otherwise use default language from CMS preferences
         try {
-            return $this->cache
+            return (int) $this->cache
                 ->withCategory(CacheService::CATEGORY_CMS_PREFERENCES)
                 ->getItem("cms_preferences_default_language_id", fn() => $this->cmsPreferenceService->getDefaultLanguageId());
         } catch (\Exception $e) {
@@ -772,11 +795,11 @@ class PageService extends BaseService
      * 4. Evaluate condition to determine if section should be included
      * 5. Process children recursively with inherited data
      *
-     * @param array $sections The sections to process
-     * @param array $parentData Parent data to inherit (default empty array)
+     * @param array<int, array<string, mixed>> $sections The sections to process
+     * @param array<array-key, mixed> $parentData Parent data to inherit (default empty array)
      * @param int|null $userId User ID for condition evaluation
      * @param int $languageId Language ID for data retrieval
-     * @return array Processed sections that pass conditions
+     * @return list<array<string, mixed>> Processed sections that pass conditions
      */
     private function processSectionsRecursively(array $sections, array $parentData = [], ?int $userId = null, int $languageId = 1): array
     {
@@ -794,7 +817,7 @@ class PageService extends BaseService
             $this->retrieveSectionData($section, $parentData, $languageId);
 
             // Step 4: Merge parent data with newly retrieved data efficiently
-            $sectionData = $this->mergeDataEfficiently($parentData, $section['retrieved_data'] ?? []);
+            $sectionData = $this->mergeDataEfficiently($parentData, $this->asArray($section['retrieved_data'] ?? []));
 
             // Step 5: CRITICAL - Interpolate ALL content fields using combined data
             // Now we have both parent data and newly retrieved data available
@@ -816,7 +839,9 @@ class PageService extends BaseService
 
                 // Step 8: Process children recursively with inherited data
                 if (isset($section['children']) && is_array($section['children'])) {
-                    $section['children'] = $this->processSectionsRecursively($section['children'], $sectionData, $userId, $languageId);
+                    /** @var array<int, array<string, mixed>> $children */
+                    $children = $section['children'];
+                    $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
                 }
 
                 // Step 9: `retrieved_data` is internal scaffolding for the
@@ -856,7 +881,7 @@ class PageService extends BaseService
      * response. Currently this only removes `retrieved_data` from sections
      * whose `debug` flag is not `true` — see Step 9 above for context.
      *
-     * @param array $section Section reference (mutated in place).
+     * @param array<string, mixed> $section Section reference (mutated in place).
      */
     private function cleanupInternalSectionScaffolding(array &$section): void
     {
@@ -870,9 +895,9 @@ class PageService extends BaseService
      * Efficiently merge parent and section data
      * Avoids unnecessary array_merge when one array is empty
      *
-     * @param array $parentData
-     * @param array $sectionData
-     * @return array
+     * @param array<array-key, mixed> $parentData
+     * @param array<array-key, mixed> $sectionData
+     * @return array<array-key, mixed>
      */
     private function mergeDataEfficiently(array $parentData, array $sectionData): array
     {
@@ -886,11 +911,33 @@ class PageService extends BaseService
     }
 
     /**
+     * Coerce a value that is expected to be a JSON config object into a
+     * string-keyed array. `data_config` entries are decoded from JSON objects,
+     * so their keys are always strings at runtime; this normalises the static
+     * type without changing behaviour for valid configs.
+     *
+     * @return array<string, mixed>
+     */
+    private function toConfigArray(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $config = [];
+        foreach ($value as $key => $entry) {
+            $config[(string) $key] = $entry;
+        }
+
+        return $config;
+    }
+
+    /**
      * Interpolate data_config fields in a section using parent data
      * This is critical for filters that reference parent data
      *
-     * @param array &$section The section to process
-     * @param array $parentData Parent data for interpolation
+     * @param array<string, mixed> &$section The section to process
+     * @param array<array-key, mixed> $parentData Parent data for interpolation
      */
     private function interpolateDataConfigInSection(array &$section, array $parentData): void
     {
@@ -908,8 +955,10 @@ class PageService extends BaseService
         }
 
         // Interpolate each config entry
-        foreach ($dataConfig as &$config) {
-            $config = $this->interpolateDataConfig($config, $parentData);
+        foreach ($dataConfig as $configIndex => $configEntry) {
+            if (is_array($configEntry)) {
+                $dataConfig[$configIndex] = $this->interpolateDataConfig($this->toConfigArray($configEntry), $parentData);
+            }
         }
 
         // Update the section's data_config
@@ -920,8 +969,8 @@ class PageService extends BaseService
      * Apply optimized interpolation pass for ALL fields using combined data
      * This happens after data retrieval so all parent + own data is available
      *
-     * @param array &$section The section to interpolate
-     * @param array $interpolationData The combined data to use for interpolation
+     * @param array<string, mixed> &$section The section to interpolate
+     * @param array<array-key, mixed> $interpolationData The combined data to use for interpolation
      */
     private function applyOptimizedInterpolationPass(array &$section, array $interpolationData): void
     {
@@ -964,16 +1013,14 @@ class PageService extends BaseService
      * Interpolate only content fields that actually exist in the section
      * Much more efficient than checking 100+ field names
      *
-     * @param array &$section The section to process
-     * @param array $interpolationData Data for interpolation
+     * @param array<string, mixed> &$section The section to process
+     * @param-out array<string, mixed> $section
+     * @param array<array-key, mixed> $interpolationData Data for interpolation
      * @param bool $includeCondition Whether to include condition field
      */
     private function interpolateExistingContentFields(array &$section, array $interpolationData, bool $includeCondition = false): void
     {
-        // Common content field patterns
-        $contentFieldSuffixes = ['_label', '_placeholder', '_description', '_title', '_text', '_message', '_url', '_value'];
-
-        foreach ($section as $fieldName => &$fieldValue) {
+        foreach ($section as $fieldName => $fieldValue) {
             // Skip non-content fields
             if (!is_array($fieldValue) || !isset($fieldValue['content'])) {
                 continue;
@@ -982,12 +1029,14 @@ class PageService extends BaseService
             // Special handling for condition field
             if ($fieldName === 'condition' && $includeCondition) {
                 $fieldValue['content'] = $this->interpolationService->interpolateConditionWithDebug($section, $interpolationData);
+                $section[$fieldName] = $fieldValue;
                 continue;
             }
 
             // Interpolate content if it's a string
             if (is_string($fieldValue['content'])) {
                 $fieldValue['content'] = $this->interpolationService->interpolate($fieldValue['content'], $interpolationData);
+                $section[$fieldName] = $fieldValue;
             }
         }
     }
@@ -995,14 +1044,14 @@ class PageService extends BaseService
     /**
      * Retrieve data for a single section from its data_config
      *
-     * @param array &$section The section to retrieve data for
-     * @param array $availableData Available data for interpolation (parent data)
+     * @param array<string, mixed> &$section The section to retrieve data for
+     * @param array<array-key, mixed> $availableData Available data for interpolation (parent data)
      * @param int $languageId The language ID for data retrieval
      */
     private function retrieveSectionData(array &$section, array $availableData, int $languageId): void
     {
         // Handle data_config field - parse and retrieve data
-        if (isset($section['data_config']) && $section['data_config'] !== null) {
+        if (isset($section['data_config'])) {
             // Parse data_config as JSON string to array
             $dataConfigArray = is_string($section['data_config'])
                 ? json_decode($section['data_config'], true)
@@ -1012,13 +1061,16 @@ class PageService extends BaseService
                 // data_config is an array of configuration objects, process each one
                 $retrievedData = [];
                 foreach ($dataConfigArray as $configIndex => $config) {
+                    if (!is_array($config)) {
+                        continue;
+                    }
                     try {
                         // Interpolate the config before retrieving data
                         // availableData contains the structured parent data (system, globals, parent scopes)
-                        $interpolatedConfig = $this->interpolateDataConfig($config, $availableData);
+                        $interpolatedConfig = $this->interpolateDataConfig($this->toConfigArray($config), $availableData);
                         $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
                         // Use the scope as key if available, otherwise use index
-                        $key = isset($config['scope']) ? $config['scope'] : $configIndex;
+                        $key = isset($config['scope']) ? $this->asString($config['scope']) : $configIndex;
                         $retrievedData[$key] = $configData;
                     } catch (\Exception $e) {
                         // If there's an error retrieving data, continue without it
@@ -1042,9 +1094,9 @@ class PageService extends BaseService
     /**
      * Interpolate variables in data config before data retrieval
      *
-     * @param array $config The data config to interpolate
-     * @param array $availableData Available data for interpolation
-     * @return array The interpolated config
+     * @param array<string, mixed> $config The data config to interpolate
+     * @param array<array-key, mixed> $availableData Available data for interpolation
+     * @return array<string, mixed> The interpolated config
      */
     private function interpolateDataConfig(array $config, array $availableData): array
     {
@@ -1095,11 +1147,11 @@ class PageService extends BaseService
     /**
      * Evaluate condition for a section
      *
-     * @param array $section The section to evaluate
+     * @param array<string, mixed> $section The section to evaluate
      * @param int|null $userId User ID for condition evaluation
      * @param int $languageId Language of the current render; forwarded to ConditionService
      *                        so the `language` system variable matches the request language.
-     * @return array Result with 'passes' boolean and optional 'debug' info
+     * @return array{passes: bool, debug?: array<string, mixed>} Result with 'passes' boolean and optional 'debug' info
      */
     private function evaluateSectionCondition(array $section, ?int $userId, int $languageId = 1): array
     {
@@ -1107,16 +1159,26 @@ class PageService extends BaseService
             return ['passes' => true];
         }
 
+        $condition = $section['condition'];
+        // Conditions are stored as JSON strings or already-decoded arrays. Any
+        // other (non-empty) type is not a valid condition, so treat it as "no
+        // condition" instead of passing it to ConditionService (which only
+        // accepts array|string|null and would otherwise raise a TypeError).
+        if (!is_string($condition) && !is_array($condition)) {
+            return ['passes' => true];
+        }
+
+        /** @var array{result: bool, fields?: mixed, debug?: array<string, mixed>} $conditionResult */
         $conditionResult = $this->conditionService->evaluateCondition(
-            $section['condition'],
+            $condition,
             $userId,
-            $section['keyword'] ?? 'unknown',
+            $this->asString($section['keyword'] ?? 'unknown'),
             $languageId
         );
 
         return [
             'passes' => $conditionResult['result'],
-            'debug' => $this->conditionService->buildConditionDebug($conditionResult, $section['condition']),
+            'debug' => $this->conditionService->buildConditionDebug($conditionResult, $condition),
         ];
     }
 

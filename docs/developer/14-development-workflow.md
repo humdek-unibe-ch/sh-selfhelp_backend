@@ -182,8 +182,8 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    ```
 
 3. **Sync with Database Structure**
-   - Check `db/structure_db.sql` for table definitions
-   - Ensure entity fields match database columns
+   - The Doctrine migrations under `migrations/` are the canonical schema; validate with `composer validate-db`
+   - Ensure entity fields match the migrated database columns
    - Use correct data types and constraints
 
 ## 🔧 Service Development

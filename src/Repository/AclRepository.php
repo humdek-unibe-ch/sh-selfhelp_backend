@@ -16,6 +16,8 @@ use App\Entity\Page;
 /**
  * Repository for ACL operations
  * Uses the unified CacheService for caching ACL data
+ *
+ * @extends ServiceEntityRepository<Page>
  */
 class AclRepository extends ServiceEntityRepository
 {
@@ -34,7 +36,7 @@ class AclRepository extends ServiceEntityRepository
      * 
      * @param int $userId User ID to get ACLs for
      * @param int $pageId Optional page ID to filter by (-1 for all pages)
-     * @return array Array of page ACLs with access rights
+     * @return list<array<string, mixed>> Array of page ACLs with access rights
      */
     public function getUserAcl(int $userId, ?int $pageId = -1): array
     {

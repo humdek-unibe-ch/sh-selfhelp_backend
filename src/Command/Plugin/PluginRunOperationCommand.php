@@ -55,7 +55,8 @@ final class PluginRunOperationCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $opId = (int) $input->getArgument('operationId');
+        $opIdRaw = $input->getArgument('operationId');
+        $opId = is_numeric($opIdRaw) ? (int) $opIdRaw : 0;
         $operation = $this->operations->find($opId);
         if (!$operation instanceof PluginOperation) {
             $io->error(sprintf('Plugin operation #%d not found.', $opId));
@@ -72,7 +73,7 @@ final class PluginRunOperationCommand extends Command
                         $io->error('Operation snapshot is missing the manifest payload; cannot finalize install.');
                         return Command::FAILURE;
                     }
-                    $this->finalizer->finalizeInstall($opId, $manifestData);
+                    $this->finalizer->finalizeInstall($opId, self::toAssoc($manifestData));
                     break;
                 case PluginOperation::TYPE_UPDATE:
                     $manifestData = $snapshots['newManifest'] ?? $snapshots['manifest'] ?? null;
@@ -80,7 +81,7 @@ final class PluginRunOperationCommand extends Command
                         $io->error('Operation snapshot is missing the new manifest payload; cannot finalize update.');
                         return Command::FAILURE;
                     }
-                    $this->finalizer->finalizeUpdate($opId, $manifestData);
+                    $this->finalizer->finalizeUpdate($opId, self::toAssoc($manifestData));
                     break;
                 case PluginOperation::TYPE_UNINSTALL:
                     $this->finalizer->finalizeUninstall($opId);
@@ -96,5 +97,22 @@ final class PluginRunOperationCommand extends Command
 
         $io->success(sprintf('Operation #%d (%s) finalized.', $opId, $operation->getType()));
         return Command::SUCCESS;
+    }
+
+    /**
+     * Re-key a decoded JSON snapshot to a string-keyed map. The manifest
+     * snapshot is always a JSON object at runtime; this only narrows the
+     * key type for the finalizer signature without changing values.
+     *
+     * @param array<array-key,mixed> $value
+     * @return array<string,mixed>
+     */
+    private static function toAssoc(array $value): array
+    {
+        $out = [];
+        foreach ($value as $k => $v) {
+            $out[(string) $k] = $v;
+        }
+        return $out;
     }
 }

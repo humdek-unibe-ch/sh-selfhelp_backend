@@ -13,16 +13,18 @@ namespace App\Exception;
  */
 class RequestValidationException extends \Exception
 {
+    /** @var list<string> */
     private array $validationErrors;
     private string $schemaName;
+    /** @var array<array-key, mixed> */
     private array $requestData;
 
     /**
      * Constructor
      *
-     * @param array $validationErrors The validation errors
+     * @param list<string> $validationErrors The validation errors
      * @param string $schemaName The name of the schema that failed validation
-     * @param array $requestData The request data that failed validation
+     * @param array<array-key, mixed> $requestData The request data that failed validation
      * @param string $message The exception message
      * @param int $code The exception code
      * @param \Throwable|null $previous The previous exception
@@ -33,7 +35,7 @@ class RequestValidationException extends \Exception
         array $requestData = [],
         string $message = 'Validation failed', 
         int $code = 400, 
-        \Throwable $previous = null
+        ?\Throwable $previous = null
     ) {
         parent::__construct($message, $code, $previous);
         $this->validationErrors = $validationErrors;
@@ -44,7 +46,7 @@ class RequestValidationException extends \Exception
     /**
      * Get the validation errors
      *
-     * @return array The validation errors
+     * @return list<string> The validation errors
      */
     public function getValidationErrors(): array
     {
@@ -64,7 +66,7 @@ class RequestValidationException extends \Exception
     /**
      * Get the request data
      *
-     * @return array The request data
+     * @return array<array-key, mixed> The request data
      */
     public function getRequestData(): array
     {

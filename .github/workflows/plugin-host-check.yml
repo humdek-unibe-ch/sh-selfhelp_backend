@@ -1,27 +1,49 @@
 # SPDX-FileCopyrightText: 2026 Humdek, University of Bern
 # SPDX-License-Identifier: MPL-2.0
 #
-# Plugin host check.
+# Backend CI quality gate (a.k.a. "plugin-host-check").
 #
-# Validates the Symfony plugin host:
-#   - Plugin manifest / registry / lock JSON Schemas are themselves
-#     valid Draft-07 documents.
-#   - PHP source compiles (PHPStan max).
-#   - Doctrine schema mapping is internally consistent
-#     (`doctrine:schema:validate`).
-#   - Every plugin CLI command is registered with the Symfony console
-#     and accepts `--help` (catches DI graph regressions: a broken
-#     service definition crashes `bin/console list selfhelp:plugin`).
-#   - The plugin manager bundles registered correctly
-#     (`bin/console debug:autowiring App\\Plugin` returns the published
-#     services).
-#   - `selfhelp:plugin:doctor --ci` reports a zero-exit baseline on a
-#     fresh checkout that has no plugins installed yet.
+# Despite the historical name this is the backend quality gate for the
+# whole Symfony host, with extra emphasis on the plugin subsystem. It
+# runs on every PR and push to `main` and must pass before a merge.
 #
-# Doctrine migrations are NOT executed here: per the host AGENTS.md
-# they must run manually and the CI runner does not have a DB
-# attached. Only the schema validation against the in-memory mapping
-# is exercised.
+# Static analysis (PHPStan) is NOT run here: the strict, no-baseline
+# core-backend-check.yml gate already analyses the whole core (plugin
+# code included) at level max, which supersedes the old baselined
+# plugin-scope check. See docs/developer/24-core-phpstan-gate.md.
+#
+# It boots the real application against a throwaway MySQL 8 + Redis 7 so
+# the checks exercise the same code paths a developer hits locally. The
+# full reference (what each step does, how to reproduce locally, strict
+# vs advisory, and the documented blockers) lives in
+# docs/developer/23-ci-quality-gate.md.
+#
+# Strict steps (a failure blocks the merge):
+#   - composer validate --strict
+#   - License headers (composer headers:check)
+#   - PHP syntax lint (php -l) over the whole source tree
+#   - JSON Schema validation (plugin manifest/registry/lock + request
+#     schemas compile as Draft-07; response fragments are well-formed
+#     JSON; expected folders must be present and non-empty)
+#   - PHPUnit "unit" suite (DB-free plugin-host tests)
+#   - Symfony YAML + container lint
+#   - Doctrine: create test DB -> run ALL migrations -> strict
+#     `doctrine:schema:validate` (mapping AND live-DB sync)
+#   - Plugin CLI smoke test (every required command registered + --help)
+#   - Plugin DI autowiring (key services are wireable)
+#   - selfhelp:plugin:doctor --ci (exits non-zero only on ERROR-level
+#     findings; warnings are printed but do not fail the build)
+#
+# Advisory steps (printed, never block the merge):
+#   - composer audit (transitive CVEs are tracked but not gated here;
+#     see the docs for the current advisories and rationale)
+#
+# NOTE on plugin migrations: plugin-owned Doctrine migrations are run by
+# the install/update Messenger worker (PluginMigrationRunner), NOT here.
+# This job validates the HOST schema only. Exercising the plugin install
+# lifecycle end-to-end in CI needs a packaged .shplugin fixture + the
+# messenger worker and is tracked as a follow-up in the docs (see the
+# "Known blockers / TODO" section of 23-ci-quality-gate.md).
 
 name: plugin-host-check
 
@@ -35,11 +57,59 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref so a force-push / rapid pushes
+# don't pile up runners.
+concurrency:
+  group: plugin-host-check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  host-check:
-    name: Schemas, PHPStan, Doctrine validate, CLI --help
+  backend-quality-gate:
+    name: Backend quality gate (schemas, PHPStan, migrations, doctor)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    # The host boots against these in `test`. They start before the
+    # steps run and GitHub waits for the health checks to go green, so
+    # the database is guaranteed reachable by the migration step.
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    # Test-only configuration. No secrets: these values are throwaway and
+    # only ever touch the ephemeral service containers above. Real env
+    # vars set here take precedence over the copied `.env` (Symfony
+    # Dotenv does not override already-set vars), so they pin the few
+    # values CI must control while `.env` supplies the rest.
+    #
+    # `when@test` Doctrine config appends `_test` to the DB name, so the
+    # effective database is `selfhelp_ci_test` (created below).
+    env:
+      APP_ENV: test
+      APP_DEBUG: '0'
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/selfhelp_ci?serverVersion=8.0&charset=utf8mb4"
+      REDIS_URL: "redis://127.0.0.1:6379"
+      # Empty on purpose: makes selfhelp:plugin:doctor skip its Mercure
+      # hub reachability probe (no hub runs in CI).
+      MERCURE_PUBLIC_URL: ""
 
     steps:
       - name: Checkout backend
@@ -53,75 +123,153 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - name: Set up Node 22 (for ajv-cli)
+      - name: Set up Node 22 (for ajv-cli JSON Schema validation)
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Cache Composer
+      - name: Cache Composer downloads
         uses: actions/cache@v4
         with:
           path: ~/.composer/cache
           key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
           restore-keys: composer-${{ runner.os }}-
 
-      - name: Create .env from .env.default
-        run: cp .env.default .env
+      # ---- Static checks (no DB needed) -------------------------------
+
+      - name: Validate composer.json / composer.lock (strict)
+        run: composer validate --strict --no-interaction
 
       - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
+        # --no-scripts: the Symfony auto-scripts (cache:clear,
+        # assets:install) boot the kernel, which needs the env prepared
+        # in the next step. We warm the kernel explicitly later instead.
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
 
-      - name: License headers
+      - name: Prepare test environment (.env + JWT keys)
+        run: |
+          set -euo pipefail
+          # ROOT-CAUSE FIX: a fresh checkout has no .env (it is gitignored)
+          # and there is no committed .env.dist, so bin/console used to die
+          # in Symfony Dotenv bootEnv with "Unable to read the .env file".
+          # The tracked .env.default is the canonical template; the job-env
+          # block above overrides the few CI-specific values.
+          cp .env.default .env
+          # The JWT keypair is gitignored. No CI step signs/verifies a JWT,
+          # but generating the pair keeps the kernel fully bootable for any
+          # service that resolves the Lexik config eagerly.
+          php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction
+          echo "Test environment prepared."
+
+      - name: Dependency vulnerability audit (advisory)
+        # Advisory only: `composer audit` currently reports transitive
+        # twig/twig advisories that are not host-exploitable from this API
+        # backend and are out of scope to bump here. Tracked in
+        # docs/developer/23-ci-quality-gate.md; promote to strict once the
+        # upstream constraints allow a clean tree.
+        continue-on-error: true
+        run: composer audit --no-interaction
+
+      - name: License headers (SPDX)
         run: composer headers:check
+
+      - name: PHP syntax lint (whole source tree)
+        run: |
+          set -euo pipefail
+          # `php -l` exits non-zero on a parse error; xargs then exits 123,
+          # pipefail propagates it and `set -e` fails the step before the
+          # success echo. stdout (the "No syntax errors" noise) is
+          # discarded; parse errors go to stderr and stay visible.
+          find src config public bin migrations tests -type f -name '*.php' -print0 \
+            | xargs -0 -n1 -P"$(nproc)" php -l > /dev/null
+          echo "PHP syntax OK."
 
       - name: Install ajv-cli
         run: npm install --no-save --no-audit --no-fund ajv-cli@5 ajv-formats@3
 
-      - name: Validate plugin JSON Schemas (Draft-07 syntax)
+      - name: Validate self-contained JSON Schemas (strict)
         run: |
           set -euo pipefail
-          for schema in \
-            docs/plugins/plugin-manifest.schema.json \
-            docs/plugins/plugin-registry.schema.json \
-            docs/plugins/plugin-lock.schema.json; do
+          # These schemas are standalone Draft-07 documents: ajv compiles
+          # them fully. Missing files fail the build (no silent pass).
+          meta=(
+            docs/plugins/plugin-manifest.schema.json
+            docs/plugins/plugin-registry.schema.json
+            docs/plugins/plugin-lock.schema.json
+          )
+          for schema in "${meta[@]}"; do
+            [ -f "$schema" ] || { echo "::error::Required schema missing: $schema"; exit 1; }
             echo "==> $schema"
             npx ajv compile -s "$schema" --strict=false
           done
-          echo "All three plugin schemas compile cleanly."
 
-      - name: Validate request JSON Schemas for plugin admin endpoints
-        run: |
-          set -euo pipefail
-          found=0
-          for schema in $(find config/schemas/api/v1/requests/admin/plugins -name '*.json' 2>/dev/null); do
+          req_dir="config/schemas/api/v1/requests/admin/plugins"
+          [ -d "$req_dir" ] || { echo "::error::Missing schema folder: $req_dir"; exit 1; }
+          mapfile -t req < <(find "$req_dir" -type f -name '*.json' | sort)
+          [ "${#req[@]}" -gt 0 ] || { echo "::error::No request schemas in $req_dir"; exit 1; }
+          for schema in "${req[@]}"; do
             echo "==> $schema"
             npx ajv compile -s "$schema" --strict=false
-            found=$((found+1))
           done
-          echo "Compiled $found admin/plugins request schemas."
+          echo "Compiled ${#meta[@]} meta + ${#req[@]} request schemas."
 
-      - name: PHPStan (max, plugin scope)
-        env:
-          PHP_MEMORY_LIMIT: '2G'
-        run: php -d memory_limit=2G vendor/bin/phpstan analyse src/Plugin src/Controller/Api/V1/Admin/Plugin src/Controller/Api/V1/Plugin --no-progress
+      - name: Validate response JSON Schema fragments (well-formed + present)
+        run: |
+          set -euo pipefail
+          # The admin/plugins RESPONSE schemas are $ref-composed fragments
+          # (they reference ../../common/_response_envelope.json). They are
+          # resolved at runtime by the PHP JsonSchemaValidationService, not
+          # as standalone ajv documents, so here we assert presence + JSON
+          # well-formedness (a malformed fragment fails the build).
+          res_dir="config/schemas/api/v1/responses/admin/plugins"
+          [ -d "$res_dir" ] || { echo "::error::Missing schema folder: $res_dir"; exit 1; }
+          mapfile -t res < <(find "$res_dir" -type f -name '*.json' | sort)
+          [ "${#res[@]}" -gt 0 ] || { echo "::error::No response schemas in $res_dir"; exit 1; }
+          for schema in "${res[@]}"; do
+            echo "==> $schema"
+            php -r 'json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR);' "$schema"
+          done
+          echo "Validated ${#res[@]} response schema fragments."
 
-      - name: Doctrine schema mapping validation
-        run: php bin/console doctrine:schema:validate --skip-sync --no-interaction || true
-        # The `--skip-sync` flag means we only check the mapping is
-        # internally consistent; we do NOT need a live DB. The job is
-        # `|| true` only on the sync check; mapping errors surface as
-        # non-zero output and the verify step below fails the build.
+      - name: PHPUnit (DB-free unit suite)
+        # The "unit" suite is the plugin-host tests that extend
+        # PHPUnit\Framework\TestCase (no kernel, no DB). The full suite
+        # needs seeded fixtures + a login flow and is not wired here yet
+        # (see docs/developer/23-ci-quality-gate.md).
+        run: php bin/phpunit --testsuite=unit
 
-      - name: Verify Doctrine mapping (strict)
-        run: php bin/console doctrine:schema:validate --skip-sync --no-interaction --quiet
+      - name: Symfony YAML lint
+        # --parse-tags: config/services.yaml uses the !tagged_iterator tag.
+        run: php bin/console lint:yaml config --parse-tags --no-interaction
 
-      - name: List plugin CLI commands
+      - name: Symfony container lint (DI graph)
+        # Compiles the whole container and asserts every service is
+        # injected with a type-compatible value. This is the comprehensive
+        # "broken DI wiring" gate.
+        run: php bin/console lint:container --no-interaction
+
+      # ---- Database-backed checks (MySQL + Redis) ---------------------
+
+      - name: Create test database
+        # Respects the `when@test` _test suffix -> creates selfhelp_ci_test.
+        run: php bin/console doctrine:database:create --if-not-exists --no-interaction
+
+      - name: Run Doctrine migrations
+        run: php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+
+      - name: Validate Doctrine schema (strict, mapping + live DB)
+        # No --skip-sync, no `|| true`: the mapping must be valid AND the
+        # migrated database must match it exactly. A drift here means a
+        # missing migration.
+        run: php bin/console doctrine:schema:validate --no-interaction
+
+      - name: Plugin CLI smoke test (registered + --help)
         run: |
           set -euo pipefail
           php bin/console list selfhelp:plugin --no-interaction
-          # Assert by name (not by count) so adding/removing a command
-          # only requires updating this list, not chasing a numeric
-          # assertion in CI output.
+          # Assert by name so adding/removing a command only requires
+          # editing this list, not chasing a numeric count. Mirrors the
+          # command classes in src/Command/Plugin/.
           required=(
             selfhelp:plugin:install
             selfhelp:plugin:update
@@ -148,30 +296,27 @@ jobs:
           done
           echo "All ${#required[@]} required plugin CLI commands registered and respond to --help."
 
-      - name: Debug plugin DI autowiring
+      - name: Plugin DI autowiring (key services wireable)
         run: |
           set -euo pipefail
-          # If any plugin service is misconfigured, debug:autowiring fails
-          php bin/console debug:autowiring 'App\\Plugin' --no-interaction > /tmp/autowiring.txt
-          head -40 /tmp/autowiring.txt
-          # Verify the key services are actually exposed
+          # --all is required: concrete services are hidden without it.
+          php bin/console debug:autowiring 'App\Plugin' --all --no-interaction > /tmp/autowiring.txt
           for svc in \
-            'App\\Plugin\\Manifest\\PluginManifestLoader' \
-            'App\\Plugin\\Realtime\\PluginRealtimePublisherInterface' \
-            'App\\Plugin\\Service\\PluginAdminService'; do
-            if ! grep -q "$svc" /tmp/autowiring.txt; then
+            'App\Plugin\Manifest\PluginManifestLoader' \
+            'App\Plugin\Realtime\PluginRealtimePublisherInterface' \
+            'App\Plugin\Service\PluginAdminService'; do
+            if ! grep -qF "$svc" /tmp/autowiring.txt; then
               echo "::error::Required plugin service not autowireable: $svc"
               exit 1
             fi
+            echo "ok  $svc"
           done
           echo "Plugin DI wiring verified."
 
-      - name: Doctor on a fresh checkout
-        env:
-          APP_ENV: test
-        run: |
-          set -euo pipefail
-          # Doctor should not require a live DB on a fresh checkout. We
-          # allow non-zero exit because no plugin is installed yet; the
-          # purpose is to make sure the command runs without throwing.
-          php bin/console selfhelp:plugin:doctor --no-interaction || true
+      - name: Plugin doctor (CI contract)
+        # No `|| true`: the command now exits non-zero ONLY on ERROR-level
+        # findings (see PluginDoctorCommand::reportHasFatalError, covered by
+        # tests/Plugin/Command/PluginDoctorExitContractTest). On a fresh
+        # checkout with no plugins this is a clean zero-exit baseline;
+        # warnings are printed but do not fail CI.
+        run: php bin/console selfhelp:plugin:doctor --ci --no-interaction

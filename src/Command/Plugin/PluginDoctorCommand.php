@@ -42,35 +42,71 @@ final class PluginDoctorCommand extends Command
         $report = $this->healthService->runGlobalDoctor();
 
         if ($input->getOption('json')) {
-            $output->writeln(json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $json = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $output->writeln($json !== false ? $json : '{}');
             return $this->resolveExit($input, $report);
         }
 
         $io->title('SelfHelp plugin doctor');
         $io->section('Site checks');
         $rows = [];
-        foreach ($report['siteChecks'] as $check) {
-            $rows[] = [$check['name'], $check['status'], $check['message']];
+        $siteChecks = $report['siteChecks'] ?? [];
+        if (is_iterable($siteChecks)) {
+            foreach ($siteChecks as $check) {
+                if (!is_array($check)) {
+                    continue;
+                }
+                $rows[] = [
+                    self::asText($check['name'] ?? ''),
+                    self::asText($check['status'] ?? ''),
+                    self::asText($check['message'] ?? ''),
+                ];
+            }
         }
         $io->table(['Check', 'Status', 'Message'], $rows);
 
         $io->section('Plugins');
-        if ($report['plugins'] === []) {
+        $pluginReports = $report['plugins'] ?? [];
+        if (!is_iterable($pluginReports) || $pluginReports === []) {
             $io->info('No plugins installed.');
         } else {
-            foreach ($report['plugins'] as $plugin) {
+            foreach ($pluginReports as $plugin) {
+                if (!is_array($plugin)) {
+                    continue;
+                }
                 $compat = $plugin['compatibility'] ?? null;
+                $severity = is_array($compat) ? ($compat['severity'] ?? 'unknown') : 'unknown';
                 $io->writeln(sprintf(
                     '<info>%s</info> v%s — enabled: %s — compatibility: %s',
-                    $plugin['pluginId'],
-                    $plugin['version'],
-                    $plugin['enabled'] ? 'yes' : 'no',
-                    $compat['severity'] ?? 'unknown',
+                    self::asText($plugin['pluginId'] ?? ''),
+                    self::asText($plugin['version'] ?? ''),
+                    !empty($plugin['enabled']) ? 'yes' : 'no',
+                    self::asText($severity),
                 ));
             }
         }
 
+        // Summary so warnings stay visible. Only `error`-severity
+        // findings are fatal under `--ci`; warnings/info are surfaced
+        // but never fail the build (so a fresh host exits 0).
+        [$warnings, $errors] = self::tally($report);
+        if ($errors > 0) {
+            $io->error(sprintf('%d error(s), %d warning(s).', $errors, $warnings));
+        } elseif ($warnings > 0) {
+            $io->warning(sprintf('%d warning(s), 0 errors. Warnings do not fail --ci.', $warnings));
+        } else {
+            $io->success('All checks OK.');
+        }
+
         return $this->resolveExit($input, $report);
+    }
+
+    /**
+     * Coerce a loose report value to a printable string for table/console output.
+     */
+    private static function asText(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : '';
     }
 
     /**
@@ -81,17 +117,72 @@ final class PluginDoctorCommand extends Command
         if (!$input->getOption('ci')) {
             return Command::SUCCESS;
         }
-        foreach ($report['siteChecks'] as $check) {
-            if (($check['status'] ?? 'ok') !== 'ok') {
-                return Command::FAILURE;
+        return self::reportHasFatalError($report) ? Command::FAILURE : Command::SUCCESS;
+    }
+
+    /**
+     * CI contract: only `error`-severity findings are fatal. `warning`
+     * and informational statuses are reported but never fail `--ci`, so
+     * a fresh host (no plugins installed, infra probes skipped) exits 0.
+     *
+     * Kept as a pure static method so the exit-code contract can be unit
+     * tested without booting the kernel or the (final) health service.
+     *
+     * @param array<string,mixed> $report
+     */
+    public static function reportHasFatalError(array $report): bool
+    {
+        $siteChecks = $report['siteChecks'] ?? [];
+        if (is_iterable($siteChecks)) {
+            foreach ($siteChecks as $check) {
+                if (is_array($check) && ($check['status'] ?? 'ok') === 'error') {
+                    return true;
+                }
             }
         }
-        foreach ($report['plugins'] as $plugin) {
-            $severity = $plugin['compatibility']['severity'] ?? 'ok';
-            if ($severity !== 'ok') {
-                return Command::FAILURE;
+        $plugins = $report['plugins'] ?? [];
+        if (is_iterable($plugins)) {
+            foreach ($plugins as $plugin) {
+                $compat = is_array($plugin) ? ($plugin['compatibility'] ?? null) : null;
+                if (is_array($compat) && (($compat['severity'] ?? 'ok') === 'error')) {
+                    return true;
+                }
             }
         }
-        return Command::SUCCESS;
+        return false;
+    }
+
+    /**
+     * @param array<string,mixed> $report
+     * @return array{0:int,1:int} [warnings, errors]
+     */
+    private static function tally(array $report): array
+    {
+        $warnings = 0;
+        $errors = 0;
+        $siteChecks = $report['siteChecks'] ?? [];
+        if (is_iterable($siteChecks)) {
+            foreach ($siteChecks as $check) {
+                $status = is_array($check) ? ($check['status'] ?? 'ok') : 'ok';
+                if ($status === 'error') {
+                    ++$errors;
+                } elseif ($status === 'warning') {
+                    ++$warnings;
+                }
+            }
+        }
+        $plugins = $report['plugins'] ?? [];
+        if (is_iterable($plugins)) {
+            foreach ($plugins as $plugin) {
+                $compat = is_array($plugin) ? ($plugin['compatibility'] ?? null) : null;
+                $severity = is_array($compat) ? ($compat['severity'] ?? 'ok') : 'ok';
+                if ($severity === 'error') {
+                    ++$errors;
+                } elseif ($severity === 'warning') {
+                    ++$warnings;
+                }
+            }
+        }
+        return [$warnings, $errors];
     }
 }

@@ -175,9 +175,10 @@ trait RelationshipManagerTrait
         }
 
         // Check if it's a child of a section that belongs to this page
-        $flatSections = $sectionRepository->fetchSectionsHierarchicalByPageId($page->getId());
-        $sectionIds = array_map(function($section) {
-            return is_array($section) && isset($section['id']) ? (string)$section['id'] : null;
+        $flatSections = $sectionRepository->fetchSectionsHierarchicalByPageId((int) $page->getId());
+        $sectionIds = array_map(function ($section): ?string {
+            $id = $section['id'] ?? null;
+            return is_scalar($id) ? (string) $id : null;
         }, $flatSections);
         
         return in_array((string)$sectionId, $sectionIds, true);

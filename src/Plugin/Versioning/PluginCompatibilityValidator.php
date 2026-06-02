@@ -85,9 +85,6 @@ final class PluginCompatibilityValidator
                 $severity = 'blocking';
                 break;
             }
-            if ($check['status'] === 'warning') {
-                $severity = 'warning';
-            }
         }
 
         return [

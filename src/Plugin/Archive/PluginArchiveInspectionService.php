@@ -323,15 +323,18 @@ final class PluginArchiveInspectionService
             $mode = 'standalone';
         }
 
+        $backend = is_array($manifestData['backend'] ?? null) ? $manifestData['backend'] : [];
+        $manifestComposer = is_array($backend['composer'] ?? null) ? $backend['composer'] : [];
+
         if ($mode === 'connected') {
             return [
                 'mode' => 'connected',
                 'backendIncluded' => false,
-                'backendPackage' => is_string($manifestData['backend']['composer']['package'] ?? null)
-                    ? (string) $manifestData['backend']['composer']['package']
+                'backendPackage' => is_string($manifestComposer['package'] ?? null)
+                    ? (string) $manifestComposer['package']
                     : null,
-                'backendVersion' => is_string($manifestData['backend']['composer']['version'] ?? null)
-                    ? (string) $manifestData['backend']['composer']['version']
+                'backendVersion' => is_string($manifestComposer['version'] ?? null)
+                    ? (string) $manifestComposer['version']
                     : null,
                 'installMode' => 'composer-packagist',
             ];
@@ -358,8 +361,8 @@ final class PluginArchiveInspectionService
                 }
             }
         }
-        if ($backendPackage === null && is_string($manifestData['backend']['composer']['package'] ?? null)) {
-            $backendPackage = (string) $manifestData['backend']['composer']['package'];
+        if ($backendPackage === null && is_string($manifestComposer['package'] ?? null)) {
+            $backendPackage = (string) $manifestComposer['package'];
         }
         if ($backendVersion === null && is_string($manifestData['version'] ?? null)) {
             $backendVersion = (string) $manifestData['version'];

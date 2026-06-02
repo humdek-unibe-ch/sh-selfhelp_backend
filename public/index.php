@@ -27,6 +27,12 @@ require_once dirname(__DIR__).'/vendor/autoload_runtime.php';
 // `docs/plugins/architecture.md`.
 \App\Plugin\PackageManager\PluginAutoloaderBootstrap::register(dirname(__DIR__));
 
-return static function (array $context) {
-    return new Kernel($context['APP_ENV'], (bool) $context['APP_DEBUG']);
+return static function (array $context): Kernel {
+    // The Symfony runtime always provides APP_ENV as a string in $context;
+    // assert() narrows the mixed array value for static analysis and is a
+    // no-op in production (zend.assertions=-1).
+    $appEnv = $context['APP_ENV'];
+    assert(is_string($appEnv));
+
+    return new Kernel($appEnv, (bool) $context['APP_DEBUG']);
 };

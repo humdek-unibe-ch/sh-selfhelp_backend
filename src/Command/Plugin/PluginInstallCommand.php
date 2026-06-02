@@ -46,7 +46,8 @@ final class PluginInstallCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $path = (string) $input->getArgument('manifest');
+        $pathArg = $input->getArgument('manifest');
+        $path = is_string($pathArg) ? $pathArg : '';
         try {
             $manifest = $this->manifestLoader->loadFromFile($path);
         } catch (\Throwable $e) {
@@ -65,23 +66,26 @@ final class PluginInstallCommand extends Command
             return Command::FAILURE;
         }
 
+        $operationId = is_numeric($operation['id'] ?? null) ? (int) $operation['id'] : 0;
+        $installMode = is_string($operation['installMode'] ?? null) ? $operation['installMode'] : '';
+
         $io->success(sprintf(
             'Install requested for "%s" v%s. Operation #%d (mode=%s) dispatched to the Messenger worker.',
             $manifest->getPluginId(),
             $manifest->getVersion(),
-            (int) $operation['id'],
-            $operation['installMode'],
+            $operationId,
+            $installMode,
         ));
 
-        if ($operation['installMode'] === 'managed') {
+        if ($installMode === 'managed') {
             $io->note(sprintf(
                 'Managed mode: the worker recorded a runbook. Run composer + migrations from the runbook, then call selfhelp:plugin:run-operation %d.',
-                (int) $operation['id'],
+                $operationId,
             ));
         } else {
             $io->note(sprintf(
                 'The Messenger worker is now running composer + finalize for operation #%d. Monitor with `selfhelp:plugin:status` or the Mercure stream.',
-                (int) $operation['id'],
+                $operationId,
             ));
         }
 
@@ -93,7 +97,7 @@ final class PluginInstallCommand extends Command
      * temporary manifest so the normal paste resolver can verify the
      * same canonical payload shape used by registry installs.
      *
-     * @return array<string,mixed>|null
+     * @return array<array-key,mixed>|null
      */
     private function loadAdjacentSignature(string $manifestPath): ?array
     {

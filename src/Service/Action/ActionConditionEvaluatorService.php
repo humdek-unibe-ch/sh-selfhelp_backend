@@ -57,7 +57,8 @@ class ActionConditionEvaluatorService
         }
 
         if (!is_array($condition)) {
-            return (bool) ($this->conditionService->evaluateCondition($condition, $userId, $section)['result'] ?? false);
+            $scalarCondition = is_string($condition) ? $condition : null;
+            return (bool) ($this->conditionService->evaluateCondition($scalarCondition, $userId, $section)['result'] ?? false);
         }
 
         if ($condition === []) {
@@ -66,6 +67,9 @@ class ActionConditionEvaluatorService
 
         $jsonLogic = $condition[ActionConfig::JSON_LOGIC] ?? $condition;
         if ($jsonLogic === null || $jsonLogic === '' || $jsonLogic === []) {
+            return true;
+        }
+        if (!is_array($jsonLogic) && !is_string($jsonLogic)) {
             return true;
         }
 

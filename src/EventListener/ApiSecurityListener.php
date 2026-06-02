@@ -17,7 +17,6 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
-use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 
 /**
@@ -69,7 +68,6 @@ class ApiSecurityListener implements EventSubscriberInterface
     private const UNSAFE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
     public function __construct(
-        private RouterInterface $router,
         private UserContextService $userContextService,
         private UserPermissionService $permissionService,
         private LoggerInterface $logger,
@@ -107,7 +105,7 @@ class ApiSecurityListener implements EventSubscriberInterface
         try {
             // Get the current route name
             $routeName = $request->attributes->get('_route');
-            if (!$routeName) {
+            if (!is_string($routeName) || $routeName === '') {
                 // No route matched, skip permission check
                 return;
             }
@@ -174,12 +172,20 @@ class ApiSecurityListener implements EventSubscriberInterface
      */
     private function handleImpersonation(Request $request): void
     {
-        $payload = $request->attributes->get('_jwt_payload');
-        if (!is_array($payload) || !$this->jwtService->isImpersonationPayload($payload)) {
+        $payloadRaw = $request->attributes->get('_jwt_payload');
+        if (!is_array($payloadRaw)) {
+            return;
+        }
+        $payload = [];
+        foreach ($payloadRaw as $key => $value) {
+            $payload[(string) $key] = $value;
+        }
+        if (!$this->jwtService->isImpersonationPayload($payload)) {
             return;
         }
 
-        $routeName = (string) ($request->attributes->get('_route') ?? '');
+        $routeRaw = $request->attributes->get('_route');
+        $routeName = is_string($routeRaw) ? $routeRaw : '';
 
         // The stop-impersonation endpoint is always allowed: that's the
         // only sane way out of an impersonation session.
@@ -212,13 +218,17 @@ class ApiSecurityListener implements EventSubscriberInterface
      *
      * Failures are swallowed (logged at error level) — we never want to
      * block a legitimate mutation because the audit log itself misbehaved.
+     *
+     * @param array<string,mixed> $payload
      */
     private function auditImpersonatedMutation(Request $request, array $payload): void
     {
         try {
             $adminUserId  = $this->jwtService->getImpersonatorUserId($payload) ?? 0;
-            $targetUserId = (int) ($payload['id_users'] ?? 0);
-            $routeName    = (string) ($request->attributes->get('_route') ?? 'unknown');
+            $targetUserRaw = $payload['id_users'] ?? 0;
+            $targetUserId = is_numeric($targetUserRaw) ? (int) $targetUserRaw : 0;
+            $routeRaw     = $request->attributes->get('_route');
+            $routeName    = is_string($routeRaw) ? $routeRaw : 'unknown';
 
             $verbal = sprintf(
                 'Impersonated mutation: admin_id=%d -> target_id=%d, %s %s (route=%s)',

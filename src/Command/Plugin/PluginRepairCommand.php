@@ -46,10 +46,10 @@ final class PluginRepairCommand extends Command
             return Command::FAILURE;
         }
         $io->success('Plugin layer repaired.');
-        if (isset($result['plugins'])) {
+        if (isset($result['plugins']) && is_array($result['plugins'])) {
             $io->listing($result['plugins']);
         } elseif (isset($result['pluginId'])) {
-            $io->writeln(sprintf('Plugin: %s', $result['pluginId']));
+            $io->writeln(sprintf('Plugin: %s', is_scalar($result['pluginId']) ? (string) $result['pluginId'] : ''));
         }
         return Command::SUCCESS;
     }

@@ -26,7 +26,7 @@ class PageRepository extends ServiceEntityRepository
      * Find pages with nav position by parent page ID
      *
      * @param int|null $parentId Parent page ID or null for root pages
-     * @return array Array of pages with nav_position not null, ordered by nav_position
+     * @return list<Page> Array of pages with nav_position not null, ordered by nav_position
      */
     public function findPagesWithNavPosition(?int $parentId = null): array
     {
@@ -43,14 +43,17 @@ class PageRepository extends ServiceEntityRepository
             $qb->andWhere('p.parentPage IS NULL');
         }
         
-        return $qb->getQuery()->getResult();
+        /** @var list<Page> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
     
     /**
      * Find pages with footer position by parent page ID
      *
      * @param int|null $parentId Parent page ID or null for root pages
-     * @return array Array of pages with footer_position not null, ordered by footer_position
+     * @return list<Page> Array of pages with footer_position not null, ordered by footer_position
      */
     public function findPagesWithFooterPosition(?int $parentId = null): array
     {
@@ -67,13 +70,16 @@ class PageRepository extends ServiceEntityRepository
             $qb->andWhere('p.parentPage IS NULL');
         }
         
-        return $qb->getQuery()->getResult();
+        /** @var list<Page> $result */
+        $result = $qb->getQuery()->getResult();
+
+        return $result;
     }
     
     /**
      * Update page positions in a batch using Doctrine ORM.
      *
-     * @param array $pagePositions Array of [pageId => position]
+     * @param array<int, int|null> $pagePositions Array of [pageId => position]
      * @param string $positionType 'nav' or 'footer'
      * @return bool Success status
      */
@@ -87,7 +93,7 @@ class PageRepository extends ServiceEntityRepository
         try {
             foreach ($pages as $page) {
                 $pageId = $page->getId();
-                if (array_key_exists($pageId, $pagePositions)) {
+                if ($pageId !== null && array_key_exists($pageId, $pagePositions)) {
                     $page->$fieldSetter($pagePositions[$pageId]);
                 }
             }

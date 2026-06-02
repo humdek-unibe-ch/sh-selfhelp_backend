@@ -13,9 +13,9 @@ The application is built with a modular architecture where:
 
 ## Technical Stack
 
-- **Framework**: Symfony 7.3
-- **PHP**: 8.3+
-- **Database**: MySQL 8.0+ with Doctrine ORM 3.3
+- **Framework**: Symfony 7.4
+- **PHP**: 8.4+
+- **Database**: MySQL 8.0+ with Doctrine ORM 3.6 / DBAL 4.4
 - **API**: RESTful API with JWT authentication
 - **UI Components**: Mantine UI library integration
 - **Security**: Role-based access control (RBAC)
@@ -61,8 +61,8 @@ sudo apt install apache2
 # Install MySQL/MariaDB database server
 sudo apt install mysql-server
 
-# Install PHP 8.3 and required extensions
-sudo apt install php8.3 php8.3-fpm php8.3-mysql php8.3-xml php8.3-mbstring php8.3-intl php8.3-curl php8.3-zip php8.3-gd php8.3-apcu php8.3-opcache
+# Install PHP 8.4 and required extensions
+sudo apt install php8.4 php8.4-fpm php8.4-mysql php8.4-xml php8.4-mbstring php8.4-intl php8.4-curl php8.4-zip php8.4-gd php8.4-apcu php8.4-opcache
 
 # Install Composer (PHP dependency manager)
 curl -sS https://getcomposer.org/installer | php
@@ -816,14 +816,14 @@ php bin/console doctrine:query:sql "SHOW PROCESSLIST"
 #### Static Analysis
 
 ```bash
-# Run PHPStan for static analysis
-vendor/bin/phpstan analyse src --level=8
+# Run PHPStan (level max, whole core — auto-discovers phpstan.dist.neon)
+composer phpstan
+# or directly (config is auto-discovered, no flag needed):
+vendor/bin/phpstan analyse
 
-# Run PHP CS Fixer for code style
-vendor/bin/php-cs-fixer fix --dry-run --diff
-
-# Apply code style fixes
-vendor/bin/php-cs-fixer fix
+# Check / add SPDX license headers (the project's code-style tooling)
+composer headers:check
+composer headers:add
 ```
 
 #### Testing
@@ -916,7 +916,7 @@ The REST API is documented using OpenAPI/Swagger. Access the documentation at:
 #### Production Optimizations
 
 ```bash
-# Enable OPcache (already configured in PHP 8.3)
+# Enable OPcache (already configured in PHP 8.4)
 php -m | grep opcache
 
 # Preload configuration (PHP 7.4+)

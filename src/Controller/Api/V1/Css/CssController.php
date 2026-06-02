@@ -56,7 +56,7 @@ class CssController extends AbstractController
     /**
      * Load CSS classes from the JSON file or fallback
      * 
-     * @return array
+     * @return array<array-key, mixed>
      */
     private function loadCssClasses(): array
     {
@@ -64,10 +64,12 @@ class CssController extends AbstractController
         
         if (file_exists($jsonPath)) {
             $jsonContent = file_get_contents($jsonPath);
-            $allClasses = json_decode($jsonContent, true);
-            
-            if (is_array($allClasses)) {
-                return $allClasses;
+            if ($jsonContent !== false) {
+                $allClasses = json_decode($jsonContent, true);
+
+                if (is_array($allClasses)) {
+                    return $allClasses;
+                }
             }
         }
         
@@ -78,7 +80,7 @@ class CssController extends AbstractController
     /**
      * Get fallback CSS classes when JSON file is not available
      * 
-     * @return array Common CSS classes
+     * @return list<array<string, mixed>> Common CSS classes
      */
     private function getFallbackCssClasses(): array
     {
@@ -176,6 +178,7 @@ class CssController extends AbstractController
      */
     private function getProjectDir(): string
     {
-        return $this->getParameter('kernel.project_dir');
+        $dir = $this->getParameter('kernel.project_dir');
+        return is_string($dir) ? $dir : '';
     }
 } 

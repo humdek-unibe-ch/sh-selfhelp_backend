@@ -63,7 +63,7 @@ class ProfileController extends AbstractController
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/update_name', $this->jsonSchemaValidationService);
 
-            $newName = $data['name'] ?? null;
+            $newName = $this->asStringField($data, 'name');
 
             // Update name using the service
             $updatedUser = $this->profileService->updateName($currentUser, $newName);
@@ -118,7 +118,7 @@ class ProfileController extends AbstractController
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/update_timezone', $this->jsonSchemaValidationService);
 
-            $timezoneId = $data['timezone_id'] ?? null;
+            $timezoneId = $this->asIntField($data, 'timezone_id');
 
             // Update timezone using the service
             $updatedUser = $this->profileService->updateTimezone($currentUser, $timezoneId);
@@ -173,8 +173,8 @@ class ProfileController extends AbstractController
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/update_password', $this->jsonSchemaValidationService);
 
-            $currentPassword = $data['current_password'] ?? null;
-            $newPassword = $data['new_password'] ?? null;
+            $currentPassword = $this->asStringField($data, 'current_password');
+            $newPassword = $this->asStringField($data, 'new_password');
 
             // Update password using the service
             $this->profileService->updatePassword($currentUser, $currentPassword, $newPassword);
@@ -223,7 +223,7 @@ class ProfileController extends AbstractController
             // Validate request against JSON schema
             $data = $this->validateRequest($request, 'requests/auth/delete_account', $this->jsonSchemaValidationService);
 
-            $emailConfirmation = $data['email_confirmation'] ?? null;
+            $emailConfirmation = $this->asStringField($data, 'email_confirmation');
 
             // Delete account using the service
             $this->profileService->deleteAccount($currentUser, $emailConfirmation);

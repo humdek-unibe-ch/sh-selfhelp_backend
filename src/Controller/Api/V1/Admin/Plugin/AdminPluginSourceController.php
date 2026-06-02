@@ -63,7 +63,7 @@ final class AdminPluginSourceController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/plugins/create_source', $this->jsonSchemaValidationService);
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->createSource($data),
+                $this->pluginAdminService->createSource($this->toAssocArray($data)),
                 'responses/admin/plugins/plugin_source',
                 Response::HTTP_CREATED,
             );
@@ -81,7 +81,7 @@ final class AdminPluginSourceController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/plugins/update_source', $this->jsonSchemaValidationService);
             return $this->responseFormatter->formatSuccess(
-                $this->pluginAdminService->updateSource($sourceId, $data),
+                $this->pluginAdminService->updateSource($sourceId, $this->toAssocArray($data)),
                 'responses/admin/plugins/plugin_source'
             );
         } catch (\Throwable $e) {

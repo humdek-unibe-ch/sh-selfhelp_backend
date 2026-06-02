@@ -69,7 +69,7 @@ class AdminAssetService extends BaseService
      * @param int $pageSize
      * @param string|null $search
      * @param string|null $folder
-     * @return array
+     * @return array<string, mixed>
      */
     public function getAllAssets(int $page = 1, int $pageSize = 100, ?string $search = null, ?string $folder = null): array
     {
@@ -84,6 +84,9 @@ class AdminAssetService extends BaseService
             );
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     private function fetchAssetsFromDatabase(int $page, int $pageSize, ?string $search, ?string $folder): array
     {
         $result = $this->assetRepository->findAssetsWithPagination($page, $pageSize, $search, $folder);
@@ -114,7 +117,7 @@ class AdminAssetService extends BaseService
      * Get asset by ID with entity scope caching
      * 
      * @param int $id
-     * @return array
+     * @return array<string, mixed>
      */
     public function getAssetById(int $id): array
     {
@@ -152,9 +155,9 @@ class AdminAssetService extends BaseService
      * Create/Upload new asset
      * 
      * @param UploadedFile $file
-     * @param array $data
+     * @param array<string, mixed> $data
      * @param bool $overwrite
-     * @return array
+     * @return array<string, mixed>
      */
     public function createAsset(UploadedFile $file, array $data, bool $overwrite = false): array
     {
@@ -180,12 +183,15 @@ class AdminAssetService extends BaseService
                 LookupService::ASSET_TYPES,
                 in_array($extension, ['css']) ? LookupService::ASSET_TYPES_CSS : LookupService::ASSET_TYPES_ASSET
             );
+            if (!$assetType) {
+                throw new ServiceException('Asset type lookup not found', Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
 
             // Get folder from data or use default
-            $folder = $data['folder'] ?? 'general';
+            $folder = $this->asString($data['folder'] ?? 'general');
 
             // Create filename - preserve original name if no custom name provided
-            $fileName = !empty($data['file_name']) ? $data['file_name'] : $file->getClientOriginalName();
+            $fileName = !empty($data['file_name']) ? $this->asString($data['file_name']) : $file->getClientOriginalName();
 
             // Check if file already exists
             $existingAsset = $this->assetRepository->findByFileName($fileName);
@@ -206,8 +212,9 @@ class AdminAssetService extends BaseService
             // Move the file immediately
             $file->move($uploadPath, $fileName);
 
-            // Create or update asset entity
-            if ($existingAsset && $overwrite) {
+            // Create or update asset entity. Reaching here with an existing asset
+            // implies $overwrite is true (the non-overwrite case threw above).
+            if ($existingAsset) {
                 $asset = $existingAsset;
                 $transactionType = LookupService::TRANSACTION_TYPES_UPDATE;
                 $logMessage = 'Asset updated (overwrite): ' . $fileName;
@@ -242,7 +249,7 @@ class AdminAssetService extends BaseService
                 ->withCategory(CacheService::CATEGORY_ASSETS)
                 ->invalidateAllListsInCategory();
 
-            return $this->getAssetById($asset->getId());
+            return $this->getAssetById((int) $asset->getId());
         } catch (\Exception $e) {
             $this->entityManager->rollback();
 
@@ -258,22 +265,24 @@ class AdminAssetService extends BaseService
     /**
      * Create/Upload multiple assets
      * 
-     * @param array $files UploadedFile[]
-     * @param array $data
+     * @param array<int, UploadedFile> $files UploadedFile[]
+     * @param array<string, mixed> $data
      * @param bool $overwrite
-     * @return array
+     * @return array<string, mixed>
      */
     public function createMultipleAssets(array $files, array $data, bool $overwrite = false): array
     {
         $results = [];
         $errors = [];
 
+        $fileNames = is_array($data['file_names'] ?? null) ? $data['file_names'] : [];
+
         foreach ($files as $index => $file) {
             try {
                 $fileData = $data;
                 // Allow individual file names if provided
-                if (isset($data['file_names'][$index])) {
-                    $fileData['file_name'] = $data['file_names'][$index];
+                if (isset($fileNames[$index])) {
+                    $fileData['file_name'] = $fileNames[$index];
                 }
 
                 $result = $this->createAsset($file, $fileData, $overwrite);
