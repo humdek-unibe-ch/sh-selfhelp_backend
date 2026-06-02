@@ -11,8 +11,8 @@ declare(strict_types=1);
 namespace App\Tests\Smoke;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Tests\Support\PerfBudget;
 use App\Tests\Support\QaWebTestCase;
-use App\Tests\Support\Timing;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -54,13 +54,15 @@ final class QaLoginSmokeTest extends QaWebTestCase
         self::assertNotSame('', $token, 'qa.admin must receive a non-empty access token');
 
         // Performance budget for login (plan §28): hard-fail above 2× budget.
-        self::assertLessThan(
-            Timing::BUDGET_LOGIN_MS * Timing::PERF_HARD_FACTOR,
-            $loginMs,
-            sprintf('Login took %.0f ms, exceeding %.0f ms (2× the %d ms budget).', $loginMs, Timing::BUDGET_LOGIN_MS * Timing::PERF_HARD_FACTOR, Timing::BUDGET_LOGIN_MS)
-        );
+        PerfBudget::assertWithinBudget($loginMs, PerfBudget::LOGIN_MS, 'login');
 
+        $listStartedAt = microtime(true);
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $token);
+        PerfBudget::assertWithinBudget(
+            (microtime(true) - $listStartedAt) * 1000,
+            PerfBudget::ADMIN_PAGES_LIST_MS,
+            'admin pages list'
+        );
         $data = $this->assertEnvelopeSuccess($envelope);
 
         self::assertArrayHasKey('logged_in', $envelope);

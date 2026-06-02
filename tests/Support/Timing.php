@@ -20,12 +20,16 @@ namespace App\Tests\Support;
  */
 final class Timing
 {
-    /** Performance budgets for critical APIs (plan §28), in milliseconds. */
-    public const BUDGET_LOGIN_MS = 500;
-    public const BUDGET_ADMIN_PAGES_LIST_MS = 1000;
-    public const BUDGET_FORM_SUBMIT_MS = 1000;
-    public const BUDGET_SCHEDULED_JOB_EXECUTE_MS = 1500;
-    public const BUDGET_ADMIN_PLUGINS_LIST_MS = 1000;
+    /**
+     * Performance budgets for critical APIs (plan §28), in milliseconds.
+     * Aliases of {@see PerfBudget} — the canonical source — kept so existing
+     * callers keep working without redefining the literal numbers.
+     */
+    public const BUDGET_LOGIN_MS = PerfBudget::LOGIN_MS;
+    public const BUDGET_ADMIN_PAGES_LIST_MS = PerfBudget::ADMIN_PAGES_LIST_MS;
+    public const BUDGET_FORM_SUBMIT_MS = PerfBudget::FORM_SUBMIT_MS;
+    public const BUDGET_SCHEDULED_JOB_EXECUTE_MS = PerfBudget::SCHEDULED_JOB_EXECUTE_MS;
+    public const BUDGET_ADMIN_PLUGINS_LIST_MS = PerfBudget::PLUGINS_LIST_MS;
 
     /**
      * Whole golden-workflow wall-clock ceiling (plan §6.2: a golden test runs
@@ -39,8 +43,8 @@ final class Timing
      * the budget and is allowed to warn between WARN_FACTOR× and HARD_FACTOR×
      * (plan §28). Tests use HARD_FACTOR for the assertion ceiling.
      */
-    public const PERF_WARN_FACTOR = 1.5;
-    public const PERF_HARD_FACTOR = 2.0;
+    public const PERF_WARN_FACTOR = PerfBudget::WARN_FACTOR;
+    public const PERF_HARD_FACTOR = PerfBudget::HARD_FACTOR;
 
     private function __construct()
     {

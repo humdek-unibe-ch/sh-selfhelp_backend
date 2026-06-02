@@ -19,6 +19,7 @@ use App\Tests\Support\Factories\ActionFactory;
 use App\Tests\Support\Factories\ScheduledJobFactory;
 use App\Tests\Support\MercureTestRecorder;
 use App\Tests\Support\Notifier\RecordingNotifier;
+use App\Tests\Support\PerfBudget;
 use App\Tests\Support\QaCleanupVerifier;
 use App\Tests\Support\QaWebTestCase;
 use App\Tests\Support\Timing;
@@ -157,9 +158,14 @@ final class FormActionJobChainTest extends QaWebTestCase
         $application = new Application($this->client->getKernel());
         $application->setAutoExit(false);
         $tester = new CommandTester($application->find('app:scheduled-jobs:execute-due'));
+        $executeStartedAt = microtime(true);
         $exitCode = $tester->execute(['--limit' => '999']);
+        $executeMs = (microtime(true) - $executeStartedAt) * 1000;
 
         self::assertSame(0, $exitCode, 'execute-due must exit 0: ' . $tester->getDisplay());
+
+        // Performance budget (plan §28): executing a due job is fast.
+        PerfBudget::assertWithinBudget($executeMs, PerfBudget::SCHEDULED_JOB_EXECUTE_MS, 'scheduled job execute (execute-due)');
 
         // Domain effect: the queued job is now done.
         $this->em->refresh($job);
