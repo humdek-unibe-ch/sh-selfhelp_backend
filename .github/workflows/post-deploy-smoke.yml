@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# Post-deploy smoke tier (Slice 10, plan §18.3).
+#
+# The < 60s "is this deploy healthy?" gate. It boots the deployed code
+# against a freshly migrated + seeded database and runs the Smoke suite
+# (`composer test:smoke`), which exercises every core subsystem a live
+# instance must have working:
+#
+#   - the public /cms-api/v1/health readiness probe (200 + DB reachable);
+#   - a REAL qa.admin JWT login;
+#   - a throwaway qa page create -> delete (CMS write path + cache);
+#   - a due scheduled job executed to `done` via the cron command;
+#   - one acl-changed Mercure publish (captured in-memory, no real outbound);
+#   - and it prints the seeded QA_FIXTURE_VERSION for triage.
+#
+# Trigger model: this is meant to be invoked by the deployment pipeline
+# right after a release is promoted (wire it to your deploy job via
+# `workflow_dispatch` from the CD system), and is also runnable on demand.
+# On failure the deploy should be rolled back (plan §18.3); this workflow
+# only reports health — it does not deploy.
+#
+# It reuses the exact service + env setup as backend-tests.yml so a green
+# run here means the same thing locally:
+#   composer test:reset-db && composer test:smoke
+
+name: post-deploy-smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/tag/SHA) that was deployed and should be smoke-tested."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  post-deploy-smoke:
+    name: Smoke (health + login + CMS + job + realtime)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      APP_ENV: test
+      APP_DEBUG: '0'
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/selfhelp_ci?serverVersion=8.0&charset=utf8mb4"
+      REDIS_URL: "redis://127.0.0.1:6379"
+      MERCURE_PUBLIC_URL: ""
+
+    steps:
+      - name: Checkout backend (deployed ref)
+        uses: actions/checkout@v4
+        with:
+          # Default ('') checks out the workflow ref; the CD system can pass
+          # the exact deployed commit so the smoke matches what is live.
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, intl, mbstring, json, pdo, pdo_mysql, redis, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
+
+      - name: Prepare test environment (.env + JWT keys)
+        run: |
+          set -euo pipefail
+          cp .env.default .env
+          # The smoke performs a real JWT login, so the keypair must exist.
+          php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction
+          echo "Environment prepared."
+
+      - name: Reset database (drop -> create -> migrate -> seed QA baseline)
+        # Proves the deployed migrations apply cleanly and the seed loads;
+        # this is the freshly-deployed datastore the smoke runs against.
+        run: composer test:reset-db
+
+      - name: Smoke suite (< 60s readiness chain)
+        run: php bin/phpunit --testsuite=Smoke --testdox --log-junit build/phpunit/smoke.junit.xml
+
+      - name: Upload failure artifacts (PHPUnit logs + app logs)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-deploy-smoke-artifacts
+          path: |
+            build/phpunit/**
+            var/log/**
+          if-no-files-found: ignore
+          retention-days: 7
