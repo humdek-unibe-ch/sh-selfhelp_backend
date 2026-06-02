@@ -817,3 +817,36 @@ Three CLI commands ship for managing `.shplugin` artefacts:
 | `selfhelp:plugin:validate-archive <path> [--json]` | Run the same `inspect-archive` pipeline against a local file. Returns exit code 1 when validation reports any error. Use in plugin CI before publishing. |
 | `selfhelp:plugin:cleanup-archives` | Reap orphan `var/plugins/<id>-<ver>/staging/` dirs older than `SELFHELP_PLUGIN_ARCHIVE_RETENTION_DAYS` (default 7). Wire into cron / scheduled jobs. |
 | `selfhelp:plugin:purge-staging <pluginId> [--all] [--confirm]` | Force-delete staging dirs for one plugin (or all). Dry-run by default; pass `--confirm` to actually delete. Never touches `installed/` or `public/plugin-artifacts/...`. |
+
+## 15. Testing notes — what is automated vs. deploy-time
+
+How the install lifecycle is verified. Full split + status lives in
+[`testing-matrix.md`](./testing-matrix.md); this is the operator-facing summary.
+
+**Automated in host CI (safe, in-transaction or DB-free):**
+
+- **Managed-mode install request** — `tests/Certification/InstallLifecycleCertificationTestCase.php`
+  drives the REAL admin API: install → `202 Accepted` (manifest cleared
+  signature + compatibility + capability/trust validation) → a `plugin_operations`
+  row is recorded and visible via the operations API → the concurrency guard
+  rejects a second operation and `cancel` clears it. Every plugin subclasses this.
+- **Lock-file lifecycle** — `tests/Plugin/Lifecycle/PluginLockFileLifecycleTest.php`
+  (Unit suite, no DB) certifies the `selfhelp.plugins.lock.json` primitives with
+  `tests/Support/LockFileAssertion.php`: install records the entry, uninstall
+  (`removePlugin`) reverses only that entry, and rollback (`restore`) brings the
+  file back byte-identical (same SHA-256) — `restore(null)` removes it.
+- **Purge guard** — `tests/Integration/Command/Plugin/PluginCliCommandsTest.php`
+  asserts `selfhelp:plugin:purge` refuses without `--confirm` BEFORE touching any
+  table.
+- **Read/diagnostic CLI** — `selfhelp:plugin:status` / `:doctor` boot and degrade
+  gracefully on a fresh host.
+
+**Deploy-time only (documented exception, NOT in the in-transaction WebTestCase):**
+
+- The CLI/CI worker (`selfhelp:plugin:run-operation`) that runs composer + npm +
+  Doctrine migrations and calls `PluginInstaller::finalize()` — those writes are
+  non-transactional disk writes (`selfhelp.plugins.lock.json` +
+  `config/selfhelp_plugin_bundles.php`).
+- The DB-orchestrated `PluginRollbacker` reversal of a `failed` `plugin_operations`
+  row (it replays the lock-file snapshot through the SAME `restore()` primitive the
+  test above certifies). Run it against a live stack during a deploy smoke.

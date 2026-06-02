@@ -35,8 +35,8 @@ wired today, not what a future slice intends to add.
 | Mobile code          | TypeScript           | Plugin repo CI (when `mobile`) | `tsc --noEmit`                | Required if mobile    | IMPLEMENTED |
 | Mobile code          | Mobile-lint          | Plugin repo CI                 | `scripts/lint-mobile-plugins.mjs` | Required if mobile | CONVENTION (script not built yet; plugin-mobile-check.yml runs renderer parity) |
 | End-to-end           | Managed-mode install | Host CI matrix                 | PHPUnit (`InstallLifecycleCertificationTestCase`) | Required              | IMPLEMENTED (8B, request scope) |
-| End-to-end           | Update + rollback    | Host deploy smoke (CLI)        | `selfhelp:plugin:run-operation` | Required              | DEPLOY-TIME STEP (host readiness smoke landed Slice 10; plugin-operation run-through not CI-automated) |
-| End-to-end           | Uninstall + purge    | Host deploy smoke (CLI)        | `selfhelp:plugin:run-operation` | Required              | DEPLOY-TIME STEP (host readiness smoke landed Slice 10; plugin-operation run-through not CI-automated) |
+| End-to-end           | Update + rollback    | Host deploy smoke (CLI)        | `selfhelp:plugin:run-operation` | Required              | PARTIAL — lock-file restore/rollback-hash certified DB-free (`PluginLockFileLifecycleTest` + `LockFileAssertion`); DB-orchestrated `PluginRollbacker` run-through is DEPLOY-TIME (needs failed-op rows + non-transactional disk writes) |
+| End-to-end           | Uninstall + purge    | Host deploy smoke (CLI)        | `selfhelp:plugin:run-operation` | Required              | PARTIAL — lock-file uninstall reversal certified DB-free (`PluginLockFileLifecycleTest`) + purge `--confirm` guard integration-tested (`PluginCliCommandsTest`); destructive table-drop run-through is DEPLOY-TIME |
 | End-to-end           | Web preview          | Host CI                        | Playwright                    | Required              | IMPLEMENTED (8D, SurveyJS Creator) |
 | End-to-end           | Mobile preview       | Host CI (when `mobile`)        | Maestro (Expo)                | Required if mobile    | NOT YET |
 | Operational          | Doctor smoke         | Host CI per release            | `selfhelp:plugin:doctor`      | Required              | CONVENTION (command exists; not wired into release CI yet) |
@@ -91,8 +91,34 @@ migrations and calls `PluginInstaller::finalize()`, which **writes to disk**
 writes are non-transactional and would pollute the working tree, so finalize
 is deliberately a deployment step — it is **not** exercised inside the
 WebTestCase DB transaction. The full `requested → running → succeeded`
-run-through, lock-file assertions, update/rollback, and uninstall/purge
-therefore belong to the **deploy-time CLI smoke**, not to this base.
+run-through (composer/npm + Doctrine migrations + table drops on purge)
+therefore belongs to the **deploy-time CLI smoke**, not to this base.
+
+### Lock-file lifecycle is certified DB-free (8B/8C)
+
+The lock-file *primitives* finalize/rollback rely on do NOT need a live install,
+so they are certified directly — no DB, no kernel, no composer — in
+`tests/Plugin/Lifecycle/PluginLockFileLifecycleTest.php` (Unit suite) using the
+real `PluginLockFileWriter`/`PluginLockFileReader` against a throwaway temp dir,
+with reusable assertions in `tests/Support/LockFileAssertion.php`:
+
+1. **Install records an entry** — `write()` then read-back asserts the plugin's
+   `id`/`version`/`checksum` are present.
+2. **Uninstall reverses install state** — `removePlugin()` drops only the named
+   entry; emptying the lock leaves an empty `plugins` list, not a deleted file.
+3. **Rollback restores the lock-file hash** — a captured snapshot fed back
+   through `restore()` is byte-identical (same SHA-256), which is exactly what
+   `PluginRollbacker` calls when it replays `snapshots[lockFileBefore]`;
+   `restore(null)` removes the file for a rollback-to-fresh-state.
+
+The purge **`--confirm` guard** (irreversible op refuses before touching the
+service) is integration-tested in `PluginCliCommandsTest::testPurgeRefusesWithoutConfirmFlag`.
+
+What remains a **documented deploy-time exception**: the DB-orchestrated
+`PluginRollbacker::rollback()` / `selfhelp:plugin:run-operation` path that reads
+a `failed` `plugin_operations` row and runs composer/npm/migration reversal —
+it needs real operation rows plus non-transactional disk writes, so the
+deploy-time CLI smoke owns it, never the in-transaction WebTestCase.
 
 > Scope note (Slice 10): Slice 10 landed the **host** post-deploy smoke —
 > `.github/workflows/post-deploy-smoke.yml` running `tests/Smoke/HealthSmokeTest.php`
