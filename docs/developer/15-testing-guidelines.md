@@ -77,7 +77,7 @@ composer test:coverage   # HTML coverage to build/coverage/html (needs Xdebug/PC
 
 `composer test:nightly` is the release/nightly wrapper (plan §3): it runs `test:release` (which already includes the golden suite), then re-runs the whole suite in random order (`test:random`), then the migration round-trip group (`test:migration`). Golden is intentionally not listed twice because `test:release` already runs it.
 
-`composer test:check-data` runs `scripts/check-test-data-prefix.php`: a fast static guard that fails the build if a non-legacy test invents non-QA business data (`'keyword'/'url'/'generated_id'` literals not `qa`-prefixed), logs in with a placeholder email (`@example.com`), or hardcodes a weak password. It is a **ratchet**: pre-existing offenders are listed in `LEGACY_ALLOWLIST` and reported as warnings; migrating one to the QA convention means deleting it from the list (the list only shrinks). Run `composer test:check-data -- --all` to see every offender including the grandfathered legacy ones.
+`composer test:check-data` runs `scripts/check-test-data-prefix.php`: a fast static guard that fails the build if a non-legacy test invents non-QA business data (`'keyword'/'url'/'generated_id'` literals not `qa`-prefixed), logs in with a placeholder email (`@example.com` / `@example.org` / `@test.com`), or hardcodes a weak password. It is a **ratchet**: pre-existing offenders live in `LEGACY_ALLOWLIST` (warnings, not failures) and the list only ever shrinks. **The `LEGACY_ALLOWLIST` is now empty — every former offender (including `MailTemplateServiceTest` and `InterpolationServiceTest`) was migrated to the QA personas, so the guard reports 0 violations and 0 legacy warnings.** Do **not** reintroduce placeholder emails or non-QA business data — use `QaBaselineFixture::QA_*_EMAIL` / the `qa`/`qa_`/`qa-` prefix instead; a new offender fails the build immediately (there is nothing left to grandfather). Run `composer test:check-data -- --all` to see every offender including any (currently none) grandfathered legacy ones.
 
 ## Local setup
 
@@ -224,6 +224,13 @@ GitHub branch-protection rules are repo *settings* (configured in the GitHub UI 
 - **`main`** requires: `backend-tests`, `shared-tests`, `frontend-tests`, `mobile-parity` (`plugin-mobile-check.yml`), and `plugin-host-check`.
 - **`release/*`** additionally requires: `e2e-golden`, `migration-test`, and `plugin-certification`.
 
+GitHub identifies a required status check by its **check-run name**, which is the
+job's `name:` (falling back to the job id) — *not* the workflow name. The mobile
+gate's job is therefore pinned to `name: mobile-parity` (job id also
+`mobile-parity`) in `plugin-mobile-check.yml`, so the `mobile-parity` required
+check above literally exists in GitHub Actions. When the team selects required
+checks for the other gates, pick the check run produced by each gate workflow.
+
 `post-deploy-smoke` is intentionally **not** a merge gate — it runs after deployment, not on the PR.
 
 ### Coverage gates
@@ -236,6 +243,40 @@ Implemented state:
 - **Backend / frontend**: coverage is **advisory (non-blocking)** today — only `@selfhelp/shared` has a blocking gate. The 70%/60% targets are the documented policy, but because current baseline coverage on the large `src/Service`/`src/Controller` and `app/` trees is well below 70%/60%, the absolute gate is **staged**: turn it on as a blocking job only once the baseline reaches the target, so it ratchets up rather than blocking every merge from day one. Until then, generate reports on demand and do not let changed-file coverage regress:
   - Backend: `composer test:coverage` → HTML report under `build/coverage/html` (needs Xdebug/PCOV). No threshold is enforced.
   - Frontend: `npm run test:coverage` (`vitest run --coverage`) → istanbul provider (text-summary + html + lcov), **no `thresholds` block**, so the run never fails on a coverage number. (Istanbul, not v8, for the same Windows double-count reason as shared.)
+
+### Deterministic time (ClockMock)
+
+`phpunit.dist.xml` registers the Symfony PHPUnit bridge clock mock for the
+`App` namespace (`clock-mock-namespaces` parameter). Scope, verified empirically:
+
+- **It intercepts** the *unqualified* time functions (`time()`, `microtime()`,
+  `date()`, `sleep()`, …) called inside `App\…` classes. Freeze with
+  `ClockMock::withClockMock($timestamp)` (tag the test `#[Group('time-sensitive')]`).
+- **It does NOT intercept** *fully-qualified* `new \DateTimeImmutable('now')` /
+  `new \DateTime('now')`. Namespace shadowing can only redirect unqualified
+  calls, and these constructors read the system clock directly. A probe freezing
+  the clock to 2030 showed `time()` returned the frozen value while
+  `new \DateTimeImmutable('now')` returned the real wall-clock time.
+
+Consequence for this codebase:
+
+- The one place ClockMock earns its keep today is the **impersonation-token
+  expiry** math (`JWTService::createImpersonationToken` → `exp = time() + ttl`,
+  unqualified `time()`). It is pinned deterministically by
+  `tests/Service/Auth/JWTServiceTest::testImpersonationTokenExpiryIsFrozenNowPlusConfiguredTtl`.
+- The bulk of now-relative business logic — action scheduling / reminders /
+  repeaters (`ActionScheduleCalculatorService`) and refresh-token expiry — uses
+  fully-qualified `\DateTimeImmutable('now')`, which ClockMock cannot freeze, and
+  the real "due" selection is a DB-side `date_to_be_executed <= NOW()` comparison
+  (MySQL `NOW()`, which a PHP clock mock cannot affect regardless). That behavior
+  is instead covered **deterministically by data-backdating** — e.g.
+  `tests/Golden/FormActionJobChainTest` back-dates `date_to_be_executed` and runs
+  the due-execution path. This is more production-faithful than mocking PHP time.
+- ClockMock stays configured for future use: when now-relative logic is added via
+  the Symfony Clock component (`ClockInterface` + `MockClock`) or unqualified time
+  functions, prefer injecting `MockClock` (or freezing ClockMock) over asserting
+  with a tolerance window. Do **not** refactor working `\DateTimeImmutable('now')`
+  call sites solely to make them ClockMock-testable.
 
 ## Troubleshooting & slow tests
 

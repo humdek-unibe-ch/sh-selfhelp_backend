@@ -156,7 +156,7 @@ name when a workflow has multiple jobs). The names below are the workflow names.
 
 | Check | Workflow | Gate | Required on |
 |-------|----------|------|-------------|
-| `plugin-mobile-check` | `plugin-mobile-check.yml` | mobile renderer parity + `node --test` | `main`, `release/*` |
+| `mobile-parity` | `plugin-mobile-check.yml` | mobile renderer parity + `node --test` | `main`, `release/*` |
 
 ### Plugin repos
 
