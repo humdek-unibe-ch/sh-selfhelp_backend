@@ -383,9 +383,12 @@ class PageService extends BaseService
             $hydrated['page']['title'] = $seo['title'];
             $hydrated['page']['description'] = $seo['description'];
             $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
-            $fallback = $this->shouldFallback($flatSections, $page->getKeyword());
-            if ($fallback !== null) {
-                $hydrated['page']['should_fallback'] = $fallback;
+            $keyword = $page->getKeyword();
+            if ($keyword !== null) {
+                $fallback = $this->shouldFallback($flatSections, $keyword);
+                if ($fallback !== null) {
+                    $hydrated['page']['should_fallback'] = $fallback;
+                }
             }
         }
 
@@ -519,7 +522,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($languageId, $page) {
+        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -541,9 +544,12 @@ class PageService extends BaseService
                 ]
             ];
 
-            $fallback = $this->shouldFallback($flatSections, $page->getKeyword());
-            if ($fallback !== null) {
-                $pageData['page']['should_fallback'] = $fallback;
+            $keyword = $page->getKeyword();
+            if ($keyword !== null) {
+                $fallback = $this->shouldFallback($flatSections, $keyword);
+                if ($fallback !== null) {
+                    $pageData['page']['should_fallback'] = $fallback;
+                }
             }
 
             return $pageData;
@@ -593,6 +599,9 @@ class PageService extends BaseService
      * on the page has a style name matching the keyword.
      * Returns null when the keyword is not in the whitelist (field omitted from response).
      */
+    /**
+     * @param list<array<string, mixed>> $flatSections
+     */
     private function shouldFallback(array $flatSections, string $keyword): ?bool
     {
         if (!isset(self::FALLBACK_CHECK_KEYWORDS[$keyword])) {
@@ -600,13 +609,18 @@ class PageService extends BaseService
         }
         $expectedStyle = self::FALLBACK_CHECK_KEYWORDS[$keyword];
         foreach ($flatSections as $row) {
-            if (($row['style_name'] ?? null) === $expectedStyle) {
+            $styleName = $row['style_name'] ?? null;
+            if (is_string($styleName) && $styleName === $expectedStyle) {
                 return false;
             }
         }
         return true;
     }
 
+    /**
+     * @param list<array<string, mixed>> $flatSections
+     * @return array<int, array{has_current_user_config: bool, has_global_config: bool}>
+     */
     private function extractDataTableDependencies(array $flatSections, int $pageId): array
     {
         $cacheKey = "page_data_table_deps_{$pageId}";
