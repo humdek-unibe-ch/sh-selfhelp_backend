@@ -82,4 +82,17 @@ final class PluginCliCommandsTest extends KernelTestCase
         self::assertArrayHasKey('plugins', $report);
         self::assertSame([], $report['plugins'], 'No plugins installed on the QA baseline');
     }
+
+    /**
+     * The destructive purge guard (plan §"plugin lifecycle words": purge is
+     * irreversible and requires `--confirm`) must refuse BEFORE touching the
+     * service, so this stays a safe, side-effect-free assertion.
+     */
+    public function testPurgeRefusesWithoutConfirmFlag(): void
+    {
+        $tester = $this->runConsole('selfhelp:plugin:purge', ['pluginId' => 'qa_nonexistent_plugin']);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertStringContainsString('Refusing to purge without --confirm', $tester->getDisplay());
+    }
 }
