@@ -33,7 +33,7 @@ class ActionConfigRuntimeServiceTest extends TestCase
             ->method('interpolateArray')
             ->willReturnCallback(static fn(array $config): array => $config);
 
-        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager = $this->createStub(EntityManagerInterface::class);
         $service = new ActionConfigRuntimeService($interpolationService, $entityManager);
 
         $action = (new Action())->setConfig((string) json_encode([
@@ -72,7 +72,7 @@ class ActionConfigRuntimeServiceTest extends TestCase
             ->method('interpolateArray')
             ->willReturnCallback(static fn(array $config): array => $config);
 
-        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager = $this->createStub(EntityManagerInterface::class);
         $service = new ActionConfigRuntimeService($interpolationService, $entityManager);
 
         $action = (new Action())->setConfig((string) json_encode([

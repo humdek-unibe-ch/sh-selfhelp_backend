@@ -34,9 +34,12 @@ final class ApiResponseFormatterTest extends TestCase
         $user = $loggedInUser ? $this->createStub(UserInterface::class) : null;
 
         // Only getUser() is exercised by ApiResponseFormatter; Symfony's Security
-        // helper is @final (soft) so it is doubled via a mock rather than a
-        // hand-written subclass (which PHPStan rejects as extending an @final).
-        $security = $this->createMock(Security::class);
+        // helper is @final (soft) so it is doubled via a generated test stub
+        // rather than a hand-written subclass (which PHPStan rejects as extending
+        // an @final). A stub is the right tool here — getUser() is a passive
+        // return-value source, not a behaviour we assert — and it avoids the
+        // PHPUnit "mock object without configured expectations" notice.
+        $security = $this->createStub(Security::class);
         $security->method('getUser')->willReturn($user);
 
         return new ApiResponseFormatter(
