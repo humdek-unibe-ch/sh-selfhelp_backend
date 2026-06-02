@@ -33,7 +33,8 @@ wired today, not what a future slice intends to add.
 | Frontend code        | Unit tests           | Plugin repo CI                 | Vitest                        | Required              | IMPLEMENTED (8D, SurveyJS) |
 | Frontend code        | Build artefact       | Plugin repo CI                 | Vite                          | Required              | IMPLEMENTED |
 | Mobile code          | TypeScript           | Plugin repo CI (when `mobile`) | `tsc --noEmit`                | Required if mobile    | IMPLEMENTED |
-| Mobile code          | Mobile-lint          | Plugin repo CI                 | `scripts/lint-mobile-plugins.mjs` | Required if mobile | CONVENTION (script not built yet; plugin-mobile-check.yml runs renderer parity) |
+| Mobile code          | Renderer tests       | Plugin repo CI (when `mobile`) | Vitest (`__tests__/parity/` + `__tests__/renderer/`) | Required if mobile | IMPLEMENTED (8D parity snapshot + render-model snapshot; runs in `validate-plugin.yml`) |
+| Mobile code          | Mobile-lint          | Plugin repo CI                 | `scripts/lint-mobile-plugins.mjs` | Required if mobile | CONVENTION (lint script not built yet; the dedicated `plugin-mobile-check.yml` + full RN render harness arrive in Slice 9) |
 | End-to-end           | Managed-mode install | Host CI matrix                 | PHPUnit (`InstallLifecycleCertificationTestCase`) | Required              | IMPLEMENTED (8B, request scope) |
 | End-to-end           | Update + rollback    | Host deploy smoke (CLI)        | `selfhelp:plugin:run-operation` | Required              | PARTIAL — lock-file restore/rollback-hash certified DB-free (`PluginLockFileLifecycleTest` + `LockFileAssertion`); DB-orchestrated `PluginRollbacker` run-through is DEPLOY-TIME (needs failed-op rows + non-transactional disk writes) |
 | End-to-end           | Uninstall + purge    | Host deploy smoke (CLI)        | `selfhelp:plugin:run-operation` | Required              | PARTIAL — lock-file uninstall reversal certified DB-free (`PluginLockFileLifecycleTest`) + purge `--confirm` guard integration-tested (`PluginCliCommandsTest`); destructive table-drop run-through is DEPLOY-TIME |
@@ -168,10 +169,20 @@ Slice 8D adds the frontend + mobile + CI tiers, all in the plugin repo:
   env-gated (`isCreatorE2eConfigured()`), with login/list/creator perf
   budgets. Self-skips with no QA stack.
 - **Mobile renderer parity (`mobile/__tests__/parity/registration.test.ts`,
-  Vitest):** the first mobile test — parity + registration snapshot for the
-  read-only `surveyjs` style. Guards the `PLUGIN_VERSION` ↔ `plugin.json`
-  sync footgun and the declared style/feature-flag contract without a React
-  Native renderer (full RN rendering arrives in Slice 9).
+  Vitest):** parity + registration snapshot for the read-only `surveyjs`
+  style. Guards the `PLUGIN_VERSION` ↔ `plugin.json` sync footgun and the
+  declared style/feature-flag contract.
+- **Mobile renderer snapshot (`mobile/__tests__/renderer/readOnlyRenderer.test.ts`,
+  Vitest):** pins the read-only viewer's render model — the `extractSurveyId`
+  resolution and the per-question card list (`extractQuestions`) that
+  `SurveyJsReadOnlyStyle` draws one card per — via an inline snapshot. Runs in
+  the Node env against the inert `react-native` stub, so it needs no native
+  runtime. **Documented deviation:** a full React Native *component* render
+  snapshot (RTL / jest-preset, rendering `<View>`/`<Text>` host trees) is a
+  deliberate Slice 9 deferral; the inert stub exists precisely so the package
+  is testable under Node until that harness lands. Mobile renderer coverage
+  today = registration parity snapshot + this render-model snapshot, **not** a
+  rendered-component snapshot.
 - **CI:** `validate-plugin.yml` runs Vitest in the frontend + mobile jobs
   (PR tier); `plugin-certification.yml` runs the release tier (backend
   PHPStan + PHPUnit, Playwright Creator E2E with browsers, mobile parity)

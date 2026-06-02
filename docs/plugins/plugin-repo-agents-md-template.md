@@ -200,10 +200,10 @@ These are the canonical SelfHelp testing policy, shared verbatim across the back
 ### Plugin-specific testing additions
 
 - Every plugin passes the certification suite generated from `@selfhelp/shared/testing` (`definePluginCertification`).
-- `plugin.json` declares a compatibility matrix: compatible backend version range, compatible `@selfhelp/shared` version range, required capabilities, required migrations, supported frontend/mobile surfaces. A mismatched matrix fails install.
+- `plugin.json` declares a compatibility matrix in the **adopted single-range shape**: `compatibility.selfhelp` is one npm-style SemVer range string covering the host CMS / ecosystem version (NOT a per-surface `compatibility.selfhelp.{backend,shared,frontend,mobile}` object), alongside the per-runtime ranges `compatibility.{php,node,react,reactNative,expoSdk}`. Required capabilities live in `security.capabilities`, migrations ship in the backend bundle, and supported surfaces are implied by the `frontend`/`mobile` blocks. A mismatched range fails install (enforced by the host `PluginCompatibilityValidator`; the shape is gated pre-publish by the shared cert kit's `checkCompatibilityShape` and the plugin's own manifest certification test).
 - Backend bundle: at least one PHPUnit test per exposed service plus a subclass of the host-side `InstallLifecycleCertificationTestCase` that returns the plugin's real `plugin.json`.
 - Frontend bundle: a Playwright spec for the plugin's admin page tree.
-- Mobile bundle: a renderer-parity entry plus a snapshot if any styles are declared.
+- Mobile bundle: a renderer-parity/registration snapshot test (`mobile/__tests__/parity/`) plus, when a style ships a renderer, a render-model snapshot of that renderer's pure logic (`mobile/__tests__/renderer/`) running under the Node + inert-`react-native`-stub harness. A full React Native *component* render snapshot (RTL / jest-preset) is only expected once the broader mobile rendering harness lands (tracked as Slice 9); do not block on it before then.
 - Plugin version bumps include the matching migration test (minor + major). `patch` releases carry no DB change and need no migration test.
 
 ## Do not

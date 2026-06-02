@@ -70,9 +70,12 @@ composer test:reset-db   # safe drop -> create -> migrate -> seed QA baseline
 composer test:changed    # only changed/new test files (fast loop)
 composer test:check-data # QA test-data convention guard (no DB; runs in CI)
 composer test:release    # pre-push: check-data + reset + unit + integration + smoke + golden
+composer test:nightly    # release-tier wrapper: test:release + test:random + test:migration
 composer test:random     # full suite in random order (order-independence)
 composer test:coverage   # HTML coverage to build/coverage/html (needs Xdebug/PCOV)
 ```
+
+`composer test:nightly` is the release/nightly wrapper (plan §3): it runs `test:release` (which already includes the golden suite), then re-runs the whole suite in random order (`test:random`), then the migration round-trip group (`test:migration`). Golden is intentionally not listed twice because `test:release` already runs it.
 
 `composer test:check-data` runs `scripts/check-test-data-prefix.php`: a fast static guard that fails the build if a non-legacy test invents non-QA business data (`'keyword'/'url'/'generated_id'` literals not `qa`-prefixed), logs in with a placeholder email (`@example.com`), or hardcodes a weak password. It is a **ratchet**: pre-existing offenders are listed in `LEGACY_ALLOWLIST` and reported as warnings; migrating one to the QA convention means deleting it from the list (the list only shrinks). Run `composer test:check-data -- --all` to see every offender including the grandfathered legacy ones.
 
@@ -172,7 +175,7 @@ final class ExampleAdminPermissionTest extends QaWebTestCase
 
 **Golden workflow** — two canonical examples to copy:
 
-- `tests/Golden/FormActionJobChainTest.php` drives the real `DataService::saveData()` (what `FormController::submitForm` calls), asserts the saved record, the scheduled job (status `done`), the `send_mail_ok` audit transaction, the captured-but-not-sent email, zero Mercure publishes, then runs `app:scheduled-jobs:execute-due` and the `QaCleanupVerifier`.
+- `tests/Golden/FormActionJobChainTest.php` drives the real `DataService::saveData()` (what `FormController::submitForm` calls), asserts the saved record, the scheduled job (status `done`), the `send_mail_ok` audit transaction, the captured-but-not-sent email, zero Mercure publishes, then runs `app:scheduled-jobs:execute-due` and the `QaCleanupVerifier`. It also covers the **failure path** (`testScheduledEmailJobWithNoRecipientsFailsAndLogsSendMailFailWithoutOutbound`, `testFailedScheduledJobIsNotAutomaticallyRetriedByExecuteDue`): a job whose recipients cannot be resolved ends `failed`, logs exactly one `send_mail_fail` audit transaction (and is not retried), with no outbound email. **Deviation from the original plan (documented, intentional):** the failure path asserts the transaction-log audit only and `expectedMercurePublishes: 0` — the backend emits **no** Mercure event on scheduled-job execution, success *or* failure (`JobSchedulerService` publishes nothing; verified, not assumed). Mercure is reserved for ACL/auth refreshes and plugin-operation progress (`selfhelp/plugins/state`). No fake "job-failed" event is fabricated to satisfy the test; if a real scheduled-job realtime event is ever added, assert it here with `$this->mercure->assertTopicPublished(...)`.
 - `tests/Golden/PageVersioningWorkflowTest.php` drives the CMS publishing chain through the admin API: create page → publish (creates a version) → list versions → compare draft against the published version → unpublish → delete page → assert it is gone. It is also the slice's cleanup proof (the page it creates is deleted through the API; DAMA rolls back afterward).
 
 Copy whichever structure matches the new workflow.
