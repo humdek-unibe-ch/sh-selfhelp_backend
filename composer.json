@@ -89,6 +89,11 @@
             "@test:smoke",
             "@test:golden"
         ],
+        "test:nightly": [
+            "@test:release",
+            "@test:random",
+            "@test:migration"
+        ],
         "clear": "php bin/console cache:clear",
         "fresh-test-install": "php scripts/fresh-test-install.php",
         "dump": "composer dump-autoload",

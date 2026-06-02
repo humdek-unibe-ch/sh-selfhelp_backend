@@ -7,6 +7,7 @@
          failOnDeprecation="true"
          failOnNotice="true"
          failOnWarning="true"
+         defaultTestSuite="Project Test Suite"
          bootstrap="tests/bootstrap.php"
          cacheDirectory=".phpunit.cache"
 >
