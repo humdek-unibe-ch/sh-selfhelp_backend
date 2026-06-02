@@ -71,6 +71,24 @@
     },
     "scripts": {
         "test": "php bin/phpunit --testdox",
+        "test:unit": "php bin/phpunit --testsuite=Unit",
+        "test:integration": "php bin/phpunit --testsuite=Integration",
+        "test:smoke": "php bin/phpunit --testsuite=Smoke --testdox",
+        "test:golden": "php bin/phpunit --testsuite=Golden --testdox",
+        "test:migration": "php bin/phpunit --testsuite=Integration --group=migration --testdox",
+        "test:reset-db": "php bin/console app:test:reset-db --force --env=test",
+        "test:coverage": "php bin/phpunit --coverage-html=build/coverage/html",
+        "test:random": "php bin/phpunit --order=random",
+        "test:changed": "php scripts/test-changed.php",
+        "test:check-data": "php scripts/check-test-data-prefix.php",
+        "test:release": [
+            "@test:check-data",
+            "@test:reset-db",
+            "@test:unit",
+            "@test:integration",
+            "@test:smoke",
+            "@test:golden"
+        ],
         "clear": "php bin/console cache:clear",
         "fresh-test-install": "php scripts/fresh-test-install.php",
         "dump": "composer dump-autoload",
@@ -102,6 +120,7 @@
         }
     },
     "require-dev": {
+        "dama/doctrine-test-bundle": "^8.6",
         "doctrine/doctrine-fixtures-bundle": "^4.3.1",
         "phpstan/extension-installer": "^1.4.3",
         "phpstan/phpstan": "^2.1.51",

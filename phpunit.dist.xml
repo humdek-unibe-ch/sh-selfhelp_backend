@@ -15,24 +15,48 @@
         <ini name="error_reporting" value="-1" />
         <server name="APP_ENV" value="test" force="true" />
         <server name="SHELL_VERBOSITY" value="-1" />
+        <server name="KERNEL_CLASS" value="App\Kernel" />
 
         <!-- ###+ symfony/mailer ### -->
         <env name="MAILER_DSN" value="null://null"/>
         <!-- ###- symfony/mailer ### -->
     </php>
 
+    <!--
+        Test suites map to the folder convention in plan §15.
+
+        - Smoke        fast deploy/boot verification (tests/Smoke)
+        - Unit         pure unit + DB-free plugin-host tests
+        - Integration  kernel/HTTP tests that hit the test DB
+        - Golden       end-to-end business-workflow tests (slow, @group golden)
+        - unit         LEGACY alias kept for .github/workflows/plugin-host-check.yml
+                       which selects the unit testsuite (DB-free plugin-host tests)
+
+        The default "Project Test Suite" runs everything for `composer test`.
+    -->
     <testsuites>
         <testsuite name="Project Test Suite">
             <directory>tests</directory>
         </testsuite>
-        <!--
-            DB-free, CI-reliable subset: the plugin-host unit tests.
-            These extend PHPUnit\Framework\TestCase (no kernel boot, no
-            database) and are run in the plugin-host-check workflow with
-            the "unit" testsuite. The full "Project Test Suite" also needs
-            MySQL + Redis + seeded fixtures + a real login flow and is not
-            yet wired into CI (see docs/developer/23-ci-quality-gate.md).
-        -->
+        <testsuite name="Smoke">
+            <directory>tests/Smoke</directory>
+        </testsuite>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+            <directory>tests/Plugin</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+            <directory>tests/Controller</directory>
+            <directory>tests/Service</directory>
+            <directory>tests/Api</directory>
+        </testsuite>
+        <testsuite name="Golden">
+            <directory>tests/Golden</directory>
+        </testsuite>
+        <testsuite name="Certification">
+            <directory>tests/Certification</directory>
+        </testsuite>
         <testsuite name="unit">
             <directory>tests/Plugin</directory>
         </testsuite>
@@ -59,5 +83,11 @@
             <parameter name="clock-mock-namespaces" value="App" />
             <parameter name="dns-mock-namespaces" value="App" />
         </bootstrap>
+        <!--
+            DAMA wraps each test in a transaction rolled back on tearDown so
+            the seeded QA baseline stays stable across the whole run. See
+            config/packages/test/doctrine.yaml.
+        -->
+        <bootstrap class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension" />
     </extensions>
 </phpunit>
