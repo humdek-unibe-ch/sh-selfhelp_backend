@@ -220,7 +220,9 @@ Canonical rule 20: ≥ 70% line coverage on `src/Service/**` + `src/Controller/*
 Implemented state:
 
 - **Shared** (`@selfhelp/shared`): a **blocking** Vitest coverage gate (`vitest.config.ts`, istanbul provider, ≥ 60% on the framework-free runtime-helper bundle — interpolation, condition, asset-URL, CMS-class classifier, page transform). `shared-tests.yml` runs `npm run test:coverage`; the job fails below threshold. Currently ~97% lines. (Istanbul, not v8: the v8 provider double-counts files on Windows — phantom 0% entries that halve the number — so the gate would fail locally; istanbul keys coverage by resolved path and is stable across Windows + CI.)
-- **Backend / frontend**: the 70%/60% targets are the documented policy. Because current baseline coverage on the large `src/Service`/`src/Controller` and `app/` trees is well below 70%/60%, the absolute gate is **staged**: turn it on as a blocking job only once the baseline reaches the target, so it ratchets up rather than blocking every merge from day one. Until then, generate reports on demand (`composer test:coverage`; frontend `vitest run --coverage`) and do not let changed-file coverage regress.
+- **Backend / frontend**: coverage is **advisory (non-blocking)** today — only `@selfhelp/shared` has a blocking gate. The 70%/60% targets are the documented policy, but because current baseline coverage on the large `src/Service`/`src/Controller` and `app/` trees is well below 70%/60%, the absolute gate is **staged**: turn it on as a blocking job only once the baseline reaches the target, so it ratchets up rather than blocking every merge from day one. Until then, generate reports on demand and do not let changed-file coverage regress:
+  - Backend: `composer test:coverage` → HTML report under `build/coverage/html` (needs Xdebug/PCOV). No threshold is enforced.
+  - Frontend: `npm run test:coverage` (`vitest run --coverage`) → istanbul provider (text-summary + html + lcov), **no `thresholds` block**, so the run never fails on a coverage number. (Istanbul, not v8, for the same Windows double-count reason as shared.)
 
 ## Troubleshooting & slow tests
 
