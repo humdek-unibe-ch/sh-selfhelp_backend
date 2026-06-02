@@ -12,12 +12,18 @@ namespace App\Tests\Service\Security;
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\DataAccessAudit;
 use App\Entity\User;
+use App\Repository\RoleDataAccessRepository;
+use App\Repository\UserRepository;
+use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use App\Service\Security\DataAccessSecurityService;
 use App\Tests\Support\Factories\ActionFactory;
 use App\Tests\Support\Factories\RoleDataAccessFactory;
 use App\Tests\Support\QaKernelTestCase;
 use PHPUnit\Framework\Attributes\Group;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * Behavioural coverage for {@see DataAccessSecurityService} — the deny-by-default
@@ -130,7 +136,7 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
         );
     }
 
-    public function testPermissionCheckWritesAnAuditRow(): void
+    public function testPermissionCheckWritesAnAuditRowWithNonNullLookups(): void
     {
         $before = $this->auditCountForUser($this->qaUserId);
 
@@ -146,6 +152,74 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
             $this->auditCountForUser($this->qaUserId),
             'Every permission check must leave an audit trail row (plan Phase 7: audit metadata).',
         );
+
+        // The persisted row must carry valid, non-null resource-type / action /
+        // result FKs. Regression for the swallowed "Column 'id_resource_types'
+        // cannot be null" integrity error: a granted READ on a real data table
+        // must produce a complete audit row.
+        $audit = $this->latestAuditForUser($this->qaUserId);
+        self::assertInstanceOf(DataAccessAudit::class, $audit, 'A data-access audit row must be persisted.');
+        self::assertSame(
+            LookupService::RESOURCE_TYPES_DATA_TABLE,
+            $audit->getResourceType()->getLookupCode(),
+            'The audit row must reference the data_table resource-type lookup (non-null FK).',
+        );
+        self::assertSame($this->tableId, $audit->getResourceId());
+        self::assertSame(LookupService::AUDIT_ACTIONS_READ, $audit->getAction()->getLookupCode());
+        self::assertSame(LookupService::PERMISSION_RESULTS_GRANTED, $audit->getPermissionResult()->getLookupCode());
+    }
+
+    public function testInvalidResourceTypeCheckDoesNotSwallowAnAuditError(): void
+    {
+        $logger = new class extends AbstractLogger {
+            /** @var list<array{level: mixed, message: string}> */
+            public array $records = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->records[] = ['level' => $level, 'message' => (string) $message];
+            }
+        };
+
+        $service = $this->buildServiceWithLogger($logger);
+
+        $allowed = $service->hasStoredPermission(
+            $this->qaUserId,
+            'qa_not_a_real_resource_type',
+            $this->tableId,
+            DataAccessSecurityService::PERMISSION_READ,
+        );
+
+        self::assertFalse($allowed, 'An unknown resource type must be denied.');
+
+        // Before the fix this path persisted an audit row with a NULL
+        // id_resource_types, raising an integrity error that was caught and
+        // logged as "Failed to log data access audit" — an invisible swallow.
+        $swallowed = array_values(array_filter(
+            $logger->records,
+            static fn (array $r): bool => str_contains($r['message'], 'Failed to log data access audit'),
+        ));
+        self::assertSame([], $swallowed, 'A denial on an unknown resource type must not raise a swallowed NULL-FK audit error.');
+
+        // The skipped audit is now surfaced as a visible warning instead.
+        $skips = array_values(array_filter(
+            $logger->records,
+            static fn (array $r): bool => str_contains($r['message'], 'Skipping data access audit'),
+        ));
+        self::assertNotSame([], $skips, 'A skipped audit must be logged as a visible warning, not silently dropped.');
+    }
+
+    private function buildServiceWithLogger(LoggerInterface $logger): DataAccessSecurityService
+    {
+        return new DataAccessSecurityService(
+            $this->service(RoleDataAccessRepository::class),
+            $this->service(UserRepository::class),
+            $this->service(LookupService::class),
+            $this->em,
+            $this->service(CacheService::class),
+            $this->service(RequestStack::class),
+            $logger,
+        );
     }
 
     private function auditCountForUser(int $userId): int
@@ -153,6 +227,13 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
         $user = $this->em->getReference(User::class, $userId);
 
         return (int) $this->em->getRepository(DataAccessAudit::class)->count(['user' => $user]);
+    }
+
+    private function latestAuditForUser(int $userId): ?DataAccessAudit
+    {
+        $user = $this->em->getReference(User::class, $userId);
+
+        return $this->em->getRepository(DataAccessAudit::class)->findOneBy(['user' => $user], ['id' => 'DESC']);
     }
 
     private function userId(string $email): int
