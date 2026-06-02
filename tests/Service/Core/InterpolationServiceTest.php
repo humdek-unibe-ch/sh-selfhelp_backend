@@ -51,13 +51,13 @@ class InterpolationServiceTest extends TestCase
         $data = [
             'user' => [
                 'name' => 'John Doe',
-                'email' => 'john@example.com'
+                'email' => 'qa.user@selfhelp.test'
             ]
         ];
 
         $result = $this->interpolationService->interpolate($content, $data);
 
-        $this->assertEquals('User: John Doe, Email: john@example.com', $result);
+        $this->assertEquals('User: John Doe, Email: qa.user@selfhelp.test', $result);
     }
 
     /**

@@ -43,11 +43,12 @@ $strict = in_array('--all', array_slice($argv, 1), true);
  * Pre-existing tests that predate the QA convention. Paths are relative to the
  * repository root and use forward slashes. Remove an entry once its test is
  * migrated to qa_-prefixed data + QA personas.
+ *
+ * The list is intentionally EMPTY: every formerly-legacy test now uses QA
+ * personas / qa_-prefixed data. The ratchet only ever shrinks — do NOT add new
+ * entries to silence a warning; migrate the test data instead.
  */
 const LEGACY_ALLOWLIST = [
-    'tests/Service/Auth/MailTemplateServiceTest.php',
-    'tests/Service/Core/InterpolationServiceTest.php',
-    'tests/Controller/Api/V1/AdminPageControllerTest.php',
 ];
 
 /** Hardcoded credentials that must never appear in test code. */
