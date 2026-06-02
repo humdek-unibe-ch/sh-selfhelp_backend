@@ -1,0 +1,11 @@
+# config/packages/test/mailer.yaml
+#
+# No real outbound in tests (canonical Testing Rule 30 / plan §32). Pin the
+# mailer to a null transport for APP_ENV=test so that NOTHING leaves the
+# process regardless of the ambient MAILER_DSN. The framework still records
+# every Email in-memory, so tests assert WHAT the system tried to send via
+# WebTestCase::getMailerMessages() + tests/Support/Notifier/RecordingNotifier.php
+# while this guarantees nothing is really delivered.
+framework:
+    mailer:
+        dsn: 'null://null'

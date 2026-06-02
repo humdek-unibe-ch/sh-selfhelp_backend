@@ -1,0 +1,25 @@
+# config/packages/test/notifier.yaml
+#
+# Intentionally NO `framework.notifier` configuration.
+#
+# Current code first (AGENTS.md "Do not invent architecture"): this backend
+# does NOT use the Symfony Notifier component (it is not in composer.json).
+# Adding a `framework.notifier` block here would configure a component that is
+# not installed and would break container compilation.
+#
+# The real outbound channels — and how each is neutralised for APP_ENV=test so
+# nothing leaves the process (canonical Testing Rule 30) — are:
+#
+#   - Email    -> Symfony Mailer. Pinned to a null transport in
+#                 config/packages/test/mailer.yaml; captured for assertions via
+#                 tests/Support/Notifier/RecordingNotifier.php.
+#   - Realtime -> Mercure HubInterface, aliased to
+#                 tests/Support/MercureTestRecorder in the test container so
+#                 published updates are recorded, not sent.
+#   - Push     -> Firebase HTTP (curl) in JobSchedulerService. The test env has
+#                 no Firebase config, so push jobs fail closed with no network
+#                 call.
+#
+# This file exists to document that decision in the place a future developer
+# would look for notifier wiring. Keep it comment-only unless the backend
+# actually adopts symfony/notifier.
