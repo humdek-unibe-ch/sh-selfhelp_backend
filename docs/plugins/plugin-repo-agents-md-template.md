@@ -156,6 +156,56 @@ This plugin's `security.trustLevel` is `<official | reviewed | untrusted>`. The 
 - Frontend: `npm ci --prefix frontend`, `npm run typecheck --prefix frontend`, `npm run build --prefix frontend`
 - Mobile (if present): `npm ci --prefix mobile`, `npm run typecheck --prefix mobile`, `npm run build --prefix mobile`
 
+## Testing Rules
+
+### Canonical Testing Rules (all SelfHelp repos)
+
+These are the canonical SelfHelp testing policy, shared verbatim across the backend, frontend, shared package, mobile app, and every plugin repo. A rule applies as soon as the tooling it references exists in this plugin repo.
+
+1. Every new feature ships with at least one automated test at the appropriate layer (unit / integration / contract / E2E).
+2. Every bug fix ships with a regression test that fails before the fix and passes after.
+3. Every new API endpoint ships with a JSON-schema contract test **and** a permission-matrix test (admin/editor/user/guest + at least one negative cross-scope case).
+4. Every new CMS style, action type, scheduled-job type, plugin event subscriber, or plugin realtime topic ships with an integration test for registration → use → cleanup.
+5. Every new business workflow extends a golden-workflow test in `tests/Golden/` (backend) and, where a UI is involved, `e2e/golden/` (frontend / mobile).
+6. Before writing or changing a test, perform a short test impact analysis: which workflow can break, which services/controllers/screens/plugin contracts are touched, which existing tests should fail, which new regression test is needed. Tests existing only to inflate coverage are rejected.
+7. Tests do not depend on developer credentials. Use the seeded `qa.admin/editor/user/guest@selfhelp.test` personas.
+8. QA fixtures use the production permission model. Seed test users through the same `Lookup userStatus/userTypes`, `Group`, `Role`, and `rel_groups_users` entities production uses. Special permissions go through normal admin/domain services, never raw SQL.
+9. All test data writes use the `qa.` / `qa-` / `qa_` prefix. Tests never create/update/delete non-QA business records. Read-only access to system baselines is allowed.
+10. Tests self-clean (DAMA transaction rollback or an explicit `afterEach`). Integration/golden tests pass the `QaCleanupVerifier` (or the per-repo equivalent).
+11. Do not mock domain behaviour in integration/golden tests. Unit tests may use deterministic test doubles but must not hide real business logic. Mock external dependencies at the boundary only.
+12. Date/time tests use `Symfony\Bridge\PhpUnit\ClockMock` (PHP), `vi.useFakeTimers()` (Vitest), or `page.clock.install()` (Playwright).
+13. Mercure events are verified via the host `MercureTestRecorder` / shared `mockMercureHub`; never by polling.
+14. Anti-flakiness: no `sleep()`, no external internet, no random IDs in fixtures or assertions, no order-dependent tests, no developer-machine absolute paths.
+15. The full suite passes in random order.
+16. Test names describe business behaviour, not the method under test.
+17. Prefer asserting public/domain-visible effects before internal implementation details.
+18. Snapshot updates must be intentional: expected change, explained in the PR, reviewable before/after. Never update snapshots just to make CI green.
+19. Any test slower than 10s is a golden/release-tier test. PR-tier suites complete in under 10 minutes.
+20. Coverage gate: ≥ 60% on new files. PRs dropping coverage by > 1% on changed files are blocked.
+21. Use the standard test commands defined in this repo. Never invent new test command names.
+22. Tests assert meaningful behaviour, not just status codes (status + envelope shape + key fields + one public side effect).
+23. Do not change production logic to make tests pass. Fix the production code (and explain) or fix the wrong test.
+24. Smallest runnable proof: after every 1–3 file changes, run the single new test file.
+25. Every API response field a consumer relies on must exist in a host JSON Schema plus a `@selfhelp/shared` TS type. Schema drift fails CI.
+26. Negative-permission tests are mandatory for every permission-sensitive endpoint (allowed → success, lower-privileged → 403, unauthenticated → 401, cross-scope → 403/404).
+27. Security regression tests are required for any change to auth, capabilities, or trust level. They assert failure behaviour, not only success.
+28. API backward compatibility: do not remove/rename a response field without a schema version bump, shared type update, consumer adaptation, and changelog entry.
+29. Performance budgets for critical APIs are asserted in smoke/golden tests.
+30. No real outbound in tests (email/SMS/push/webhooks/HTTP). Use recorders/mocks and assert captured content.
+31. Test reset commands refuse to run unless `APP_ENV=test`, the db name contains `_test`, the host is allow-listed, and `--force` is provided.
+32. Smoke tests print and assert the QA fixture version.
+33. CI uploads failure artifacts (logs, traces, screenshots, container logs, sanitized DB dump).
+34. Playwright golden specs run axe-core accessibility checks on key pages.
+
+### Plugin-specific testing additions
+
+- Every plugin passes the certification suite generated from `@selfhelp/shared/testing` (`definePluginCertification`).
+- `plugin.json` declares a compatibility matrix: compatible backend version range, compatible `@selfhelp/shared` version range, required capabilities, required migrations, supported frontend/mobile surfaces. A mismatched matrix fails install.
+- Backend bundle: at least one PHPUnit test per exposed service plus a subclass of the host-side `InstallLifecycleCertificationTestCase` that returns the plugin's real `plugin.json`.
+- Frontend bundle: a Playwright spec for the plugin's admin page tree.
+- Mobile bundle: a renderer-parity entry plus a snapshot if any styles are declared.
+- Plugin version bumps include the matching migration test (minor + major). `patch` releases carry no DB change and need no migration test.
+
 ## Do not
 
 - Do not patch any core service or core route at runtime.
