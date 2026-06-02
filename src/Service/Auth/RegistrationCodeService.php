@@ -97,19 +97,63 @@ class RegistrationCodeService extends BaseService
     }
 
     /**
-     * @return array{id: string, code: string, id_groups: int, group_name: string|null, created_at: string}
+     * @param array{search?: string|null, id_groups?: int|null, status?: string|null, sort?: string|null, sortDirection?: string|null} $filters
+     * @return list<array{code: string, group_name: string|null, status: string, created_at: string, consumed_at: string}>
      */
-    public function create(string $code, int $groupId): array
+    public function export(array $filters = []): array
     {
-        $code = trim($code);
+        $where  = [];
+        $params = [];
 
-        if ($code === '') {
-            throw new \InvalidArgumentException('Code cannot be empty.');
+        if (!empty($filters['search'])) {
+            $where[] = 'vc.code LIKE :search';
+            $params['search'] = '%' . $filters['search'] . '%';
         }
 
-        $existing = $this->entityManager->getRepository(ValidationCode::class)->find($code);
-        if ($existing !== null) {
-            throw new \InvalidArgumentException('A registration code with this value already exists.');
+        if (!empty($filters['id_groups'])) {
+            $where[] = 'vc.id_groups = :id_groups';
+            $params['id_groups'] = $filters['id_groups'];
+        }
+
+        if (($filters['status'] ?? null) === 'available') {
+            $where[] = 'vc.consumed IS NULL';
+        } elseif (($filters['status'] ?? null) === 'used') {
+            $where[] = 'vc.consumed IS NOT NULL';
+        }
+
+        $whereClause = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT vc.code, g.name as group_name, vc.created, vc.consumed
+               FROM validation_codes vc
+               LEFT JOIN `groups` g ON g.id = vc.id_groups'
+            . $whereClause
+            . ' ORDER BY vc.created DESC',
+            $params
+        );
+
+        return array_map(fn(array $row) => [
+            'code'        => is_string($row['code']) ? $row['code'] : '',
+            'group_name'  => is_string($row['group_name']) ? $row['group_name'] : '',
+            'status'      => $row['consumed'] !== null ? 'Used' : 'Available',
+            'created_at'  => is_string($row['created']) ? $row['created'] : '',
+            'consumed_at' => is_string($row['consumed']) ? $row['consumed'] : '',
+        ], $rows);
+    }
+
+    /**
+     * Generates $count unique random 8-character alphanumeric codes and persists them in one transaction.
+     *
+     * Uses INSERT IGNORE so duplicate PKs are silently skipped. After each insert the affected-row
+     * count tells us exactly how many landed. Any shortfall (collision) triggers another round of
+     * generation until the total reaches $count. At ~2.8 trillion combinations this almost never loops.
+     *
+     * @return array{codes: list<array{id: string, code: string, id_groups: int, group_name: string|null, created_at: string, consumed_at: string|null, is_consumed: bool}>}
+     */
+    public function generate(int $count, int $groupId): array
+    {
+        if ($count < 1 || $count > 10000) {
+            throw new \InvalidArgumentException('Count must be between 1 and 10000.');
         }
 
         $group = $this->entityManager->getRepository(Group::class)->find($groupId);
@@ -117,20 +161,77 @@ class RegistrationCodeService extends BaseService
             throw new \InvalidArgumentException('Group not found.');
         }
 
-        $vc = new ValidationCode();
-        $vc->setCode($code);
-        $vc->setGroup($group);
+        $groupIdResolved = $group->getId() ?? 0;
+        $groupName       = $group->getName();
+        $conn            = $this->entityManager->getConnection();
+        $chars           = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        $charLen         = strlen($chars);
+        $now             = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+        $batchSize       = 500;
 
-        $this->entityManager->persist($vc);
-        $this->entityManager->flush();
+        /** @var list<string> $inserted */
+        $inserted = [];
 
-        return [
-            'id'         => $vc->getCode() ?? $code,
-            'code'       => $vc->getCode() ?? $code,
-            'id_groups'  => $group->getId() ?? $groupId,
-            'group_name' => $group->getName(),
-            'created_at' => $vc->getCreated()->format(\DateTimeInterface::ATOM),
-        ];
+        $conn->beginTransaction();
+        try {
+            while (count($inserted) < $count) {
+                $needed = $count - count($inserted);
+
+                // Generate exactly as many candidates as still needed;
+                // hash-map keys deduplicate within this round and against already-inserted codes
+                /** @var array<string, true> $candidate */
+                $candidate = [];
+                while (count($candidate) < $needed) {
+                    $code = '';
+                    for ($j = 0; $j < 8; $j++) {
+                        $code .= $chars[random_int(0, $charLen - 1)];
+                    }
+                    if (!isset($candidate[$code])) {
+                        $candidate[$code] = true;
+                    }
+                }
+
+                // INSERT IGNORE in 500-row chunks; affected rows = how many actually landed
+                foreach (array_chunk(array_keys($candidate), $batchSize) as $chunk) {
+                    $placeholders = implode(', ', array_fill(0, count($chunk), '(?, ?, ?)'));
+                    $values       = [];
+                    foreach ($chunk as $code) {
+                        $values[] = $code;
+                        $values[] = $groupIdResolved;
+                        $values[] = $now;
+                    }
+
+                    $affected = $conn->executeStatement(
+                        "INSERT IGNORE INTO validation_codes (code, id_groups, created) VALUES $placeholders",
+                        $values
+                    );
+
+                    // Take only the first $affected codes from the chunk — those are the ones MySQL inserted
+                    for ($k = 0; $k < (int) $affected; $k++) {
+                        $inserted[] = (string) $chunk[$k];
+                    }
+                }
+            }
+
+            $conn->commit();
+        } catch (\Throwable $e) {
+            $conn->rollBack();
+            throw $e;
+        }
+
+        $results = [];
+        foreach ($inserted as $code) {
+            $results[] = [
+                'code'        => $code,
+                'id_groups'   => $groupIdResolved,
+                'group_name'  => $groupName,
+                'created_at'  => $now,
+                'consumed_at' => null,
+                'is_consumed' => false,
+            ];
+        }
+
+        return ['codes' => $results];
     }
 
     public function delete(string $code): void

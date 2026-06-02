@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Generate Registration Codes Request",
+  "description": "Schema for generating multiple random registration codes.",
+  "type": "object",
+  "properties": {
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000,
+      "description": "Number of codes to generate."
+    },
+    "id_groups": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "ID of the group to associate with all generated codes."
+    }
+  },
+  "required": ["count", "id_groups"],
+  "additionalProperties": false
+}

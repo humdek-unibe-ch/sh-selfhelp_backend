@@ -18,6 +18,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminRegistrationCodeController extends AbstractController
 {
@@ -52,25 +53,66 @@ class AdminRegistrationCodeController extends AbstractController
     }
 
     /**
-     * @route POST /admin/registration-codes
+     * @route GET /admin/registration-codes/export
      */
-    public function create(Request $request): JsonResponse
+    public function export(Request $request): StreamedResponse
+    {
+        $filters = [
+            'search'        => $request->query->getString('search') ?: null,
+            'id_groups'     => $request->query->getInt('id_groups') ?: null,
+            'status'        => $request->query->getString('status') ?: null,
+        ];
+
+        $rows     = $this->registrationCodeService->export($filters);
+        $filename = 'registration_codes_' . (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Ymd_His') . '.csv';
+
+        $response = new StreamedResponse(function () use ($rows): void {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+
+            fputcsv($out, ['code', 'group_name', 'status', 'created_at', 'consumed_at']);
+
+            foreach ($rows as $row) {
+                fputcsv($out, [
+                    $row['code'],
+                    $row['group_name'],
+                    $row['status'],
+                    $row['created_at'],
+                    $row['consumed_at'],
+                ]);
+            }
+
+            fclose($out);
+        });
+
+        $response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
+        $response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
+
+        return $response;
+    }
+
+    /**
+     * @route POST /admin/registration-codes/generate
+     */
+    public function generate(Request $request): JsonResponse
     {
         try {
-            $data = $this->validateRequest($request, 'requests/admin/registration_code_create', $this->jsonSchemaValidationService);
+            $data = $this->validateRequest($request, 'requests/admin/registration_code_generate', $this->jsonSchemaValidationService);
 
-            $code    = is_string($data['code'])     ? $data['code']     : '';
-            $groupId = is_int($data['id_groups'])   ? $data['id_groups'] : 0;
+            $count   = is_int($data['count'])    ? $data['count']    : 1;
+            $groupId = is_int($data['id_groups']) ? $data['id_groups'] : 0;
 
-            $result = $this->registrationCodeService->create($code, $groupId);
+            $result = $this->registrationCodeService->generate($count, $groupId);
 
             return $this->responseFormatter->formatSuccess($result, null, Response::HTTP_CREATED, true);
         } catch (RequestValidationException $e) {
             throw $e;
         } catch (\InvalidArgumentException $e) {
-            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_BAD_REQUEST);
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError('Failed to create registration code.', Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->responseFormatter->formatError('Failed to generate registration codes.', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 
