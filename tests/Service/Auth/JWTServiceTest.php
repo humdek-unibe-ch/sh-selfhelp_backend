@@ -14,6 +14,8 @@ use App\Entity\RefreshToken;
 use App\Entity\User;
 use App\Service\Auth\JWTService;
 use App\Tests\Support\QaKernelTestCase;
+use PHPUnit\Framework\Attributes\Group;
+use Symfony\Bridge\PhpUnit\ClockMock;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 
@@ -149,6 +151,43 @@ final class JWTServiceTest extends QaKernelTestCase
         self::assertTrue($this->jwt->isImpersonationPayload($payload));
         self::assertSame($adminId, $this->jwt->getImpersonatorUserId($payload));
         self::assertSame($target->getId(), $this->coerceInt($payload['id_users'] ?? 0));
+    }
+
+    /**
+     * Pins the security-critical impersonation-token expiry math
+     * (`exp = time() + jwt_impersonation_token_ttl`) deterministically.
+     *
+     * This is the one place ClockMock earns its keep: the production code uses
+     * the *unqualified* `time()` in the `App` namespace (the only now-source the
+     * configured `clock-mock-namespaces=App` bridge can intercept — fully
+     * qualified `\DateTimeImmutable('now')` is NOT interceptable, see
+     * docs/developer/15-testing-guidelines.md). We freeze to a fixed *future*
+     * instant so the App-side `exp` is fully deterministic while the real-clock
+     * Lexik decoder still sees a not-yet-expired token.
+     */
+    #[Group('time-sensitive')]
+    public function testImpersonationTokenExpiryIsFrozenNowPlusConfiguredTtl(): void
+    {
+        $target = $this->qaUser();
+        $adminId = $this->userId(QaBaselineFixture::QA_ADMIN_EMAIL);
+        $ttl = (int) self::getContainer()->getParameter('jwt_impersonation_token_ttl');
+        self::assertGreaterThan(0, $ttl);
+
+        $frozen = 1893456000; // 2030-01-01T00:00:00Z — fixed, in the future.
+        ClockMock::withClockMock($frozen);
+        try {
+            $result = $this->jwt->createImpersonationToken($target, $adminId);
+            $payload = $this->jwt->verifyAndDecodeAccessToken($this->asString($result['access_token']));
+        } finally {
+            ClockMock::withClockMock(false);
+        }
+
+        self::assertSame(
+            $frozen + $ttl,
+            $this->coerceInt($payload['exp'] ?? 0),
+            'Impersonation token exp must equal the frozen now plus the configured impersonation TTL.'
+        );
+        self::assertSame($ttl, $this->coerceInt($result['expires_in']));
     }
 
     public function testRegularTokenIsNotImpersonation(): void
