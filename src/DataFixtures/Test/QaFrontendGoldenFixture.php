@@ -15,6 +15,7 @@ use App\Entity\Group;
 use App\Entity\Language;
 use App\Entity\Lookup;
 use App\Entity\Page;
+use App\Entity\PagesFieldsTranslation;
 use App\Entity\PagesSection;
 use App\Entity\PageType;
 use App\Entity\Section;
@@ -131,6 +132,15 @@ final class QaFrontendGoldenFixture extends Fixture implements FixtureGroupInter
 
         $page = $this->createPage();
 
+        // Page title (pages_fields_translation → `title` field). A real CMS page
+        // always carries one; without it the frontend resolves `title: undefined`
+        // and renders no <title>, which the a11y suite (rightly) flags. Seeding it
+        // keeps the QA page representative and makes the document accessible.
+        $this->setPageTitle($page, [
+            'de-CH' => 'QA Feedback',
+            'en-GB' => 'QA Feedback',
+        ]);
+
         // Form section (log form: no data-table read on render).
         $formSection = $this->createSection(self::QA_FORM_SECTION_NAME, 'form-log');
         $this->setPropertyField($formSection, 'name', 'qa_feedback_form');
@@ -242,6 +252,29 @@ final class QaFrontendGoldenFixture extends Fixture implements FixtureGroupInter
         $translation->setLanguage($language);
         $translation->setContent($content);
         $this->em->persist($translation);
+    }
+
+    /**
+     * Store the page-level `title` for every shipped content locale
+     * (`pages_fields_translation`), the source the frontend resolves into the
+     * document `<title>` — see the shipped page-title backfill in
+     * `Version20260501000600`.
+     *
+     * @param array<string, string> $byLocale locale => title
+     */
+    private function setPageTitle(Page $page, array $byLocale): void
+    {
+        foreach (self::CONTENT_LOCALES as $locale) {
+            if (!isset($byLocale[$locale])) {
+                continue;
+            }
+            $translation = new PagesFieldsTranslation();
+            $translation->setPage($page);
+            $translation->setField($this->field('title'));
+            $translation->setLanguage($this->languageByLocale($locale));
+            $translation->setContent($byLocale[$locale]);
+            $this->em->persist($translation);
+        }
     }
 
     private function invalidatePageScopedCaches(): void
