@@ -503,7 +503,7 @@ class AdminDataController extends AbstractController
             return '';
         }
 
-        fputcsv($handle, $headers);
+        fputcsv($handle, $headers, escape: '');
         foreach ($rows as $row) {
             if (!is_array($row)) {
                 continue;
@@ -513,7 +513,7 @@ class AdminDataController extends AbstractController
                 $val = $row[$col] ?? null;
                 $line[] = is_scalar($val) ? (string) $val : '';
             }
-            fputcsv($handle, $line);
+            fputcsv($handle, $line, escape: '');
         }
 
         rewind($handle);

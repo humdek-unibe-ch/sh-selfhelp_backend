@@ -53,6 +53,15 @@ final class AdminDataPermissionTest extends QaWebTestCase
         $this->assertAdminOnlyMatrix('GET', self::BASE . '?table_name=qa_perm_data_table');
         $this->assertAdminOnlyMatrix('GET', self::BASE . '/tables/qa_perm_data_table/columns');
         $this->assertAdminOnlyMatrix('GET', self::BASE . '/tables/qa_perm_data_table/column-names');
+        // Export routes are also admin.data.read but return a raw blob (not the
+        // envelope) on success, so the matrix can only assert the negative gate
+        // here; the qa.admin success/blob path is covered by AdminDataControllerTest.
+        $this->assertForbiddenForNonAdmins('GET', self::BASE . '/tables/qa_perm_data_table/export?format=csv');
+        $this->assertForbiddenForNonAdmins(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            ['table_names' => ['qa_perm_data_table'], 'format' => 'csv'],
+        );
     }
 
     public function testDestructiveRoutesAreForbiddenForNonAdmins(): void

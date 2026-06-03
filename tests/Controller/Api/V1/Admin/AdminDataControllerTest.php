@@ -17,6 +17,7 @@ use App\Service\Core\LookupService;
 use App\Tests\Support\Factories\DataTableFactory;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * P0 coverage for the admin Data-Management read/write API
@@ -146,6 +147,85 @@ final class AdminDataControllerTest extends QaWebTestCase
         self::assertContains('qa_field', $data['columnNames']);
     }
 
+    // -- Exports (raw blob, NOT the envelope) -------------------------------
+
+    public function testExportTableAsCsvReturnsAttachmentWithHeaderRow(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_export_csv', $this->qaUserId(), 'csv answer')[0];
+
+        $response = $this->rawRequest(
+            'GET',
+            self::BASE . '/tables/' . $table->getName() . '/export?format=csv',
+            $this->loginAsQaAdmin(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('text/csv', (string) $response->headers->get('Content-Type'));
+        self::assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
+
+        $body = (string) $response->getContent();
+        // Header row is the union of column names; the seeded value appears in a data row.
+        self::assertStringContainsString('qa_field', $body, 'CSV header must include the table column.');
+        self::assertStringContainsString('csv answer', $body, 'CSV body must include the seeded cell value.');
+    }
+
+    public function testExportTableAsJsonReturnsRawArrayNotEnvelope(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_export_json', $this->qaUserId(), 'json answer')[0];
+
+        $response = $this->rawRequest(
+            'GET',
+            self::BASE . '/tables/' . $table->getName() . '/export?format=json',
+            $this->loginAsQaAdmin(),
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('application/json', (string) $response->headers->get('Content-Type'));
+        self::assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
+
+        $decoded = json_decode((string) $response->getContent(), true);
+        // The body is a raw list of rows, NOT the {status,data,...} envelope.
+        self::assertIsArray($decoded);
+        self::assertArrayNotHasKey('status', $decoded, 'Export JSON must not be wrapped in the API envelope.');
+        self::assertNotEmpty($decoded, 'Export JSON must contain the seeded row.');
+    }
+
+    public function testBulkExportReturnsZipWithOneEntryPerTable(): void
+    {
+        $a = $this->dataTables->createTableWithRow('qa_data_bulk_a', $this->qaUserId(), 'a value')[0];
+        $b = $this->dataTables->createTableWithRow('qa_data_bulk_b', $this->qaUserId(), 'b value')[0];
+
+        $response = $this->rawRequest(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            $this->loginAsQaAdmin(),
+            ['table_names' => [$a->getName(), $b->getName()], 'format' => 'csv'],
+        );
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('application/zip', (string) $response->headers->get('Content-Type'));
+        self::assertStringContainsString('attachment', (string) $response->headers->get('Content-Disposition'));
+
+        // Inspect the ZIP: it must hold one CSV entry per requested table.
+        $entries = $this->zipEntryNames((string) $response->getContent());
+        self::assertCount(2, $entries, 'Bulk export must contain one file per table.');
+        foreach ($entries as $name) {
+            self::assertStringEndsWith('.csv', $name);
+        }
+    }
+
+    public function testBulkExportUnknownTableReturns404Envelope(): void
+    {
+        // Error responses DO still use the standard envelope.
+        $envelope = $this->jsonRequest(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            ['table_names' => ['qa_data_missing_table'], 'format' => 'csv'],
+            $this->loginAsQaAdmin(),
+        );
+        $this->assertEnvelope404($envelope);
+    }
+
     // -- Writes -------------------------------------------------------------
 
     public function testDeleteRecordSoftDeletesRowAndInvalidatesReadCache(): void
@@ -248,6 +328,56 @@ final class AdminDataControllerTest extends QaWebTestCase
         self::assertInstanceOf(User::class, $user);
 
         return (int) $user->getId();
+    }
+
+    /**
+     * Issue a request and return the raw Response (headers + body) without
+     * decoding an envelope — the export endpoints stream raw CSV/JSON/ZIP blobs.
+     *
+     * @param array<string, mixed>|null $body
+     */
+    private function rawRequest(string $method, string $uri, string $token, ?array $body = null): Response
+    {
+        $this->client->request(
+            $method,
+            $uri,
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_Authorization' => 'Bearer ' . $token,
+            ],
+            $body !== null ? json_encode($body, JSON_THROW_ON_ERROR) : null,
+        );
+
+        return $this->client->getResponse();
+    }
+
+    /**
+     * Read the entry names out of an in-memory ZIP blob.
+     *
+     * @return list<string>
+     */
+    private function zipEntryNames(string $zipBlob): array
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'qa_zip_');
+        self::assertIsString($tmp);
+        file_put_contents($tmp, $zipBlob);
+
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($tmp) === true, 'Bulk export must be a readable ZIP.');
+
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            if ($stat !== false) {
+                $names[] = (string) $stat['name'];
+            }
+        }
+        $zip->close();
+        unlink($tmp);
+
+        return $names;
     }
 
     /**
