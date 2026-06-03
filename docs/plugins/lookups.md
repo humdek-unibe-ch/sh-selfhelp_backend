@@ -1,5 +1,11 @@
 # Plugin Lookups
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The host's `lookups` table is the universal enum store. Plugins
 extend it by contributing rows tagged with their `id_plugins`.
 

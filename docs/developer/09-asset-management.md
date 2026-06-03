@@ -1,10 +1,16 @@
 # Asset Management
 
-## 🎨 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend includes a comprehensive asset management system for handling file uploads, storage, and serving. The system supports various file types including images, documents, CSS, JavaScript, and other media files.
 
-## 🏗️ Asset Architecture
+## Asset Architecture
 
 ```mermaid
 graph TD
@@ -40,7 +46,7 @@ graph TD
     E --> M
 ```
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### Asset Entity
 ```php
@@ -102,7 +108,7 @@ INSERT INTO `lookups` (`type_code`, `code`, `description`) VALUES
 ('ASSET_TYPES', 'ASSET', 'General asset files');
 ```
 
-## 🔧 AdminAssetService
+## AdminAssetService
 
 ### Core Implementation
 ```php
@@ -307,7 +313,7 @@ class AdminAssetService extends BaseService
 }
 ```
 
-## 🎮 AdminAssetController
+## AdminAssetController
 
 ### Controller Implementation
 ```php
@@ -458,7 +464,7 @@ class AdminAssetController extends AbstractController
 }
 ```
 
-## 📁 File Storage Structure
+## File Storage Structure
 
 ### Directory Organization
 ```
@@ -479,7 +485,7 @@ public/uploads/assets/
 - **Overwrite Protection**: Require explicit overwrite flag for existing files
 - **Safe Characters**: Validate filenames for filesystem compatibility
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### File Validation
 ```php
@@ -521,7 +527,7 @@ private function validateFile(UploadedFile $file): void
 - **Path Traversal Protection**: Validate folder names and file paths
 - **Virus Scanning**: Consider integrating virus scanning for uploaded files
 
-## 📋 JSON Schema Validation
+## JSON Schema Validation
 
 ### Create Asset Request Schema
 ```json
@@ -605,7 +611,7 @@ private function validateFile(UploadedFile $file): void
 }
 ```
 
-## 🔄 Multiple File Upload
+## Multiple File Upload
 
 ### Batch Upload Implementation
 ```php
@@ -639,7 +645,7 @@ public function createMultipleAssets(array $files, array $data, bool $overwrite 
 }
 ```
 
-## 📊 Asset Management Features
+## Asset Management Features
 
 ### Asset Listing with Filters
 - **Search**: Search by filename or folder
@@ -661,7 +667,7 @@ public function createMultipleAssets(array $files, array $data, bool $overwrite 
 - **File References**: Link assets to specific pages or sections
 - **Media Library**: Browse and select assets in CMS interface
 
-## 🚀 Performance Optimization
+## Performance Optimization
 
 ### File Serving
 - **Direct Access**: Static files served directly by web server
@@ -675,7 +681,7 @@ public function createMultipleAssets(array $files, array $data, bool $overwrite 
 - **Size Limits**: Enforce reasonable file size limits
 - **Format Optimization**: Convert images to optimized formats
 
-## 🧪 Testing Asset Management
+## Testing Asset Management
 
 ### Unit Tests
 ```php
@@ -730,4 +736,4 @@ public function testAssetUploadEndpoint(): void
 
 ---
 
-**Next**: [Multi-language Support](./10-multi-language.md)
+**Next**: [Translation Handling](./cms-translation.md)

@@ -1,5 +1,11 @@
 # Plugin Registry & Release Channels
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Plugins come from one or more **plugin sources** (registry URLs, Git
 repos, or local file paths) and ship through **release channels**
 (`stable` / `beta` / `alpha` / `nightly`).

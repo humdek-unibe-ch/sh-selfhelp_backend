@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Multi-Repository AGENTS.md Rule
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 This is the canonical version of the rule. Every host repository's own `AGENTS.md` references this document and restates the headline rule so it is visible without leaving the repo.
 
 ## Critical execution rule

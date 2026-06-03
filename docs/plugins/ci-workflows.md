@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Plugin CI workflows
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 This document describes every GitHub Actions workflow that protects the plugin ecosystem. They are the executable contract that backs the implementation plan in `selfhelp_plugin_ecosystem_f01f00ef.plan.md` (§21 CI/CD integration).
 
 Each repository in the ecosystem has its own workflow. They share a common structure:

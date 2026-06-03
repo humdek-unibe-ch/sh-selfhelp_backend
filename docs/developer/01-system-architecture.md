@@ -1,10 +1,16 @@
 # System Architecture Overview
 
-## 🏗️ High-Level Architecture
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## High-Level Architecture
 
 The SelfHelp Symfony Backend is built as a modern, database-driven REST API with a dynamic content management system. The architecture emphasizes flexibility, maintainability, and strict data integrity.
 
-## 📊 System Components
+## System Components
 
 ```mermaid
 graph TB
@@ -56,7 +62,7 @@ graph TB
     SERVICES --> STORAGE
 ```
 
-## 🔄 Request Flow Architecture
+## Request Flow Architecture
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +93,7 @@ sequenceDiagram
     Response-->>Client: JSON Response
 ```
 
-## 🏛️ Architectural Patterns
+## Architectural Patterns
 
 ### 1. **Database-Driven Configuration**
 - **API Routes**: All routes stored in `api_routes` table
@@ -126,7 +132,7 @@ The CMS is extended through a manifest-driven plugin ecosystem implemented under
 
 Full plugin documentation lives under `docs/plugins/` — `architecture.md` (system overview), `developer-guide.md` (plugin authors), `installation.md` (operators), `surveyjs-plugin.md` (reference plugin), `plugin-manifest.schema.json` (machine-readable schema), `multi-repo-agents-md.md` (AI agent rule), and `plugin-repo-agents-md-template.md` (drop-in `AGENTS.md` for new plugin repos).
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 src/
@@ -251,7 +257,7 @@ src/
 └── Repository/           # Doctrine repositories
 ```
 
-## 🔧 Core Services
+## Core Services
 
 ### Authentication & Authorization
 - **JWTService**: Token generation, validation, blacklisting
@@ -287,7 +293,7 @@ src/
 - **ApiSecurityListener**: Enforces each route's required permissions on `kernel.controller`
 - **ApiVersionResolver** / **ApiVersionListener**: API version detection/handling
 
-## 💾 Data Architecture
+## Data Architecture
 
 ### Entity Relationships
 ```mermaid
@@ -333,7 +339,7 @@ erDiagram
 - **`data_tables`, `data_rows`, `data_cols`, `data_cells`**: Dynamic data tables
 - **`assets`**: File upload and asset management
 
-## 🔐 Security Architecture
+## Security Architecture
 
 ### Multi-Layer Security
 1. **Firewall Level**: Symfony security configuration
@@ -354,7 +360,7 @@ erDiagram
 3. Business logic validation in services
 4. All operations logged via `TransactionService`
 
-## 📋 API Design Principles
+## API Design Principles
 
 ### RESTful Design
 - **Resource-Based URLs**: `/api/v1/admin/pages/{id}`
@@ -382,7 +388,7 @@ erDiagram
 - **Response Validation**: Schema validation in debug mode
 - **Entity Validation**: Doctrine constraints and custom validators
 
-## 🔄 Version Management Strategy
+## Version Management Strategy
 
 ### Version Types
 - **Major Version** (7.5.1 → 7.6.0): Database schema changes
@@ -401,7 +407,7 @@ erDiagram
 4. JSON schemas updated for new version
 5. Version number updated in database
 
-## 🚀 Performance Considerations
+## Performance Considerations
 
 ### Caching Strategy
 - **Route Caching**: Dynamic routes cached in memory

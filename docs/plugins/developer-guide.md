@@ -695,7 +695,7 @@ shadowed Composer locks).
   ```
 
   The reference Vite implementation lives at
-  [`plugins/sh2-shp-survey-js/frontend/vite.config.ts`](../../plugins/sh2-shp-survey-js/frontend/vite.config.ts);
+  `plugins/sh2-shp-survey-js/frontend/vite.config.ts`;
   copy the structure and feed `PLUGIN_RUNTIME_SHIM_SPECIFIERS` into
   Rollup's `external` predicate and `output.paths` map. Do NOT
   hand-maintain an `EXTERNAL_PEERS` array — that path was the
@@ -707,7 +707,7 @@ shadowed Composer locks).
   to `command === 'build'` silently introduces a second React copy
   in dev because Vite's default resolver points bare specifiers at
   the plugin's own `node_modules`. The reference dev runtime in
-  [`plugins/sh2-shp-survey-js/scripts/dev-runtime.mjs`](../../plugins/sh2-shp-survey-js/scripts/dev-runtime.mjs)
+  `plugins/sh2-shp-survey-js/scripts/dev-runtime.mjs`
   also proxies `/api/plugins/runtime-shim/*` back to the host
   frontend so the inlined shim payloads can be fetched against
   `localhost:5174`.
@@ -812,16 +812,16 @@ checkout:
 
 ```bash
 # 1. Install + auto-enable the plugin in development mode. Same
-#    Messenger pipeline as production, but the host stores the
-#    manifest's `frontend.runtime.devEntrypointUrl` (typically
-#    http://localhost:5174/<plugin-id>/plugin.esm.js) as the
-#    active runtime URL instead of `/plugin-artifacts/...`.
+# Messenger pipeline as production, but the host stores the
+# manifest's `frontend.runtime.devEntrypointUrl` (typically
+# http://localhost:5174/<plugin-id>/plugin.esm.js) as the
+# active runtime URL instead of `/plugin-artifacts/...`.
 node scripts/install-local.mjs --symlink
 
 # 2. Keep the plugin's runtime dev server up. It serves the
-#    Vite watch build at the dev URL and emits SSE reload
-#    events on `<base>/__selfhelp_plugin_reload`. The host
-#    runtime listens to those events and re-imports the bundle.
+# Vite watch build at the dev URL and emits SSE reload
+# events on `<base>/__selfhelp_plugin_reload`. The host
+# runtime listens to those events and re-imports the bundle.
 npm --prefix frontend run dev:runtime
 ```
 

@@ -1,5 +1,11 @@
 # `selfhelp.plugins.lock.json` — the plugin lock file
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Single source of truth for what is **actually installed**. Written
 atomically by [`PluginLockFileWriter`](../../src/Plugin/Lifecycle/PluginLockFileWriter.php)
 after every plugin operation succeeds; read by
@@ -114,5 +120,4 @@ php bin/console selfhelp:plugin:repair --plugin=<id>
 - [Install modes](./install-modes.md)
 - [Plugin operations & rollback](./plugin-operations-and-rollback.md)
 - [Registry & channels](./registry-and-channels.md)
-- [Schema parity](../../scripts/check-schema-parity.mjs) (script that
-  enforces the TS mirror in `@selfhelp/shared`)
+- Schema parity with the TypeScript mirror in `@selfhelp/shared`

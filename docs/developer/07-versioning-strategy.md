@@ -1,5 +1,11 @@
 # Versioning Strategy
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 > ⚠️ **Document status.** The database-schema versioning mechanics described
 > below (a custom `version` table plus `db/update_scripts/NN_update_*.sql`
 > files) are the **legacy** SelfHelp approach and are kept for historical
@@ -11,11 +17,11 @@
 > change, minor/patch) and the **API `/cms-api/{version}` versioning** below
 > still apply.
 
-## 🔄 Overview
+## Overview
 
 The SelfHelp Symfony Backend implements a comprehensive versioning strategy that covers database schema, API endpoints, and system components. This ensures smooth evolution of the system.
 
-## 📊 Version Types & Semantic Versioning
+## Version Types & Semantic Versioning
 
 ### Version Format: `MAJOR.MINOR.PATCH`
 
@@ -42,7 +48,7 @@ graph LR
 | **Bug Fixes** | Patch Version | 7.5.1 → 7.5.2 |
 | **Code Refactoring** | Patch Version | 7.5.1 → 7.5.2 |
 
-## 🗄️ Database Versioning
+## Database Versioning
 
 ### Version Tracking
 Database version is stored in the `version` table:
@@ -102,7 +108,7 @@ END //
 DELIMITER ;
 ```
 
-## 🌐 API Versioning
+## API Versioning
 
 ### URL-Based Versioning
 All API endpoints include version in the URL:
@@ -184,7 +190,7 @@ private function mapControllerToVersionedNamespace(string $controller, string $v
 }
 ```
 
-## 📋 JSON Schema Versioning
+## JSON Schema Versioning
 
 ### Schema Organization
 Schemas are organized by API version:
@@ -231,7 +237,7 @@ public function validateRequest(Request $request, string $schemaName): array
 }
 ```
 
-## 🔄 Migration Process
+## Migration Process
 
 ### Database Migration Workflow
 ```mermaid
@@ -253,7 +259,7 @@ graph TD
 
 
 
-## 🚀 Deployment Strategy
+## Deployment Strategy
 
 ### Environment-Specific Versioning
 ```php
@@ -307,7 +313,7 @@ public function checkVersionCompatibility(): bool
 }
 ```
 
-## 📊 Version Monitoring
+## Version Monitoring
 
 ### Version Tracking in Responses
 ```json
@@ -339,7 +345,7 @@ public function healthCheck(): JsonResponse
 }
 ```
 
-## 🔧 Version Management Tools
+## Version Management Tools
 
 ### Version Update Command
 ```php
@@ -389,7 +395,7 @@ public function validateMigration(string $scriptPath): array
 }
 ```
 
-## 🧪 Testing Versioning
+## Testing Versioning
 
 ### Version Compatibility Testing
 ```php
@@ -425,7 +431,7 @@ public function testDatabaseMigration(): void
 }
 ```
 
-## 📚 Best Practices
+## Best Practices
 
 ### Database Versioning
 1. **Always update version first** in migration scripts

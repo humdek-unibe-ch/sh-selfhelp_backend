@@ -1,5 +1,11 @@
 # Realtime & The No-Polling Rule
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The SelfHelp plugin ecosystem is **realtime-first**: every state
 change that a UI depends on is published as a Mercure event, and
 **no UI is allowed to poll the backend**. This is a hard architecture
@@ -55,7 +61,7 @@ usePluginRealtime({
 The hook:
 
 - Resolves to the host's Mercure URL via
-  [`useMercureConfig`](../../../sh-selfhelp_frontend/src/hooks/useMercureConfig.ts).
+  `useMercureConfig` (frontend `src/hooks/useMercureConfig.ts`).
 - Subscribes with the user's JWT.
 - Reconnects with exponential backoff (250 ms → 30 s cap) on transient
   failure.

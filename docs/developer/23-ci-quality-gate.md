@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Backend CI quality gate (`plugin-host-check`)
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 The workflow at `.github/workflows/plugin-host-check.yml` is the backend
 quality gate that must pass before code merges to `main`. It runs on
 every pull request and push to `main`, plus on manual dispatch.

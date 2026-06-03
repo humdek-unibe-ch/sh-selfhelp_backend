@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Runtime frontend loading (ESM)
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 SelfHelp v2 plugins ship their frontend code as **runtime-loaded ESM
 bundles**. The host frontend never imports a plugin's npm package at
 build time. Every plugin frontend bundle is fetched at boot via

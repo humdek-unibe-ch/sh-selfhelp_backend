@@ -32,12 +32,12 @@ The system provides comprehensive functionality including:
 - **Asset Management**: File upload and management system
 - **Job Scheduling**: Automated task scheduling and execution
 - **Multi-language Support**: Internationalization with translation system
-- For detailed architecture documentation refer to [ARCHITECTURE](ARCHITECTURE.md)
-- For development patterns and best practices refer to [DEVELOPMENT_GUIDE](DEVELOPMENT_GUIDE.md)
+- For detailed architecture documentation refer to [ARCHITECTURE](./docs/developer/architecture-overview.md)
+- For development patterns and best practices refer to [DEVELOPMENT_GUIDE](./docs/developer/development-guide.md)
 - For information about recent changes refer to [CHANGELOG](CHANGELOG.md)
 - For comprehensive developer documentation refer to [Developer Docs](docs/developer/)
-- For API security architecture refer to [Security Guide](docs/api-security-architecture.md)
-- For permission system implementation refer to [Permission Guide](docs/permission-system-guide.md)
+- For API security architecture refer to [Security Guide](./docs/developer/api-security-architecture.md)
+- For permission system implementation refer to [Permission Guide](./docs/developer/permission-system-guide.md)
 
 # Installation
 
@@ -988,7 +988,7 @@ composer install
 For support and bug reports:
 
 - Check the [CHANGELOG](CHANGELOG.md) for recent changes
-- Review [ARCHITECTURE](ARCHITECTURE.md) for detailed technical documentation
+- Review [ARCHITECTURE](./docs/developer/architecture-overview.md) for detailed technical documentation
 - Create issues at: `https://github.com/humdek-unibe-ch/sh-selfhelp/issues`
 
 ### Contributing

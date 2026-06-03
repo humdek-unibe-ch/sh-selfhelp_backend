@@ -1,10 +1,16 @@
 # CMS Architecture
 
-## 📄 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend includes a sophisticated Content Management System (CMS) built on a hierarchical structure of Pages, Sections, and Fields. This architecture provides flexible content organization with multi-language support, dynamic styling, and fine-grained access control.
 
-## 🏗️ CMS Hierarchy
+## CMS Hierarchy
 
 ```mermaid
 graph TD
@@ -37,7 +43,7 @@ graph TD
     end
 ```
 
-## 📊 Entity Relationships
+## Entity Relationships
 
 ### Core CMS Entities
 ```mermaid
@@ -60,7 +66,7 @@ erDiagram
     PagesFieldsTranslation }o--|| Language : in_language
 ```
 
-## 📄 Page Management
+## Page Management
 
 ### Page Entity Structure
 ```php
@@ -157,7 +163,7 @@ INSERT INTO `page_types` (`name`, `description`) VALUES
 - **System Pages**: Auto-generated pages (login, error pages)
 - **Redirect Pages**: Pages that redirect to other URLs
 
-## 📋 Section Management
+## Section Management
 
 ### Section Entity Structure
 ```php
@@ -228,13 +234,13 @@ class PagesSection
 - **Content Management**: Reusable sections maintain their content across all pages where used
 - **Style Consistency**: The `refContainer` style ensures consistent appearance across pages
 
-## 🔄 **CRITICAL: Section Processing Order**
+## **CRITICAL: Section Processing Order**
 
-### ⚠️ **Architectural Requirement**
+### **Architectural Requirement**
 
 The section processing order in `PageService::processSectionsRecursively()` is **critically important** for correct functionality. This order **MUST NOT** be changed without thorough understanding of the data flow dependencies.
 
-### 📋 **Processing Sequence**
+### **Processing Sequence**
 
 ```mermaid
 graph TD
@@ -247,7 +253,7 @@ graph TD
     G --> H[End Section Processing]
 ```
 
-### 🔍 **Detailed Step-by-Step Explanation**
+### **Detailed Step-by-Step Explanation**
 
 #### **Step 1: Data Config Interpolation (Parent Data Only)**
 ```php
@@ -304,7 +310,7 @@ $section['children'] = $this->processSectionsRecursively($section['children'], $
 - **Inheritance**: Children receive parent's merged data
 - **Recursion**: Maintains hierarchical processing
 
-### 🚨 **Why This Order Is Critical**
+### **Why This Order Is Critical**
 
 1. **Data Dependencies**: Filters need parent data before data retrieval
 2. **Interpolation Dependencies**: Content needs complete data context
@@ -312,28 +318,28 @@ $section['children'] = $this->processSectionsRecursively($section['children'], $
 4. **Performance**: Early data operations avoid redundant processing
 5. **Correctness**: Wrong order breaks data filtering and inheritance
 
-### 💡 **Common Pitfalls to Avoid**
+### **Common Pitfalls to Avoid**
 
 - **Interpolating content before data retrieval**: Variables won't have values
 - **Evaluating conditions before full interpolation**: Conditions may fail incorrectly
 - **Processing children before parent data is complete**: Inheritance breaks
 - **Changing the order without understanding dependencies**: Breaks functionality
 
-### 🔧 **Implementation Location**
+### **Implementation Location**
 
 This logic is implemented in:
 - **File**: `src/Service/CMS/Frontend/PageService.php`
 - **Method**: `processSectionsRecursively()`
 - **Critical**: Order must be maintained when modifying this code
 
-### 📚 **Related Components**
+### **Related Components**
 
 - **Interpolation Service**: Handles `{{variable}}` replacement
 - **Data Service**: Retrieves data from various sources
 - **Condition Service**: Evaluates display conditions
 - **Section Utility Service**: Handles section hierarchy and data
 
-## 🎨 Style System
+## Style System
 
 ### Style Entity
 ```php
@@ -373,7 +379,7 @@ class Style
 - **Reusability**: Styles can be applied to multiple sections
 - **Active State**: Enable/disable styles system-wide
 
-## 📝 Field Management
+## Field Management
 
 ### Field Entity Structure
 ```php
@@ -475,7 +481,7 @@ class SectionsFieldsTranslation
 
 > The canonical schema no longer has a separate `sections_fields` link table. Field values per section are stored directly in `sections_fields_translation` (composite PK `id_sections`, `id_fields`, `id_languages`). Section-level display flags moved to `sections` / `rel_sections_hierarchy` row metadata.
 
-## 🌍 Multi-language Support
+## Multi-language Support
 
 ### Translation System
 ```php
@@ -568,7 +574,7 @@ class PagesFieldsTranslation
 // ENTITY RULE
 ```
 
-## 🔧 CMS Services
+## CMS Services
 
 ### AdminPageService
 ```php
@@ -698,7 +704,7 @@ class SectionCreationService extends BaseService
 }
 ```
 
-## 📊 Content Loading Process
+## Content Loading Process
 
 ### Frontend Page Loading
 ```mermaid
@@ -815,7 +821,7 @@ Returns all field IDs, values, and translations for editing:
 }
 ```
 
-## 🔄 Section Export/Import System
+## Section Export/Import System
 
 ### Export Functionality
 ```php
@@ -964,7 +970,7 @@ class SectionExportImportService extends BaseService
 > earlier "delete-then-import" approach that broke `data_tables` referential
 > integrity.
 
-## ⚙️ CMS Preferences System
+## CMS Preferences System
 
 ### Overview
 The CMS includes a comprehensive preferences system that manages global application settings through a page-based configuration. This system handles default language, timezone settings, anonymous user access, and Firebase configuration.
@@ -1014,7 +1020,7 @@ The preferences system uses advanced caching with entity scope dependencies to e
 
 For detailed information about CMS preferences and timezone management, see: **[CMS Preferences and Timezone Management](./20-cms-preferences-timezones.md)**
 
-## 🔒 Access Control Integration
+## Access Control Integration
 
 ### Page-Level ACL
 - Users and groups can have specific permissions for each page
@@ -1034,7 +1040,7 @@ protected function checkAccess(string $pageKeyword, string $accessType): void
 }
 ```
 
-## 🎯 Best Practices
+## Best Practices
 
 ### Content Organization
 1. **Hierarchical Structure**: Use parent-child relationships for logical content organization

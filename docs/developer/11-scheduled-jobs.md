@@ -1,5 +1,11 @@
 # Scheduled Jobs and Action Runtime
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 ## Overview
 
 The Symfony backend now owns the full action scheduling flow that used to live in legacy `UserInput` code.

@@ -1,10 +1,16 @@
 # Development Workflow
 
-## 🚀 Getting Started
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Getting Started
 
 This guide outlines the development workflow for adding features, fixing bugs, and maintaining the SelfHelp Symfony Backend.
 
-## 🔄 Development Process Overview
+## Development Process Overview
 
 ```mermaid
 graph TD
@@ -30,7 +36,7 @@ graph TD
     N --> O[Deploy]
 ```
 
-## 📋 Pre-Development Checklist
+## Pre-Development Checklist
 
 Before starting any development work:
 
@@ -49,7 +55,7 @@ Before starting any development work:
    - Plan database schema changes
    - Design API endpoints and schemas
 
-## 🗄️ Database Changes Workflow
+## Database Changes Workflow
 
 ### When Database Changes Are Needed
 
@@ -138,7 +144,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
 - Code refactoring
 - New features without database changes
 
-## 🏗️ Entity Development
+## Entity Development
 
 ### Creating New Entities
 
@@ -186,7 +192,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    - Ensure entity fields match the migrated database columns
    - Use correct data types and constraints
 
-## 🔧 Service Development
+## Service Development
 
 ### Service Architecture Pattern
 
@@ -248,7 +254,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    - Use proper error handling
    - Return entities or arrays, not responses
 
-## 🎮 Controller Development
+## Controller Development
 
 ### Controller Architecture
 
@@ -339,7 +345,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    - Return standardized responses
    - Handle exceptions gracefully
 
-## 📋 JSON Schema Development
+## JSON Schema Development
 
 ### Request Schemas
 ```json
@@ -381,7 +387,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
 }
 ```
 
-## 🧪 Testing Strategy
+## Testing Strategy
 
 ### Test Development Workflow
 
@@ -429,7 +435,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    }
    ```
 
-## 📚 Documentation Updates
+## Documentation Updates
 
 ### Required Documentation Updates
 
@@ -452,7 +458,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
    - Update feature lists
    - Add migration notes for breaking changes
 
-## 🔍 Code Review Checklist
+## Code Review Checklist
 
 ### Before Submitting for Review
 
@@ -492,7 +498,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
   - [ ] Tests use real database (no mocking)
   - [ ] All tests pass
 
-## 🚀 Deployment Process
+## Deployment Process
 
 ### Pre-Deployment Checklist
 
@@ -544,7 +550,7 @@ Code-only changes require a **patch version increment** (e.g., 7.5.1 → 7.5.2):
         -H "Authorization: Bearer $TOKEN"
    ```
 
-## 🔧 Development Tools & Commands
+## Development Tools & Commands
 
 ### Useful Symfony Commands
 ```bash
@@ -576,7 +582,7 @@ mysqldump -u username -p --no-data database_name > structure.sql
 mysql -u username -p database_name < migration_script.sql
 ```
 
-## 🚨 Common Pitfalls to Avoid
+## Common Pitfalls to Avoid
 
 1. **❌ Don't Mock Data in Tests**
    - Always test against real database

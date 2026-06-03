@@ -1,5 +1,11 @@
 # Plugin Ecosystem — Architecture
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 This document is the system-level overview of the SelfHelp plugin
 ecosystem. It complements:
 

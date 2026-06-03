@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Plugin distribution
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 A SelfHelp plugin reaches an admin host through exactly one of four
 **install sources**. All four funnel through the same backend pipeline
 (`ManifestResolver` → `PluginSignatureVerifier` →

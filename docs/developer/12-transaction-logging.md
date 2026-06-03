@@ -1,10 +1,16 @@
 # Transaction Logging
 
-## 📈 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend implements comprehensive transaction logging to track all create, update, and delete operations throughout the application. This provides a complete audit trail of changes made to the system, enhancing security, accountability, and debugging capabilities.
 
-## 🏗️ Transaction Logging Architecture
+## Transaction Logging Architecture
 
 ```mermaid
 graph TD
@@ -44,7 +50,7 @@ graph TD
     I --> Q
 ```
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### Transaction Entity
 ```php
@@ -138,7 +144,7 @@ INSERT INTO `lookups` (`type_code`, `code`, `description`) VALUES
 ('TRANSACTION_BY', 'MIGRATION', 'Database migration');
 ```
 
-## 🔧 TransactionService Implementation
+## TransactionService Implementation
 
 ### Core Service
 ```php
@@ -391,7 +397,7 @@ class TransactionService
 }
 ```
 
-## 🔄 Service Integration Pattern
+## Service Integration Pattern
 
 ### Standard Service Transaction Pattern
 ```php
@@ -511,7 +517,7 @@ class AdminPageService extends BaseService
 }
 ```
 
-## 📊 Transaction Log Data Structure
+## Transaction Log Data Structure
 
 ### Log JSON Structure
 ```json
@@ -611,7 +617,7 @@ class EntityUtil
 }
 ```
 
-## 🎮 Transaction Viewing API
+## Transaction Viewing API
 
 ### AdminTransactionController
 ```php
@@ -714,7 +720,7 @@ class AdminTransactionController extends AbstractController
 }
 ```
 
-## 📋 Transaction Analysis
+## Transaction Analysis
 
 ### Transaction Statistics
 ```php
@@ -769,7 +775,7 @@ public function getTransactionStatistics(\DateTime $from, \DateTime $to): array
 }
 ```
 
-## 🔒 Security and Privacy
+## Security and Privacy
 
 ### Data Sensitivity
 - **Sensitive Data**: Passwords and tokens are never logged
@@ -793,7 +799,7 @@ private function sanitizeLogData(array $data): array
 }
 ```
 
-## 🧪 Testing Transaction Logging
+## Testing Transaction Logging
 
 ### Unit Tests
 ```php
@@ -859,7 +865,7 @@ public function testServiceTransactionLogging(): void
 }
 ```
 
-## 📊 Performance Considerations
+## Performance Considerations
 
 ### Optimization Strategies
 - **Batch Logging**: Group multiple transactions when possible
