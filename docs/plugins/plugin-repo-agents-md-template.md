@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Plugin Repository `AGENTS.md` Template
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Every SelfHelp plugin repository must contain an `AGENTS.md` at the root. Subdirectories (`backend/`, `frontend/`, `mobile/`) may add their own optional `AGENTS.md` for overrides. Copy the template below verbatim into the new repo, then fill in the plugin-specific sections marked with `<…>`.
 
 The template assumes the plugin repo layout described in `docs/plugins/architecture.md`:

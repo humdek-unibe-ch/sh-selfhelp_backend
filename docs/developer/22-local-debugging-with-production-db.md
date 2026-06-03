@@ -1,5 +1,11 @@
 # Local Debugging With A Production DB Copy
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 This guide explains what happens when you restore a production database dump into a local backend and want to debug the CMS, especially the plugin system.
 
 ## Short answer

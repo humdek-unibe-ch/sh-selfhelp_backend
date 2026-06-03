@@ -1,5 +1,11 @@
 # Known Slow Tests Register
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 Any test slower than **10 seconds** must be listed here with its location, the reason it is slow, its expected wall-clock, and the tier it runs in (PR / release / nightly). A test that grows beyond its expected wall-clock by 1.5× without justification must be split or moved to a higher tier in the same PR.
 
 This keeps the PR-tier suite under control (canonical rule 19: PR-tier suites complete in under 10 minutes per repo).

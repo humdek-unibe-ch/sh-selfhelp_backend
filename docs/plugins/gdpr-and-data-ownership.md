@@ -1,5 +1,11 @@
 # GDPR & Data Ownership
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The plugin system is built so that **every byte of personal data is
 attributable to a single plugin** (or to the host). That guarantee
 makes the GDPR endpoints — export ("right to access"), erasure

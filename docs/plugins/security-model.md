@@ -1,5 +1,11 @@
 # Plugin Security Model
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The plugin system gives plugins **deliberate, narrow access** to the
 host. Plugins are PHP/TS code running in the host process, so any
 "sandbox" claim would be false. The model instead leans on three
@@ -25,7 +31,7 @@ defensive layers:
 
 Every published plugin tag carries an `ed25519` signature of the
 release tarball. The signature is checked by
-[`PluginSignatureVerifier`](../../src/Plugin/Signature/PluginSignatureVerifier.php)
+[`PluginSignatureVerifier`](../../src/Plugin/Security/PluginSignatureVerifier.php)
 before install. Two modes:
 
 - **`strict`** (production default): unsigned or invalid-signature
@@ -33,7 +39,7 @@ before install. Two modes:
 - **`lenient`** (dev default): unsigned installs **warn** but
   proceed.
 
-Keys live under [`config/keys/plugin-signing/`](../../config/keys/plugin-signing/);
+Keys live under `config/keys/plugin-signing/` (gitignored at runtime);
 new public keys must be added to the manifest signer registry before
 the first signed release from that signer.
 

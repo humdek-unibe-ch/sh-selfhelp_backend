@@ -1,5 +1,11 @@
 # SurveyJS Plugin (`sh2-shp-survey-js`)
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The SurveyJS v2 plugin is the reference plugin for the SelfHelp plugin ecosystem. It demonstrates the full surface of the platform: a Symfony backend bundle, a Mantine-themed Next.js frontend, a read-only mobile renderer, manifest-driven permissions, lookup contributions, realtime topics, feature flags, and a health check.
 
 This document focuses on plugin-specific behaviour. For ecosystem-wide concepts, read `architecture.md`, `installation.md`, and `developer-guide.md` first.

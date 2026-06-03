@@ -1,5 +1,11 @@
 # ReworkedCacheService - Generation-Based Cache System
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 ## Overview
 
 The SelfHelp Symfony Backend implements an advanced generation-based cache system built around the `ReworkedCacheService`. This system provides O(1) cache invalidation through generation counters, builder pattern configuration, and automatic statistics tracking. The architecture eliminates the need for cache scanning or deletion operations while providing precise control over cache invalidation.
@@ -805,19 +811,19 @@ $actionStats = $this->cache->getStats(ReworkedCacheService::CATEGORY_ACTIONS);
 
 ## Key ReworkedCacheService Benefits
 
-### 🚀 **Performance Advantages**
+### **Performance Advantages**
 - **O(1) Invalidation**: Generation counters eliminate cache scanning/deletion
 - **Memory Efficient**: Old cache entries become inaccessible without deletion
 - **Tag-Based Precision**: Fine-grained invalidation using cache tags
 - **Single Pool**: Simplified Redis configuration with tag-aware caching
 
-### 🎯 **Developer Experience**
+### **Developer Experience**
 - **Builder Pattern**: Clean, chainable API: `$cache->withCategory(CATEGORY_ACTIONS)->getList(...)`
 - **Immutable Config**: No state conflicts between service usages
 - **Automatic Statistics**: Built-in monitoring without separate services
 - **Intelligent TTL**: Category-based TTL with override support
 
-### 📊 **Advanced Features**
+### **Advanced Features**
 - **Generation-Based Keys**: Cache keys include generation counters for instant invalidation
 - **User Scoping**: User-specific cache namespacing with global kill switches  
 - **Dual Types**: Separate handling for lists (collections) vs items (entities)
@@ -868,7 +874,7 @@ $this->cache
 
 ## Core Cache Invalidation Principles - THE CACHE CORE
 
-### 🎯 **THE GOLDEN RULES**
+### **THE GOLDEN RULES**
 
 These are the fundamental principles that govern all cache invalidation in the ReworkedCacheService system:
 
@@ -925,7 +931,7 @@ $this->cache
 
 This ensures that all custom data access permissions remain current and secure. Failure to clear permissions cache can result in security vulnerabilities where users retain outdated permissions or lose access to resources they should control.
 
-### 🚀 **Cache Architecture Benefits**
+### **Cache Architecture Benefits**
 
 #### Performance Advantages
 - **O(1) Invalidation**: Generation counters eliminate cache scanning/deletion
@@ -945,7 +951,7 @@ This ensures that all custom data access permissions remain current and secure. 
 - **User Scoping**: User-specific cache namespacing with global kill switches
 - **Dual Types**: Separate handling for lists (collections) vs items (entities)
 
-### 📊 **Cache Key Architecture**
+### **Cache Key Architecture**
 
 The cache system uses sophisticated key generation that includes:
 - **Category Generation**: For category-wide invalidation
@@ -968,7 +974,7 @@ This represents:
 - `item`: Cache type
 - `user_profile`: Cache key
 
-### 🎯 **Implementation Checklist**
+### **Implementation Checklist**
 
 When implementing cache in a new service:
 

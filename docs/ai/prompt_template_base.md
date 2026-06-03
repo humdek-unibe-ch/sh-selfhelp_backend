@@ -1,5 +1,11 @@
 # SH-SelfHelp — AI Section Generation Prompt (BASE)
 
+Audience: Developers working on AI-assisted generation.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: PromptTemplateService, StyleSchemaService, and the live style/field catalog.
+
 > This is the **hand-maintained base** of the prompt template. The final
 > user-facing prompt is rendered on demand by
 > `PromptTemplateService::render()` from this file plus the live

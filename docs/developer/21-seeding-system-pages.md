@@ -1,5 +1,11 @@
 # Seeding System Pages
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 > **Audience:** backend developers + DevOps. Anyone who needs to add a new
 > built-in CMS page that ships with every install (legal pages, login,
 > two-factor, profile, error screens, etc.).

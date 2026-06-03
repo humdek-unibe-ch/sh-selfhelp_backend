@@ -1,5 +1,11 @@
 # Plugin Install Modes
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Every plugin operation (install, update, uninstall, repair) runs in one
 of three install modes. The mode determines **who runs the package
 manager** (composer / npm), **where the build artefact lives**, and

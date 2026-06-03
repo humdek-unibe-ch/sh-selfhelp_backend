@@ -1,6 +1,12 @@
 # Access Control Lists (ACL) System & Data Access Management
 
-## 🔍 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend implements **three-tier access control architecture** with completely separate permission systems for different use cases:
 
@@ -10,7 +16,7 @@ The SelfHelp Symfony Backend implements **three-tier access control architecture
 
 These systems are **completely separate** and serve different purposes with different security models:
 
-## 🗄️ Permissions Cache System (Data Access Caching)
+## Permissions Cache System (Data Access Caching)
 
 ### Overview
 The `CATEGORY_PERMISSIONS` cache category is used for all custom data access permissions across the application. This centralized permissions cache ensures efficient access control while maintaining performance through strategic cache invalidation.
@@ -104,7 +110,7 @@ $this->cache
 - `UserPermissionService` - Direct permission assignments
 - `ACLService` - ACL rule modifications
 
-## 📡 Real-time ACL Push to the Frontend
+## Real-time ACL Push to the Frontend
 
 Cache invalidation is necessary but not sufficient: invalidating
 `CATEGORY_PERMISSIONS` makes the *next* API call serve a fresh
@@ -229,16 +235,16 @@ shared HMAC key is
 the hub container.
 
 Detailed wire contract: see
-[`docs/api-usage/01-authentication.md`](../api-usage/01-authentication.md#real-time-acl-events-stream-sse).
+[`docs/api-usage/01-authentication.md`](../reference/api/01-authentication.md#real-time-acl-events-stream-sse).
 
-### 🔧 Admin Role-Based API System (CMS Backend)
+### Admin Role-Based API System (CMS Backend)
 - **Purpose**: Controls access to admin API routes and CMS functionality
 - **Users**: Admin users, editors, content managers
 - **Tables**: `roles`, `permissions`, `rel_roles_users`, `rel_permissions_roles`, `rel_api_routes_permissions`
 - **Scope**: API endpoint access, system-level operations
 - **Examples**: Can access admin panel, can view user management routes
 
-### 🔐 Admin Data Access Management (Resource-Level CRUD)
+### Admin Data Access Management (Resource-Level CRUD)
 - **Purpose**: Fine-grained CRUD permissions on specific resources (pages, sections, users)
 - **Users**: Admin users, editors with limited resource access
 - **Tables**: `role_data_access`, `data_access_audits`
@@ -246,21 +252,21 @@ Detailed wire contract: see
 - **Examples**: Can edit specific pages, can create sections, can delete users
 - **Implementation**: `DataAccessSecurityService` with bitwise permission flags
 
-### 👥 Frontend User ACL System (Website Access)
+### Frontend User ACL System (Website Access)
 - **Purpose**: Fine-grained page-level permissions for website content
 - **Users**: Frontend website users, regular users
 - **Tables**: `groups`, `rel_groups_users`, `page_acl_groups`
 - **Scope**: Page visibility and interaction permissions
 - **Examples**: Can view specific pages, can comment on pages, can edit page content
 
-### 🔐 Permissions Cache Management (Custom Data Access)
+### Permissions Cache Management (Custom Data Access)
 - **Purpose**: Caching system for all custom data access permissions across the application
 - **Users**: Admin users, CMS backend users, frontend users with custom permissions
 - **Cache Category**: `CATEGORY_PERMISSIONS` - Central permissions cache for all data access operations
 - **Scope**: Resource-level CRUD permissions, ACL permissions, role-based access control
 - **Cache Invalidation**: Required whenever roles, groups, or users are modified
 
-## 🏗️ Dual Permission Architecture
+## Dual Permission Architecture
 
 ### Service-Level Separation
 
@@ -285,7 +291,7 @@ checkAdminAccessById(int $pageId, string $permission): void
 - **Admin Services** (`AdminSectionService`, `AdminPageService`): Use `checkAdminAccess*()` methods
 - **Legacy Methods**: `checkAccess*()` delegates to ACL for backward compatibility
 
-### 🔄 Admin vs Frontend Page Access
+### Admin vs Frontend Page Access
 
 **Admin Page Operations** (CMS Backend):
 - **ACL Bypass**: Admin users bypass frontend ACL restrictions
@@ -300,7 +306,7 @@ checkAdminAccessById(int $pageId, string $permission): void
 - **Implementation**: `PageService::getAllAccessiblePagesForUser()` applies ACL filtering
 - **Purpose**: Controls what content each website user can see and interact with
 
-## 🏗️ ACL Architecture
+## ACL Architecture
 
 ```mermaid
 graph TD
@@ -342,7 +348,7 @@ graph TD
     H --> O
 ```
 
-## 🔧 Admin Role-Based Permission System
+## Admin Role-Based Permission System
 
 ### Admin Roles and Permissions
 The admin system uses a traditional role-based access control (RBAC) model:
@@ -423,7 +429,7 @@ AND ar.route_name IN ('admin_pages_delete');
 3. **Controller Execution**: If authorized, controller method executes
 4. **ACL Check** (if applicable): Additional page-level ACL check for specific pages
 
-## 🗄️ Frontend User ACL Database Schema
+## Frontend User ACL Database Schema
 
 ### ACL Tables Structure
 
@@ -482,7 +488,7 @@ class PageAclGroup
 // ENTITY RULE
 ```
 
-## 🔧 ACL Stored Procedure
+## ACL Stored Procedure
 
 ### Core Permission Calculation
 ```sql
@@ -508,7 +514,7 @@ DELIMITER ;
 2. **Maximum Permission**: Uses MAX() to grant access if ANY group rule allows it
 3. **Default Deny**: Returns NULL (deny) if no rules exist for the user/page combination
 
-## 🔧 ACLService Implementation
+## ACLService Implementation
 
 ### Core Service
 ```php
@@ -731,7 +737,7 @@ class ACLService
 }
 ```
 
-## 🔄 Service Integration Patterns
+## Service Integration Patterns
 
 ### Dual Permission System Integration
 
@@ -928,7 +934,7 @@ class AdminDynamicController extends AbstractController
 }
 ```
 
-## 🎮 ACL Management API
+## ACL Management API
 
 ### AdminACLController
 ```php
@@ -1006,7 +1012,7 @@ class AdminACLController extends AbstractController
 }
 ```
 
-## 📊 ACL Permission Matrix
+## ACL Permission Matrix
 
 ### Example Permission Scenarios
 
@@ -1048,7 +1054,7 @@ Result: Maximum permissions from all groups
 - DELETE: ✅ (moderators group)
 ```
 
-## 🔒 Security Best Practices
+## Security Best Practices
 
 ### Permission Design Principles
 1. **Principle of Least Privilege**: Grant minimum necessary permissions
@@ -1064,7 +1070,7 @@ Result: Maximum permissions from all groups
 - **Validation**: Validate all permission changes before applying
 - **Cleanup**: Remove orphaned ACL entries when users/pages are deleted
 
-## 🧪 Testing ACL System
+## Testing ACL System
 
 ### Unit Tests
 ```php
@@ -1104,7 +1110,7 @@ class ACLServiceTest extends KernelTestCase
         $this->assertFalse($this->aclService->hasAccess($userId, $pageId, 'update'));
     }
 
-## 🔧 UserContextAwareService Architecture
+## UserContextAwareService Architecture
 
 ### Dual Permission System Implementation
 

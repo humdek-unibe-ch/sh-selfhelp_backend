@@ -5,43 +5,38 @@ SPDX-License-Identifier: MPL-2.0
 
 # SelfHelp Backend Documentation
 
-Audience: developers, technical operators, plugin authors, and CMS administrators.
-Status: active documentation index.
-Applies to: SelfHelp2 Symfony backend docs in this repository.
+Audience: Developers, technical operators, plugin authors, and CMS administrators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
 Last verified: 2026-06-03.
-Source of truth: runtime backend code, migrations, JSON schemas, `AGENTS.md`, and the linked docs below.
+Source of truth: Runtime backend code, migrations, JSON schemas, `AGENTS.md`, and the linked docs below.
 
-Use this page as the navigation entrypoint for backend documentation. The current docs are still partly organized by history; new or substantially rewritten docs should follow the audience-based placement rules in `AGENTS.md`.
+Navigation entrypoint for the backend documentation. Docs are organized by audience and purpose per the Documentation Rules in `AGENTS.md`.
 
-## Start Here
+## Start here
 
 | Need | Read |
 | --- | --- |
-| Backend architecture and development workflow | [developer/README.md](developer/README.md) |
-| Public and admin API examples | [api-usage/README.md](api-usage/README.md) |
+| Backend architecture and workflow | [developer/index.md](developer/index.md) |
+| Public and admin API usage | [reference/api/index.md](reference/api/index.md) |
 | Plugin ecosystem architecture and contracts | [plugins/architecture.md](plugins/architecture.md) |
 | Cross-repo compatibility rules | [developer/cross-repo-compatibility-matrix.md](developer/cross-repo-compatibility-matrix.md) |
 | Testing and quality gates | [developer/15-testing-guidelines.md](developer/15-testing-guidelines.md) |
 
-## Current Documentation Map
-
-| Current location | Purpose | Future placement rule |
-| --- | --- | --- |
-| `docs/developer/` | Technical backend architecture, workflow, testing, deployment, compatibility, and performance notes. | Keep as `docs/developer/`. |
-| `docs/plugins/` | Canonical plugin architecture, schemas, trust/security, publishing, registry, install, and compatibility docs. | Keep as canonical plugin docs unless a move is explicitly coordinated. |
-| `docs/api-usage/` | API usage examples and endpoint walkthroughs. | Move gradually toward `docs/reference/api/` only after links are updated. |
-| `docs/*.md` | Older standalone feature, API, operations, and project notes. | Re-home gradually into `developer`, `user`, `reference`, `operations`, or `archive`. |
-| `db/legacy/README.md` | Deprecated SQL dump/reference notes. | Keep beside the deprecated legacy files. |
-
-## New Documentation Placement
+## Documentation map
 
 | Folder | Use for |
 | --- | --- |
-| `docs/developer/` | Architecture, implementation patterns, testing, performance, and engineering workflow. |
-| `docs/user/` | Non-technical CMS/admin/operator feature guides and task walkthroughs. |
-| `docs/reference/` | Exact API contracts, schemas, tables, config keys, generated catalogs, and compatibility matrices. |
-| `docs/cookbook/` | Step-by-step recipes for adding or changing common backend capabilities. |
-| `docs/operations/` | Installation, deployment, runbooks, recovery, secrets setup, and environment operations. |
-| `docs/archive/` | Historical implementation notes, completed project plans, and superseded summaries. |
+| [developer/](developer/index.md) | Backend architecture, CMS internals, services, testing, performance, and engineering workflow. |
+| [reference/](reference/index.md) | Exact API contracts, the `api_routes` table, and endpoint usage guides. |
+| [operations/](operations/index.md) | Runtime configuration and operational runbooks. |
+| [plugins/](plugins/architecture.md) | Canonical plugin architecture, schemas, trust/security, publishing, registry, and compatibility. |
+| [archive/](archive/index.md) | Historical plans and superseded notes, kept for reference only. |
+| `ai/` | AI section-generation prompt source (`ai/prompt_template_base.md`), consumed by `PromptTemplateService`. |
 
-When moving existing docs, update all repository-relative links in the same change and prefer small batches over broad rewrites.
+## Conventions
+
+- Every active doc starts with the metadata block (`Audience`, `Status`, `Applies to`, `Last verified`, `Source of truth`).
+- Filenames use lowercase kebab-case; this file (`README.md`) is the only uppercase docs entrypoint. Subfolder indexes are `index.md`.
+- Runtime code, migrations, and JSON schemas are the source of truth. When a doc conflicts with the code, the code wins and the doc is corrected or archived.
+- `docs/plugins/` is the canonical plugin documentation area and keeps its existing filenames.

@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # `.shplugin` archive format
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 `.shplugin` is the canonical, single-file distribution format for
 SelfHelp plugins. It is the **main manual install path** in the admin
 UI and the asset that every plugin's `publish-to-registry` workflow

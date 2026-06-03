@@ -1,10 +1,16 @@
 # Authentication & Authorization
 
-## 🔐 Security Architecture Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Security Architecture Overview
 
 The SelfHelp Symfony Backend implements a comprehensive multi-layer security system combining JWT authentication with database-driven authorization and fine-grained Access Control Lists (ACL).
 
-## 🏗️ Security Layers
+## Security Layers
 
 ```mermaid
 graph TD
@@ -36,7 +42,7 @@ graph TD
     end
 ```
 
-## 🎟️ JWT Authentication System
+## JWT Authentication System
 
 ### Authentication Components
 - **`JWTService`**: Token lifecycle management
@@ -273,7 +279,7 @@ class JWTService
 }
 ```
 
-## 🔑 JWT Key Generation & Configuration
+## JWT Key Generation & Configuration
 
 ### RSA Key Pair Setup
 
@@ -359,7 +365,7 @@ Defaults live in `.env` / `.env.dev`. To override for your local machine
 without committing changes, set them in **`.env.local`** (not tracked by git):
 
 ```bash
-# .env.local  (gitignored)
+# .env.local (gitignored)
 JWT_TOKEN_TTL=60         # 1-minute access token — exposes the refresh flow fast
 JWT_REFRESH_TOKEN_TTL=600 # 10-minute refresh token — shortens the logout cycle too
 ```
@@ -472,7 +478,7 @@ public function processRefreshToken(string $refreshTokenString): array
 }
 ```
 
-## 👥 User & Group System
+## User & Group System
 
 ### Entity Relationships
 ```mermaid
@@ -524,7 +530,7 @@ public function getPermissionNames(): array
 }
 ```
 
-## 🛡️ Route-Level Permissions
+## Route-Level Permissions
 
 ### Database-Driven Route Permissions
 Routes are associated with permissions through the `rel_api_routes_permissions` table:
@@ -587,7 +593,7 @@ class ApiSecurityListener
 }
 ```
 
-## 🎭 Impersonation
+## Impersonation
 
 The "view as another user" feature lets an admin diagnose user-specific
 problems without ever asking the user for their password. The
@@ -775,7 +781,7 @@ the Zustand `impersonation.store.ts`. Net result: clicking "Stop" in one
 admin tab clears the banner in every other open tab and on the target
 user's own sessions within milliseconds, with no polling.
 
-## 🔒 Access Control Lists (ACL)
+## Access Control Lists (ACL)
 
 ### Fine-Grained Page Access Control
 The ACL system provides page-level access control with CRUD operations:
@@ -898,7 +904,7 @@ public function updatePage(Request $request, string $pageKeyword): JsonResponse
 }
 ```
 
-## 🔧 Permission Management
+## Permission Management
 
 ### Adding New Permissions
 1. **Create Permission**:
@@ -930,7 +936,7 @@ WHERE ar.route_name = 'admin_upload_asset' AND p.name = 'admin.asset.upload';
   - `admin.user.delete` - Delete users in admin
   - `frontend.page.view` - View pages on frontend
 
-## 🚨 Security Best Practices
+## Security Best Practices
 
 ### Token Security
 - **Short-lived access tokens** (1 hour default)
@@ -956,7 +962,7 @@ WHERE ar.route_name = 'admin_upload_asset' AND p.name = 'admin.asset.upload';
 - **Rate limiting** to prevent abuse
 - **Input validation** on all endpoints
 
-## 🧪 Testing Security
+## Testing Security
 
 ### Authentication Testing
 ```php

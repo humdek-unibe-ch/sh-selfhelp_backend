@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Plugin publishing workflow (end-to-end)
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 This is the canonical walkthrough every plugin author follows from the
 first commit in a new plugin repo to a host that picks the release up
 from the public registry. It also documents **exactly** which files,
@@ -201,7 +207,7 @@ node scripts/build-shplugin.mjs
 # → dist/<plugin-id>-<version>.shplugin
 
 # Upload via the admin UI:
-#   Admin → Plugins → Install plugin → Upload .shplugin
+# Admin → Plugins → Install plugin → Upload .shplugin
 #
 # Or via curl:
 curl --fail-with-body \
@@ -553,12 +559,12 @@ The operator should **gitignore** on the host:
 php bin/console messenger:consume plugin_ops --time-limit=3600
 
 # 2. Trigger the install. Either:
-#    a) Admin UI: Plugins → Available → Install
-#    b) CLI:
+# a) Admin UI: Plugins → Available → Install
+# b) CLI:
 php bin/console selfhelp:plugin:install /abs/path/to/plugin.json
 
 # 3. (Managed mode only) The worker writes a runbook into plugin_operations.logs_json.
-#    Operator runs the composer step + deploys + finalises:
+# Operator runs the composer step + deploys + finalises:
 composer require humdek/sh2-shp-survey-js:0.1.0 --no-interaction --no-scripts
 git commit -am "chore: pin sh2-shp-survey-js 0.1.0"
 git push  # CD picks it up
