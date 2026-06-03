@@ -65,6 +65,7 @@ User authentication, profile management, and user data operations.
 - **[Pages & Sections](./04-admin-pages-sections.md)** - Page and section CRUD operations
 - **[Languages](./05-admin-languages.md)** - Language management
 - **[Assets](./06-admin-assets.md)** - File upload and asset management
+- **[Data Tables](./18-admin-data-tables.md)** - Read, delete, and export form-submission data tables
 
 #### User & Access Management
 - **[Users](./07-admin-users.md)** - User CRUD operations
