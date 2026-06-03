@@ -1,0 +1,17 @@
+# Test-only service overrides (loaded only when APP_ENV=test, see
+# Symfony MicroKernelTrait::configureContainer -> services_test.yaml).
+#
+# Keep this file tiny: it exists to swap real outbound integrations for
+# in-memory test doubles so the suite never performs real network I/O
+# (anti-flakiness + "no real outbound" rules, see AGENTS.md Testing Rules).
+services:
+    # Capture every Mercure publish in memory instead of talking to a hub.
+    # App services inject Symfony\Component\Mercure\HubInterface, so aliasing
+    # the interface to the recorder routes ALL realtime publishes here and
+    # lets golden tests assert exactly what was published (by topic).
+    App\Tests\Support\MercureTestRecorder:
+        public: true
+
+    Symfony\Component\Mercure\HubInterface:
+        alias: App\Tests\Support\MercureTestRecorder
+        public: true

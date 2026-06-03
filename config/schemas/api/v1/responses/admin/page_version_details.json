@@ -1,0 +1,67 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Page Version Details Response Schema",
+    "description": "Response for GET /cms-api/v1/admin/pages/{page_id}/versions/{version_id} (PageVersionController::getVersion). page_json is only present when ?include_page_json=true. Datetimes are normalized to ISO-8601 strings by the Symfony serializer.",
+    "type": "object",
+    "allOf": [
+        {
+            "$ref": "../common/_response_envelope.json"
+        }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer",
+                    "description": "Page version ID."
+                },
+                "page_id": {
+                    "type": "integer",
+                    "description": "Owning page ID."
+                },
+                "version_number": {
+                    "type": "integer",
+                    "description": "Sequential version number."
+                },
+                "version_name": {
+                    "type": ["string", "null"],
+                    "description": "Optional human-readable version name."
+                },
+                "created_by": {
+                    "type": ["object", "null"],
+                    "description": "Author summary, or null when unknown.",
+                    "properties": {
+                        "id": {
+                            "type": ["integer", "null"]
+                        },
+                        "name": {
+                            "type": ["string", "null"]
+                        }
+                    }
+                },
+                "created_at": {
+                    "type": ["string", "null"],
+                    "description": "ISO-8601 creation timestamp."
+                },
+                "published_at": {
+                    "type": ["string", "null"],
+                    "description": "ISO-8601 publication timestamp, or null for an unpublished draft version."
+                },
+                "is_published": {
+                    "type": "boolean",
+                    "description": "Whether this version is the currently published one."
+                },
+                "metadata": {
+                    "type": ["object", "array", "null"],
+                    "description": "Free-form version metadata."
+                },
+                "page_json": {
+                    "description": "Full page JSON snapshot; only present when include_page_json=true."
+                }
+            },
+            "required": ["id", "page_id", "version_number", "is_published"]
+        }
+    },
+    "required": ["data"]
+}

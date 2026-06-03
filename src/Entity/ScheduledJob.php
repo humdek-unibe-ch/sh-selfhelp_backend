@@ -210,7 +210,7 @@ class ScheduledJob
 
     public function setDateCreate(\DateTimeInterface $dateCreate): self
     {
-        $this->dateCreate = $dateCreate;
+        $this->dateCreate = self::toMutable($dateCreate);
         return $this;
     }
 
@@ -221,7 +221,7 @@ class ScheduledJob
 
     public function setDateToBeExecuted(\DateTimeInterface $dateToBeExecuted): self
     {
-        $this->dateToBeExecuted = $dateToBeExecuted;
+        $this->dateToBeExecuted = self::toMutable($dateToBeExecuted);
         return $this;
     }
 
@@ -232,8 +232,26 @@ class ScheduledJob
 
     public function setDateExecuted(?\DateTimeInterface $dateExecuted): self
     {
-        $this->dateExecuted = $dateExecuted;
+        $this->dateExecuted = $dateExecuted === null ? null : self::toMutable($dateExecuted);
         return $this;
+    }
+
+    /**
+     * Normalize any datetime to a mutable \DateTime.
+     *
+     * The scheduled_jobs date columns are Doctrine `datetime` (mutable) type,
+     * but callers such as the action schedule calculator legitimately produce
+     * \DateTimeImmutable (per the UTC-immutable datetime convention). Without
+     * this normalization, persisting an immutable value throws
+     * "Could not convert PHP value of type DateTimeImmutable to type
+     * Doctrine\DBAL\Types\DateTimeType", which silently aborts job scheduling.
+     * The original timezone (UTC) is preserved.
+     */
+    private static function toMutable(\DateTimeInterface $value): \DateTime
+    {
+        return $value instanceof \DateTimeImmutable
+            ? \DateTime::createFromImmutable($value)
+            : $value;
     }
 
     // Job details getters/setters

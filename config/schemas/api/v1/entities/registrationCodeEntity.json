@@ -1,0 +1,55 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Registration Code Entity",
+    "description": "A single registration (validation) code row as returned by the admin registration-code API.",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "string",
+            "description": "Stable identifier for the row (equals the code value)."
+        },
+        "code": {
+            "type": "string",
+            "description": "The one-time registration code value."
+        },
+        "id_groups": {
+            "type": ["integer", "null"],
+            "description": "ID of the group the code grants membership to once consumed."
+        },
+        "group_name": {
+            "type": ["string", "null"],
+            "description": "Name of the linked group."
+        },
+        "created_at": {
+            "type": "string",
+            "description": "UTC creation timestamp (Y-m-d H:i:s)."
+        },
+        "consumed_at": {
+            "type": ["string", "null"],
+            "description": "UTC consumption timestamp, null when the code is still available."
+        },
+        "is_consumed": {
+            "type": "boolean",
+            "description": "Whether the code has already been consumed."
+        },
+        "id_users": {
+            "type": ["integer", "null"],
+            "description": "ID of the user the code was linked to on consumption, null when still available."
+        },
+        "user_email": {
+            "type": ["string", "null"],
+            "description": "Email of the user the code was linked to on consumption, null when still available."
+        }
+    },
+    "required": [
+        "id",
+        "code",
+        "id_groups",
+        "group_name",
+        "created_at",
+        "consumed_at",
+        "is_consumed",
+        "id_users",
+        "user_email"
+    ]
+}

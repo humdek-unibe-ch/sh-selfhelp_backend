@@ -1,0 +1,283 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# Cross-repo ecosystem compatibility gate.
+#
+# WHY: each SelfHelp repo (backend, shared, frontend, mobile) has its own
+# green PR gate, but a change can be green ALONE and still break the
+# ecosystem TOGETHER -- e.g. the backend adds a required response field, or
+# `@selfhelp/shared` changes a DTO, and the frontend/mobile that consume it
+# no longer type-check. This workflow checks the repos together.
+#
+# It is intentionally NON-blocking for PRs (it runs nightly + on demand, not
+# on pull_request) so a cross-repo break is surfaced loudly without wedging
+# every single-repo PR. Promote individual jobs into the per-repo PR gates
+# once they are proven stable (see docs/developer/cross-repo-compatibility-matrix.md).
+#
+# Layout: every repo is checked out as a sibling directory under the runner
+# workspace so the existing sibling-aware tooling (e.g. shared's
+# check-schema-parity.mjs, which resolves ../sh-selfhelp_backend) works
+# unchanged.
+#
+#   $GITHUB_WORKSPACE/
+#     sh-selfhelp_backend/   (this repo)
+#     sh-selfhelp_shared/
+#     sh-selfhelp_frontend/
+#     sh-selfhelp_mobile/
+#
+# Cross-repo checkout: the sibling repos are pulled with ECOSYSTEM_PAT, a
+# repo-scoped read token (PAT or GitHub App installation token) that must be
+# configured in repository/organization secrets. Without it the cross-repo
+# jobs fail at checkout -- that is intentional and documented, not a silent
+# skip. The backend-smoke job only needs THIS repo, so it always runs.
+
+name: ecosystem-compat
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Nightly at 03:00 UTC (after the per-repo gates have settled for the day).
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecosystem-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Read-only token with access to the sibling ecosystem repos. Falls back to
+  # the default job token, which only works when every repo is public.
+  ECOSYSTEM_TOKEN: ${{ secrets.ECOSYSTEM_PAT || github.token }}
+
+jobs:
+  # 1) The primary cross-repo contract net: build @selfhelp/shared and prove
+  #    its TypeScript types still cover the backend JSON-schema contracts.
+  shared-contract:
+    name: Shared build + schema parity (vs backend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout backend (this repo, for JSON schemas)
+        uses: actions/checkout@v4
+        with:
+          path: sh-selfhelp_backend
+
+      - name: Checkout shared
+        uses: actions/checkout@v4
+        with:
+          repository: humdek-unibe-ch/sh-selfhelp_shared
+          ref: main
+          path: sh-selfhelp_shared
+          token: ${{ env.ECOSYSTEM_TOKEN }}
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: sh-selfhelp_shared/package-lock.json
+
+      - name: Install shared dependencies
+        working-directory: sh-selfhelp_shared
+        run: npm ci
+
+      - name: Type-check shared
+        working-directory: sh-selfhelp_shared
+        run: npm run typecheck
+
+      - name: Shared unit tests
+        working-directory: sh-selfhelp_shared
+        run: npm test
+
+      - name: Build shared
+        working-directory: sh-selfhelp_shared
+        run: npm run build
+
+      - name: Schema parity (shared TS types vs backend JSON schemas)
+        # Binding here: the backend is checked out as a sibling, so the parity
+        # script runs for real instead of SKIPping.
+        working-directory: sh-selfhelp_shared
+        run: npm run check:schemas
+
+  # 2) Backend health under the real QA flow (login + reference workflow).
+  backend-smoke:
+    name: Backend smoke + golden
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      APP_ENV: test
+      APP_DEBUG: '0'
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/selfhelp_ci?serverVersion=8.0&charset=utf8mb4"
+      REDIS_URL: "redis://127.0.0.1:6379"
+      MERCURE_PUBLIC_URL: ""
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, intl, mbstring, json, pdo, pdo_mysql, redis, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
+
+      - name: Enforce QA test-data convention
+        run: composer test:check-data
+
+      - name: Prepare test environment (.env + JWT keys)
+        run: |
+          set -euo pipefail
+          cp .env.default .env
+          php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction
+
+      - name: Reset test database (drop -> create -> migrate -> seed QA baseline)
+        run: composer test:reset-db
+
+      - name: Smoke suite (QA login + fixture version + readiness chain)
+        run: php bin/phpunit --testsuite=Smoke --testdox --log-junit build/phpunit/smoke.junit.xml
+
+      - name: Golden suite (form -> action -> scheduled job + page versioning)
+        run: php bin/phpunit --testsuite=Golden --testdox --log-junit build/phpunit/golden.junit.xml
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-backend-artifacts
+          path: |
+            build/phpunit/**
+            var/log/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # 3) Frontend compiles + tests against the UNRELEASED shared build (catches
+  #    breaking shared changes before they are published to npm).
+  frontend-vs-shared:
+    name: Frontend vs locally built shared
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout shared
+        uses: actions/checkout@v4
+        with:
+          repository: humdek-unibe-ch/sh-selfhelp_shared
+          ref: main
+          path: sh-selfhelp_shared
+          token: ${{ env.ECOSYSTEM_TOKEN }}
+
+      - name: Checkout frontend
+        uses: actions/checkout@v4
+        with:
+          repository: humdek-unibe-ch/sh-selfhelp_frontend
+          ref: main
+          path: sh-selfhelp_frontend
+          token: ${{ env.ECOSYSTEM_TOKEN }}
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build shared + pack a local tarball
+        working-directory: sh-selfhelp_shared
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm pack --pack-destination "$GITHUB_WORKSPACE"
+
+      - name: Install frontend deps + override @selfhelp/shared with the local build
+        working-directory: sh-selfhelp_frontend
+        run: |
+          set -euo pipefail
+          npm ci
+          SHARED_TGZ="$(ls "$GITHUB_WORKSPACE"/selfhelp-shared-*.tgz | head -1)"
+          echo "Overriding @selfhelp/shared with $SHARED_TGZ"
+          npm install --no-save "$SHARED_TGZ"
+
+      - name: Frontend type-check (against unreleased shared)
+        working-directory: sh-selfhelp_frontend
+        run: npm run tsc
+
+      - name: Frontend unit/component tests
+        working-directory: sh-selfhelp_frontend
+        run: npm test
+
+  # 4) Mobile compiles + tests against the UNRELEASED shared build.
+  mobile-vs-shared:
+    name: Mobile vs locally built shared
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout shared
+        uses: actions/checkout@v4
+        with:
+          repository: humdek-unibe-ch/sh-selfhelp_shared
+          ref: main
+          path: sh-selfhelp_shared
+          token: ${{ env.ECOSYSTEM_TOKEN }}
+
+      - name: Checkout mobile
+        uses: actions/checkout@v4
+        with:
+          repository: humdek-unibe-ch/sh-selfhelp_mobile
+          ref: main
+          path: sh-selfhelp_mobile
+          token: ${{ env.ECOSYSTEM_TOKEN }}
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build shared + pack a local tarball
+        working-directory: sh-selfhelp_shared
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm pack --pack-destination "$GITHUB_WORKSPACE"
+
+      - name: Install mobile deps + override @selfhelp/shared with the local build
+        working-directory: sh-selfhelp_mobile
+        run: |
+          set -euo pipefail
+          npm ci
+          SHARED_TGZ="$(ls "$GITHUB_WORKSPACE"/selfhelp-shared-*.tgz | head -1)"
+          echo "Overriding @selfhelp/shared with $SHARED_TGZ"
+          npm install --no-save "$SHARED_TGZ"
+
+      - name: Mobile type-check (against unreleased shared)
+        working-directory: sh-selfhelp_mobile
+        run: npm run typecheck
+
+      - name: Mobile renderer/unit tests
+        working-directory: sh-selfhelp_mobile
+        run: npm test

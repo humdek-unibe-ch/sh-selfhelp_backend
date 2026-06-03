@@ -5,270 +5,77 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+declare(strict_types=1);
 
 namespace App\Tests\Api\Admin;
 
-use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-use Symfony\Component\HttpFoundation\Response;
+use App\Tests\Support\QaWebTestCase;
+use App\Tests\Support\Security\PermissionMatrixProvider;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Test suite for Draft vs Published Page Comparison API
+ * Contract + permission tests for the draft-vs-version comparison endpoint:
  *
- * Tests the new endpoint: GET /admin/pages/{page_id}/versions/compare-draft/{version_id}
+ *   GET /cms-api/v1/admin/pages/{page_id}/versions/compare-draft/{version_id}
  *
- * Prerequisites:
- * - Test database must be seeded with pages and versions
- * - User must have admin.page_version.compare permission
- * - Valid JWT token required
+ * MIGRATED from the old hardcoded-credentials / old-envelope version. The
+ * happy path (real draft compared against a real published version) lives in
+ * {@see \App\Tests\Golden\PageVersioningWorkflowTest}, which creates its own
+ * qa_ page + version. This class keeps only the DATA-INDEPENDENT contract:
+ * format validation, not-found, and the permission matrix — none of which
+ * depend on a specific seeded page existing (plan §4: read-only/no business
+ * data mutation; the assertions use a non-existent page id on purpose).
+ *
+ * Controller check order makes these deterministic:
+ *   route permission (401/403) -> format validation (400) -> page lookup (404).
  */
-class PageVersionDraftComparisonTest extends WebTestCase
+#[Group('security')]
+final class PageVersionDraftComparisonTest extends QaWebTestCase
 {
-    private $client;
-    private $jwtToken;
+    use PermissionMatrixProvider;
 
-    protected function setUp(): void
+    /** A page id that is never seeded, so no business data is ever touched. */
+    private const MISSING_PAGE = 2147483600;
+    private const MISSING_VERSION = 2147483601;
+
+    private function compareDraftUri(int $pageId, int $versionId, ?string $format = null): string
     {
-        $this->client = static::createClient();
+        $uri = sprintf('/cms-api/v1/admin/pages/%d/versions/compare-draft/%d', $pageId, $versionId);
 
-        // Get JWT token for admin user
-        // Note: Replace with your actual authentication method
-        $this->client->request('POST', '/cms-api/v1/auth/login', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'email' => 'admin@example.com',
-            'password' => 'admin123'
-        ]));
-
-        $response = $this->client->getResponse();
-        $data = json_decode($response->getContent(), true);
-        $this->jwtToken = $data['data']['token'] ?? null;
-
-        $this->assertNotNull($this->jwtToken, 'Failed to obtain JWT token');
+        return $format === null ? $uri : $uri . '?format=' . $format;
     }
 
-    /**
-     * Test basic draft comparison with side_by_side format
-     */
-    public function testCompareDraftWithPublishedVersion_SideBySide(): void
+    public function testInvalidFormatIsRejectedBeforeTouchingData(): void
     {
-        // Arrange: Assume page ID 1 has a published version with ID 1
-        $pageId = 1;
-        $versionId = 1;
+        // Format is validated in the controller before the page is loaded, so
+        // an invalid format yields 400 even for a non-existent page.
+        $envelope = $this->jsonRequest(
+            'GET',
+            $this->compareDraftUri(self::MISSING_PAGE, self::MISSING_VERSION, 'not_a_real_format'),
+            null,
+            $this->loginAsQaAdmin()
+        );
 
-        // Act
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        // Assert
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_OK, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-        $this->assertTrue($data['success']);
-        $this->assertArrayHasKey('data', $data);
-
-        $comparisonData = $data['data'];
-        $this->assertArrayHasKey('draft', $comparisonData);
-        $this->assertArrayHasKey('published_version', $comparisonData);
-        $this->assertArrayHasKey('diff', $comparisonData);
-        $this->assertArrayHasKey('format', $comparisonData);
-        $this->assertEquals('side_by_side', $comparisonData['format']);
-
-        // Verify draft structure
-        $this->assertArrayHasKey('id_pages', $comparisonData['draft']);
-        $this->assertArrayHasKey('keyword', $comparisonData['draft']);
-        $this->assertArrayHasKey('updated_at', $comparisonData['draft']);
-
-        // Verify version structure
-        $this->assertArrayHasKey('id', $comparisonData['published_version']);
-        $this->assertArrayHasKey('version_number', $comparisonData['published_version']);
-        $this->assertEquals($versionId, $comparisonData['published_version']['id']);
+        $this->assertEnvelope400($envelope);
+        self::assertIsString($envelope['error'] ?? null);
+        self::assertStringContainsStringIgnoringCase('invalid format', (string) $envelope['error']);
     }
 
-    /**
-     * Test draft comparison with unified format
-     */
-    public function testCompareDraftWithPublishedVersion_Unified(): void
+    public function testNonExistentPageReturnsNotFound(): void
     {
-        $pageId = 1;
-        $versionId = 1;
+        $envelope = $this->jsonRequest(
+            'GET',
+            $this->compareDraftUri(self::MISSING_PAGE, self::MISSING_VERSION),
+            null,
+            $this->loginAsQaAdmin()
+        );
 
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}?format=unified", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_OK, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-        $this->assertEquals('unified', $data['data']['format']);
+        $this->assertEnvelope404($envelope);
     }
 
-    /**
-     * Test draft comparison with JSON patch format
-     */
-    public function testCompareDraftWithPublishedVersion_JsonPatch(): void
+    public function testCompareDraftEnforcesAdminOnlyPermissionMatrix(): void
     {
-        $pageId = 1;
-        $versionId = 1;
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}?format=json_patch", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_OK, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-        $this->assertEquals('json_patch', $data['data']['format']);
-        $this->assertIsArray($data['data']['diff']);
-    }
-
-    /**
-     * Test draft comparison with summary format
-     */
-    public function testCompareDraftWithPublishedVersion_Summary(): void
-    {
-        $pageId = 1;
-        $versionId = 1;
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}?format=summary", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_OK, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-        $this->assertEquals('summary', $data['data']['format']);
-    }
-
-    /**
-     * Test with invalid format parameter
-     */
-    public function testCompareDraftWithPublishedVersion_InvalidFormat(): void
-    {
-        $pageId = 1;
-        $versionId = 1;
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}?format=invalid_format", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-        $this->assertFalse($data['success']);
-        $this->assertStringContainsString('Invalid format', $data['message']);
-    }
-
-    /**
-     * Test with non-existent page
-     */
-    public function testCompareDraftWithPublishedVersion_NonExistentPage(): void
-    {
-        $nonExistentPageId = 999999;
-        $versionId = 1;
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$nonExistentPageId}/versions/compare-draft/{$versionId}", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_NOT_FOUND, $response->getStatusCode());
-    }
-
-    /**
-     * Test with non-existent version
-     */
-    public function testCompareDraftWithPublishedVersion_NonExistentVersion(): void
-    {
-        $pageId = 1;
-        $nonExistentVersionId = 999999;
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$nonExistentVersionId}", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_NOT_FOUND, $response->getStatusCode());
-    }
-
-    /**
-     * Test with version that belongs to different page
-     */
-    public function testCompareDraftWithPublishedVersion_VersionFromDifferentPage(): void
-    {
-        // Assuming page 1 exists and page 2 exists with version 2
-        $pageId = 1;
-        $versionFromOtherPage = 2; // This version belongs to page 2, not page 1
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionFromOtherPage}", [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->jwtToken,
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
-
-        $data = json_decode($response->getContent(), true);
-        $this->assertFalse($data['success']);
-        $this->assertStringContainsString('does not belong to page', $data['message']);
-    }
-
-    /**
-     * Test without authentication
-     */
-    public function testCompareDraftWithPublishedVersion_Unauthenticated(): void
-    {
-        $pageId = 1;
-        $versionId = 1;
-
-        $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}", [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ]);
-
-        $response = $this->client->getResponse();
-        $this->assertEquals(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
-    }
-
-    /**
-     * Test with user lacking required permission
-     */
-    public function testCompareDraftWithPublishedVersion_InsufficientPermissions(): void
-    {
-        // Login as a user without admin.page_version.compare permission
-        $this->client->request('POST', '/cms-api/v1/auth/login', [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode([
-            'email' => 'user@example.com', // Regular user without version compare permission
-            'password' => 'user123'
-        ]));
-
-        $response = $this->client->getResponse();
-        $data = json_decode($response->getContent(), true);
-        $userToken = $data['data']['token'] ?? null;
-
-        if ($userToken) {
-            $pageId = 1;
-            $versionId = 1;
-
-            $this->client->request('GET', "/cms-api/v1/admin/pages/{$pageId}/versions/compare-draft/{$versionId}", [], [], [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $userToken,
-                'CONTENT_TYPE' => 'application/json',
-            ]);
-
-            $response = $this->client->getResponse();
-            $this->assertEquals(Response::HTTP_FORBIDDEN, $response->getStatusCode());
-        }
+        // Non-admins -> 403, anonymous -> 401, asserted before any data lookup.
+        $this->assertForbiddenForNonAdmins('GET', $this->compareDraftUri(self::MISSING_PAGE, self::MISSING_VERSION));
     }
 }

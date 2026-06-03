@@ -1,0 +1,42 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Registration Codes List Success Response",
+    "description": "Schema for the successful response of listing registration codes for an admin.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "codes": {
+                    "type": "array",
+                    "description": "List of registration codes for the current page.",
+                    "items": { "$ref": "../../entities/registrationCodeEntity.json" }
+                },
+                "pagination": {
+                    "type": "object",
+                    "properties": {
+                        "page": { "type": "integer", "minimum": 1 },
+                        "pageSize": { "type": "integer", "minimum": 1 },
+                        "totalCount": { "type": "integer", "minimum": 0 },
+                        "totalPages": { "type": "integer", "minimum": 0 },
+                        "hasNext": { "type": "boolean" },
+                        "hasPrevious": { "type": "boolean" }
+                    },
+                    "required": ["page", "pageSize", "totalCount", "totalPages", "hasNext", "hasPrevious"]
+                },
+                "config": {
+                    "type": "object",
+                    "properties": {
+                        "generate_min": { "type": "integer", "minimum": 1 },
+                        "generate_max": { "type": "integer", "minimum": 1 }
+                    },
+                    "required": ["generate_min", "generate_max"]
+                }
+            },
+            "required": ["codes", "pagination", "config"]
+        }
+    },
+    "required": ["data"]
+}

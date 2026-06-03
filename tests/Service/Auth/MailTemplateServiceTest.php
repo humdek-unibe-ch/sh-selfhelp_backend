@@ -9,23 +9,27 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\Auth;
 
+use App\DataFixtures\Test\QaBaselineFixture;
 use App\Repository\PageRepository;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Auth\MailTemplateService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\InterpolationService;
+use App\Tests\Support\NarrowsJson;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 class MailTemplateServiceTest extends TestCase
 {
+    use NarrowsJson;
+
     public function testBuildEmailConfigPrefersSupportedRecipientLocale(): void
     {
-        $connection = $this->createMock(Connection::class);
+        $connection = $this->createStub(Connection::class);
         $pageRepository = $this->createMock(PageRepository::class);
         $cmsPreferenceService = $this->createMock(CmsPreferenceService::class);
-        $logger = $this->createMock(LoggerInterface::class);
+        $logger = $this->createStub(LoggerInterface::class);
 
         $pageRepository->expects($this->once())
             ->method('findOneBy')
@@ -49,7 +53,7 @@ class MailTemplateServiceTest extends TestCase
                 'user_name' => 'Stefan',
                 'validation_url' => 'http://localhost:3000/validate/1/token',
             ],
-            ['recipient_emails' => 'stefan@example.com'],
+            ['recipient_emails' => QaBaselineFixture::QA_USER_EMAIL],
             'de-CH'
         );
 
@@ -57,8 +61,8 @@ class MailTemplateServiceTest extends TestCase
             MailTemplateDefaults::getSubject(MailTemplateDefaults::TYPE_CONFIRM, 'de-CH'),
             $config['subject']
         );
-        $this->assertStringContainsString('http://localhost:3000/validate/1/token', $config['body']);
-        $this->assertSame('stefan@example.com', $config['recipient_emails']);
+        $this->assertStringContainsString('http://localhost:3000/validate/1/token', $this->coerceString($config['body']));
+        $this->assertSame(QaBaselineFixture::QA_USER_EMAIL, $config['recipient_emails']);
     }
 
     public function testBuildEmailConfigFallsBackToCmsDefaultWhenRecipientLocaleIsUnsupported(): void
@@ -66,7 +70,7 @@ class MailTemplateServiceTest extends TestCase
         $connection = $this->createMock(Connection::class);
         $pageRepository = $this->createMock(PageRepository::class);
         $cmsPreferenceService = $this->createMock(CmsPreferenceService::class);
-        $logger = $this->createMock(LoggerInterface::class);
+        $logger = $this->createStub(LoggerInterface::class);
 
         $pageRepository->expects($this->once())
             ->method('findOneBy')
@@ -99,7 +103,7 @@ class MailTemplateServiceTest extends TestCase
                 'user_name' => 'Stefan',
                 'platform_url' => 'http://localhost:3000/',
             ],
-            ['recipient_emails' => 'stefan@example.com'],
+            ['recipient_emails' => QaBaselineFixture::QA_USER_EMAIL],
             'fr-FR'
         );
 
@@ -107,6 +111,6 @@ class MailTemplateServiceTest extends TestCase
             MailTemplateDefaults::getSubject(MailTemplateDefaults::TYPE_WELCOME, 'de-CH'),
             $config['subject']
         );
-        $this->assertStringContainsString('http://localhost:3000/', $config['body']);
+        $this->assertStringContainsString('http://localhost:3000/', $this->coerceString($config['body']));
     }
 }

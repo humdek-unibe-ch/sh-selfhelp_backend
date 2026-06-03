@@ -575,7 +575,49 @@ recovery](./installation.md#11-lock-file-recovery).
 
 ---
 
-## 9. Cross-references
+## 9. Testing notes — gates that must be green before you publish
+
+A version is publishable only when both CI tiers below pass. The full grid +
+"where it runs" lives in [`testing-matrix.md`](./testing-matrix.md);
+[`ci-workflows.md`](./ci-workflows.md) is the GitHub Actions reference.
+
+**Plugin-repo CI (required for publish):**
+
+- Manifest **schema validation** + **compatibility** against every supported host
+  version (`plugin-manifest.schema.json` / `PluginCompatibilityValidator`).
+- Backend `composer phpstan` (max) + `composer headers:check` + PHPUnit
+  (unit/integration) + **schema-parity** (`check:schemas`).
+- Frontend `tsc --noEmit` + Vitest + Vite build; mobile `tsc` when the plugin
+  declares `mobile`.
+- **Archive validation** before upload: `selfhelp:plugin:validate-archive <file> [--json]`
+  runs the exact host `inspect-archive` pipeline and exits non-zero on any error.
+- **Signing**: the released `.shplugin` carries an Ed25519 signature + SHA-256
+  checksum the host's `PluginSignatureVerifier` re-checks on install (see
+  [`signing.md`](./signing.md)).
+
+**Shared-package CI (`@selfhelp/shared`, binding on `main`):**
+
+- `plugin-sdk-check.yml` guards the SDK contract every plugin compiles against
+  (type-check, build, `usePluginRealtime` export, schema parity, Vitest). A
+  regression here ripples into every plugin repo.
+- Release gate: `npm run test:release` (headers → typecheck → schema parity →
+  blocking coverage → build).
+
+**Host-repo certification (run on the host, per host version):**
+
+- Each plugin ships a subclass of
+  `tests/Certification/InstallLifecycleCertificationTestCase.php` so its REAL
+  manifest is certified against the host (`--testsuite Certification`). SurveyJS
+  is the reference (`tests/Certification/Plugin/SurveyJsPluginCertificationTest.php`).
+
+What is **not** gated in CI and stays a deploy-time step: the
+`selfhelp:plugin:run-operation` finalize/update/rollback/purge run-through against
+a live stack (composer/npm + migrations + non-transactional disk writes). See
+[`testing-matrix.md`](./testing-matrix.md) for the documented exception.
+
+---
+
+## 10. Cross-references
 
 | Topic                            | Doc                                                                                                       |
 |----------------------------------|-----------------------------------------------------------------------------------------------------------|

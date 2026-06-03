@@ -7,8 +7,7 @@
     "count": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 10000,
-      "description": "Number of codes to generate."
+      "description": "Number of codes to generate. The effective upper bound is enforced server-side by RegistrationCodeService (REGISTRATION_CODE_REQUEST_MAX) and surfaced to clients as config.generate_max, so the schema intentionally does not hardcode a maximum."
     },
     "id_groups": {
       "type": "integer",

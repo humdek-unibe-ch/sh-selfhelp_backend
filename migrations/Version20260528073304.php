@@ -32,7 +32,7 @@ final class Version20260528073304 extends AbstractMigration
             INSERT IGNORE INTO `api_routes`
                 (`route_name`, `version`, `methods`, `path`, `controller`, `requirements`, `params`)
             VALUES (
-                'register',
+                'auth_register',
                 'v1',
                 'POST',
                 '/auth/register',
@@ -48,7 +48,7 @@ final class Version20260528073304 extends AbstractMigration
         $this->addSql(<<<SQL
             DELETE rarp FROM `rel_api_routes_permissions` rarp
             JOIN `api_routes` ar ON ar.id = rarp.id_api_routes
-            WHERE ar.`route_name` = 'register' AND ar.`version` = 'v1'
+            WHERE ar.`route_name` = 'auth_register' AND ar.`version` = 'v1'
         SQL);
         $this->addSql("DELETE FROM `api_routes` WHERE `route_name` = 'auth_register' AND `version` = 'v1'");
     }

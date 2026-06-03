@@ -16,6 +16,7 @@ use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\LookupService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
@@ -39,7 +40,8 @@ class DataAccessSecurityService
         private LookupService $lookupService,
         private EntityManagerInterface $entityManager,
         private CacheService $cache,
-        private RequestStack $requestStack
+        private RequestStack $requestStack,
+        private LoggerInterface $logger
     ) {
     }
 
@@ -116,41 +118,45 @@ class DataAccessSecurityService
             return;
         }
 
+        // Resolve the three mandatory FK lookups (resource type, action, result)
+        // BEFORE touching the database. data_access_audits requires
+        // id_resource_types / id_audit_actions / id_permission_results to be
+        // NOT NULL, so when any of them cannot be resolved there is no valid row
+        // to write — for example a denial on an unknown resource type, which has
+        // no entry in the resourceTypes lookup. Persisting anyway would raise an
+        // "id_resource_types cannot be null" integrity error that the catch below
+        // would swallow invisibly. Record a warning and skip instead.
+        $resourceTypeLookup = $this->lookupService->findByTypeAndCode(LookupService::RESOURCE_TYPES, $resourceType);
+        $actionLookup = $this->lookupService->findByTypeAndCode(LookupService::AUDIT_ACTIONS, $action);
+        $resultLookup = $this->lookupService->findByTypeAndCode(LookupService::PERMISSION_RESULTS, $result);
+
+        if ($resourceTypeLookup === null || $actionLookup === null || $resultLookup === null) {
+            $this->logger->warning('Skipping data access audit: unresolved lookup(s); the referenced resource type/action/result has no lookup entry.', [
+                'resource_type' => $resourceType,
+                'resource_type_resolved' => $resourceTypeLookup !== null,
+                'action' => $action,
+                'action_resolved' => $actionLookup !== null,
+                'result' => $result,
+                'result_resolved' => $resultLookup !== null,
+            ]);
+
+            return;
+        }
+
         // Start audit logging transaction - separate from main operation transactions
         $this->entityManager->beginTransaction();
 
         try {
-            // Get lookup objects for action, result, and resource type
-            $actionLookup = $this->lookupService->findByTypeAndCode(LookupService::AUDIT_ACTIONS, $action);
-            $resultLookup = $this->lookupService->findByTypeAndCode(LookupService::PERMISSION_RESULTS, $result);
-            $resourceTypeLookup = $this->lookupService->findByTypeAndCode(LookupService::RESOURCE_TYPES, $resourceType);
-
-            if (!$actionLookup || !$resultLookup || !$resourceTypeLookup) {
-                // Fallback if lookups not found - still log with error note
-                $notes = ($notes ? $notes . ' | ' : '') . 'LOOKUP_ERROR: Missing lookup objects';
-            }
-
-            // Create and save audit log entry
+            // Create and save audit log entry with all mandatory FKs populated.
             $audit = new DataAccessAudit();
 
-            // Set user entity reference
             $user = $this->entityManager->getReference(User::class, $userId);
             assert($user instanceof User);
             $audit->setUser($user);
-
-            // Set lookup relationships
-            if ($resourceTypeLookup) {
-                $audit->setResourceType($resourceTypeLookup);
-            }
+            $audit->setResourceType($resourceTypeLookup);
             $audit->setResourceId($resourceId);
-
-            if ($actionLookup) {
-                $audit->setAction($actionLookup);
-            }
-
-            if ($resultLookup) {
-                $audit->setPermissionResult($resultLookup);
-            }
+            $audit->setAction($actionLookup);
+            $audit->setPermissionResult($resultLookup);
             $audit->setCrudPermission($permission);
             $audit->setHttpMethod($this->getHttpMethod());
             $audit->setRequestBodyHash($this->getRequestBodyHash());
@@ -164,17 +170,16 @@ class DataAccessSecurityService
 
             // Commit the audit transaction
             $this->entityManager->commit();
-        } catch (\Exception $e) {
-            // Rollback audit transaction on error, but don't fail the main operation
+        } catch (\Throwable $e) {
+            // Roll back the audit transaction on an unexpected error, but never
+            // fail the main operation because of an audit-write problem.
             try {
                 $this->entityManager->rollback();
-            } catch (\Exception $rollbackException) {
-                // Log rollback error but continue
-                error_log('Failed to rollback audit transaction: ' . $rollbackException->getMessage());
+            } catch (\Throwable $rollbackException) {
+                $this->logger->error('Failed to roll back data access audit transaction', ['exception' => $rollbackException]);
             }
 
-            // Log the original error
-            error_log('Failed to log data access audit: ' . $e->getMessage());
+            $this->logger->error('Failed to log data access audit', ['exception' => $e]);
         }
     }
 

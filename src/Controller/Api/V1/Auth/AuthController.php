@@ -369,8 +369,8 @@ class AuthController extends AbstractController
             );
 
             return $this->responseFormatter->formatSuccess(
-                [],
-                null,
+                ['registered' => true],
+                'responses/auth/register',
                 Response::HTTP_CREATED,
                 false,
             );

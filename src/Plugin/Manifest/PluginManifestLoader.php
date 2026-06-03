@@ -55,8 +55,14 @@ final class PluginManifestLoader
     {
         $errors = $this->validator->validate($data);
         if ($errors !== []) {
+            // A malformed manifest is always client-supplied (paste / url /
+            // registry / uploaded archive), so this is an Unprocessable Content
+            // (422) client error — not a server fault. AdminPluginController's
+            // respondWithError() maps the exception code straight to the HTTP
+            // status, mirroring ServiceException's 422 validation convention.
             throw new \RuntimeException(
-                'plugin.json is invalid:' . PHP_EOL . '  - ' . implode(PHP_EOL . '  - ', $errors)
+                'plugin.json is invalid:' . PHP_EOL . '  - ' . implode(PHP_EOL . '  - ', $errors),
+                422,
             );
         }
         return new PluginManifest($data);

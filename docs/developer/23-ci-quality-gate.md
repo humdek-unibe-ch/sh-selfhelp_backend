@@ -111,6 +111,103 @@ gate, which analyses the whole core (`bin/`, `config/`, `public/`, `src/`
 — plugin code included) at level max with no baseline. Run it locally with
 `composer phpstan`.
 
+## Required GitHub branch protection checks
+
+> **Branch protection is a GitHub *setting*, not a file in this repo.** Nothing
+> in the working tree can enable or verify it. A test only prevents broken code
+> from shipping **if its check is marked "Required" in the repo's branch
+> protection rules** (Settings → Branches → branch protection rule → *Require
+> status checks to pass*). This section is the authoritative list of which
+> checks an admin must enable, per repo. Keep it in sync with
+> [`15-testing-guidelines.md` → Branch protection](./15-testing-guidelines.md#branch-protection-required-checks).
+
+The status-check name GitHub matches is the **workflow `name:`** (or the job
+name when a workflow has multiple jobs). The names below are the workflow names.
+
+### Backend (`sh-selfhelp_backend`)
+
+| Check | Workflow | Gate | Required on |
+|-------|----------|------|-------------|
+| `core-backend-check` | `core-backend-check.yml` | PHPStan level max, no baseline (whole core) | `main`, `release/*` |
+| `plugin-host-check` | `plugin-host-check.yml` | host validate + schema + migrations + DI + plugin doctor (this doc) | `main`, `release/*` |
+| `backend-tests` | `backend-tests.yml` | `check-data` guard → reset-db → unit → smoke → security → golden | `main`, `release/*` |
+| `migration-test` | `migration-test.yml` | migration up/down round-trip on a throwaway DB | `release/*` (and on PRs that touch `migrations/`) |
+| `ecosystem-compat` | `ecosystem-compat.yml` | cross-repo nightly compatibility | **not a merge gate** (nightly + manual) |
+| `post-deploy-smoke` | `post-deploy-smoke.yml` | post-deploy health/login/page/job/Mercure | **not a merge gate** (runs after deploy) |
+
+### Shared (`sh-selfhelp_shared`)
+
+| Check | Workflow | Gate | Required on |
+|-------|----------|------|-------------|
+| `shared-tests` | `shared-tests.yml` | type-check + Vitest + **blocking coverage gate** + `check:schemas` (schema parity) | `main`, `release/*` |
+| `plugin-sdk-check` | `plugin-sdk-check.yml` | plugin SDK contract validation | `main`, `release/*` |
+
+### Frontend (`sh-selfhelp_frontend`)
+
+| Check | Workflow | Gate | Required on |
+|-------|----------|------|-------------|
+| `frontend-tests` | `frontend-tests.yml` | Vitest + lint (coverage advisory) | `main`, `release/*` |
+| `plugin-runtime-check` | `plugin-runtime-check.yml` | plugin ESM runtime contract | `main`, `release/*` |
+| `e2e-golden` | `e2e-golden.yml` | Playwright golden + a11y (axe) | `release/*` |
+| `publish-verify` | `publish-verify.yml` | build/publish verification | `release/*` |
+| `lighthouse`, `visual-snapshots` | resp. workflows | performance / visual regression | **advisory** (promote when stable) |
+
+### Mobile (`sh-selfhelp_mobile`)
+
+| Check | Workflow | Gate | Required on |
+|-------|----------|------|-------------|
+| `mobile-parity` | `plugin-mobile-check.yml` | mobile renderer parity + `node --test` | `main`, `release/*` |
+
+### Plugin repos
+
+Each plugin repo runs its own host-compat / certification workflow
+(`plugin-host-check` equivalent + manifest validation). Require it on the
+plugin's protected branches before publishing to the registry. See
+[`docs/plugins/versioning-and-compatibility.md`](../plugins/versioning-and-compatibility.md)
+and the [cross-repo compatibility matrix](./cross-repo-compatibility-matrix.md).
+
+### Coverage gate state (what blocks today)
+
+- **Shared is the only blocking coverage gate.** `shared-tests.yml` runs
+  `npm run test:coverage` (istanbul, ≥ 60% on the framework-free runtime-helper
+  bundle) and fails below threshold. Currently ~97%.
+- **Backend and frontend coverage are advisory (staged).** The canonical policy
+  is ≥ 70% on `src/Service`/`src/Controller` (backend) and ≥ 60% on new files
+  (frontend), but the absolute gate is **not** enforced yet because the current
+  baseline is below target. Generate reports on demand
+  (`composer test:coverage`, frontend `npm run test:coverage`) and do not let
+  changed-file coverage regress.
+- **Before flipping a coverage gate to blocking:** raise the baseline above the
+  target on the gated trees, add the `thresholds` block (frontend Vitest) or a
+  failing-below-threshold step (backend), confirm it passes on `main`, *then*
+  mark the check required. Ratchet up; never enable a gate that fails every PR
+  from day one.
+
+### Frontend ESLint (staged, not yet blocking)
+
+The frontend ships an ESLint flat config (`eslint.config.mjs`) and an `npm run
+lint` script (`eslint . --ext .ts,.tsx`), but **lint is intentionally not a
+blocking CI step yet**. `frontend-tests.yml` runs license headers + Vitest;
+`plugin-runtime-check.yml` owns `tsc` + build. Promoting lint to blocking with
+`--max-warnings=0` is **not currently safe**: a full run reports **411 problems
+(126 errors, 285 warnings)**. The dominant blockers are the React 19 compiler
+rules `react-hooks/refs` and `react-hooks/purity` (e.g.
+`src/utils/performance-monitor.utils.ts` mutates a ref and calls `Date.now()`
+during render) plus `unused-imports/no-unused-vars` warnings.
+
+To promote it (do **not** enable while errors exist):
+
+1. Fix the 126 errors first (the `react-hooks/*` purity/ref violations are real
+   correctness smells, not style nits — fix the cause, do not blanket-disable
+   the rule).
+2. Add a `Lint` step to `frontend-tests.yml` running `npm run lint --
+   --max-warnings=0` (or a dedicated `frontend-lint` job/workflow).
+3. Confirm it passes on `main`, then mark the check required in branch
+   protection.
+
+Until then, run `npm run lint` locally before pushing and do not add new
+violations to changed files.
+
 ## Reproduce locally
 
 The repository already ships a Docker stack with MySQL, Redis, Mercure

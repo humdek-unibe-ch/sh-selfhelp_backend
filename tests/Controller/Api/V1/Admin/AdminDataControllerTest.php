@@ -1,0 +1,284 @@
+<?php
+
+/*
+ * SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+ * SPDX-License-Identifier: MPL-2.0
+ */
+
+declare(strict_types=1);
+
+namespace App\Tests\Controller\Api\V1\Admin;
+
+use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\DataTable;
+use App\Entity\User;
+use App\Service\CMS\DataService;
+use App\Service\Core\LookupService;
+use App\Tests\Support\Factories\DataTableFactory;
+use App\Tests\Support\QaWebTestCase;
+use Doctrine\ORM\EntityManagerInterface;
+
+/**
+ * P0 coverage for the admin Data-Management read/write API
+ * ({@see \App\Controller\Api\V1\Admin\AdminDataController}).
+ *
+ * These are the highest-risk admin write paths: deleting records, dropping
+ * tables, and removing columns. The success paths run as qa.admin, who has
+ * full CRUD on every table because {@see \App\EventListener\DataTableAdminAccessListener}
+ * grants the admin role full access when a data table is persisted. The
+ * permission matrix (admin vs non-admin vs anonymous) lives in
+ * {@see AdminDataPermissionTest}.
+ *
+ * Every test asserts the standard envelope, the key response fields, and — for
+ * writes — the DB side effect (soft delete, removed column/table) plus the
+ * cache-invalidation effect (a follow-up read no longer returns the row).
+ */
+final class AdminDataControllerTest extends QaWebTestCase
+{
+    private const BASE = '/cms-api/v1/admin/data';
+
+    private EntityManagerInterface $em;
+    private DataTableFactory $dataTables;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $container = self::getContainer();
+        $em = $container->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->em = $em;
+
+        $dataService = $container->get(DataService::class);
+        self::assertInstanceOf(DataService::class, $dataService);
+        $this->dataTables = new DataTableFactory($this->em, $dataService);
+    }
+
+    // -- Reads --------------------------------------------------------------
+
+    public function testGetDataTablesReturnsAccessibleTablesForAdmin(): void
+    {
+        $table = $this->dataTables->createTable('qa_data_list_table');
+
+        $envelope = $this->jsonRequest('GET', self::BASE . '/tables', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertArrayHasKey('dataTables', $data);
+        self::assertIsArray($data['dataTables']);
+
+        $names = array_column($data['dataTables'], 'name');
+        self::assertContains('qa_data_list_table', $names, 'Admin must see the qa data table it has a grant on.');
+
+        // Contract shape the frontend Data-Management view consumes.
+        $row = $this->firstWithName($data['dataTables'], 'qa_data_list_table');
+        foreach (['id', 'name', 'displayName', 'created', 'crud'] as $key) {
+            self::assertArrayHasKey($key, $row, "Data-table row must expose '{$key}'.");
+        }
+        self::assertSame((int) $table->getId(), $this->asInt($row['id'] ?? null));
+    }
+
+    public function testGetDataReturnsRowsForAccessibleTable(): void
+    {
+        [$table, $recordId] = $this->dataTables->createTableWithRow('qa_data_rows_table', $this->qaUserId(), 'first answer');
+
+        $envelope = $this->jsonRequest(
+            'GET',
+            self::BASE . '?table_name=' . $table->getName(),
+            null,
+            $this->loginAsQaAdmin(),
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertArrayHasKey('rows', $data);
+        self::assertIsArray($data['rows']);
+        self::assertNotEmpty($data['rows'], 'Admin full-table read must return the seeded row.');
+
+        self::assertContains($recordId, $this->recordIds($data['rows']), 'The seeded record must appear in the admin read.');
+    }
+
+    public function testGetDataMissingTableNameReturns400(): void
+    {
+        $envelope = $this->jsonRequest('GET', self::BASE, null, $this->loginAsQaAdmin());
+        $this->assertEnvelope400($envelope);
+    }
+
+    public function testGetDataUnknownTableReturns404(): void
+    {
+        $envelope = $this->jsonRequest('GET', self::BASE . '?table_name=qa_data_missing_table', null, $this->loginAsQaAdmin());
+        $this->assertEnvelope404($envelope);
+    }
+
+    public function testGetColumnsReturnsTableColumns(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_columns_table', $this->qaUserId())[0];
+
+        $envelope = $this->jsonRequest(
+            'GET',
+            self::BASE . '/tables/' . $table->getName() . '/columns',
+            null,
+            $this->loginAsQaAdmin(),
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertArrayHasKey('columns', $data);
+        self::assertIsArray($data['columns']);
+        $columnNames = array_column($data['columns'], 'name');
+        self::assertContains('qa_field', $columnNames, 'The field written by the factory must be a column.');
+    }
+
+    public function testGetColumnNamesIncludesSystemAndCustomColumns(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_colnames_table', $this->qaUserId())[0];
+
+        $envelope = $this->jsonRequest(
+            'GET',
+            self::BASE . '/tables/' . $table->getName() . '/column-names',
+            null,
+            $this->loginAsQaAdmin(),
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertArrayHasKey('columnNames', $data);
+        self::assertIsArray($data['columnNames']);
+        // Service always prepends the fixed system columns, then appends custom ones.
+        self::assertContains('record_id', $data['columnNames']);
+        self::assertContains('id_users', $data['columnNames']);
+        self::assertContains('qa_field', $data['columnNames']);
+    }
+
+    // -- Writes -------------------------------------------------------------
+
+    public function testDeleteRecordSoftDeletesRowAndInvalidatesReadCache(): void
+    {
+        [$table, $recordId] = $this->dataTables->createTableWithRow('qa_data_delete_record_table', $this->qaUserId());
+        $token = $this->loginAsQaAdmin();
+
+        // Warm the admin read cache first so we prove invalidation, not just a cold read.
+        $before = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '?table_name=' . $table->getName(), null, $token)
+        );
+        self::assertContains($recordId, $this->recordIds($before['rows']));
+
+        // Admin deletes another user's record (own_entries_only=false).
+        $deleteEnvelope = $this->jsonRequest(
+            'DELETE',
+            self::BASE . '/records/' . $recordId . '?table_name=' . $table->getName() . '&own_entries_only=false',
+            null,
+            $token,
+        );
+        $deleteData = $this->assertEnvelopeSuccess($deleteEnvelope);
+        self::assertTrue((bool) ($deleteData['deleted'] ?? false), 'Delete must report success.');
+
+        // DB side effect: soft delete (trigger type flipped to "deleted"), row still present.
+        $this->em->clear();
+        $row = $this->dataTables->findRow($recordId);
+        self::assertNotNull($row, 'Soft delete must keep the physical row.');
+        $lookups = self::getContainer()->get(LookupService::class);
+        self::assertInstanceOf(LookupService::class, $lookups);
+        $deletedTriggerId = (int) $lookups
+            ->getLookupIdByValue(LookupService::ACTION_TRIGGER_TYPES, LookupService::ACTION_TRIGGER_TYPES_DELETED);
+        self::assertSame($deletedTriggerId, (int) $row->getIdActionTriggerTypes(), 'Row must carry the deleted trigger type.');
+
+        // Cache-invalidation effect: the default read (exclude_deleted) no longer returns it.
+        $after = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '?table_name=' . $table->getName(), null, $token)
+        );
+        self::assertNotContains(
+            $recordId,
+            $this->recordIds($after['rows']),
+            'After soft delete the record must disappear from the excluded-deleted read (cache invalidated).'
+        );
+    }
+
+    public function testDeleteColumnsRemovesSelectedColumns(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_delete_cols_table', $this->qaUserId())[0];
+        $token = $this->loginAsQaAdmin();
+
+        $envelope = $this->jsonRequest(
+            'DELETE',
+            self::BASE . '/tables/' . $table->getName() . '/columns',
+            ['columns' => ['qa_field']],
+            $token,
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertSame(1, $this->coerceInt($data['deleted_column_count'] ?? -1), 'Exactly one column must be deleted.');
+
+        // DB side effect: the column is gone.
+        $columns = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/tables/' . $table->getName() . '/columns', null, $token)
+        );
+        self::assertNotContains('qa_field', array_column($this->asList($columns['columns']), 'name'), 'Deleted column must not reappear.');
+    }
+
+    public function testDeleteDataTableRemovesTable(): void
+    {
+        $table = $this->dataTables->createTable('qa_data_drop_table');
+        $token = $this->loginAsQaAdmin();
+
+        $envelope = $this->jsonRequest('DELETE', self::BASE . '/tables/' . $table->getName(), null, $token);
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertTrue((bool) ($data['deleted'] ?? false));
+
+        // DB side effect: the table no longer exists.
+        $this->em->clear();
+        self::assertNull(
+            $this->em->getRepository(DataTable::class)->findOneBy(['name' => 'qa_data_drop_table']),
+            'Dropped data table must be gone from the DB.'
+        );
+    }
+
+    public function testDeleteRecordMissingTableNameReturns400(): void
+    {
+        $envelope = $this->jsonRequest('DELETE', self::BASE . '/records/1', null, $this->loginAsQaAdmin());
+        $this->assertEnvelope400($envelope);
+    }
+
+    public function testDeleteUnknownDataTableReturns404(): void
+    {
+        $envelope = $this->jsonRequest('DELETE', self::BASE . '/tables/qa_data_missing_table', null, $this->loginAsQaAdmin());
+        $this->assertEnvelope404($envelope);
+    }
+
+    // -- helpers ------------------------------------------------------------
+
+    private function qaUserId(): int
+    {
+        $user = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);
+        self::assertInstanceOf(User::class, $user);
+
+        return (int) $user->getId();
+    }
+
+    /**
+     * @param array<mixed> $rows
+     * @return array<string, mixed>
+     */
+    private function firstWithName(array $rows, string $name): array
+    {
+        foreach ($rows as $rawRow) {
+            $row = $this->asArray($rawRow);
+            if (($row['name'] ?? null) === $name) {
+                return $row;
+            }
+        }
+
+        self::fail("No data-table row named '{$name}' in response.");
+    }
+
+    /**
+     * Extract the `record_id` of every data row from a decoded admin read.
+     *
+     * @return list<int>
+     */
+    private function recordIds(mixed $rows): array
+    {
+        $ids = [];
+        foreach ($this->asList($rows) as $rawRow) {
+            $row = $this->asArray($rawRow);
+            $ids[] = $this->coerceInt($row['record_id'] ?? 0);
+        }
+
+        return $ids;
+    }
+}

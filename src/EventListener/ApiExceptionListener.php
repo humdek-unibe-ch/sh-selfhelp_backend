@@ -8,6 +8,7 @@
 namespace App\EventListener;
 
 use App\Exception\RequestValidationException;
+use App\Exception\ServiceException;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -70,7 +71,24 @@ class ApiExceptionListener
             $event->setResponse($response);
             return;
         }
-        
+
+        // Service-layer exceptions carry their intended HTTP status in the code.
+        // Without this, an uncaught ServiceException (e.g. a controller action
+        // that does not wrap the service call in try/catch) would be reported
+        // as 500 even though the service signalled a 404/403/409/422.
+        if ($exception instanceof ServiceException) {
+            $code = $exception->getCode();
+            $statusCode = ($code >= 100 && $code <= 599)
+                ? $code
+                : Response::HTTP_INTERNAL_SERVER_ERROR;
+            $response = $this->apiResponseFormatter->formatError(
+                $exception->getMessage() ?: 'An error occurred',
+                $statusCode
+            );
+            $event->setResponse($response);
+            return;
+        }
+
         // Default exception handling
         $statusCode = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
         $message = $exception->getMessage() ?: 'An error occurred';

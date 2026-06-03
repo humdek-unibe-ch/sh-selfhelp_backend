@@ -1,0 +1,40 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Page Version Published Response Schema",
+    "description": "Response for POST /cms-api/v1/admin/pages/{page_id}/versions/publish and /versions/{version_id}/publish (PageVersionController). Datetimes are normalized to ISO-8601 strings by the Symfony serializer.",
+    "type": "object",
+    "allOf": [
+        {
+            "$ref": "../common/_response_envelope.json"
+        }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "version_id": {
+                    "type": "integer",
+                    "description": "ID of the published page version."
+                },
+                "version_number": {
+                    "type": "integer",
+                    "description": "Sequential version number for the page."
+                },
+                "version_name": {
+                    "type": ["string", "null"],
+                    "description": "Optional human-readable version name."
+                },
+                "published_at": {
+                    "type": ["string", "null"],
+                    "description": "ISO-8601 timestamp the version was published."
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Human-readable success message."
+                }
+            },
+            "required": ["version_id", "version_number", "message"]
+        }
+    },
+    "required": ["data"]
+}

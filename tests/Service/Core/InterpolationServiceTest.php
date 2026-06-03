@@ -9,6 +9,7 @@
 namespace App\Tests\Service\Core;
 
 use App\Service\Core\InterpolationService;
+use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -19,6 +20,8 @@ use PHPUnit\Framework\TestCase;
  */
 class InterpolationServiceTest extends TestCase
 {
+    use NarrowsJson;
+
     private InterpolationService $interpolationService;
 
     protected function setUp(): void
@@ -48,13 +51,13 @@ class InterpolationServiceTest extends TestCase
         $data = [
             'user' => [
                 'name' => 'John Doe',
-                'email' => 'john@example.com'
+                'email' => 'qa.user@selfhelp.test'
             ]
         ];
 
         $result = $this->interpolationService->interpolate($content, $data);
 
-        $this->assertEquals('User: John Doe, Email: john@example.com', $result);
+        $this->assertEquals('User: John Doe, Email: qa.user@selfhelp.test', $result);
     }
 
     /**
@@ -91,7 +94,7 @@ class InterpolationServiceTest extends TestCase
                 'text' => '2'
             ],
             'system' => [
-                'user_name' => 'stefan.kodzhabashev@gmail.com',
+                'user_name' => 'qa.user@selfhelp.test',
                 'language' => 3,
                 'current_date' => '2025-10-24'
             ],
@@ -105,7 +108,7 @@ class InterpolationServiceTest extends TestCase
 
         $result = $this->interpolationService->interpolate($content, $data);
 
-        $this->assertEquals('My var: english, Test: 2, Parent: 2, User: stefan.kodzhabashev@gmail.com', $result);
+        $this->assertEquals('My var: english, Test: 2, Parent: 2, User: qa.user@selfhelp.test', $result);
     }
 
     /**
@@ -181,7 +184,7 @@ class InterpolationServiceTest extends TestCase
 
         $this->assertEquals('Hello John', $result['title']);
         $this->assertEquals('Welcome to New York', $result['message']);
-        $this->assertEquals('Age: 30', $result['nested']['info']);
+        $this->assertEquals('Age: 30', $this->asArray($result['nested'])['info'] ?? null);
     }
 
     /**
@@ -219,11 +222,14 @@ class InterpolationServiceTest extends TestCase
 
         $result = $this->interpolationService->interpolateArray($contentArray, $data);
 
-        $this->assertEquals('My Site', $result['header']['title']);
-        $this->assertEquals('Welcome!', $result['header']['subtitle']);
-        $this->assertEquals('Hello John', $result['content']['welcome']);
-        $this->assertEquals('1000 visits', $result['content']['stats']['visits']);
-        $this->assertEquals('50 users', $result['content']['stats']['users']);
+        $header = $this->asArray($result['header']);
+        $this->assertEquals('My Site', $header['title'] ?? null);
+        $this->assertEquals('Welcome!', $header['subtitle'] ?? null);
+        $content = $this->asArray($result['content']);
+        $this->assertEquals('Hello John', $content['welcome'] ?? null);
+        $stats = $this->asArray($content['stats'] ?? null);
+        $this->assertEquals('1000 visits', $stats['visits'] ?? null);
+        $this->assertEquals('50 users', $stats['users'] ?? null);
     }
 
     /**

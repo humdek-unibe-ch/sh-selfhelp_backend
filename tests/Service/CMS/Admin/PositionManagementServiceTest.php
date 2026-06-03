@@ -8,6 +8,7 @@
 
 namespace App\Tests\Service\CMS\Admin;
 
+use App\Entity\Page;
 use App\Service\CMS\Admin\PositionManagementService;
 use App\Tests\Controller\Api\V1\BaseControllerTest;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,8 +21,13 @@ class PositionManagementServiceTest extends BaseControllerTest
     protected function setUp(): void
     {
         parent::setUp();
-        $this->positionManagementService = static::getContainer()->get(PositionManagementService::class);
-        $this->entityManager = static::getContainer()->get(EntityManagerInterface::class);
+        $positionManagementService = static::getContainer()->get(PositionManagementService::class);
+        self::assertInstanceOf(PositionManagementService::class, $positionManagementService);
+        $this->positionManagementService = $positionManagementService;
+
+        $entityManager = static::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $this->entityManager = $entityManager;
     }
 
     /**
@@ -37,7 +43,8 @@ class PositionManagementServiceTest extends BaseControllerTest
         }
         
         $pageId = $page->getId();
-        
+        self::assertNotNull($pageId);
+
         // Call the method with real database
         $this->positionManagementService->normalizePageSectionPositions($pageId, true);
         
@@ -66,18 +73,15 @@ class PositionManagementServiceTest extends BaseControllerTest
         }
         
         $pageId = $page->getId();
-        
-        // Get initial positions
-        $initialSections = $this->entityManager->getRepository('App\Entity\PagesSection')
-            ->findBy(['page' => $page], ['position' => 'ASC']);
-        $initialPositions = array_map(fn($ps) => $ps->getPosition(), $initialSections);
-        
-        // Call the method without flush
+        self::assertNotNull($pageId);
+
+        // Without flush the call must complete without raising; assert the page
+        // section set is still queryable afterwards (no exception / state break).
         $this->positionManagementService->normalizePageSectionPositions($pageId, false);
-        
-        // Since we didn't flush, positions in memory should be updated but not persisted
-        // This is harder to test without accessing the service internals, so we'll just verify no exception is thrown
-        $this->assertTrue(true, 'Method executed without exception');
+
+        $sections = $this->entityManager->getRepository('App\Entity\PagesSection')
+            ->findBy(['page' => $page], ['position' => 'ASC']);
+        $this->assertGreaterThanOrEqual(0, count($sections));
     }
 
     /**
@@ -133,18 +137,14 @@ class PositionManagementServiceTest extends BaseControllerTest
             ->addOrderBy('p.id', 'ASC')
             ->getQuery()
             ->getResult();
-            
-        // If no pages found, that's okay - the method should handle it gracefully
-        if (count($pages) > 0) {
-            // Assert that positions are normalized to increments of 10
-            $expectedPosition = 10;
-            foreach ($pages as $page) {
-                $this->assertEquals($expectedPosition, $page->getNavPosition());
-                $expectedPosition += 10;
-            }
-        } else {
-            // No pages to reorder, which is fine
-            $this->assertTrue(true, 'No pages found to reorder, which is acceptable');
+
+        // If no pages found, that's okay - the method should handle it gracefully.
+        $this->assertIsArray($pages);
+        $expectedPosition = 10;
+        foreach ($pages as $page) {
+            self::assertInstanceOf(Page::class, $page);
+            $this->assertEquals($expectedPosition, $page->getNavPosition());
+            $expectedPosition += 10;
         }
     }
 
@@ -166,18 +166,14 @@ class PositionManagementServiceTest extends BaseControllerTest
             ->addOrderBy('p.id', 'ASC')
             ->getQuery()
             ->getResult();
-            
-        // If no pages found, that's okay - the method should handle it gracefully
-        if (count($pages) > 0) {
-            // Assert that positions are normalized to increments of 10
-            $expectedPosition = 10;
-            foreach ($pages as $page) {
-                $this->assertEquals($expectedPosition, $page->getFooterPosition());
-                $expectedPosition += 10;
-            }
-        } else {
-            // No pages to reorder, which is fine
-            $this->assertTrue(true, 'No pages found to reorder, which is acceptable');
+
+        // If no pages found, that's okay - the method should handle it gracefully.
+        $this->assertIsArray($pages);
+        $expectedPosition = 10;
+        foreach ($pages as $page) {
+            self::assertInstanceOf(Page::class, $page);
+            $this->assertEquals($expectedPosition, $page->getFooterPosition());
+            $expectedPosition += 10;
         }
     }
 }

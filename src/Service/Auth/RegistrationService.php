@@ -17,6 +17,7 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
+use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -64,18 +65,30 @@ class RegistrationService extends BaseService
         ['open_registration' => $openRegistration, 'group_id' => $groupId] =
             $this->resolveSectionPolicy($pageId);
 
-        if (!$openRegistration) {
-            $vc    = $this->consumeRegistrationCode($code);
-            $group = $vc->getGroup() ?? throw new \LogicException('consumeRegistrationCode returned code without group.');
-        } else {
-            $vc    = null;
-            $group = $this->resolveGroup($groupId);
-        }
+        $normalizedCode = $code !== null ? trim($code) : null;
 
-        $user = $this->entityManager->wrapInTransaction(function () use ($email, $group, $vc) {
-            if ($vc !== null) {
-                $vc->setConsumed(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+        // Everything that decides "is this code still valid?" and "is the user
+        // created?" runs in ONE transaction so the code is consumed only after
+        // the user exists and a rollback leaves validation_codes untouched.
+        $jobId = $this->entityManager->wrapInTransaction(function () use ($email, $openRegistration, $groupId, $normalizedCode): int {
+            if (!$openRegistration) {
+                if ($normalizedCode === null || $normalizedCode === '') {
+                    throw new \InvalidArgumentException('A registration code is required.');
+                }
+
+                // Atomically claim the code: the row is locked FOR UPDATE so a
+                // concurrent registration with the same code blocks here and
+                // then sees consumed != null — only one request can ever win.
+                $vc    = $this->claimRegistrationCode($normalizedCode);
+                $group = $vc->getGroup();
+                if ($group === null) {
+                    throw new \InvalidArgumentException('Registration code has no group assigned.');
+                }
+            } else {
+                $vc    = null;
+                $group = $this->resolveGroup($groupId);
             }
+
             $user = new User();
             $user->setEmail($email);
             $user->setBlocked(true);
@@ -92,6 +105,14 @@ class RegistrationService extends BaseService
             $this->entityManager->flush();
 
             $this->assignGroup($user, $group);
+
+            // Link + consume the code only now that the user has an ID. The
+            // owning side (ValidationCode.user) writes validation_codes.id_users.
+            if ($vc !== null) {
+                $vc->setConsumed(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+                $vc->setUser($user);
+            }
+
             $this->entityManager->flush();
 
             $validationResult = $this->userValidationService->setupUserValidation($user);
@@ -118,7 +139,11 @@ class RegistrationService extends BaseService
             return is_numeric($validationResult['job_id']) ? (int) $validationResult['job_id'] : 0;
         });
 
-        $this->userValidationService->executeScheduledValidationEmail((int) $user);
+        // Send the validation email only after the user + code consumption have
+        // been committed.
+        if ($jobId > 0) {
+            $this->userValidationService->executeScheduledValidationEmail($jobId);
+        }
     }
 
     /**
@@ -231,19 +256,17 @@ class RegistrationService extends BaseService
     }
 
     /**
-     * Validate a registration code and return the managed entity.
-     * The caller marks it consumed inside the transaction so the change is atomic
-     * with user creation.
+     * Lock and validate a registration code so it can be consumed atomically.
+     *
+     * MUST be called inside an open transaction: the row is fetched with a
+     * PESSIMISTIC_WRITE lock (SELECT ... FOR UPDATE). A second concurrent
+     * registration using the same code blocks on the lock and, once the first
+     * transaction commits, sees consumed != null and is rejected. This is what
+     * guarantees a code creates at most one user.
      */
-    private function consumeRegistrationCode(?string $code): ValidationCode
+    private function claimRegistrationCode(string $code): ValidationCode
     {
-        if ($code === null || trim($code) === '') {
-            throw new \InvalidArgumentException('A registration code is required.');
-        }
-
-        $vc = $this->entityManager->getRepository(ValidationCode::class)->findOneBy([
-            'code' => trim($code),
-        ]);
+        $vc = $this->entityManager->find(ValidationCode::class, $code, LockMode::PESSIMISTIC_WRITE);
 
         if ($vc === null) {
             throw new \InvalidArgumentException('Invalid registration code.');
@@ -251,10 +274,6 @@ class RegistrationService extends BaseService
 
         if ($vc->getConsumed() !== null) {
             throw new \InvalidArgumentException('This registration code has already been used.');
-        }
-
-        if ($vc->getGroup() === null) {
-            throw new \InvalidArgumentException('Registration code has no group assigned.');
         }
 
         return $vc;

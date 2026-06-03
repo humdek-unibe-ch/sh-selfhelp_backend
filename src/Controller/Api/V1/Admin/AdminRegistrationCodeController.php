@@ -49,7 +49,7 @@ class AdminRegistrationCodeController extends AbstractController
 
         $result = $this->registrationCodeService->getAll($filters, $page, $pageSize);
 
-        return $this->responseFormatter->formatSuccess($result, null, Response::HTTP_OK, true);
+        return $this->responseFormatter->formatSuccess($result, 'responses/admin/registration_codes_list', Response::HTTP_OK, true);
     }
 
     /**
@@ -72,7 +72,9 @@ class AdminRegistrationCodeController extends AbstractController
                 return;
             }
 
-            fputcsv($out, ['code', 'group_name', 'status', 'created_at', 'consumed_at']);
+            // PHP 8.4: pass $escape explicitly (its default changes to '' in 9.0);
+            // '' yields RFC 4180-correct CSV with no backslash escaping.
+            fputcsv($out, ['code', 'group_name', 'status', 'created_at', 'consumed_at', 'user_email'], escape: '');
 
             foreach ($rows as $row) {
                 fputcsv($out, [
@@ -81,7 +83,8 @@ class AdminRegistrationCodeController extends AbstractController
                     $row['status'],
                     $row['created_at'],
                     $row['consumed_at'],
-                ]);
+                    $row['user_email'],
+                ], escape: '');
             }
 
             fclose($out);
@@ -106,7 +109,7 @@ class AdminRegistrationCodeController extends AbstractController
 
             $result = $this->registrationCodeService->generate($count, $groupId);
 
-            return $this->responseFormatter->formatSuccess($result, null, Response::HTTP_CREATED, true);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/registration_codes_generate', Response::HTTP_CREATED, true);
         } catch (RequestValidationException $e) {
             throw $e;
         } catch (\InvalidArgumentException $e) {
