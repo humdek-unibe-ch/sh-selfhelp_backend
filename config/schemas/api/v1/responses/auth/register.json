@@ -1,0 +1,21 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Auth Register Success Response",
+    "description": "Schema for a successful self-registration. The account is created blocked; a validation email is sent so the user can set a password and activate.",
+    "allOf": [
+        { "$ref": "../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "registered": {
+                    "type": "boolean",
+                    "description": "Always true on success; the account was created and a validation email queued."
+                }
+            },
+            "required": ["registered"]
+        }
+    },
+    "required": ["data"]
+}
