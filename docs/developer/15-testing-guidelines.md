@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | Single PHPUnit config with DAMA transaction rollback | Implemented | `phpunit.dist.xml`, `config/packages/test/doctrine.yaml` |
 | QA baseline fixture (production permission model) + fixture version | Implemented | `src/DataFixtures/Test/QaBaselineFixture.php` |
+| QA frontend golden fixture (`qa-feedback` form page) + smoke proof | Implemented | `src/DataFixtures/Test/QaFrontendGoldenFixture.php`, `tests/Smoke/QaFrontendGoldenFixtureSmokeTest.php` |
 | Safe test DB reset command | Implemented | `src/Command/Test/AppTestResetDbCommand.php` |
 | HTTP/kernel base test cases + envelope assertions + JWT login | Implemented | `tests/Support/QaWebTestCase.php`, `QaKernelTestCase.php` |
 | Performance budgets | Implemented | `tests/Support/Timing.php` |
@@ -30,6 +31,7 @@
 | Migration round-trip CI | Implemented | `.github/workflows/migration-test.yml` |
 | Coverage gate enforcement in CI | Implemented (shared, blocking) — see *Coverage gates* below | `sh-selfhelp_shared/vitest.config.ts`, `shared-tests.yml` |
 | Playwright golden E2E + perf budgets | Implemented (Slice 7) | frontend repo: `e2e/golden/`, `e2e-golden.yml` |
+| One-command frontend E2E harness (`npm run test:golden`) | Implemented | frontend repo: `scripts/e2e-stack.mjs` |
 | axe-core accessibility specs | Implemented (Slice 11) | frontend repo: `e2e/a11y/a11y.spec.ts`, `e2e/utils/a11y.ts` |
 | Visual regression + labelled baseline updates | Implemented (Slice 11) | frontend repo: `e2e/visual/visual.spec.ts`, `.github/workflows/visual-snapshots.yml` |
 | Lighthouse CI (warning-only) | Implemented (Slice 11) | frontend repo: `lighthouserc.json`, `.github/workflows/lighthouse.yml` |
@@ -106,6 +108,72 @@ composer test:release     # before pushing
 - `QaBaselineFixture::QA_FIXTURE_VERSION` (e.g. `2026_05_22_001`) is written to a DB marker. The smoke test prints and asserts it, so a stale/missing seed fails loudly.
 
 `QaWebTestCase::setUp()` asserts the baseline is loaded (via `InteractsWithQaBaseline`) before any test runs.
+
+### QA frontend golden fixture (`qa-feedback`)
+
+`QaFrontendGoldenFixture` (also group `qa`, loaded alongside the baseline by
+`composer test:reset-db`) owns the canonical CMS page the **frontend** golden
+E2E drives, so the frontend repo no longer needs hand-exported QA variables or
+a hand-built form page. It seeds:
+
+- a page with keyword `qa-feedback` at URL `/qa-feedback` (ACL-gated, **not**
+  open access);
+- a `form-log` section (a log form, so the page renders without a pre-existing
+  data table) carrying a non-empty `alert_success` (what makes the frontend
+  `FormStyle` render its "Success" alert);
+- a child `text-input` section whose CMS `name` is `qa_message` (the DOM
+  `name="qa_message"` the spec fills);
+- a `select + insert` ACL for the seeded **`subject`** group, so
+  `qa.user@selfhelp.test` (a subject member) can view **and** submit the form —
+  the real authenticated form path.
+
+It follows the production entity/service patterns of
+`tests/Support/Factories/PageSectionFactory` (Doctrine entities +
+`ACLService::addGroupAcl`) without `src/` depending on a `tests/` class, is
+idempotent under `--append`, and invalidates the `PAGES`/`SECTIONS`/`PERMISSIONS`
+cache categories after seeding. `QaFrontendGoldenFixtureSmokeTest` (group
+`smoke`) proves a fresh `test:reset-db` produced the page, the section/field
+graph, and the subject ACL (and that `qa.user` resolves `select`+`insert`).
+
+The canonical QA constants the frontend mirrors:
+
+| Frontend env | Value | Backend source |
+| --- | --- | --- |
+| `QA_USER_EMAIL` | `qa.user@selfhelp.test` | `QaBaselineFixture::QA_USER_EMAIL` |
+| `QA_USER_PASSWORD` | `QaPassw0rd!2026` | `QaBaselineFixture::QA_PASSWORD` |
+| `QA_FORM_PAGE_KEYWORD` | `qa-feedback` | `QaFrontendGoldenFixture::QA_FORM_PAGE_KEYWORD` |
+| `QA_FORM_FIELDS` | `{"qa_message":"qa automated golden entry"}` | `QaFrontendGoldenFixture::QA_FORM_FIELD_NAME` |
+| `QA_FORM_SUBMIT_LABEL` | `Save` | frontend `FormStyle` default |
+
+### One-command frontend golden E2E
+
+The frontend repo ships a reusable harness (`scripts/e2e-stack.mjs`) so a
+developer runs the whole stack with **one command and zero manual exports**:
+
+```bash
+# in sh-selfhelp_frontend
+npm run test:golden
+```
+
+That harness locates this backend (via `SELFHELP_BACKEND_DIR` or the sibling
+`../sh-selfhelp_backend`), brings up `docker-compose.test.yml`, generates JWT
+test keys if missing, runs `composer test:reset-db` (seeding both fixtures
+above), starts Symfony on `127.0.0.1:8000` and Next on `127.0.0.1:3000`, warms
+the auth/page/form paths, runs the Playwright golden suite, and stops only the
+processes it started. The same harness backs `npm run test:a11y` /
+`test:visual` (and future `admin` / `plugin` suites) — see the frontend README
+for the override knobs.
+
+The backend is served by the built-in `php -S` through a small router
+(`scripts/php-server-router.php` in the frontend repo): `php -S` does **not**
+expose the process `APP_ENV` to the app (only the CLI/console SAPI does), so a
+plain `php -S` would boot `dev` and miss the seeded `_test` database — the router
+bridges `getenv()` → `$_SERVER` so the app boots `test`, and on POSIX enables
+`PHP_CLI_SERVER_WORKERS` for concurrency. The golden spec asserts the canonical
+perf budgets (login < 500 ms, form submit < 1000 ms) against the **API
+round-trip**; on a single-threaded local `php -S` (Windows) the harness relaxes
+only the blocking limit (timings stay logged/warned), while CI's multi-worker
+server enforces the strict budgets.
 
 ## Safe DB reset
 
