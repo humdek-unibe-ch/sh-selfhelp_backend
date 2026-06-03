@@ -89,7 +89,11 @@ final class AppTestResetDbSafetyTest extends TestCase
         $tester = $this->tester('test', 'selfhelp_test', 'localhost');
 
         self::assertSame(Command::FAILURE, $tester->execute(['--force' => true]));
-        self::assertStringContainsString('looks like a real environment', $tester->getDisplay());
+        // Collapse whitespace: the SymfonyStyle error block wraps to the
+        // terminal width, so on a narrow CI console this phrase straddles a
+        // newline. Normalising keeps the assertion width-independent.
+        $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
+        self::assertStringContainsString('looks like a real environment', $display);
     }
 
     public function testRefusesWithoutForceFlag(): void

@@ -11,7 +11,8 @@ namespace App\Tests\Plugin\Manifest;
 
 use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\PluginManifestLoader;
-use App\Tests\Support\QaKernelTestCase;
+use App\Plugin\Manifest\PluginManifestValidator;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -22,16 +23,19 @@ use Symfony\Component\HttpFoundation\Response;
  * must be rejected with HTTP 422 (Unprocessable Content) carried in the
  * exception code, so `AdminPluginController::respondWithError()` maps it to a
  * client error instead of a misleading 500. Runs against the real
- * `PluginManifestValidator` + canonical schema (no mocks, no DB writes).
+ * `PluginManifestValidator` + canonical schema (no mocks, no kernel, no DB) so
+ * it belongs to the DB-free `unit` suite like the other tests/Plugin/* tests.
  */
-final class PluginManifestLoaderTest extends QaKernelTestCase
+final class PluginManifestLoaderTest extends TestCase
 {
     private PluginManifestLoader $loader;
 
     protected function setUp(): void
     {
-        parent::setUp();
-        $this->loader = $this->service(PluginManifestLoader::class);
+        // Build the loader on the real validator + canonical schema directly —
+        // no container/DB, mirroring the sibling pure-unit plugin-host tests.
+        $schemaPath = \dirname(__DIR__, 3) . '/docs/plugins/plugin-manifest.schema.json';
+        $this->loader = new PluginManifestLoader(new PluginManifestValidator($schemaPath));
     }
 
     /**
