@@ -11,6 +11,7 @@ use App\Entity\Action;
 use App\Service\Action\ActionConfig;
 use App\Service\Action\ActionConfigRuntimeService;
 use App\Service\Core\InterpolationService;
+use App\Tests\Support\NarrowsJson;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -19,6 +20,8 @@ use PHPUnit\Framework\TestCase;
  */
 class ActionConfigRuntimeServiceTest extends TestCase
 {
+    use NarrowsJson;
+
     /**
      * Ensure schedule values are left untouched when overwrite variables are disabled.
      */
@@ -30,10 +33,10 @@ class ActionConfigRuntimeServiceTest extends TestCase
             ->method('interpolateArray')
             ->willReturnCallback(static fn(array $config): array => $config);
 
-        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager = $this->createStub(EntityManagerInterface::class);
         $service = new ActionConfigRuntimeService($interpolationService, $entityManager);
 
-        $action = (new Action())->setConfig(json_encode([
+        $action = (new Action())->setConfig((string) json_encode([
             ActionConfig::OVERWRITE_VARIABLES => false,
             ActionConfig::SELECTED_OVERWRITE_VARIABLES => ['send_after'],
             ActionConfig::BLOCKS => [[
@@ -47,7 +50,15 @@ class ActionConfigRuntimeServiceTest extends TestCase
 
         $runtimeConfig = $service->buildRuntimeConfig($action, ['send_after' => 99]);
 
-        $this->assertSame(5, $runtimeConfig[ActionConfig::BLOCKS][0][ActionConfig::JOBS][0][ActionConfig::SCHEDULE_TIME]['send_after']);
+        $this->assertSame(5, $this->jsonGet(
+            $runtimeConfig,
+            ActionConfig::BLOCKS,
+            0,
+            ActionConfig::JOBS,
+            0,
+            ActionConfig::SCHEDULE_TIME,
+            'send_after'
+        ));
     }
 
     /**
@@ -61,10 +72,10 @@ class ActionConfigRuntimeServiceTest extends TestCase
             ->method('interpolateArray')
             ->willReturnCallback(static fn(array $config): array => $config);
 
-        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager = $this->createStub(EntityManagerInterface::class);
         $service = new ActionConfigRuntimeService($interpolationService, $entityManager);
 
-        $action = (new Action())->setConfig(json_encode([
+        $action = (new Action())->setConfig((string) json_encode([
             ActionConfig::OVERWRITE_VARIABLES => true,
             ActionConfig::SELECTED_OVERWRITE_VARIABLES => ['send_after'],
             ActionConfig::BLOCKS => [[
@@ -78,6 +89,14 @@ class ActionConfigRuntimeServiceTest extends TestCase
 
         $runtimeConfig = $service->buildRuntimeConfig($action, ['send_after' => 99]);
 
-        $this->assertSame(99, $runtimeConfig[ActionConfig::BLOCKS][0][ActionConfig::JOBS][0][ActionConfig::SCHEDULE_TIME]['send_after']);
+        $this->assertSame(99, $this->jsonGet(
+            $runtimeConfig,
+            ActionConfig::BLOCKS,
+            0,
+            ActionConfig::JOBS,
+            0,
+            ActionConfig::SCHEDULE_TIME,
+            'send_after'
+        ));
     }
 }

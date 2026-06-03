@@ -27,6 +27,15 @@ class PageService extends BaseService
     // Default values for language
     private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
 
+    // Pages where should_fallback is meaningful: keyword must match a section style name.
+    // keyword => style name to look for. If style name equals keyword, just use keyword as value.
+    private const FALLBACK_CHECK_KEYWORDS = [
+        'login'                    => 'login',
+        'two-factor-authentication' => 'twoFactorAuth',
+        'reset_password'           => 'resetPassword',
+        'profile'                  => 'profile',
+    ];
+
     public function __construct(
         private readonly SectionRepository $sectionRepository,
         private readonly LookupService $lookupService,
@@ -373,6 +382,14 @@ class PageService extends BaseService
             $seo = $this->resolvePageSeoFields($page_id, $languageId);
             $hydrated['page']['title'] = $seo['title'];
             $hydrated['page']['description'] = $seo['description'];
+            $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
+            $keyword = $page->getKeyword();
+            if ($keyword !== null) {
+                $fallback = $this->shouldFallback($flatSections, $keyword);
+                if ($fallback !== null) {
+                    $hydrated['page']['should_fallback'] = $fallback;
+                }
+            }
         }
 
         return $hydrated;
@@ -505,7 +522,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($languageId, $page) {
+        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -526,6 +543,14 @@ class PageService extends BaseService
                     'sections' => $this->getPageSections((int) $page->getId(), $languageId)
                 ]
             ];
+
+            $keyword = $page->getKeyword();
+            if ($keyword !== null) {
+                $fallback = $this->shouldFallback($flatSections, $keyword);
+                if ($fallback !== null) {
+                    $pageData['page']['should_fallback'] = $fallback;
+                }
+            }
 
             return $pageData;
         });
@@ -568,6 +593,33 @@ class PageService extends BaseService
      * @param list<array<string, mixed>> $flatSections Flat sections array from repository
      * @param int $pageId The page ID for caching key
      * @return array<int, array{has_current_user_config: bool, has_global_config: bool}> Associative array with data table IDs as keys and config info as values
+     */
+    /**
+     * Returns true when the keyword is in the fallback whitelist AND no section
+     * on the page has a style name matching the keyword.
+     * Returns null when the keyword is not in the whitelist (field omitted from response).
+     */
+    /**
+     * @param list<array<string, mixed>> $flatSections
+     */
+    private function shouldFallback(array $flatSections, string $keyword): ?bool
+    {
+        if (!isset(self::FALLBACK_CHECK_KEYWORDS[$keyword])) {
+            return null;
+        }
+        $expectedStyle = self::FALLBACK_CHECK_KEYWORDS[$keyword];
+        foreach ($flatSections as $row) {
+            $styleName = $row['style_name'] ?? null;
+            if (is_string($styleName) && $styleName === $expectedStyle) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $flatSections
+     * @return array<int, array{has_current_user_config: bool, has_global_config: bool}>
      */
     private function extractDataTableDependencies(array $flatSections, int $pageId): array
     {

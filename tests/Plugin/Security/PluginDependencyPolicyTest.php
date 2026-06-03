@@ -47,6 +47,9 @@ final class PluginDependencyPolicyTest extends TestCase
         }
     }
 
+    /**
+     * @param list<array<string, string>> $packages
+     */
     private function seedInstalledJson(array $packages): void
     {
         $dir = $this->tmpDir . '/vendor/composer';

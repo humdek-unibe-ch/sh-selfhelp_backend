@@ -1,0 +1,168 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# Backend test suite (Slice 1A foundation).
+#
+# This is the PR-tier functional gate that proves the QA test foundation
+# works end to end on a clean machine:
+#
+#   1. Reset an isolated test database (drop -> create -> migrate -> seed
+#      the QA baseline fixture) via `composer test:reset-db`.
+#   2. Run the DB-free unit suite (`composer test:unit`).
+#   3. Run the smoke suite (`composer test:smoke`): qa.admin logs in over
+#      the real JWT flow, lists admin pages, and asserts the seeded
+#      QA_FIXTURE_VERSION so a stale/missing seed fails loudly.
+#   4. Run the golden suite (`composer test:golden`): the reference
+#      form -> action -> scheduled-job workflow, executed against the real
+#      services with no real outbound email/realtime traffic.
+#
+# It complements plugin-host-check.yml (static + schema + migration +
+# plugin gate). Keep both green before merging.
+#
+# Local reproduction (documented in docs/developer/15-testing-guidelines.md):
+#   docker compose -f docker-compose.test.yml up -d
+#   composer install
+#   composer test:reset-db && composer test:unit && composer test:smoke && composer test:golden
+
+name: backend-tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend tests (reset-db + unit + smoke + golden)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # GitHub waits for these health checks to go green before the steps
+    # run, so the database/cache are guaranteed reachable. This satisfies
+    # the anti-flakiness rule: wait for health checks, never sleep.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    # Test-only, throwaway values that only ever touch the ephemeral
+    # service containers. `when@test` Doctrine config appends `_test`, so
+    # the effective database is `selfhelp_ci_test` -- which satisfies the
+    # `app:test:reset-db` safety guard (name must contain `_test`, host
+    # must be an allowed test host).
+    env:
+      APP_ENV: test
+      APP_DEBUG: '0'
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/selfhelp_ci?serverVersion=8.0&charset=utf8mb4"
+      REDIS_URL: "redis://127.0.0.1:6379"
+      # Empty on purpose: no Mercure hub runs in CI.
+      MERCURE_PUBLIC_URL: ""
+
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, intl, mbstring, json, pdo, pdo_mysql, redis, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        # --no-scripts: the Symfony auto-scripts boot the kernel, which
+        # needs the env prepared in the next step.
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
+
+      - name: Enforce QA test-data convention (fast static gate)
+        # Fails the build if a non-legacy test invents non-qa business data or
+        # logs in with placeholder credentials (plan §5). Pure PHP, no DB.
+        run: composer test:check-data
+
+      - name: Prepare test environment (.env + JWT keys)
+        run: |
+          set -euo pipefail
+          # A fresh checkout has no .env (gitignored). The tracked
+          # .env.default is the canonical template; the job-env block above
+          # overrides the CI-specific values (Symfony Dotenv does not
+          # override already-set vars).
+          cp .env.default .env
+          # The JWT keypair is gitignored; the smoke test signs/verifies a
+          # real JWT, so it MUST exist here.
+          php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction
+          echo "Test environment prepared."
+
+      - name: Reset test database (drop -> create -> migrate -> seed QA baseline)
+        run: composer test:reset-db
+
+      - name: PHPUnit unit suite (DB-free)
+        # Mirrors `composer test:unit`; --log-junit captures an artifact.
+        run: php bin/phpunit --testsuite=Unit --log-junit build/phpunit/unit.junit.xml
+
+      - name: PHPUnit smoke suite (login + fixture version)
+        # Mirrors `composer test:smoke`; --log-junit captures an artifact.
+        run: php bin/phpunit --testsuite=Smoke --testdox --log-junit build/phpunit/smoke.junit.xml
+
+      - name: PHPUnit security group (permission matrix)
+        # Negative-permission matrix tests (admin allowed, non-admins 403,
+        # anonymous 401) across the admin API. Scoped to the `security` group
+        # so it runs the hardened permission tests without pulling in the
+        # not-yet-migrated legacy Integration tests.
+        run: php bin/phpunit --testsuite=Integration --group=security --testdox --log-junit build/phpunit/security.junit.xml
+
+      - name: PHPUnit golden suite (form -> action -> scheduled job + page versioning)
+        # Mirrors `composer test:golden`; the reference business workflows.
+        run: php bin/phpunit --testsuite=Golden --testdox --log-junit build/phpunit/golden.junit.xml
+
+      - name: PHPUnit certification suite (plugin install-lifecycle)
+        # Plugin certification base applied to the synthetic fixture: proves a
+        # manifest clears signature + compatibility + capability validation and
+        # records a managed install operation, with concurrency-guard + cancel.
+        run: php bin/phpunit --testsuite=Certification --testdox --log-junit build/phpunit/certification.junit.xml
+
+      - name: Upload failure artifacts (PHPUnit logs + app logs)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-tests-artifacts
+          # PHPUnit JUnit XML + any Symfony test-env logs. Retained only on
+          # failure to keep storage low and speed up debugging.
+          path: |
+            build/phpunit/**
+            var/log/**
+          if-no-files-found: ignore
+          retention-days: 7

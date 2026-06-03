@@ -18,8 +18,17 @@ doctrine:
         #     string_functions:
         #         test_string: App\DQL\TestStringFunction
 
-# If you use DAMA\DoctrineTestBundle, uncomment and configure:
-# dama_doctrine_test:
-#    enable_static_connection: true # Recommended for speed
-#    enable_static_meta_data_cache: true
-#    enable_static_query_cache: true
+# DAMA DoctrineTestBundle wraps each test in a transaction that is rolled
+# back on tearDown. The QA baseline (qa.admin/editor/user/guest) is seeded
+# once by `php bin/console app:test:reset-db` (a separate process, so its
+# COMMIT is real); every test then starts from that committed baseline and
+# any rows a test writes are discarded automatically.
+#
+# Limitation: MySQL implicitly COMMITs on DDL (CREATE/ALTER/DROP TABLE), so
+# tests that run plugin migrations (which create tables) cannot rely on the
+# rollback and must self-clean. Those tests already do (see
+# tests/Controller/Api/V1/Admin/Plugin/ManagedModeInstallTest.php).
+dama_doctrine_test:
+    enable_static_connection: true
+    enable_static_meta_data_cache: true
+    enable_static_query_cache: true

@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# Migration round-trip gate (Slice 4).
+#
+# Proves every migration is reversible AND produces the ORM-mapped schema:
+#
+#   drop -> create -> migrate latest -> schema:validate
+#        -> migrate prev -> migrate latest -> schema:validate
+#
+# It runs `composer test:migration` (PHPUnit `--group=migration`), whose
+# MigrationRoundTripTestCase drives a DEDICATED throwaway database (the
+# configured db name + `_migrt`), so it never touches the shared `*_test`
+# database. These tests are slow + need CREATE DATABASE privilege, so this is
+# a release-tier / migrations-changed gate, separate from backend-tests.yml.
+#
+# Triggers: any PR that touches migrations or the round-trip harness, every
+# push to main, and manual dispatch.
+
+name: migration-test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'migrations/**'
+      - 'tests/Support/MigrationRoundTripTestCase.php'
+      - 'tests/Integration/Migrations/**'
+      - '.github/workflows/migration-test.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-round-trip:
+    name: Migration round-trip (up -> down -> up + schema:validate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    # root is used so the test can CREATE/DROP the throwaway `*_migrt_test`
+    # database. `when@test` appends `_test`, so the effective databases are
+    # `selfhelp_ci_test` (unused here) and `selfhelp_ci_migrt_test`.
+    env:
+      APP_ENV: test
+      APP_DEBUG: '0'
+      DATABASE_URL: "mysql://root:root@127.0.0.1:3306/selfhelp_ci?serverVersion=8.0&charset=utf8mb4"
+      # No Redis/Mercure needed: migrations + schema:validate only.
+      MERCURE_PUBLIC_URL: ""
+
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, intl, mbstring, json, pdo, pdo_mysql, sodium
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
+
+      - name: Prepare environment (.env)
+        run: |
+          set -euo pipefail
+          # Fresh checkout has no .env (gitignored); the migration commands
+          # boot the kernel for schema:validate and need it. JWT keys are NOT
+          # required for migrations / schema validation.
+          cp .env.default .env
+          echo "Environment prepared."
+
+      - name: Migration round-trip suite
+        run: composer test:migration
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-test-artifacts
+          path: |
+            var/log/**
+          if-no-files-found: ignore
+          retention-days: 7

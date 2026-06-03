@@ -29,7 +29,7 @@ class StyleControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Get styles failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
         
         // Validate response against JSON schema
@@ -40,19 +40,19 @@ class StyleControllerTest extends BaseControllerTest
         $this->assertEmpty($validationErrors, "Response for GET /api/v1/styles failed schema validation:\n" . implode("\n", $validationErrors));
         
         // Verify the response structure
-        $this->assertIsArray($data->data, 'Data property is not an array');
+        $groups = $this->asList($data->data);
         
         // If there are style groups, verify their structure
-        if (count($data->data) > 0) {
-            $firstGroup = $data->data[0];
+        if (count($groups) > 0) {
+            $firstGroup = $this->asObject($groups[0]);
             $this->assertTrue(property_exists($firstGroup, 'id'), 'Style group does not have id property');
             $this->assertTrue(property_exists($firstGroup, 'name'), 'Style group does not have name property');
             $this->assertTrue(property_exists($firstGroup, 'styles'), 'Style group does not have styles property');
-            $this->assertIsArray($firstGroup->styles, 'Styles property is not an array');
+            $styles = $this->asList($firstGroup->styles);
             
             // If there are styles in the first group, verify their structure
-            if (count($firstGroup->styles) > 0) {
-                $firstStyle = $firstGroup->styles[0];
+            if (count($styles) > 0) {
+                $firstStyle = $this->asObject($styles[0]);
                 $this->assertTrue(property_exists($firstStyle, 'id'), 'Style does not have id property');
                 $this->assertTrue(property_exists($firstStyle, 'name'), 'Style does not have name property');
                 $this->assertTrue(property_exists($firstStyle, 'description'), 'Style does not have description property');

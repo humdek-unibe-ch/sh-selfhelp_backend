@@ -11,19 +11,22 @@ namespace App\Tests\Controller\Api\V1;
 use Symfony\Component\HttpFoundation\Response;
 use App\Entity\Group;
 use App\Entity\Page;
-use App\Entity\AclGroup;
+use App\Entity\PageAclGroup;
 
 class AdminGroupControllerTest extends BaseControllerTest
 {
     private ?int $testGroupId = null;
-    private string $testGroupName = 'Test Group for API Tests';
+    private string $testGroupName = 'qa_group_api_test';
+    /** @var list<int|null> */
     private array $testPageIds = [];
-    private $entityManager;
+    private \Doctrine\ORM\EntityManagerInterface $entityManager;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->entityManager = self::getContainer()->get('doctrine')->getManager();
+        $em = self::getContainer()->get(\Doctrine\ORM\EntityManagerInterface::class);
+        self::assertInstanceOf(\Doctrine\ORM\EntityManagerInterface::class, $em);
+        $this->entityManager = $em;
         $this->createTestPages();
     }
 
@@ -42,8 +45,10 @@ class AdminGroupControllerTest extends BaseControllerTest
             ->getQuery()
             ->getResult();
         
-        foreach ($pages as $page) {
-            $this->testPageIds[] = $page->getId();
+        foreach ((is_array($pages) ? $pages : []) as $page) {
+            if ($page instanceof Page) {
+                $this->testPageIds[] = $page->getId();
+            }
         }
         
         // If no pages exist, create test pages
@@ -65,7 +70,7 @@ class AdminGroupControllerTest extends BaseControllerTest
             $group = $this->entityManager->getRepository(Group::class)->find($this->testGroupId);
             if ($group) {
                 // Remove ACLs first
-                $acls = $this->entityManager->getRepository(AclGroup::class)
+                $acls = $this->entityManager->getRepository(PageAclGroup::class)
                     ->findBy(['group' => $group]);
                 foreach ($acls as $acl) {
                     $this->entityManager->remove($acl);
@@ -96,16 +101,17 @@ class AdminGroupControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         
         // Validate response structure
         $this->assertArrayHasKey('status', $data);
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('groups', $data['data']);
-        $this->assertArrayHasKey('pagination', $data['data']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('groups', $payload);
+        $this->assertArrayHasKey('pagination', $payload);
         
         // Validate pagination structure
-        $pagination = $data['data']['pagination'];
+        $pagination = $this->asArray($payload['pagination']);
         $this->assertArrayHasKey('page', $pagination);
         $this->assertArrayHasKey('pageSize', $pagination);
         $this->assertArrayHasKey('totalCount', $pagination);
@@ -114,10 +120,10 @@ class AdminGroupControllerTest extends BaseControllerTest
         $this->assertArrayHasKey('hasPrevious', $pagination);
         
         // Validate groups array
-        $this->assertIsArray($data['data']['groups']);
+        $groups = $this->asList($payload['groups']);
         
-        if (!empty($data['data']['groups'])) {
-            $group = $data['data']['groups'][0];
+        if (!empty($groups)) {
+            $group = $this->asArray($groups[0]);
             $this->assertArrayHasKey('id', $group);
             $this->assertArrayHasKey('name', $group);
             $this->assertArrayHasKey('description', $group);
@@ -145,10 +151,12 @@ class AdminGroupControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertLessThanOrEqual(5, count($data['data']['groups']));
-        $this->assertSame(1, $data['data']['pagination']['page']);
-        $this->assertSame(5, $data['data']['pagination']['pageSize']);
+        $data = $this->decodeArray();
+        $payload = $this->asArray($data['data']);
+        $this->assertLessThanOrEqual(5, count($this->asList($payload['groups'])));
+        $pagination = $this->asArray($payload['pagination']);
+        $this->assertSame(1, $pagination['page']);
+        $this->assertSame(5, $pagination['pageSize']);
     }
 
     /**
@@ -170,8 +178,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $this->assertArrayHasKey('groups', $data['data']);
+        $data = $this->decodeArray();
+        $this->assertArrayHasKey('groups', $this->asArray($data['data']));
     }
 
     /**
@@ -194,16 +202,16 @@ class AdminGroupControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($groupData)
+            (string) json_encode($groupData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_CREATED, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
         
-        $group = $data['data'];
+        $group = $this->asArray($data['data']);
         $this->assertArrayHasKey('id', $group);
         $this->assertArrayHasKey('name', $group);
         $this->assertArrayHasKey('description', $group);
@@ -217,7 +225,7 @@ class AdminGroupControllerTest extends BaseControllerTest
         $this->assertSame($groupData['requires_2fa'], $group['requires_2fa']);
         
         // Store the created group ID for other tests
-        $this->testGroupId = $group['id'];
+        $this->testGroupId = $this->asInt($group['id']);
     }
 
     /**
@@ -242,8 +250,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $group = $data['data'];
+        $data = $this->decodeArray();
+        $group = $this->asArray($data['data']);
         
         $this->assertSame($this->testGroupId, $group['id']);
         $this->assertSame($this->testGroupName, $group['name']);
@@ -261,6 +269,8 @@ class AdminGroupControllerTest extends BaseControllerTest
         // First create a group for this test
         $this->testCreateGroupSuccess();
         
+        // Group name is an immutable permission identifier: updateGroup only
+        // mutates description / requires_2fa / id_group_types, never the name.
         $updateData = [
             'name' => $this->testGroupName . ' Updated',
             'description' => 'Updated description',
@@ -276,16 +286,17 @@ class AdminGroupControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($updateData)
+            (string) json_encode($updateData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
-        $group = $data['data'];
+        $data = $this->decodeArray();
+        $group = $this->asArray($data['data']);
         
-        $this->assertSame($updateData['name'], $group['name']);
+        // Name stays the original (immutable); description + requires_2fa change.
+        $this->assertSame($this->testGroupName, $group['name']);
         $this->assertSame($updateData['description'], $group['description']);
         $this->assertSame($updateData['requires_2fa'], $group['requires_2fa']);
     }
@@ -312,10 +323,11 @@ class AdminGroupControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('acls', $data['data']);
-        $this->assertIsArray($data['data']['acls']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('acls', $payload);
+        $this->assertIsArray($payload['acls']);
     }
 
     /**
@@ -358,16 +370,17 @@ class AdminGroupControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($aclData)
+            (string) json_encode($aclData)
         );
 
         $response = $this->client->getResponse();
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $data = json_decode($response->getContent(), true);
+        $data = $this->decodeArray();
         $this->assertArrayHasKey('data', $data);
-        $this->assertArrayHasKey('acls', $data['data']);
-        $this->assertCount(2, $data['data']['acls']);
+        $payload = $this->asArray($data['data']);
+        $this->assertArrayHasKey('acls', $payload);
+        $this->assertCount(2, $this->asArray($payload['acls']));
     }
 
     /**
@@ -394,11 +407,12 @@ class AdminGroupControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($groupData)
+            (string) json_encode($groupData)
         );
 
+        // Duplicate group name is a resource conflict (409), not a 400.
         $response = $this->client->getResponse();
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $this->assertSame(Response::HTTP_CONFLICT, $response->getStatusCode());
     }
 
     /**
@@ -420,7 +434,7 @@ class AdminGroupControllerTest extends BaseControllerTest
                 'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
                 'CONTENT_TYPE' => 'application/json'
             ],
-            json_encode($groupData)
+            (string) json_encode($groupData)
         );
 
         $response = $this->client->getResponse();

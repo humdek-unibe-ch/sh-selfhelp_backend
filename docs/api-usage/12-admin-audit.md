@@ -54,7 +54,7 @@ Retrieve paginated audit logs with comprehensive filtering options.
       {
         "id": 12345,
         "user_id": 456,
-        "user_email": "admin@example.com",
+        "user_email": "admin@selfhelp.test",
         "resource_type": "pages",
         "resource_id": 789,
         "action": "read",
@@ -104,7 +104,7 @@ Retrieve detailed information about a single audit log entry.
       "id": 12345,
       "user": {
         "id": 456,
-        "email": "admin@example.com",
+        "email": "admin@selfhelp.test",
         "name": "System Administrator"
       },
       "resource_type": "pages",
@@ -190,7 +190,7 @@ Retrieve summary statistics and analytics from audit data.
       "most_active_users": [
         {
           "user_id": 456,
-          "user_email": "admin@example.com",
+          "user_email": "admin@selfhelp.test",
           "total_actions": 1250
         }
       ],

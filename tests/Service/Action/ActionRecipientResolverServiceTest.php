@@ -22,7 +22,7 @@ class ActionRecipientResolverServiceTest extends TestCase
      */
     public function testResolveReturnsSourceUserWhenNoOverridesApply(): void
     {
-        $userRepository = $this->createMock(UserRepository::class);
+        $userRepository = $this->createStub(UserRepository::class);
         $service = new ActionRecipientResolverService($userRepository);
 
         $recipients = $service->resolve([], [], 42);

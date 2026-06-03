@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace App\Tests\Plugin\PackageManager;
 
 use App\Plugin\PackageManager\PluginComposerRoot;
+use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Filesystem\Filesystem;
 
@@ -30,6 +31,8 @@ use Symfony\Component\Filesystem\Filesystem;
  */
 final class PluginComposerRootTest extends TestCase
 {
+    use NarrowsJson;
+
     private string $tmpDir;
     private Filesystem $fs;
 
@@ -72,15 +75,18 @@ final class PluginComposerRootTest extends TestCase
         $data = json_decode((string) $raw, true);
         $this->assertIsArray($data);
 
-        $this->assertSame('selfhelp/plugin-composer-root', $data['name']);
-        $this->assertSame('project', $data['type']);
+        $this->assertSame('selfhelp/plugin-composer-root', $data['name'] ?? null);
+        $this->assertSame('project', $data['type'] ?? null);
         $this->assertArrayHasKey('config', $data);
-        $this->assertSame('vendor', $data['config']['vendor-dir']);
-        $this->assertFalse($data['config']['allow-plugins']);
-        $this->assertArrayHasKey('platform', $data['config']);
-        $this->assertArrayHasKey('php', $data['config']['platform']);
-        $this->assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/', $data['config']['platform']['php']);
-        $this->assertSame('>=8.4', $data['require']['php']);
+        $config = $this->asArray($data['config']);
+        $this->assertSame('vendor', $config['vendor-dir'] ?? null);
+        $this->assertFalse($config['allow-plugins'] ?? null);
+        $this->assertArrayHasKey('platform', $config);
+        $platform = $this->asArray($config['platform']);
+        $this->assertArrayHasKey('php', $platform);
+        $this->assertMatchesRegularExpression('/^\d+\.\d+\.\d+$/', $this->asString($platform['php'] ?? null));
+        $require = $this->asArray($data['require']);
+        $this->assertSame('>=8.4', $require['php'] ?? null);
     }
 
     public function testSeededPlatformOnlyContainsValidComposerVersions(): void
@@ -88,10 +94,9 @@ final class PluginComposerRootTest extends TestCase
         $root = new PluginComposerRoot($this->tmpDir);
         $root->ensure();
 
-        $data = json_decode((string) file_get_contents($root->composerJsonPath()), true);
-        $this->assertIsArray($data);
-        $platform = $data['config']['platform'] ?? [];
-        $this->assertIsArray($platform);
+        $data = $this->asArray(json_decode((string) file_get_contents($root->composerJsonPath()), true));
+        $config = $this->asArray($data['config']);
+        $platform = $this->asArray($config['platform'] ?? null);
 
         // Every value must be a Composer-parseable version. A regression
         // here (e.g. "mysqlnd 8.4.0" sneaking back in) would crash the

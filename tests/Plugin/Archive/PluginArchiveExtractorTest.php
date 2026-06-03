@@ -156,13 +156,13 @@ final class PluginArchiveExtractorTest extends TestCase
                 'runtime' => ['entrypoint' => 'dist/plugin.esm.js', 'format' => 'esm'],
             ],
             'security' => ['trustLevel' => 'untrusted', 'capabilities' => ['frontendStyles']],
-        ], JSON_PRETTY_PRINT);
+        ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
 
         $sigJson = json_encode([
             'keyId' => 'dev',
             'signature' => 'AAAA',
             'signedPayload' => '{}',
-        ], JSON_PRETTY_PRINT);
+        ], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
 
         $esm = "export const register = () => ({ id: 'sh-test' });\n";
         $css = ".sh-test { color: red; }\n";

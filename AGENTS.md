@@ -249,6 +249,58 @@ When making changes, explain:
 - Prefer endpoint/integration tests for API behavior. Unit tests with mocks are acceptable for isolated service logic where existing tests already use that pattern.
 - Do not run the full DB-dependent suite casually if the environment is not prepared.
 
+### Canonical Testing Rules (all SelfHelp repos)
+
+These are the canonical SelfHelp testing policy, shared verbatim across the backend, frontend, shared package, mobile app, and every plugin repo. They describe the target conventions; utilities and CI workflows are introduced progressively (see `docs/developer/15-testing-guidelines.md` for current implementation status). A rule applies as soon as the tooling it references exists in this repo.
+
+1. Every new feature ships with at least one automated test at the appropriate layer (unit / integration / contract / E2E).
+2. Every bug fix ships with a regression test that fails before the fix and passes after.
+3. Every new API endpoint ships with a JSON-schema contract test **and** a permission-matrix test (admin/editor/user/guest + at least one negative cross-scope case).
+4. Every new CMS style, action type, scheduled-job type, plugin event subscriber, or plugin realtime topic ships with an integration test for registration → use → cleanup.
+5. Every new business workflow extends a golden-workflow test in `tests/Golden/` (backend) and, where a UI is involved, `e2e/golden/` (frontend / mobile).
+6. Before writing or changing a test, perform a short **test impact analysis**: which workflow can break, which services/controllers/screens/plugin contracts are touched, which existing tests should fail, which new regression test is needed. Tests existing only to inflate coverage are rejected.
+7. Tests do not depend on developer credentials. Use the seeded `qa.admin/editor/user/guest@selfhelp.test` personas.
+8. QA fixtures use the production permission model. Seed test users through the same `Lookup userStatus/userTypes`, `Group`, `Role`, and `rel_groups_users` entities that production `src/Command/CreateAdminUserCommand.php` uses. Special permissions go through normal admin/domain services, never raw SQL.
+9. All test data writes use the `qa.` / `qa-` / `qa_` prefix. Tests never create/update/delete non-QA business records. Read-only access to system baselines (languages, permissions, styles, lookups, plugin metadata, role/group/page-type) is allowed.
+10. Tests self-clean (DAMA transaction rollback or an explicit `afterEach`). Integration/golden tests pass the `QaCleanupVerifier` (or the per-repo equivalent).
+11. Do not mock domain behaviour in integration/golden tests. Unit tests may use deterministic test doubles but must not hide real business logic. Mock external dependencies (network, time, filesystem) at the boundary only.
+12. Date/time tests use `Symfony\Bridge\PhpUnit\ClockMock` (PHP), `vi.useFakeTimers()` (Vitest), or `page.clock.install()` (Playwright).
+13. Mercure events are verified via `MercureTestRecorder` (backend) or `mockMercureHub` (shared); never by polling.
+14. Anti-flakiness: no `sleep()`, no external internet, no random IDs in fixtures or assertions, no order-dependent tests, no developer-machine absolute paths.
+15. The full suite passes in random order. `composer test:random` (or the per-repo equivalent) runs nightly.
+16. Test names describe business behaviour, not the method under test (e.g. `testFinishedFormSubmissionSchedulesAndExecutesActionEmailJob`, not `testSubmit`).
+17. Prefer asserting public/domain-visible effects (API response, admin API view of scheduled jobs, Mercure event, rendered page) before internal implementation details. DB/queue assertions are secondary or a fallback.
+18. Snapshot updates (Vitest, Playwright screenshots, response fixtures) must be intentional: the change is expected, the PR explains why, and a reviewer can compare before/after. Never run `--update-snapshots` just to make CI green.
+19. Performance: any test slower than 10s is `@group golden` under `tests/Golden/` (or the per-repo golden area). PR-tier suites complete in under 10 minutes per repo.
+20. Coverage gates: ≥ 70% line on `src/Service/**` + `src/Controller/**` (backend); ≥ 60% on new files (other repos). PRs dropping coverage by > 1% on changed files are blocked.
+21. Use the standard test commands defined in this repo's Build / Dev Commands section. Never invent new test command names.
+22. Tests assert **meaningful behaviour**, not just status codes. At minimum: status + envelope shape + key returned fields + one public side effect.
+23. **Do not change production logic to make tests pass.** If a test reveals a production issue, fix the production code and explain in the PR. If the test expectation is wrong, fix the test.
+24. **Smallest runnable proof**: after every 1–3 file changes, run `test:changed` (or the single new test file). Do not extend a slice while its current state is red for an unknown reason.
+25. **Contract tests for FE/mobile/plugin-consumed responses**: every API response field consumed by frontend, mobile, or plugin code must exist in a JSON Schema under `config/schemas/api/v1/` plus a TypeScript type in `@selfhelp/shared`. Schema drift fails CI. Consumers must not depend on undocumented response fields.
+26. **Negative-permission tests are mandatory** for every permission-sensitive endpoint: allowed user → success; lower-privileged user → 403; unauthenticated user → 401; cross-scope/group user → 403 or 404 per the established access rule.
+27. **Security regression tests** are required for any change to authentication, authorization, CSRF, JWT issuance/refresh/revocation, logout/session invalidation, plugin trust level or capabilities, or ACL cache invalidation. Security tests assert failure behaviour, not only success.
+28. **API backward compatibility**: do not remove or rename a response field without (a) a schema version bump, (b) a shared TS type update, (c) frontend/mobile/plugin adaptation in the same PR, and (d) a changelog entry.
+29. **Performance budgets** for critical APIs are asserted in smoke/golden tests: login < 500 ms, admin pages list < 1000 ms, form submit < 1000 ms in the test env. Regressions above 2× the budget block PRs; 1.5×–2× warns.
+30. **No real outbound** in tests: tests never send real email/SMS/push/webhooks/external HTTP. Use `RecordingNotifier`, MSW, or a mocked HTTP client, and assert the content of the captured message.
+31. **Environment isolation**: test reset commands refuse to run unless `APP_ENV=test`, the database name contains `_test`, the host is in the allow-list, and `--force` is provided. Reset prints the target database name before destroying it.
+32. **Fixture version**: `QaBaselineFixture` exposes `QA_FIXTURE_VERSION`; smoke tests print and assert it. Stale fixtures fail fast with a clear message.
+33. **CI failure artifacts**: CI uploads PHPUnit logs, coverage report, Playwright traces/videos/screenshots, docker container logs, and a sanitized test DB dump for failed golden tests.
+34. **Accessibility checks** for Playwright golden specs use axe-core on the login page, admin page editor, public form page, and plugin admin page.
+
+### Backend-specific testing additions
+
+- Standard backend test commands: `composer test:reset-db`, `composer test:unit`, `composer test:integration`, `composer test:smoke`, `composer test:golden`, `composer test:migration` (migration round-trip), `composer test:check-data` (QA test-data guard), `composer test:changed` (fast loop while working), `composer test:release` (pre-push: check-data + reset + unit + integration + smoke + golden), `composer test:nightly` (release-tier wrapper: test:release + test:random + test:migration), `composer test:random` (order independence). Do not invent new names.
+- Test foundation utilities live in `tests/Support/`: `QaWebTestCase`, `QaKernelTestCase`, `InteractsWithQaBaseline`, `Timing`, `MercureTestRecorder`, `QaCleanupVerifier`, `Notifier/RecordingNotifier`, `Security/PermissionMatrixProvider`, `MigrationRoundTripTestCase`, and `Factories/` (`ActionFactory`, `ScheduledJobFactory`). The QA baseline seed is `src/DataFixtures/Test/QaBaselineFixture.php`; the safe reset command is `src/Command/Test/AppTestResetDbCommand.php`.
+- `tests/Golden/FormActionJobChainTest.php` (form → action → scheduled job → execution) and `tests/Golden/PageVersioningWorkflowTest.php` (CMS page create → publish → compare draft → delete) are the reference golden workflows. Copy whichever structure matches the new workflow.
+- The QA test-data convention (Testing Rule 5) is enforced by `scripts/check-test-data-prefix.php` (`composer test:check-data`), a ratchet with a `LEGACY_ALLOWLIST` that only shrinks. New tests must never trip it; migrating a legacy test removes its allowlist entry.
+- New Doctrine migrations require an `up()`+`down()` round-trip test under `tests/Integration/Migrations/<Version>RoundTripTest.php` extending `MigrationRoundTripTestCase` and tagged `#[Group('migration')]` (it uses an isolated throwaway DB and runs in `migration-test.yml`, not the PR gate). Frontend form routes are registered authoritatively by `migrations/Version20260602081706.php`.
+- New plugin lifecycle behaviour extends `tests/Controller/Api/V1/Admin/Plugin/ManagedModeInstallTest.php` — do not invent a parallel pattern.
+- Action services, scheduled-job types, and Mercure publishers each require an integration test under `tests/Service/<domain>/` plus a `tests/Golden/` extension if they introduce a workflow.
+- All new controller/permission tests extend `tests/Support/QaWebTestCase` and use the `PermissionMatrixProvider` trait (`assertAdminOnlyMatrix()` for read routes, `assertForbiddenForNonAdmins()` for write/destructive routes). Tag them `#[Group('security')]` so the CI `--group=security` gate runs them.
+- The **post-deploy tier** (Testing Rule 18.3) is `tests/Smoke/HealthSmokeTest.php`, run by `.github/workflows/post-deploy-smoke.yml` after a release is promoted. It hits the public readiness probe `GET /cms-api/v1/health` (`src/Controller/Api/V1/HealthController.php`, seeded as a permission-less route by `migrations/Version20260602091045.php`), does a real qa.admin login, round-trips a throwaway `qa_`-prefixed page (create → delete **by numeric id** — `DELETE /admin/pages/{page_id}`), executes a due scheduled job to `done`, and asserts one `acl-changed` Mercure publish — all under a 60s budget. Keep the probe minimal and secret-free; do not require auth on it.
+- Coverage gate state (Testing Rule 20): the **shared** repo enforces it as a **blocking** Vitest gate (`sh-selfhelp_shared/vitest.config.ts`, istanbul provider, ≥ 60% on the runtime-helper bundle, run via `npm run test:coverage` in `shared-tests.yml`). The backend 70% target on `src/Service`/`src/Controller` is **staged**: generate reports with `composer test:coverage` and do not regress changed-file coverage; the absolute blocking gate is enabled once the baseline reaches the target. Branch-protection required-check configuration is documented in `docs/developer/15-testing-guidelines.md`.
+
 ## Static Analysis (PHPStan) Rules
 
 PHPStan is a hard quality gate, not advisory. Every change MUST keep the
@@ -351,7 +403,7 @@ Required-before-coding checklist for multi-repo work:
 - [ ] Run validation commands from the matching repository.
 - [ ] Do not mix backend, frontend, shared, mobile, and plugin rules.
 
-Canonical document: `docs/plugins/multi-repo-agents-md.md`. Plugin repo `AGENTS.md` template: `docs/plugins/plugin-repo-agents-md-template.md`.
+Canonical document: `docs/plugins/multi-repo-agents-md.md`. Plugin repo `AGENTS.md` template: `docs/plugins/plugin-repo-agents-md-template.md`. Cross-repo version alignment (how `@selfhelp/shared` semver anchors backend/frontend/mobile/plugin compatibility, and what to update when a contract changes): `docs/developer/cross-repo-compatibility-matrix.md`.
 
 ### Extension points only
 

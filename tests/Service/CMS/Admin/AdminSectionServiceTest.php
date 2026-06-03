@@ -5,155 +5,92 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+declare(strict_types=1);
 
 namespace App\Tests\Service\CMS\Admin;
 
+use App\Entity\Page;
 use App\Exception\ServiceException;
+use App\Repository\PageRepository;
 use App\Service\CMS\Admin\AdminSectionService;
-use App\Tests\Controller\Api\V1\BaseControllerTest;
+use App\Tests\Support\QaWebTestCase;
+use Symfony\Component\HttpFoundation\Response;
 
-class AdminSectionServiceTest extends BaseControllerTest
+/**
+ * Coverage for {@see AdminSectionService::getSection()}.
+ *
+ * `getSection()` runs an admin ACL check that needs a real authenticated
+ * request context, so the success path is exercised read-only through the
+ * admin section API against the seeded `home` page (reading system baseline
+ * rows is allowed). The not-found path is asserted directly on the service
+ * because it short-circuits before the permission check.
+ *
+ * Mutating section relationships (add child / idempotent re-link / move) is
+ * covered against freshly created qa_ pages in
+ * {@see \App\Tests\Controller\Api\V1\Admin\SectionWorkflowTest} so no seeded
+ * business row is ever modified (QA test-data policy).
+ */
+class AdminSectionServiceTest extends QaWebTestCase
 {
-    private AdminSectionService $adminSectionService;
-
-    protected function setUp(): void
+    private function homePageId(): int
     {
-        parent::setUp();
-        $this->adminSectionService = static::getContainer()->get(AdminSectionService::class);
+        $repository = self::getContainer()->get(PageRepository::class);
+        self::assertInstanceOf(PageRepository::class, $repository);
+        $page = $repository->findOneBy(['keyword' => 'home']);
+        self::assertInstanceOf(Page::class, $page, 'Seeded "home" page must exist.');
+
+        return (int) $page->getId();
     }
 
     /**
-     * Test getting a section that doesn't exist
+     * The section lookup throws before the ACL check, so this needs no
+     * authenticated context. page_id is nullable (auto-resolved from the
+     * section) and must be an int, not a keyword string.
      */
-    public function testGetSectionNotFound(): void
+    public function testGetSectionNotFoundThrows(): void
     {
+        $service = self::getContainer()->get(AdminSectionService::class);
+        self::assertInstanceOf(AdminSectionService::class, $service);
+
         $this->expectException(ServiceException::class);
         $this->expectExceptionMessage('Section not found');
 
-        // Call the method with a non-existent section ID
-        $this->adminSectionService->getSection('home', 999999);
+        $service->getSection(null, 999999);
     }
 
-    /**
-     * Test getting a section with no permission
-     * This test will verify that access is properly denied for unauthorized users
-     */
-    public function testGetSectionNoPermission(): void
+    public function testGetSectionSuccessReturnsSectionAndFields(): void
     {
-        // Skip this test for now - the permission system is working correctly
-        // but testing it properly requires more complex setup
-        $this->markTestSkipped('Permission testing requires complex user context setup');
-    }
+        $token = $this->loginAsQaAdmin();
+        $pageId = $this->homePageId();
 
-    /**
-     * Test getting a section successfully
-     */
-    public function testGetSectionSuccess(): void
-    {
-        // Get admin token and make a real API call
-        $token = $this->getAdminAccessToken();
-        
-        // Get sections from a real page
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/pages/home/sections',
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
-        );
-        
-        $response = $this->client->getResponse();
-        $this->assertEquals(200, $response->getStatusCode());
-        
-        $data = json_decode($response->getContent(), true);
-        
-        if (!empty($data['data']['sections'])) {
-            $sectionId = $data['data']['sections'][0]['id'];
-            
-            // Now test the service method with real data
-            $result = $this->adminSectionService->getSection('home', $sectionId);
-            
-            // Assert the result structure
-            $this->assertIsArray($result);
-            $this->assertArrayHasKey('section', $result);
-            $this->assertArrayHasKey('fields', $result);
-            
-            // Assert section data
-            $this->assertEquals($sectionId, $result['section']['id']);
-            $this->assertIsString($result['section']['name']);
-            $this->assertArrayHasKey('style', $result['section']);
-        } else {
-            $this->markTestSkipped('No sections found to test with');
+        $list = $this->jsonRequest('GET', "/cms-api/v1/admin/pages/{$pageId}/sections", null, $token);
+        $data = $this->assertEnvelopeSuccess($list);
+        self::assertArrayHasKey('sections', $data);
+
+        if (empty($data['sections'])) {
+            $this->markTestSkipped('Seeded home page has no sections to read.');
         }
+
+        $sections = $this->asList($data['sections']);
+        $firstSection = $this->asArray($sections[0] ?? null);
+        $sectionId = $this->asInt($firstSection['id'] ?? null);
+
+        $envelope = $this->jsonRequest('GET', "/cms-api/v1/admin/pages/{$pageId}/sections/{$sectionId}", null, $token);
+        $section = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertArrayHasKey('section', $section);
+        self::assertArrayHasKey('fields', $section);
+        $sectionData = $this->asArray($section['section']);
+        self::assertSame($sectionId, $sectionData['id'] ?? null);
+        self::assertIsString($sectionData['name'] ?? null);
+        self::assertArrayHasKey('style', $sectionData);
     }
 
-    /**
-     * Test adding a section to another section with existing relationship handling
-     */
-    public function testAddSectionToSectionWithExistingRelationship(): void
+    public function testGetSectionForNonexistentPageReturnsNotFound(): void
     {
-        // Get admin token
-        $token = $this->getAdminAccessToken();
-        
-        // First, get a page with sections
-        $this->client->request(
-            'GET',
-            '/cms-api/v1/admin/pages/home/sections',
-            [],
-            [],
-            ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
-        );
-        
-        $response = $this->client->getResponse();
-        $this->assertEquals(200, $response->getStatusCode());
-        
-        $data = json_decode($response->getContent(), true);
-        
-        if (count($data['data']['sections']) >= 2) {
-            $parentSectionId = $data['data']['sections'][0]['id'];
-            $childSectionId = $data['data']['sections'][1]['id'];
-            
-            // First, add the section to the parent (this should work)
-            $this->client->request(
-                'PUT',
-                "/cms-api/v1/admin/pages/home/sections/{$parentSectionId}/sections",
-                [],
-                [],
-                ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-                json_encode([
-                    'childSectionId' => $childSectionId,
-                    'position' => 1
-                ])
-            );
-            
-            $response = $this->client->getResponse();
-            $this->assertEquals(200, $response->getStatusCode());
-            
-            // Now try to add the same section again with different position (this should update, not create duplicate)
-            $this->client->request(
-                'PUT',
-                "/cms-api/v1/admin/pages/home/sections/{$parentSectionId}/sections",
-                [],
-                [],
-                ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-                json_encode([
-                    'childSectionId' => $childSectionId,
-                    'position' => 2,
-                    'oldParentSectionId' => $parentSectionId
-                ])
-            );
-            
-            $response = $this->client->getResponse();
-            $responseData = json_decode($response->getContent(), true);
-            
-            // This should succeed without identity map conflicts
-            $this->assertEquals(200, $response->getStatusCode());
-            $this->assertArrayHasKey('data', $responseData);
-            $this->assertArrayHasKey('id', $responseData['data']);
-            $this->assertEquals($childSectionId, $responseData['data']['id']);
-            
-        } else {
-            $this->markTestSkipped('Not enough sections found to test section-to-section relationships');
-        }
+        $token = $this->loginAsQaAdmin();
+
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/pages/999999/sections/999999', null, $token);
+        $this->assertEnvelopeError($envelope, Response::HTTP_NOT_FOUND);
     }
 }

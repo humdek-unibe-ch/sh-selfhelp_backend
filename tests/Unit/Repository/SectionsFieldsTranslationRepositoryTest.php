@@ -42,32 +42,12 @@ class SectionsFieldsTranslationRepositoryTest extends TestCase
             ]
         ];
 
-        // Apply the same logic as in the repository method
-        $mergedTranslations = [];
-        $sectionIds = [1];
-
-        foreach ($sectionIds as $sectionId) {
-            $mergedTranslations[$sectionId] = [];
-
-            // Start with default translations
-            if (isset($defaultTranslations[$sectionId])) {
-                $mergedTranslations[$sectionId] = $defaultTranslations[$sectionId];
-            }
-
-            // Override with primary translations at field level
-            if (isset($primaryTranslations[$sectionId])) {
-                foreach ($primaryTranslations[$sectionId] as $fieldName => $primaryField) {
-                    // Only override if primary language has non-empty content
-                    if (isset($primaryField['content']) && !empty(trim($primaryField['content']))) {
-                        $mergedTranslations[$sectionId][$fieldName] = $primaryField;
-                    }
-                    // If primary has empty content or doesn't exist, keep default (already set above)
-                }
-            }
-        }
+        // Apply the same field-level fallback merge as the repository method.
+        $merged = $this->mergeTranslations($primaryTranslations, $defaultTranslations, [1]);
 
         // Verify the results
-        $result = $mergedTranslations[1];
+        self::assertArrayHasKey(1, $merged);
+        $result = $merged[1];
 
         // type: primary is empty, so default should be kept
         $this->assertEquals('Default Type', $result['type']['content']);
@@ -111,32 +91,44 @@ class SectionsFieldsTranslationRepositoryTest extends TestCase
             ]
         ];
 
-        // Apply merging logic
-        $mergedTranslations = [];
-        $sectionIds = [1];
+        // Apply the same field-level fallback merge as the repository method.
+        $merged = $this->mergeTranslations($primaryTranslations, $defaultTranslations, [1]);
 
-        foreach ($sectionIds as $sectionId) {
-            $mergedTranslations[$sectionId] = [];
-
-            if (isset($defaultTranslations[$sectionId])) {
-                $mergedTranslations[$sectionId] = $defaultTranslations[$sectionId];
-            }
-
-            if (isset($primaryTranslations[$sectionId])) {
-                foreach ($primaryTranslations[$sectionId] as $fieldName => $primaryField) {
-                    if (isset($primaryField['content']) && !empty(trim($primaryField['content']))) {
-                        $mergedTranslations[$sectionId][$fieldName] = $primaryField;
-                    }
-                }
-            }
-        }
-
-        $result = $mergedTranslations[1];
+        self::assertArrayHasKey(1, $merged);
+        $result = $merged[1];
 
         // field1: whitespace-only primary should fallback to default
         $this->assertEquals('Default Content', $result['field1']['content']);
 
         // field2: valid primary should override default
         $this->assertEquals('Valid Content', $result['field2']['content']);
+    }
+
+    /**
+     * Mirror of {@see \App\Repository\SectionsFieldsTranslationRepository}'s
+     * field-level fallback merge: start from the default-language translations
+     * and override per field only when the primary language has non-empty
+     * (non-whitespace) content.
+     *
+     * @param array<int, array<string, array<string, mixed>>> $primary
+     * @param array<int, array<string, array<string, mixed>>> $default
+     * @param list<int> $sectionIds
+     * @return array<int, array<string, array<string, mixed>>>
+     */
+    private function mergeTranslations(array $primary, array $default, array $sectionIds): array
+    {
+        $merged = [];
+        foreach ($sectionIds as $sectionId) {
+            $merged[$sectionId] = $default[$sectionId] ?? [];
+
+            foreach ($primary[$sectionId] ?? [] as $fieldName => $primaryField) {
+                $content = $primaryField['content'] ?? null;
+                if (is_string($content) && trim($content) !== '') {
+                    $merged[$sectionId][$fieldName] = $primaryField;
+                }
+            }
+        }
+
+        return $merged;
     }
 }

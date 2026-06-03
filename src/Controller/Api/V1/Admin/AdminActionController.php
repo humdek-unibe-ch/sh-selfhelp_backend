@@ -36,9 +36,13 @@ class AdminActionController extends AbstractController
      */
     public function createAction(Request $request): JsonResponse
     {
-        try {
-            $data = $this->validateRequest($request, 'requests/admin/create_action', $this->jsonSchemaValidationService);
+        // Validate OUTSIDE the try/catch so a schema RequestValidationException
+        // (or an InvalidArgumentException for malformed JSON) propagates to the
+        // ApiExceptionListener, which emits the canonical 400 with validation
+        // details — the broad catch below would otherwise mis-report it as 500.
+        $data = $this->validateRequest($request, 'requests/admin/create_action', $this->jsonSchemaValidationService);
 
+        try {
             $result = $this->adminActionService->createAction($this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
@@ -89,9 +93,12 @@ class AdminActionController extends AbstractController
      */
     public function updateAction(Request $request, int $actionId): JsonResponse
     {
-        try {
-            $data = $this->validateRequest($request, 'requests/admin/update_action', $this->jsonSchemaValidationService);
+        // Validate OUTSIDE the try/catch (see createAction) so validation/JSON
+        // errors surface as a 400 through the ApiExceptionListener instead of
+        // being collapsed into a 500 by the broad catch below.
+        $data = $this->validateRequest($request, 'requests/admin/update_action', $this->jsonSchemaValidationService);
 
+        try {
             $result = $this->adminActionService->updateAction($actionId, $this->toAssocArray($data));
 
             return $this->responseFormatter->formatSuccess(
