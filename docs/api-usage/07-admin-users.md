@@ -61,7 +61,7 @@ Retrieve a paginated list of users with filtering and sorting options.
     "users": [
       {
         "id": 1,
-        "email": "admin@example.com",
+        "email": "admin@selfhelp.test",
         "name": "System Administrator",
         "user_name": "admin",
         "user_type_id": 1,

@@ -45,10 +45,10 @@ parameters:
         - config/
         - public/
         - src/
+        - tests/
 
     excludePaths:
         analyse:
-            - tests/*
         # `config/selfhelp_plugin_bundles.php` is a GENERATED, git-ignored
         # artifact (written atomically by the plugin installer/updater/
         # uninstaller/doctor — see App\Plugin\Bundle\PluginBundlesFileWriter).

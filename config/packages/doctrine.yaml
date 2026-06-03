@@ -6,6 +6,19 @@ doctrine:
         # either here or in the DATABASE_URL env var (see .env file)
         #server_version: '16'
 
+        # Drop ONLY_FULL_GROUP_BY on every connection. The CMS's stored
+        # procedures (e.g. `get_data_table_filtered`) and the admin list
+        # queries (e.g. the users list's `SELECT DISTINCT ... ORDER BY`) use
+        # legacy GROUP BY / DISTINCT patterns that ONLY_FULL_GROUP_BY -- ON by
+        # default on stock MySQL 8.0 -- rejects with errors 1055 / 3065.
+        # MySQL also bakes the connection sql_mode into a procedure at CREATE
+        # time, so running migrations with this mode stripped is what makes the
+        # procedures portable. REPLACE removes only that one flag and keeps the
+        # strict-write modes; on a server that does not set it (e.g. an already
+        # permissive dev MySQL) this is a no-op.
+        options:
+            !php/const PDO::MYSQL_ATTR_INIT_COMMAND: "SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''))"
+
         # Exclude framework-managed tables from ORM schema introspection
         # so `doctrine:schema:validate`, `schema:update` and
         # `make:migration` do not report/clobber them. `messenger_messages`

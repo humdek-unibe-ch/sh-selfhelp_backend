@@ -15,18 +15,21 @@ class AdminPageControllerTest extends BaseControllerTest
 {
     use ManagesTestPagesTrait; // Use the trait
     
-    private const TEST_PAGE_KEYWORD = "test_test";
+    private const TEST_PAGE_KEYWORD = "qa_test_test";
 
     /**
      * @group admin
      */
     public function testGetPageSections(): void
     {
-        // Authenticate as admin and request /cms-api/v1/admin/pages/home/sections
+        // Authenticate as admin and request sections for the seeded 'home' page.
+        // The admin API addresses pages by numeric id, so resolve the keyword first.
         $token = $this->getAdminAccessToken();
+        $homeId = $this->resolvePageIdByKeyword('home');
+        $this->assertNotNull($homeId, "Seeded 'home' page not found. Run: composer test:reset-db");
         $this->client->request(
             'GET',
-            '/cms-api/v1/admin/pages/home/sections',
+            '/cms-api/v1/admin/pages/' . $homeId . '/sections',
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -35,7 +38,7 @@ class AdminPageControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin get page sections failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
 
         // Validate response against JSON schema
@@ -64,7 +67,7 @@ class AdminPageControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin get pages failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
 
         // Validate response against JSON schema
@@ -80,11 +83,13 @@ class AdminPageControllerTest extends BaseControllerTest
      */
     public function testGetPageFields(): void
     {
-        // Authenticate as admin and request page fields for 'home' page
+        // Authenticate as admin and request page fields for the seeded 'home' page (by id).
         $token = $this->getAdminAccessToken();
+        $homeId = $this->resolvePageIdByKeyword('home');
+        $this->assertNotNull($homeId, "Seeded 'home' page not found. Run: composer test:reset-db");
         $this->client->request(
             'GET',
-            '/cms-api/v1/admin/pages/home',
+            '/cms-api/v1/admin/pages/' . $homeId,
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -93,11 +98,12 @@ class AdminPageControllerTest extends BaseControllerTest
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode(), 'Admin get page fields failed.');
         
         // Decode as object (not array) for schema validation
-        $data = json_decode($response->getContent());
+        $data = $this->decodeObject();
         $this->assertTrue(property_exists($data, 'data'), 'Response does not have data property');
-        $this->assertTrue(property_exists($data->data, 'page'), 'Response data does not have page property');
-        $this->assertTrue(property_exists($data->data, 'fields'), 'Response data does not have fields property');
-        $this->assertIsArray($data->data->fields, 'Fields property is not an array');
+        $dataData = $this->asObject($data->data);
+        $this->assertTrue(property_exists($dataData, 'page'), 'Response data does not have page property');
+        $this->assertTrue(property_exists($dataData, 'fields'), 'Response data does not have fields property');
+        $this->assertIsArray($dataData->fields, 'Fields property is not an array');
 
         // Validate response against JSON schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
@@ -130,11 +136,13 @@ class AdminPageControllerTest extends BaseControllerTest
 
         try {
             $token = $this->getAdminAccessToken();
+            $pageId = $this->resolvePageIdByKeyword(self::TEST_PAGE_KEYWORD);
+            $this->assertNotNull($pageId, 'Created test page could not be resolved to an id');
             
             // First, get the page fields to find a valid field ID
             $this->client->request(
                 'GET',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -143,9 +151,9 @@ class AdminPageControllerTest extends BaseControllerTest
             $getResponse = $this->client->getResponse();
             $this->assertSame(Response::HTTP_OK, $getResponse->getStatusCode(), 'Failed to get test page fields');
             
-            $pageData = json_decode($getResponse->getContent(), true);
+            $pageData = $this->decodeArray();
             $this->assertArrayHasKey('data', $pageData);
-            $this->assertArrayHasKey('fields', $pageData['data']);
+            $this->assertArrayHasKey('fields', $this->asArray($pageData['data']));
             
             // This test will update basic page properties without fields
             // since test pages may not have fields associated with them
@@ -162,11 +170,11 @@ class AdminPageControllerTest extends BaseControllerTest
             // Send the basic update request
             $this->client->request(
                 'PUT',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-                json_encode($basicUpdateData)
+                (string) json_encode($basicUpdateData)
             );
             
             $basicResponse = $this->client->getResponse();
@@ -175,7 +183,7 @@ class AdminPageControllerTest extends BaseControllerTest
             // Verify the page was updated by fetching it
             $this->client->request(
                 'GET',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json']
@@ -185,8 +193,8 @@ class AdminPageControllerTest extends BaseControllerTest
             $this->assertSame(Response::HTTP_OK, $verifyResponse->getStatusCode(), 'Failed to fetch updated test page');
             
             // Check that the changes were applied
-            $verifiedPageData = json_decode($verifyResponse->getContent(), true);
-            $this->assertTrue($verifiedPageData['data']['page']['headless'], 'headless should be true after update');
+            $verifiedPageData = $this->decodeArray();
+            $this->assertTrue($this->jsonGet($verifiedPageData, 'data', 'page', 'headless'), 'headless should be true after update');
             
             // Test is successful - basic page update functionality works
             return;
@@ -212,6 +220,8 @@ class AdminPageControllerTest extends BaseControllerTest
 
         try {
             $token = $this->getAdminAccessToken();
+            $pageId = $this->resolvePageIdByKeyword(self::TEST_PAGE_KEYWORD);
+            $this->assertNotNull($pageId, 'Created test page could not be resolved to an id');
             
             // Try to update the page with invalid field IDs (fields that don't belong to the page)
             $updateData = [
@@ -230,19 +240,19 @@ class AdminPageControllerTest extends BaseControllerTest
             // Send the update request
             $this->client->request(
                 'PUT',
-                '/cms-api/v1/admin/pages/' . self::TEST_PAGE_KEYWORD,
+                '/cms-api/v1/admin/pages/' . $pageId,
                 [],
                 [],
                 ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-                json_encode($updateData)
+                (string) json_encode($updateData)
             );
             
             $response = $this->client->getResponse();
             $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode(), 'Should have failed with invalid field ID');
             
-            $responseData = json_decode($response->getContent(), true);
+            $responseData = $this->decodeArray();
             $this->assertArrayHasKey('error', $responseData, 'Response should have error key');
-            $this->assertStringContainsString('do not belong to page', $responseData['error'], 'Error message should mention invalid fields');
+            $this->assertStringContainsString('do not belong to page', $this->asString($responseData['error']), 'Error message should mention invalid fields');
             
         } finally {
             // Clean up: delete the test page

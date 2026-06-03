@@ -16,6 +16,7 @@ use App\Service\CMS\Admin\PageVersionService;
 use App\Service\CMS\Frontend\PageService;
 use App\Service\Core\TransactionService;
 use App\Service\Auth\UserContextService;
+use App\Tests\Support\NarrowsJson;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
@@ -29,20 +30,30 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  */
 class PageVersionServiceTest extends KernelTestCase
 {
-    private ?PageVersionService $pageVersionService = null;
-    private ?PageRepository $pageRepository = null;
-    private ?PageVersionRepository $pageVersionRepository = null;
-    private ?EntityManagerInterface $entityManager = null;
+    use NarrowsJson;
+
+    private PageVersionService $pageVersionService;
+    private PageRepository $pageRepository;
+    private PageVersionRepository $pageVersionRepository;
+    private EntityManagerInterface $entityManager;
 
     protected function setUp(): void
     {
         self::bootKernel();
         
         $container = static::getContainer();
-        $this->pageVersionService = $container->get(PageVersionService::class);
-        $this->pageRepository = $container->get(PageRepository::class);
-        $this->pageVersionRepository = $container->get(PageVersionRepository::class);
-        $this->entityManager = $container->get(EntityManagerInterface::class);
+        $pageVersionService = $container->get(PageVersionService::class);
+        $pageRepository = $container->get(PageRepository::class);
+        $pageVersionRepository = $container->get(PageVersionRepository::class);
+        $entityManager = $container->get(EntityManagerInterface::class);
+        self::assertInstanceOf(PageVersionService::class, $pageVersionService);
+        self::assertInstanceOf(PageRepository::class, $pageRepository);
+        self::assertInstanceOf(PageVersionRepository::class, $pageVersionRepository);
+        self::assertInstanceOf(EntityManagerInterface::class, $entityManager);
+        $this->pageVersionService = $pageVersionService;
+        $this->pageRepository = $pageRepository;
+        $this->pageVersionRepository = $pageVersionRepository;
+        $this->entityManager = $entityManager;
     }
 
     /**
@@ -55,6 +66,7 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create a version
         $version = $this->pageVersionService->createVersion(
@@ -67,8 +79,7 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertInstanceOf(PageVersion::class, $version);
         $this->assertNotNull($version->getId());
         $this->assertEquals('Test Version', $version->getVersionName());
-        $this->assertNotNull($version->getPageJson());
-        $this->assertIsArray($version->getPageJson());
+        $this->assertNotEmpty($version->getPageJson());
         $this->assertGreaterThan(0, $version->getVersionNumber());
 
         // Cleanup
@@ -86,12 +97,13 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create a version
         $version = $this->pageVersionService->createVersion($pageId, 'Test Publish Version');
         
         // Publish it
-        $publishedVersion = $this->pageVersionService->publishVersion($pageId, $version->getId());
+        $publishedVersion = $this->pageVersionService->publishVersion($pageId, (int) $version->getId());
 
         // Assertions
         $this->assertTrue($publishedVersion->isPublished());
@@ -101,9 +113,9 @@ class PageVersionServiceTest extends KernelTestCase
         $this->entityManager->refresh($page);
         $this->assertEquals($version->getId(), $page->getPublishedVersionId());
 
-        // Cleanup
-        $page->setPublishedVersionId(null);
-        $this->entityManager->persist($page);
+        // Cleanup: the published pointer is managed through the service
+        // (the direct Page::setPublishedVersionId setter no longer exists).
+        $this->pageVersionService->unpublishPage($pageId);
         $this->entityManager->remove($version);
         $this->entityManager->flush();
     }
@@ -118,6 +130,7 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create and publish a version
         $version = $this->pageVersionService->createAndPublishVersion($pageId, 'Test Unpublish');
@@ -148,6 +161,7 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create multiple versions
         $versions = [];
@@ -159,11 +173,10 @@ class PageVersionServiceTest extends KernelTestCase
         $history = $this->pageVersionService->getVersionHistory($pageId, 10, 0);
 
         // Assertions
-        $this->assertIsArray($history);
         $this->assertArrayHasKey('versions', $history);
         $this->assertArrayHasKey('total_count', $history);
         $this->assertGreaterThanOrEqual(3, $history['total_count']);
-        $this->assertGreaterThanOrEqual(3, count($history['versions']));
+        $this->assertGreaterThanOrEqual(3, count($this->asList($history['versions'])));
 
         // Cleanup
         foreach ($versions as $version) {
@@ -182,6 +195,7 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create two versions
         $version1 = $this->pageVersionService->createVersion($pageId, 'Version 1');
@@ -189,13 +203,12 @@ class PageVersionServiceTest extends KernelTestCase
 
         // Compare versions
         $comparison = $this->pageVersionService->compareVersions(
-            $version1->getId(),
-            $version2->getId(),
+            (int) $version1->getId(),
+            (int) $version2->getId(),
             'summary'
         );
 
         // Assertions
-        $this->assertIsArray($comparison);
         $this->assertArrayHasKey('version1', $comparison);
         $this->assertArrayHasKey('version2', $comparison);
         $this->assertArrayHasKey('diff', $comparison);
@@ -217,6 +230,7 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create multiple versions (more than keep count)
         $versions = [];
@@ -237,7 +251,7 @@ class PageVersionServiceTest extends KernelTestCase
         // at least 2 of our test versions remain
         $testVersionCount = 0;
         foreach ($remainingVersions as $version) {
-            if (strpos($version->getVersionName(), 'Retention Test Version') !== false) {
+            if (strpos($version->getVersionName() ?? '', 'Retention Test Version') !== false) {
                 $testVersionCount++;
             }
         }
@@ -248,7 +262,7 @@ class PageVersionServiceTest extends KernelTestCase
         foreach ($remainingVersions as $version) {
             if (strpos($version->getVersionName() ?? '', 'Retention Test Version') !== false) {
                 try {
-                    $this->pageVersionService->deleteVersion($version->getId());
+                    $this->pageVersionService->deleteVersion((int) $version->getId());
                 } catch (\Exception $e) {
                     // Ignore errors during cleanup
                 }
@@ -269,13 +283,14 @@ class PageVersionServiceTest extends KernelTestCase
         $this->assertNotNull($page, 'Test page not found');
 
         $pageId = $page->getId();
+        $this->assertNotNull($pageId);
         
         // Create and publish a version
         $version = $this->pageVersionService->createAndPublishVersion($pageId, 'Test Delete Published');
         
         try {
             // Attempt to delete the published version (should fail)
-            $this->pageVersionService->deleteVersion($version->getId());
+            $this->pageVersionService->deleteVersion((int) $version->getId());
         } finally {
             // Cleanup
             $this->pageVersionService->unpublishPage($pageId);
@@ -287,11 +302,6 @@ class PageVersionServiceTest extends KernelTestCase
     protected function tearDown(): void
     {
         parent::tearDown();
-        
-        $this->pageVersionService = null;
-        $this->pageRepository = null;
-        $this->pageVersionRepository = null;
-        $this->entityManager = null;
     }
 }
 

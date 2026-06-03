@@ -19,6 +19,10 @@ $coreBundles = [
     Symfony\Bundle\TwigBundle\TwigBundle::class => ['all' => true],
     Symfony\Bundle\WebProfilerBundle\WebProfilerBundle::class => ['dev' => true, 'test' => true],
     Symfony\Bundle\MercureBundle\MercureBundle::class => ['all' => true],
+    // Wraps every test in a transaction that is rolled back on tearDown so
+    // the seeded QA baseline (loaded once by `app:test:reset-db`) is the
+    // stable starting point for every test. See config/packages/test/doctrine.yaml.
+    DAMA\DoctrineTestBundle\DAMADoctrineTestBundle::class => ['test' => true],
 ];
 
 // Plugin bundles are loaded from a generated file written atomically

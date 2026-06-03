@@ -18,7 +18,9 @@ class LanguageControllerTest extends BaseControllerTest
     protected function setUp(): void
     {
         parent::setUp();
-        $this->entityManager = self::getContainer()->get(EntityManagerInterface::class);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        self::assertInstanceOf(EntityManagerInterface::class, $em);
+        $this->entityManager = $em;
     }
 
     public function testGetAllLanguages(): void
@@ -39,19 +41,20 @@ class LanguageControllerTest extends BaseControllerTest
         $this->assertResponseIsSuccessful();
         
         // Validate response structure
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('data', $content);
-        $this->assertIsArray($content['data']);
+        $languages = $this->asList($content['data']);
         
         // Validate schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
-            json_decode($response->getContent()),
+            $this->decodeObject(),
             'responses/languages/get_languages'
         );
         $this->assertEmpty($validationErrors);
         
         // Check that we only get languages with ID > 1
-        foreach ($content['data'] as $language) {
+        foreach ($languages as $languageRaw) {
+            $language = $this->asArray($languageRaw);
             $this->assertGreaterThan(1, $language['id']);
         }
     }
@@ -74,13 +77,13 @@ class LanguageControllerTest extends BaseControllerTest
         $this->assertResponseIsSuccessful();
         
         // Validate response structure
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('data', $content);
         $this->assertIsArray($content['data']);
         
         // Validate schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
-            json_decode($response->getContent()),
+            $this->decodeObject(),
             'responses/languages/get_languages'
         );
         $this->assertEmpty($validationErrors);    
@@ -104,24 +107,24 @@ class LanguageControllerTest extends BaseControllerTest
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-            json_encode($createData)
+            (string) json_encode($createData)
         );
 
         $response = $this->client->getResponse();
         $this->assertResponseIsSuccessful();
         
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('data', $content);
         
         // Validate schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
-            json_decode($response->getContent()),
+            $this->decodeObject(),
             'responses/languages/language'
         );
         $this->assertEmpty($validationErrors);
         
         // Get the created language ID
-        $languageId = $content['data']['id'];
+        $languageId = $this->asInt($this->jsonGet($content, 'data', 'id'));
         
         // 2. Update the language
         $updateData = [
@@ -136,16 +139,17 @@ class LanguageControllerTest extends BaseControllerTest
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-            json_encode($updateData)
+            (string) json_encode($updateData)
         );
 
         $response = $this->client->getResponse();
         $this->assertResponseIsSuccessful();
         
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('data', $content);
-        $this->assertEquals('es-test-updated', $content['data']['locale']);
-        $this->assertEquals('Spanish Test Updated', $content['data']['language']);
+        $payload = $this->asArray($content['data']);
+        $this->assertEquals('es-test-updated', $payload['locale']);
+        $this->assertEquals('Spanish Test Updated', $payload['language']);
         
         // 3. Delete the language
         $this->client->request(
@@ -159,13 +163,13 @@ class LanguageControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertResponseIsSuccessful();
         
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('data', $content);
-        $this->assertEquals($languageId, $content['data']['id']);
+        $this->assertEquals($languageId, $this->jsonGet($content, 'data', 'id'));
         
         // Validate schema
         $validationErrors = $this->jsonSchemaValidationService->validate(
-            json_decode($response->getContent()),
+            $this->decodeObject(),
             'responses/languages/language'
         );
         $this->assertEmpty($validationErrors);
@@ -192,7 +196,7 @@ class LanguageControllerTest extends BaseControllerTest
         $response = $this->client->getResponse();
         $this->assertEquals(400, $response->getStatusCode());
         
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('error', $content);
         $this->assertEquals('Cannot delete the default language', $content['error']);
     }
@@ -214,13 +218,13 @@ class LanguageControllerTest extends BaseControllerTest
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
-            json_encode($updateData)
+            (string) json_encode($updateData)
         );
 
         $response = $this->client->getResponse();
         $this->assertEquals(400, $response->getStatusCode());
         
-        $content = json_decode($response->getContent(), true);
+        $content = $this->decodeArray();
         $this->assertArrayHasKey('error', $content);
         $this->assertEquals('Cannot update the default language', $content['error']);
     }

@@ -1,0 +1,84 @@
+# Isolated, throwaway services for the TEST suite (plan §34).
+#
+# Distinct from docker-compose.yml (the dev stack): different container
+# names, volumes and HOST ports so it can run alongside a local WAMP/MySQL
+# (3306), the dev Redis (6379) and dev Mercure (3001) without clashing.
+#
+#   docker compose -f docker-compose.test.yml up -d --wait
+#
+# `--wait` blocks until every service is HEALTHY (the healthchecks below),
+# so CI never needs a manual `sleep`. Pair with .env.test, which points
+# DATABASE_URL / REDIS_URL / MERCURE_URL at these host ports.
+#
+# A dedicated project `name` isolates this stack from the dev
+# docker-compose.yml stack (same directory) so bringing it up never
+# recreates the dev Redis/Mercure/Mailpit containers.
+name: selfhelp_test
+
+services:
+  mysql:
+    # Pinned to 8.0 to match serverVersion in DATABASE_URL. (The floating
+    # `mysql:8` tag now resolves to 8.4, which removed
+    # default-authentication-plugin; 8.0 uses caching_sha2_password by
+    # default, which PHP 8.4's pdo_mysql supports.)
+    image: mysql:8.0
+    container_name: selfhelp_test_mysql
+    # mysql_native_password (valid on 8.0) so PHP can authenticate over
+    # non-SSL TCP. The default caching_sha2_password needs SSL or an RSA
+    # key exchange that some local PHP builds (e.g. Windows/WAMP) reject,
+    # producing a misleading "Access denied for 'qa'@'localhost'".
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: selfhelp
+      MYSQL_USER: qa
+      MYSQL_PASSWORD: qa
+    ports:
+      - "3307:3306"
+    # Grant qa rights on selfhelp% so `app:test:reset-db` can create the
+    # _test-suffixed database (when@test appends _test → selfhelp_test).
+    volumes:
+      - ./docker/test/mysql-init:/docker-entrypoint-initdb.d:ro
+      - selfhelp_test_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot", "--silent"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: selfhelp_test_redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 20
+
+  mercure:
+    image: dunglas/mercure:v0.16
+    container_name: selfhelp_test_mercure
+    environment:
+      SERVER_NAME: ":80"
+      # Must match MERCURE_JWT_SECRET in .env.test so Symfony's publish JWT
+      # is accepted by the hub.
+      MERCURE_PUBLISHER_JWT_KEY: "!ChangeThisTestMercureHubJWTSecretKey!"
+      MERCURE_SUBSCRIBER_JWT_KEY: "!ChangeThisTestMercureHubJWTSecretKey!"
+      # Permissive on purpose: this hub only ever sees throwaway test data.
+      MERCURE_EXTRA_DIRECTIVES: |
+        anonymous
+        cors_origins *
+        publish_origins *
+        subscriptions
+    ports:
+      - "3002:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  selfhelp_test_mysql_data:

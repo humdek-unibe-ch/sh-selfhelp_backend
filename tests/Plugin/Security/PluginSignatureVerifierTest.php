@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 
 final class PluginSignatureVerifierTest extends TestCase
 {
-    /** @var array{publicKey:string,privateKey:string} */
+    /** @var array{publicKey:string,privateKey:non-empty-string} */
     private array $keyPair;
 
     protected function setUp(): void
@@ -36,8 +36,8 @@ final class PluginSignatureVerifierTest extends TestCase
         $signature = base64_encode(sodium_crypto_sign_detached($payload, $this->keyPair['privateKey']));
         $verifier = new PluginSignatureVerifier(['humdek-2026-01' => $this->keyPair['publicKey']]);
 
+        $this->expectNotToPerformAssertions();
         $verifier->verify('official', 'humdek-2026-01', $signature, $payload);
-        self::assertTrue(true);
     }
 
     public function testRejectsTamperedPayload(): void
@@ -76,8 +76,8 @@ final class PluginSignatureVerifierTest extends TestCase
             requireSignature: false,
         );
 
+        $this->expectNotToPerformAssertions();
         $verifier->verify('untrusted', null, null, null);
-        self::assertTrue(true);
     }
 
     public function testParsesTrustedKeysEnvString(): void
@@ -97,8 +97,8 @@ final class PluginSignatureVerifierTest extends TestCase
         $verifier = PluginSignatureVerifier::fromEnvString($env);
         $payload = 'payload';
         $signature = base64_encode(sodium_crypto_sign_detached($payload, $this->keyPair['privateKey']));
+        $this->expectNotToPerformAssertions();
         $verifier->verify('official', 'k1', $signature, $payload);
-        self::assertTrue(true);
     }
 
     public function testRejectsDevKeyOnOfficialInProd(): void
@@ -124,7 +124,7 @@ final class PluginSignatureVerifierTest extends TestCase
             appEnv: 'dev',
         );
 
+        $this->expectNotToPerformAssertions();
         $verifier->verify('official', 'dev', $signature, $payload);
-        self::assertTrue(true);
     }
 }

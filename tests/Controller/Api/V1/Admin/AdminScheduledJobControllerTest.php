@@ -5,179 +5,148 @@
  * SPDX-License-Identifier: MPL-2.0
  */
 
+declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Admin;
 
-use App\Tests\Controller\Api\V1\BaseControllerTest;
-use Symfony\Component\HttpFoundation\Response;
+use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\ScheduledJob;
+use App\Entity\User;
+use App\Service\Core\LookupService;
+use App\Tests\Support\Factories\ScheduledJobFactory;
+use App\Tests\Support\QaWebTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 
-class AdminScheduledJobControllerTest extends BaseControllerTest
+/**
+ * FUNCTIONAL / response-contract tests for the admin scheduled-jobs API.
+ *
+ * Scope split (Phase 7 de-duplication): this class certifies the success-path
+ * response SHAPE of each endpoint against a self-seeded `qa_` job, so it never
+ * reads or mutates real business rows (canonical Testing Rule 9) and never
+ * skips for lack of data. The admin-only permission matrix (admin 200 /
+ * editor|user|guest 403 / anonymous 401) lives in
+ * {@see AdminScheduledJobPermissionTest} and is deliberately NOT repeated here
+ * — the previous `testUnauthorizedAccess` was folded into that matrix.
+ *
+ * The earlier version of this test executed/deleted the FIRST real job in the
+ * database; that violated Rule 9 and is replaced by execute/delete against the
+ * seeded `qa_` job (DAMA rolls the transaction back afterwards).
+ */
+final class AdminScheduledJobControllerTest extends QaWebTestCase
 {
-    public function testGetScheduledJobs(): void
-    {
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
+    private EntityManagerInterface $em;
+    private string $adminToken;
+    private ScheduledJob $job;
 
-        $this->assertResponseIsSuccessful();
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(200, $response['status']);
-        $this->assertArrayHasKey('data', $response);
-        $this->assertArrayHasKey('scheduledJobs', $response['data']);
-        $this->assertArrayHasKey('totalCount', $response['data']);
-        $this->assertArrayHasKey('page', $response['data']);
-        $this->assertArrayHasKey('pageSize', $response['data']);
-        $this->assertArrayHasKey('totalPages', $response['data']);
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->em = $this->service(EntityManagerInterface::class);
+        $this->adminToken = $this->loginAsQaAdmin();
+        $this->job = (new ScheduledJobFactory($this->em))
+            ->createDueQueuedEmailJob($this->qaUser(), 'qa_admin_scheduled_job');
     }
 
-    public function testGetScheduledJobsWithFilters(): void
+    public function testListWithoutPaginationReturnsAllJobsEnvelope(): void
     {
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs?page=1&pageSize=10&search=test&status=Queued&dateType=date_to_be_executed', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
+        // No page param => the controller's "calendar" branch
+        // (AdminScheduledJobService::getAllScheduledJobs): jobs + totalCount only.
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/scheduled-jobs', null, $this->adminToken);
+        $data = $this->assertEnvelopeSuccess($envelope);
 
-        $this->assertResponseIsSuccessful();
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(200, $response['status']);
-    }
-
-    public function testGetScheduledJobById(): void
-    {
-        // First get a list to find an existing job ID
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
-
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        $jobs = $response['data']['scheduledJobs'];
-        
-        if (empty($jobs)) {
-            $this->markTestSkipped('No scheduled jobs available for testing');
+        foreach (['scheduledJobs', 'totalCount'] as $key) {
+            self::assertArrayHasKey($key, $data, "All-jobs list payload must expose '$key'.");
         }
-
-        $jobId = $jobs[0]['id'];
-
-        $this->client->request('GET', "/cms-api/v1/admin/scheduled-jobs/{$jobId}", [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
-
-        $this->assertResponseIsSuccessful();
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(200, $response['status']);
-        $this->assertArrayHasKey('data', $response);
-        $this->assertArrayHasKey('id', $response['data']);
-        $this->assertEquals($jobId, $response['data']['id']);
+        self::assertIsArray($data['scheduledJobs']);
     }
 
-    public function testGetScheduledJobByIdNotFound(): void
+    public function testPaginatedListReturnsFullPaginationEnvelope(): void
     {
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs/999999', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
+        // With a page param (and filters) the controller uses the paginated
+        // branch (AdminScheduledJobService::getScheduledJobs) which adds the
+        // page/pageSize/totalPages keys the admin table consumes.
+        $envelope = $this->jsonRequest(
+            'GET',
+            '/cms-api/v1/admin/scheduled-jobs?page=1&pageSize=10&search=qa&status=Queued&dateType=date_to_be_executed',
+            null,
+            $this->adminToken,
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
 
-        $this->assertResponseStatusCodeSame(Response::HTTP_NOT_FOUND);
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(404, $response['status']);
-    }
-
-    public function testExecuteScheduledJob(): void
-    {
-        // First get a list to find a queued job ID
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs?status=Queued', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
-
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        $jobs = $response['data']['scheduledJobs'];
-        
-        if (empty($jobs)) {
-            $this->markTestSkipped('No queued scheduled jobs available for testing');
+        foreach (['scheduledJobs', 'totalCount', 'page', 'pageSize', 'totalPages'] as $key) {
+            self::assertArrayHasKey($key, $data, "Paginated list payload must expose '$key'.");
         }
-
-        $jobId = $jobs[0]['id'];
-
-        $this->client->request('POST', "/cms-api/v1/admin/scheduled-jobs/{$jobId}/execute", [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
-
-        $this->assertResponseIsSuccessful();
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(200, $response['status']);
-        $this->assertArrayHasKey('message', $response);
-        $this->assertEquals('OK', $response['message']);
+        self::assertSame(1, $data['page']);
+        self::assertSame(10, $data['pageSize']);
     }
 
-    public function testDeleteScheduledJob(): void
+    public function testGetByIdReturnsTheJob(): void
     {
-        // First get a list to find an existing job ID
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
+        $id = (int) $this->job->getId();
+        $envelope = $this->jsonRequest('GET', "/cms-api/v1/admin/scheduled-jobs/{$id}", null, $this->adminToken);
+        $data = $this->assertEnvelopeSuccess($envelope);
 
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        $jobs = $response['data']['scheduledJobs'];
-        
-        if (empty($jobs)) {
-            $this->markTestSkipped('No scheduled jobs available for testing');
-        }
-
-        $jobId = $jobs[0]['id'];
-
-        $this->client->request('DELETE', "/cms-api/v1/admin/scheduled-jobs/{$jobId}", [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
-
-        $this->assertResponseIsSuccessful();
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(200, $response['status']);
-        $this->assertArrayHasKey('message', $response);
-        $this->assertEquals('OK', $response['message']);
+        self::assertSame($id, $data['id'] ?? null, 'Detail payload must echo the requested job id.');
     }
 
-    public function testGetJobTransactions(): void
+    public function testGetByIdNotFound(): void
     {
-        // First get a list to find an existing job ID
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs', [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/scheduled-jobs/2147483600', null, $this->adminToken);
 
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        $jobs = $response['data']['scheduledJobs'];
-        
-        if (empty($jobs)) {
-            $this->markTestSkipped('No scheduled jobs available for testing');
-        }
-
-        $jobId = $jobs[0]['id'];
-
-        $this->client->request('GET', "/cms-api/v1/admin/scheduled-jobs/{$jobId}/transactions", [], [], [
-            'HTTP_Authorization' => 'Bearer ' . $this->getAdminAccessToken()
-        ]);
-
-        $this->assertResponseIsSuccessful();
-        $response = json_decode($this->client->getResponse()->getContent(), true);
-        
-        $this->assertArrayHasKey('status', $response);
-        $this->assertEquals(200, $response['status']);
-        $this->assertArrayHasKey('data', $response);
-        $this->assertIsArray($response['data']);
+        $this->assertEnvelope404($envelope);
     }
-    public function testUnauthorizedAccess(): void
+
+    public function testGetJobTransactionsReturnsAList(): void
     {
-        $this->client->request('GET', '/cms-api/v1/admin/scheduled-jobs');
+        $id = (int) $this->job->getId();
+        $envelope = $this->jsonRequest('GET', "/cms-api/v1/admin/scheduled-jobs/{$id}/transactions", null, $this->adminToken);
+        $this->assertEnvelopeSuccess($envelope);
 
-        $this->assertResponseStatusCodeSame(Response::HTTP_UNAUTHORIZED);
+        self::assertIsArray($envelope['data'], 'Transactions payload must be a list.');
     }
-} 
+
+    public function testExecuteRunsTheQueuedJob(): void
+    {
+        $id = (int) $this->job->getId();
+        $envelope = $this->jsonRequest('POST', "/cms-api/v1/admin/scheduled-jobs/{$id}/execute", null, $this->adminToken);
+        $this->assertEnvelopeSuccess($envelope);
+
+        self::assertSame('OK', $envelope['message'] ?? null, 'Execute must return the OK envelope message.');
+    }
+
+    public function testDeleteRemovesTheJob(): void
+    {
+        $id = (int) $this->job->getId();
+        $envelope = $this->jsonRequest('DELETE', "/cms-api/v1/admin/scheduled-jobs/{$id}", null, $this->adminToken);
+        $this->assertEnvelopeSuccess($envelope);
+
+        self::assertSame('OK', $envelope['message'] ?? null, 'Delete must return the OK envelope message.');
+    }
+
+    public function testCancelFlipsTheQueuedJobToCancelled(): void
+    {
+        $id = (int) $this->job->getId();
+        $envelope = $this->jsonRequest('POST', "/cms-api/v1/admin/scheduled-jobs/{$id}/cancel", null, $this->adminToken);
+        $this->assertEnvelopeSuccess($envelope);
+
+        // Public side effect: the persisted status flips to the cancelled lookup
+        // (JobSchedulerService::cancelJob) and the transaction log records it.
+        $this->em->clear();
+        $job = $this->em->getRepository(ScheduledJob::class)->find($id);
+        self::assertInstanceOf(ScheduledJob::class, $job, 'Cancelled job must still exist (cancel is not delete).');
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_CANCELLED,
+            $job->getStatus()->getLookupCode(),
+            'Cancel must flip the queued job to the cancelled status lookup.',
+        );
+    }
+
+    private function qaUser(): User
+    {
+        $user = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);
+        self::assertInstanceOf(User::class, $user, 'qa.user must be seeded. Run: composer test:reset-db');
+
+        return $user;
+    }
+}

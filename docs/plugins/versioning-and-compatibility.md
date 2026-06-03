@@ -93,6 +93,7 @@ php bin/console selfhelp:plugin:doctor --json | jq '.plugins[] | select(.pluginI
 
 ## Related docs
 
+- [Cross-repo compatibility matrix](../developer/cross-repo-compatibility-matrix.md) — how `@selfhelp/shared` semver anchors backend/frontend/mobile/plugin compatibility, and what to update when a contract changes.
 - [Install modes](./install-modes.md)
 - [Registry & channels](./registry-and-channels.md)
 - [`@selfhelp/shared` CHANGELOG](../../../sh-selfhelp_shared/CHANGELOG.md)
