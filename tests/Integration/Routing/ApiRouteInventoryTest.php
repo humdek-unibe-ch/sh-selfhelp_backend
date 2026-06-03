@@ -54,6 +54,8 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'auth_set_language_v1',
         'auth_2fa_verify_v1',
         'auth_events_stream_v1_v1',
+        // Public self-registration (creates a blocked account + validation email).
+        'auth_register_v1',
         // Self-service profile: JWT-authenticated, operates only on the caller.
         'auth_user_data_get_v1_v1',
         'auth_user_account_delete_v1_v1',

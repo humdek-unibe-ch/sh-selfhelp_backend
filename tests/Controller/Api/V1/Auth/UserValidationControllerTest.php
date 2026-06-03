@@ -10,7 +10,9 @@ declare(strict_types=1);
 namespace App\Tests\Controller\Api\V1\Auth;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\Lookup;
 use App\Entity\User;
+use App\Service\Core\LookupService;
 use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -139,6 +141,14 @@ final class UserValidationControllerTest extends QaWebTestCase
         $guest = $em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_GUEST_EMAIL]);
         self::assertInstanceOf(User::class, $guest);
         $guest->setToken(self::TOKEN);
+        // Seeded personas are ACTIVE; completeValidation() refuses to re-validate
+        // an active account, so seed the realistic invited pre-validation state.
+        $invited = $em->getRepository(Lookup::class)->findOneBy([
+            'typeCode' => LookupService::USER_STATUS,
+            'lookupCode' => LookupService::USER_STATUS_INVITED,
+        ]);
+        self::assertInstanceOf(Lookup::class, $invited, 'The invited user-status lookup must be seeded.');
+        $guest->setStatus($invited);
         $em->flush();
 
         return (int) $guest->getId();

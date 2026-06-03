@@ -10,9 +10,11 @@ declare(strict_types=1);
 namespace App\Tests\Service\Auth;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
 use App\Entity\User;
 use App\Service\Auth\UserValidationService;
+use App\Service\Core\LookupService;
 use App\Tests\Support\QaKernelTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -95,8 +97,23 @@ final class UserValidationServiceTest extends QaKernelTestCase
         self::assertInstanceOf(User::class, $user);
         $user->setToken(self::TOKEN);
         $user->setBlocked(true);
+        // The seeded personas are ACTIVE; validateToken() (correctly) refuses to
+        // re-validate an active account, so seed the realistic pre-validation
+        // state (invited) the activation flow actually operates on.
+        $user->setStatus($this->invitedStatus());
         $this->em->flush();
 
         return (int) $user->getId();
+    }
+
+    private function invitedStatus(): Lookup
+    {
+        $status = $this->em->getRepository(Lookup::class)->findOneBy([
+            'typeCode' => LookupService::USER_STATUS,
+            'lookupCode' => LookupService::USER_STATUS_INVITED,
+        ]);
+        self::assertInstanceOf(Lookup::class, $status, 'The invited user-status lookup must be seeded.');
+
+        return $status;
     }
 }
