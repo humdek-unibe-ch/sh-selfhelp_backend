@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Auth Register Request",
+  "description": "Schema for the self-registration request body.",
+  "type": "object",
+  "properties": {
+    "page_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "ID of the CMS register page. Used server-side to locate the register section and read open_registration and group policy."
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "User's email address."
+    },
+    "code": {
+      "type": "string",
+      "description": "One-time registration code, required when open_registration is disabled on the section."
+    }
+  },
+  "required": [
+    "page_id",
+    "email"
+  ],
+  "additionalProperties": false
+}

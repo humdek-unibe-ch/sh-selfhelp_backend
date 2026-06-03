@@ -20,6 +20,17 @@ parameters:
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'
 
+    # Maximum number of registration codes allowed in the table at any time (overall cap).
+    # Override with REGISTRATION_CODE_TOTAL_MAX env var.
+    registration_code_total_max_default: 10000
+    registration_code_total_max: '%env(int:default:registration_code_total_max_default:REGISTRATION_CODE_TOTAL_MAX)%'
+
+    # Maximum number of codes a single generate request may create.
+    # This value is also returned to the frontend as config.generate_max.
+    # Override with REGISTRATION_CODE_REQUEST_MAX env var.
+    registration_code_request_max_default: 10000
+    registration_code_request_max: '%env(int:default:registration_code_request_max_default:REGISTRATION_CODE_REQUEST_MAX)%'
+
     # Public frontend base URL used when building absolute links for emails
     # (account validation, welcome, password recovery, etc.).
     frontend_base_url: '%env(default:default_frontend_base_url:FRONTEND_BASE_URL)%'
@@ -350,6 +361,11 @@ services:
     App\Service\Auth\UserValidationService:
         arguments:
             $frontendBaseUrl: '%frontend_base_url%'
+
+    App\Service\Auth\RegistrationCodeService:
+        arguments:
+            $totalMax: '%registration_code_total_max%'
+            $requestMax: '%registration_code_request_max%'
 
     # Mercure topic resolver — single source of truth for topic IRIs used
     # by both publishers (AclVersionMercurePublisher) and the subscriber

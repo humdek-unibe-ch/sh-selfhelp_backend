@@ -27,11 +27,11 @@ class ValidationCode
     #[ORM\Column(name: 'consumed', type: 'datetime_immutable', nullable: true)]
     private ?\DateTimeImmutable $consumed = null;
 
-    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'validationCodes', cascade: ['persist', 'remove'])]
+    #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'validationCodes')]
     #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?User $user = null;
 
-    #[ORM\ManyToOne(targetEntity: Group::class, inversedBy: 'validationCodes', cascade: ['persist', 'remove'])]
+    #[ORM\ManyToOne(targetEntity: Group::class, inversedBy: 'validationCodes')]
     #[ORM\JoinColumn(name: 'id_groups', referencedColumnName: 'id', onDelete: 'CASCADE')]
     private ?Group $group = null;
 

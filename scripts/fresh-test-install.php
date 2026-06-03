@@ -117,7 +117,7 @@ function removePath(string $path): void
 
 function quoteForDisplay(string $value): string
 {
-    if (preg_match('/^[A-Za-z0-9_@%+=:,./\\\\-]+$/', $value) === 1) {
+    if (preg_match('~^[A-Za-z0-9_@%+=:,./\\\\-]+$~', $value) === 1) {
         return $value;
     }
 

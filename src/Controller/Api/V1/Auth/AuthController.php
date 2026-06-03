@@ -14,6 +14,7 @@ use App\Exception\RequestValidationException;
 use App\Repository\AuthRepository;
 use App\Service\Auth\JWTService;
 use App\Service\Auth\LoginService;
+use App\Service\Auth\RegistrationService;
 use App\Service\Auth\UserDataService;
 use App\Service\Auth\UserValidationService;
 use App\Service\Core\ApiResponseFormatter;
@@ -50,6 +51,7 @@ class AuthController extends AbstractController
         private readonly UserDataService $userDataService,
         private readonly LoggerInterface $logger,
         private readonly UserValidationService $userValidationService,
+        private readonly RegistrationService $registrationService,
     ) {
     }
 
@@ -346,8 +348,49 @@ class AuthController extends AbstractController
     }
 
     /**
+     * Register endpoint
+     *
+     * @route /auth/register
+     * @method POST
+     */
+    public function register(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/auth/register', $this->jsonSchemaValidationService);
+
+            $pageId = is_int($data['page_id']) ? $data['page_id'] : 0;
+            $email  = is_string($data['email'])  ? $data['email']  : '';
+            $code   = is_string($data['code'] ?? null) ? (string) $data['code'] : null;
+
+            $this->registrationService->register(
+                pageId: $pageId,
+                email: $email,
+                code: $code,
+            );
+
+            return $this->responseFormatter->formatSuccess(
+                ['registered' => true],
+                'responses/auth/register',
+                Response::HTTP_CREATED,
+                false,
+            );
+        } catch (RequestValidationException $e) {
+            throw $e;
+        } catch (\InvalidArgumentException $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_BAD_REQUEST);
+        } catch (\Exception $e) {
+            $this->logDebugException('register', $e);
+            $this->logger->error('Registration error', ['exception' => $e->getMessage()]);
+            return $this->responseFormatter->formatError(
+                'Registration failed. Please try again later.',
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
      * Set user language endpoint
-     * 
+     *
      * @route /auth/set-language
      * @method POST
      */

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Generate Registration Codes Request",
+  "description": "Schema for generating multiple random registration codes.",
+  "type": "object",
+  "properties": {
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of codes to generate. The effective upper bound is enforced server-side by RegistrationCodeService (REGISTRATION_CODE_REQUEST_MAX) and surfaced to clients as config.generate_max, so the schema intentionally does not hardcode a maximum."
+    },
+    "id_groups": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "ID of the group to associate with all generated codes."
+    }
+  },
+  "required": ["count", "id_groups"],
+  "additionalProperties": false
+}

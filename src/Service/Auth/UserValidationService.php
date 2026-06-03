@@ -54,6 +54,10 @@ class UserValidationService extends BaseService
      */
     public function setupUserValidation(User $user, array $emailConfig = []): array
     {
+        if ($user->getStatus()?->getLookupCode() === LookupService::USER_STATUS_ACTIVE) {
+            return ['success' => false, 'error' => 'Account is already active.'];
+        }
+
         try {
             $token = $this->generateValidationToken();
             $user->setToken($token);
@@ -112,6 +116,15 @@ class UserValidationService extends BaseService
                 ];
             }
 
+            $activeStatus = $this->lookupService->findByTypeAndCode(LookupService::USER_STATUS, LookupService::USER_STATUS_ACTIVE);
+            if ($user->getStatus()?->getLookupCode() === LookupService::USER_STATUS_ACTIVE) {
+                $this->entityManager->rollback();
+                return [
+                    'success' => false,
+                    'error' => 'Account is already active.',
+                ];
+            }
+
             if ($user->getToken() !== $token) {
                 $this->entityManager->rollback();
                 return [
@@ -122,6 +135,9 @@ class UserValidationService extends BaseService
 
             $user->setBlocked(false);
             $user->setToken(null);
+            if ($activeStatus) {
+                $user->setStatus($activeStatus);
+            }
 
             $this->entityManager->flush();
 
@@ -180,6 +196,10 @@ class UserValidationService extends BaseService
                     'success' => false,
                     'error' => 'User not found',
                 ];
+            }
+
+            if ($user->getStatus()?->getLookupCode() === LookupService::USER_STATUS_ACTIVE) {
+                return ['success' => false, 'error' => 'Account is already active.'];
             }
 
             $token = $this->generateValidationToken();
