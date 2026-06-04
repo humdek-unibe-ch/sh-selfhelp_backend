@@ -24,8 +24,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *   1. qa.admin generates a registration code for a qa group;
  *   2. an anonymous visitor registers with that code via the public endpoint;
- *   3. the backend creates the (blocked) user, consumes the code and links it to
- *      the new user id — atomically;
+ *   3. the backend creates the (invited, NOT blocked) user, consumes the code and
+ *      links it to the new user id — atomically;
  *   4. qa.admin sees the code as consumed + linked in the admin list;
  *   5. qa.admin's CSV export contains the consumed code with the linked email.
  *
@@ -56,10 +56,10 @@ final class RegistrationCodeWorkflowTest extends QaWebTestCase
 
         $token = $this->loginAsQaAdmin();
 
-        // 1) Admin generates one code for the qa group.
+        // 1) Admin generates one code granting the qa group (multi-group capable).
         $generated = $this->jsonRequest('POST', self::REG_CODES . '/generate', [
             'count' => 1,
-            'id_groups' => $qaGroupId,
+            'group_ids' => [$qaGroupId],
         ], $token);
         $generatedData = $this->assertEnvelopeSuccess($generated, Response::HTTP_CREATED);
         $codes = $generatedData['codes'] ?? null;
@@ -69,7 +69,8 @@ final class RegistrationCodeWorkflowTest extends QaWebTestCase
         self::assertIsArray($first);
         $code = $first['code'] ?? null;
         self::assertIsString($code);
-        self::assertSame($qaGroupId, $first['id_groups'] ?? null);
+        self::assertSame($qaGroupId, $first['id_groups'] ?? null, 'The first selected group is the primary group.');
+        self::assertSame([$qaGroupId], $first['group_ids'] ?? null, 'group_ids lists every granted group.');
         self::assertFalse($first['is_consumed'] ?? null, 'A freshly generated code is not consumed.');
 
         // 2) Anonymous visitor registers with that code (no auth token).
@@ -81,10 +82,15 @@ final class RegistrationCodeWorkflowTest extends QaWebTestCase
         $registeredData = $this->assertEnvelopeSuccess($registered, Response::HTTP_CREATED);
         self::assertTrue($registeredData['registered'] ?? null, 'Registration must report success.');
 
-        // 3) The user exists, blocked + invited; the code is consumed + linked.
+        // 3) The user exists, invited (NOT blocked); the code is consumed + linked.
         $user = $em->getRepository(User::class)->findOneBy(['email' => $email]);
         self::assertInstanceOf(User::class, $user, 'The registered user must be persisted.');
-        self::assertTrue($user->isBlocked(), 'A freshly registered user is blocked pending validation.');
+        self::assertFalse($user->isBlocked(), 'A freshly registered user is invited (pending), NOT blocked.');
+        self::assertSame(
+            LookupService::USER_STATUS_INVITED,
+            $user->getStatus()?->getLookupCode(),
+            'Registration leaves the account in the invited state pending email validation.'
+        );
         $userId = (int) $user->getId();
 
         // 4) Admin list shows the code consumed and linked to the new user.

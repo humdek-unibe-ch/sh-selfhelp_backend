@@ -34,7 +34,7 @@ is authoritative for DB defaults).
 | `alert_fail` | text | 1 | `Invalid email or validation code.` | Shown on a failed submit (overridden by the API error message when present). |
 | `alert_success` | text | 1 | `Registration successful! Please check your email…` | Shown after a successful submit. |
 | `open_registration` | text | 0 | `0` | **Policy flag.** `1` = open registration (no code). `0`/missing = a validation code is required. |
-| `group` | select-group | 0 | — | **Group assignment.** Multi-select of the groups every user who registers through this section joins. Stored as the selected group IDs joined into one string (e.g. `2,3`). Used in open mode; see Behaviour. |
+| `group` | select-group | 0 | `3` (seeded default) | **Group assignment.** Multi-select of the groups every user who registers through this section joins. Stored as the selected group IDs joined into one string (e.g. `2,3`). Applied in **both** modes (in code-required mode it is merged with the code's groups); see Behaviour. |
 | `label_code` | text | 1 | `Validation Code` **(seeded)** | Label above the validation-code input (code-required mode only). |
 | `code_placeholder` | text | 1 | `Enter your code` **(seeded)** | Placeholder inside the validation-code input. |
 | `label_go_home` | text | 1 | `Go Home` **(seeded)** | Post-registration button → home page. |
@@ -62,21 +62,25 @@ frontend mirrors it for UX but never relaxes it:
 - **`open_registration !== '1'` (code required):** the code input is shown and
   required. `RegistrationService` claims the supplied code under a
   `PESSIMISTIC_WRITE` lock (`claimRegistrationCode`), rejecting invalid/used
-  codes, then consumes and links it. The user joins the single group the code
-  was issued for (the code is the per-group gate).
+  codes, then consumes and links it. The user joins the **union** of the
+  group(s) the code grants and the group(s) the section's `group` field
+  configures (deduplicated by id), so one registration can grant several groups
+  at once. A code may itself grant several groups (`validation_code_groups`).
 
 Both modes create the user inside one transaction and queue the existing
-account-activation email job. The API response schema is identical for both
-modes.
+account-activation email job. The new account is left in the `invited` status
+(pending email validation) and is **not** blocked. The API response schema is
+identical for both modes.
 
-**Multi-group assignment (open mode).** The `group` field is a select-group
-**MultiSelect**, so an admin can pick several groups (for example `subject` and
-`therapist`). `resolveSectionPolicy` extracts every integer ID from the stored
-value (separator-agnostic) and deduplicates it, and the service creates one
-`users_groups` row per group. Different register sections can therefore enrol
-users into different group sets. The groups are read **server-side from the CMS
-section** — never from the request body — so a visitor cannot choose their own
-groups.
+**Multi-group assignment.** The `group` field is a select-group **MultiSelect**,
+so an admin can pick several groups (for example `subject` and `therapist`).
+`resolveSectionPolicy` extracts every integer ID from the stored value
+(separator-agnostic) and deduplicates it, and the service creates one
+`users_groups` row per group. In code-required mode these section groups are
+merged with the code's own groups. Different register sections can therefore
+enrol users into different group sets. The groups are read **server-side from
+the CMS section** — never from the request body — so a visitor cannot choose
+their own groups.
 
 **Request contract** (`config/schemas/api/v1/requests/auth/register.json`):
 `page_id` (int, required), `email` (string, required), `code` (string,
@@ -112,3 +116,7 @@ and uses it to (a) conditionally render the code `TextInput` and (b) include
 - `2026-06-04` — Open registration now enrols the user into **all** groups
   selected in the section's `group` MultiSelect (previously only the first was
   applied because the value was cast with `(int)`).
+- `2026-06-04` — Code-required registration now merges the code's group(s) with
+  the section's `group` MultiSelect (a code can grant several groups via
+  `validation_code_groups`), and new accounts are left `invited` (pending), no
+  longer `blocked`.

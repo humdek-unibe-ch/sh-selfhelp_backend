@@ -13,6 +13,7 @@ use App\Entity\Group;
 use App\Entity\Section;
 use App\Entity\User;
 use App\Entity\ValidationCode;
+use App\Entity\ValidationCodeGroup;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -31,14 +32,20 @@ use Doctrine\ORM\EntityManagerInterface;
  *     user is enrolled into EVERY group the section's `group` multi-select
  *     lists, so different register styles can assign different group sets.
  *   - open_registration = 0: a valid registration code is required and is
- *     consumed atomically; the user joins the single group the code was issued
- *     for.
+ *     consumed atomically. The user joins the UNION of the group(s) the code
+ *     was issued for AND the group(s) the register section configures, so a
+ *     single registration can grant membership in several groups at once.
+ *
+ * A registration code may itself grant several groups: the full set lives in
+ * `validation_code_groups`, with `validation_codes.id_groups` kept as the
+ * primary (first) group for backward-compatible listing/filtering.
  *
  * The policy (open_registration flag and group set) is read server-side from
  * the CMS section — the client is never trusted to send it.
  *
- * In both modes the new account is blocked and a validation email is sent
- * so the user must confirm their address before signing in.
+ * In both modes the new account is left in the invited (pending) state — it is
+ * NOT blocked — and a validation email is sent so the user must confirm their
+ * address (and set a password) before signing in.
  */
 class RegistrationService extends BaseService
 {
@@ -79,6 +86,11 @@ class RegistrationService extends BaseService
         // created?" runs in ONE transaction so the code is consumed only after
         // the user exists and a rollback leaves validation_codes untouched.
         $jobId = $this->entityManager->wrapInTransaction(function () use ($email, $openRegistration, $groupIds, $normalizedCode): int {
+            // The register section always configures at least one group; both
+            // modes enrol the user into those section groups. They come from
+            // the admin-configured section, never from the request body.
+            $sectionGroups = $this->resolveGroups($groupIds);
+
             if (!$openRegistration) {
                 if ($normalizedCode === null || $normalizedCode === '') {
                     throw new \InvalidArgumentException('A registration code is required.');
@@ -87,26 +99,26 @@ class RegistrationService extends BaseService
                 // Atomically claim the code: the row is locked FOR UPDATE so a
                 // concurrent registration with the same code blocks here and
                 // then sees consumed != null — only one request can ever win.
-                $vc    = $this->claimRegistrationCode($normalizedCode);
-                $group = $vc->getGroup();
-                if ($group === null) {
+                $vc = $this->claimRegistrationCode($normalizedCode);
+
+                // The code grants its own group(s); merge them with the
+                // register section's group(s) so one registration enrols the
+                // user into the UNION of both sets (deduplicated by id).
+                $codeGroups = $this->resolveCodeGroups($vc);
+                if ($codeGroups === []) {
                     throw new \InvalidArgumentException('Registration code has no group assigned.');
                 }
-                // Closed mode enrols the user into the single group the code was
-                // issued for (the code IS the per-group gate).
-                $groups = [$group];
+                $groups = $this->mergeGroups($codeGroups, $sectionGroups);
             } else {
                 // Open mode enrols the user into EVERY group the register
                 // section selected, so one register style can assign multiple
-                // groups (e.g. "subject" + "therapist"). The groups come from
-                // the admin-configured section, never from the request body.
+                // groups (e.g. "subject" + "therapist").
                 $vc     = null;
-                $groups = $this->resolveGroups($groupIds);
+                $groups = $sectionGroups;
             }
 
             $user = new User();
             $user->setEmail($email);
-            $user->setBlocked(true);
 
             $userType = $this->lookupService->findByTypeAndCode(
                 LookupService::USER_TYPES,
@@ -135,12 +147,19 @@ class RegistrationService extends BaseService
                 // Open mode: mint a fresh, already-consumed code so every
                 // self-registered account still owns a unique historical code
                 // (surfaced as a used code in the admin registration-code list).
+                // It carries every section group, mirroring a multi-group code.
                 $generated = new ValidationCode();
                 $generated->setCode($this->registrationCodeService->generateUnique());
                 $generated->setGroup($groups[0]);
                 $generated->setUser($user);
                 $generated->setConsumed($now);
                 $this->entityManager->persist($generated);
+                foreach ($groups as $membershipGroup) {
+                    $codeGroup = new ValidationCodeGroup();
+                    $codeGroup->setCode($generated);
+                    $codeGroup->setGroup($membershipGroup);
+                    $this->entityManager->persist($codeGroup);
+                }
             }
 
             $this->entityManager->flush();
@@ -305,8 +324,8 @@ class RegistrationService extends BaseService
     }
 
     /**
-     * Resolve every configured group, validating each exists. Used by open
-     * registration so the user is enrolled into all section-selected groups.
+     * Resolve every configured group, validating each exists. Used by both
+     * modes so the user is enrolled into all section-selected groups.
      *
      * @param non-empty-list<int> $groupIds
      * @return non-empty-list<Group>
@@ -314,6 +333,64 @@ class RegistrationService extends BaseService
     private function resolveGroups(array $groupIds): array
     {
         return array_map(fn(int $groupId): Group => $this->resolveGroup($groupId), $groupIds);
+    }
+
+    /**
+     * Resolve every group a registration code grants. The full set lives in
+     * `validation_code_groups` (multi-group codes); a code with no link rows
+     * falls back to its legacy single `validation_codes.id_groups` group.
+     *
+     * @return list<Group>
+     */
+    private function resolveCodeGroups(ValidationCode $vc): array
+    {
+        $code = $vc->getCode();
+
+        /** @var list<int> $groupIds */
+        $groupIds = [];
+        if ($code !== null) {
+            $rows = $this->entityManager->getConnection()->fetchFirstColumn(
+                'SELECT id_groups FROM validation_code_groups WHERE code = :code',
+                ['code' => $code]
+            );
+            foreach ($rows as $row) {
+                if (is_numeric($row)) {
+                    $groupIds[] = (int) $row;
+                }
+            }
+        }
+
+        if ($groupIds === []) {
+            $legacyGroup = $vc->getGroup();
+
+            return $legacyGroup !== null ? [$legacyGroup] : [];
+        }
+
+        return array_map(
+            fn(int $groupId): Group => $this->resolveGroup($groupId),
+            array_values(array_unique($groupIds))
+        );
+    }
+
+    /**
+     * Merge two group sets into one list, deduplicated by group id. The
+     * primary set is non-empty, so the result is guaranteed non-empty.
+     *
+     * @param non-empty-list<Group> $primary
+     * @param list<Group>           $secondary
+     * @return non-empty-list<Group>
+     */
+    private function mergeGroups(array $primary, array $secondary): array
+    {
+        $byId = [];
+        foreach ($primary as $group) {
+            $byId[(int) $group->getId()] = $group;
+        }
+        foreach ($secondary as $group) {
+            $byId[(int) $group->getId()] = $group;
+        }
+
+        return array_values($byId);
     }
 
     /**

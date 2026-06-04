@@ -13,6 +13,7 @@ use App\Entity\Group;
 use App\Entity\User;
 use App\Entity\UsersGroup;
 use App\Entity\ValidationCode;
+use App\Entity\ValidationCodeGroup;
 use App\Service\Auth\RegistrationService;
 use App\Service\Core\LookupService;
 use App\Tests\Support\Factories\GroupFactory;
@@ -55,7 +56,7 @@ final class RegistrationServiceTest extends QaKernelTestCase
         $this->registerPageId = $this->resolveRegisterPageId();
     }
 
-    public function testRegisterWithValidCodeCreatesBlockedUserConsumesAndLinksCode(): void
+    public function testRegisterWithValidCodeCreatesInvitedUserConsumesAndLinksCode(): void
     {
         $code = $this->seedCode('QAREGVALID1', $this->qaGroup);
         $email = 'qa_register_valid@selfhelp.test';
@@ -64,7 +65,7 @@ final class RegistrationServiceTest extends QaKernelTestCase
 
         $user = $this->findUser($email);
         self::assertInstanceOf(User::class, $user, 'A user must be created.');
-        self::assertTrue($user->isBlocked(), 'A freshly registered user is blocked until validation.');
+        self::assertFalse($user->isBlocked(), 'A freshly registered user is invited (pending validation), NOT blocked.');
         self::assertSame(
             LookupService::USER_STATUS_INVITED,
             $user->getStatus()?->getLookupCode(),
@@ -166,6 +167,52 @@ final class RegistrationServiceTest extends QaKernelTestCase
         self::assertSame((int) $firstUser->getId(), (int) $row['id_users'], 'The code stays linked to the FIRST user only.');
     }
 
+    public function testCodeRequiredRegistrationMergesCodeGroupAndSectionGroups(): void
+    {
+        // The register section configures one group; the supplied code grants a
+        // DIFFERENT group. The new user must join the UNION of both — this is
+        // the whole point of merging code groups with register-style groups.
+        $sectionGroup = (new GroupFactory($this->em))->createGroup('qa_reg_section_grp');
+        $codeGroup    = $this->qaGroup;
+        $pageId = $this->createCodeRequiredPage($sectionGroup);
+        $code   = $this->seedCode('QAREGMERGE1', $codeGroup);
+        $email  = 'qa_register_merge@selfhelp.test';
+
+        $this->service->register($pageId, $email, $code);
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user, 'A user must be created.');
+        self::assertSame(1, $this->groupMembershipCount($user, $codeGroup), 'The user joins the code group.');
+        self::assertSame(1, $this->groupMembershipCount($user, $sectionGroup), 'The user also joins the register-section group.');
+        self::assertSame(2, $this->totalGroupMembershipCount($user), 'The user joins exactly the union of the code group and the section group.');
+    }
+
+    public function testCodeRequiredRegistrationEnrolsEveryGroupOfAMultiGroupCode(): void
+    {
+        // A single code can grant several groups (validation_code_groups). They
+        // must all be merged with the register-section group, deduplicated.
+        $sectionGroup = (new GroupFactory($this->em))->createGroup('qa_reg_multi_section');
+        $codeGroupA   = $this->qaGroup;
+        $codeGroupB   = (new GroupFactory($this->em))->createGroup('qa_reg_multi_code_b');
+        $pageId = $this->createCodeRequiredPage($sectionGroup);
+        $code   = $this->seedCodeWithGroups('QAREGMULTI1', $codeGroupA, $codeGroupB);
+        $email  = 'qa_register_multicode@selfhelp.test';
+
+        $this->service->register($pageId, $email, $code);
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user, 'A user must be created.');
+        self::assertSame(1, $this->groupMembershipCount($user, $codeGroupA), 'The user joins the first code group.');
+        self::assertSame(1, $this->groupMembershipCount($user, $codeGroupB), 'The user joins the second code group.');
+        self::assertSame(1, $this->groupMembershipCount($user, $sectionGroup), 'The user joins the register-section group.');
+        self::assertSame(3, $this->totalGroupMembershipCount($user), 'The user joins the deduplicated union of every code group and the section group.');
+
+        // The primary (first) group is still mirrored onto validation_codes.id_groups.
+        $row = $this->codeRow($code);
+        self::assertNotNull($row['consumed'], 'The multi-group code is consumed.');
+        self::assertSame((int) $user->getId(), (int) $row['id_users'], 'The code is linked to the new user.');
+    }
+
     // -- open registration --------------------------------------------------
 
     public function testOpenRegistrationCreatesUserWithoutACodeAndMintsAConsumedLinkedCode(): void
@@ -178,7 +225,7 @@ final class RegistrationServiceTest extends QaKernelTestCase
 
         $user = $this->findUser($email);
         self::assertInstanceOf(User::class, $user, 'Open registration creates a user without a code.');
-        self::assertTrue($user->isBlocked(), 'A freshly registered user is blocked until validation.');
+        self::assertFalse($user->isBlocked(), 'A freshly registered user is invited (pending validation), NOT blocked.');
         self::assertSame(
             LookupService::USER_STATUS_INVITED,
             $user->getStatus()?->getLookupCode(),
@@ -261,6 +308,29 @@ final class RegistrationServiceTest extends QaKernelTestCase
         return $code;
     }
 
+    /**
+     * Seed a multi-group code: the ValidationCode primary group mirrors the
+     * first group (validation_codes.id_groups) and every group is linked via
+     * validation_code_groups, exactly as RegistrationCodeService::generate does.
+     */
+    private function seedCodeWithGroups(string $code, Group ...$groups): string
+    {
+        $entity = new ValidationCode();
+        $entity->setCode($code);
+        $entity->setGroup($groups[0] ?? null);
+        $this->em->persist($entity);
+
+        foreach ($groups as $group) {
+            $link = new ValidationCodeGroup();
+            $link->setCode($entity);
+            $link->setGroup($group);
+            $this->em->persist($link);
+        }
+        $this->em->flush();
+
+        return $code;
+    }
+
     private function findUser(string $email): ?User
     {
         return $this->em->getRepository(User::class)->findOneBy(['email' => mb_strtolower($email)]);
@@ -288,12 +358,32 @@ final class RegistrationServiceTest extends QaKernelTestCase
 
     /**
      * Build a qa-scoped register page + register-style section configured for
-     * open registration (open_registration = 1, group = the given qa groups
-     * stored as the comma-joined MultiSelect value), so the service resolves
-     * the open-mode policy without touching the shared seeded register section.
-     * All rows roll back with the DAMA transaction.
+     * open registration (open_registration = 1) with the given qa groups.
      */
     private function createOpenRegistrationPage(Group ...$groups): int
+    {
+        return $this->seedRegisterPage('qa_register_open', 'qa_register_open_form', '1', ...$groups);
+    }
+
+    /**
+     * Build a qa-scoped register page + register-style section configured for
+     * code-required registration (open_registration = 0) with the given qa
+     * groups as the section's group set, so merge-with-code behaviour can be
+     * exercised without touching the shared seeded register section.
+     */
+    private function createCodeRequiredPage(Group ...$groups): int
+    {
+        return $this->seedRegisterPage('qa_register_closed', 'qa_register_closed_form', '0', ...$groups);
+    }
+
+    /**
+     * Build a qa-scoped register page + register-style section with the given
+     * open_registration flag and group set (stored as the comma-joined
+     * MultiSelect value), so the service resolves the policy without touching
+     * the shared seeded register section. All rows roll back with the DAMA
+     * transaction.
+     */
+    private function seedRegisterPage(string $keyword, string $sectionName, string $openFlag, Group ...$groups): int
     {
         $conn = $this->em->getConnection();
 
@@ -304,34 +394,38 @@ final class RegistrationServiceTest extends QaKernelTestCase
 
         $conn->executeStatement(
             "INSERT INTO `pages` (`keyword`, `url`, `id_page_types`, `is_open_access`, `is_system`)
-             SELECT 'qa_register_open', '/qa-register-open', pt.id, 1, 0
-             FROM `page_types` pt WHERE pt.`name` = 'core' LIMIT 1"
+             SELECT :keyword, :url, pt.id, 1, 0
+             FROM `page_types` pt WHERE pt.`name` = 'core' LIMIT 1",
+            ['keyword' => $keyword, 'url' => '/' . $keyword]
         );
         $conn->executeStatement(
             "INSERT INTO `sections` (`id_styles`, `name`)
-             SELECT st.id, 'qa_register_open_form' FROM `styles` st WHERE st.`name` = 'register'"
+             SELECT st.id, :section FROM `styles` st WHERE st.`name` = 'register'",
+            ['section' => $sectionName]
         );
         $conn->executeStatement(
             "INSERT INTO `rel_pages_sections` (`id_pages`, `id_sections`, `position`)
              SELECT p.id, s.id, 10 FROM `pages` p, `sections` s
-             WHERE p.`keyword` = 'qa_register_open' AND s.`name` = 'qa_register_open_form'"
+             WHERE p.`keyword` = :keyword AND s.`name` = :section",
+            ['keyword' => $keyword, 'section' => $sectionName]
         );
         $conn->executeStatement(
             "INSERT INTO `sections_fields_translation` (`id_sections`, `id_fields`, `id_languages`, `content`, `meta`)
-             SELECT s.id, f.id, 1, '1', NULL
+             SELECT s.id, f.id, 1, :open, NULL
              FROM `sections` s JOIN `fields` f ON f.`name` = 'open_registration'
-             WHERE s.`name` = 'qa_register_open_form'"
+             WHERE s.`name` = :section",
+            ['open' => $openFlag, 'section' => $sectionName]
         );
         $conn->executeStatement(
             "INSERT INTO `sections_fields_translation` (`id_sections`, `id_fields`, `id_languages`, `content`, `meta`)
              SELECT s.id, f.id, 1, :gid, NULL
              FROM `sections` s JOIN `fields` f ON f.`name` = 'group'
-             WHERE s.`name` = 'qa_register_open_form'",
-            ['gid' => $groupIds]
+             WHERE s.`name` = :section",
+            ['gid' => $groupIds, 'section' => $sectionName]
         );
 
-        $pageId = $conn->fetchOne("SELECT id FROM `pages` WHERE `keyword` = 'qa_register_open'");
-        self::assertNotFalse($pageId, 'The qa open-registration page must be created.');
+        $pageId = $conn->fetchOne("SELECT id FROM `pages` WHERE `keyword` = :keyword", ['keyword' => $keyword]);
+        self::assertNotFalse($pageId, 'The qa register page must be created.');
 
         return is_numeric($pageId) ? (int) $pageId : 0;
     }
