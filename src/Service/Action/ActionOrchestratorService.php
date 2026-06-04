@@ -98,7 +98,10 @@ class ActionOrchestratorService
 
                 if (
                     ($runtimeConfig[ActionConfig::CLEAR_EXISTING_JOBS_FOR_RECORD_AND_ACTION] ?? false) === true &&
-                    $context->triggerType === LookupService::ACTION_TRIGGER_TYPES_FINISHED
+                    (
+                        $context->triggerType === LookupService::ACTION_TRIGGER_TYPES_FINISHED ||
+                        $context->triggerType === LookupService::ACTION_TRIGGER_TYPES_UPDATED
+                    )
                 ) {
                     $this->cleanupService->deleteQueuedJobsForRecordAndAction(
                         $action,
