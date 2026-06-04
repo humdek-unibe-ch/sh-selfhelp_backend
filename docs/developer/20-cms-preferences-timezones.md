@@ -1,10 +1,16 @@
 # CMS Preferences and Timezone Management
 
-## 📄 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend includes a comprehensive CMS preferences system that manages global application settings through a page-based configuration. This system provides centralized management for default language, timezone settings, anonymous user access, and Firebase configuration, ensuring consistent behavior across the entire application.
 
-## 🏗️ Architecture
+## Architecture
 
 ### Page-Based Configuration System
 
@@ -83,7 +89,7 @@ INSERT INTO `lookups` (`type_code`, `lookup_code`, `lookup_value`, `description`
 -- ... comprehensive timezone coverage
 ```
 
-## 🔧 Core Services
+## Core Services
 
 ### CmsPreferenceService
 
@@ -271,7 +277,7 @@ class AdminCmsPreferenceService extends BaseService
 }
 ```
 
-## 🌍 Timezone Management
+## Timezone Management
 
 ### Timezone Field Type
 
@@ -328,7 +334,7 @@ ALTER TABLE `users` ADD COLUMN `id_timezones` INT DEFAULT NULL;
 ALTER TABLE `users` ADD CONSTRAINT `FK_users_id_timezones` FOREIGN KEY (`id_timezones`) REFERENCES `lookups`(`id`);
 ```
 
-## 🔌 API Endpoints
+## API Endpoints
 
 ### Admin CMS Preferences API
 
@@ -412,7 +418,7 @@ Content-Type: application/json
 }
 ```
 
-## 🗃️ Caching Strategy
+## Caching Strategy
 
 ### CMS Preferences Caching
 
@@ -444,7 +450,7 @@ $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $preference
 $this->cmsPreferenceService->invalidateUserDataCaches();
 ```
 
-## 🔄 Integration Points
+## Integration Points
 
 ### Service Integration
 
@@ -521,7 +527,7 @@ The anonymous users setting controls:
 - **Rate Limiting**: Different limits for authenticated vs anonymous users
 - **Content Visibility**: Some content may be restricted to authenticated users only
 
-## 🚀 Recent Updates (v7.6.0 → v8.0.0)
+## Recent Updates (v7.6.0 → v8.0.0)
 
 ### Timezone Support Addition
 
@@ -554,7 +560,7 @@ CALL add_foreign_key('users', 'FK_users_id_timezones', 'id_timezones', 'lookups(
 CALL add_index('users', 'IDX_1483A5E9F5677479', 'id_timezones', FALSE);
 ```
 
-## 📋 Best Practices
+## Best Practices
 
 ### Configuration Management
 

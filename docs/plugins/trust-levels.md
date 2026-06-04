@@ -1,5 +1,11 @@
 # Trust Levels
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Every plugin carries a single trust level that controls:
 
 - Which signature mode applies to its installs.

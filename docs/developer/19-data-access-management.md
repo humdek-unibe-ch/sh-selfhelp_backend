@@ -1,12 +1,18 @@
 # Data Access Management System
 
-## 🔍 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend implements a **Data Access Management (DAM)** system that provides **fine-grained, role-based data access control** with comprehensive auditing capabilities. This system complements the existing ACL system by providing customizable permissions at the data level rather than just page-level access.
 
 **Recent Changes:** The system has evolved to use **service-specific custom filtering** approaches where each admin service implements optimized filtering methods tailored to their specific data structures, replacing the previous generic filtering strategy for better performance and maintainability.
 
-## 🏗️ System Architecture
+## System Architecture
 
 The DAM system consists of three interconnected components:
 
@@ -38,7 +44,7 @@ graph TD
     S --> T[Transaction Logging]
 ```
 
-## 🔧 How DAM Differs from ACL
+## How DAM Differs from ACL
 
 | Aspect | ACL System | Data Access Management |
 |--------|------------|----------------------|
@@ -49,7 +55,7 @@ graph TD
 | **Tables** | `page_acl_groups` | `role_data_access`, `data_access_audits` |
 | **Caching** | Stored procedure based | Advanced CacheService integration |
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### Role Data Access Table
 ```sql
@@ -104,7 +110,7 @@ CREATE TABLE data_access_audits (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-## 🔐 CRUD Permission System
+## CRUD Permission System
 
 ### Bitwise Permission Flags
 ```php
@@ -138,7 +144,7 @@ $hasReadPermission = ($userPermissions & PERMISSION_READ) === PERMISSION_READ;
 $hasWritePermission = ($userPermissions & (PERMISSION_CREATE | PERMISSION_UPDATE | PERMISSION_DELETE)) > 0;
 ```
 
-## 📊 Core Entities
+## Core Entities
 
 ### RoleDataAccess Entity
 ```php
@@ -229,7 +235,7 @@ class DataAccessAudit
 // ENTITY RULE
 ```
 
-## 🔧 Service Architecture
+## Service Architecture
 
 ### Service-Specific Custom Filtering Approach
 
@@ -545,7 +551,7 @@ class AdminDataAccessService extends BaseService
 }
 ```
 
-## 🌐 API Endpoints
+## API Endpoints
 
 ### Admin Data Access Controller
 ```php
@@ -643,7 +649,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `method
 ('admin_audit_data_access_stats', 'v1', '/admin/audit/data-access/stats', 'App\\Controller\\Api\\V1\\Admin\\AdminAuditController::getDataAccessAuditStats', 'GET', NULL, NULL);
 ```
 
-## 🔍 Audit Logging System
+## Audit Logging System
 
 ### Comprehensive Audit Trail
 Every permission check is logged with:
@@ -695,7 +701,7 @@ private function auditLog(?int $userId, string $resourceType, int $resourceId, s
 }
 ```
 
-## 🔄 Integration Examples
+## Integration Examples
 
 ### Service Integration Pattern
 ```php
@@ -847,7 +853,7 @@ class AdminSectionController extends AbstractController
 }
 ```
 
-## 🧪 Testing Guidelines
+## Testing Guidelines
 
 ### Unit Tests for Permission Logic
 ```php
@@ -974,7 +980,7 @@ public function testDataAccessIntegration(): void
 }
 ```
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### Permission Design Principles
 1. **Admin Override**: Admin role users bypass all permission checks
@@ -996,7 +1002,7 @@ public function testDataAccessIntegration(): void
 - **Batch Operations**: Bulk permission updates with transaction wrapping
 - **Lazy Loading**: Efficient entity relationships with proxy loading
 
-## 📊 Monitoring and Analytics
+## Monitoring and Analytics
 
 ### Audit Log Queries
 ```sql

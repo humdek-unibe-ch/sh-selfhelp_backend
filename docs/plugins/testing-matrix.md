@@ -1,5 +1,11 @@
 # Plugin Testing Matrix
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 A plugin is considered "release-ready" when **every** row of this
 matrix is green for the supported host version range.
 

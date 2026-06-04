@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Core PHPStan gate (`core-backend-check`)
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 The workflow at `.github/workflows/core-backend-check.yml` is the
 **strict, zero-tolerance** static-analysis gate for the Symfony backend.
 It runs PHPStan at **level max** over the whole core code base and **fails

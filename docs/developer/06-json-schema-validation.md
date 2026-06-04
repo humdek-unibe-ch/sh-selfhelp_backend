@@ -1,10 +1,16 @@
 # JSON Schema Validation
 
-## 📋 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend implements comprehensive JSON Schema validation for all API requests and responses. This ensures data consistency, clear API contracts, and automatic validation with detailed error messages.
 
-## 🏗️ Validation Architecture
+## Validation Architecture
 
 ```mermaid
 graph TD
@@ -30,7 +36,7 @@ graph TD
     D --> L
 ```
 
-## 📁 Schema Organization
+## Schema Organization
 
 ### Directory Structure
 ```
@@ -75,7 +81,7 @@ config/schemas/api/v1/
     └── patterns.json          # Validation patterns
 ```
 
-## 🔧 JsonSchemaValidationService
+## JsonSchemaValidationService
 
 ### Core Implementation
 ```php
@@ -178,7 +184,7 @@ class JsonSchemaValidationService
 }
 ```
 
-## 📝 Request Validation
+## Request Validation
 
 ### RequestValidatorTrait
 ```php
@@ -277,7 +283,7 @@ class AdminPageController extends AbstractController
 }
 ```
 
-## 📤 Response Validation
+## Response Validation
 
 ### ApiResponseFormatter Integration
 ```php
@@ -334,7 +340,7 @@ class ApiResponseFormatter
 }
 ```
 
-## 📋 Schema Examples
+## Schema Examples
 
 ### Request Schema Example
 ```json
@@ -540,10 +546,6 @@ class ApiResponseFormatter
           "format": "date-time",
           "description": "Response timestamp"
         },
-        "request_id": {
-          "type": "string",
-          "description": "Unique request identifier"
-        },
         "pagination": {
           "$ref": "_pagination.json"
         }
@@ -566,7 +568,7 @@ class ApiResponseFormatter
 }
 ```
 
-## 🚨 Error Handling
+## Error Handling
 
 ### RequestValidationException
 ```php
@@ -631,7 +633,7 @@ class RequestValidationException extends \Exception
 }
 ```
 
-## 🔧 Schema Development Best Practices
+## Schema Development Best Practices
 
 ### 1. Entity-Schema Alignment
 - Request/response schemas should mirror entity structures
@@ -666,7 +668,7 @@ class RequestValidationException extends \Exception
 - Document complex validation rules
 - Provide examples where helpful
 
-## 🧪 Testing Schema Validation
+## Testing Schema Validation
 
 ### Unit Testing Schemas
 ```php
@@ -742,7 +744,7 @@ public function testCreatePageValidation(): void
 }
 ```
 
-## 🔄 Schema Versioning
+## Schema Versioning
 
 ### Version Management
 - Schemas are organized by API version (`v1`, `v2`)

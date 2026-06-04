@@ -1,10 +1,16 @@
 # Dynamic Routing System
 
-## 🔄 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The SelfHelp Symfony Backend uses a revolutionary database-driven routing system that loads all API routes dynamically from the database instead of traditional YAML or PHP route definitions. This provides unprecedented flexibility for runtime route management.
 
-## 🏗️ Architecture Components
+## Architecture Components
 
 ### Core Components
 1. **`ApiRouteLoader`** (`src/Routing/ApiRouteLoader.php`) — custom Symfony route loader that builds the `RouteCollection` from the database.
@@ -18,7 +24,7 @@ The SelfHelp Symfony Backend uses a revolutionary database-driven routing system
 > instantiate the controller (an autowired service) and call the method like
 > any other Symfony route.
 
-## 📊 Database-Driven Route Loading
+## Database-Driven Route Loading
 
 ```mermaid
 graph TD
@@ -38,7 +44,7 @@ graph TD
     E --> I
 ```
 
-## 🗃️ Database Schema
+## Database Schema
 
 ### `api_routes` Table Structure
 ```sql
@@ -84,7 +90,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`, `method
 '{"locale": {"in": "query", "required": false, "description": "Language locale"}}');
 ```
 
-## 🔧 ApiRouteLoader Implementation
+## ApiRouteLoader Implementation
 
 ### Route Loading Process
 
@@ -158,7 +164,7 @@ The system automatically maps database controller references to versioned namesp
 // 4. Map to versioned namespace: App\Controller\Api\{Version}\{Domain}\{Domain}Controller
 ```
 
-## 🎯 Controller Dispatch & Security
+## Controller Dispatch & Security
 
 There is no custom dispatcher. The DB route stores a `_controller` value
 (`Class::method`); Symfony's standard kernel resolves and invokes it. The
@@ -210,7 +216,7 @@ Notes:
 - Any `AccessDeniedException` (and any other API error) is turned into the
   standard JSON envelope by `ApiExceptionListener`.
 
-## 🔐 Permission Integration
+## Permission Integration
 
 ### Route-Permission Association
 Routes can be associated with permissions through the `rel_api_routes_permissions` table:
@@ -236,7 +242,7 @@ the required permissions up by route name through
 `UserPermissionService::getRoutePermissions($routeName)`, which is cached
 (see [Global Cache System](./17-global-cache-system.md)).
 
-## 📋 Route Management Workflow
+## Route Management Workflow
 
 This section describes the workflow for **core host routes**.
 
@@ -306,7 +312,7 @@ Caching happens at two levels, both through the Redis-backed `CacheService`:
   caches the permission lookups used by `ApiSecurityListener`, so the
   per-request permission check does not hit the database on every call.
 
-## 🔄 Request Processing Flow
+## Request Processing Flow
 
 ```mermaid
 sequenceDiagram
@@ -334,7 +340,7 @@ sequenceDiagram
     Controller-->>Client: ApiResponseFormatter JSON envelope
 ```
 
-## ⚡ Performance Optimizations
+## Performance Optimizations
 
 ### Route Loading Optimization
 - Routes loaded once during application bootstrap
@@ -351,7 +357,7 @@ sequenceDiagram
 - Production route cache persisted across requests
 - Minimal memory footprint for route storage
 
-## 🚨 Error Handling
+## Error Handling
 
 Because dispatch is plain Symfony, errors surface through the framework and
 are normalised into the standard JSON envelope by **`ApiExceptionListener`**
@@ -371,7 +377,7 @@ are normalised into the standard JSON envelope by **`ApiExceptionListener`**
   as-is and only rewrites legacy flat `App\Controller\XController::m` strings
   to the versioned namespace.
 
-## 🔧 Configuration
+## Configuration
 
 ### Route Loader Registration
 ```yaml
@@ -393,7 +399,7 @@ api_dynamic:
     prefix: /cms-api        # every DB route is served under /cms-api
 ```
 
-## 🧪 Testing Dynamic Routes
+## Testing Dynamic Routes
 
 ### Unit Testing Route Loader
 ```php
@@ -415,7 +421,7 @@ public function testDynamicRouteExecution(): void
 }
 ```
 
-## 🔮 Future Enhancements
+## Future Enhancements
 
 ### Planned Features
 - **Route Versioning**: Support for route deprecation and migration

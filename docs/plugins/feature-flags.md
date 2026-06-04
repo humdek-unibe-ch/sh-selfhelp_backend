@@ -1,5 +1,11 @@
 # Plugin Feature Flags
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Plugins ship feature flags that the host can flip at runtime without
 re-installing the plugin. Stored in `plugin_feature_flags`:
 

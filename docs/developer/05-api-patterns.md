@@ -1,10 +1,16 @@
 # API Design Patterns
 
-## 🌐 RESTful API Design
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## RESTful API Design
 
 The SelfHelp Symfony Backend follows strict RESTful principles with standardized patterns for consistency, maintainability, and developer experience.
 
-## 📋 Response Format Standard
+## Response Format Standard
 
 ### Universal Response Envelope
 All API responses follow a consistent JSON envelope structure:
@@ -17,8 +23,7 @@ All API responses follow a consistent JSON envelope structure:
     "logged_in": true,
     "meta": {
         "version": "v1",
-        "timestamp": "2025-01-23T10:30:00Z",
-        "request_id": "req_abc123"
+        "timestamp": "2026-06-03T10:30:00+00:00"
     },
     "data": {
         // Actual response data here
@@ -145,7 +150,7 @@ class ApiResponseFormatter
 }
 ```
 
-## 🛣️ URL Structure & Naming
+## URL Structure & Naming
 
 ### URL Pattern
 ```
@@ -166,7 +171,7 @@ class ApiResponseFormatter
 - **Parameters**: Snake_case in URLs, camelCase in JSON
 - **Versions**: Simple version numbers (`v1`, `v2`)
 
-## 🔧 HTTP Methods & Status Codes
+## HTTP Methods & Status Codes
 
 ### HTTP Method Usage
 | Method | Purpose | Request Body | Response Body |
@@ -191,7 +196,7 @@ class ApiResponseFormatter
 | 422 | Validation failure | Invalid entity data |
 | 500 | Server error | Internal server error |
 
-## 🔍 API Discovery Pattern
+## API Discovery Pattern
 
 ### API Routes Endpoint
 The SelfHelp API provides an endpoint for frontend applications to discover available API routes and their required permissions. This allows frontend code to dynamically check permissions before making API calls, reducing unnecessary requests and improving user experience.
@@ -287,7 +292,7 @@ if (canReadPages) {
 - **Centralized permission logic**: Single source of truth for API permissions
 - **Dynamic UI**: Frontend can adapt based on user's actual permissions
 
-## 📊 Pagination Pattern
+## Pagination Pattern
 
 ### Request Parameters
 ```
@@ -341,7 +346,7 @@ public function getPages(Request $request): JsonResponse
 }
 ```
 
-## 🔍 Filtering & Searching
+## Filtering & Searching
 
 ### Query Parameter Patterns
 ```
@@ -374,7 +379,7 @@ public function buildFilters(Request $request): array
 }
 ```
 
-## 📝 Request Validation Pattern
+## Request Validation Pattern
 
 ### JSON Schema Validation
 All requests are validated against JSON schemas stored in `/config/schemas/api/v1/requests/`:
@@ -446,7 +451,7 @@ class AdminPageController extends AbstractController
 }
 ```
 
-## 🚨 Error Handling Pattern
+## Error Handling Pattern
 
 ### Error Response Structure
 ```json
@@ -496,7 +501,7 @@ class ApiExceptionListener
 }
 ```
 
-## 🔄 Versioning Pattern
+## Versioning Pattern
 
 ### URL Versioning
 ```
@@ -523,7 +528,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`) VALUES
 ('admin_get_pages', 'v2', '/admin/pages', 'App\\Controller\\AdminPageController::getPages');
 ```
 
-## 📦 Resource Representation
+## Resource Representation
 
 ### Single Resource
 ```json
@@ -580,7 +585,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`) VALUES
 }
 ```
 
-## 🔗 HATEOAS (Hypermedia)
+## HATEOAS (Hypermedia)
 
 ### Resource Links
 ```json
@@ -598,7 +603,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`) VALUES
 }
 ```
 
-## 🏷️ Content Negotiation
+## Content Negotiation
 
 ### Accept Header Support
 ```
@@ -612,7 +617,7 @@ Accept: application/xml                     # XML response (if supported)
 Content-Type: application/json  # For POST/PUT/PATCH requests
 ```
 
-## 🔒 Security Headers
+## Security Headers
 
 ### Required Headers
 ```
@@ -629,7 +634,7 @@ X-XSS-Protection: 1; mode=block
 Strict-Transport-Security: max-age=31536000
 ```
 
-## 🧪 Testing Patterns
+## Testing Patterns
 
 ### Controller Testing
 ```php
@@ -675,7 +680,7 @@ public function testRequestValidation(): void
 }
 ```
 
-## 📈 Performance Patterns
+## Performance Patterns
 
 ### Caching Strategy
 ```php

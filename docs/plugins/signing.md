@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Plugin signing (Ed25519)
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Every plugin install — whether it arrives via a public registry, a
 direct manifest URL, a `.shplugin` archive upload, or a paste-JSON
 developer flow — passes through the same signature verification
