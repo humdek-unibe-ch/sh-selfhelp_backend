@@ -34,6 +34,7 @@ is authoritative for DB defaults).
 | `alert_fail` | text | 1 | `Invalid email or validation code.` | Shown on a failed submit (overridden by the API error message when present). |
 | `alert_success` | text | 1 | `Registration successful! Please check your email…` | Shown after a successful submit. |
 | `open_registration` | text | 0 | `0` | **Policy flag.** `1` = open registration (no code). `0`/missing = a validation code is required. |
+| `group` | select-group | 0 | — | **Group assignment.** Multi-select of the groups every user who registers through this section joins. Stored as the selected group IDs joined into one string (e.g. `2,3`). Used in open mode; see Behaviour. |
 | `label_code` | text | 1 | `Validation Code` **(seeded)** | Label above the validation-code input (code-required mode only). |
 | `code_placeholder` | text | 1 | `Enter your code` **(seeded)** | Placeholder inside the validation-code input. |
 | `label_go_home` | text | 1 | `Go Home` **(seeded)** | Post-registration button → home page. |
@@ -54,16 +55,28 @@ frontend mirrors it for UX but never relaxes it:
   code is sent. `RegistrationService` ignores any submitted code, mints one
   unique 8-char uppercase-alphanumeric code via
   `RegistrationCodeService::generateUnique()`, links it to the new user, marks
-  it consumed immediately, and assigns the section-configured group. The code
-  surfaces in the admin registration-code list as a used historical code.
+  it consumed immediately, and enrols the user into **every** group listed in
+  the section's `group` field. The minted code is linked to the first of those
+  groups and surfaces in the admin registration-code list as a used historical
+  code.
 - **`open_registration !== '1'` (code required):** the code input is shown and
   required. `RegistrationService` claims the supplied code under a
   `PESSIMISTIC_WRITE` lock (`claimRegistrationCode`), rejecting invalid/used
-  codes, then consumes and links it.
+  codes, then consumes and links it. The user joins the single group the code
+  was issued for (the code is the per-group gate).
 
 Both modes create the user inside one transaction and queue the existing
 account-activation email job. The API response schema is identical for both
 modes.
+
+**Multi-group assignment (open mode).** The `group` field is a select-group
+**MultiSelect**, so an admin can pick several groups (for example `subject` and
+`therapist`). `resolveSectionPolicy` extracts every integer ID from the stored
+value (separator-agnostic) and deduplicates it, and the service creates one
+`users_groups` row per group. Different register sections can therefore enrol
+users into different group sets. The groups are read **server-side from the CMS
+section** — never from the request body — so a visitor cannot choose their own
+groups.
 
 **Request contract** (`config/schemas/api/v1/requests/auth/register.json`):
 `page_id` (int, required), `email` (string, required), `code` (string,
@@ -96,3 +109,6 @@ and uses it to (a) conditionally render the code `TextInput` and (b) include
 - `2026-06-04` — Added open-registration support and made the validation-code
   label/placeholder and the two post-registration buttons CMS-managed
   (`Version20260604111011`).
+- `2026-06-04` — Open registration now enrols the user into **all** groups
+  selected in the section's `group` MultiSelect (previously only the first was
+  applied because the value was cast with `(int)`).

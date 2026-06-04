@@ -68,10 +68,11 @@ These rules apply to every documentation change in active SelfHelp2 repositories
 
 CMS styles are a cross-repo contract (backend field seeds + `@selfhelp/shared` types + frontend/mobile renderers). Every style must be documented, and the docs must stay in sync with the code.
 
-- The canonical per-style reference lives in `docs/reference/styles/`: `index.md` is the catalog of every core style, `_template.md` is the required page structure, and full pages live under `docs/reference/styles/<category>/<style>.md`.
-- When you **add a new style**, you MUST create its `docs/reference/styles/<category>/<style>.md` page from `_template.md` and link it from `index.md` (replace the "catalog only" cell). The page must list every field (with `display` flag and purpose), the behaviour/modes, and the renderer + backend references.
-- When you **change an existing style** (add/remove/rename a field, change behaviour or defaults, change the renderer contract), you MUST update its reference page in the same change. If the style only has a "catalog only" entry, create the full page as part of the change.
-- Keep the page's `Last verified` date and `Change history` current, and keep the field list aligned with the `styles` / `fields` / `rel_fields_styles` seed migrations, the `admin/styles/schema` endpoint, and the shared `I<Name>Style` type.
+- The canonical reference lives in `docs/reference/styles/`: `index.md` is the catalog of every core style (each row links to its docs), `_conventions.md` documents the fields/Mantine props shared by every style, and `_template.md` is the page structure for a dedicated page. Every page is dual-audience: an **Administrators** view (when/how to use the style) and a **Developers** view (what it maps to and how it renders).
+- Documentation layout: the **auth flow styles** get a dedicated page under `docs/reference/styles/auth/<style>.md` (they carry lots of CMS copy). The **atomic component styles** (layout, typography, media, interactive, forms, composite) are documented in their **per-category page** `docs/reference/styles/<category>.md`, one `## <style>` section each.
+- When you **add a new style**, you MUST document it in the same change — either a new `auth/<style>.md` page (from `_template.md`) for an auth flow style, or a new `## <style>` section in the matching `<category>.md` page — and update its `index.md` row to link the docs. Cover the distinctive fields (the common/spacing/Mantine props are in `_conventions.md`), the behaviour, the children rule, and the renderer + backend references.
+- When you **change an existing style** (add/remove/rename a field, change behaviour or defaults, change the renderer contract), you MUST update its documentation (its dedicated page or its section in the category page) in the same change.
+- Keep `Last verified` current and (for dedicated pages) the `Change history`, and keep the field list aligned with the `styles` / `fields` / `rel_fields_styles` seed migrations, the `admin/styles/schema` endpoint, and the shared `I<Name>Style` type.
 - Treat a style code change with no matching `docs/reference/styles/` update as an incomplete change during review.
 
 ## Implementation Principles
@@ -378,7 +379,7 @@ static-analysis gate green.
 - Add service: place it under the matching `src/Service` domain, inject dependencies via constructor, keep transactions/cache invalidation explicit.
 - Add migration: inspect schema first, create the migration with the Symfony/Doctrine generate command so the timestamp-based file/class name is automatic, update relevant SQL scripts if required, and do not run migrations automatically.
 - Add frontend page behavior: inspect `PageService`, section/field processing, interpolation, conditions, ACL, and cache effects.
-- Add/change a CMS style: update the field seed migration (`styles`/`fields`/`rel_fields_styles`), the shared `I<Name>Style` type + registry entry, the renderer, and the style's `docs/reference/styles/<category>/<style>.md` page (see "Style Documentation Rules").
+- Add/change a CMS style: update the field seed migration (`styles`/`fields`/`rel_fields_styles`), the shared `I<Name>Style` type + registry entry, the renderer, and the style's documentation (its `auth/<style>.md` page or its `## <style>` section in `docs/reference/styles/<category>.md`; see "Style Documentation Rules").
 - Add permission-sensitive feature: update route permissions and verify `ApiSecurityListener`, `UserPermissionService`, ACL, and data-access rules.
 - Update tests: prefer focused PHPUnit tests and keep fixtures/test database assumptions explicit.
 
