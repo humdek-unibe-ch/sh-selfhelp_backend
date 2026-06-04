@@ -1,5 +1,22 @@
 # v8.0.0 (Not released yet)
 
+### Register style: multi-group assignment
+
+- A `register` section's `group` field is a select-group **MultiSelect**, so an
+  admin can pick several groups. Open registration now enrols the new user into
+  **every** selected group, not just the first.
+  `RegistrationService::resolveSectionPolicy` parses all group IDs from the
+  stored value (separator-agnostic, deduplicated) and the service creates one
+  `users_groups` row per group via the new `resolveGroups()` helper; the minted
+  validation code is linked to the first group. Closed/code-required mode is
+  unchanged (the user joins the code's single group). The groups are read
+  server-side from the CMS section — never from the request body — so visitors
+  cannot choose their own groups, and different register sections can assign
+  different group sets.
+- Tests: `RegistrationServiceTest` adds
+  `testOpenRegistrationEnrolsTheUserIntoEverySelectedGroup` (the user joins
+  exactly the configured groups, no more, no fewer).
+
 ### Open registration + CMS-managed registration-lifecycle labels
 
 - `RegistrationService` now supports **open registration**. When the CMS
@@ -31,14 +48,23 @@
   `tests/Integration/Migrations/Version20260604111011RoundTripTest` asserts the
   migration up/down round-trips.
 
-### Docs: per-style reference + style-documentation rule
+### Docs: complete CMS style reference (every style, dual-audience)
 
-- Added `docs/reference/styles/` — a catalog of every core CMS style plus full
-  per-style reference pages for the styles touched by the open-registration work
-  (`auth/register.md`, `auth/login.md`, `auth/validate.md`) and a
-  `_template.md` for new pages.
-- `AGENTS.md` now requires that adding or changing a CMS style ships/refreshes
-  its `docs/reference/styles/` page (see "Style Documentation Rules").
+- `docs/reference/styles/` now documents **every** core style for two audiences
+  (an "Administrators" how-to-use view and a "Developers" how-it-works view):
+  - `_conventions.md` — the fields and Mantine props shared by every style
+    (`css`, `css_mobile`, `condition`, spacing, `use_mantine_style`, standard
+    cosmetic props), so the per-style docs only cover what is unique.
+  - Auth flow styles get dedicated pages: `auth/login.md`, `auth/register.md`,
+    `auth/validate.md`, `auth/resetPassword.md`, `auth/twoFactorAuth.md`,
+    `auth/profile.md`.
+  - Atomic component styles are documented per category, one section per style:
+    `layout.md`, `typography.md`, `media.md`, `interactive.md`, `forms.md`,
+    `composite.md`.
+  - `index.md` is the catalog; every row links to the style's documentation.
+- `AGENTS.md` "Style Documentation Rules" now require adding/changing a style to
+  ship/refresh its documentation (a dedicated `auth/` page or its section in the
+  matching `<category>.md`).
 
 ### Plugin dev install: rewrite the stylesheet URL alongside the entrypoint
 
