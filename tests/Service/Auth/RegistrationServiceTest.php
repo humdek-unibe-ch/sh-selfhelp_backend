@@ -218,6 +218,25 @@ final class RegistrationServiceTest extends QaKernelTestCase
         self::assertFalse($persisted, 'The submitted code is never persisted.');
     }
 
+    public function testOpenRegistrationEnrolsTheUserIntoEverySelectedGroup(): void
+    {
+        // A register style that selected TWO groups (e.g. "subject" +
+        // "therapist") must enrol the new user into BOTH — the historical bug
+        // only kept the first group because the value was cast with (int).
+        $groupA = $this->qaGroup;
+        $groupB = (new GroupFactory($this->em))->createGroup('qa_register_group_2');
+        $pageId = $this->createOpenRegistrationPage($groupA, $groupB);
+        $email  = 'qa_register_multi_group@selfhelp.test';
+
+        $this->service->register($pageId, $email, null);
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user, 'Open registration creates the user.');
+        self::assertSame(1, $this->groupMembershipCount($user, $groupA), 'The user joins the first selected group.');
+        self::assertSame(1, $this->groupMembershipCount($user, $groupB), 'The user joins the second selected group.');
+        self::assertSame(2, $this->totalGroupMembershipCount($user), 'The user joins exactly the two selected groups — no more, no fewer.');
+    }
+
     // -- helpers ------------------------------------------------------------
 
     private function resolveRegisterPageId(): int
@@ -258,15 +277,30 @@ final class RegistrationServiceTest extends QaKernelTestCase
         return is_array($rows) ? count($rows) : 0;
     }
 
+    private function totalGroupMembershipCount(User $user): int
+    {
+        $rows = $this->em->createQuery(
+            'SELECT ug FROM ' . UsersGroup::class . ' ug WHERE ug.user = :user'
+        )->setParameter('user', $user)->getResult();
+
+        return is_array($rows) ? count($rows) : 0;
+    }
+
     /**
      * Build a qa-scoped register page + register-style section configured for
-     * open registration (open_registration = 1, group = the qa group), so the
-     * service resolves the open-mode policy without touching the shared seeded
-     * register section. All rows roll back with the DAMA transaction.
+     * open registration (open_registration = 1, group = the given qa groups
+     * stored as the comma-joined MultiSelect value), so the service resolves
+     * the open-mode policy without touching the shared seeded register section.
+     * All rows roll back with the DAMA transaction.
      */
-    private function createOpenRegistrationPage(Group $group): int
+    private function createOpenRegistrationPage(Group ...$groups): int
     {
         $conn = $this->em->getConnection();
+
+        $groupIds = implode(',', array_map(
+            static fn(Group $g): string => (string) ($g->getId() ?? 0),
+            $groups
+        ));
 
         $conn->executeStatement(
             "INSERT INTO `pages` (`keyword`, `url`, `id_page_types`, `is_open_access`, `is_system`)
@@ -293,7 +327,7 @@ final class RegistrationServiceTest extends QaKernelTestCase
              SELECT s.id, f.id, 1, :gid, NULL
              FROM `sections` s JOIN `fields` f ON f.`name` = 'group'
              WHERE s.`name` = 'qa_register_open_form'",
-            ['gid' => (string) ($group->getId() ?? 0)]
+            ['gid' => $groupIds]
         );
 
         $pageId = $conn->fetchOne("SELECT id FROM `pages` WHERE `keyword` = 'qa_register_open'");

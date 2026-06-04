@@ -27,12 +27,15 @@ use Doctrine\ORM\EntityManagerInterface;
  *   - open_registration = 1: any visitor may register with just an email. A
  *     unique registration code is minted server-side, linked to the new user
  *     and immediately marked consumed (so it shows up as a used historical
- *     code in the admin list). Any code the client submitted is ignored.
+ *     code in the admin list). Any code the client submitted is ignored. The
+ *     user is enrolled into EVERY group the section's `group` multi-select
+ *     lists, so different register styles can assign different group sets.
  *   - open_registration = 0: a valid registration code is required and is
- *     consumed atomically.
+ *     consumed atomically; the user joins the single group the code was issued
+ *     for.
  *
- * Both values are read server-side from the CMS section — the client is never
- * trusted to send the security policy.
+ * The policy (open_registration flag and group set) is read server-side from
+ * the CMS section — the client is never trusted to send it.
  *
  * In both modes the new account is blocked and a validation email is sent
  * so the user must confirm their address before signing in.
@@ -67,7 +70,7 @@ class RegistrationService extends BaseService
 
         $this->assertEmailNotTaken($email);
 
-        ['open_registration' => $openRegistration, 'group_id' => $groupId] =
+        ['open_registration' => $openRegistration, 'group_ids' => $groupIds] =
             $this->resolveSectionPolicy($pageId);
 
         $normalizedCode = $code !== null ? trim($code) : null;
@@ -75,7 +78,7 @@ class RegistrationService extends BaseService
         // Everything that decides "is this code still valid?" and "is the user
         // created?" runs in ONE transaction so the code is consumed only after
         // the user exists and a rollback leaves validation_codes untouched.
-        $jobId = $this->entityManager->wrapInTransaction(function () use ($email, $openRegistration, $groupId, $normalizedCode): int {
+        $jobId = $this->entityManager->wrapInTransaction(function () use ($email, $openRegistration, $groupIds, $normalizedCode): int {
             if (!$openRegistration) {
                 if ($normalizedCode === null || $normalizedCode === '') {
                     throw new \InvalidArgumentException('A registration code is required.');
@@ -89,9 +92,16 @@ class RegistrationService extends BaseService
                 if ($group === null) {
                     throw new \InvalidArgumentException('Registration code has no group assigned.');
                 }
+                // Closed mode enrols the user into the single group the code was
+                // issued for (the code IS the per-group gate).
+                $groups = [$group];
             } else {
-                $vc    = null;
-                $group = $this->resolveGroup($groupId);
+                // Open mode enrols the user into EVERY group the register
+                // section selected, so one register style can assign multiple
+                // groups (e.g. "subject" + "therapist"). The groups come from
+                // the admin-configured section, never from the request body.
+                $vc     = null;
+                $groups = $this->resolveGroups($groupIds);
             }
 
             $user = new User();
@@ -109,7 +119,9 @@ class RegistrationService extends BaseService
             $this->entityManager->persist($user);
             $this->entityManager->flush();
 
-            $this->assignGroup($user, $group);
+            foreach ($groups as $membershipGroup) {
+                $this->assignGroup($user, $membershipGroup);
+            }
 
             $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
@@ -125,7 +137,7 @@ class RegistrationService extends BaseService
                 // (surfaced as a used code in the admin registration-code list).
                 $generated = new ValidationCode();
                 $generated->setCode($this->registrationCodeService->generateUnique());
-                $generated->setGroup($group);
+                $generated->setGroup($groups[0]);
                 $generated->setUser($user);
                 $generated->setConsumed($now);
                 $this->entityManager->persist($generated);
@@ -146,9 +158,9 @@ class RegistrationService extends BaseService
                 $user->getId(),
                 false,
                 json_encode([
-                    'action'  => 'self_registration',
-                    'email'   => $email,
-                    'groupId' => $group->getId(),
+                    'action'   => 'self_registration',
+                    'email'    => $email,
+                    'groupIds' => array_map(static fn(Group $g): ?int => $g->getId(), $groups),
                 ]) ?: null
             );
 
@@ -165,10 +177,16 @@ class RegistrationService extends BaseService
     }
 
     /**
-     * Read open_registration and group_id from the register-style section on the given page.
-     * Falls back to the style default_value when the admin has not set a value.
+     * Read open_registration and the configured group IDs from the
+     * register-style section on the given page. Falls back to the style
+     * default_value when the admin has not set a value.
      *
-     * @return array{open_registration: bool, group_id: int}
+     * The `group` field is a select-group MultiSelect, so the frontend stores
+     * the chosen group IDs as a separator-joined string (e.g. "2,3"). Every
+     * integer in the value is treated as a group ID (deduplicated) — this is
+     * what lets a single register style enrol new users into multiple groups.
+     *
+     * @return array{open_registration: bool, group_ids: non-empty-list<int>}
      */
     private function resolveSectionPolicy(int $pageId): array
     {
@@ -210,9 +228,22 @@ class RegistrationService extends BaseService
             throw new \InvalidArgumentException('Registration group is not configured for this section.');
         }
 
+        // Separator-agnostic: pull every integer ID out of the stored value so
+        // the parsing is correct whether the MultiSelect joined with ",", ";",
+        // or wrapped the IDs in a JSON array.
+        preg_match_all('/\d+/', $groupValue, $matches);
+        $groupIds = array_values(array_unique(array_map(
+            static fn(string $id): int => (int) $id,
+            $matches[0]
+        )));
+
+        if ($groupIds === []) {
+            throw new \InvalidArgumentException('Registration group is not configured for this section.');
+        }
+
         return [
             'open_registration' => $openRegistration === '1',
-            'group_id'          => (int) $groupValue,
+            'group_ids'         => $groupIds,
         ];
     }
 
@@ -271,6 +302,18 @@ class RegistrationService extends BaseService
             throw new \InvalidArgumentException('Invalid registration group configuration.');
         }
         return $group;
+    }
+
+    /**
+     * Resolve every configured group, validating each exists. Used by open
+     * registration so the user is enrolled into all section-selected groups.
+     *
+     * @param non-empty-list<int> $groupIds
+     * @return non-empty-list<Group>
+     */
+    private function resolveGroups(array $groupIds): array
+    {
+        return array_map(fn(int $groupId): Group => $this->resolveGroup($groupId), $groupIds);
     }
 
     /**
