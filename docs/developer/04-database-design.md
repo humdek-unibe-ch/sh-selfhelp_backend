@@ -1,5 +1,11 @@
 # Database Design
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 > ⚠️ **Document status.** This file describes the historical legacy schema
 > for context. The canonical schema is now defined by Doctrine migrations
 > only (`migrations/Version20260601000000.php` baseline + four seed
@@ -23,11 +29,11 @@
 > which the four seed migrations consume transitionally through
 > `migrations/LegacySeedTrait.php` rename mappings.
 
-## 🗄️ Database Architecture Overview
+## Database Architecture Overview
 
 The SelfHelp Symfony Backend uses a sophisticated MySQL database design that supports dynamic routing, fine-grained permissions, content management, and comprehensive audit trails.
 
-## 📊 Database Schema Overview
+## Database Schema Overview
 
 ```mermaid
 erDiagram
@@ -81,7 +87,7 @@ erDiagram
     assets }o--|| lookups : asset_type
 ```
 
-## 🔧 Core Table Groups
+## Core Table Groups
 
 ### 1. Authentication & Authorization Tables
 
@@ -629,7 +635,7 @@ CREATE TABLE `lookups` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
-### 🔍 The Lookup System - Critical Performance Component
+### The Lookup System - Critical Performance Component
 
 The lookup system is a **centralized configuration management** approach that reduces database table proliferation while maintaining referential integrity. Instead of creating separate tables for every enumeration, the system uses a single `lookups` table with type codes.
 
@@ -692,7 +698,7 @@ $transactionType = $this->lookupService->findByTypeAndCode(
 - `USER_STATUS`: invited, active, locked
 - `NOTIFICATION_TYPES`: email, push_notification
 
-## 🔄 Stored Procedures
+## Stored Procedures
 
 ### ACL Permission Check Procedure
 ```sql
@@ -744,7 +750,7 @@ DELIMITER ;
 
 **Purpose**: Safely adds database indexes only if they don't already exist, used in migration scripts.
 
-## 📊 Database Relationships & Constraints
+## Database Relationships & Constraints
 
 ### Foreign Key Relationships
 ```mermaid
@@ -775,7 +781,7 @@ graph TD
 - **Section deletion**: Cascades to `sections_fields_translation`, child rows in `rel_sections_hierarchy`
 - **API route deletion**: Cascades to `rel_api_routes_permissions`
 
-## 🔍 Indexing Strategy
+## Indexing Strategy
 
 ### Primary Indexes
 - All tables have auto-incrementing primary keys
@@ -807,12 +813,12 @@ CREATE INDEX idx_transactions_table ON transactions(table_name, id_table_name);
 CREATE INDEX idx_transactions_time ON transactions(transaction_time);
 ```
 
-## 🔧 Entity-Database Mapping
+## Entity-Database Mapping
 
 ### Doctrine Entity Rules
 Based on the codebase analysis, entities must follow these patterns:
 
-#### ✅ Correct Association Mapping
+#### Correct Association Mapping
 ```php
 #[ORM\ManyToOne(targetEntity: User::class)]
 #[ORM\JoinColumn(name: 'id_users', referencedColumnName: 'id', onDelete: 'CASCADE')]
@@ -825,7 +831,7 @@ public function setUser(?User $user): static
 }
 ```
 
-#### ❌ Incorrect Primitive Mapping
+#### Incorrect Primitive Mapping
 ```php
 // Don't use primitive foreign keys
 private ?int $idUsers = null;
@@ -862,7 +868,7 @@ public function __construct()
 }
 ```
 
-## 📈 Performance Considerations
+## Performance Considerations
 
 ### Query Optimization
 - Use stored procedures for complex ACL calculations
@@ -881,7 +887,7 @@ public function __construct()
 - Proper charset (utf8mb4) for international content
 - Engine selection (InnoDB for transactions)
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### Data Protection
 - Password hashing with BCrypt

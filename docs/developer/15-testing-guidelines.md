@@ -1,5 +1,11 @@
 # Testing Guidelines
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 > Canonical policy lives in `AGENTS.md` → **Testing Rules** (the 34 canonical rules + backend-specific additions). This document is the *implementation guide*: what exists today, how to run it, and how to copy the reference patterns. It describes the **implemented state**, not aspirations.
 
 ## Implementation status

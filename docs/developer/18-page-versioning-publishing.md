@@ -1,10 +1,16 @@
 # Page Versioning & Publishing System
 
-## 📋 Overview
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+## Overview
 
 The Page Versioning & Publishing System provides a robust, hybrid approach to managing page versions and publishing workflows. This system stores complete page structures while dynamically refreshing data to ensure users always see the most current information. The system supports multi-language content storage, real-time draft comparison, and fast unpublished changes detection.
 
-## 🎯 Key Features
+## Key Features
 
 - **Hybrid Versioning**: Store page structure while re-running dynamic elements (data retrieval, conditions, interpolation)
 - **Multi-Language Support**: Store all language translations in a single version, extract on-demand
@@ -18,7 +24,7 @@ The Page Versioning & Publishing System provides a robust, hybrid approach to ma
 - **Entity-Scoped Invalidation**: Smart cache invalidation based on data dependencies
 - **Security**: Draft exposure prevention with proper headers and ACL controls
 
-## 🏗️ Architecture
+## Architecture
 
 ### Hybrid Serving Approach
 
@@ -112,7 +118,7 @@ $hasChanges = $pageVersionService->hasUnpublishedChanges($pageId);
 - Variable interpolation with fresh data
 - Cache invalidation logic
 
-## 🔄 Page and Section Restoration
+## Page and Section Restoration
 
 ### Section Restoration (Currently Implemented)
 Sections can be restored from published versions, allowing granular rollback of page content.
@@ -249,7 +255,7 @@ Full page restoration would restore:
 
 **Status**: Planned for future releases as the complexity requires careful consideration of data integrity and user experience.
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### page_versions Table
 
@@ -284,7 +290,7 @@ ALTER TABLE `pages`
   ADD CONSTRAINT `fk_pages_published_version` FOREIGN KEY (`published_version_id`) REFERENCES `page_versions` (`id`) ON DELETE SET NULL;
 ```
 
-## 🔌 API Endpoints
+## API Endpoints
 
 ### Admin Endpoints
 
@@ -507,7 +513,7 @@ $headers = [
 ];
 ```
 
-## 💻 Service Layer
+## Service Layer
 
 ### PageVersionService
 
@@ -569,7 +575,7 @@ $page = $pageService->getPage($pageId, $languageId, $preview = false);
 $draft = $pageService->getPage($pageId, $languageId, $preview = true);
 ```
 
-## 🔧 Utilities
+## Utilities
 
 ### JsonNormalizer
 
@@ -586,7 +592,7 @@ $summary = JsonNormalizer::getDifferenceSummary($data1, $data2);
 $grouped = JsonNormalizer::createDiffFriendlyStructure($pageData);
 ```
 
-## 🎨 Console Commands
+## Console Commands
 
 ### Retention Policy Command
 
@@ -601,7 +607,7 @@ php bin/console app:page-version:retention --keep=20 --page=5
 php bin/console app:page-version:retention --keep=10 --dry-run
 ```
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### Access Control
 - Admin endpoints require `admin.page_version.*` permissions
@@ -620,7 +626,7 @@ php bin/console app:page-version:retention --keep=10 --dry-run
 - Published versions cannot be deleted (must unpublish first)
 - All operations logged via TransactionService
 
-## 📊 Version Comparison Formats
+## Version Comparison Formats
 
 ### Unified Diff
 Standard diff format showing line-by-line changes.
@@ -651,7 +657,7 @@ High-level change summary:
 }
 ```
 
-## 💾 Caching Architecture for Page Serving
+## Caching Architecture for Page Serving
 
 ### Dual Caching Strategy: Page Structure vs. Dynamic Data
 
@@ -773,7 +779,7 @@ private function extractDataTableDependencies(array $flatSections, int $pageId):
 - **User-Specific Config**: `current_user: true` - affects individual users
 - **Dynamic References**: Variables in data_config that reference data tables
 
-## 📊 Performance Characteristics
+## Performance Characteristics
 
 ### Hash-Based vs Full Diff Comparison
 
@@ -796,7 +802,7 @@ private function extractDataTableDependencies(array $flatSections, int $pageId):
 
 **Conclusion:** Hash check is **10-100x faster** than full diff comparison.
 
-## 🧪 Testing
+## Testing
 
 ### Running Tests
 
@@ -824,7 +830,7 @@ vendor/bin/phpunit tests/Controller/Api/V1/Admin/PageVersionControllerTest.php
 - ✅ Hybrid serving logic
 - ✅ Multi-language extraction and serving
 
-## 📈 Performance Optimization
+## Performance Optimization
 
 ### Caching Strategy
 - Published versions cached with proper entity scopes
@@ -841,7 +847,7 @@ vendor/bin/phpunit tests/Controller/Api/V1/Admin/PageVersionControllerTest.php
 - Efficient JSON comparisons
 - Indexed foreign keys
 
-## 🚀 Best Practices
+## Best Practices
 
 1. **Version Names**: Use descriptive names and semantic versioning
 2. **Metadata**: Include change summaries, tags, and relevant context
@@ -849,7 +855,7 @@ vendor/bin/phpunit tests/Controller/Api/V1/Admin/PageVersionControllerTest.php
 4. **Testing**: Always test in preview mode before publishing
 5. **Monitoring**: Track version creation frequency and storage usage
 
-## 📝 Example Workflow
+## Example Workflow
 
 ```php
 // 1. Create and publish a new version
@@ -884,7 +890,7 @@ $comparison = $pageVersionService->compareVersions(
 $deletedCount = $pageVersionService->applyRetentionPolicy($pageId, 10);
 ```
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 ### Version Not Serving
 - Check if version is published: `$version->isPublished()`
@@ -901,7 +907,7 @@ $deletedCount = $pageVersionService->applyRetentionPolicy($pageId, 10);
 - Review version creation frequency
 - Consider compression for large pages
 
-## 🎨 Frontend Integration
+## Frontend Integration
 
 ### TypeScript API Client Updates
 
@@ -1000,10 +1006,10 @@ function PageEditor({ pageId }) {
 }
 ```
 
-## 📚 Related Documentation
+## Related Documentation
 
 - [Transaction Logging](./12-transaction-logging.md)
-- [API Security Architecture](../api-security-architecture.md)
+- [API Security Architecture](./api-security-architecture.md)
 - [CMS Architecture](./08-cms-architecture.md)
 - [Development Workflow](./14-development-workflow.md)
 

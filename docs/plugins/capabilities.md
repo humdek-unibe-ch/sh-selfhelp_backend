@@ -1,5 +1,11 @@
 # Capabilities Reference
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Capabilities are the **runtime allow-list** that controls which host
 APIs a plugin can call. The admin sees them at install time and
 chooses which to grant; the plugin can declare more than it needs
@@ -7,7 +13,7 @@ and accept that the admin may deny some.
 
 This document is the canonical list. Whenever the plugin SDK adds a
 new capability, this file and
-[`@selfhelp/shared/src/plugin-sdk/capabilities.ts`](../../../sh-selfhelp_shared/src/plugin-sdk/capabilities.ts)
+`@selfhelp/shared/src/plugin-sdk/capabilities.ts`
 must be updated **together** in the same PR — the schema-parity
 script enforces it.
 
@@ -96,7 +102,7 @@ The "dangerous" set. Almost no plugin should request these.
 
 ## How capabilities are enforced
 
-[`CapabilityGuard`](../../src/Plugin/Capability/CapabilityGuard.php)
+[`PluginCapabilityValidator`](../../src/Plugin/Security/PluginCapabilityValidator.php)
 is called at the entry point of every host API. The guard checks:
 
 ```php

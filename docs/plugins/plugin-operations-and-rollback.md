@@ -1,5 +1,11 @@
 # Plugin Operations & Rollback
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 Every state change to an installed plugin is **always** recorded as a
 single row in `plugin_operations`. The row has a deterministic
 lifecycle (`requested → running → succeeded | failed | rolled_back |

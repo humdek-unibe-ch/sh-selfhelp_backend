@@ -1,5 +1,11 @@
 # Interpolation System
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 **Date:** 2025-10-24  
 **Status:** ✅ Production Ready
 
@@ -13,7 +19,7 @@ The system supports **preview pages** and **published pages** with different dat
 
 ---
 
-## 🎯 Variable Namespacing - Complete Implementation
+## Variable Namespacing - Complete Implementation
 
 ### **Variables are now properly namespaced - NO MORE FLATTENING!**
 
@@ -44,7 +50,7 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 }
 ```
 
-### ✅ Mustache Handles This Perfectly!
+### Mustache Handles This Perfectly!
 
 **Yes, Mustache.php natively supports nested objects** - confirmed with 14 passing tests!
 
@@ -56,7 +62,7 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 
 ---
 
-## 📝 Template Migration
+## Template Migration
 
 ### Update Your Templates
 
@@ -90,7 +96,7 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 
 ---
 
-## 🔄 How Interpolation Works - Complete Flow
+## How Interpolation Works - Complete Flow
 
 ### Phase 1: Section Structure Loading
 
@@ -151,7 +157,7 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 
 ---
 
-## 📄 Preview vs Published Pages
+## Preview vs Published Pages
 
 ### **Published Pages**
 - **Data Source**: `page_versions` table (versioned, cached)
@@ -173,7 +179,7 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 
 ---
 
-## 🎯 Which Fields Get Interpolation
+## Which Fields Get Interpolation
 
 ### **Interpolated Fields (Effective & Selective)**
 
@@ -200,7 +206,7 @@ Interpolation **ONLY** runs on specific content fields to be efficient:
 
 ---
 
-## 📊 Section Processing Order
+## Section Processing Order
 
 ### **Processing Sequence**
 
@@ -230,7 +236,7 @@ Root Section (Level 1)
 
 ---
 
-## 🏗️ Code Architecture
+## Code Architecture
 
 ### **Service Responsibilities**
 
@@ -275,7 +281,7 @@ Root Section (Level 1)
 
 ---
 
-## 📚 Variable Namespaces
+## Variable Namespaces
 
 ### **1. System Variables (`system.*`)**
 System variables contain context about the current request and user session.
@@ -322,7 +328,7 @@ The scope name is defined in your `data_config`. Common scopes:
 
 ---
 
-## 🎨 Mustache Templating
+## Mustache Templating
 
 The system uses Mustache.php for variable interpolation. Mustache natively supports:
 
@@ -362,7 +368,7 @@ The system uses Mustache.php for variable interpolation. Mustache natively suppo
 
 ---
 
-## 📊 Data Structure Evolution
+## Data Structure Evolution
 
 ### **After Step 2 (`applySectionData`)**
 ```javascript
@@ -430,7 +436,7 @@ versions get persisted, so the two write paths agree on what is
 
 ---
 
-## 🧪 Testing Results
+## Testing Results
 
 ```
 ✔ Basic variable interpolation
@@ -453,9 +459,9 @@ OK (14 tests, 20 assertions)
 
 ---
 
-## 🚀 What You Need To Do
+## What You Need To Do
 
-### **1. Update Your Templates ⚠️**
+### **1. Update Your Templates **
 Find and replace in your templates:
 
 ```bash
@@ -484,7 +490,7 @@ Variable dropdowns will now show:
 
 ---
 
-## 📞 Need Help?
+## Need Help?
 
 - **Quick Reference:** `docs/developer/VARIABLE-REFERENCE.md`
 - **Full Guide:** `docs/developer/variable-namespacing-guide.md`
@@ -492,7 +498,7 @@ Variable dropdowns will now show:
 
 ---
 
-## 🎉 Benefits
+## Benefits
 
 ### **1. No Variable Name Collisions**
 ```html
@@ -532,7 +538,7 @@ Variable dropdowns will now show:
 
 ---
 
-## ❓ Frequently Asked Questions
+## Frequently Asked Questions
 
 ### **Q: Can Mustache handle nested objects?**
 **A:** Yes! Mustache natively supports dot notation like `{{system.user_name}}`. We tested this thoroughly.
@@ -554,7 +560,7 @@ Variable dropdowns will now show:
 
 ---
 
-## ⚡ Request-Scoped Memoization (2026-04)
+## Request-Scoped Memoization (2026-04)
 
 The variable resolution layer is hot — a single page render triggers
 `getAllVariables()` once per section that has a condition or interpolated
@@ -595,7 +601,7 @@ service or call the underlying repositories directly.
 
 ---
 
-## 🌍 Anonymous Condition Evaluation & Language Propagation (2026-04)
+## Anonymous Condition Evaluation & Language Propagation (2026-04)
 
 Two pre-existing crashers in the condition path were fixed:
 

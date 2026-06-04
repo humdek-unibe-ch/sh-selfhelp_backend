@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # Cross-repo compatibility matrix
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 SelfHelp ships as **five repositories that must agree on shared contracts**:
 
 | Repo | Role | Versioned by |

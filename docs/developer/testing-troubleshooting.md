@@ -1,5 +1,11 @@
 # Testing Troubleshooting
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 Common failures when running the SelfHelp backend test suite, with the diagnostic to run and the fix. See `docs/developer/15-testing-guidelines.md` for the overall setup and `AGENTS.md` → Testing Rules for policy.
 
 Each entry: **symptom → diagnostic → likely cause → fix**.

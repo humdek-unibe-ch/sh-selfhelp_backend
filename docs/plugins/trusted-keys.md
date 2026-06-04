@@ -5,6 +5,12 @@ SPDX-License-Identifier: MPL-2.0
 
 # `SELFHELP_PLUGIN_TRUSTED_KEYS`
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The host validates every plugin installation against a set of
 trusted Ed25519 public keys configured in the environment. The set is
 read at boot, cached, and re-read when the host process restarts.

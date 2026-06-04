@@ -1,5 +1,11 @@
 # Deployment Process
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 > ⚠️ **Document status.** The SQL-script-based "update_scripts" examples
 > further down in this file describe the legacy bootstrap and are kept
 > only for historical context. As of the pre-release DB cutover, fresh
@@ -17,11 +23,11 @@
 > See `README.md → Database Bootstrap (migrations-only)` and
 > `docs/developer/14-development-workflow.md` for the canonical workflow.
 
-## 🚀 Overview
+## Overview
 
 The SelfHelp Symfony Backend follows a structured deployment process that emphasizes database version management, zero-downtime deployments, and comprehensive validation. The deployment strategy is built around the version management system where database changes trigger major version increments.
 
-## 🏗️ Deployment Architecture
+## Deployment Architecture
 
 ```mermaid
 graph TD
@@ -57,7 +63,7 @@ graph TD
     end
 ```
 
-## 📋 Version Management Strategy
+## Version Management Strategy
 
 ### Version Increment Rules
 | Change Type | Version Impact | Example | Migration Required |
@@ -82,7 +88,7 @@ CREATE TABLE `version` (
 SELECT version FROM version ORDER BY id DESC LIMIT 1;
 ```
 
-## 🗄️ Database Migration Process
+## Database Migration Process
 
 ### Migration Script Structure
 ```sql
@@ -168,7 +174,7 @@ WHERE ar.route_name IN ('admin_get_user_profiles', 'admin_create_user_profile', 
 AND p.name = 'admin.user.manage';
 ```
 
-## 🔧 Pre-Deployment Checklist
+## Pre-Deployment Checklist
 
 ### Development Phase
 - [ ] **Code Review Completed**
@@ -213,7 +219,7 @@ mysqldump -u username -p --routines --triggers selfhelp_production > backup_$(da
 mysql -u username -p selfhelp_test < backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
-## 🏗️ Staging Deployment
+## Staging Deployment
 
 ### Staging Environment Setup
 ```bash
@@ -252,7 +258,7 @@ curl -X GET https://staging.selfhelp.com/cms-api/v1/admin/pages \
 php bin/phpunit --testsuite=Integration --env=staging
 ```
 
-## 🚀 Production Deployment
+## Production Deployment
 
 ### Production Deployment Script
 ```bash
@@ -376,7 +382,7 @@ sudo systemctl reload nginx
 echo "✅ Zero-downtime deployment completed"
 ```
 
-## 🔍 Post-Deployment Validation
+## Post-Deployment Validation
 
 ### Automated Validation Script
 ```bash
@@ -451,7 +457,7 @@ fi
 echo "🎉 Post-deployment validation completed"
 ```
 
-## 🔄 Rollback Procedures
+## Rollback Procedures
 
 ### Emergency Rollback Script
 ```bash
@@ -518,7 +524,7 @@ sudo systemctl reload nginx
 echo "✅ Gradual rollback completed"
 ```
 
-## 📊 Deployment Monitoring
+## Deployment Monitoring
 
 ### Monitoring Script
 ```bash
@@ -555,7 +561,7 @@ while true; do
 done
 ```
 
-## 📋 Environment-Specific Configurations
+## Environment-Specific Configurations
 
 ### Development Environment
 ```bash
@@ -581,7 +587,7 @@ APP_DEBUG=false
 DATABASE_URL="mysql://prod_user:prod_pass@prod-db:3306/selfhelp_production"
 ```
 
-## 🔐 Security Considerations
+## Security Considerations
 
 ### Deployment Security
 - **Encrypted Connections**: All database connections use SSL
@@ -612,7 +618,7 @@ rm -rf /var/www/selfhelp/tests
 # (This would be in nginx/apache configuration)
 ```
 
-## 📈 Deployment Metrics
+## Deployment Metrics
 
 ### Key Performance Indicators
 - **Deployment Frequency**: Track how often deployments occur

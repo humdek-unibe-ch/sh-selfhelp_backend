@@ -1,5 +1,11 @@
 # Style Schema Endpoint & Prompt-Template Generator
 
+Audience: Developers and technical operators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
 ## `GET /cms-api/v1/admin/styles/schema`
 
 Returns a canonical view of every style registered in the `styles` table

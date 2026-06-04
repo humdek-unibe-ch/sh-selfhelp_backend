@@ -1,5 +1,11 @@
 # Mobile Plugins
 
+Audience: Plugin authors and backend developers.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-03.
+Source of truth: Plugin layer code and the schemas under this folder.
+
 The SelfHelp mobile app (Expo / React Native) consumes plugins
 through the same `@selfhelp/shared/plugin-sdk` surface used by the
 web frontend. Mobile plugins are **opt-in** per plugin via the
@@ -32,7 +38,7 @@ The shared SDK enforces three rules for `mobile` plugins:
 
 1. **No DOM access** — plugins importing `document` / `window` /
    `HTMLElement` from the global scope fail the
-   [`@selfhelp/shared/plugin-sdk/lint-mobile`](../../../sh-selfhelp_shared/scripts/lint-mobile-plugins.mjs)
+   `@selfhelp/shared/plugin-sdk/lint-mobile`
    step in CI.
 2. **No web-only host APIs** — `host.dom`, `host.fetchInBrowser`, and
    any other web-only `IPluginApi` field is `undefined` on mobile.
@@ -120,4 +126,4 @@ panel (out of scope of the doctor).
 
 - [Realtime & no polling](./realtime-and-no-polling.md)
 - [Architecture](./architecture.md) (§ Mobile)
-- [`@selfhelp/shared/plugin-sdk`](../../../sh-selfhelp_shared/src/plugin-sdk/README.md)
+- `@selfhelp/shared/plugin-sdk`
