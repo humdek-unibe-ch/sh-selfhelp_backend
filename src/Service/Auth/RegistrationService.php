@@ -24,8 +24,12 @@ use Doctrine\ORM\EntityManagerInterface;
  * Handles self-registration of new users.
  *
  * Supports two modes driven by the CMS register section fields:
- *   - open_registration = 1: any visitor may register with email + password.
- *   - open_registration = 0: a valid registration code is required.
+ *   - open_registration = 1: any visitor may register with just an email. A
+ *     unique registration code is minted server-side, linked to the new user
+ *     and immediately marked consumed (so it shows up as a used historical
+ *     code in the admin list). Any code the client submitted is ignored.
+ *   - open_registration = 0: a valid registration code is required and is
+ *     consumed atomically.
  *
  * Both values are read server-side from the CMS section — the client is never
  * trusted to send the security policy.
@@ -41,6 +45,7 @@ class RegistrationService extends BaseService
         private readonly TransactionService $transactionService,
         private readonly LookupService $lookupService,
         private readonly CacheService $cache,
+        private readonly RegistrationCodeService $registrationCodeService,
     ) {
     }
 
@@ -49,7 +54,7 @@ class RegistrationService extends BaseService
      *
      * @param int         $pageId ID of the CMS register page (used to locate the register section and read policy fields).
      * @param string      $email  User's email address.
-     * @param string|null $code   Registration code (required when open_registration = 0).
+     * @param string|null $code   Registration code (required when open_registration = 0; ignored when open_registration = 1).
      * @throws \InvalidArgumentException On validation failure.
      * @throws \RuntimeException On system failure.
      */
@@ -106,11 +111,24 @@ class RegistrationService extends BaseService
 
             $this->assignGroup($user, $group);
 
+            $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
             // Link + consume the code only now that the user has an ID. The
             // owning side (ValidationCode.user) writes validation_codes.id_users.
             if ($vc !== null) {
-                $vc->setConsumed(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+                // Closed mode: consume the code the visitor supplied.
+                $vc->setConsumed($now);
                 $vc->setUser($user);
+            } else {
+                // Open mode: mint a fresh, already-consumed code so every
+                // self-registered account still owns a unique historical code
+                // (surfaced as a used code in the admin registration-code list).
+                $generated = new ValidationCode();
+                $generated->setCode($this->registrationCodeService->generateUnique());
+                $generated->setGroup($group);
+                $generated->setUser($user);
+                $generated->setConsumed($now);
+                $this->entityManager->persist($generated);
             }
 
             $this->entityManager->flush();

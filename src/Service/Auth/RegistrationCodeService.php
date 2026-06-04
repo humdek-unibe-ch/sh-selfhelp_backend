@@ -22,6 +22,12 @@ use Doctrine\ORM\EntityManagerInterface;
  */
 class RegistrationCodeService extends BaseService
 {
+    /** Character set for generated registration codes (uppercase alphanumeric). */
+    private const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+    /** Length of a generated registration code (~2.8 trillion combinations). */
+    private const CODE_LENGTH = 8;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly int $totalMax = 10000,
@@ -193,8 +199,6 @@ class RegistrationCodeService extends BaseService
         $groupIdResolved = $group->getId() ?? 0;
         $groupName       = $group->getName();
         $conn            = $this->entityManager->getConnection();
-        $chars           = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $charLen         = strlen($chars);
         $now             = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
         $batchSize       = 500;
 
@@ -215,10 +219,7 @@ class RegistrationCodeService extends BaseService
                 /** @var list<string> $candidates */
                 $candidates = [];
                 while (count($candidates) < $needed) {
-                    $code = '';
-                    for ($j = 0; $j < 8; $j++) {
-                        $code .= $chars[random_int(0, $charLen - 1)];
-                    }
+                    $code = $this->randomCode();
                     if (!isset($seen[$code])) {
                         $seen[$code]  = true;
                         $candidates[] = $code;
@@ -295,5 +296,43 @@ class RegistrationCodeService extends BaseService
         }
 
         return ['codes' => $results];
+    }
+
+    /**
+     * Generate a single registration code guaranteed unique against the
+     * validation_codes table at call time.
+     *
+     * Self-registration in open mode mints one fresh code per account through
+     * here (see {@see RegistrationService}). The caller persists the code; the
+     * primary-key constraint on validation_codes.code is the final guard
+     * against a concurrent duplicate, so this MUST be called inside the
+     * registration transaction. Re-rolls on the (astronomically rare) hit.
+     */
+    public function generateUnique(): string
+    {
+        $conn = $this->entityManager->getConnection();
+
+        do {
+            $code   = $this->randomCode();
+            $exists = $conn->fetchOne('SELECT 1 FROM validation_codes WHERE code = :code', ['code' => $code]);
+        } while ($exists !== false);
+
+        return $code;
+    }
+
+    /**
+     * Build one random uppercase-alphanumeric code string of {@see CODE_LENGTH}
+     * characters with no uniqueness check. Single source of the charset/length
+     * shared by {@see generate()} (batch) and {@see generateUnique()} (single).
+     */
+    private function randomCode(): string
+    {
+        $charLen = strlen(self::CODE_CHARS);
+        $code    = '';
+        for ($i = 0; $i < self::CODE_LENGTH; $i++) {
+            $code .= self::CODE_CHARS[random_int(0, $charLen - 1)];
+        }
+
+        return $code;
     }
 }

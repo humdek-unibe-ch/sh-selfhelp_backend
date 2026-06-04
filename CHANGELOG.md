@@ -1,5 +1,45 @@
 # v8.0.0 (Not released yet)
 
+### Open registration + CMS-managed registration-lifecycle labels
+
+- `RegistrationService` now supports **open registration**. When the CMS
+  `register` section has `open_registration = '1'`, any visitor can register
+  with just an email: any submitted code is ignored, and the service mints one
+  unique already-consumed `validation_codes` row linked to the new user and the
+  section-configured group (so it still shows as a used historical code in the
+  admin registration-code list). Closed/code-required behaviour
+  (`open_registration = '0'` or missing) is unchanged — the supplied code is
+  still claimed under a `PESSIMISTIC_WRITE` lock and consumed. The API response
+  schema and the activation-email job flow are unchanged for both modes.
+- **Code generation is now centralized in `RegistrationCodeService`.** A new
+  `generateUnique(): string` (single collision-checked code) plus a private
+  `randomCode()` helper and `CODE_CHARS` / `CODE_LENGTH` constants are the single
+  source of the charset/length. The batch `generate()` reuses `randomCode()`, and
+  `RegistrationService` calls `generateUnique()` instead of its own removed
+  private generator — no duplicated code-minting logic.
+- New Doctrine migration `Version20260604111011` adds CMS label fields that the
+  frontend previously hardcoded and seeds en-GB / de-CH defaults on the seeded
+  auth sections: `register` gains `label_code`, `code_placeholder`,
+  `label_go_home`, `label_go_to_login`; `login` gains `label_register`;
+  `validate` gains the activation lifecycle status text `loading_title`,
+  `loading_text`, `error_title`, `error_heading`, `error_text`, `success_title`,
+  `redirect_text`. All inserts are idempotent (`INSERT IGNORE`) and `down()`
+  removes the fields + links + translations.
+- Tests: `RegistrationServiceTest` covers open mode (no code required, submitted
+  code ignored, a unique consumed code is minted + linked, section group used)
+  alongside the existing closed-mode cases;
+  `tests/Integration/Migrations/Version20260604111011RoundTripTest` asserts the
+  migration up/down round-trips.
+
+### Docs: per-style reference + style-documentation rule
+
+- Added `docs/reference/styles/` — a catalog of every core CMS style plus full
+  per-style reference pages for the styles touched by the open-registration work
+  (`auth/register.md`, `auth/login.md`, `auth/validate.md`) and a
+  `_template.md` for new pages.
+- `AGENTS.md` now requires that adding or changing a CMS style ships/refreshes
+  its `docs/reference/styles/` page (see "Style Documentation Rules").
+
 ### Plugin dev install: rewrite the stylesheet URL alongside the entrypoint
 
 - `PluginInstaller::resolveFrontendRuntimeMetadata()` and

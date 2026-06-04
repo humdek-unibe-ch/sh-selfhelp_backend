@@ -20,12 +20,19 @@ use App\Tests\Support\QaKernelTestCase;
 use PHPUnit\Framework\Attributes\Group as TestGroup;
 
 /**
- * Integration coverage for {@see RegistrationService} — the atomic, single-use
- * consumption of a registration code and its linkage to the new user.
+ * Integration coverage for {@see RegistrationService} — both registration
+ * modes driven by the CMS register section:
+ *   - code-required (open_registration = 0): the atomic, single-use
+ *     consumption of a supplied registration code and its linkage to the
+ *     new user;
+ *   - open (open_registration = 1): a fresh code is minted server-side,
+ *     marked consumed and linked to the new user, and any submitted code is
+ *     ignored.
  *
- * Uses the seeded `register` page (code-required by default: the register
- * style's open_registration default is 0) and real services end to end (no
- * domain mocking). All rows are qa-scoped and rolled back by DAMA.
+ * Code-required tests use the seeded `register` page (open_registration
+ * defaults to 0). Open-mode tests build a qa-scoped register page/section
+ * configured with open_registration = 1. Real services are used end to end
+ * (no domain mocking). All rows are qa-scoped and rolled back by DAMA.
  *
  * Concurrency note: DAMA wraps the whole test in ONE connection/transaction, so
  * genuinely parallel connections cannot be exercised here. The "only one user
@@ -159,6 +166,58 @@ final class RegistrationServiceTest extends QaKernelTestCase
         self::assertSame((int) $firstUser->getId(), (int) $row['id_users'], 'The code stays linked to the FIRST user only.');
     }
 
+    // -- open registration --------------------------------------------------
+
+    public function testOpenRegistrationCreatesUserWithoutACodeAndMintsAConsumedLinkedCode(): void
+    {
+        $pageId = $this->createOpenRegistrationPage($this->qaGroup);
+        $email = 'qa_register_open@selfhelp.test';
+
+        // No code supplied — open mode must not require one.
+        $this->service->register($pageId, $email, null);
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user, 'Open registration creates a user without a code.');
+        self::assertTrue($user->isBlocked(), 'A freshly registered user is blocked until validation.');
+        self::assertSame(
+            LookupService::USER_STATUS_INVITED,
+            $user->getStatus()?->getLookupCode(),
+            'Open registration leaves the account invited pending email validation.'
+        );
+        self::assertSame(1, $this->groupMembershipCount($user, $this->qaGroup), 'The user joins the section-configured group.');
+
+        // A unique code is minted, consumed immediately and linked to the user.
+        $row = $this->codeRowForUser((int) $user->getId());
+        self::assertNotNull($row['consumed'], 'The minted code is immediately consumed.');
+        self::assertSame((int) $this->qaGroup->getId(), $row['id_groups'], 'The minted code carries the section group.');
+        self::assertMatchesRegularExpression('/^[A-Z0-9]{8}$/', $row['code'], 'The code is 8 uppercase alphanumerics.');
+    }
+
+    public function testOpenRegistrationIgnoresASubmittedCode(): void
+    {
+        $pageId = $this->createOpenRegistrationPage($this->qaGroup);
+        $email = 'qa_register_open_ignore@selfhelp.test';
+
+        // A bogus value that would be rejected as "Invalid registration code"
+        // in code-required mode must be ignored entirely in open mode.
+        $this->service->register($pageId, $email, 'qa-bogus-ignored-code');
+
+        $user = $this->findUser($email);
+        self::assertInstanceOf(User::class, $user, 'Open registration ignores the submitted code and still creates the user.');
+
+        $row = $this->codeRowForUser((int) $user->getId());
+        self::assertNotSame('qa-bogus-ignored-code', $row['code'], 'The submitted code is ignored; a fresh one is minted.');
+        self::assertMatchesRegularExpression('/^[A-Z0-9]{8}$/', $row['code']);
+        self::assertNotNull($row['consumed']);
+
+        // The submitted value never lands in validation_codes.
+        $persisted = $this->em->getConnection()->fetchOne(
+            'SELECT 1 FROM validation_codes WHERE code = :code',
+            ['code' => 'qa-bogus-ignored-code']
+        );
+        self::assertFalse($persisted, 'The submitted code is never persisted.');
+    }
+
     // -- helpers ------------------------------------------------------------
 
     private function resolveRegisterPageId(): int
@@ -197,6 +256,73 @@ final class RegistrationServiceTest extends QaKernelTestCase
         )->setParameter('user', $user)->setParameter('group', $group)->getResult();
 
         return is_array($rows) ? count($rows) : 0;
+    }
+
+    /**
+     * Build a qa-scoped register page + register-style section configured for
+     * open registration (open_registration = 1, group = the qa group), so the
+     * service resolves the open-mode policy without touching the shared seeded
+     * register section. All rows roll back with the DAMA transaction.
+     */
+    private function createOpenRegistrationPage(Group $group): int
+    {
+        $conn = $this->em->getConnection();
+
+        $conn->executeStatement(
+            "INSERT INTO `pages` (`keyword`, `url`, `id_page_types`, `is_open_access`, `is_system`)
+             SELECT 'qa_register_open', '/qa-register-open', pt.id, 1, 0
+             FROM `page_types` pt WHERE pt.`name` = 'core' LIMIT 1"
+        );
+        $conn->executeStatement(
+            "INSERT INTO `sections` (`id_styles`, `name`)
+             SELECT st.id, 'qa_register_open_form' FROM `styles` st WHERE st.`name` = 'register'"
+        );
+        $conn->executeStatement(
+            "INSERT INTO `rel_pages_sections` (`id_pages`, `id_sections`, `position`)
+             SELECT p.id, s.id, 10 FROM `pages` p, `sections` s
+             WHERE p.`keyword` = 'qa_register_open' AND s.`name` = 'qa_register_open_form'"
+        );
+        $conn->executeStatement(
+            "INSERT INTO `sections_fields_translation` (`id_sections`, `id_fields`, `id_languages`, `content`, `meta`)
+             SELECT s.id, f.id, 1, '1', NULL
+             FROM `sections` s JOIN `fields` f ON f.`name` = 'open_registration'
+             WHERE s.`name` = 'qa_register_open_form'"
+        );
+        $conn->executeStatement(
+            "INSERT INTO `sections_fields_translation` (`id_sections`, `id_fields`, `id_languages`, `content`, `meta`)
+             SELECT s.id, f.id, 1, :gid, NULL
+             FROM `sections` s JOIN `fields` f ON f.`name` = 'group'
+             WHERE s.`name` = 'qa_register_open_form'",
+            ['gid' => (string) ($group->getId() ?? 0)]
+        );
+
+        $pageId = $conn->fetchOne("SELECT id FROM `pages` WHERE `keyword` = 'qa_register_open'");
+        self::assertNotFalse($pageId, 'The qa open-registration page must be created.');
+
+        return is_numeric($pageId) ? (int) $pageId : 0;
+    }
+
+    /**
+     * @return array{code: string, consumed: ?string, id_groups: ?int, id_users: ?int}
+     */
+    private function codeRowForUser(int $userId): array
+    {
+        $row = $this->em->getConnection()->fetchAssociative(
+            'SELECT code, consumed, id_groups, id_users FROM validation_codes WHERE id_users = :uid',
+            ['uid' => $userId]
+        );
+        self::assertIsArray($row, "A validation code must be linked to user {$userId}.");
+
+        $consumed = $row['consumed'] ?? null;
+        $idGroups = $row['id_groups'] ?? null;
+        $idUsers = $row['id_users'] ?? null;
+
+        return [
+            'code'      => is_string($row['code'] ?? null) ? $row['code'] : '',
+            'consumed'  => is_string($consumed) ? $consumed : null,
+            'id_groups' => is_numeric($idGroups) ? (int) $idGroups : null,
+            'id_users'  => is_numeric($idUsers) ? (int) $idUsers : null,
+        ];
     }
 
     /**
