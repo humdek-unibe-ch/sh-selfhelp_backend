@@ -265,6 +265,8 @@ When making changes, explain:
 - For API route changes, add/modify rows via a new Doctrine migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do **not** depend on `db/legacy/update_scripts/api_routes.sql` — that file is no longer wired into install/upgrade.
 
 ## Testing Rules
+- **Run only the tests related to your change — never the whole suite.** The full suite is very slow, so scope every run to the touched code: a single file (`php bin/phpunit tests/path/to/Test.php`), a `--filter`, or `composer test:changed`. Run the broad/DB-dependent suite only when explicitly asked or right before a release/push.
+- **Always write task-specific tests and add them to the suite.** Every change ships with its own focused test(s), committed alongside it so they run as part of `composer test`/CI. Never rely on the existing suite alone to cover new behaviour.
 - Main command: `composer test` or `php bin/phpunit --testdox`.
 - Run focused tests with `php bin/phpunit tests/path/to/Test.php`.
 - Static analysis: `composer phpstan` — must be **0 errors**. It runs `phpstan analyse` against the auto-discovered default `phpstan.dist.neon` (level max, whole core `bin/ config/ public/ src/`, shipmonk dead-code detector off, no baseline). This is the exact command the `core-backend-check` CI job runs. See "Static Analysis (PHPStan) Rules" below.
