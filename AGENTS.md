@@ -64,6 +64,16 @@ These rules apply to every documentation change in active SelfHelp2 repositories
 - Do not expose secrets, tokens, private keys, database URLs, Mercure/JWT secrets, or real credentials in docs, examples, logs, or screenshots. Use redacted examples and documented env var names only.
 - When docs conflict with runtime behavior, treat runtime behavior as source of truth, flag the stale doc, and update or archive it instead of copying the conflict.
 
+## Style Documentation Rules
+
+CMS styles are a cross-repo contract (backend field seeds + `@selfhelp/shared` types + frontend/mobile renderers). Every style must be documented, and the docs must stay in sync with the code.
+
+- The canonical per-style reference lives in `docs/reference/styles/`: `index.md` is the catalog of every core style, `_template.md` is the required page structure, and full pages live under `docs/reference/styles/<category>/<style>.md`.
+- When you **add a new style**, you MUST create its `docs/reference/styles/<category>/<style>.md` page from `_template.md` and link it from `index.md` (replace the "catalog only" cell). The page must list every field (with `display` flag and purpose), the behaviour/modes, and the renderer + backend references.
+- When you **change an existing style** (add/remove/rename a field, change behaviour or defaults, change the renderer contract), you MUST update its reference page in the same change. If the style only has a "catalog only" entry, create the full page as part of the change.
+- Keep the page's `Last verified` date and `Change history` current, and keep the field list aligned with the `styles` / `fields` / `rel_fields_styles` seed migrations, the `admin/styles/schema` endpoint, and the shared `I<Name>Style` type.
+- Treat a style code change with no matching `docs/reference/styles/` update as an incomplete change during review.
+
 ## Implementation Principles
 - State assumptions explicitly when they affect the change or verification.
 - If multiple interpretations exist, note the relevant options briefly and choose the simplest safe path.
@@ -368,6 +378,7 @@ static-analysis gate green.
 - Add service: place it under the matching `src/Service` domain, inject dependencies via constructor, keep transactions/cache invalidation explicit.
 - Add migration: inspect schema first, create the migration with the Symfony/Doctrine generate command so the timestamp-based file/class name is automatic, update relevant SQL scripts if required, and do not run migrations automatically.
 - Add frontend page behavior: inspect `PageService`, section/field processing, interpolation, conditions, ACL, and cache effects.
+- Add/change a CMS style: update the field seed migration (`styles`/`fields`/`rel_fields_styles`), the shared `I<Name>Style` type + registry entry, the renderer, and the style's `docs/reference/styles/<category>/<style>.md` page (see "Style Documentation Rules").
 - Add permission-sensitive feature: update route permissions and verify `ApiSecurityListener`, `UserPermissionService`, ACL, and data-access rules.
 - Update tests: prefer focused PHPUnit tests and keep fixtures/test database assumptions explicit.
 
