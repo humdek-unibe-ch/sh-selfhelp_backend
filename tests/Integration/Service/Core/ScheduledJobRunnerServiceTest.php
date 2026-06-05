@@ -98,6 +98,33 @@ final class ScheduledJobRunnerServiceTest extends QaKernelTestCase
         self::assertSame(LookupService::SCHEDULED_JOBS_STATUS_QUEUED, $job->getStatus()->getLookupCode());
     }
 
+    /**
+     * Regression: the admin "update settings" / "disable runner" endpoints pass
+     * the security-context user as `updatedBy`. That user can be detached for the
+     * service's EntityManager (loaded in a prior request / after an em clear), so
+     * assigning it straight to {@see ScheduledJobRunnerSetting} made flush() raise
+     * "A new entity was found through the relationship
+     * ScheduledJobRunnerSetting#updatedBy ... not configured to cascade persist".
+     * The fix associates a managed reference; both update and disable must work.
+     */
+    public function testUpdateAndDisableAcceptDetachedCurrentUser(): void
+    {
+        $user = $this->qaUser();
+        // Reproduce the controller's detached current user.
+        $this->em->detach($user);
+
+        $updated = $this->runner->updateSettings(['enabled' => true, 'interval_seconds' => 90], $user);
+        self::assertTrue($updated->isEnabled());
+        self::assertSame(90, $updated->getIntervalSeconds());
+        self::assertSame((int) $user->getId(), $updated->getUpdatedBy()?->getId());
+
+        // The disable path delegates to updateSettings() with the same detached
+        // user and must not throw either.
+        $disabled = $this->runner->setEnabled(false, $user);
+        self::assertFalse($disabled->isEnabled());
+        self::assertSame((int) $user->getId(), $disabled->getUpdatedBy()?->getId());
+    }
+
     private function qaUser(): User
     {
         $user = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);

@@ -11,6 +11,7 @@ namespace App\Service\Core;
 
 use App\Entity\ScheduledJobRunnerRun;
 use App\Entity\ScheduledJobRunnerSetting;
+use App\Entity\User;
 use App\Repository\ScheduledJobRepository;
 use App\Repository\ScheduledJobRunnerRunRepository;
 use App\Repository\ScheduledJobRunnerSettingRepository;
@@ -269,7 +270,13 @@ class ScheduledJobRunnerService
         }
 
         $settings->setUpdatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
-        $settings->setUpdatedBy($updatedBy);
+        // The current user from the security context may be detached for this
+        // EntityManager; associate a managed reference so flush() does not try to
+        // cascade-persist it as a new entity.
+        $updatedById = $updatedBy?->getId();
+        $settings->setUpdatedBy(
+            $updatedById !== null ? $this->entityManager->getReference(User::class, $updatedById) : null
+        );
         $this->entityManager->flush();
 
         return $settings;
