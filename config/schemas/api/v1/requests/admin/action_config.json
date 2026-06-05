@@ -448,10 +448,10 @@
         "from_email": {"type": "string","title": "From email","options": {"grid_columns": 6,"dependencies": {"notification_types": ["email"]}}},
         "from_name": {"type": "string","title": "From name","options": {"grid_columns": 6,"dependencies": {"notification_types": ["email"]}}},
         "reply_to": {"type": "string","title": "Reply to","options": {"grid_columns": 6,"dependencies": {"notification_types": ["email"]}}},
-        "recipient": {"type": "string","title": "Send To (recipient)","description": "Use @user for the user who is triggering the action, separate with `;` for emails","options": {"grid_columns": 6,"dependencies": {"notification_types": ["push_notification","email"]}}},
+        "recipient": {"type": "string","title": "Send To (recipient)","description": "Use {{recipient.email}} for the user who triggered the action, separate with `;` for multiple emails","options": {"grid_columns": 6,"dependencies": {"notification_types": ["push_notification","email"]}}},
         "attachments": {"type": "array","uniqueItems": true,"format": "select2","options": {"grid_columns": 12,"dependencies": {"notification_types": "email"},"select2": {"tags": true}},"title": "Attachments","items": {"type": "string","enum": ["att1","att2","att3"]}},
         "subject": {"type": "string","title": "Subject","options": {"grid_columns": 12,"dependencies": {"notification_types": ["push_notification","email"]}}},
-        "body": {"type": "string","format": "markdown","title": "Body","description": "Use @user_name if you want to address the user who triggered the action with their user name","options": {"grid_columns": 12,"simplemde": {"autoDownloadFontAwesome": false,"spellChecker": false,"renderingConfig": {"singleLineBreaks": false}},"dependencies": {"notification_types": ["push_notification","email"]}}}
+        "body": {"type": "string","format": "markdown","title": "Body","description": "Use {{recipient.name}} to address the user who triggered the action by name; {{recipient.email}}, {{recipient.user_name}}, {{recipient.code}} and {{record.field_name}} are also available","options": {"grid_columns": 12,"simplemde": {"autoDownloadFontAwesome": false,"spellChecker": false,"renderingConfig": {"singleLineBreaks": false}},"dependencies": {"notification_types": ["push_notification","email"]}}}
       }
     },
     "reminder_ref": {

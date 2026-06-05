@@ -12,6 +12,7 @@ namespace App\Service\Auth;
 use App\Repository\PageRepository;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\InterpolationService;
+use App\Service\Core\LookupService;
 use Doctrine\DBAL\Connection;
 use Psr\Log\LoggerInterface;
 
@@ -83,9 +84,32 @@ class MailTemplateService
             'is_html'    => $isHtml,
             'subject'    => $this->interpolationService->interpolate((string) $subject, $vars),
             'body'       => $this->interpolationService->interpolate((string) $body, $vars),
+            // Account/security mail must reach the user even when they disabled
+            // platform emails (issue #29). Welcome mail stays preference-controlled.
+            'delivery_policy' => $this->resolveDeliveryPolicy($type),
         ];
 
         return array_merge($config, $overrides);
+    }
+
+    /**
+     * Map a mail template type to its scheduled-job delivery policy.
+     *
+     * Account/security mail (validation, 2FA, password recovery) is
+     * `required_system` and bypasses the recipient's email preference. All
+     * other types default to `respect_user_preferences`.
+     */
+    private function resolveDeliveryPolicy(string $type): string
+    {
+        $requiredSystemTypes = [
+            MailTemplateDefaults::TYPE_CONFIRM,
+            MailTemplateDefaults::TYPE_2FA,
+            MailTemplateDefaults::TYPE_RECOVERY,
+        ];
+
+        return in_array($type, $requiredSystemTypes, true)
+            ? LookupService::SCHEDULED_JOB_DELIVERY_POLICY_REQUIRED_SYSTEM
+            : LookupService::SCHEDULED_JOB_DELIVERY_POLICY_RESPECT_USER_PREFERENCES;
     }
 
     /**

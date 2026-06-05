@@ -33,6 +33,7 @@ final class LookupService
     public const WEEKDAYS = 'weekdays';
     public const SCHEDULED_JOBS_STATUS = 'scheduledJobsStatus';
     public const SCHEDULED_JOBS_SEARCH_DATE_TYPES = 'scheduledJobsSearchDateTypes';
+    public const SCHEDULED_JOB_DELIVERY_POLICIES = 'scheduledJobDeliveryPolicies';
     public const TRANSACTION_TYPES = 'transactionTypes';
     public const TRANSACTION_BY = 'transactionBy';
     public const JOB_TYPES = 'jobTypes';
@@ -86,6 +87,12 @@ final class LookupService
     public const SCHEDULED_JOBS_STATUS_FAILED = 'failed';
     public const SCHEDULED_JOBS_STATUS_CANCELLED = 'cancelled';
     public const SCHEDULED_JOBS_STATUS_DELETED = 'deleted';
+    public const SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_NOTIFICATIONS = 'skipped_user_disabled_notifications';
+    public const SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS = 'skipped_user_disabled_emails';
+
+    // scheduledJobDeliveryPolicies
+    public const SCHEDULED_JOB_DELIVERY_POLICY_RESPECT_USER_PREFERENCES = 'respect_user_preferences';
+    public const SCHEDULED_JOB_DELIVERY_POLICY_REQUIRED_SYSTEM = 'required_system';
 
     // scheduledJobsSearchDateTypes
     public const SCHEDULED_JOBS_SEARCH_DATE_TYPES_DATE_CREATE = 'date_create';
@@ -100,8 +107,10 @@ final class LookupService
     public const TRANSACTION_TYPES_STATUS_CHANGE = 'status_change';
     public const TRANSACTION_TYPES_SEND_MAIL_OK = 'send_mail_ok';
     public const TRANSACTION_TYPES_SEND_MAIL_FAIL = 'send_mail_fail';
+    public const TRANSACTION_TYPES_SEND_MAIL_SKIPPED = 'send_mail_skipped';
     public const TRANSACTION_TYPES_SEND_NOTIFICATION_OK = 'send_notification_ok';
     public const TRANSACTION_TYPES_SEND_NOTIFICATION_FAIL = 'send_notification_fail';
+    public const TRANSACTION_TYPES_SEND_NOTIFICATION_SKIPPED = 'send_notification_skipped';
     public const TRANSACTION_TYPES_EXECUTE_TASK_OK = 'execute_task_ok';
     public const TRANSACTION_TYPES_EXECUTE_TASK_FAIL = 'execute_task_fail';
     public const TRANSACTION_TYPES_CHECK_SCHEDULEDJOBS = 'check_scheduledJobs';

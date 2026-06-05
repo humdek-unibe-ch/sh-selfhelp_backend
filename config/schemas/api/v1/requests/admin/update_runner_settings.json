@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Update Scheduled-Job Runner Settings Request",
+  "description": "Schema for updating the Docker scheduled-job runner operational settings",
+  "type": "object",
+  "properties": {
+    "enabled": { "type": "boolean" },
+    "interval_seconds": { "type": "integer", "minimum": 60 },
+    "max_jobs_per_run": { "type": ["integer", "null"], "minimum": 1 },
+    "lock_ttl_seconds": { "type": "integer", "minimum": 1 },
+    "stale_running_after_seconds": { "type": "integer", "minimum": 1 }
+  },
+  "additionalProperties": false
+}

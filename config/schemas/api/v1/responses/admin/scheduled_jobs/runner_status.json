@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scheduled-Job Runner Status Response",
+  "description": "Operational status of the Docker scheduled-job runner",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "settings": {
+              "type": "object",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "interval_seconds": { "type": "integer" },
+                "max_jobs_per_run": { "type": ["integer", "null"] },
+                "lock_ttl_seconds": { "type": "integer" },
+                "stale_running_after_seconds": { "type": "integer" }
+              },
+              "required": ["enabled", "interval_seconds", "lock_ttl_seconds", "stale_running_after_seconds"]
+            },
+            "last_run": {
+              "type": ["object", "null"],
+              "properties": {
+                "id": { "type": ["integer", "null"] },
+                "trigger_type": { "type": "string" },
+                "status": { "type": "string" },
+                "started_at": { "type": "string" },
+                "finished_at": { "type": ["string", "null"] },
+                "duration_ms": { "type": ["integer", "null"] },
+                "due_count": { "type": "integer" },
+                "attempted_count": { "type": "integer" },
+                "done_count": { "type": "integer" },
+                "failed_count": { "type": "integer" },
+                "skipped_count": { "type": "integer" },
+                "error_message": { "type": ["string", "null"] }
+              }
+            },
+            "queue": {
+              "type": "object",
+              "properties": {
+                "due_queued_count": { "type": "integer" },
+                "running_count": { "type": "integer" },
+                "stale_running_count": { "type": "integer" }
+              },
+              "required": ["due_queued_count", "running_count", "stale_running_count"]
+            },
+            "health": {
+              "type": "object",
+              "properties": {
+                "next_eligible_run_at": { "type": ["string", "null"] },
+                "scheduler_appears_stale": { "type": "boolean" },
+                "last_error_message": { "type": ["string", "null"] }
+              },
+              "required": ["scheduler_appears_stale"]
+            }
+          },
+          "required": ["settings", "last_run", "queue", "health"]
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

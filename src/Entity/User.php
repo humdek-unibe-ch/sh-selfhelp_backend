@@ -143,6 +143,22 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'string', length: 200, nullable: true)]
     private ?string $device_token = null;
 
+    /**
+     * Whether the user wants to receive push notifications scheduled by the
+     * platform. Enforced at delivery time by {@see \App\Service\Core\JobSchedulerService}
+     * for notification jobs whose delivery policy respects user preferences.
+     */
+    #[ORM\Column(name: 'receives_notifications', type: 'boolean', options: ['default' => 1])]
+    private bool $receives_notifications = true;
+
+    /**
+     * Whether the user wants to receive emails scheduled by the platform.
+     * Enforced at delivery time for `respect_user_preferences` email jobs;
+     * `required_system` mail (account/security) bypasses this flag.
+     */
+    #[ORM\Column(name: 'receives_emails', type: 'boolean', options: ['default' => 1])]
+    private bool $receives_emails = true;
+
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
     #[ORM\JoinColumn(name: 'id_user_types', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE', options: ['default' => 72])] //TODO: set default value to user type dynamically
     private ?Lookup $userType = null;
@@ -279,6 +295,30 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setDeviceToken(?string $deviceToken): static
     {
         $this->device_token = $deviceToken;
+
+        return $this;
+    }
+
+    public function receivesNotifications(): bool
+    {
+        return $this->receives_notifications;
+    }
+
+    public function setReceivesNotifications(bool $receivesNotifications): static
+    {
+        $this->receives_notifications = $receivesNotifications;
+
+        return $this;
+    }
+
+    public function receivesEmails(): bool
+    {
+        return $this->receives_emails;
+    }
+
+    public function setReceivesEmails(bool $receivesEmails): static
+    {
+        $this->receives_emails = $receivesEmails;
 
         return $this;
     }

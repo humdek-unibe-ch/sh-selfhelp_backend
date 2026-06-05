@@ -323,6 +323,158 @@ class ScheduledJobRepository extends ServiceEntityRepository
     }
 
     /**
+     * Find queued future jobs for a user (used for timezone recalculation).
+     *
+     * Only `queued` jobs whose execution time is still in the future are
+     * returned; already due, running, or terminal jobs are excluded.
+     *
+     * @param int $userId
+     *   The user whose queued future jobs should be returned.
+     * @param \DateTimeInterface $now
+     *   The current UTC time.
+     *
+     * @return ScheduledJob[]
+     */
+    public function findQueuedFutureJobsForUser(int $userId, \DateTimeInterface $now): array
+    {
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
+            ->andWhere('user.id = :userId')
+            ->andWhere('status.lookupCode = :status')
+            ->andWhere('sj.dateToBeExecuted > :now')
+            ->setParameter('userId', $userId)
+            ->setParameter('status', 'queued')
+            ->setParameter('now', $now)
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
+    /**
+     * Count due queued jobs (execution time now or in the past).
+     *
+     * @param \DateTimeInterface $now
+     *   The current UTC time.
+     */
+    public function countDueQueuedJobs(\DateTimeInterface $now): int
+    {
+        return (int) $this->createQueryBuilder('sj')
+            ->select('COUNT(sj.id)')
+            ->leftJoin('sj.status', 'status')
+            ->andWhere('sj.dateToBeExecuted <= :now')
+            ->andWhere('status.lookupCode = :status')
+            ->setParameter('now', $now)
+            ->setParameter('status', 'queued')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Find due queued jobs with a DB-level limit, oldest first.
+     *
+     * @param \DateTimeInterface $now
+     *   The current UTC time.
+     * @param int $limit
+     *   The maximum number of jobs to return.
+     *
+     * @return ScheduledJob[]
+     */
+    public function findDueQueuedJobs(\DateTimeInterface $now, int $limit): array
+    {
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
+            ->andWhere('sj.dateToBeExecuted <= :now')
+            ->andWhere('status.lookupCode = :status')
+            ->setParameter('now', $now)
+            ->setParameter('status', 'queued')
+            ->orderBy('sj.dateToBeExecuted', 'ASC')
+            ->addOrderBy('sj.id', 'ASC')
+            ->setMaxResults(max(1, $limit))
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
+    /**
+     * Count jobs currently in the `running` state.
+     */
+    public function countRunningJobs(): int
+    {
+        return (int) $this->createQueryBuilder('sj')
+            ->select('COUNT(sj.id)')
+            ->leftJoin('sj.status', 'status')
+            ->andWhere('status.lookupCode = :status')
+            ->setParameter('status', 'running')
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * Find running jobs whose start time is older than the stale threshold.
+     *
+     * @param \DateTimeInterface $threshold
+     *   Jobs started at or before this UTC instant are considered stale.
+     *
+     * @return ScheduledJob[]
+     */
+    public function findStaleRunningJobs(\DateTimeInterface $threshold): array
+    {
+        /** @var list<ScheduledJob> $result */
+        $result = $this->createScheduledJobsQueryBuilder()
+            ->andWhere('status.lookupCode = :status')
+            ->andWhere('sj.dateStarted IS NOT NULL')
+            ->andWhere('sj.dateStarted <= :threshold')
+            ->setParameter('status', 'running')
+            ->setParameter('threshold', $threshold)
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+
+    /**
+     * Atomically claim a queued job for execution.
+     *
+     * Transitions the job from `queued` to `running` in a single UPDATE guarded
+     * by the current status, so overlapping runners cannot both execute it.
+     *
+     * @param int $jobId
+     *   The job to claim.
+     * @param \DateTimeInterface $startedAt
+     *   The execution start time recorded on the job.
+     *
+     * @return bool
+     *   `true` when this caller won the claim; `false` when another caller did.
+     */
+    public function claimQueuedJobForExecution(int $jobId, \DateTimeInterface $startedAt): bool
+    {
+        $em = $this->getEntityManager();
+
+        $queuedStatusId = (int) $em->createQuery(
+            'SELECT l.id FROM App\\Entity\\Lookup l WHERE l.typeCode = :type AND l.lookupCode = :code'
+        )->setParameter('type', 'scheduledJobsStatus')->setParameter('code', 'queued')->getSingleScalarResult();
+
+        $runningStatusId = (int) $em->createQuery(
+            'SELECT l.id FROM App\\Entity\\Lookup l WHERE l.typeCode = :type AND l.lookupCode = :code'
+        )->setParameter('type', 'scheduledJobsStatus')->setParameter('code', 'running')->getSingleScalarResult();
+
+        $affected = $em->createQuery(
+            'UPDATE App\\Entity\\ScheduledJob j
+                SET j.status = :running, j.dateStarted = :startedAt
+              WHERE j.id = :id AND IDENTITY(j.status) = :queued'
+        )
+            ->setParameter('running', $runningStatusId)
+            ->setParameter('startedAt', $startedAt)
+            ->setParameter('id', $jobId)
+            ->setParameter('queued', $queuedStatusId)
+            ->execute();
+
+        return $affected === 1;
+    }
+
+    /**
      * Find queued reminder jobs that should be cleared when a form is completed.
      *
      * @param int $userId

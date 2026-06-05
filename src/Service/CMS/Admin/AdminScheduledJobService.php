@@ -9,6 +9,7 @@
 namespace App\Service\CMS\Admin;
 
 use App\Entity\ScheduledJob;
+use App\Entity\ScheduledJobRecipient;
 use App\Entity\Lookup;
 
 use App\Plugin\Event\ScheduledJobTypeEvent;
@@ -340,7 +341,8 @@ class AdminScheduledJobService extends BaseService
         }
 
         $jobTransactions = $includeTransactions ? $this->getJobTransactions((int) $job->getId()) : [];
-        
+        $recipientInfo = $this->extractPrimaryRecipientInfo($job);
+
         return [
             'id' => $job->getId(),
             'id_users' => $job->getUser()?->getId(),
@@ -350,6 +352,11 @@ class AdminScheduledJobService extends BaseService
             'data_row' => $job->getDataRow()?->getId(),
             'job_types' => $job->getJobType()->getLookupValue(),
             'status' => $job->getStatus()->getLookupValue(),
+            'status_code' => $job->getStatus()->getLookupCode(),
+            'recipient_email' => $recipientInfo['recipient_email'],
+            'recipient_user_id' => $recipientInfo['recipient_user_id'],
+            'recipient_is_external' => $recipientInfo['recipient_is_external'],
+            'delivery_policy' => $recipientInfo['delivery_policy'],
             'description' => $job->getDescription(),
             'user_timezone' => $job->getUser()?->getTimezone()?->getLookupCode() ?? 'Europe/Zurich',
             'date_scheduled' => $dateToBeExecuted->format('Y-m-d H:i:s'),
@@ -357,8 +364,53 @@ class AdminScheduledJobService extends BaseService
             'date_to_be_executed' => $dateToBeExecuted->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
             'email_subject' => $this->extractEmailSubjectForList($displayConfig),
+            'schedule' => $this->extractScheduleMetadata($job, $displayConfig),
             'config' => $displayConfig,
             'transactions' => $jobTransactions
+        ];
+    }
+
+    /**
+     * Surface the timezone-aware schedule intent for a job so the admin UI can
+     * show, per job, the timezone it was calculated in and the intended local
+     * ("wall-clock") execution time alongside the UTC-derived
+     * `date_to_be_executed`. The data is sourced from the persisted
+     * `config.schedule` written by the action scheduler; for legacy/system jobs
+     * with no stored intent it is derived from the UTC execution instant.
+     *
+     * @param array<string, mixed>|null $config
+     *   The display-ready job config (already decoded), or null when absent.
+     *
+     * @return array{timezone: string, timezone_source: ?string, local_datetime: ?string, is_wall_clock: bool}
+     */
+    private function extractScheduleMetadata(ScheduledJob $job, ?array $config): array
+    {
+        $schedule = is_array($config) && isset($config['schedule']) && is_array($config['schedule']) ? $config['schedule'] : [];
+
+        $storedTimezone = $schedule['timezone'] ?? null;
+        $timezone = is_string($storedTimezone) && $storedTimezone !== ''
+            ? $storedTimezone
+            : ($job->getUser()?->getTimezone()?->getLookupCode() ?? $this->cmsPreferenceService->getDefaultTimezoneCode());
+
+        $storedLocal = $schedule['local_datetime'] ?? null;
+        $localDatetime = is_string($storedLocal) && $storedLocal !== '' ? $storedLocal : null;
+        if ($localDatetime === null) {
+            try {
+                $localDatetime = \DateTime::createFromInterface($job->getDateToBeExecuted())
+                    ->setTimezone(new \DateTimeZone($timezone))
+                    ->format('Y-m-d\TH:i:s');
+            } catch (\Throwable) {
+                $localDatetime = null;
+            }
+        }
+
+        $timezoneSource = $schedule['timezone_source'] ?? null;
+
+        return [
+            'timezone' => $timezone,
+            'timezone_source' => is_string($timezoneSource) ? $timezoneSource : null,
+            'local_datetime' => $localDatetime,
+            'is_wall_clock' => ($schedule['wall_clock'] ?? false) === true,
         ];
     }
 
@@ -489,6 +541,7 @@ class AdminScheduledJobService extends BaseService
                         'transaction_id' => $transaction->getId(),
                         'transaction_time' => $transactionTime->format('Y-m-d H:i:s'),
                         'transaction_type' => $transaction->getTransactionType()?->getLookupValue(),
+                        'transaction_type_code' => $transaction->getTransactionType()?->getLookupCode(),
                         'transaction_verbal_log' => $transaction->getTransactionLog(),
                         'user' => $transaction->getUser()?->getName()
                     ];
@@ -512,6 +565,7 @@ class AdminScheduledJobService extends BaseService
     {
         // Convert timezone for datetime fields
         $cmsTimezone = new \DateTimeZone($this->cmsPreferenceService->getDefaultTimezoneCode());
+        $displayConfig = $this->resolveConfigForDisplay($job);
 
         $dateCreate = \DateTime::createFromInterface($job->getDateCreate())->setTimezone($cmsTimezone);
         $dateToBeExecuted = \DateTime::createFromInterface($job->getDateToBeExecuted())->setTimezone($cmsTimezone);
@@ -542,18 +596,81 @@ class AdminScheduledJobService extends BaseService
             'reminder_session_end_date' => $job->getReminderMetadata()?->getSessionEndDate()?->format('Y-m-d H:i:s'),
             'status' => [
                 'id' => $job->getStatus()->getId(),
-                'value' => $job->getStatus()->getLookupValue()
+                'value' => $job->getStatus()->getLookupValue(),
+                'code' => $job->getStatus()->getLookupCode()
             ],
             'job_type' => [
                 'id' => $job->getJobType()->getId(),
-                'value' => $job->getJobType()->getLookupValue()
+                'value' => $job->getJobType()->getLookupValue(),
+                'code' => $job->getJobType()->getLookupCode()
             ],
             'description' => $job->getDescription(),
             'date_create' => $dateCreate->format('Y-m-d H:i:s'),
             'date_to_be_executed' => $dateToBeExecuted->format('Y-m-d H:i:s'),
             'date_executed' => $dateExecuted?->format('Y-m-d H:i:s'),
-            'config' => $this->resolveConfigForDisplay($job)
+            'user_timezone' => $job->getUser()?->getTimezone()?->getLookupCode() ?? $this->cmsPreferenceService->getDefaultTimezoneCode(),
+            'schedule' => $this->extractScheduleMetadata($job, $displayConfig),
+            'recipients' => $this->formatRecipientsForDetail($job),
+            'config' => $displayConfig
         ];
+    }
+
+    /**
+     * Build the recipient-info summary for the primary email recipient of a job.
+     *
+     * Prefers the first persisted email recipient snapshot. Falls back to the
+     * job's linked user for legacy rows that have no snapshot.
+     *
+     * @return array{recipient_email: ?string, recipient_user_id: ?int, recipient_is_external: bool, delivery_policy: ?string}
+     */
+    private function extractPrimaryRecipientInfo(ScheduledJob $job): array
+    {
+        foreach ($job->getRecipients() as $recipient) {
+            if ($recipient->getChannel() !== ScheduledJobRecipient::CHANNEL_EMAIL) {
+                continue;
+            }
+
+            $linkedUser = $recipient->getUser();
+
+            return [
+                'recipient_email' => $recipient->getRecipientEmail() ?? $linkedUser?->getEmail(),
+                'recipient_user_id' => $linkedUser?->getId(),
+                'recipient_is_external' => $linkedUser === null,
+                'delivery_policy' => $recipient->getDeliveryPolicy(),
+            ];
+        }
+
+        $user = $job->getUser();
+
+        return [
+            'recipient_email' => $user?->getEmail(),
+            'recipient_user_id' => $user?->getId(),
+            'recipient_is_external' => false,
+            'delivery_policy' => null,
+        ];
+    }
+
+    /**
+     * Build the full recipients array for the job detail payload.
+     *
+     * @return list<array{id: ?int, channel: string, recipient_type: string, recipient_email: ?string, id_users: ?int, delivery_policy: string, resolved_from: ?string}>
+     */
+    private function formatRecipientsForDetail(ScheduledJob $job): array
+    {
+        $recipients = [];
+        foreach ($job->getRecipients() as $recipient) {
+            $recipients[] = [
+                'id' => $recipient->getId(),
+                'channel' => $recipient->getChannel(),
+                'recipient_type' => $recipient->getRecipientType(),
+                'recipient_email' => $recipient->getRecipientEmail(),
+                'id_users' => $recipient->getUser()?->getId(),
+                'delivery_policy' => $recipient->getDeliveryPolicy(),
+                'resolved_from' => $recipient->getResolvedFrom(),
+            ];
+        }
+
+        return $recipients;
     }
 
     /**

@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-05.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 ## Overview
@@ -105,6 +105,13 @@ Responsibilities:
 - apply overwrite variables into job schedule blocks
 - interpolate `{{variables}}` with submitted form values
 - persist randomization counters back onto the `actions.config`
+
+Action email/notification templates use Mustache `{{...}}` placeholders only
+(the legacy at-style action syntax is gone). `ActionTemplateContextBuilder`
+exposes per-recipient scopes that are rendered during fan-out:
+`{{recipient.email}}`, `{{recipient.name}}`, `{{recipient.user_name}}`,
+`{{recipient.code}}`, `{{recipient.timezone}}`, plus `{{record.field_name}}`,
+`{{system.project_name}}` and `{{system.platform_url}}`.
 
 ### `ActionCleanupService`
 
@@ -250,13 +257,21 @@ Execute one job manually:
 php bin/console app:scheduled-jobs:execute-one 123
 ```
 
-### Cron example
+### Docker scheduler (v1) and cron fallback
 
-Run every minute:
+In Docker production the tick source is a dedicated `scheduler` container running
+the command in a loop every `SCHEDULED_JOBS_TICK_SECONDS` (default 60); the
+DB-backed runner settings decide whether work actually runs. See the "Docker
+Runner" section above. For non-Docker/manual deployments a host cron works too:
 
 ```cron
-* * * * * cd /path/to/sh-selfhelp_backend && php bin/console app:scheduled-jobs:execute-due --env=prod >> var/log/scheduled-jobs.log 2>&1
+* * * * * cd /path/to/sh-selfhelp_backend && php bin/console app:scheduled-jobs:execute-due --env=prod --no-interaction >> var/log/scheduled-jobs.log 2>&1
 ```
+
+For local backend development in this repository, the root `docker-compose.yml`
+also includes a `scheduler` service that runs the same command every
+`SCHEDULED_JOBS_TICK_SECONDS` seconds (default `60`) so the due-runner can be
+tested without a host cron.
 
 ## Email Execution
 
@@ -283,6 +298,111 @@ Requirements:
 - target user must have `device_token`
 
 If either is missing, the job fails cleanly and is logged.
+
+## Communication Preferences and Delivery Policy
+
+Issue #29: users carry two persisted booleans, `users.receives_notifications`
+and `users.receives_emails` (default `1`), editable from the profile page
+(`PUT /auth/user/communication-preferences`) and admin user management.
+
+Every scheduled `email` / `notification` job carries a `delivery_policy`
+(lookup group `scheduledJobDeliveryPolicies`):
+
+- `respect_user_preferences` (default) — if the delivery target maps to a known
+  `User` who disabled that channel, the job is **skipped** at execution time, not
+  failed.
+- `required_system` — account/security mail (validation, password reset, 2FA,
+  account-deletion, admin activation/resend). It ignores `receives_emails` and is
+  always delivered. Set only by trusted backend paths
+  (`UserValidationService`, etc.), never exposed as a casual admin toggle.
+
+Enforcement lives in `JobSchedulerService::executeEmailJob()` /
+`executeNotificationJob()` and returns a typed `ScheduledJobExecutionResult`
+(`done` / `failed` / `skipped`). Skipped deliveries:
+
+- end in status `skipped_user_disabled_emails` or
+  `skipped_user_disabled_notifications` (never `failed`);
+- log a `send_mail_skipped` / `send_notification_skipped` transaction;
+- set `date_executed`;
+- do not make the due-runner command exit non-zero.
+
+### Recipient snapshots and fan-out
+
+`scheduled_job_recipients` is the authoritative recipient source. When a job is
+created with an explicit `recipients` list (or a single email config),
+`JobSchedulerService::scheduleJob()` persists one snapshot per recipient
+(`channel`, `recipient_type`, `recipient_email`, `id_users`, `delivery_policy`,
+`resolved_from`). The executor prefers the snapshot and falls back to
+`config.email.recipient_emails` + `ScheduledJob::getUser()` for legacy rows.
+
+`ActionSchedulerService` **fans out**: a multi-recipient action email schedules
+one job per resolved recipient user, so each job has exactly one primary
+recipient and one clear terminal status (`done` / `failed` / skipped). External
+addresses with no matching `User` are sent when valid (no stored preference to
+apply).
+
+## User-Timezone-Aware Scheduling
+
+Wall-clock action times (e.g. "send at 07:00") are calculated in the recipient's
+timezone and persisted in UTC on `scheduled_jobs.date_to_be_executed`.
+`ActionScheduleCalculatorService::calculateDates()` takes an
+`ActionScheduleContext` (recipient timezone + clock), and
+`ActionSchedulerService` calculates dates **per recipient** so two users in
+different timezones get different UTC instants for the same local rule.
+
+`config.schedule` stores the intent: `wall_clock`, `local_datetime`, `timezone`,
+`timezone_source`, and the original `rule`. Purely relative schedules
+("after 2 hours") are not wall-clock and are never recalculated.
+
+When a user changes timezone, `ProfileService::updateTimezone()` calls
+`QueuedJobTimezoneAdjustmentService::adjustForUser()`, which recalculates only
+that user's **queued, future, wall-clock** jobs (preserving the local time),
+logs a transaction, and invalidates scheduled-job caches.
+
+## Docker Runner
+
+The Docker scheduler container ticks `app:scheduled-jobs:execute-due` every
+minute; the command delegates to `ScheduledJobRunnerService::runDueJobs()`, which
+owns the operational concerns (settings, interval gate, lock, run history). All
+per-job execution still flows through the single
+`JobSchedulerService::executeJob()` entrypoint.
+
+- `scheduled_job_runner_settings` — singleton row: `enabled`, `interval_seconds`
+  (min 60), `max_jobs_per_run`, `lock_ttl_seconds`, `stale_running_after_seconds`.
+- `scheduled_job_runner_runs` — one row per tick with trigger, status, counts
+  (due/attempted/done/failed/skipped), timing, and `lock_acquired`.
+- **Atomic claim:** `ScheduledJobRepository::claimQueuedJobForExecution()` runs
+  `UPDATE ... WHERE id = :id AND id_job_status = queued`, so overlapping ticks
+  cannot execute the same job twice. `scheduled_jobs.date_started` records the
+  claim time and powers stale-running detection.
+- **Lock:** a non-blocking Symfony Lock named `scheduled_jobs_runner`; lock
+  contention records a `skipped_locked` run and exits success. Clustered/Docker
+  deployments must set `LOCK_DSN=redis://redis:6379`.
+
+### Console options
+
+```bash
+php bin/console app:scheduled-jobs:execute-due [--limit=N] [--force] [--dry-run] [--json]
+```
+
+- `--limit` caps jobs this tick (DB-level `setMaxResults`).
+- `--force` bypasses the enabled flag + interval gate (used by "Run now").
+- `--dry-run` reports due counts / policy state without executing.
+- `--json` emits a machine-readable summary for health tooling.
+
+Exit `0` for normal completion (including policy/lock skips and cleanly
+failed/skipped jobs); exit `1` only for infrastructure failure.
+
+### Admin runner API
+
+Under `/cms-api/v1/admin/scheduled-jobs/runner` (see
+`AdminScheduledJobRunnerController`):
+
+- `GET status` — settings, last run, queue counts, stale/health flags
+  (`admin.scheduled_job.read`).
+- `PUT settings`, `POST enable`, `POST disable` (`admin.scheduled_job.manage`).
+- `POST run-now` — `runDueJobs(trigger: manual, force: true)`
+  (`admin.scheduled_job.execute`).
 
 ## End-to-End Example
 
@@ -350,7 +470,15 @@ Check:
 - `src/Controller/Api/V1/Auth/UserValidationController.php`
 - `src/Service/Action/ActionOrchestratorService.php`
 - `src/Service/Action/ActionSchedulerService.php`
+- `src/Service/Action/ActionScheduleCalculatorService.php`
+- `src/Service/Action/ActionTemplateContextBuilder.php`
 - `src/Service/Core/JobSchedulerService.php`
+- `src/Service/Core/ScheduledJobRunnerService.php`
+- `src/Service/Core/QueuedJobTimezoneAdjustmentService.php`
+- `src/Service/Core/ScheduledJobExecutionResult.php`
 - `src/Service/Core/TaskJobExecutorService.php`
-- `src/Entity/ScheduledJob.php`
+- `src/Command/ScheduledJobsExecuteDueCommand.php`
+- `src/Controller/Api/V1/Admin/AdminScheduledJobRunnerController.php`
+- `src/Entity/ScheduledJob.php`, `ScheduledJobRecipient.php`, `ScheduledJobRunnerSetting.php`, `ScheduledJobRunnerRun.php`
 - `migrations/Version20260601000000.php` (canonical baseline; defines `scheduled_jobs` + `scheduled_job_reminders`)
+- `migrations/Version20260605081254.php` (communication preferences + Docker runner schema/lookups/permission/routes)
