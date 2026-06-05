@@ -351,13 +351,17 @@ timezone and persisted in UTC on `scheduled_jobs.date_to_be_executed`.
 different timezones get different UTC instants for the same local rule.
 
 `config.schedule` stores the intent: `wall_clock`, `local_datetime`, `timezone`,
-`timezone_source`, and the original `rule`. Purely relative schedules
-("after 2 hours") are not wall-clock and are never recalculated.
+`timezone_source`, and the original `rule`. The `wall_clock` flag records whether
+the original rule was an absolute local time ("at 07:00") or relative
+("after 2 hours"); it is surfaced per job but no longer gates recalculation.
 
 When a user changes timezone, `ProfileService::updateTimezone()` calls
-`QueuedJobTimezoneAdjustmentService::adjustForUser()`, which recalculates only
-that user's **queued, future, wall-clock** jobs (preserving the local time),
-logs a transaction, and invalidates scheduled-job caches.
+`QueuedJobTimezoneAdjustmentService::adjustForUser()`, which recalculates **all**
+of that user's **queued, future** jobs — wall-clock and relative alike — by
+re-anchoring each job's intended local time to the new timezone, logs a
+transaction, and invalidates scheduled-job caches. Moving the timezone forward
+can make jobs come due; the runner then sends them in execution-time order
+(`date_to_be_executed ASC, id ASC`) on its next tick.
 
 ## Docker Runner
 

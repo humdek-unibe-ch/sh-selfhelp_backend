@@ -15,12 +15,17 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Recalculates queued, future, wall-clock scheduled jobs when a user changes
- * their timezone so the intended local delivery time (e.g. 07:00) is preserved.
+ * Recalculates a user's queued, future scheduled jobs when they change their
+ * timezone so each job's intended local ("wall-clock") delivery time is
+ * preserved in the new timezone.
  *
- * Only jobs with `config.schedule.wall_clock = true`, status `queued`, and a
- * future execution time are adjusted. Relative ("after N hours") jobs and
- * already-due/terminal jobs are never recalculated.
+ * Every `queued` job with a future execution time is re-anchored: the absolute
+ * execution instant is expressed in the job's previous timezone to recover the
+ * intended local time, then re-interpreted in the new timezone. This applies to
+ * both wall-clock ("at 07:00") and relative ("after N hours") jobs. Moving the
+ * timezone forward can therefore make jobs come due; those are picked up and
+ * sent in execution-time order by the runner on its next tick. Already-due and
+ * terminal jobs are left untouched.
  */
 class QueuedJobTimezoneAdjustmentService
 {
@@ -60,14 +65,12 @@ class QueuedJobTimezoneAdjustmentService
             $config = $job->getConfig() ?? [];
             $schedule = isset($config['schedule']) && is_array($config['schedule']) ? $config['schedule'] : [];
 
-            if (($schedule['wall_clock'] ?? false) !== true) {
-                continue;
-            }
-
             $oldTimezone = $this->safeTimezone(is_string($schedule['timezone'] ?? null) ? $schedule['timezone'] : '')
                 ?? $utc;
 
-            // Reinterpret the same local wall-clock time in the new timezone.
+            // Reinterpret the same local wall-clock time in the new timezone so
+            // the intended local delivery time is preserved. Applies to every
+            // queued future job (wall-clock and relative alike).
             $localWall = \DateTime::createFromInterface($job->getDateToBeExecuted())
                 ->setTimezone($oldTimezone)
                 ->format('Y-m-d H:i:s');
@@ -81,6 +84,9 @@ class QueuedJobTimezoneAdjustmentService
             $job->setDateToBeExecuted($newUtc);
             $schedule['timezone'] = $newTimezoneId;
             $schedule['timezone_source'] = 'user';
+            $schedule['local_datetime'] = \DateTime::createFromInterface($newUtc)
+                ->setTimezone($newTimezone)
+                ->format('Y-m-d\TH:i:s');
             $config['schedule'] = $schedule;
             $job->setConfig($config);
 
