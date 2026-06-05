@@ -110,7 +110,10 @@ class ProfileService extends BaseService
             }
 
             $oldTimezoneId = $managedUser->getTimezone()?->getId();
-            $managedUser->setTimezone($timezone);
+            // The cached lookup can be a detached instance (deserialized from a
+            // previous request's cache entry); associate a managed reference so
+            // flush() does not treat it as a new entity to cascade-persist.
+            $managedUser->setTimezone($this->entityManager->getReference(Lookup::class, $timezoneId));
             $this->entityManager->flush();
 
             // Log the transaction
