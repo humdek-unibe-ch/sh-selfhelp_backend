@@ -307,14 +307,24 @@ class AdminScheduledJobService extends BaseService
      */
     private function applyScheduledJobsSorting(\Doctrine\ORM\QueryBuilder $qb, string $sort, string $order): void
     {
+        $direction = strtolower($order) === 'desc' ? 'DESC' : 'ASC';
+
         $orderBy = match($sort) {
-            'adjusted_execution_time' => 'sj.dateToBeExecuted',
-            'date_create' => 'sj.dateCreate',
+            'id' => 'sj.id',
+            'adjusted_execution_time', 'date_to_be_executed' => 'sj.dateToBeExecuted',
+            'date_create', 'date_created' => 'sj.dateCreate',
+            'date_executed' => 'sj.dateExecuted',
             'description' => 'sj.description',
             default => 'sj.dateToBeExecuted'
         };
 
-        $qb->orderBy($orderBy, $order);
+        $qb->orderBy($orderBy, $direction);
+
+        // Deterministic tie-breaker so rows with equal primary values keep a
+        // stable order across pages.
+        if ($orderBy !== 'sj.id') {
+            $qb->addOrderBy('sj.id', $direction);
+        }
     }
 
     /**
