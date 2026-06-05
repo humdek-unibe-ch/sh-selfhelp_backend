@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-05.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -313,6 +313,73 @@ Create a new user account from a public register page. The new account is create
 - The user is assigned to the group associated with the registration code (when `open_registration = 0`) or to the section's configured group (when `open_registration = 1`).
 - A validation email is dispatched asynchronously via the job scheduler.
 - Registration codes are managed via the [Admin Registration Codes APIs](./19-admin-registration-codes.md).
+
+### Forgot Password (request a reset link)
+
+Request a password-recovery email for an account. The response is **always a generic success**, regardless of whether the email belongs to a known account, so the endpoint cannot be used to enumerate registered users.
+
+**Endpoint:** `POST /cms-api/v1/auth/forgot-password`
+
+**Request Body:**
+[View JSON Schema](../../../config/schemas/api/v1/requests/auth/forgot_password.json)
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": false,
+  "meta": { "version": "v1", "timestamp": "2026-06-05T10:30:00Z" },
+  "data": { "requested": true }
+}
+```
+
+**Behaviour:**
+- For a known **active** account a one-time recovery token is stored on the user and a recovery email (`mail_recovery`) is sent immediately. The email links to `<FRONTEND_BASE_URL>/reset/{user_id}/{token}`.
+- The recovery email is a **system mail** (`required_system` delivery policy), so it is delivered even when the recipient disabled platform emails in their profile (issue #29).
+- Unknown emails and non-active accounts are silently ignored.
+
+**Permissions:** None (public endpoint)
+
+### Reset Password (set a new password)
+
+Consume the one-time recovery token from the reset email and set a new password. The token is single-use and is cleared on success.
+
+**Endpoint:** `POST /cms-api/v1/auth/reset-password`
+
+**Request Body:**
+[View JSON Schema](../../../config/schemas/api/v1/requests/auth/reset_password.json)
+```json
+{
+  "id_users": 123,
+  "token": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  "password": "newsecurepassword123"
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": false,
+  "meta": { "version": "v1", "timestamp": "2026-06-05T10:30:00Z" },
+  "data": { "reset": true }
+}
+```
+
+**Error Responses:**
+- `400 Bad Request`: `"This password-reset link is invalid or has expired."` (unknown or mismatched token)
+- `422 Unprocessable Entity`: Validation errors (e.g. password shorter than 8 characters)
+
+**Permissions:** None (public endpoint)
 
 ## User Data & Profile Management
 

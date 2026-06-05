@@ -362,6 +362,10 @@ services:
         arguments:
             $frontendBaseUrl: '%frontend_base_url%'
 
+    App\Service\Auth\PasswordResetService:
+        arguments:
+            $frontendBaseUrl: '%frontend_base_url%'
+
     App\Service\Auth\RegistrationCodeService:
         arguments:
             $totalMax: '%registration_code_total_max%'
