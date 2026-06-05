@@ -35,6 +35,16 @@
       "default": false,
       "description": "Whether the user is blocked"
     },
+    "receives_notifications": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the user accepts platform-scheduled push notifications"
+    },
+    "receives_emails": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the user accepts platform-scheduled emails"
+    },
     "id_genders": {
       "type": "integer",
       "description": "Gender ID"

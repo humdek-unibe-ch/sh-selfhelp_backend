@@ -37,6 +37,7 @@ final class ProfileControllerTest extends QaWebTestCase
     private const NAME_URI = '/cms-api/v1/auth/user/name';
     private const TIMEZONE_URI = '/cms-api/v1/auth/user/timezone';
     private const PASSWORD_URI = '/cms-api/v1/auth/user/password';
+    private const COMMUNICATION_URI = '/cms-api/v1/auth/user/communication-preferences';
     private const ACCOUNT_URI = '/cms-api/v1/auth/user/account';
     private const USER_DATA_URI = '/cms-api/v1/auth/user-data';
 
@@ -161,6 +162,54 @@ final class ProfileControllerTest extends QaWebTestCase
         self::assertFalse(
             $hasher->isPasswordValid($reloaded, QaBaselineFixture::QA_PASSWORD),
             'Old password must no longer verify.'
+        );
+    }
+
+    // -- updateCommunicationPreferences (issue #29) -------------------------
+
+    public function testUpdateCommunicationPreferencesPersistsAndReturnsUserData(): void
+    {
+        $token = $this->loginAsQaGuest();
+        $before = $this->assertEnvelopeSuccess($this->jsonRequest('GET', self::USER_DATA_URI, null, $token));
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('PUT', self::COMMUNICATION_URI, [
+                'receives_notifications' => false,
+                'receives_emails' => true,
+            ], $token)
+        );
+
+        self::assertFalse($data['receives_notifications'], 'Disabled notifications must be reflected in the response.');
+        self::assertTrue($data['receives_emails'], 'Enabled emails must be reflected in the response.');
+        self::assertNotSame(
+            $before['acl_version'],
+            $data['acl_version'],
+            'Updating preferences must bump acl_version so the frontend invalidates its cache.'
+        );
+
+        // Persisted effect, observed from a clean identity map.
+        $this->em()->clear();
+        $reloaded = $this->em()->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_GUEST_EMAIL]);
+        self::assertInstanceOf(User::class, $reloaded);
+        self::assertFalse($reloaded->receivesNotifications());
+        self::assertTrue($reloaded->receivesEmails());
+    }
+
+    public function testUpdateCommunicationPreferencesRejectsInvalidPayload(): void
+    {
+        // Missing required `receives_emails` -> request-schema validation failure.
+        $this->assertEnvelope400(
+            $this->jsonRequest('PUT', self::COMMUNICATION_URI, ['receives_notifications' => false], $this->loginAsQaGuest())
+        );
+    }
+
+    public function testUpdateCommunicationPreferencesRequiresAuthentication(): void
+    {
+        $this->assertEnvelope401(
+            $this->jsonRequest('PUT', self::COMMUNICATION_URI, [
+                'receives_notifications' => false,
+                'receives_emails' => false,
+            ], null)
         );
     }
 

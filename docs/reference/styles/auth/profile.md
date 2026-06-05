@@ -3,16 +3,17 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (self-service account management, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-04.
+Last verified: 2026-06-05.
 Source of truth: `IProfileStyle` in `@selfhelp/shared`, `ProfileStyle.tsx`, `App\Service\Auth\ProfileService`, and `App\Controller\Api\V1\Auth\ProfileController`.
 
 ## Summary
 
 A complete self-service account page for the signed-in user. It shows account
-information and provides four actions: change display name, change timezone,
-change password, and delete the account. Every label, description, button,
-success message, and error message is CMS-managed and translatable, so the whole
-page can be localised without code.
+information and provides five actions: change display name, change timezone,
+change password, manage communication preferences (notifications/emails), and
+delete the account. Every label, description, button, success message, and error
+message is CMS-managed and translatable, so the whole page can be localised
+without code.
 
 - **Category:** auth
 - **Can have children:** no
@@ -76,6 +77,26 @@ matching placeholders `profile_password_reset_placeholder_current` / `_new` /
 `profile_password_reset_error_current_required`, `_current_wrong`,
 `_new_required`, `_confirm_required`, `_mismatch`, `_weak`, `_general`.
 
+### Communication preferences (issue #29)
+
+`profile_communication_preferences_title`,
+`profile_communication_preferences_description`,
+`profile_receive_notifications_label`, `profile_receive_notifications_description`,
+`profile_receive_emails_label`, `profile_receive_emails_description`,
+`profile_communication_preferences_button`,
+`profile_communication_preferences_success`, and
+`profile_communication_preferences_error_general`.
+
+Two toggles let the user control whether the backend may send them **scheduled
+notifications** and **(non-essential) emails**. The scheduled-job executor
+enforces these at delivery time: jobs with `delivery_policy =
+respect_user_preferences` are skipped for a user who disabled that channel,
+while `required_system` account/security mail is always delivered. The backend
+delivery preference is independent of the OS push-notification permission (it
+does not request OS permission and does not delete the device push token). Saved
+through `PUT /auth/user/communication-preferences`
+(`ProfileService::updateCommunicationPreferences`).
+
 ### Delete account
 
 `profile_delete_title`, `profile_delete_description`,
@@ -100,9 +121,11 @@ as confirmation.
 
 | File | Purpose |
 |------|---------|
-| `src/Service/Auth/ProfileService.php` | Name/timezone/password/delete operations. |
+| `src/Service/Auth/ProfileService.php` | Name/timezone/password/communication-preferences/delete operations. |
 | `src/Controller/Api/V1/Auth/ProfileController.php` | Profile endpoints. |
-| `sh-selfhelp_frontend/.../styles/ProfileStyle.tsx` | Renderer. |
+| `migrations/Version20260605083956.php` | Seeds the communication-preferences CMS fields/translations. |
+| `sh-selfhelp_frontend/.../styles/ProfileStyle.tsx` | Web renderer. |
+| `sh-selfhelp_mobile/components/styles/auth/Profile.tsx` | Mobile CMS renderer (+ `CommunicationPreferences.tsx`). |
 
 ## Related references
 

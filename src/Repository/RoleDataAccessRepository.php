@@ -751,6 +751,8 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             'last_login' => $lastLoginFormatted,
             'status' => $user->getStatus()?->getLookupValue(),
             'blocked' => $user->isBlocked(),
+            'receives_notifications' => $user->receivesNotifications(),
+            'receives_emails' => $user->receivesEmails(),
             'code' => $validationCode,
             'groups' => implode('; ', $groups),
             'user_activity' => $user->getTransactions()->count(),
