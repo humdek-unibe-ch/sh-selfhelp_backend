@@ -5,8 +5,10 @@ services:
   #   MAILER_DSN=smtp://localhost:1025
   # The web app reaches Mailpit on localhost:1025; the scheduler container
   # rewrites localhost -> host.docker.internal in its entrypoint so it reaches
-  # the same published port. Override MAILER_DSN in .env.local to deliver real
-  # mail from BOTH the web app and the scheduler.
+  # the same published port. Set MAILER_DSN in .env (or .env.local) to deliver
+  # real mail from BOTH the web app and the scheduler, then recreate the
+  # scheduler container so the env_file is re-read:
+  #   docker compose up -d --force-recreate scheduler
   #
   # See README.md "Local mail (Mailpit)" for the full operational guide.
   mailpit:
@@ -60,8 +62,15 @@ services:
       mailpit:
         condition: service_started
     env_file:
+      # Mirror Symfony's Dotenv chain so the scheduler delivers mail exactly like
+      # the web app. `.env` is the primary local file in this repo (created via
+      # `cp .env.default .env`), so it must be loaded here too — otherwise a
+      # MAILER_DSN placed only in `.env` would be invisible to the entrypoint and
+      # its localhost->host.docker.internal rewrite would never run.
       - path: .env.default
         required: true
+      - path: .env
+        required: false
       - path: .env.dev
         required: true
       - path: .env.local
@@ -74,10 +83,10 @@ services:
       LOCK_DSN: redis://redis:6379
       # MAILER_DSN is intentionally NOT pinned here: the scheduler must deliver
       # mail exactly like the web app, so it inherits MAILER_DSN from the env
-      # files above (.env.default -> .env.dev -> .env.local). The entrypoint
-      # rewrites a localhost/127.0.0.1 host to host.docker.internal so a
-      # host-based dev SMTP (e.g. the published Mailpit on :1025, or a real
-      # provider in .env.local) is reachable from inside the container.
+      # files above (.env.default -> .env -> .env.dev -> .env.local). The
+      # entrypoint rewrites a localhost/127.0.0.1 host to host.docker.internal
+      # so a host-based dev SMTP (e.g. the published Mailpit on :1025, or a real
+      # provider in .env/.env.local) is reachable from inside the container.
       MERCURE_URL: http://mercure/.well-known/mercure
       MERCURE_PUBLIC_URL: http://mercure/.well-known/mercure
       SCHEDULED_JOBS_TICK_SECONDS: ${SCHEDULED_JOBS_TICK_SECONDS:-60}
