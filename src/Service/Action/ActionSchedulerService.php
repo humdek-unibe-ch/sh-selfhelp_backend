@@ -13,6 +13,7 @@ use App\Entity\ScheduledJob;
 use App\Entity\User;
 use App\Repository\DataTableRepository;
 use App\Repository\UserRepository;
+use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Core\BaseService;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
@@ -32,7 +33,8 @@ class ActionSchedulerService extends BaseService
         private readonly ActionConfigRuntimeService $configRuntimeService,
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly UserRepository $userRepository,
-        private readonly DataTableRepository $dataTableRepository
+        private readonly DataTableRepository $dataTableRepository,
+        private readonly AdminActionTranslationService $translationService
     ) {
     }
 
@@ -194,7 +196,7 @@ class ActionSchedulerService extends BaseService
                 'reason' => $action->getName(),
             ];
         } elseif ($jobData['type'] === LookupService::JOB_TYPES_EMAIL) {
-            $jobData['email_config'] = $this->buildEmailConfig($runtimeConfig, $notificationConfig, $user);
+            $jobData['email_config'] = $this->buildEmailConfig($action, $runtimeConfig, $notificationConfig, $user);
         } else {
             $jobData['notification_config'] = $this->buildNotificationConfig($notificationConfig, $user);
         }
@@ -302,8 +304,10 @@ class ActionSchedulerService extends BaseService
      * @return array<string, mixed>
      *   The normalized email configuration stored on the scheduled job.
      */
-    private function buildEmailConfig(array $runtimeConfig, array $notificationConfig, User $recipient): array
+    private function buildEmailConfig(Action $action, array $runtimeConfig, array $notificationConfig, User $recipient): array
     {
+        $actionId = (int) $action->getId();
+
         $recipientEmails = $this->asString($notificationConfig[ActionConfig::RECIPIENT] ?? '');
         if (($runtimeConfig[ActionConfig::TARGET_GROUPS] ?? false) === true) {
             $recipientEmails = (string) $recipient->getEmail();
@@ -312,17 +316,24 @@ class ActionSchedulerService extends BaseService
         }
 
         $userCode = $this->getActiveValidationCode($recipient);
-        $body = str_replace(
-            ['@user_name', '@user_code'],
-            [(string) ($recipient->getName() ?? ''), $userCode],
+        $placeholders = [
+            '{{user_name}}'  => (string) ($recipient->getName() ?? ''),
+            '{{user_code}}'  => $userCode,
+            '{{user_email}}' => (string) ($recipient->getEmail() ?? ''),
+            '{{id_users}}'   => (string) ($recipient->getId() ?? ''),
+        ];
+
+        $rawBody = $this->translationService->resolveTranslationForDefaultLanguage(
+            $actionId,
             $this->asString($notificationConfig[ActionConfig::BODY] ?? '')
         );
-
-        $subject = str_replace(
-            ['@user_name', '@user_code'],
-            [(string) ($recipient->getName() ?? ''), $userCode],
+        $rawSubject = $this->translationService->resolveTranslationForDefaultLanguage(
+            $actionId,
             $this->asString($notificationConfig[ActionConfig::SUBJECT] ?? '')
         );
+
+        $body = str_replace(array_keys($placeholders), array_values($placeholders), $rawBody);
+        $subject = str_replace(array_keys($placeholders), array_values($placeholders), $rawSubject);
 
         return [
             'from_email' => $this->asString($notificationConfig[ActionConfig::FROM_EMAIL] ?? 'noreply@example.com'),

@@ -16,6 +16,7 @@ use App\Entity\User;
 use App\Repository\DataTableRepository;
 use App\Repository\UserRepository;
 use App\Service\Action\ActionConditionEvaluatorService;
+use App\Service\CMS\Admin\AdminActionTranslationService;
 use App\Service\Action\ActionConfig;
 use App\Service\Action\ActionConfigRuntimeService;
 use App\Service\Action\ActionScheduleCalculatorService;
@@ -102,6 +103,9 @@ final class ActionSchedulerServiceTest extends TestCase
             )
             ->willReturn($scheduledJob);
 
+        $translationService = $this->createStub(AdminActionTranslationService::class);
+        $translationService->method('resolveTranslationForDefaultLanguage')->willReturnArgument(1);
+
         $scheduler = new ActionSchedulerService(
             $conditionEvaluator,
             $scheduleCalculator,
@@ -109,6 +113,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $jobScheduler,
             $userRepository,
             $this->createStub(DataTableRepository::class),
+            $translationService,
         );
 
         $result = $scheduler->schedule($action, $runtimeConfig, $context, [42]);
@@ -158,8 +163,89 @@ final class ActionSchedulerServiceTest extends TestCase
             $jobScheduler,
             $userRepository,
             $this->createStub(DataTableRepository::class),
+            $this->createStub(AdminActionTranslationService::class),
         );
 
         self::assertSame([], $scheduler->schedule($action, $runtimeConfig, $context, [999]));
+    }
+
+    public function testEmailBodyAndSubjectExpandUserEmailAndIdPlaceholders(): void
+    {
+        $executionDate = new \DateTimeImmutable('2026-01-01 10:00:00', new \DateTimeZone('UTC'));
+
+        $job = [
+            ActionConfig::JOB_NAME => 'qa_placeholder_job',
+            ActionConfig::NOTIFICATION => [
+                ActionConfig::NOTIFICATION_TYPES => LookupService::NOTIFICATION_TYPES_EMAIL,
+                ActionConfig::SUBJECT => 'Hello {{user_name}}, your email is {{user_email}}',
+                ActionConfig::BODY => 'User id: {{id_users}}, code: {{user_code}}, email: {{user_email}}',
+                ActionConfig::RECIPIENT => '@user',
+            ],
+        ];
+        $block = [ActionConfig::JOBS => [$job]];
+        $runtimeConfig = [ActionConfig::BLOCKS => [$block]];
+
+        $context = new ActionTriggerContext(
+            $this->createStub(DataTable::class),
+            $this->createStub(DataRow::class),
+            ['record_id' => 200],
+            LookupService::ACTION_TRIGGER_TYPES_FINISHED,
+            7,
+            LookupService::TRANSACTION_BY_BY_SYSTEM,
+        );
+        $action = $this->createStub(\App\Entity\Action::class);
+        $action->method('getId')->willReturn(1);
+        $action->method('getName')->willReturn('qa_action');
+
+        $conditionEvaluator = $this->createStub(ActionConditionEvaluatorService::class);
+        $conditionEvaluator->method('passes')->willReturn(true);
+
+        $scheduleCalculator = $this->createStub(ActionScheduleCalculatorService::class);
+        $scheduleCalculator->method('calculateDates')->willReturn([$executionDate]);
+
+        $configRuntime = $this->createStub(ActionConfigRuntimeService::class);
+        $configRuntime->method('getIterationCount')->willReturn(1);
+        $configRuntime->method('selectBlocksForIteration')->willReturn([$block]);
+
+        $user = $this->createStub(User::class);
+        $user->method('getId')->willReturn(7);
+        $user->method('getEmail')->willReturn('qa.user@selfhelp.test');
+        $user->method('getName')->willReturn('QA User');
+        $user->method('getValidationCodes')->willReturn(new ArrayCollection());
+
+        $userRepository = $this->createStub(UserRepository::class);
+        $userRepository->method('find')->willReturn($user);
+
+        $scheduledJob = $this->createStub(ScheduledJob::class);
+
+        $jobScheduler = $this->createMock(JobSchedulerService::class);
+        $jobScheduler->expects(self::once())
+            ->method('scheduleJob')
+            ->with(
+                self::callback(function (array $jobData): bool {
+                    $emailConfig = self::asArray($jobData['email_config'] ?? []);
+                    return ($emailConfig['subject'] ?? '') === 'Hello QA User, your email is qa.user@selfhelp.test'
+                        && ($emailConfig['body'] ?? '') === 'User id: 7, code: , email: qa.user@selfhelp.test';
+                }),
+                LookupService::TRANSACTION_BY_BY_SYSTEM,
+            )
+            ->willReturn($scheduledJob);
+
+        $translationService = $this->createStub(AdminActionTranslationService::class);
+        $translationService->method('resolveTranslationForDefaultLanguage')->willReturnArgument(1);
+
+        $scheduler = new ActionSchedulerService(
+            $conditionEvaluator,
+            $scheduleCalculator,
+            $configRuntime,
+            $jobScheduler,
+            $userRepository,
+            $this->createStub(DataTableRepository::class),
+            $translationService,
+        );
+
+        $result = $scheduler->schedule($action, $runtimeConfig, $context, [7]);
+
+        self::assertSame([$scheduledJob], $result);
     }
 }
