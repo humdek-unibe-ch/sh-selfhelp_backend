@@ -15,6 +15,7 @@ use App\Entity\User;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Auth\MailTemplateService;
 use App\Service\Auth\PasswordResetService;
+use App\Service\Auth\UserValidationService;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -31,7 +32,11 @@ final class PasswordResetServiceTest extends TestCase
         $user = new User();
         $user->setEmail('qa.user@selfhelp.test');
         $user->setName('QA User');
-        $user->setToken('token-123');
+        // Reset uses the dedicated recovery fields, not the validation token.
+        $user->setPasswordResetToken('token-123');
+        $user->setPasswordResetExpiresAt(
+            (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify('+30 minutes')
+        );
         $user->setLanguage((new Language())->setLocale('de-CH'));
         $this->setEntityId($user, 42);
 
@@ -105,19 +110,24 @@ final class PasswordResetServiceTest extends TestCase
                 $this->isString()
             );
 
+        $userValidationService = $this->createMock(UserValidationService::class);
+        $userValidationService->expects($this->never())->method('resendValidationEmail');
+
         $service = new PasswordResetService(
             $entityManager,
             $jobScheduler,
             $mailTemplateService,
             $transactionService,
             $passwordHasher,
+            $userValidationService,
             $this->createStub(LoggerInterface::class),
             'http://localhost:3000'
         );
 
         self::assertTrue($service->resetPassword(42, 'token-123', 'NewSecret123'));
         self::assertSame('hashed-password', $user->getPassword());
-        self::assertNull($user->getToken());
+        self::assertNull($user->getPasswordResetToken(), 'A successful reset must consume the recovery token.');
+        self::assertNull($user->getPasswordResetExpiresAt(), 'A successful reset must clear the token expiry.');
     }
 
     private function setEntityId(User $user, int $id): void

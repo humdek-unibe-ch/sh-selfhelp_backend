@@ -131,8 +131,30 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(type: 'boolean', options: ['default' => 0])]
     private bool $intern = false;
 
+    /**
+     * Account-validation / 2FA-style one-time token (the invite/confirm link).
+     * Intentionally NOT used for password recovery — see the dedicated
+     * {@see $password_reset_token} field below so a pending invite and a reset
+     * request never overwrite each other.
+     */
     #[ORM\Column(type: 'string', length: 32, nullable: true)]
     private ?string $token = null;
+
+    /**
+     * One-time password-recovery token, separate from the account-validation
+     * {@see $token}. Set by {@see \App\Service\Auth\PasswordResetService} and
+     * cleared on a successful reset; valid only until
+     * {@see $password_reset_expires_at}.
+     */
+    #[ORM\Column(name: 'password_reset_token', type: 'string', length: 64, nullable: true)]
+    private ?string $password_reset_token = null;
+
+    /**
+     * UTC expiry of {@see $password_reset_token}. Recovery tokens are short
+     * lived (1 hour) so a leaked reset link cannot be used indefinitely.
+     */
+    #[ORM\Column(name: 'password_reset_expires_at', type: 'datetime_immutable', nullable: true)]
+    private ?\DateTimeImmutable $password_reset_expires_at = null;
 
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $id_languages = null;
@@ -283,6 +305,30 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setToken(?string $token): static
     {
         $this->token = $token;
+
+        return $this;
+    }
+
+    public function getPasswordResetToken(): ?string
+    {
+        return $this->password_reset_token;
+    }
+
+    public function setPasswordResetToken(?string $passwordResetToken): static
+    {
+        $this->password_reset_token = $passwordResetToken;
+
+        return $this;
+    }
+
+    public function getPasswordResetExpiresAt(): ?\DateTimeImmutable
+    {
+        return $this->password_reset_expires_at;
+    }
+
+    public function setPasswordResetExpiresAt(?\DateTimeImmutable $passwordResetExpiresAt): static
+    {
+        $this->password_reset_expires_at = $passwordResetExpiresAt;
 
         return $this;
     }

@@ -21,10 +21,19 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 /**
  * Forgot-password / recovery flow.
  *
- * Two steps, mirroring the account-validation flow:
- *   1. {@see requestReset()} — generate a one-time token, store it on the user
- *      and send the recovery email (`mail_recovery`).
- *   2. {@see resetPassword()} — consume the token and set the new password.
+ * Two steps:
+ *   1. {@see requestReset()} — generate a one-time recovery token, store it in
+ *      the dedicated {@see User::$password_reset_token} field together with a
+ *      short UTC expiry ({@see RESET_TOKEN_TTL_SECONDS}), and send the recovery
+ *      email (`mail_recovery`).
+ *   2. {@see resetPassword()} — consume the (non-expired) token and set the new
+ *      password.
+ *
+ * Reset tokens are deliberately stored SEPARATELY from the account-validation
+ * token ({@see User::$token}); an outstanding invite and a reset request never
+ * clobber each other (issue #32). A still-invited account that asks for a reset
+ * is nudged back through the validation flow ({@see UserValidationService::resendValidationEmail()})
+ * instead of receiving a reset link.
  *
  * The recovery email is built through {@see MailTemplateService} which tags it
  * `required_system`, so it is delivered even when the recipient disabled
@@ -33,12 +42,16 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  */
 class PasswordResetService extends BaseService
 {
+    /** Recovery tokens are valid for one hour after they are issued. */
+    public const RESET_TOKEN_TTL_SECONDS = 3600;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly JobSchedulerService $jobSchedulerService,
         private readonly MailTemplateService $mailTemplateService,
         private readonly TransactionService $transactionService,
         private readonly UserPasswordHasherInterface $passwordHasher,
+        private readonly UserValidationService $userValidationService,
         private readonly LoggerInterface $logger,
         private readonly string $frontendBaseUrl,
     ) {
@@ -47,10 +60,14 @@ class PasswordResetService extends BaseService
     /**
      * Request a password reset for an email address.
      *
-     * Always succeeds silently: unknown or non-active accounts are ignored so
-     * the endpoint cannot be used to enumerate registered emails. For a known
-     * active account a one-time token is stored and the recovery email is sent
-     * immediately.
+     * Always succeeds silently: unknown accounts are ignored so the endpoint
+     * cannot be used to enumerate registered emails. Behaviour by account state:
+     *   - active: a one-time recovery token (with a 1-hour expiry) is stored in
+     *     the dedicated reset fields and the recovery email is sent immediately.
+     *   - invited / not-yet-validated: no reset link is issued; a fresh
+     *     validation email is sent instead so the user can finish creating their
+     *     account (issue #32).
+     *   - any other state (locked, ...): ignored.
      */
     public function requestReset(string $email): void
     {
@@ -64,15 +81,27 @@ class PasswordResetService extends BaseService
             return;
         }
 
-        // Only active accounts use the recovery flow; invited/not-yet-validated
-        // accounts go through the validation link instead.
-        if ($user->getStatus()?->getLookupCode() !== LookupService::USER_STATUS_ACTIVE) {
+        $statusCode = $user->getStatus()?->getLookupCode();
+
+        // A still-invited account has no usable password to recover. Re-send the
+        // validation email (reusing the account-validation flow) rather than
+        // leaking a reset link for an account that was never activated.
+        if ($statusCode === LookupService::USER_STATUS_INVITED) {
+            $this->resendValidationForInvitedUser($user);
+            return;
+        }
+
+        // Only fully active accounts use the recovery flow.
+        if ($statusCode !== LookupService::USER_STATUS_ACTIVE) {
             return;
         }
 
         try {
-            $token = bin2hex(random_bytes(16));
-            $user->setToken($token);
+            $token = bin2hex(random_bytes(32));
+            $expiresAt = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))
+                ->add(new \DateInterval('PT' . self::RESET_TOKEN_TTL_SECONDS . 'S'));
+            $user->setPasswordResetToken($token);
+            $user->setPasswordResetExpiresAt($expiresAt);
             $this->entityManager->flush();
 
             $userId = (int) $user->getId();
@@ -121,6 +150,27 @@ class PasswordResetService extends BaseService
     }
 
     /**
+     * Re-send a validation email for an invited account that mistakenly asked
+     * for a password reset. Swallows failures so the forgot-password endpoint
+     * never reveals the account's state.
+     */
+    private function resendValidationForInvitedUser(User $user): void
+    {
+        try {
+            $result = $this->userValidationService->resendValidationEmail((int) $user->getId());
+            if (!($result['success'] ?? false)) {
+                $this->logger->warning('Could not resend validation email during reset request', [
+                    'userId' => $user->getId(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            $this->logger->error('Failed to resend validation email during reset request', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Consume a recovery token and set a new password.
      *
      * @return bool True on success, false when the token is missing/invalid.
@@ -136,14 +186,28 @@ class PasswordResetService extends BaseService
             $this->entityManager->beginTransaction();
 
             $user = $this->entityManager->getRepository(User::class)->find($userId);
-            $storedToken = $user?->getToken();
-            if (!$user instanceof User || $storedToken === null || !hash_equals($storedToken, $token)) {
+            if (!$user instanceof User) {
+                $this->entityManager->rollback();
+                return false;
+            }
+
+            $storedToken = $user->getPasswordResetToken();
+            $expiresAt = $user->getPasswordResetExpiresAt();
+            $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
+            if (
+                $storedToken === null
+                || !hash_equals($storedToken, $token)
+                || $expiresAt === null
+                || $expiresAt < $now
+            ) {
                 $this->entityManager->rollback();
                 return false;
             }
 
             $user->setPassword($this->passwordHasher->hashPassword($user, $newPassword));
-            $user->setToken(null);
+            $user->setPasswordResetToken(null);
+            $user->setPasswordResetExpiresAt(null);
             $this->entityManager->flush();
 
             $this->transactionService->logTransaction(
