@@ -92,7 +92,7 @@ CMS styles are a cross-repo contract (backend field seeds + `@selfhelp/shared` t
 5. Keep patches minimal and domain-focused.
 6. Update JSON schemas, route permissions, SQL route records, migrations, tests, cache invalidation, and docs when applicable.
 7. Run focused relevant tests/static analysis when the environment supports it; otherwise state what was not run.
-8. Summarize architectural, API, cache, permission, migration, and testing impact in the final response.
+8. Summarize architectural, API, cache, permission, migration, and testing impact in the final response without starting a new request. Give me the summary from what you already did.
 
 ## Multi-Repository Changes
 When implementing features that affect multiple repositories:
