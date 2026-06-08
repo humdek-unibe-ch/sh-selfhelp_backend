@@ -12,6 +12,7 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
+use App\Service\System\SystemHealthService;
 use App\Service\System\SystemUpdateService;
 use App\Service\System\SystemVersionService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -33,6 +34,7 @@ class SystemController extends AbstractController
     public function __construct(
         private readonly SystemVersionService $systemVersionService,
         private readonly SystemUpdateService $systemUpdateService,
+        private readonly SystemHealthService $systemHealthService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
     ) {
@@ -46,6 +48,17 @@ class SystemController extends AbstractController
         return $this->responseFormatter->formatSuccess(
             $this->systemVersionService->getVersion(),
             'responses/admin/system_version'
+        );
+    }
+
+    /**
+     * GET /admin/system/health — aggregated, instance-scoped health/status.
+     */
+    public function getHealth(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->systemHealthService->getHealth(),
+            'responses/admin/system_health'
         );
     }
 
