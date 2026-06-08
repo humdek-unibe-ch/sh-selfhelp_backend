@@ -8,7 +8,8 @@
     "interval_seconds": { "type": "integer", "minimum": 60 },
     "max_jobs_per_run": { "type": ["integer", "null"], "minimum": 1 },
     "lock_ttl_seconds": { "type": "integer", "minimum": 1 },
-    "stale_running_after_seconds": { "type": "integer", "minimum": 1 }
+    "stale_running_after_seconds": { "type": "integer", "minimum": 1 },
+    "retention_max_runs": { "type": ["integer", "null"], "minimum": 1 }
   },
   "additionalProperties": false
 }

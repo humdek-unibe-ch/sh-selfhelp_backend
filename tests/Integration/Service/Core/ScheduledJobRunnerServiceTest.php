@@ -125,6 +125,57 @@ final class ScheduledJobRunnerServiceTest extends QaKernelTestCase
         self::assertSame((int) $user->getId(), $disabled->getUpdatedBy()?->getId());
     }
 
+    /**
+     * Issue #34: the runner writes one audit row per tick, so without a cap
+     * `scheduled_job_runner_runs` grows unbounded. With `retention_max_runs`
+     * set, every terminal tick prunes the surplus and the table is bounded to
+     * the most recent N rows.
+     */
+    public function testRunHistoryIsPrunedToRetentionLimit(): void
+    {
+        $repo = $this->em->getRepository(ScheduledJobRunnerRun::class);
+        $this->runner->updateSettings(['enabled' => true, 'retention_max_runs' => 2], null);
+
+        // Each forced tick records one run row (no due jobs needed) and prunes.
+        $runIds = [];
+        for ($i = 0; $i < 4; $i++) {
+            $runIds[] = $this->runner->runDueJobs(ScheduledJobRunnerRun::TRIGGER_SCHEDULER, null, true)->runId;
+        }
+
+        self::assertSame(
+            2,
+            $repo->count([]),
+            'The runner must prune its audit history down to retention_max_runs.'
+        );
+        // Bulk DQL DELETE bypasses the identity map; clear it so find() reads the
+        // post-prune DB state rather than stale managed entities.
+        $this->em->clear();
+        // Pruning removes the OLDEST rows and keeps the most recent ones.
+        self::assertNull($repo->find($runIds[0]), 'The oldest run row must be pruned.');
+        self::assertNotNull($repo->find($runIds[3]), 'The most recent run row must be kept.');
+    }
+
+    /**
+     * Issue #34: a NULL retention disables pruning entirely, for operators who
+     * archive the run history externally.
+     */
+    public function testNullRetentionKeepsEveryRun(): void
+    {
+        $repo = $this->em->getRepository(ScheduledJobRunnerRun::class);
+        $this->runner->updateSettings(['enabled' => true, 'retention_max_runs' => null], null);
+        $before = $repo->count([]);
+
+        for ($i = 0; $i < 3; $i++) {
+            $this->runner->runDueJobs(ScheduledJobRunnerRun::TRIGGER_SCHEDULER, null, true);
+        }
+
+        self::assertSame(
+            $before + 3,
+            $repo->count([]),
+            'retention_max_runs=null must disable pruning so every run row is kept.'
+        );
+    }
+
     private function qaUser(): User
     {
         $user = $this->em->getRepository(User::class)->findOneBy(['email' => QaBaselineFixture::QA_USER_EMAIL]);

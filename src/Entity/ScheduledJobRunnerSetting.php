@@ -41,6 +41,16 @@ class ScheduledJobRunnerSetting
     #[ORM\Column(name: 'stale_running_after_seconds', type: 'integer', options: ['default' => 900])]
     private int $staleRunningAfterSeconds = 900;
 
+    /**
+     * How many of the most recent runner-run audit rows to keep. The runner
+     * writes one {@see ScheduledJobRunnerRun} row per tick (~1/min by default),
+     * so without a cap `scheduled_job_runner_runs` grows unbounded. After each
+     * terminal run the rows beyond this many newest are pruned. NULL (or < 1)
+     * disables pruning for operators who archive the history externally.
+     */
+    #[ORM\Column(name: 'retention_max_runs', type: 'integer', nullable: true, options: ['default' => 5000])]
+    private ?int $retentionMaxRuns = 5000;
+
     #[ORM\Column(name: 'updated_at', type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $updatedAt = null;
 
@@ -105,6 +115,17 @@ class ScheduledJobRunnerSetting
     public function setStaleRunningAfterSeconds(int $staleRunningAfterSeconds): self
     {
         $this->staleRunningAfterSeconds = $staleRunningAfterSeconds;
+        return $this;
+    }
+
+    public function getRetentionMaxRuns(): ?int
+    {
+        return $this->retentionMaxRuns;
+    }
+
+    public function setRetentionMaxRuns(?int $retentionMaxRuns): self
+    {
+        $this->retentionMaxRuns = $retentionMaxRuns;
         return $this;
     }
 

@@ -146,6 +146,8 @@ class ScheduledJobRunnerService
             return $this->finishRun($run, ScheduledJobRunnerRun::STATUS_FAILED, true, $e->getMessage());
         } finally {
             $lock->release();
+            // Best-effort housekeeping: bound the audit table after every run.
+            $this->pruneRunHistory($settings);
         }
     }
 
@@ -209,6 +211,7 @@ class ScheduledJobRunnerService
                 'max_jobs_per_run' => $settings->getMaxJobsPerRun(),
                 'lock_ttl_seconds' => $settings->getLockTtlSeconds(),
                 'stale_running_after_seconds' => $settings->getStaleRunningAfterSeconds(),
+                'retention_max_runs' => $settings->getRetentionMaxRuns(),
             ],
             'last_run' => $lastRun === null ? null : [
                 'id' => $lastRun->getId(),
@@ -267,6 +270,15 @@ class ScheduledJobRunnerService
         }
         if (array_key_exists('stale_running_after_seconds', $data) && is_numeric($data['stale_running_after_seconds'])) {
             $settings->setStaleRunningAfterSeconds(max(1, (int) $data['stale_running_after_seconds']));
+        }
+        if (array_key_exists('retention_max_runs', $data)) {
+            $retention = $data['retention_max_runs'];
+            if ($retention === null) {
+                // Explicit null disables pruning (operators archiving externally).
+                $settings->setRetentionMaxRuns(null);
+            } elseif (is_numeric($retention)) {
+                $settings->setRetentionMaxRuns(max(1, (int) $retention));
+            }
         }
 
         $settings->setUpdatedAt(new \DateTime('now', new \DateTimeZone('UTC')));
@@ -392,11 +404,42 @@ class ScheduledJobRunnerService
         $this->entityManager->persist($run);
         $this->entityManager->flush();
 
+        // A skipped tick still inserts a row; prune so disabled/interval/locked
+        // ticks cannot grow the audit table unbounded either.
+        $this->pruneRunHistory($settings);
+
         return new ScheduledJobRunResult(
             status: $status,
             lockAcquired: $run->isLockAcquired(),
             runId: $run->getId(),
         );
+    }
+
+    /**
+     * Bound the {@see ScheduledJobRunnerRun} audit table to the configured
+     * retention. Best-effort: pruning must never fail a runner tick.
+     */
+    private function pruneRunHistory(ScheduledJobRunnerSetting $settings): void
+    {
+        $maxRuns = $settings->getRetentionMaxRuns();
+        if ($maxRuns === null || $maxRuns < 1) {
+            return;
+        }
+
+        try {
+            $deleted = $this->runRepository->pruneToMostRecent($maxRuns);
+            if ($deleted > 0) {
+                $this->logger->info(
+                    'Pruned scheduled-job runner history',
+                    ['deleted' => $deleted, 'kept' => $maxRuns]
+                );
+            }
+        } catch (\Throwable $e) {
+            $this->logger->warning(
+                'Failed to prune scheduled-job runner history',
+                ['error' => $e->getMessage()]
+            );
+        }
     }
 
     /**
@@ -410,6 +453,7 @@ class ScheduledJobRunnerService
             'max_jobs_per_run' => $settings->getMaxJobsPerRun(),
             'lock_ttl_seconds' => $settings->getLockTtlSeconds(),
             'stale_running_after_seconds' => $settings->getStaleRunningAfterSeconds(),
+            'retention_max_runs' => $settings->getRetentionMaxRuns(),
         ];
     }
 }

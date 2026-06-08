@@ -55,6 +55,7 @@ final class AdminScheduledJobRunnerControllerTest extends QaWebTestCase
                 'max_jobs_per_run' => 25,
                 'lock_ttl_seconds' => 180,
                 'stale_running_after_seconds' => 600,
+                'retention_max_runs' => 1000,
             ], $this->loginAsQaAdmin())
         );
 
@@ -62,6 +63,7 @@ final class AdminScheduledJobRunnerControllerTest extends QaWebTestCase
         self::assertSame(120, $data['settings']['interval_seconds']);
         self::assertSame(25, $data['settings']['max_jobs_per_run']);
         self::assertSame(180, $data['settings']['lock_ttl_seconds']);
+        self::assertSame(1000, $data['settings']['retention_max_runs'], 'Issue #34: retention is a persisted runner setting.');
         self::assertTrue($data['settings']['enabled']);
     }
 

@@ -17,7 +17,8 @@
                 "interval_seconds": { "type": "integer" },
                 "max_jobs_per_run": { "type": ["integer", "null"] },
                 "lock_ttl_seconds": { "type": "integer" },
-                "stale_running_after_seconds": { "type": "integer" }
+                "stale_running_after_seconds": { "type": "integer" },
+                "retention_max_runs": { "type": ["integer", "null"] }
               },
               "required": ["enabled", "interval_seconds", "lock_ttl_seconds", "stale_running_after_seconds"]
             },
