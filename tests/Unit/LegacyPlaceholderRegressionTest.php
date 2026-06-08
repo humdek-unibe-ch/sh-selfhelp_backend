@@ -36,10 +36,12 @@ final class LegacyPlaceholderRegressionTest extends TestCase
      * Files allowed to name the legacy tokens because their job is to detect /
      * reject them. `ActionTemplateContextBuilder` is the canonical legacy
      * detector (`LEGACY_PLACEHOLDERS` const + deprecation logging).
+     * `AdminActionTranslationService` validates translations and rejects
+     * legacy placeholders via `hasLegacyPlaceholders`.
      *
      * @var list<string>
      */
-    private const ALLOWED_BASENAMES = ['ActionTemplateContextBuilder.php'];
+    private const ALLOWED_BASENAMES = ['ActionTemplateContextBuilder.php', 'AdminActionTranslationService.php'];
 
     /**
      * Active surfaces that must never reintroduce legacy action placeholders.
