@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Update Status Response",
+  "description": "Status of the latest update operation for the current instance (mirrors @selfhelp/shared IUpdateStatus).",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "instance_id": { "type": "string" },
+        "operation_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["requested", "approved", "accepted", "running", "preflight_running", "preflight_failed", "backup_running", "update_running", "migration_running", "health_check_running", "succeeded", "failed", "rollback_running", "rolled_back", "rollback_failed", "rejected"] },
+        "target_version": { "type": "string" },
+        "progress_percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "status": { "type": "string" },
+              "detail": { "type": "string" }
+            },
+            "required": ["name", "status"]
+          }
+        },
+        "requested_at": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "message": { "type": ["string", "null"] }
+      },
+      "required": [
+        "instance_id",
+        "operation_id",
+        "status",
+        "target_version",
+        "progress_percent",
+        "steps",
+        "requested_at",
+        "updated_at"
+      ]
+    }
+  },
+  "required": ["data"]
+}

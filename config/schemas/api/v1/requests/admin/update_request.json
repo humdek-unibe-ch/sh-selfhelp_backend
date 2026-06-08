@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Update Request",
+  "description": "Request an update for the CURRENT instance. Intentionally has NO instance_id: the backend derives and verifies the instance identity server-side, so the browser can never target a different instance. additionalProperties:false rejects any instance_id (or other unknown field).",
+  "type": "object",
+  "properties": {
+    "target_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version to update this instance to."
+    },
+    "preflight_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Id of the preflight the operator reviewed. The backend recomputes the preflight server-side regardless."
+    },
+    "accepted_migration_risk": {
+      "type": "boolean",
+      "description": "Operator acknowledgement required when the update carries destructive database migrations."
+    },
+    "typed_confirmation": {
+      "type": "string",
+      "description": "Optional typed confirmation string for high-risk updates."
+    }
+  },
+  "required": [
+    "target_version",
+    "preflight_id",
+    "accepted_migration_risk"
+  ],
+  "additionalProperties": false
+}

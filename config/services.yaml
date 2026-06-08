@@ -75,6 +75,38 @@ parameters:
     selfhelp.plugin_default_registry_url: '%env(default:selfhelp_plugin_default_registry_url_default:SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL)%'
     selfhelp_plugin_default_registry_url_default: 'https://humdek-unibe-ch.github.io/sh2-plugin-registry/'
 
+    # Trusted, server-derived instance identity for the instance-scoped
+    # system maintenance/update flow. The SelfHelp Manager injects
+    # SELFHELP_INSTANCE_ID per instance when it generates the Docker
+    # compose/env. The CMS NEVER trusts a browser-supplied instance id;
+    # every system endpoint resolves the instance through this value.
+    selfhelp.instance_id: '%env(default:selfhelp_instance_id_default:SELFHELP_INSTANCE_ID)%'
+    selfhelp_instance_id_default: 'default'
+
+    # Deployed frontend version surfaced in the system version summary.
+    # The manager sets SELFHELP_FRONTEND_VERSION to the frontend image
+    # version it deployed for this instance; 'unknown' until it does.
+    selfhelp.frontend_version: '%env(default:selfhelp_frontend_version_default:SELFHELP_FRONTEND_VERSION)%'
+    selfhelp_frontend_version_default: 'unknown'
+
+    # Maintenance-mode flag surfaced in the system version summary.
+    selfhelp.maintenance_mode: '%env(bool:default:selfhelp_maintenance_mode_default:SELFHELP_MAINTENANCE_MODE)%'
+    selfhelp_maintenance_mode_default: false
+
+    # Plugin safe-mode flag (reuses the emergency SELFHELP_DISABLE_PLUGINS
+    # env that config/bundles.php already honours).
+    selfhelp.safe_mode: '%env(bool:default:selfhelp_safe_mode_default:SELFHELP_DISABLE_PLUGINS)%'
+    selfhelp_safe_mode_default: false
+
+    # Per-instance manager bearer token. The SelfHelp Manager presents this on
+    # the public /cms-api/v1/manager/* update-loop endpoints; the CMS verifies
+    # it in constant time (SystemManagerController). Empty by default, which
+    # DISABLES the manager loop (every manager call is rejected) until the
+    # manager generates and injects a per-instance token. NEVER stored in the
+    # manifest/lock/inventory/README.
+    selfhelp.manager_token: '%env(default:selfhelp_manager_token_default:SELFHELP_MANAGER_TOKEN)%'
+    selfhelp_manager_token_default: ''
+
     # Plugin signature verification. The host trusts publisher Ed25519
     # signatures matching the keyIds declared here. Add each publisher's
     # public key on a single line via `SELFHELP_PLUGIN_TRUSTED_KEYS`
@@ -246,6 +278,35 @@ services:
     App\Plugin\Archive\PluginArchiveValidator:
         arguments:
             $allowComposerScripts: '%env(bool:default:selfhelp_plugin_allow_composer_scripts_default:SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS)%'
+
+    # ---- System maintenance / update (instance-scoped) ----
+    # Trusted instance identity + version facts. The instance id is
+    # server-derived only (never from a request).
+    App\Service\System\SystemInstanceService:
+        arguments:
+            $instanceId: '%selfhelp.instance_id%'
+            $cmsVersion: '%selfhelp.cms_version%'
+            $pluginApiVersion: '%selfhelp.plugin_api_version%'
+            $frontendVersion: '%selfhelp.frontend_version%'
+            $safeMode: '%selfhelp.safe_mode%'
+            $maintenanceMode: '%selfhelp.maintenance_mode%'
+
+    # Manager-facing update-loop controller. Public routes (no permission rows);
+    # access is gated by the per-instance manager bearer token verified
+    # in-controller.
+    App\Controller\Api\V1\Manager\SystemManagerController:
+        arguments:
+            $managerToken: '%selfhelp.manager_token%'
+        tags: ['controller.service_arguments']
+
+    # Read-only registry gateway for the compatibility preflight. Points at
+    # the one official unified registry index. Fails soft when offline.
+    App\Service\System\HttpSystemRegistryGateway:
+        arguments:
+            $registryUrl: '%selfhelp.plugin_default_registry_url%registry.json'
+
+    App\Service\System\SystemRegistryGatewayInterface:
+        alias: App\Service\System\HttpSystemRegistryGateway
 
     App\Plugin\Archive\PluginArchivePromoter:
         arguments:

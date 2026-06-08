@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Manager Update Status Write-Back",
+  "description": "Lifecycle status/progress written back by the SelfHelp Manager for an update operation owned by the current instance. Only manager-writable lifecycle states are accepted; the backend rejects CMS-owned states (requested) and unknown values.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "preflight_running",
+        "preflight_failed",
+        "backup_running",
+        "update_running",
+        "migration_running",
+        "health_check_running",
+        "succeeded",
+        "failed",
+        "rollback_running",
+        "rolled_back",
+        "rollback_failed"
+      ],
+      "description": "Manager-writable lifecycle state."
+    },
+    "progress_percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Overall progress 0-100."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable status line. Must never contain secrets."
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "detail": { "type": "string" }
+        },
+        "required": ["name", "status"]
+      },
+      "description": "Optional per-step progress detail."
+    }
+  },
+  "required": [
+    "status",
+    "progress_percent"
+  ],
+  "additionalProperties": false
+}
