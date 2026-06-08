@@ -1,0 +1,166 @@
+# SPDX-FileCopyrightText: 2026 Humdek, University of Bern
+# SPDX-License-Identifier: MPL-2.0
+#
+# Backend production image release pipeline (plan: "CI And Release Pipeline" +
+# "License Compliance For Distributed Images"). Builds and publishes the three
+# signed backend images the unified registry's core release points at:
+#
+#   ghcr.io/<owner>/selfhelp-backend:<version>
+#   ghcr.io/<owner>/selfhelp-worker:<version>
+#   ghcr.io/<owner>/selfhelp-scheduler:<version>
+#
+# For each image it also generates an SPDX SBOM, runs a vulnerability scan,
+# enforces the dependency license policy, and (when configured) cosign-signs the
+# pushed digest. After this runs, update the core release JSON in the unified
+# registry with the real image digests printed in the job summary.
+
+name: docker-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image version tag (e.g. 1.5.0)'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Step 8 + 10: dependency license report + policy gate (once, shared by images).
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, iconv, intl, pdo_mysql, zip
+          coverage: none
+      - name: Install production dependencies
+        run: composer install --no-dev --no-scripts --prefer-dist --no-progress
+      - name: Dependency license report
+        run: composer licenses --no-dev --format=json > licenses.json
+      - name: Enforce license policy
+        env:
+          ALLOW_LICENSE_OVERRIDE: ${{ vars.ALLOW_LICENSE_OVERRIDE }}
+        run: php scripts/check-license-policy.php licenses.json | tee license-report.txt
+      - name: Upload license artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-license-report
+          path: |
+            licenses.json
+            license-report.txt
+
+  # Steps 3-5, 7, 9, 13-14: build + SBOM + scan + sign + publish each image.
+  images:
+    needs: license
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signing via GitHub OIDC
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: backend
+            image: selfhelp-backend
+          - target: worker
+            image: selfhelp-worker
+          - target: scheduler
+            image: selfhelp-scheduler
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=ref,event=tag
+            type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+      - name: Generate SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: ${{ matrix.image }}.sbom.spdx.json
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: ${{ matrix.image }}.trivy.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+        continue-on-error: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          if [ -n "${COSIGN_PRIVATE_KEY}" ]; then
+            echo "Signing ${IMAGE}@${DIGEST} with the configured cosign key."
+            cosign sign --yes --key env://COSIGN_PRIVATE_KEY "${IMAGE}@${DIGEST}"
+          else
+            echo "Signing ${IMAGE}@${DIGEST} keyless via GitHub OIDC."
+            cosign sign --yes "${IMAGE}@${DIGEST}"
+          fi
+
+      - name: Upload SBOM + scan
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.image }}-supply-chain
+          path: |
+            ${{ matrix.image }}.sbom.spdx.json
+            ${{ matrix.image }}.trivy.sarif
+
+      - name: Record image digest
+        run: |
+          echo "### ${{ matrix.image }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- image: \`ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Update the core release JSON in the unified registry with this digest." >> "$GITHUB_STEP_SUMMARY"
