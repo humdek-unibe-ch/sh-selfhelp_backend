@@ -43,7 +43,7 @@ final class SystemHealthServiceTest extends TestCase
             'selfhelp_version' => '8.0.0',
             'backend_version' => '8.0.0',
             'frontend_version' => '8.0.0',
-            'plugin_api_version' => '2.1',
+            'plugin_api_version' => '1.1',
             'database_migration_version' => 'Version20260608181148',
             'safe_mode' => $safeMode,
             'maintenance_mode' => $maintenanceMode,

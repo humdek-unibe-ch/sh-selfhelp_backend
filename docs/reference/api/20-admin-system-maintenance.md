@@ -58,15 +58,15 @@ Response `data` (schema: `responses/admin/system_version.json`):
 ```json
 {
   "instance_id": "selfhelp-prod-01",
-  "selfhelp_version": "1.5.0",
-  "backend_version": "1.5.0",
-  "frontend_version": "1.5.0",
-  "plugin_api_version": "1.0.0",
+  "selfhelp_version": "8.0.0-dev",
+  "backend_version": "8.0.0-dev",
+  "frontend_version": "8.0.0",
+  "plugin_api_version": "1.1",
   "database_migration_version": "Version20260608160348",
   "safe_mode": false,
   "maintenance_mode": false,
   "installed_plugins": [
-    { "id": "sh-shp-survey-js", "version": "1.2.0", "compatible": true }
+    { "id": "sh-shp-survey-js", "version": "0.2.20", "compatible": true }
   ]
 }
 ```
@@ -94,15 +94,15 @@ Response `data` (schema: `responses/admin/update_preflight.json`):
   "preflight_id": "pf_0a1b2c3d",
   "status": "warning",
   "instance_id": "selfhelp-prod-01",
-  "current_version": "1.5.0",
-  "target_version": "1.6.0",
+  "current_version": "8.0.0-dev",
+  "target_version": "8.0.0",
   "checks": [
     { "code": "resource_checks", "severity": "info", "message": "Disk, CPU, memory and Docker checks are performed by the SelfHelp Manager before execution." },
     { "code": "registry_unreachable", "severity": "warning", "message": "The registry could not be reached; compatibility was computed from local facts only." }
   ],
   "options": [],
   "database": { "destructive": false, "requires_backup": true, "manual_confirmation_required": false },
-  "rollback": { "automatic_before_migrations": true, "automatic_after_destructive_migrations": true }
+  "rollback": { "automatic_before_migrations": true, "automatic_after_destructive_migrations": false }
 }
 ```
 
@@ -116,10 +116,10 @@ Request body (schema: `requests/admin/update_request.json`,
 
 ```json
 {
-  "target_version": "1.6.0",
+  "target_version": "8.0.0",
   "preflight_id": "pf_0a1b2c3d",
   "accepted_migration_risk": false,
-  "typed_confirmation": "1.6.0"
+  "typed_confirmation": "8.0.0"
 }
 ```
 
@@ -148,7 +148,7 @@ Response `data` (schema: `responses/admin/update_status.json`):
   "instance_id": "selfhelp-prod-01",
   "operation_id": "op_9f8e7d6c",
   "status": "running",
-  "target_version": "1.6.0",
+  "target_version": "8.0.0",
   "progress_percent": 40,
   "steps": [
     { "name": "pull", "status": "succeeded" },
