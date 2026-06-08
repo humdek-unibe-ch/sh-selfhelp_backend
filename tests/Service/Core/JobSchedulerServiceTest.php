@@ -169,7 +169,7 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
             new \DateTime('now', new \DateTimeZone('UTC')),
             'qa_pref_external_email_job',
             ['email' => [
-                'recipient_emails' => 'qa_external_mailbox@example.org',
+                'recipient_emails' => 'qa_external_mailbox@selfhelp.test',
                 'subject' => 'QA external email',
                 'body' => 'QA external body',
                 'from_email' => 'qa-noreply@selfhelp.test',

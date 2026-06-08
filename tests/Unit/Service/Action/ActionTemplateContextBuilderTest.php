@@ -72,7 +72,7 @@ final class ActionTemplateContextBuilderTest extends TestCase
         $builder = $this->builder();
 
         self::assertFalse($builder->hasLegacyPlaceholders('{{recipient.email}}'));
-        self::assertFalse($builder->hasLegacyPlaceholders('Contact us at support@example.org'));
+        self::assertFalse($builder->hasLegacyPlaceholders('Contact us at qa.support@selfhelp.test'));
     }
 
     /**

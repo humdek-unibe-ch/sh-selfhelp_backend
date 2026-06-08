@@ -287,14 +287,14 @@ final class ActionSchedulerServiceTest extends TestCase
     {
         $executionDate = new \DateTimeImmutable('2026-01-01 10:00:00', new \DateTimeZone('UTC'));
 
-        // Mirrors the reported case: "{{recipient.email}};therapist@example.org".
+        // Mirrors the reported case: "{{recipient.email}};qa.therapist@selfhelp.test".
         $job = [
             ActionConfig::JOB_NAME => 'qa_email_job',
             ActionConfig::NOTIFICATION => [
                 ActionConfig::NOTIFICATION_TYPES => LookupService::NOTIFICATION_TYPES_EMAIL,
                 ActionConfig::SUBJECT => 'QA subject',
                 ActionConfig::BODY => 'QA body',
-                ActionConfig::RECIPIENT => '{{recipient.email}};therapist@example.org',
+                ActionConfig::RECIPIENT => '{{recipient.email}};qa.therapist@selfhelp.test',
             ],
         ];
         $block = [ActionConfig::JOBS => [$job]];
@@ -383,7 +383,7 @@ final class ActionSchedulerServiceTest extends TestCase
         self::assertSame(42, $primary['snapshot_user_id'] ?? null);
         self::assertSame('user_email', $primary['resolved_from'] ?? null);
 
-        self::assertSame('therapist@example.org', $extra['email'] ?? null);
+        self::assertSame('qa.therapist@selfhelp.test', $extra['email'] ?? null);
         self::assertNull($extra['user_id'], 'External address job is unlinked from any user.');
         self::assertNull($extra['snapshot_user_id']);
         self::assertSame('external_email', $extra['resolved_from'] ?? null);
@@ -451,9 +451,9 @@ final class ActionSchedulerServiceTest extends TestCase
         // Admin-configured mail config (sh-mail-config page) drives From/Reply-To.
         $mailTemplate = $this->createStub(MailTemplateService::class);
         $mailTemplate->method('resolveGlobalConfig')->willReturn([
-            'from_email' => 'clinic@example.org',
+            'from_email' => 'qa.clinic@selfhelp.test',
             'from_name' => 'Clinic Team',
-            'reply_to' => 'support@example.org',
+            'reply_to' => 'qa.support@selfhelp.test',
             'is_html' => true,
         ]);
 
@@ -473,11 +473,11 @@ final class ActionSchedulerServiceTest extends TestCase
         $scheduler->schedule($action, $runtimeConfig, $context, [42]);
 
         // From/Reply-To come from the admin mail config, NOT the hardcoded
-        // MailTemplateDefaults (noreply@example.com / SelfHelp).
+        // MailTemplateDefaults sender (MailTemplateDefaults::FROM_EMAIL / FROM_NAME).
         $emailConfig = self::asArray($captured);
-        self::assertSame('clinic@example.org', $emailConfig['from_email'] ?? null);
+        self::assertSame('qa.clinic@selfhelp.test', $emailConfig['from_email'] ?? null);
         self::assertSame('Clinic Team', $emailConfig['from_name'] ?? null);
-        self::assertSame('support@example.org', $emailConfig['reply_to'] ?? null);
+        self::assertSame('qa.support@selfhelp.test', $emailConfig['reply_to'] ?? null);
     }
 
     public function testEmailSubjectAndBodyAreResolvedFromTranslationKeys(): void

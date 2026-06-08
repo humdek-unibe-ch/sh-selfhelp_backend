@@ -121,7 +121,7 @@ class ActionConfigRuntimeServiceTest extends TestCase
             ActionConfig::BLOCKS => [[
                 ActionConfig::JOBS => [[
                     ActionConfig::NOTIFICATION => [
-                        ActionConfig::RECIPIENT => '{{recipient.email}};stefan@example.org',
+                        ActionConfig::RECIPIENT => '{{recipient.email}};qa.stefan@selfhelp.test',
                         ActionConfig::SUBJECT => '{{greeting}} from the clinic',
                         ActionConfig::BODY => 'Open {{mail.link}} to continue.',
                     ],
@@ -161,7 +161,7 @@ class ActionConfigRuntimeServiceTest extends TestCase
 
         // Per-recipient placeholders survive (NOT blanked) and the literal
         // hardcoded address is preserved alongside them.
-        self::assertSame('{{recipient.email}};stefan@example.org', $recipient);
+        self::assertSame('{{recipient.email}};qa.stefan@selfhelp.test', $recipient);
         self::assertStringContainsString('{{mail.link}}', $body);
 
         // Ordinary submitted-value placeholders are still interpolated.
