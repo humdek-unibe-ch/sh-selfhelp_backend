@@ -291,8 +291,18 @@ services:
             $allowComposerScripts: '%env(bool:default:selfhelp_plugin_allow_composer_scripts_default:SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS)%'
 
     # ---- System maintenance / update (instance-scoped) ----
+    # Persistent, admin-toggleable maintenance switch. The env hard switch
+    # (SELFHELP_MAINTENANCE_MODE) forces it on and is not web-clearable; the
+    # var/maintenance_mode.lock file is the admin-toggled layer. Never contains
+    # secrets.
+    App\Service\System\MaintenanceModeService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $envForced: '%selfhelp.maintenance_mode%'
+
     # Trusted instance identity + version facts. The instance id is
-    # server-derived only (never from a request).
+    # server-derived only (never from a request). Maintenance state is resolved
+    # live through MaintenanceModeService.
     App\Service\System\SystemInstanceService:
         arguments:
             $instanceId: '%selfhelp.instance_id%'
@@ -300,7 +310,6 @@ services:
             $pluginApiVersion: '%selfhelp.plugin_api_version%'
             $frontendVersion: '%selfhelp.frontend_version%'
             $safeMode: '%selfhelp.safe_mode%'
-            $maintenanceMode: '%selfhelp.maintenance_mode%'
 
     # Aggregated instance-scoped health/status. Config inputs are reduced to
     # configured/not_configured inside the service (never echoed back).

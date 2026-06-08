@@ -29,4 +29,13 @@ interface SystemRegistryGatewayInterface
      * @return array<string,mixed>|null
      */
     public function fetchCoreRelease(string $version): ?array;
+
+    /**
+     * Fetch the registry index document, or null when the registry is
+     * unreachable. Used by the health endpoint to report registry availability
+     * (and to derive "last successful check") without blocking the instance.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function fetchIndex(): ?array;
 }

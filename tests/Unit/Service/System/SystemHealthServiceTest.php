@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service\System;
 
+use App\Service\System\MaintenanceModeService;
 use App\Service\System\SystemHealthService;
 use App\Service\System\SystemInstanceService;
+use App\Service\System\SystemRegistryGatewayInterface;
 use App\Service\System\SystemUpdateService;
 use App\Service\System\SystemVersionService;
 use Doctrine\DBAL\Connection;
@@ -34,8 +36,11 @@ final class SystemHealthServiceTest extends TestCase
         string $mercureUrl = 'http://mercure/.well-known/mercure',
         string $mailerDsn = 'smtp://mail:1025',
         string $messengerDsn = 'doctrine://default',
+        bool $registryReachable = true,
     ): SystemHealthService {
-        $instance = new SystemInstanceService('inst-qa-health', '8.0.0', '2.1', '8.0.0', $safeMode, $maintenanceMode);
+        // env-forced maintenance mirrors the parameter; no file is touched.
+        $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-health-no-maint', $maintenanceMode);
+        $instance = new SystemInstanceService('inst-qa-health', '8.0.0', '2.1', '8.0.0', $safeMode, $maintenance);
 
         $versionService = $this->createStub(SystemVersionService::class);
         $versionService->method('getVersion')->willReturn([
@@ -59,10 +64,15 @@ final class SystemHealthServiceTest extends TestCase
             'progress_percent' => 100,
         ]);
 
+        $registry = $this->createStub(SystemRegistryGatewayInterface::class);
+        $registry->method('fetchIndex')->willReturn($registryReachable ? ['core' => []] : null);
+        $registry->method('fetchCoreRelease')->willReturn(null);
+
         return new SystemHealthService(
             $instance,
             $versionService,
             $updateService,
+            $registry,
             $connection,
             new ArrayAdapter(),
             $mercureUrl,
@@ -101,7 +111,30 @@ final class SystemHealthServiceTest extends TestCase
         self::assertSame('ok', $byName['scheduler']);
         self::assertSame('configured', $byName['mercure']);
         self::assertSame('configured', $byName['mailer']);
+        self::assertSame('ok', $byName['registry']);
         self::assertSame('ok', $byName['plugins']);
+    }
+
+    public function testUnreachableRegistryIsInformationalAndDoesNotDegradeInstance(): void
+    {
+        $health = $this->makeService($this->healthyConnection(), registryReachable: false)->getHealth();
+
+        // Plan invariant 20: a registry outage must NOT mark the instance degraded.
+        self::assertSame('healthy', $health['overall']);
+
+        $registry = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'registry'))[0];
+        self::assertSame('unknown', $registry['status']);
+        self::assertStringContainsString('last successful check', $registry['detail']);
+        self::assertStringContainsString('unreachable', strtolower($registry['detail']));
+    }
+
+    public function testReachableRegistryReportsLastSuccessfulCheckTimestamp(): void
+    {
+        $health = $this->makeService($this->healthyConnection())->getHealth();
+
+        $registry = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'registry'))[0];
+        self::assertSame('ok', $registry['status']);
+        self::assertStringContainsString('2026-06-08T18:00:00+00:00', $registry['detail']);
     }
 
     public function testDatabaseDownReportsOverallDown(): void

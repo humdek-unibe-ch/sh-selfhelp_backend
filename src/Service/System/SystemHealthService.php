@@ -36,10 +36,13 @@ class SystemHealthService
     private const COMPONENT_NOT_CONFIGURED = 'not_configured';
     private const COMPONENT_UNKNOWN = 'unknown';
 
+    private const REGISTRY_LAST_OK_CACHE_KEY = 'selfhelp_registry_last_successful_check';
+
     public function __construct(
         private readonly SystemInstanceService $instance,
         private readonly SystemVersionService $versionService,
         private readonly SystemUpdateService $updateService,
+        private readonly SystemRegistryGatewayInterface $registry,
         private readonly Connection $connection,
         private readonly CacheItemPoolInterface $cache,
         private readonly string $mercureUrl,
@@ -74,6 +77,7 @@ class SystemHealthService
             $this->checkWorker(),
             $this->checkScheduler(),
             $this->checkMailer(),
+            $this->checkRegistry(),
             $this->checkPlugins($version['installed_plugins']),
         ];
 
@@ -236,6 +240,48 @@ class SystemHealthService
         }
 
         return $this->component('mailer', self::COMPONENT_CONFIGURED, 'Mailer configured.');
+    }
+
+    /**
+     * Registry reachability + "last successful check". Deliberately reports
+     * `unknown` (informational, NON-degrading) when unreachable, because an
+     * existing instance must keep running through a registry outage (plan
+     * invariant 20). The last successful check is tracked in the cache so the
+     * UI can show how stale the registry view is.
+     *
+     * @return array{name: string, status: string, detail: string}
+     */
+    private function checkRegistry(): array
+    {
+        $nowIso = ($this->now ?? new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
+
+        if ($this->registry->fetchIndex() !== null) {
+            try {
+                $item = $this->cache->getItem(self::REGISTRY_LAST_OK_CACHE_KEY);
+                $item->set($nowIso);
+                $this->cache->save($item);
+            } catch (\Throwable) {
+                // Cache write failure must not turn a reachable registry into an error.
+            }
+
+            return $this->component('registry', self::COMPONENT_OK, sprintf('Official registry reachable; last successful check %s.', $nowIso));
+        }
+
+        $last = 'never';
+        try {
+            $stored = $this->cache->getItem(self::REGISTRY_LAST_OK_CACHE_KEY)->get();
+            if (is_string($stored) && $stored !== '') {
+                $last = $stored;
+            }
+        } catch (\Throwable) {
+            // Ignore cache read failures; report "never".
+        }
+
+        return $this->component(
+            'registry',
+            self::COMPONENT_UNKNOWN,
+            sprintf('Official registry unreachable; last successful check %s. Existing instances keep running; updates/plugin installs are deferred until it is reachable.', $last),
+        );
     }
 
     /**

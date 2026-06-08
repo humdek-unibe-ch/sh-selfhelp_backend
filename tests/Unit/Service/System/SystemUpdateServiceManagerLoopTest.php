@@ -14,6 +14,7 @@ use App\Exception\ServiceException;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
+use App\Service\System\MaintenanceModeService;
 use App\Service\System\SystemInstanceService;
 use App\Service\System\SystemRegistryGatewayInterface;
 use App\Service\System\SystemUpdateService;
@@ -36,7 +37,8 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
         SystemUpdateOperationRepository $operations,
         ?SystemRegistryGatewayInterface $registry = null,
     ): SystemUpdateService {
-        $instance = new SystemInstanceService(self::INSTANCE, '8.0.0', '2.1', '8.0.0', false, false);
+        $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-managerloop-no-maint', false);
+        $instance = new SystemInstanceService(self::INSTANCE, '8.0.0', '2.1', '8.0.0', false, $maintenance);
 
         $plugins = $this->createStub(PluginRepository::class);
         $plugins->method('findAllOrderedByName')->willReturn([]);
@@ -60,9 +62,9 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
     public function testDenyCrossInstanceIgnoresAbsentInstanceValue(): void
     {
         $service = $this->makeService($this->createStub(SystemUpdateOperationRepository::class));
-        $service->denyCrossInstance(null);
         // No exception means an absent client instance id is correctly in-scope.
-        self::assertTrue(true);
+        $this->expectNotToPerformAssertions();
+        $service->denyCrossInstance(null);
     }
 
     public function testDenyCrossInstanceRejectsAnyClientSuppliedInstanceId(): void

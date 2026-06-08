@@ -30,9 +30,14 @@ class HttpSystemRegistryGateway implements SystemRegistryGatewayInterface
     ) {
     }
 
+    public function fetchIndex(): ?array
+    {
+        return $this->getJson($this->registryUrl);
+    }
+
     public function fetchCoreRelease(string $version): ?array
     {
-        $index = $this->getJson($this->registryUrl);
+        $index = $this->fetchIndex();
         if ($index === null) {
             return null;
         }

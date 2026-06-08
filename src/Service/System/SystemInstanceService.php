@@ -28,7 +28,7 @@ class SystemInstanceService
         private readonly string $pluginApiVersion,
         private readonly string $frontendVersion,
         private readonly bool $safeMode,
-        private readonly bool $maintenanceMode,
+        private readonly MaintenanceModeService $maintenance,
     ) {
     }
 
@@ -58,9 +58,14 @@ class SystemInstanceService
         return $this->safeMode;
     }
 
+    /**
+     * Live maintenance state: the env hard switch OR the admin-toggled persistent
+     * file (see {@see MaintenanceModeService}). Resolved on each call so a toggle
+     * takes effect without a restart.
+     */
     public function isMaintenanceMode(): bool
     {
-        return $this->maintenanceMode;
+        return $this->maintenance->isEnabled();
     }
 
     /**

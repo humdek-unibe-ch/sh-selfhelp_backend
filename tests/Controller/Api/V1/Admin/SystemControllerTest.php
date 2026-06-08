@@ -152,4 +152,71 @@ final class SystemControllerTest extends QaWebTestCase
         self::assertSame(self::TARGET, $status['target_version']);
         self::assertSame('requested', $status['status']);
     }
+
+    public function testMaintenanceReadIsAdminOnlyAndDefaultsToDisabled(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/maintenance');
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/maintenance', null, $this->loginAsQaAdmin())
+        );
+
+        foreach (['enabled', 'forced_by_env', 'message', 'since', 'updated_by', 'safe_mode'] as $key) {
+            self::assertArrayHasKey($key, $data, "Maintenance state must expose '{$key}'.");
+        }
+        self::assertIsBool($data['enabled']);
+        self::assertIsBool($data['forced_by_env']);
+        self::assertIsBool($data['safe_mode']);
+    }
+
+    public function testMaintenanceWriteIsForbiddenForNonAdmins(): void
+    {
+        // PUT under admin.system.maintenance: non-admin 403, anon 401.
+        $this->assertForbiddenForNonAdmins('PUT', self::BASE . '/maintenance', [
+            'enabled' => true,
+            'message' => 'qa maintenance window',
+        ]);
+    }
+
+    public function testMaintenanceEnableThenDisableRoundTrips(): void
+    {
+        $token = $this->loginAsQaAdmin();
+
+        // Enable with an operator note.
+        $enabled = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('PUT', self::BASE . '/maintenance', [
+                'enabled' => true,
+                'message' => 'qa upgrade window',
+            ], $token)
+        );
+        self::assertTrue($enabled['enabled']);
+        self::assertSame('qa upgrade window', $enabled['message']);
+        self::assertNotSame('', $enabled['since']);
+        self::assertNotSame('', $enabled['updated_by']);
+
+        // Health/version now reflect maintenance mode (live resolution).
+        $version = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/version', null, $token)
+        );
+        self::assertTrue($version['maintenance_mode'], 'Version summary must reflect the live maintenance toggle.');
+
+        // Disable again (clean up the QA state so we never leave the test DB host
+        // in maintenance — the file lives under the app, not the DB).
+        $disabled = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('PUT', self::BASE . '/maintenance', ['enabled' => false], $token)
+        );
+        self::assertFalse($disabled['enabled']);
+    }
+
+    public function testMaintenanceWriteRejectsClientSuppliedInstanceId(): void
+    {
+        // additionalProperties:false rejects any unknown field (incl. instance_id)
+        // with a 400 schema error, even for an authorised admin.
+        $this->assertEnvelope400(
+            $this->jsonRequest('PUT', self::BASE . '/maintenance', [
+                'enabled' => true,
+                'instance_id' => 'some-other-instance',
+            ], $this->loginAsQaAdmin())
+        );
+    }
 }
