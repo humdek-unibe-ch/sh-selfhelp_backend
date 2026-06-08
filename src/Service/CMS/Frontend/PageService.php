@@ -32,8 +32,11 @@ class PageService extends BaseService
     private const FALLBACK_CHECK_KEYWORDS = [
         'login'                    => 'login',
         'two-factor-authentication' => 'twoFactorAuth',
-        'reset_password'           => 'resetPassword',
+        'reset-password'           => 'resetPassword',
         'profile'                  => 'profile',
+        'no-access'                => 'noAccess',
+        'no-access-guest'          => 'noAccess',
+        'missing'                  => 'missing',
     ];
 
     public function __construct(
