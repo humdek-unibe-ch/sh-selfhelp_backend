@@ -1,5 +1,11 @@
 # Admin Data Tables APIs
 
+Audience: Developers and integrators.
+Status: active.
+Applies to: SelfHelp2 Symfony backend.
+Last verified: 2026-06-08.
+Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schema `config/schemas/api/v1/requests/admin/data_export_bulk.json`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php`.
+
 ## Overview
 
 Data tables hold the records produced by CMS forms. Each form section stores its

@@ -226,6 +226,52 @@ final class AdminDataControllerTest extends QaWebTestCase
         $this->assertEnvelope404($envelope);
     }
 
+    public function testBulkExportRejectsBodyMissingFormat(): void
+    {
+        // `format` is required by the bulk-export request schema; omitting it
+        // must fail JSON-schema validation (400) before any table is read.
+        $table = $this->dataTables->createTable('qa_data_bulk_no_format');
+
+        $envelope = $this->jsonRequest(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            ['table_names' => [$table->getName()]],
+            $this->loginAsQaAdmin(),
+        );
+
+        $this->assertEnvelope400($envelope);
+    }
+
+    public function testBulkExportRejectsEmptyTableNames(): void
+    {
+        // `table_names` is required and must hold at least one entry
+        // (`minItems: 1`); an empty list must fail validation (400).
+        $envelope = $this->jsonRequest(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            ['table_names' => [], 'format' => 'csv'],
+            $this->loginAsQaAdmin(),
+        );
+
+        $this->assertEnvelope400($envelope);
+    }
+
+    public function testBulkExportRejectsInvalidFormat(): void
+    {
+        // `format` is constrained to the csv/json enum; anything else must fail
+        // validation (400) rather than silently defaulting.
+        $table = $this->dataTables->createTable('qa_data_bulk_bad_format');
+
+        $envelope = $this->jsonRequest(
+            'POST',
+            self::BASE . '/tables/bulk-export',
+            ['table_names' => [$table->getName()], 'format' => 'xml'],
+            $this->loginAsQaAdmin(),
+        );
+
+        $this->assertEnvelope400($envelope);
+    }
+
     // -- Writes -------------------------------------------------------------
 
     public function testDeleteRecordSoftDeletesRowAndInvalidatesReadCache(): void

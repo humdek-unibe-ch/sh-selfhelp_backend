@@ -19,7 +19,7 @@ final class Version20260603092955 extends AbstractMigration
 {
     public function getDescription(): string
     {
-        return 'Add admin data export routes: GET /admin/data/tables/{tableName}/export and POST /admin/data/tables/export.';
+        return 'Add admin data export routes: GET /admin/data/tables/{tableName}/export and POST /admin/data/tables/bulk-export.';
     }
 
     public function up(Schema $schema): void
