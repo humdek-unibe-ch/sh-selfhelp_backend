@@ -109,9 +109,13 @@ parameters:
     # under "Failure modes".
     selfhelp_plugin_allow_composer_scripts_default: false
 
-    # Default lock DSNs (in-process flock). Production deployments
-    # override with `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`
-    # so the lock is cluster-safe.
+    # Default lock DSNs. `flock` only coordinates processes on a single
+    # host (advisory filesystem locks), so it is dev/single-node only.
+    # Any multi-process / multi-container / multi-host deployment MUST
+    # point both at a shared backend so the scheduled-job runner and the
+    # plugin lifecycle stay cluster-safe, e.g.
+    # `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`.
+    # The bundled Docker stack already sets `LOCK_DSN=redis://redis:6379`.
     default_lock_dsn: 'flock'
     default_plugin_lock_dsn: 'flock'
 

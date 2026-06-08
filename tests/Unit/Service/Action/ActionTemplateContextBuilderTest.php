@@ -74,4 +74,23 @@ final class ActionTemplateContextBuilderTest extends TestCase
         self::assertFalse($builder->hasLegacyPlaceholders('{{recipient.email}}'));
         self::assertFalse($builder->hasLegacyPlaceholders('Contact us at support@example.org'));
     }
+
+    /**
+     * Word-boundary matching: a legacy token such as `@user` must not be falsely
+     * detected inside an unrelated literal like an email domain, while a real
+     * trailing-punctuation occurrence still is.
+     */
+    public function testLegacyDetectionIsWordBoundaryAware(): void
+    {
+        $builder = $this->builder();
+
+        self::assertFalse(
+            $builder->hasLegacyPlaceholders('Write to noreply@userville.test for help'),
+            '@user inside an email domain must not be flagged.'
+        );
+        self::assertTrue(
+            $builder->hasLegacyPlaceholders('Hi @user, welcome!'),
+            'A real @user placeholder followed by punctuation must still be flagged.'
+        );
+    }
 }

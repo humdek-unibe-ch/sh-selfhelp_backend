@@ -79,7 +79,7 @@ final class MailTemplateDefaults
         ],
         self::TYPE_CONFIRM => [
             'en-GB' => 'Please validate your account',
-            'de-CH' => 'Bitte bestaetigen Sie Ihr Konto',
+            'de-CH' => 'Bitte bestätigen Sie Ihr Konto',
         ],
         self::TYPE_WELCOME => [
             'en-GB' => 'Welcome to SelfHelp Platform - your account is now active!',
@@ -87,11 +87,11 @@ final class MailTemplateDefaults
         ],
         self::TYPE_RECOVERY => [
             'en-GB' => 'Reset your password',
-            'de-CH' => 'Passwort zuruecksetzen',
+            'de-CH' => 'Passwort zurücksetzen',
         ],
         self::TYPE_PASSWORD_CHANGED => [
             'en-GB' => 'Your password was changed',
-            'de-CH' => 'Ihr Passwort wurde geaendert',
+            'de-CH' => 'Ihr Passwort wurde geändert',
         ],
     ];
 

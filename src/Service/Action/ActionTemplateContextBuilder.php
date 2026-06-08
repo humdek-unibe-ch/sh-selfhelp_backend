@@ -82,15 +82,20 @@ class ActionTemplateContextBuilder
     }
 
     /**
-     * Detect whether a template still contains known legacy `@...` placeholders.
+     * Detect whether a template still contains a deprecated legacy `@...`
+     * placeholder ({@see LEGACY_PLACEHOLDERS}).
      *
-     * Used by admin validation and the migration regression guard to reject new
-     * action config that reintroduces the deprecated syntax.
+     * Wired into admin action-translation validation
+     * ({@see \App\Service\CMS\Admin\AdminActionTranslationService::bulkCreateTranslations()})
+     * so saving template content that reintroduces the deprecated syntax is
+     * rejected. Matching is word-boundary aware so a legacy token like `@user`
+     * is not falsely flagged inside an unrelated literal such as an email
+     * domain (e.g. `noreply@userville.test`).
      */
     public function hasLegacyPlaceholders(string $text): bool
     {
         foreach (self::LEGACY_PLACEHOLDERS as $placeholder) {
-            if (str_contains($text, $placeholder)) {
+            if (preg_match('/' . preg_quote($placeholder, '/') . '\b/', $text) === 1) {
                 return true;
             }
         }
