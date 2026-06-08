@@ -25,8 +25,8 @@ The default is `managed`. Override via the `SELFHELP_PLUGIN_INSTALL_MODE` env va
 - Frontend: Node 22, npm 10, host frontend repo cloned.
 - Mobile: optional. Node 22 + Expo CLI + EAS CLI when bundling per profile.
 - Backend env vars:
-  - `LOCK_DSN` (default `flock`) — single-machine setups.
-  - `PLUGIN_LOCK_DSN` (default `flock`) — distributed setups should set to `redis://…`.
+  - `LOCK_DSN` (default `flock`) — the default lock backend, used by the scheduled-job runner and any unnamed `LockFactory`. `flock` only coordinates processes on a single host, so any multi-process / multi-container / multi-host deployment must point this at a shared backend such as `redis://…`. The bundled Docker stack sets `LOCK_DSN=redis://redis:6379`.
+  - `PLUGIN_LOCK_DSN` (default `flock`) — dedicated lock for the plugin lifecycle; same single-host caveat as `LOCK_DSN`, so distributed setups should set it to `redis://…`.
   - `MESSENGER_PLUGIN_OPS_DSN` (default `doctrine://default?queue_name=plugin_ops&auto_setup=true`) — transport for the `plugin_ops` queue. Production may swap to `redis://…?stream=plugin_ops`.
   - `SELFHELP_PLUGIN_INSTALL_MODE` (`development` / `managed` / `trusted`) — defaults to `managed`.
   - `SELFHELP_ALLOW_WEB_PLUGIN_INSTALL=true` + `APP_ENV=dev` — required to expose direct-install via the web UI (otherwise only the CLI / Messenger worker can install).

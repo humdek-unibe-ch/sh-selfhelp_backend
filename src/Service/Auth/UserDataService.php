@@ -73,6 +73,8 @@ class UserDataService
                 'user_name' => $user->getUserName(),
                 'blocked' => $user->isBlocked(),
                 'acl_version' => $user->getAclVersion(),
+                'receives_notifications' => $user->receivesNotifications(),
+                'receives_emails' => $user->receivesEmails(),
                 'language' => $this->getUserLanguageInfo($user),
                 'timezone' => $this->getUserTimezoneInfo($user),
                 'roles' => $this->getUserRoles($user),

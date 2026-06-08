@@ -139,8 +139,42 @@ final class ScheduledJobsExecuteDueCommandTest extends QaKernelTestCase
         );
     }
 
+    public function testDryRunReportsDueWithoutExecuting(): void
+    {
+        $job = $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_dryrun_cmd_job');
+
+        $tester = $this->runCommand(['--dry-run' => true, '--force' => true]);
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
+            $job->getStatus()->getLookupCode(),
+            'A dry run must not execute due jobs.'
+        );
+        self::assertNull($job->getDateExecuted(), 'A dry-run job must not record an execution time.');
+    }
+
+    public function testJsonOptionEmitsMachineReadableSummary(): void
+    {
+        $job = $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_json_cmd_job');
+
+        $tester = $this->runCommand(['--json' => true, '--force' => true]);
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+
+        $decoded = json_decode(trim($tester->getDisplay()), true);
+        self::assertIsArray($decoded, 'The --json output must be valid JSON: ' . $tester->getDisplay());
+        foreach (['status', 'due_count', 'attempted_count', 'done_count', 'failed_count', 'skipped_count', 'lock_acquired'] as $key) {
+            self::assertArrayHasKey($key, $decoded, "JSON summary must expose '{$key}'.");
+        }
+
+        // The job actually ran (not a dry run), so it must be done.
+        $this->em->refresh($job);
+        self::assertSame(LookupService::SCHEDULED_JOBS_STATUS_DONE, $job->getStatus()->getLookupCode());
+    }
+
     /**
-     * @param array<string, string> $options
+     * @param array<string, string|bool> $options
      */
     private function runCommand(array $options = []): CommandTester
     {

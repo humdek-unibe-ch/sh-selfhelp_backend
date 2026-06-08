@@ -315,12 +315,12 @@ final class Version20260501000600 extends AbstractMigration
                             'de-CH' => 'Wenn für diese E-Mail-Adresse ein Konto besteht, haben wir Ihnen soeben einen Link zum Zurücksetzen gesendet. Bitte prüfen Sie Ihren Posteingang (und gegebenenfalls den Spam-Ordner).',
                         ],
                         'subject_user' => [
-                            'en-GB' => '@project — reset your password',
-                            'de-CH' => '@project — Passwort zurücksetzen',
+                            'en-GB' => '{{system.project_name}} — reset your password',
+                            'de-CH' => '{{system.project_name}} — Passwort zurücksetzen',
                         ],
                         'email_user' => [
-                            'en-GB' => "Hello,\n\nWe received a request to reset the password on your @project account. Click the link below to choose a new password:\n\n@link\n\nIf you did not request this, you can safely ignore this email — your password will not change.\n\nThank you,\nthe @project team",
-                            'de-CH' => "Hallo,\n\nWir haben eine Anfrage erhalten, das Passwort Ihres @project-Kontos zurückzusetzen. Klicken Sie auf den untenstehenden Link, um ein neues Passwort zu wählen:\n\n@link\n\nFalls Sie diese Anfrage nicht selbst gestellt haben, können Sie diese E-Mail einfach ignorieren — Ihr Passwort bleibt unverändert.\n\nVielen Dank,\nIhr @project-Team",
+                            'en-GB' => "Hello,\n\nWe received a request to reset the password on your {{system.project_name}} account. Click the link below to choose a new password:\n\n{{mail.link}}\n\nIf you did not request this, you can safely ignore this email — your password will not change.\n\nThank you,\nthe {{system.project_name}} team",
+                            'de-CH' => "Hallo,\n\nWir haben eine Anfrage erhalten, das Passwort Ihres {{system.project_name}}-Kontos zurückzusetzen. Klicken Sie auf den untenstehenden Link, um ein neues Passwort zu wählen:\n\n{{mail.link}}\n\nFalls Sie diese Anfrage nicht selbst gestellt haben, können Sie diese E-Mail einfach ignorieren — Ihr Passwort bleibt unverändert.\n\nVielen Dank,\nIhr {{system.project_name}}-Team",
                         ],
                     ],
                 ],

@@ -1,8 +1,14 @@
 services:
-  # Mailpit — local SMTP catch-all + web UI for previewing outbound emails.
+  # Mailpit - local SMTP catch-all + web UI for previewing outbound emails.
   #
-  # Wire contract (must match Symfony's MAILER_DSN in .env / .env.local):
-  #   MAILER_DSN=smtp://mailpit:1025
+  # Wire contract (the default dev DSN in .env.default):
+  #   MAILER_DSN=smtp://localhost:1025
+  # The web app reaches Mailpit on localhost:1025; the scheduler container
+  # rewrites localhost -> host.docker.internal in its entrypoint so it reaches
+  # the same published port. Set MAILER_DSN in .env (or .env.local) to deliver
+  # real mail from BOTH the web app and the scheduler, then recreate the
+  # scheduler container so the env_file is re-read:
+  #   docker compose up -d --force-recreate scheduler
   #
   # See README.md "Local mail (Mailpit)" for the full operational guide.
   mailpit:
@@ -10,14 +16,14 @@ services:
     container_name: mailpit
     restart: unless-stopped
     ports:
-      - "1025:1025"   # SMTP — Symfony sends here
-      - "8025:8025"   # Web UI — browser preview
+      - "1025:1025"   # SMTP - Symfony sends here
+      - "8025:8025"   # Web UI - browser preview
     environment:
       MP_MAX_MESSAGES: 500
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
 
-  # Redis — persistent key-value store used for Symfony's cache pools
+  # Redis - persistent key-value store used for Symfony's cache pools
   # (app, global, user_frontend, admin, lookups, permissions).
   #
   # Wire contract (must match REDIS_URL in .env / .env.local):
@@ -38,7 +44,58 @@ services:
     volumes:
       - redis_data:/data
 
-  # Mercure Hub — Caddy build with the Mercure module.
+  # Scheduled-jobs runner - local Docker dev tick source. Runs the same
+  # console command the production scheduler container should run every
+  # 60 seconds so action emails / notifications can be tested end-to-end.
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler/Dockerfile
+    container_name: selfhelp_scheduler
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      redis:
+        condition: service_healthy
+      mercure:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    env_file:
+      # Mirror Symfony's Dotenv chain so the scheduler delivers mail exactly like
+      # the web app. `.env` is the primary local file in this repo (created via
+      # `cp .env.default .env`), so it must be loaded here too — otherwise a
+      # MAILER_DSN placed only in `.env` would be invisible to the entrypoint and
+      # its localhost->host.docker.internal rewrite would never run.
+      - path: .env.default
+        required: true
+      - path: .env
+        required: false
+      - path: .env.dev
+        required: true
+      - path: .env.local
+        required: false
+    environment:
+      APP_ENV: dev
+      APP_RUNTIME_ENV: dev
+      APP_RUNTIME_MODE: web
+      REDIS_URL: redis://redis:6379?persistent=1&retry_interval=0&timeout=0.2
+      LOCK_DSN: redis://redis:6379
+      # MAILER_DSN is intentionally NOT pinned here: the scheduler must deliver
+      # mail exactly like the web app, so it inherits MAILER_DSN from the env
+      # files above (.env.default -> .env -> .env.dev -> .env.local). The
+      # entrypoint rewrites a localhost/127.0.0.1 host to host.docker.internal
+      # so a host-based dev SMTP (e.g. the published Mailpit on :1025, or a real
+      # provider in .env/.env.local) is reachable from inside the container.
+      MERCURE_URL: http://mercure/.well-known/mercure
+      MERCURE_PUBLIC_URL: http://mercure/.well-known/mercure
+      SCHEDULED_JOBS_TICK_SECONDS: ${SCHEDULED_JOBS_TICK_SECONDS:-60}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+
+  # Mercure Hub - Caddy build with the Mercure module.
   #
   # The hub holds long-lived SSE connections on behalf of every subscriber
   # (one connection per browser tab, multiplied by every browser tab in the
@@ -65,7 +122,7 @@ services:
       # Allow:
       #   - the Next.js BFF (web frontend, default `http://localhost:3000`)
       #   - the Expo Web dev preview (mobile app, default
-      #     `http://localhost:8081`) — the mobile app subscribes to the
+      #     `http://localhost:8081`) - the mobile app subscribes to the
       #     hub directly (no BFF) using `react-native-sse`, so its
       #     origin must be on this list.
       #   - the stable Expo Web preview host used by editors, e.g.
@@ -80,7 +137,7 @@ services:
         publish_origins http://localhost http://127.0.0.1
         subscriptions
     ports:
-      # External port 3001 → container port 80. Matches MERCURE_PUBLIC_URL
+      # External port 3001 -> container port 80. Matches MERCURE_PUBLIC_URL
       # in .env.dev (`http://127.0.0.1:3001/.well-known/mercure`).
       - "3001:80"
     healthcheck:

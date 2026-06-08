@@ -7,9 +7,8 @@
 
 namespace App\Command;
 
-use App\Repository\ScheduledJobRepository;
-use App\Service\Core\JobSchedulerService;
-use App\Service\Core\LookupService;
+use App\Entity\ScheduledJobRunnerRun;
+use App\Service\Core\ScheduledJobRunnerService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,76 +17,79 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Console command that executes all queued scheduled jobs that are currently due.
+ * Docker-safe console command that runs all due scheduled jobs through the
+ * {@see ScheduledJobRunnerService}. Safe to invoke every minute forever.
  */
 #[AsCommand(
     name: 'app:scheduled-jobs:execute-due',
-    description: 'Execute all queued scheduled jobs that are due'
+    description: 'Execute all queued scheduled jobs that are due (Docker scheduler entrypoint)'
 )]
 class ScheduledJobsExecuteDueCommand extends Command
 {
     public function __construct(
-        private readonly ScheduledJobRepository $scheduledJobRepository,
-        private readonly JobSchedulerService $jobSchedulerService
+        private readonly ScheduledJobRunnerService $runnerService
     ) {
         parent::__construct();
     }
 
-    /**
-     * Configure CLI options for the bulk scheduled-job executor.
-     */
     protected function configure(): void
     {
-        $this->addOption('limit', 'l', InputOption::VALUE_REQUIRED, 'Maximum number of jobs to execute', null);
+        $this->addOption('limit', 'l', InputOption::VALUE_REQUIRED, 'Maximum number of jobs to execute this run', null);
+        $this->addOption('force', 'f', InputOption::VALUE_NONE, 'Bypass the enabled flag and interval gate');
+        $this->addOption('dry-run', null, InputOption::VALUE_NONE, 'Report due counts and policy state without executing jobs');
+        $this->addOption('json', null, InputOption::VALUE_NONE, 'Emit a machine-readable JSON summary');
     }
 
-    /**
-     * Execute queued scheduled jobs up to the optional limit.
-     *
-     * @param InputInterface $input
-     *   The console input carrying CLI arguments/options.
-     * @param OutputInterface $output
-     *   The console output used for human-readable progress.
-     *
-     * @return int
-     *   Symfony command exit code.
-     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $limit = $input->getOption('limit');
-        $jobs = $this->scheduledJobRepository->findJobsToExecute();
 
-        if ($limit !== null) {
-            $limitInt = is_numeric($limit) ? (int) $limit : 0;
-            $jobs = array_slice($jobs, 0, max(0, $limitInt));
-        }
+        $limitOption = $input->getOption('limit');
+        $limit = is_numeric($limitOption) ? max(1, (int) $limitOption) : null;
+        $force = (bool) $input->getOption('force');
+        $dryRun = (bool) $input->getOption('dry-run');
+        $json = (bool) $input->getOption('json');
 
-        $io->title('Execute Due Scheduled Jobs');
-        $io->text(sprintf('Found %d queued job(s) ready for execution.', count($jobs)));
-
-        $executed = 0;
-        $failed = 0;
-
-        foreach ($jobs as $job) {
-            $result = $this->jobSchedulerService->executeJob((int) $job->getId(), LookupService::TRANSACTION_BY_BY_CRON_JOB);
-            if ($result) {
-                $executed++;
-                continue;
+        try {
+            $result = $this->runnerService->runDueJobs(
+                ScheduledJobRunnerRun::TRIGGER_SCHEDULER,
+                $limit,
+                $force,
+                $dryRun
+            );
+        } catch (\Throwable $e) {
+            if ($json) {
+                $output->writeln((string) json_encode(['status' => 'error', 'error' => $e->getMessage()]));
+            } else {
+                $io->error('Scheduled-job runner failed: ' . $e->getMessage());
             }
 
-            $failed++;
+            return Command::FAILURE;
         }
 
-        $io->table(
-            ['Metric', 'Count'],
-            [
-                ['Jobs Found', count($jobs)],
-                ['Jobs Executed', $executed],
-                ['Jobs Failed', $failed],
-            ]
-        );
+        if ($json) {
+            $output->writeln((string) json_encode($result->toArray()));
+        } else {
+            $io->title('Execute Due Scheduled Jobs');
+            $io->table(
+                ['Metric', 'Value'],
+                [
+                    ['Run status', $result->status],
+                    ['Lock acquired', $result->lockAcquired ? 'yes' : 'no'],
+                    ['Due', $result->dueCount],
+                    ['Attempted', $result->attemptedCount],
+                    ['Done', $result->doneCount],
+                    ['Failed', $result->failedCount],
+                    ['Skipped', $result->skippedCount],
+                ]
+            );
+            if ($result->errorMessage !== null) {
+                $io->warning($result->errorMessage);
+            }
+        }
 
-        return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
+        // Individual job failures/skips are not command failures; only an
+        // infrastructure-level runner failure returns a non-zero exit code.
+        return $result->isInfrastructureSuccess() ? Command::SUCCESS : Command::FAILURE;
     }
 }

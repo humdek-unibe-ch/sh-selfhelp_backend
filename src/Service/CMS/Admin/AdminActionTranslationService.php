@@ -13,6 +13,7 @@ use App\Entity\ActionTranslation;
 use App\Entity\Language;
 use App\Repository\ActionTranslationRepository;
 use App\Repository\LanguageRepository;
+use App\Service\Action\ActionTemplateContextBuilder;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
@@ -37,6 +38,7 @@ class AdminActionTranslationService extends BaseService
         private readonly LanguageRepository $languageRepository,
         private readonly CacheService $cache,
         private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly ActionTemplateContextBuilder $templateContextBuilder,
     ) {
     }
 
@@ -104,6 +106,19 @@ class AdminActionTranslationService extends BaseService
                 $languageId = $this->asInt($translationData['id_languages'] ?? null);
                 $translationKey = $this->asString($translationData['translation_key'] ?? null);
                 $content = $this->asString($translationData['content'] ?? null);
+
+                // Reject deprecated `@user`-style placeholders: action template
+                // content must use the canonical {{recipient.*}} / {{record.*}} /
+                // {{system.*}} scopes rendered by ActionTemplateContextBuilder.
+                if ($this->templateContextBuilder->hasLegacyPlaceholders($content)) {
+                    throw new ServiceException(
+                        sprintf(
+                            'Translation "%s" uses deprecated @-placeholders. Use the {{recipient.*}}, {{record.*}} and {{system.*}} scopes instead.',
+                            $translationKey
+                        ),
+                        Response::HTTP_BAD_REQUEST
+                    );
+                }
 
                 // Verify language exists
                 $language = $this->languageRepository->find($languageId);

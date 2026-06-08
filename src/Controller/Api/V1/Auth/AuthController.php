@@ -14,6 +14,7 @@ use App\Exception\RequestValidationException;
 use App\Repository\AuthRepository;
 use App\Service\Auth\JWTService;
 use App\Service\Auth\LoginService;
+use App\Service\Auth\PasswordResetService;
 use App\Service\Auth\RegistrationService;
 use App\Service\Auth\UserDataService;
 use App\Service\Auth\UserValidationService;
@@ -52,6 +53,7 @@ class AuthController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly UserValidationService $userValidationService,
         private readonly RegistrationService $registrationService,
+        private readonly PasswordResetService $passwordResetService,
     ) {
     }
 
@@ -383,6 +385,84 @@ class AuthController extends AbstractController
             $this->logger->error('Registration error', ['exception' => $e->getMessage()]);
             return $this->responseFormatter->formatError(
                 'Registration failed. Please try again later.',
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * Forgot-password endpoint — sends a recovery email.
+     *
+     * Always returns a generic success regardless of whether the email belongs
+     * to a known account, so the endpoint cannot be used to enumerate users.
+     *
+     * @route /auth/forgot-password
+     * @method POST
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/auth/forgot_password', $this->jsonSchemaValidationService);
+            $email = $this->asStringField($data, 'email');
+
+            $this->passwordResetService->requestReset($email);
+
+            return $this->responseFormatter->formatSuccess(
+                ['requested' => true],
+                null,
+                Response::HTTP_OK,
+                false,
+            );
+        } catch (RequestValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            $this->logDebugException('forgotPassword', $e);
+            $this->logger->error('Forgot-password error', ['exception' => $e->getMessage()]);
+
+            return $this->responseFormatter->formatError(
+                'Unable to process the password-reset request.',
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * Reset-password endpoint — sets a new password from a recovery token.
+     *
+     * @route /auth/reset-password
+     * @method POST
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/auth/reset_password', $this->jsonSchemaValidationService);
+            $userId = $this->asIntField($data, 'id_users');
+            $token = $this->asStringField($data, 'token');
+            $password = $this->asStringField($data, 'password');
+
+            $reset = $this->passwordResetService->resetPassword($userId, $token, $password);
+
+            if (!$reset) {
+                return $this->responseFormatter->formatError(
+                    'This password-reset link is invalid or has expired.',
+                    Response::HTTP_BAD_REQUEST,
+                );
+            }
+
+            return $this->responseFormatter->formatSuccess(
+                ['reset' => true],
+                null,
+                Response::HTTP_OK,
+                false,
+            );
+        } catch (RequestValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            $this->logDebugException('resetPassword', $e);
+            $this->logger->error('Reset-password error', ['exception' => $e->getMessage()]);
+
+            return $this->responseFormatter->formatError(
+                'An error occurred while resetting the password.',
                 Response::HTTP_INTERNAL_SERVER_ERROR,
             );
         }

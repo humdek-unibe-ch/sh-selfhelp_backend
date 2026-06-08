@@ -1,5 +1,71 @@
 # v8.0.0 (Not released yet)
 
+### Register style: multi-group assignment
+
+- A `register` section's `group` field is a select-group **MultiSelect**, so an
+  admin can pick several groups. Open registration now enrols the new user into
+  **every** selected group, not just the first.
+  `RegistrationService::resolveSectionPolicy` parses all group IDs from the
+  stored value (separator-agnostic, deduplicated) and the service creates one
+  `users_groups` row per group via the new `resolveGroups()` helper; the minted
+  validation code is linked to the first group. Closed/code-required mode is
+  unchanged (the user joins the code's single group). The groups are read
+  server-side from the CMS section — never from the request body — so visitors
+  cannot choose their own groups, and different register sections can assign
+  different group sets.
+- Tests: `RegistrationServiceTest` adds
+  `testOpenRegistrationEnrolsTheUserIntoEverySelectedGroup` (the user joins
+  exactly the configured groups, no more, no fewer).
+
+### Open registration + CMS-managed registration-lifecycle labels
+
+- `RegistrationService` now supports **open registration**. When the CMS
+  `register` section has `open_registration = '1'`, any visitor can register
+  with just an email: any submitted code is ignored, and the service mints one
+  unique already-consumed `validation_codes` row linked to the new user and the
+  section-configured group (so it still shows as a used historical code in the
+  admin registration-code list). Closed/code-required behaviour
+  (`open_registration = '0'` or missing) is unchanged — the supplied code is
+  still claimed under a `PESSIMISTIC_WRITE` lock and consumed. The API response
+  schema and the activation-email job flow are unchanged for both modes.
+- **Code generation is now centralized in `RegistrationCodeService`.** A new
+  `generateUnique(): string` (single collision-checked code) plus a private
+  `randomCode()` helper and `CODE_CHARS` / `CODE_LENGTH` constants are the single
+  source of the charset/length. The batch `generate()` reuses `randomCode()`, and
+  `RegistrationService` calls `generateUnique()` instead of its own removed
+  private generator — no duplicated code-minting logic.
+- New Doctrine migration `Version20260604111011` adds CMS label fields that the
+  frontend previously hardcoded and seeds en-GB / de-CH defaults on the seeded
+  auth sections: `register` gains `label_code`, `code_placeholder`,
+  `label_go_home`, `label_go_to_login`; `login` gains `label_register`;
+  `validate` gains the activation lifecycle status text `loading_title`,
+  `loading_text`, `error_title`, `error_heading`, `error_text`, `success_title`,
+  `redirect_text`. All inserts are idempotent (`INSERT IGNORE`) and `down()`
+  removes the fields + links + translations.
+- Tests: `RegistrationServiceTest` covers open mode (no code required, submitted
+  code ignored, a unique consumed code is minted + linked, section group used)
+  alongside the existing closed-mode cases;
+  `tests/Integration/Migrations/Version20260604111011RoundTripTest` asserts the
+  migration up/down round-trips.
+
+### Docs: complete CMS style reference (every style, dual-audience)
+
+- `docs/reference/styles/` now documents **every** core style for two audiences
+  (an "Administrators" how-to-use view and a "Developers" how-it-works view):
+  - `_conventions.md` — the fields and Mantine props shared by every style
+    (`css`, `css_mobile`, `condition`, spacing, `use_mantine_style`, standard
+    cosmetic props), so the per-style docs only cover what is unique.
+  - Auth flow styles get dedicated pages: `auth/login.md`, `auth/register.md`,
+    `auth/validate.md`, `auth/resetPassword.md`, `auth/twoFactorAuth.md`,
+    `auth/profile.md`.
+  - Atomic component styles are documented per category, one section per style:
+    `layout.md`, `typography.md`, `media.md`, `interactive.md`, `forms.md`,
+    `composite.md`.
+  - `index.md` is the catalog; every row links to the style's documentation.
+- `AGENTS.md` "Style Documentation Rules" now require adding/changing a style to
+  ship/refresh its documentation (a dedicated `auth/` page or its section in the
+  matching `<category>.md`).
+
 ### Plugin dev install: rewrite the stylesheet URL alongside the entrypoint
 
 - `PluginInstaller::resolveFrontendRuntimeMetadata()` and

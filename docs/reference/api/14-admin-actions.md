@@ -188,9 +188,9 @@ Useful for resubmits and edits where older queued jobs should not still fire.
             "from_email": "noreply@example.com",
             "from_name": "SelfHelp",
             "reply_to": "support@example.com",
-            "recipient": "@user",
+            "recipient": "{{recipient.email}}",
             "subject": "Welcome",
-            "body": "<p>Hello @user_name</p>",
+            "body": "<p>Hello {{recipient.name}}</p>",
             "attachments": []
           }
         }
@@ -199,6 +199,17 @@ Useful for resubmits and edits where older queued jobs should not still fire.
   ]
 }
 ```
+
+### Template placeholders
+
+Notification subject/body/recipient fields use Mustache `{{...}}` placeholders
+only — the legacy at-style action placeholders are no longer supported.
+Per-recipient scopes are rendered during fan-out:
+
+- `{{recipient.email}}`, `{{recipient.name}}`, `{{recipient.user_name}}`,
+  `{{recipient.code}}`, `{{recipient.timezone}}`
+- `{{record.field_name}}` for submitted/source-row values
+- `{{system.project_name}}`, `{{system.platform_url}}`
 
 ## End-User / Admin Usage Notes
 

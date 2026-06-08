@@ -104,10 +104,23 @@ class AdminRegistrationCodeController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/registration_code_generate', $this->jsonSchemaValidationService);
 
-            $count   = is_int($data['count'])    ? $data['count']    : 1;
-            $groupId = is_int($data['id_groups']) ? $data['id_groups'] : 0;
+            $count = is_int($data['count']) ? $data['count'] : 1;
 
-            $result = $this->registrationCodeService->generate($count, $groupId);
+            /** @var list<int> $groupIds */
+            $groupIds = [];
+            if (is_array($data['group_ids'] ?? null)) {
+                foreach ($data['group_ids'] as $groupId) {
+                    if (is_int($groupId)) {
+                        $groupIds[] = $groupId;
+                    }
+                }
+            }
+
+            if ($groupIds === []) {
+                return $this->responseFormatter->formatError('At least one group must be selected.', Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $result = $this->registrationCodeService->generate($count, $groupIds);
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/registration_codes_generate', Response::HTTP_CREATED, true);
         } catch (RequestValidationException $e) {

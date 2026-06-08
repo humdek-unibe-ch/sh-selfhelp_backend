@@ -12,6 +12,7 @@ use App\Entity\Lookup;
 use App\Entity\User;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
+use App\Service\Core\QueuedJobTimezoneAdjustmentService;
 use App\Service\Core\TransactionService;
 use App\Service\Cache\Core\CacheService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -26,7 +27,8 @@ class ProfileService extends BaseService
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
-        private readonly EntityManagerInterface $entityManager
+        private readonly EntityManagerInterface $entityManager,
+        private readonly QueuedJobTimezoneAdjustmentService $timezoneAdjustmentService
     ) {
     }
 
@@ -108,7 +110,10 @@ class ProfileService extends BaseService
             }
 
             $oldTimezoneId = $managedUser->getTimezone()?->getId();
-            $managedUser->setTimezone($timezone);
+            // The cached lookup can be a detached instance (deserialized from a
+            // previous request's cache entry); associate a managed reference so
+            // flush() does not treat it as a new entity to cascade-persist.
+            $managedUser->setTimezone($this->entityManager->getReference(Lookup::class, $timezoneId));
             $this->entityManager->flush();
 
             // Log the transaction
@@ -128,7 +133,65 @@ class ProfileService extends BaseService
                 ]) ?: null
             );
 
+            // Slice T: recalculate this user's queued future wall-clock jobs so
+            // their intended local delivery time is preserved in the new timezone.
+            $this->timezoneAdjustmentService->adjustForUser(
+                (int) $managedUser->getId(),
+                (string) ($timezone->getLookupCode() ?? '')
+            );
+
             // Invalidate user caches
+            $this->invalidateUserCaches((int) $managedUser->getId());
+
+            return $managedUser;
+        });
+    }
+
+    /**
+     * Update the user's communication (email/notification) delivery preferences.
+     *
+     * Scheduled email and notification jobs that respect user preferences are
+     * skipped at delivery time when the matching flag is disabled (issue #29).
+     *
+     * @param User $user The user entity
+     * @param bool $receivesNotifications Whether the user accepts push notifications
+     * @param bool $receivesEmails Whether the user accepts platform emails
+     * @return User The updated managed user entity
+     */
+    public function updateCommunicationPreferences(User $user, bool $receivesNotifications, bool $receivesEmails): User
+    {
+        return $this->executeInTransaction(function () use ($user, $receivesNotifications, $receivesEmails) {
+            // Fetch fresh managed entity to ensure proper change tracking
+            $managedUser = $this->entityManager->find(User::class, $user->getId());
+            if (!$managedUser) {
+                throw new \InvalidArgumentException('User not found');
+            }
+
+            $oldReceivesNotifications = $managedUser->receivesNotifications();
+            $oldReceivesEmails = $managedUser->receivesEmails();
+
+            $managedUser->setReceivesNotifications($receivesNotifications);
+            $managedUser->setReceivesEmails($receivesEmails);
+            $this->entityManager->flush();
+
+            // Log the transaction
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'users',
+                $managedUser->getId(),
+                false,
+                json_encode([
+                    'action' => 'communication_preferences_changed',
+                    'old_receives_notifications' => $oldReceivesNotifications,
+                    'new_receives_notifications' => $receivesNotifications,
+                    'old_receives_emails' => $oldReceivesEmails,
+                    'new_receives_emails' => $receivesEmails,
+                    'user_email' => $managedUser->getEmail(),
+                ]) ?: null
+            );
+
+            // Invalidate user caches (bumps acl_version so the BFF refreshes user-data)
             $this->invalidateUserCaches((int) $managedUser->getId());
 
             return $managedUser;

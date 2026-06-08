@@ -8,6 +8,8 @@
 
 namespace App\Entity;
 
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
@@ -72,6 +74,15 @@ class ScheduledJob
     private ?ScheduledJobReminder $reminderMetadata = null;
 
     /**
+     * Per-delivery recipient snapshots used to apply communication preferences
+     * at execution time and to render the admin recipient list.
+     *
+     * @var Collection<int, ScheduledJobRecipient>
+     */
+    #[ORM\OneToMany(mappedBy: 'scheduledJob', targetEntity: ScheduledJobRecipient::class, cascade: ['persist', 'remove'], orphanRemoval: true)]
+    private Collection $recipients;
+
+    /**
      * Lookup describing the persisted job type.
      */
     #[ORM\ManyToOne(targetEntity: Lookup::class)]
@@ -91,6 +102,13 @@ class ScheduledJob
 
     #[ORM\Column(name: 'date_to_be_executed', type: 'datetime')]
     private \DateTimeInterface $dateToBeExecuted;
+
+    /**
+     * Time the job transitioned to `running`, used for stale-job detection by
+     * the Docker scheduled-job runner.
+     */
+    #[ORM\Column(name: 'date_started', type: 'datetime', nullable: true)]
+    private ?\DateTimeInterface $dateStarted = null;
 
     #[ORM\Column(name: 'date_executed', type: 'datetime', nullable: true)]
     private ?\DateTimeInterface $dateExecuted = null;
@@ -112,6 +130,7 @@ class ScheduledJob
     public function __construct()
     {
         $this->dateCreate = new \DateTime('now', new \DateTimeZone('UTC'));
+        $this->recipients = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -225,6 +244,17 @@ class ScheduledJob
         return $this;
     }
 
+    public function getDateStarted(): ?\DateTimeInterface
+    {
+        return $this->dateStarted;
+    }
+
+    public function setDateStarted(?\DateTimeInterface $dateStarted): self
+    {
+        $this->dateStarted = $dateStarted === null ? null : self::toMutable($dateStarted);
+        return $this;
+    }
+
     public function getDateExecuted(): ?\DateTimeInterface
     {
         return $this->dateExecuted;
@@ -276,6 +306,29 @@ class ScheduledJob
     public function setConfig(?array $config): self
     {
         $this->config = $config;
+        return $this;
+    }
+
+    /**
+     * @return Collection<int, ScheduledJobRecipient>
+     */
+    public function getRecipients(): Collection
+    {
+        return $this->recipients;
+    }
+
+    public function addRecipient(ScheduledJobRecipient $recipient): self
+    {
+        if (!$this->recipients->contains($recipient)) {
+            $this->recipients[] = $recipient;
+            $recipient->setScheduledJob($this);
+        }
+        return $this;
+    }
+
+    public function removeRecipient(ScheduledJobRecipient $recipient): self
+    {
+        $this->recipients->removeElement($recipient);
         return $this;
     }
 
