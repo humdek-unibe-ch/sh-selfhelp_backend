@@ -422,6 +422,21 @@ Tagged services the host collects today:
   `App\Plugin\ScheduledJob\PluginScheduledJobRegistry` and dispatched
   by `JobSchedulerService::executeByType` when a scheduled job whose
   `jobType` matches the handler's `JOB_TYPE` is due.
+  - **Communication preferences (required for user-facing delivery).**
+    Core `email` / `notification` jobs honour the recipient's
+    `receivesEmails()` / `receivesNotifications()` preference. Plugin
+    job types are dispatched **before** the core executors, so a handler
+    that sends user-facing email or push **must** implement
+    `App\Plugin\ScheduledJob\PluginScheduledJobDeliveryAwareInterface`
+    and declare its channel (`CHANNEL_EMAIL` / `CHANNEL_NOTIFICATION`),
+    the preference-bearing recipient, and whether it is required-system
+    (account/security) delivery that bypasses the preference. The host
+    `PluginScheduledJobDeliveryGate` then skips the job — terminal
+    `skipped_user_disabled_*` status, audited transaction, handler **not
+    invoked** — exactly like a core job, so a plugin can never silently
+    bypass the preference. Handlers that deliver nothing a single user
+    preference gates (broadcasts, data cleanup, internal/admin mail)
+    simply do not implement the interface.
 
 Singleton aliases on interfaces (`PluginBackupHookInterface`,
 `PluginRealtimePublisherInterface`) provide additional extension

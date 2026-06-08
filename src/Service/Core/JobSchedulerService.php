@@ -16,6 +16,8 @@ use App\Repository\ScheduledJobRepository;
 use App\Entity\ScheduledJobRecipient;
 use App\Entity\ScheduledJobReminder;
 use App\Entity\User;
+use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryAwareInterface;
+use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryGate;
 use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Cache\Core\CacheService;
@@ -46,6 +48,7 @@ class JobSchedulerService extends BaseService
         private readonly CacheService $cache,
         private readonly MailerInterface $mailer,
         private readonly PluginScheduledJobRegistry $pluginScheduledJobs,
+        private readonly PluginScheduledJobDeliveryGate $pluginDeliveryGate,
         private readonly ScheduledJobRepository $scheduledJobRepository,
     ) {
     }
@@ -794,9 +797,19 @@ class JobSchedulerService extends BaseService
         // `selfhelp.plugin.scheduled_job_handler` so it stays empty on
         // hosts that have no plugin contributions. Plugin handlers keep the
         // legacy bool contract; the bool is wrapped into a typed result here.
-        $pluginResult = $this->pluginScheduledJobs->execute($jobType, $job, $transactionBy);
-        if ($pluginResult !== null) {
-            return $pluginResult
+        $pluginHandler = $this->pluginScheduledJobs->get($jobType);
+        if ($pluginHandler !== null) {
+            // Issue #36: a plugin job that declares it delivers user-facing
+            // email/notifications is held to the SAME communication-preference
+            // contract as core email/notification jobs. A disabled channel is
+            // an audited skip and the handler is never invoked, so a plugin can
+            // never silently bypass receivesEmails()/receivesNotifications().
+            $blockedChannel = $this->pluginDeliveryGate->blockedChannel($pluginHandler, $job);
+            if ($blockedChannel !== null) {
+                return $this->skipPluginDeliveryForPreference($job, $transactionBy, $blockedChannel);
+            }
+
+            return $pluginHandler->execute($job, $transactionBy)
                 ? ScheduledJobExecutionResult::done('Executed by plugin handler')
                 : ScheduledJobExecutionResult::failed('Plugin handler reported failure');
         }
@@ -809,6 +822,47 @@ class JobSchedulerService extends BaseService
                 : ScheduledJobExecutionResult::failed('Task execution failed'),
             default => ScheduledJobExecutionResult::failed('Unknown job type: ' . $jobType),
         };
+    }
+
+    /**
+     * Turn a blocked plugin delivery channel into the same audited `skipped_*`
+     * outcome a core email/notification job produces when the recipient disabled
+     * the channel (issue #36). The plugin handler is NOT invoked.
+     */
+    private function skipPluginDeliveryForPreference(
+        ScheduledJob $job,
+        string $transactionBy,
+        string $blockedChannel,
+    ): ScheduledJobExecutionResult {
+        if ($blockedChannel === PluginScheduledJobDeliveryAwareInterface::CHANNEL_NOTIFICATION) {
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_SKIPPED,
+                $transactionBy,
+                'scheduled_jobs',
+                $job->getId(),
+                false,
+                sprintf('Plugin notification skipped: user %d disabled notifications', (int) $job->getUser()?->getId())
+            );
+
+            return ScheduledJobExecutionResult::skipped(
+                LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_NOTIFICATIONS,
+                'Recipient disabled notifications'
+            );
+        }
+
+        $this->transactionService->logTransaction(
+            LookupService::TRANSACTION_TYPES_SEND_MAIL_SKIPPED,
+            $transactionBy,
+            'scheduled_jobs',
+            $job->getId(),
+            false,
+            sprintf('Plugin email skipped: user %d disabled emails', (int) $job->getUser()?->getId())
+        );
+
+        return ScheduledJobExecutionResult::skipped(
+            LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS,
+            'Recipient disabled emails'
+        );
     }
 
     /**
