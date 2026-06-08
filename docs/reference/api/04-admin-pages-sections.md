@@ -727,13 +727,13 @@ Retrieve sections that are not attached to any page.
 
 ### Get Reference Containers
 
-Get sections that serve as containers for other sections.
+List all sections whose style is `refContainer`. These are reusable structural blocks that can be placed on multiple pages. `refContainer` is a transparent pass-through: it introduces no visual styling, layout, or presentation of its own; all rendering comes from its children. This endpoint is used by the admin page builder to let editors select an existing reusable block when wiring a page.
 
 **Endpoint:** `GET /cms-api/v1/admin/sections/ref-containers`
 
 **Authentication:** Required (JWT Bearer token)
 
-**Response:** Array of container sections
+**Response:** Array of `{ id, name, idStyles, styleName }` objects (styleName is always `refContainer`)
 
 **Permissions:** `admin.page.update`
 

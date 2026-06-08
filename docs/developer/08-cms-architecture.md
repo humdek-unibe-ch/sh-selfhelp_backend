@@ -229,10 +229,10 @@ class PagesSection
 - **Content Flexibility**: Within a `refContainer` section, any content can be added and styled
 
 #### Section Reusability Rules
-- **`refContainer` Style**: These sections can be added to multiple pages
-- **Other Styles**: Regular sections are typically page-specific
-- **Content Management**: Reusable sections maintain their content across all pages where used
-- **Style Consistency**: The `refContainer` style ensures consistent appearance across pages
+- **`refContainer` Style**: Structural, semantic container for reusable blocks. It does not introduce visual styling, layout behaviour, or presentation of its own — it passes children through transparently. Sections with this style can be placed on multiple pages.
+- **Other Styles**: Regular sections are page-specific and may carry visual or layout semantics.
+- **Content Management**: Reusable sections maintain their content and child structure across all pages where they are referenced.
+- **No visual output**: `refContainer` renders nothing of its own. Visual composition must come from child sections using layout/wrapper styles (e.g. `box`, `container`, `paper`).
 
 ## **CRITICAL: Section Processing Order**
 
