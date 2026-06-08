@@ -277,11 +277,6 @@ final class FormActionJobChainTest extends QaWebTestCase
         return $user;
     }
 
-    private function qaUserId(): int
-    {
-        return (int) $this->qaUser()->getId();
-    }
-
     private function sendMailOkCount(int $jobId): int
     {
         return $this->mailTransactionCount(LookupService::TRANSACTION_TYPES_SEND_MAIL_OK, $jobId);
