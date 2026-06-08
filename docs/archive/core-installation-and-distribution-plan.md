@@ -76,9 +76,9 @@ Relevant repositories and areas:
 - `plugins/sh2-shp-survey-js`
   - reference official plugin release flow, plugin manifest, plugin artifact publishing, compatibility metadata.
 - `plugins/sh2-plugin-registry`
-  - current official plugin registry. For the new architecture, this should become or feed the unified official SelfHelp registry.
-- future `sh2-registry`
-  - one official SelfHelp registry containing core/backend releases, frontend releases, official plugins, compatibility rules, security advisories, schemas, signatures, and artifact pointers.
+  - current official plugin registry and the starting point for the unified official SelfHelp registry.
+  - implementation must evolve/adapt this repository into the unified registry unless the team explicitly renames the one registry repository later.
+  - do not create a second active registry in parallel.
 - future installer/updater repository or package
   - should be `sh-manager`, the Docker-only connected SelfHelp Manager.
 
@@ -105,7 +105,7 @@ Implementation agents must not treat this as a backend-only plan. Before impleme
   - reference owned plugin release, manifest, artifact, and compatibility flow.
 - `plugins/sh2-plugin-registry`:
   - current static plugin registry and signing/validation workflow;
-  - may become an input to the unified SelfHelp registry.
+  - adapt this repository into the unified SelfHelp registry containing core, frontend, scheduler, worker, official plugin, compatibility, advisory, signing, checksum, and schema metadata.
 - `sh-selfhelp`:
   - old CMS reference only; do not edit it for new SelfHelp2 installer work.
 
@@ -345,44 +345,113 @@ SELFHELP_MANAGER_SESSION_SECRET_FILE=/opt/selfhelp/manager/secrets/session_secre
 SELFHELP_MANAGER_BOOTSTRAP_TOKEN_FILE=/opt/selfhelp/manager/secrets/bootstrap_token
 ```
 
-For UniBE installations, SelfHelp Manager should support an optional UniBE-only campus account provider:
+### Configurable Campus Login Provider For SelfHelp Manager
 
-- This is not the default global SelfHelp login mode.
-- It must be disabled unless explicitly configured for a UniBE deployment.
-- It should reuse the existing campus account login behavior from the old SelfHelp plugin at `sh-selfhelp/server/plugins/sh-shp-auth_external` as the reference implementation for protocol, redirects, identity attributes, and error handling.
-- Because `sh-manager` is a separate TypeScript server-management tool, it should not directly install the old Symfony/PHP plugin into the manager. Instead, implement a manager auth provider that uses the same external-auth flow after inspecting the plugin runtime behavior.
-- Campus account authentication proves identity; manager authorization still comes from an explicit allowlist, approved email domain, group claim, or role mapping.
-- UniBE email/domain/group allowlists must be configurable by the manager CLI and stored in manager config, not hard-coded.
+SelfHelp Manager may support a configurable campus login provider for installations such as UniBE.
 
-Example UniBE-only manager auth configuration shape:
+This must not install, reuse, or depend on the old Symfony/PHP SelfHelp plugin at runtime.
+
+The old plugin may only be inspected as a reference implementation to understand:
+
+- redirect flow;
+- callback handling;
+- tenant/client configuration;
+- identity attributes;
+- email/domain extraction;
+- error handling;
+- logout/session behaviour, if relevant.
+
+Reference implementation path:
+
+```text
+sh-selfhelp/server/plugins/sh-shp-auth_external
+```
+
+SelfHelp Manager must implement its own TypeScript authentication provider for manager operators.
+
+The provider must be configurable so UniBE-specific tenant/client settings are not hard-coded.
+
+Required configurable values should include, where applicable:
+
+- provider enabled/disabled;
+- provider display name;
+- issuer / authority / tenant URL;
+- client id;
+- client secret file path, not raw secret in `.env`;
+- redirect URI;
+- post-logout redirect URI;
+- allowed email domains;
+- allowed individual emails;
+- allowed groups or role claims;
+- role mappings to manager roles;
+- scopes;
+- trusted callback URL;
+- session lifetime.
+
+Campus authentication proves identity only.
+
+Authorization to use SelfHelp Manager must still come from explicit manager configuration:
+
+- allowlisted email;
+- allowed email domain;
+- allowed group/claim;
+- configured role mapping.
+
+A campus-authenticated user who is not authorized as a manager operator must be rejected.
+
+Manager roles remain separate from CMS roles.
+
+A CMS admin is not automatically a SelfHelp Manager operator.
+
+The provider must stay generic enough that another institution can configure its own campus/OIDC provider later without inheriting UniBE-specific hard-coding.
+
+UniBE can be provided as one example configuration, not as hard-coded logic.
+
+Example UniBE manager auth configuration shape:
 
 ```json
 {
   "auth": {
-    "mode": "unibe_external",
+    "mode": "campus",
     "providers": {
-      "unibeExternal": {
+      "unibe": {
         "enabled": true,
-        "referenceImplementation": "sh-selfhelp/server/plugins/sh-shp-auth_external",
+        "displayName": "UniBE Campus Account",
+        "issuer": "https://login.example.unibe.ch/",
+        "clientId": "selfhelp-manager",
+        "clientSecretFile": "/opt/selfhelp/manager/secrets/unibe_client_secret",
+        "redirectUri": "https://selfhelp-manager.example.ch/auth/campus/unibe/callback",
+        "postLogoutRedirectUri": "https://selfhelp-manager.example.ch/login",
         "allowedEmailDomains": ["unibe.ch"],
         "allowedEmails": [
           "admin@unibe.ch"
         ],
+        "allowedGroups": [
+          "selfhelp-manager-admins"
+        ],
+        "roleClaim": "groups",
         "roleMappings": [
           {
             "match": {
               "email": "admin@unibe.ch"
             },
             "roles": ["server_owner"]
+          },
+          {
+            "match": {
+              "group": "selfhelp-manager-admins"
+            },
+            "roles": ["instance_operator"]
           }
-        ]
+        ],
+        "scopes": ["openid", "profile", "email"],
+        "trustedCallbackUrl": "https://selfhelp-manager.example.ch/auth/campus/unibe/callback",
+        "sessionLifetimeSeconds": 28800
       }
     }
   }
 }
 ```
-
-UniBE custom behavior must stay isolated behind this provider. Other institutions should be able to use local manager accounts or a future generic OIDC/SAML provider without inheriting UniBE-specific assumptions.
 
 ## First Server Bootstrap Flow
 
@@ -461,25 +530,30 @@ Offline/air-gapped installation is out of scope for MVP. Do not add offline bund
 
 ### One Official Registry
 
-There is one official SelfHelp registry.
+There must be exactly one official SelfHelp registry.
 
-The registry contains separate metadata sections for:
+The existing `plugins/sh2-plugin-registry` repository is the starting point. The implementation task is to evolve/adapt this repository into the unified SelfHelp registry unless the team explicitly renames the one registry repository later.
+
+Do not create a second active registry in parallel.
+
+Do not keep separate production registries for core and plugins.
+
+The unified registry must contain or generate metadata for:
 
 - SelfHelp core/backend releases;
-- SelfHelp frontend releases;
-- scheduled-jobs runner artifacts;
-- worker artifacts;
-- official plugins;
+- frontend releases;
+- scheduler releases;
+- worker releases;
+- official plugin releases;
 - compatibility rules;
 - dependency rules;
 - migration metadata;
-- old compatible versions;
 - security advisories;
-- trusted signing keys or key references;
+- trusted signing keys;
 - checksums and signatures;
-- JSON schemas for registry entries and lock files.
+- registry/manifest/lock/advisory schemas.
 
-This is easier to maintain than separate core and plugin registries. The current plugin registry can be migrated into the unified registry or made a generated section of it.
+If the repository is renamed later, rename the one existing registry repository and update references. Do not leave the old plugin registry and a new core registry both active in production.
 
 ### Reproducible Experiments
 
@@ -874,7 +948,7 @@ Example:
   "updatedAt": "2026-06-05T10:00:00+00:00",
   "registry": {
     "id": "selfhelp-official",
-    "url": "https://humdek-unibe-ch.github.io/sh2-registry/",
+    "url": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/",
     "channel": "stable"
   },
   "versions": {
@@ -953,7 +1027,7 @@ Example:
   "generatedAt": "2026-06-05T10:00:00+00:00",
   "registry": {
     "id": "selfhelp-official",
-    "url": "https://humdek-unibe-ch.github.io/sh2-registry/",
+    "url": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/",
     "metadataSha256": "sha256:..."
   },
   "core": {
@@ -1004,20 +1078,25 @@ Rules:
 
 ## Official Registry Architecture
 
-There is one official SelfHelp registry.
+There is exactly one official SelfHelp registry.
 
-Suggested repository/layout:
+The existing `plugins/sh2-plugin-registry` repository is the starting point for this registry. Adapt that repository into the unified registry. If the team later chooses the name `sh2-registry`, rename the one existing registry repository and update links; do not create or maintain a second active registry.
+
+Suggested adapted repository/layout:
 
 ```text
-sh2-registry/
+plugins/sh2-plugin-registry/
   registry.json
   schemas/
     registry.schema.json
     core-release.schema.json
     frontend-release.schema.json
+    scheduler-release.schema.json
+    worker-release.schema.json
     plugin-release.schema.json
     compatibility.schema.json
     advisory.schema.json
+    manifest.schema.json
     lock.schema.json
   core/
     releases/
@@ -1036,6 +1115,10 @@ sh2-registry/
   scheduler/
     releases/
       selfhelp-scheduler-1.0.0.json
+    artifacts/
+  worker/
+    releases/
+      selfhelp-worker-1.0.0.json
     artifacts/
   plugins/
     official/
@@ -1057,6 +1140,10 @@ The top-level `registry.json` is an index. It should not duplicate every release
 
 Registry rules:
 
+- There is one active production registry.
+- The adapted `plugins/sh2-plugin-registry` repository is the source of truth unless the team explicitly renames that same repository later.
+- Core, frontend, scheduler, worker, and plugin production metadata must live in the unified registry or be generated into it.
+- Do not split core and plugin production metadata into separate active registries.
 - Production accepts only the official registry by default.
 - Development mode may point to a local/dev registry, but the UI must label it clearly.
 - Registry metadata must be signed or verified through a signed release payload model.
@@ -2227,6 +2314,28 @@ SelfHelp Manager remains the only component allowed to:
 
 The CMS UI can be used as the human-friendly control surface, but the actual execution must happen through SelfHelp Manager commands or Manager API calls.
 
+### CMS Admin Instance-Scoped Update Authorization
+
+A CMS admin may only request, approve, monitor, or cancel update operations for the SelfHelp instance they are currently authenticated in.
+
+The CMS update UI is always instance-scoped.
+
+The current instance id must be derived from trusted server-side configuration, not from a browser-provided value.
+
+The frontend must not send arbitrary `instanceId` values for update execution.
+
+The backend must not trust user-provided `instanceId`.
+
+SelfHelp Manager must verify that every CMS-originated update request belongs to the same registered instance before accepting it.
+
+Cross-instance update requests must be denied and logged as security events.
+
+CMS admins are not global server operators.
+
+A CMS admin in `website1` must not see, request, approve, monitor, cancel, or execute updates for `website2`.
+
+Only SelfHelp Manager operators in the private Manager UI/CLI may manage multiple instances.
+
 MVP behavior:
 
 - The CMS may prepare the update and instruct the operator to run a manager command.
@@ -2246,6 +2355,8 @@ If the CMS can trigger updates through the manager, the manager API must:
 - be reachable only through the internal Docker network, localhost, VPN, or a private management network;
 - require strong authentication between the instance and manager;
 - authorize only the matching instance id;
+- derive the CMS request's instance identity from trusted instance registration/configuration, not from browser-provided data;
+- reject and log any CMS-originated request whose instance id does not match the registered manifest path, compose project, domain, and server inventory entry;
 - require an admin approval token or signed update request;
 - log every update request and result;
 - reject requests from unknown instances;
@@ -2560,7 +2671,10 @@ Add or formalize backend support for distribution:
   - displaying registry/update data supplied by SelfHelp Manager;
   - requesting preflight;
   - recording admin approval;
-  - reading update logs/progress.
+  - reading update logs/progress;
+  - deriving the current instance id from trusted server-side configuration;
+  - refusing browser-provided or user-provided `instanceId` for update execution;
+  - logging cross-instance update attempts as security events.
 - health/admin system status endpoint aggregating:
   - DB;
   - Redis;
@@ -2620,6 +2734,12 @@ Add/extend admin UI:
 - support bundle creation;
 - maintenance mode display;
 - safe-mode repair guidance.
+Update UI behavior:
+
+- CMS update pages are scoped to the current instance only.
+- The frontend must not send arbitrary `instanceId` values for update execution.
+- The frontend must not expose controls for selecting or managing another SelfHelp instance.
+- Multi-instance management belongs only to SelfHelp Manager UI/CLI.
 
 Must preserve:
 
@@ -2686,6 +2806,39 @@ Production install/update from official registry must verify signatures/checksum
 
 For reproducibility, plugin old versions remain installable unless blocked by security policy.
 
+## License Compliance For Distributed Images
+
+SelfHelp production releases distribute Docker images and frontend/runtime artifacts. Therefore every release pipeline must include license compliance checks.
+
+The release process must generate and review license metadata for:
+
+- frontend npm dependencies;
+- shared npm package dependencies;
+- mobile/shared dependencies where relevant to published artifacts;
+- backend Composer dependencies;
+- PHP extensions and system packages included in Docker images;
+- base Docker images;
+- plugin runtime bundles and plugin backend dependencies;
+- fonts, icons, images, CSS libraries, and other static assets.
+
+The release pipeline must generate:
+
+- SBOM for every distributed Docker image;
+- dependency license report;
+- list of bundled frontend/runtime packages;
+- list of Composer packages;
+- list of container base images and OS packages.
+
+Production release must fail or require explicit legal/reviewer approval when a dependency has an incompatible or unknown license.
+
+Allowed license policy should be documented, for example:
+
+- allowed: MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0, ISC;
+- review required: MPL-2.0, LGPL, EPL, custom licenses;
+- blocked unless explicitly approved: GPL/AGPL or unknown/proprietary licenses, especially when bundled into distributed images or browser JavaScript.
+
+The exact policy must be confirmed by the project owner/legal responsible person before the first public release.
+
 ## CI And Release Pipeline
 
 Core release pipeline should:
@@ -2697,16 +2850,18 @@ Core release pipeline should:
 5. Build scheduled-jobs runner image or backend-scheduler command image.
 6. Build frontend production image from Next.js standalone output.
 7. Generate SBOMs.
-8. Scan images/artifacts.
-9. Generate release metadata JSON.
-10. Generate migration compatibility metadata.
-11. Sign canonical release payloads.
-12. Publish images/artifacts to official locations.
-13. Update official registry.
-14. Publish registry.
-15. Smoke-test fresh install from the published registry.
-16. Smoke-test update from previous stable release.
-17. Smoke-test multi-instance routing on one server.
+8. Generate dependency and asset license reports.
+9. Scan images/artifacts.
+10. Fail or require explicit legal/reviewer approval for incompatible or unknown licenses.
+11. Generate release metadata JSON.
+12. Generate migration compatibility metadata.
+13. Sign canonical release payloads.
+14. Publish images/artifacts to official locations.
+15. Update official registry.
+16. Publish registry.
+17. Smoke-test fresh install from the published registry.
+18. Smoke-test update from previous stable release.
+19. Smoke-test multi-instance routing on one server.
 
 SelfHelp Manager release pipeline should:
 
@@ -2714,23 +2869,27 @@ SelfHelp Manager release pipeline should:
 2. Validate registry, manifest, lock, advisory, and preflight schemas.
 3. Build the manager CLI/web Docker image.
 4. Generate SBOM.
-5. Scan the image.
-6. Sign the image and release metadata.
-7. Publish versioned image tags.
-8. Smoke-test fresh install in local mode.
-9. Smoke-test production-mode generation without touching real DNS where possible.
-10. Smoke-test update, remove, backup, restore, clone, registry-unavailable, schema-compatibility, and support-bundle flows against disposable Docker instances.
+5. Generate dependency and asset license reports.
+6. Scan the image.
+7. Fail or require explicit legal/reviewer approval for incompatible or unknown licenses.
+8. Sign the image and release metadata.
+9. Publish versioned image tags.
+10. Smoke-test fresh install in local mode.
+11. Smoke-test production-mode generation without touching real DNS where possible.
+12. Smoke-test update, remove, backup, restore, clone, registry-unavailable, schema-compatibility, and support-bundle flows against disposable Docker instances.
 
 Plugin release pipeline should:
 
 1. Run plugin tests.
 2. Validate plugin manifest/schema.
 3. Build plugin artifacts.
-4. Generate plugin release metadata.
-5. Sign canonical payload.
-6. Publish artifacts.
-7. Update official registry plugin section.
-8. Test install/update against compatible core versions.
+4. Generate plugin SBOM and dependency/asset license reports.
+5. Fail or require explicit legal/reviewer approval for incompatible or unknown licenses.
+6. Generate plugin release metadata.
+7. Sign canonical payload.
+8. Publish artifacts.
+9. Update the official unified registry's plugin release metadata section.
+10. Test install/update against compatible core versions.
 
 ## Release Documentation
 
@@ -2771,9 +2930,10 @@ Installer tests:
 - manager web UI requires login even when reachable only over VPN.
 - manager local-auth passwords are stored as hashes and never in `.env`.
 - manager bootstrap token is one-time and rotates after use.
-- UniBE external-auth mode is disabled by default and only enabled by explicit manager config.
-- UniBE external-auth mode allows only configured email/domain/group mappings to become manager operators.
-- campus-authenticated but unauthorized UniBE users are rejected.
+- campus login provider is disabled by default and only enabled by explicit manager config.
+- campus login provider is implemented by SelfHelp Manager in TypeScript and does not install, reuse, or depend on the old Symfony/PHP plugin at runtime.
+- campus login provider allows only configured email/domain/group/claim mappings to become manager operators.
+- campus-authenticated but unauthorized users are rejected.
 - generated compose files include log rotation for every long-running container.
 - registry unavailable blocks fresh install with a clear retryable error.
 
@@ -2827,6 +2987,7 @@ Docker host access tests:
 - CMS update request cannot directly access Docker socket.
 - manager API rejects unknown instance ids.
 - manager API rejects mismatched instance id/manifest/compose-project requests.
+- manager API rejects and logs CMS-originated cross-instance update requests.
 - manager API and web UI are not exposed through public SelfHelp instance routes.
 - VPN/private-network reachability does not bypass manager authorization checks.
 
@@ -2858,6 +3019,9 @@ Update tests:
 - MySQL image update reuses the existing per-instance MySQL data volume.
 - MySQL image update requires backup, runtime compatibility check, and health check.
 - CMS can request/monitor update status without mutating Docker directly.
+- CMS admin in one instance cannot see, request, approve, monitor, cancel, or execute updates for another instance.
+- CMS update requests derive the instance id from trusted server-side configuration.
+- CMS update endpoints ignore or reject browser-provided `instanceId` values.
 - manager CLI/container executes the approved update.
 
 Backup tests:
@@ -2893,6 +3057,7 @@ Frontend/BFF tests:
 - server-side frontend code uses internal Symfony URL;
 - generated runtime config is enough for both paths;
 - admin system page shows update and compatibility warnings.
+- admin update UI is scoped to the current instance and does not send arbitrary `instanceId` values for update execution.
 
 Suggested verification commands must be taken from each repository's `AGENTS.md`. Do not invent command names.
 
@@ -3038,6 +3203,8 @@ For `restore_as_clone`, include the new instance id and route:
 
 ### CMS Update Approval Request
 
+`instanceId` is shown here as the server-derived instance identity. The browser must not provide arbitrary `instanceId` values for update execution, and the backend/manager must derive and verify the instance identity from trusted configuration and server inventory.
+
 ```json
 {
   "instanceId": "website1",
@@ -3050,6 +3217,8 @@ For `restore_as_clone`, include the new instance id and route:
 ```
 
 This request authorizes the manager to act. It does not give the CMS backend Docker socket access.
+
+If a request originating from the CMS for `website1` attempts to approve, monitor, cancel, or execute an update for `website2`, SelfHelp Manager must deny it and log it as a security event.
 
 ### Security Advisory Display
 
@@ -3070,7 +3239,7 @@ This request authorizes the manager to act. It does not give the CMS backend Doc
 1. Create `sh-manager` as the SelfHelp Manager repository.
 2. Build signed SelfHelp Manager Docker artifact.
 3. Build signed backend, frontend, worker, and scheduler Docker artifacts.
-4. Build the official connected registry with core/frontend/scheduler/plugin sections.
+4. Adapt `plugins/sh2-plugin-registry` into the official connected registry with core/frontend/scheduler/worker/plugin sections.
 5. Implement manager connected registry fetch and signature verification.
 6. Implement SelfHelp-managed Traefik setup.
 7. Implement server inventory file.
@@ -3110,6 +3279,7 @@ This request authorizes the manager to act. It does not give the CMS backend Doc
 - Scheduler image/command.
 - SelfHelp Manager signed Docker image.
 - SBOMs and signatures.
+- License reports and license-policy gate for every distributed image/artifact.
 - Registry publishing flow.
 
 ### Milestone 3: Docker Installer MVP
@@ -3178,7 +3348,7 @@ This request authorizes the manager to act. It does not give the CMS backend Doc
 
 These are the remaining product choices an implementation agent should confirm if they block implementation:
 
-1. What is the official registry URL and repository name? Recommended: `https://humdek-unibe-ch.github.io/sh2-registry/`.
+1. What public URL should the adapted `plugins/sh2-plugin-registry` registry publish under? Recommended MVP default: keep `https://humdek-unibe-ch.github.io/sh2-plugin-registry/`; if the team later wants `sh2-registry`, rename the one existing registry repository instead of creating a second active registry.
 2. Which release channels are enabled at MVP launch? Recommended: `stable` and `beta`; keep `nightly` dev-only.
 3. Should security-blocked old versions be completely uninstallable, or installable only with a signed/explicit override? Recommended: block in production unless maintainers approve an override policy.
 4. Should local mode use only ports (`localhost:8081`) or also local hostnames? Recommended: ports first.
@@ -3197,7 +3367,7 @@ These are the remaining product choices an implementation agent should confirm i
 - Any persistent manager web UI is private by default, reachable only through localhost, VPN, or a private management network in production MVP.
 - Manager web UI and manager API access require authentication and authorization even when reachable only over VPN.
 - Manager operator accounts are separate from CMS users, and raw manager passwords are never stored in `.env`.
-- UniBE campus account login is available only as an explicitly configured UniBE manager auth provider, using the existing external-auth plugin behavior as reference, with allowlisted emails/domains/groups controlling manager access.
+- Campus account login is available only as an explicitly configured manager auth provider implemented by SelfHelp Manager in TypeScript; the old Symfony/PHP SelfHelp plugin may be inspected only as a reference implementation and must not be installed, reused, or required at runtime.
 - One shared Traefik proxy routes all instances.
 - `selfhelp.server.json` tracks server-level proxy and instance inventory.
 - Operators do not manually write reverse proxy config in normal Docker installs.
@@ -3221,10 +3391,19 @@ These are the remaining product choices an implementation agent should confirm i
 - Clone flow creates a new isolated instance with copied data/artifacts, source lock versions, new secrets, new Docker state, updated inventory, and health checks.
 - Docker socket access is limited to SelfHelp Manager containers; normal runtime containers do not mount it.
 - CMS update management can request/approve/monitor updates but does not mutate Docker state directly.
+- CMS update management is always scoped to the currently authenticated SelfHelp instance.
+- CMS admins are not global server operators and cannot see, request, approve, monitor, cancel, or execute updates for another instance.
+- The current CMS instance id is derived from trusted server-side configuration, not from a browser-provided value.
+- SelfHelp Manager denies and logs CMS-originated cross-instance update requests as security events.
 - Any manager API is internal-only, strongly authenticated, instance-scoped, and never exposes Docker socket access to the CMS backend.
 - Browser API calls go through `/api/*`; server-side frontend calls use internal Symfony URL.
 - Production installs pull ready-built signed artifacts and never run production builds on the server.
-- One official registry contains core/backend, frontend, scheduler, official plugin, compatibility, advisory, checksum, and signature metadata.
+- Every production release pipeline generates SBOMs and license reports for distributed Docker images, npm/shared/mobile-relevant dependencies, Composer dependencies, OS packages, base images, plugin bundles, and static assets.
+- Production release fails or requires explicit legal/reviewer approval when a dependency has an incompatible or unknown license.
+- Allowed/review-required/blocked license policy is documented and confirmed by the project owner/legal responsible person before first public release.
+- Exactly one official registry exists; `plugins/sh2-plugin-registry` is adapted into that unified registry unless the team explicitly renames the same repository later.
+- The unified registry contains or generates core/backend, frontend, scheduler, worker, official plugin, compatibility, dependency, migration, advisory, trusted signing key, checksum, signature, and registry/manifest/lock/advisory schema metadata.
+- No separate production registries exist for core and plugins.
 - The registry keeps old compatible versions available for reproducible experiments.
 - The dependency resolver can choose latest compatible and specific older core/plugin versions.
 - Every instance includes a scheduled-jobs runner container.
