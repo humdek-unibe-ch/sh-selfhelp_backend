@@ -75,10 +75,15 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
         // Sanity: the destructive-migration path was actually exercised.
         self::assertIsArray($preflight['database']);
         self::assertTrue($preflight['database']['destructive']);
-        self::assertContains(
-            SystemUpdateService::CHECK_DESTRUCTIVE_MIGRATION,
-            array_map(static fn (array $c): string => $c['code'], $preflight['checks']),
-        );
+        self::assertIsArray($preflight['checks']);
+        $codes = [];
+        foreach ($preflight['checks'] as $check) {
+            self::assertIsArray($check);
+            $code = $check['code'] ?? null;
+            self::assertIsString($code);
+            $codes[] = $code;
+        }
+        self::assertContains(SystemUpdateService::CHECK_DESTRUCTIVE_MIGRATION, $codes);
     }
 
     public function testRollbackPolicyHoldsWhenRegistryUnreachable(): void

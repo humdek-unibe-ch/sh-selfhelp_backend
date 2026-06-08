@@ -111,10 +111,13 @@ final class ProductionBundlesTest extends TestCase
         /** @var array{packages?: list<array{name?: string}>, packages-dev?: list<array{name?: string}>} $lock */
         $lock = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
 
+        /**
+         * @return list<string>
+         */
         $names = static function (array $packages): array {
             $out = [];
             foreach ($packages as $package) {
-                if (isset($package['name']) && \is_string($package['name'])) {
+                if (\is_array($package) && isset($package['name']) && \is_string($package['name'])) {
                     $out[] = strtolower($package['name']);
                 }
             }
