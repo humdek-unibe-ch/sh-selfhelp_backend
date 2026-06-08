@@ -137,7 +137,7 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      * {@see $password_reset_token} field below so a pending invite and a reset
      * request never overwrite each other.
      */
-    #[ORM\Column(type: 'string', length: 32, nullable: true)]
+    #[ORM\Column(type: 'string', length: 64, nullable: true)]
     private ?string $token = null;
 
     /**
