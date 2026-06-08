@@ -35,7 +35,7 @@ At the end, give me a clear summary:
 Audience: external implementation agent.
 Status: active implementation plan.
 Applies to: SelfHelp2 backend, frontend, shared package, mobile app, official plugin registry, release tooling, Docker installer, updater, and server operations.
-Last verified: 2026-06-05.
+Last verified: 2026-06-08.
 Source of truth: Runtime code in each repository, then active Symfony/Next/Expo/shared/plugin contracts, then this handoff. This file replaces the 2026-06-03 installer-only draft with a Docker-only connected distribution architecture.
 
 ## How To Use This File
@@ -55,6 +55,7 @@ The agent implementing this should keep the following non-negotiable scope decis
 - One official SelfHelp registry is the source of truth for core/backend, frontend, official plugins, compatibility metadata, security advisories, and trusted release keys.
 - Every instance must include its own scheduled-jobs runner container.
 - The server-level tool is named SelfHelp Manager and lives in a separate repository named `sh-manager`.
+- SelfHelp Manager web access is private by default: localhost-only for bootstrap, and VPN/private-network-only when a persistent manager web UI is enabled. Public internet exposure is not part of the MVP.
 
 ## One Sentence Goal
 
@@ -278,6 +279,110 @@ Both modes use the same architecture internally. Even a simple one-instance inst
 - isolated instance folder;
 - manifest;
 - lock file.
+
+### Manager Access And Authentication
+
+SelfHelp Manager is managed through:
+
+- a CLI for server operators;
+- a localhost-only web wizard during bootstrap and repair;
+- an optional persistent manager web UI for server administration.
+
+The manager web UI is not the public SelfHelp CMS and must not be exposed to the open internet. Default behavior:
+
+- bind the bootstrap web UI to `127.0.0.1`;
+- use SSH port forwarding or a local server session for bootstrap where possible;
+- disable/remove the bootstrap web UI after successful install;
+- keep the CLI available for update, backup, restore, clone, remove, health, and support-bundle commands.
+
+If a persistent manager web UI is enabled, it must be treated as a server operations console:
+
+- expose it only on localhost, a private management network, or a VPN-only address;
+- require TLS whenever it is reachable over a network;
+- require manager authentication even when the UI is reachable only over VPN;
+- reject public internet exposure in production MVP unless a later hardening decision explicitly changes this;
+- record the bind host, public/private manager URL, authentication mode, and allowed operators in manager configuration.
+
+The recommended production model for a university server is:
+
+```text
+Public internet
+  -> SelfHelp instance domains only
+
+VPN or private management network
+  -> SelfHelp Manager web UI
+```
+
+VPN access is a network gate, not a replacement for login. The manager still needs user authentication, authorization, sessions, CSRF protection, audit logs, and short-lived admin operations.
+
+Manager operator identities are separate from CMS users. A CMS administrator is not automatically a SelfHelp Manager operator. The manager may show instance/CMS status, and the CMS may request an update, but server-level Docker authority remains with the manager.
+
+Manager authentication rules:
+
+- Bootstrap creates the first manager operator through a one-time setup token, an interactive CLI command, or the first-run web wizard.
+- Do not store raw manager passwords in `.env`.
+- Environment variables may configure bind addresses, auth mode, external auth endpoints, trusted callback URLs, setup-token file paths, and secret file paths.
+- Passwords and signing/session secrets must live in restricted secret files or an encrypted/hashed manager credential store under `/opt/selfhelp/manager`, not in plain environment variables.
+- Local password authentication must store password hashes only.
+- Manager roles should include at least `server_owner`, `instance_operator`, and `read_only`.
+- Admin changes must be possible through CLI commands such as `sh-manager admin create`, `sh-manager admin disable`, `sh-manager admin role grant`, and `sh-manager admin allow-email add` once the command names are finalized.
+
+Suggested manager config file:
+
+```text
+/opt/selfhelp/manager/selfhelp.manager.json
+```
+
+Suggested non-secret environment variables:
+
+```dotenv
+SELFHELP_MANAGER_BIND_HOST=127.0.0.1
+SELFHELP_MANAGER_BIND_PORT=9741
+SELFHELP_MANAGER_PUBLIC_URL=https://selfhelp-manager.example.ch
+SELFHELP_MANAGER_AUTH_MODE=local
+SELFHELP_MANAGER_CONFIG_PATH=/opt/selfhelp/manager/selfhelp.manager.json
+SELFHELP_MANAGER_SESSION_SECRET_FILE=/opt/selfhelp/manager/secrets/session_secret
+SELFHELP_MANAGER_BOOTSTRAP_TOKEN_FILE=/opt/selfhelp/manager/secrets/bootstrap_token
+```
+
+For UniBE installations, SelfHelp Manager should support an optional UniBE-only campus account provider:
+
+- This is not the default global SelfHelp login mode.
+- It must be disabled unless explicitly configured for a UniBE deployment.
+- It should reuse the existing campus account login behavior from the old SelfHelp plugin at `sh-selfhelp/server/plugins/sh-shp-auth_external` as the reference implementation for protocol, redirects, identity attributes, and error handling.
+- Because `sh-manager` is a separate TypeScript server-management tool, it should not directly install the old Symfony/PHP plugin into the manager. Instead, implement a manager auth provider that uses the same external-auth flow after inspecting the plugin runtime behavior.
+- Campus account authentication proves identity; manager authorization still comes from an explicit allowlist, approved email domain, group claim, or role mapping.
+- UniBE email/domain/group allowlists must be configurable by the manager CLI and stored in manager config, not hard-coded.
+
+Example UniBE-only manager auth configuration shape:
+
+```json
+{
+  "auth": {
+    "mode": "unibe_external",
+    "providers": {
+      "unibeExternal": {
+        "enabled": true,
+        "referenceImplementation": "sh-selfhelp/server/plugins/sh-shp-auth_external",
+        "allowedEmailDomains": ["unibe.ch"],
+        "allowedEmails": [
+          "admin@unibe.ch"
+        ],
+        "roleMappings": [
+          {
+            "match": {
+              "email": "admin@unibe.ch"
+            },
+            "roles": ["server_owner"]
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+UniBE custom behavior must stay isolated behind this provider. Other institutions should be able to use local manager accounts or a future generic OIDC/SAML provider without inheriting UniBE-specific assumptions.
 
 ## First Server Bootstrap Flow
 
@@ -616,6 +721,25 @@ Rules:
 - Backend, DB, Redis, Mercure, worker, and scheduler remain on the private instance network.
 - Secret files must have restrictive permissions.
 - The instance manifest and lock file must never contain raw secrets.
+
+### Persistent State And Disposable Containers
+
+Each instance has persistent state and disposable runtime containers.
+
+Rules:
+
+- MySQL runs as a separate per-instance Docker service.
+- MySQL data is stored in a per-instance persistent Docker volume.
+- Uploads/assets are stored in a per-instance persistent volume or bind-mounted folder.
+- Uploads/assets must never live only inside the backend or frontend container filesystem.
+- Plugin artifacts are stored in a per-instance persistent volume or bind-mounted folder.
+- Backend, frontend, worker, and scheduler containers are disposable and may be replaced during install, update, rollback, or repair.
+- Redis, Mercure, and MySQL containers may be replaced only when the selected SelfHelp release and runtime compatibility policy allow it.
+- Updating containers must never delete DB data, uploads/assets, plugin artifacts, secrets, backups, logs, or operation logs.
+- Normal updates must preserve uploads/assets.
+- Full delete may delete uploads/assets, plugin artifacts, database volumes, backups, logs, and operation logs only after explicit operator confirmation.
+- Logs are available through `docker compose logs`.
+- Important manager operation logs are stored under `/opt/selfhelp/instances/<instanceId>/logs/` and `/opt/selfhelp/instances/<instanceId>/update-operations/`.
 
 ## Per-Instance Operator README
 
@@ -1513,8 +1637,11 @@ Remote access requires:
 - short expiration time;
 - clear warning in the installer UI;
 - CSRF/session protection.
+- network restriction to localhost, VPN, or a private management network.
 
 After successful installation, the installer container/service must be stopped and removed or disabled.
+
+If a persistent manager web UI is enabled after installation, it is not considered installer access. It must still remain private, authenticated, and server-operator-only. It must not be routed through the public SelfHelp instance domains.
 
 Additional rules:
 
@@ -1883,9 +2010,10 @@ Persistent state includes:
 - backup directory;
 - secrets directory;
 - manifest and lock history;
+- logs directory;
 - update operation logs.
 
-The updater may replace containers and images, but it must not delete persistent volumes unless the operator explicitly runs the destructive full-delete instance flow.
+The updater may replace containers and images, but it must not delete persistent volumes, bind-mounted state, secrets, backups, logs, or operation logs unless the operator explicitly runs the destructive full-delete instance flow.
 
 Updating an existing instance means:
 
@@ -1926,6 +2054,8 @@ Only the last one is destructive and must never happen during a normal update.
 During update, SelfHelp Manager must never remove the MySQL data volume.
 
 A MySQL image update must reuse the existing instance MySQL data volume.
+
+MySQL image updates must be handled by SelfHelp Manager, not by the CMS or manual runtime container edits. The manager must create and verify a backup, check runtime compatibility, replace only the container image, wait for MySQL health, and run post-update health checks before completing the operation.
 
 The updater must not run destructive Docker commands such as:
 
@@ -2059,27 +2189,43 @@ Update flow:
 19. Exit maintenance mode.
 20. Record operation logs.
 
-## CMS-Initiated Updates
+## CMS System Update UI
 
-The SelfHelp CMS admin UI must support update management.
+The SelfHelp CMS admin UI must include a system maintenance/update area.
 
-Authorized admins should be able to:
+The CMS UI may show:
 
-- check the official registry for core/frontend/plugin updates;
-- see current installed versions from the instance manifest and lock file;
-- see latest available versions;
-- see latest compatible versions;
-- see security advisories;
-- run update dry-run/preflight;
-- review plugin compatibility impact;
-- review migration risk and rollback level;
-- approve an update;
-- monitor update progress;
-- see update success/failure logs.
+- currently installed SelfHelp/core version;
+- backend version;
+- frontend version;
+- scheduler version;
+- worker version;
+- installed plugin versions;
+- latest available compatible plugin versions;
+- latest available SelfHelp/core version;
+- security advisories;
+- whether a newer plugin version is blocked because the current SelfHelp/core version is too old;
+- whether the CMS/core must be updated before a plugin can be updated;
+- update dry-run result;
+- required backup/migration warnings;
+- update operation history.
 
-The CMS must not directly mutate Docker state or replace its own containers.
+The CMS UI must not directly access Docker, mutate server files, replace its own containers, or update generated compose/manifest/lock files.
 
-All Docker/image/config/migration operations must be executed by SelfHelp Manager.
+Instead, the CMS UI sends an authenticated update request to SelfHelp Manager, or records an update request that SelfHelp Manager can execute.
+
+SelfHelp Manager remains the only component allowed to:
+
+- pull Docker images;
+- verify registry signatures and checksums;
+- update compose files;
+- update manifest and lock files;
+- run database migrations;
+- update plugins;
+- restart containers;
+- rollback after failed update.
+
+The CMS UI can be used as the human-friendly control surface, but the actual execution must happen through SelfHelp Manager commands or Manager API calls.
 
 MVP behavior:
 
@@ -2097,6 +2243,7 @@ Final target:
 If the CMS can trigger updates through the manager, the manager API must:
 
 - be internal-only, not publicly exposed;
+- be reachable only through the internal Docker network, localhost, VPN, or a private management network;
 - require strong authentication between the instance and manager;
 - authorize only the matching instance id;
 - require an admin approval token or signed update request;
@@ -2106,6 +2253,8 @@ If the CMS can trigger updates through the manager, the manager API must:
 - never expose Docker socket access to the CMS backend container.
 
 The manager API should treat the CMS as a requester, not as a trusted host-control process. Docker authority stays inside SelfHelp Manager.
+
+If the manager has a web UI and an API, they must share the same server-operator authorization model. VPN access may allow reaching the UI/API, but it must not bypass login, roles, audit logging, approval checks, or CSRF/session protection.
 
 ## Update Dry Run And Preflight
 
@@ -2221,6 +2370,18 @@ If destructive migrations are present:
 
 Backups must be consistent and restorable. A backup that cannot be read, identified, and matched to an instance version is not a valid safety point for update, destructive migration, restore, or clone.
 
+Sysadmins create backups through:
+
+```bash
+sh-manager instance backup <instanceId>
+```
+
+Backups must be stored under:
+
+```text
+/opt/selfhelp/instances/<instanceId>/backups/
+```
+
 For update backups:
 
 - the instance must enter maintenance mode; or
@@ -2240,17 +2401,17 @@ Backup metadata must record:
 - included data areas;
 - checksum/integrity result.
 
-Recommended included data areas:
+Each backup must include:
 
-- database dump or snapshot;
-- uploads/assets;
-- plugin artifacts and plugin lock data;
+- MySQL dump, preferably compressed;
+- uploads/assets snapshot;
+- plugin artifacts snapshot or lock-based reinstall metadata;
 - `selfhelp.instance.json`;
 - `selfhelp.lock.json`;
-- generated compose file;
-- redacted env/config summary;
-- migration version metadata;
-- backup manifest metadata.
+- `compose.yaml`;
+- redacted env/config metadata;
+- migration version;
+- backup manifest with checksums.
 
 Before destructive migrations, the manager must verify that the backup can be read and that required metadata exists. The preflight must fail if:
 
@@ -2605,6 +2766,14 @@ Installer tests:
 - installer binds localhost by default;
 - remote access requires one-time token and expiration;
 - installer disables/removes itself after success.
+- persistent manager web UI is disabled by default.
+- persistent manager web UI can bind only to localhost, VPN, or a private management network in production MVP.
+- manager web UI requires login even when reachable only over VPN.
+- manager local-auth passwords are stored as hashes and never in `.env`.
+- manager bootstrap token is one-time and rotates after use.
+- UniBE external-auth mode is disabled by default and only enabled by explicit manager config.
+- UniBE external-auth mode allows only configured email/domain/group mappings to become manager operators.
+- campus-authenticated but unauthorized UniBE users are rejected.
 - generated compose files include log rotation for every long-running container.
 - registry unavailable blocks fresh install with a clear retryable error.
 
@@ -2658,6 +2827,8 @@ Docker host access tests:
 - CMS update request cannot directly access Docker socket.
 - manager API rejects unknown instance ids.
 - manager API rejects mismatched instance id/manifest/compose-project requests.
+- manager API and web UI are not exposed through public SelfHelp instance routes.
+- VPN/private-network reachability does not bypass manager authorization checks.
 
 Registry/resolver tests:
 
@@ -2682,8 +2853,32 @@ Update tests:
 - destructive migration path requires verified backup and manual confirmation;
 - manifest and lock are updated atomically after success;
 - lock drift is detected.
+- normal updates preserve uploads/assets.
+- updating backend/frontend/worker/scheduler containers does not delete DB data, uploads/assets, plugin artifacts, secrets, backups, logs, or operation logs.
+- MySQL image update reuses the existing per-instance MySQL data volume.
+- MySQL image update requires backup, runtime compatibility check, and health check.
 - CMS can request/monitor update status without mutating Docker directly.
 - manager CLI/container executes the approved update.
+
+Backup tests:
+
+- `sh-manager instance backup <instanceId>` creates backups under `/opt/selfhelp/instances/<instanceId>/backups/`.
+- backups include a compressed or compressible MySQL dump.
+- backups include uploads/assets snapshot.
+- backups include plugin artifacts snapshot or lock-based reinstall metadata.
+- backups include `selfhelp.instance.json`, `selfhelp.lock.json`, `compose.yaml`, redacted env/config metadata, migration version, and backup manifest with checksums.
+- backup integrity verification fails when required checksum metadata is missing or invalid.
+- backup creation never stores secrets in redacted env/config metadata.
+
+Persistent-state tests:
+
+- MySQL data is stored in a per-instance persistent volume.
+- uploads/assets are stored in a per-instance persistent volume or bind mount.
+- plugin artifacts are stored in a per-instance persistent volume or bind mount.
+- backend/frontend/worker/scheduler containers are disposable.
+- uploads/assets do not live only inside backend/frontend container filesystems.
+- full delete deletes persistent state only after explicit operator confirmation.
+- important operation logs are stored under `/opt/selfhelp/instances/<instanceId>/logs/` and `/opt/selfhelp/instances/<instanceId>/update-operations/`.
 
 Health/support tests:
 
@@ -2999,10 +3194,27 @@ These are the remaining product choices an implementation agent should confirm i
 - The installer binds localhost only by default.
 - Remote installer access requires explicit confirmation, one-time token, and expiration.
 - The installer disables/removes itself after successful install.
+- Any persistent manager web UI is private by default, reachable only through localhost, VPN, or a private management network in production MVP.
+- Manager web UI and manager API access require authentication and authorization even when reachable only over VPN.
+- Manager operator accounts are separate from CMS users, and raw manager passwords are never stored in `.env`.
+- UniBE campus account login is available only as an explicitly configured UniBE manager auth provider, using the existing external-auth plugin behavior as reference, with allowlisted emails/domains/groups controlling manager access.
 - One shared Traefik proxy routes all instances.
 - `selfhelp.server.json` tracks server-level proxy and instance inventory.
 - Operators do not manually write reverse proxy config in normal Docker installs.
 - Each instance has isolated DB, Redis, Mercure, worker, scheduler, uploads, plugin artifacts, secrets, images, manifest, and lock file.
+- MySQL runs as a separate per-instance Docker service.
+- MySQL data is stored in a per-instance persistent volume.
+- Uploads/assets are stored in a per-instance persistent volume or bind mount, never only inside backend/frontend container filesystems.
+- Plugin artifacts are stored in a per-instance persistent volume or bind mount.
+- Backend/frontend/worker/scheduler containers are disposable.
+- Updating containers never deletes DB data, uploads/assets, plugin artifacts, secrets, backups, logs, or operation logs.
+- Normal updates preserve uploads/assets.
+- Full delete may delete uploads/assets only after explicit operator confirmation.
+- MySQL image updates are handled by SelfHelp Manager with backup, compatibility check, and health check.
+- Sysadmins create backups through `sh-manager instance backup <instanceId>`.
+- Backups are stored under `/opt/selfhelp/instances/<instanceId>/backups/`.
+- Backups include MySQL dump, uploads/assets snapshot, plugin artifacts snapshot or lock-based reinstall metadata, instance manifest, lock file, compose file, redacted env/config metadata, migration version, and backup manifest with checksums.
+- Logs are available through `docker compose logs`, and important operation logs are stored under `/opt/selfhelp/instances/<instanceId>/logs/` and `/opt/selfhelp/instances/<instanceId>/update-operations/`.
 - SelfHelp Manager can list, add, disable, remove, backup, restore, clone, update, health-check, and support-bundle selected instances.
 - Remove-instance flow never touches other instances and never removes shared Traefik while another instance exists.
 - Restore flow verifies backup integrity, restores DB/uploads/plugin artifacts/manifest/lock, preserves secrets for same-instance restore, generates new secrets for restore-as-clone, and runs health checks.
