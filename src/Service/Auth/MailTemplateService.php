@@ -105,6 +105,7 @@ class MailTemplateService
             MailTemplateDefaults::TYPE_CONFIRM,
             MailTemplateDefaults::TYPE_2FA,
             MailTemplateDefaults::TYPE_RECOVERY,
+            MailTemplateDefaults::TYPE_PASSWORD_CHANGED,
         ];
 
         return in_array($type, $requiredSystemTypes, true)

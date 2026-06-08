@@ -158,6 +158,8 @@ class PasswordResetService extends BaseService
                 ]) ?: null
             );
 
+            $this->sendPasswordChangedEmail($user);
+
             $this->entityManager->commit();
 
             return true;
@@ -189,5 +191,34 @@ class PasswordResetService extends BaseService
         $locale = trim($locale);
 
         return $locale !== '' ? $locale : null;
+    }
+
+    private function sendPasswordChangedEmail(User $user): void
+    {
+        $userId = (int) $user->getId();
+
+        $resolved = $this->mailTemplateService->buildEmailConfig(
+            MailTemplateDefaults::TYPE_PASSWORD_CHANGED,
+            [
+                'user_name' => $user->getName() ?: $user->getEmail(),
+                'platform_url' => rtrim($this->frontendBaseUrl, '/') . '/',
+            ],
+            ['recipient_emails' => $user->getEmail()],
+            $this->resolveUserMailLocale($user)
+        );
+
+        $jobId = $this->jobSchedulerService->scheduleDirectEmailJob(
+            $resolved,
+            new \DateTime('now', new \DateTimeZone('UTC')),
+            $userId
+        );
+
+        if (!$jobId) {
+            throw new \RuntimeException('Failed to schedule password-changed email');
+        }
+
+        if ($this->jobSchedulerService->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM) === false) {
+            throw new \RuntimeException('Failed to send password-changed email');
+        }
     }
 }

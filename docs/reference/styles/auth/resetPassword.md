@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (auth password-reset flow, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-05.
+Last verified: 2026-06-08.
 Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, and `MailTemplateService`.
 
 ## Summary
@@ -29,12 +29,14 @@ even when the recipient disabled platform emails in their profile.
 ## For administrators
 
 Place a `resetPassword` section on your "forgot password" page (usually linked
-from the [`login`](./login.md) page's `label_pw_reset` link). Fill in the
-on-screen text the visitor sees: intro text, input placeholder, submit label,
-and the success message.
+from the [`login`](./login.md) page's `label_pw_reset` link). It handles both
+the "request a reset link" screen and the "set a new password" screen reached
+from the recovery email. Fill in the text for both modes so visitors see the
+right labels and success/error states at each step.
 
-The **content of the recovery email** is edited centrally on the mail-config
-page (the `Recovery` subject/body), not on this style — the same place the
+The **content of the recovery email** and the **post-reset confirmation email**
+are edited centrally on the mail-config page (the `Recovery` and `Password
+Changed` subject/body fields), not on this style — the same place the
 validation, welcome, and 2FA emails are edited.
 
 Keep the success message deliberately vague ("If that email exists, we sent a
@@ -53,14 +55,15 @@ render:
   `<FRONTEND_BASE_URL>/reset/{user_id}/{token}`.
 - **Set-password mode** (`/reset/{user_id}/{token}`): posts the new password to
   `POST /auth/reset-password`. `PasswordResetService::resetPassword()` validates
-  the token, sets the password, clears the token (single-use), and the UI
-  redirects to login.
+  the token, sets the password, clears the token (single-use), sends the
+  `mail_password_changed` confirmation email immediately, and the UI redirects
+  to login.
 
 The email copy comes from `MailTemplateService` (`mail_recovery_subject` /
 `mail_recovery_body` on the `sh-mail-config` page), **not** from this style's
-`subject_user` / `email_user` fields — those are legacy and are not consumed by
-the current backend. The mail is `required_system`, so it bypasses the user's
-email preference. See [Authentication APIs](../../api/01-authentication.md#forgot-password-request-a-reset-link).
+legacy `subject_user` field. The mail is `required_system`, so it bypasses the
+user's email preference. See
+[Authentication APIs](../../api/01-authentication.md#forgot-password-request-a-reset-link).
 
 ## Fields
 
@@ -69,13 +72,23 @@ live in the DB / `admin/styles/schema` endpoint.
 
 | Field | Type | `display` | Purpose |
 |-------|------|-----------|---------|
-| `text_md` | markdown | 1 | Intro text shown above the form. |
 | `placeholder` | text | 1 | Placeholder for the email input. |
 | `label_pw_reset` | text | 1 | Submit button label. |
-| `alert_success` | text | 1 | Confirmation shown after submitting. |
+| `alert_success` | text | 1 | Confirmation shown after submitting the email form. |
 | `type` | text | 0 | Visual type/variant of the success alert. |
+| `reset_title` | text | 1 | Heading shown above the set-password form when the reset token is present in the URL. |
+| `reset_label_pw` | text | 1 | Label for the new-password input on the set-password form. |
+| `reset_pw_placeholder` | text | 1 | Placeholder for the new-password input. |
+| `reset_label_pw_confirm` | text | 1 | Label for the confirm-password input. |
+| `reset_pw_confirm_placeholder` | text | 1 | Placeholder for the confirm-password input. |
+| `reset_label_submit` | text | 1 | Submit button label for the set-password form. |
+| `reset_success_title` | text | 1 | Alert title shown after the password has been reset. |
+| `reset_alert_success` | text | 1 | Alert body shown after the password has been reset. |
+| `reset_redirect_text` | text | 1 | Countdown text shown while redirecting to login after a successful reset. Must contain `{seconds}`. |
+| `reset_error_invalid_token` | text | 1 | Fallback message for an invalid or expired reset link. |
+| `reset_error_pw_short` | text | 1 | Validation message when the new password is shorter than 8 characters. |
+| `reset_error_pw_mismatch` | text | 1 | Validation message when the two entered passwords do not match. |
 | `subject_user` | text | 1 | Legacy: not used. The reset email subject comes from `mail_recovery_subject` on the `sh-mail-config` page. |
-| `email_user` | markdown | 1 | Legacy: not used. The reset email body comes from `mail_recovery_body` on the `sh-mail-config` page. |
 | `is_html` | checkbox | 0 | Whether the reset email body is sent as HTML. |
 | spacing fields | various | 0 | Inherited from `IStyleWithSpacing`. |
 

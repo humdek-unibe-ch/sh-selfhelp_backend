@@ -349,7 +349,7 @@ Request a password-recovery email for an account. The response is **always a gen
 
 ### Reset Password (set a new password)
 
-Consume the one-time recovery token from the reset email and set a new password. The token is single-use and is cleared on success.
+Consume the one-time recovery token from the reset email and set a new password. The token is single-use, is cleared on success, and triggers an immediate password-changed confirmation email (`mail_password_changed`).
 
 **Endpoint:** `POST /cms-api/v1/auth/reset-password`
 
