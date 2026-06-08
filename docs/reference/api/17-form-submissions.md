@@ -336,6 +336,10 @@ const submitValidatedForm = async (formData, files) => {
 6. **Accessibility**: Ensure forms are accessible to all users
 7. **Mobile Optimization**: Responsive form design
 
+> **Where does submitted data go?** Form data is stored in data tables named
+> after the form's section id. Admins read, delete, and export those tables
+> through the [Admin Data Tables APIs](./18-admin-data-tables.md).
+
 ---
 
 **Back to:** [API Overview](../../README.md)

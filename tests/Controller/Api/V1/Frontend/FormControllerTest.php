@@ -173,6 +173,44 @@ final class FormControllerTest extends QaWebTestCase
         self::assertNotNull($envelope['error'], 'A rejected submission must carry an error.');
     }
 
+    public function testSubmitEmptyObjectFormDataIsRejectedWithoutArrayObjectConfusion(): void
+    {
+        // Regression: a JSON `"form_data": {}` body used to be decoded to an empty
+        // PHP array and validated as a list, producing the misleading schema error
+        // "Array value found, but an object is required". RequestValidatorTrait now
+        // re-decodes the body so {} stays an object; validation fails cleanly on
+        // minProperties instead. We assert the request is rejected and the error no
+        // longer mentions the array/object confusion.
+        [$page, $section] = $this->pages->createFormPage('qa_form_empty_object', openAccess: true);
+
+        // Send a raw body so `{}` survives as a JSON object (json_encode([]) is `[]`).
+        $this->client->request(
+            'POST',
+            self::SUBMIT,
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            json_encode([
+                'page_id' => (int) $page->getId(),
+                'section_id' => (int) $section->getId(),
+                'form_data' => new \stdClass(),
+            ], JSON_THROW_ON_ERROR),
+        );
+        $envelope = $this->decode($this->client->getResponse());
+
+        self::assertGreaterThanOrEqual(
+            Response::HTTP_BAD_REQUEST,
+            $this->coerceInt($envelope['status'] ?? 0),
+            'Empty-object form_data must be rejected.',
+        );
+        $error = $envelope['error'] ?? '';
+        self::assertStringNotContainsStringIgnoringCase(
+            'Array value found',
+            is_string($error) ? $error : '',
+            'The empty-object body must not trigger the array-vs-object schema error.',
+        );
+    }
+
     // -- Authenticated ACL path ---------------------------------------------
 
     public function testAuthenticatedInsertWithAclGrantCreatesRecord(): void

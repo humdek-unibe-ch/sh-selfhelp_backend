@@ -8,6 +8,7 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\DataService;
@@ -320,6 +321,210 @@ class AdminDataController extends AbstractController
                 Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
+    }
+
+    /**
+     * Export a single data table as CSV or JSON (raw, no envelope).
+     * Query params: format=csv|json, user_id (optional), language_id (optional, default 1), exclude_deleted (optional, default true)
+     */
+    public function exportTable(Request $request, string $tableName): Response
+    {
+        try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
+            $format = strtolower((string) $request->query->get('format', 'csv'));
+            if (!in_array($format, ['csv', 'json'], true)) {
+                return $this->responseFormatter->formatError('format must be csv or json', Response::HTTP_BAD_REQUEST);
+            }
+
+            $userId = $request->query->has('user_id') ? (int) $request->query->get('user_id') : null;
+            $languageId = $request->query->has('language_id') ? (int) $request->query->get('language_id') : 1;
+            $excludeDeleted = filter_var($request->query->get('exclude_deleted', 'true'), FILTER_VALIDATE_BOOLEAN);
+
+            $hasFullAccess = $this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE);
+            if ($hasFullAccess) {
+                $rows = $this->dataService->getData((int) $dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
+            } else {
+                $rows = $this->dataService->getDataWithUserGroupFilter((int) $dataTable->getId(), $currentUserId, '', $excludeDeleted, $languageId);
+            }
+
+            $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? $tableName;
+            $filename = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
+
+            if ($format === 'json') {
+                return new Response(
+                    (string) json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                    Response::HTTP_OK,
+                    [
+                        'Content-Type' => 'application/json',
+                        'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                    ]
+                );
+            }
+
+            // CSV
+            $csvContent = $this->buildCsv($rows);
+            return new Response(
+                $csvContent,
+                Response::HTTP_OK,
+                [
+                    'Content-Type' => 'text/csv; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                ]
+            );
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError('Export failed', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Export multiple data tables as a ZIP archive containing one file per table.
+     * Body: { table_names, format, user_id?, language_id?, exclude_deleted? }
+     * Returns 403 if the user cannot read any of the requested tables.
+     */
+    public function exportTables(Request $request): Response
+    {
+        try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+
+            $data = $this->validateRequest($request, 'requests/admin/data_export_bulk', $this->jsonSchemaValidationService);
+
+            $tableNames = $this->toStringList($data['table_names'] ?? []);
+            $format = strtolower($this->asStringField($data, 'format', 'csv'));
+            $userId = isset($data['user_id']) && is_int($data['user_id']) ? $data['user_id'] : null;
+            $languageId = isset($data['language_id']) && is_int($data['language_id']) ? $data['language_id'] : 1;
+            $excludeDeleted = $this->asBoolField($data, 'exclude_deleted', true);
+
+            // Authorise all tables up-front; 403 on first unauthorised table
+            $tables = [];
+            foreach ($tableNames as $name) {
+                $dataTable = $this->dataService->getDataTableByName($name);
+                if (!$dataTable) {
+                    return $this->responseFormatter->formatError("Data table not found: {$name}", Response::HTTP_NOT_FOUND);
+                }
+                if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_READ)) {
+                    return $this->responseFormatter->formatError("Access denied for table: {$name}", Response::HTTP_FORBIDDEN);
+                }
+                $tables[] = $dataTable;
+            }
+
+            // Build ZIP in a temp file
+            $tmpFile = tempnam(sys_get_temp_dir(), 'sh_export_');
+            if ($tmpFile === false) {
+                return $this->responseFormatter->formatError('Could not create temporary file', Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+
+            $zip = new \ZipArchive();
+            if ($zip->open($tmpFile, \ZipArchive::OVERWRITE) !== true) {
+                unlink($tmpFile);
+                return $this->responseFormatter->formatError('Could not create ZIP archive', Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+
+            foreach ($tables as $dataTable) {
+                $hasFullAccess = $this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_DELETE);
+                if ($hasFullAccess) {
+                    $rows = $this->dataService->getData((int) $dataTable->getId(), '', false, $userId, false, $excludeDeleted, $languageId);
+                } else {
+                    $rows = $this->dataService->getDataWithUserGroupFilter((int) $dataTable->getId(), $currentUserId, '', $excludeDeleted, $languageId);
+                }
+
+                $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? '';
+                $entryName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
+
+                $content = $format === 'json'
+                    ? (string) json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
+                    : $this->buildCsv($rows);
+
+                $zip->addFromString($entryName, $content);
+            }
+
+            $zip->close();
+
+            $zipContent = (string) file_get_contents($tmpFile);
+            unlink($tmpFile);
+
+            return new Response(
+                $zipContent,
+                Response::HTTP_OK,
+                [
+                    'Content-Type' => 'application/zip',
+                    'Content-Disposition' => 'attachment; filename="data_export.zip"',
+                ]
+            );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener turn schema-validation failures into a
+            // 400 envelope instead of swallowing them as a generic 500 below.
+            throw $e;
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError('Export failed', Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Build a CSV string from a list of row arrays.
+     * Collects the union of all keys as the header row; missing cells are empty.
+     *
+     * @param array<array-key, mixed> $rows
+     */
+    private function buildCsv(array $rows): string
+    {
+        if (empty($rows)) {
+            return '';
+        }
+
+        // Union of all column names across all rows
+        $headers = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                foreach (array_keys($row) as $key) {
+                    $headers[(string) $key] = true;
+                }
+            }
+        }
+        $headers = array_keys($headers);
+
+        $handle = fopen('php://temp', 'r+');
+        if ($handle === false) {
+            return '';
+        }
+
+        fputcsv($handle, $headers, escape: '');
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $line = [];
+            foreach ($headers as $col) {
+                $val = $row[$col] ?? null;
+                $line[] = is_scalar($val) ? (string) $val : '';
+            }
+            fputcsv($handle, $line, escape: '');
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv === false ? '' : $csv;
     }
 
     /**

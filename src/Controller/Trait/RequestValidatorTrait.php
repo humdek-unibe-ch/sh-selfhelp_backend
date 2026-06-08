@@ -33,7 +33,8 @@ trait RequestValidatorTrait
         JsonSchemaValidationService $jsonSchemaValidationService
     ): array {
         // Parse JSON request body
-        $decoded = json_decode($request->getContent(), true);
+        $content = $request->getContent();
+        $decoded = json_decode($content, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new \InvalidArgumentException('Invalid JSON payload: ' . json_last_error_msg());
         }
@@ -41,8 +42,18 @@ trait RequestValidatorTrait
         // API request bodies must be JSON objects/arrays; anything scalar fails validation below.
         $data = is_array($decoded) ? $decoded : [];
 
+        // Decode a second time WITHOUT assoc so the validator sees the real JSON
+        // shape: `{}` stays a stdClass and `[]` stays a list. json_decode(assoc=true)
+        // collapses both to `[]`, which made an empty `form_data: {}` validate as a
+        // list and produce the misleading "Array value found, but an object is
+        // required" error instead of the correct minProperties failure.
+        $forValidation = json_decode($content);
+        if (!is_object($forValidation) && !is_array($forValidation)) {
+            $forValidation = new \stdClass();
+        }
+
         // Validate against schema
-        $validationErrors = $jsonSchemaValidationService->validate($this->convertToObject($data), $schemaName);
+        $validationErrors = $jsonSchemaValidationService->validate($forValidation, $schemaName);
         if (!empty($validationErrors)) {
             throw new RequestValidationException(
                 $validationErrors,
