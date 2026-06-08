@@ -15,3 +15,14 @@ services:
     Symfony\Component\Mercure\HubInterface:
         alias: App\Tests\Support\MercureTestRecorder
         public: true
+
+    # Issue #36: a delivery-aware plugin scheduled-job handler double. autoconfigure
+    # applies the `selfhelp.plugin.scheduled_job_handler` tag (declared on the
+    # implemented interface) so it is collected into the real
+    # PluginScheduledJobRegistry, letting PluginScheduledJobPreferenceTest prove the
+    # host enforces receivesEmails() on plugin jobs. It claims a qa_-scoped job type
+    # so it never shadows a real one.
+    App\Tests\Support\Plugin\QaDeliveryAwarePluginJobHandler:
+        autoconfigure: true
+        autowire: true
+        public: true

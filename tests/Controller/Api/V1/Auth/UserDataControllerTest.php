@@ -32,6 +32,7 @@ final class UserDataControllerTest extends QaWebTestCase
     private const REQUIRED_KEYS = [
         'id', 'email', 'name', 'user_name', 'blocked',
         'acl_version', 'language', 'timezone', 'roles', 'permissions', 'groups',
+        'receives_notifications', 'receives_emails',
     ];
 
     public function testAdminUserDataExposesFullPermissionContract(): void
@@ -48,6 +49,10 @@ final class UserDataControllerTest extends QaWebTestCase
         self::assertFalse($data['blocked'], 'qa.admin must not be blocked.');
         self::assertIsString($data['acl_version']);
         self::assertNotSame('', $data['acl_version'], 'acl_version must be a non-empty token.');
+
+        // Communication preferences (issue #29) are part of the IUserData contract.
+        self::assertIsBool($data['receives_notifications']);
+        self::assertIsBool($data['receives_emails']);
 
         // Language is always resolved (own or CMS default fallback).
         self::assertIsArray($data['language']);

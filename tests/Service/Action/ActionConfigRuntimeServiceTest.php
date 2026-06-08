@@ -99,4 +99,72 @@ class ActionConfigRuntimeServiceTest extends TestCase
             'send_after'
         ));
     }
+
+    /**
+     * Regression for the reported bug where a recipient template like
+     * "{{recipient.email}};extra@x.org" collapsed to ";extra@x.org" during the
+     * early submitted-value interpolation (Mustache blanks unknown variables).
+     *
+     * With a REAL interpolation service, the per-recipient scopes
+     * ({{recipient.*}}, {{mail.*}}) must survive verbatim so the ActionScheduler
+     * can render them once the concrete recipient is known, while ordinary
+     * submitted-value placeholders are still resolved.
+     */
+    public function testBuildRuntimeConfigPreservesPerRecipientPlaceholders(): void
+    {
+        $service = new ActionConfigRuntimeService(
+            new InterpolationService(),
+            $this->createStub(EntityManagerInterface::class)
+        );
+
+        $action = (new Action())->setConfig((string) json_encode([
+            ActionConfig::BLOCKS => [[
+                ActionConfig::JOBS => [[
+                    ActionConfig::NOTIFICATION => [
+                        ActionConfig::RECIPIENT => '{{recipient.email}};qa.stefan@selfhelp.test',
+                        ActionConfig::SUBJECT => '{{greeting}} from the clinic',
+                        ActionConfig::BODY => 'Open {{mail.link}} to continue.',
+                    ],
+                ]],
+            ]],
+        ]));
+
+        $runtimeConfig = $service->buildRuntimeConfig($action, ['greeting' => 'Hello World']);
+
+        $recipient = self::asString($this->jsonGet(
+            $runtimeConfig,
+            ActionConfig::BLOCKS,
+            0,
+            ActionConfig::JOBS,
+            0,
+            ActionConfig::NOTIFICATION,
+            ActionConfig::RECIPIENT
+        ));
+        $subject = self::asString($this->jsonGet(
+            $runtimeConfig,
+            ActionConfig::BLOCKS,
+            0,
+            ActionConfig::JOBS,
+            0,
+            ActionConfig::NOTIFICATION,
+            ActionConfig::SUBJECT
+        ));
+        $body = self::asString($this->jsonGet(
+            $runtimeConfig,
+            ActionConfig::BLOCKS,
+            0,
+            ActionConfig::JOBS,
+            0,
+            ActionConfig::NOTIFICATION,
+            ActionConfig::BODY
+        ));
+
+        // Per-recipient placeholders survive (NOT blanked) and the literal
+        // hardcoded address is preserved alongside them.
+        self::assertSame('{{recipient.email}};qa.stefan@selfhelp.test', $recipient);
+        self::assertStringContainsString('{{mail.link}}', $body);
+
+        // Ordinary submitted-value placeholders are still interpolated.
+        self::assertSame('Hello World from the clinic', $subject);
+    }
 }

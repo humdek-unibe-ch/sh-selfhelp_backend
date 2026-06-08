@@ -91,7 +91,10 @@ final class FormActionJobChainTest extends QaWebTestCase
 
     public function testFinishedFormSubmissionSchedulesAndExecutesActionEmailJob(): void
     {
-        $qaUserId = $this->qaUserId();
+        $qaUser = $this->qaUser();
+        $qaUser->setReceivesEmails(true);
+        $this->em->flush();
+        $qaUserId = (int) $qaUser->getId();
 
         // A "finished"-trigger action on a qa data table that emails the
         // submitting user immediately. Built through the real action config
@@ -272,11 +275,6 @@ final class FormActionJobChainTest extends QaWebTestCase
         self::assertInstanceOf(User::class, $user, 'qa.user must be seeded. Run: composer test:reset-db');
 
         return $user;
-    }
-
-    private function qaUserId(): int
-    {
-        return (int) $this->qaUser()->getId();
     }
 
     private function sendMailOkCount(int $jobId): int

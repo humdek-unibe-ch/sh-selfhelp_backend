@@ -12,8 +12,12 @@ use App\Entity\DataRow;
 use App\Entity\DataTable;
 use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
+use App\Repository\ScheduledJobRepository;
+use App\Entity\ScheduledJobRecipient;
 use App\Entity\ScheduledJobReminder;
 use App\Entity\User;
+use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryAwareInterface;
+use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryGate;
 use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Cache\Core\CacheService;
@@ -44,6 +48,8 @@ class JobSchedulerService extends BaseService
         private readonly CacheService $cache,
         private readonly MailerInterface $mailer,
         private readonly PluginScheduledJobRegistry $pluginScheduledJobs,
+        private readonly PluginScheduledJobDeliveryGate $pluginDeliveryGate,
+        private readonly ScheduledJobRepository $scheduledJobRepository,
     ) {
     }
 
@@ -142,6 +148,8 @@ class JobSchedulerService extends BaseService
                 'body'             => MailTemplateDefaults::getBody(MailTemplateDefaults::TYPE_CONFIRM, 'en-GB'),
                 'is_html'          => MailTemplateDefaults::IS_HTML,
                 'attachments'      => [],
+                // Account validation must always be delivered (issue #29).
+                'delivery_policy'  => LookupService::SCHEDULED_JOB_DELIVERY_POLICY_REQUIRED_SYSTEM,
             ],
             $emailConfig
         );
@@ -178,28 +186,34 @@ class JobSchedulerService extends BaseService
                 throw new \RuntimeException('Job not found: ' . $jobId);
             }
 
-            $runningStatus = $this->em->getRepository(Lookup::class)->findOneBy([
-                'typeCode' => LookupService::SCHEDULED_JOBS_STATUS,
-                'lookupCode' => LookupService::SCHEDULED_JOBS_STATUS_RUNNING,
-            ]);
-            if ($runningStatus === null) {
-                throw new \RuntimeException('Missing scheduled-job status lookup: ' . LookupService::SCHEDULED_JOBS_STATUS_RUNNING);
+            // Atomically claim the job (queued -> running, guarded by current
+            // status) so overlapping scheduler ticks or manual triggers can never
+            // execute the same job twice. A lost claim is not an error.
+            $claimed = $this->scheduledJobRepository
+                ->claimQueuedJobForExecution($jobId, new \DateTime('now', new \DateTimeZone('UTC')));
+            if (!$claimed) {
+                $this->em->rollback();
+                $this->logger->info('Scheduled job already claimed or not queued; skipping execution', [
+                    'jobId' => $jobId,
+                ]);
+                return false;
             }
-            $job->setStatus($runningStatus);
-            $this->em->flush();
+            // Reflect the claimed running state + date_started in the managed entity.
+            $this->em->refresh($job);
 
-            $success = $this->canExecuteJob($job)
+            $result = $this->canExecuteJob($job)
                 ? $this->executeByType($job, $transactionBy)
-                : false;
+                : ScheduledJobExecutionResult::failed('Job condition not met');
 
             $finalStatus = $this->em->getRepository(Lookup::class)->findOneBy([
                 'typeCode' => LookupService::SCHEDULED_JOBS_STATUS,
-                'lookupCode' => $success ? LookupService::SCHEDULED_JOBS_STATUS_DONE : LookupService::SCHEDULED_JOBS_STATUS_FAILED,
+                'lookupCode' => $result->getFinalStatusCode(),
             ]);
             if ($finalStatus === null) {
-                throw new \RuntimeException('Missing scheduled-job status lookup');
+                throw new \RuntimeException('Missing scheduled-job status lookup: ' . $result->getFinalStatusCode());
             }
 
+            // All terminal statuses (done, failed, skipped) record an execution time.
             $job->setStatus($finalStatus);
             $job->setDateExecuted(new \DateTime('now', new \DateTimeZone('UTC')));
             $this->em->flush();
@@ -210,7 +224,8 @@ class JobSchedulerService extends BaseService
                 'scheduled_jobs',
                 $jobId,
                 false,
-                'Job executed: ' . ($success ? 'executed' : 'failed')
+                'Job executed: ' . $result->getFinalStatusCode()
+                . ($result->getMessage() !== '' ? ' (' . $result->getMessage() . ')' : '')
             );
 
             $this->invalidateJobCache($jobId);
@@ -510,7 +525,186 @@ class JobSchedulerService extends BaseService
 
         $job->setConfig($config);
         $this->storeReminderMetadata($job, $jobData);
+        $this->storeRecipients($job, $jobData);
         $this->em->flush();
+    }
+
+    /**
+     * Persist per-delivery recipient snapshots for a scheduled job.
+     *
+     * When the caller supplies an explicit `recipients` list it is persisted
+     * verbatim. Otherwise, for email jobs, a single primary recipient snapshot
+     * is derived from `email_config.recipient_emails` (or the job user's email)
+     * so issue-#29 preference enforcement and admin display have an
+     * authoritative recipient record even for system/legacy scheduling paths.
+     *
+     * @param array<string, mixed> $jobData
+     *   The normalized job payload.
+     */
+    private function storeRecipients(ScheduledJob $job, array $jobData): void
+    {
+        $explicit = $jobData['recipients'] ?? null;
+        if (is_array($explicit) && $explicit !== []) {
+            foreach ($explicit as $recipient) {
+                if (is_array($recipient)) {
+                    $this->persistRecipientSnapshot($job, $this->asAssocArray($recipient));
+                }
+            }
+            return;
+        }
+
+        if ($job->getJobType()->getLookupCode() !== LookupService::JOB_TYPES_EMAIL) {
+            return;
+        }
+
+        $emailConfig = $this->asAssocArray($jobData['email_config'] ?? null);
+        $primaryEmail = $this->firstRecipientEmail($this->asString($emailConfig['recipient_emails'] ?? ''));
+        if ($primaryEmail === '') {
+            $primaryEmail = (string) ($job->getUser()?->getEmail() ?? '');
+        }
+        if ($primaryEmail === '') {
+            return;
+        }
+
+        $policy = $this->asString($emailConfig['delivery_policy'] ?? '');
+        if ($policy === '') {
+            $policy = LookupService::SCHEDULED_JOB_DELIVERY_POLICY_RESPECT_USER_PREFERENCES;
+        }
+
+        $this->persistRecipientSnapshot($job, [
+            'channel' => ScheduledJobRecipient::CHANNEL_EMAIL,
+            'recipient_type' => ScheduledJobRecipient::RECIPIENT_TYPE_TO,
+            'recipient_email' => $primaryEmail,
+            'delivery_policy' => $policy,
+        ]);
+    }
+
+    /**
+     * Persist one recipient snapshot, resolving its linked user by id or email.
+     *
+     * @param array<string, mixed> $recipient
+     *   The recipient descriptor (channel, recipient_type, recipient_email,
+     *   user_id, delivery_policy, resolved_from).
+     */
+    private function persistRecipientSnapshot(ScheduledJob $job, array $recipient): void
+    {
+        $email = $this->asStringOrNull($recipient['recipient_email'] ?? null);
+        $email = $email !== null ? trim($email) : null;
+
+        $user = null;
+        $userId = $this->asIntOrNull($recipient['user_id'] ?? null);
+        if ($userId !== null && $userId > 0) {
+            $user = $this->em->getRepository(User::class)->find($userId);
+        }
+        if ($user === null && $email !== null && $email !== '') {
+            $user = $this->resolveUserByEmail($email);
+        }
+
+        $policy = $this->asString($recipient['delivery_policy'] ?? '');
+        if ($policy === '') {
+            $policy = LookupService::SCHEDULED_JOB_DELIVERY_POLICY_RESPECT_USER_PREFERENCES;
+        }
+
+        $resolvedFrom = $this->asStringOrNull($recipient['resolved_from'] ?? null);
+        if ($resolvedFrom === null) {
+            $resolvedFrom = $user instanceof User
+                ? ScheduledJobRecipient::RESOLVED_FROM_USER
+                : ScheduledJobRecipient::RESOLVED_FROM_EXTERNAL_EMAIL;
+        }
+
+        $snapshot = new ScheduledJobRecipient();
+        $snapshot->setScheduledJob($job);
+        $snapshot->setUser($user);
+        $snapshot->setChannel($this->asString($recipient['channel'] ?? ScheduledJobRecipient::CHANNEL_EMAIL));
+        $snapshot->setRecipientType($this->asString($recipient['recipient_type'] ?? ScheduledJobRecipient::RECIPIENT_TYPE_TO));
+        $snapshot->setRecipientEmail($email === '' ? null : $email);
+        $snapshot->setDeliveryPolicy($policy);
+        $snapshot->setResolvedFrom($resolvedFrom);
+
+        $job->addRecipient($snapshot);
+        $this->em->persist($snapshot);
+    }
+
+    /**
+     * Resolve the primary email delivery target for a scheduled job.
+     *
+     * Prefers the first persisted email recipient snapshot (authoritative);
+     * falls back to the stored email config plus the job user for legacy rows.
+     *
+     * @param array<string, mixed> $emailConfig
+     *   The stored email config section.
+     *
+     * @return array{email: string, user: ?User, policy: string}
+     */
+    private function resolvePrimaryEmailRecipient(ScheduledJob $job, array $emailConfig): array
+    {
+        foreach ($job->getRecipients() as $recipient) {
+            if ($recipient->getChannel() !== ScheduledJobRecipient::CHANNEL_EMAIL) {
+                continue;
+            }
+            $email = (string) ($recipient->getRecipientEmail() ?? $recipient->getUser()?->getEmail() ?? '');
+
+            return [
+                'email' => $email,
+                'user' => $recipient->getUser() ?? $job->getUser(),
+                'policy' => $recipient->getDeliveryPolicy(),
+            ];
+        }
+
+        $policy = $this->asString($emailConfig['delivery_policy'] ?? '');
+        if ($policy === '') {
+            $policy = LookupService::SCHEDULED_JOB_DELIVERY_POLICY_RESPECT_USER_PREFERENCES;
+        }
+
+        // Use only the explicitly configured recipient address. We intentionally
+        // do NOT fall back to the job user's email: a job created with an empty
+        // recipient list is a misconfiguration that must fail deterministically,
+        // and every real scheduling path (actions, admin, system mail) populates
+        // recipient_emails or a recipient snapshot.
+        $email = $this->firstRecipientEmail($this->asString($emailConfig['recipient_emails'] ?? ''));
+
+        // Only treat the job user as the preference owner when the resolved
+        // address actually belongs to them (or no explicit address was given).
+        $user = $job->getUser();
+        if ($user instanceof User) {
+            $userEmail = (string) ($user->getEmail() ?? '');
+            if ($email !== '' && strcasecmp($email, $userEmail) !== 0) {
+                $user = $this->resolveUserByEmail($email);
+            }
+        } elseif ($email !== '') {
+            $user = $this->resolveUserByEmail($email);
+        }
+
+        return ['email' => $email, 'user' => $user, 'policy' => $policy];
+    }
+
+    /**
+     * Extract the first address from a comma/semicolon separated recipient list.
+     */
+    private function firstRecipientEmail(string $recipientEmails): string
+    {
+        $parts = preg_split('/[;,]/', $recipientEmails) ?: [];
+        foreach ($parts as $part) {
+            $candidate = trim($part);
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Resolve a user by email address (case-insensitive via the DB collation).
+     */
+    private function resolveUserByEmail(string $email): ?User
+    {
+        $email = trim($email);
+        if ($email === '') {
+            return null;
+        }
+
+        return $this->em->getRepository(User::class)->findOneBy(['email' => $email]);
     }
 
     /**
@@ -590,10 +784,10 @@ class JobSchedulerService extends BaseService
      * @param string $transactionBy
      *   The transaction origin recorded in the audit trail.
      *
-     * @return bool
-     *   `true` when execution succeeded, otherwise `false`.
+     * @return ScheduledJobExecutionResult
+     *   The typed execution outcome used to pick the terminal job status.
      */
-    private function executeByType(ScheduledJob $job, string $transactionBy): bool
+    private function executeByType(ScheduledJob $job, string $transactionBy): ScheduledJobExecutionResult
     {
         $jobType = (string) $job->getJobType()->getLookupCode();
         // Plugin-contributed job types take precedence so plugins can
@@ -601,18 +795,74 @@ class JobSchedulerService extends BaseService
         // e.g. a survey plugin wrapping `email` with extra
         // pre/post hooks). The registry is built from services tagged
         // `selfhelp.plugin.scheduled_job_handler` so it stays empty on
-        // hosts that have no plugin contributions.
-        $pluginResult = $this->pluginScheduledJobs->execute($jobType, $job, $transactionBy);
-        if ($pluginResult !== null) {
-            return $pluginResult;
+        // hosts that have no plugin contributions. Plugin handlers keep the
+        // legacy bool contract; the bool is wrapped into a typed result here.
+        $pluginHandler = $this->pluginScheduledJobs->get($jobType);
+        if ($pluginHandler !== null) {
+            // Issue #36: a plugin job that declares it delivers user-facing
+            // email/notifications is held to the SAME communication-preference
+            // contract as core email/notification jobs. A disabled channel is
+            // an audited skip and the handler is never invoked, so a plugin can
+            // never silently bypass receivesEmails()/receivesNotifications().
+            $blockedChannel = $this->pluginDeliveryGate->blockedChannel($pluginHandler, $job);
+            if ($blockedChannel !== null) {
+                return $this->skipPluginDeliveryForPreference($job, $transactionBy, $blockedChannel);
+            }
+
+            return $pluginHandler->execute($job, $transactionBy)
+                ? ScheduledJobExecutionResult::done('Executed by plugin handler')
+                : ScheduledJobExecutionResult::failed('Plugin handler reported failure');
         }
 
         return match ($jobType) {
             LookupService::JOB_TYPES_EMAIL => $this->executeEmailJob($job, $transactionBy),
             LookupService::JOB_TYPES_NOTIFICATION => $this->executeNotificationJob($job, $transactionBy),
-            LookupService::JOB_TYPES_TASK => $this->executeTaskJob($job, $transactionBy),
-            default => false,
+            LookupService::JOB_TYPES_TASK => $this->executeTaskJob($job, $transactionBy)
+                ? ScheduledJobExecutionResult::done()
+                : ScheduledJobExecutionResult::failed('Task execution failed'),
+            default => ScheduledJobExecutionResult::failed('Unknown job type: ' . $jobType),
         };
+    }
+
+    /**
+     * Turn a blocked plugin delivery channel into the same audited `skipped_*`
+     * outcome a core email/notification job produces when the recipient disabled
+     * the channel (issue #36). The plugin handler is NOT invoked.
+     */
+    private function skipPluginDeliveryForPreference(
+        ScheduledJob $job,
+        string $transactionBy,
+        string $blockedChannel,
+    ): ScheduledJobExecutionResult {
+        if ($blockedChannel === PluginScheduledJobDeliveryAwareInterface::CHANNEL_NOTIFICATION) {
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_SKIPPED,
+                $transactionBy,
+                'scheduled_jobs',
+                $job->getId(),
+                false,
+                sprintf('Plugin notification skipped: user %d disabled notifications', (int) $job->getUser()?->getId())
+            );
+
+            return ScheduledJobExecutionResult::skipped(
+                LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_NOTIFICATIONS,
+                'Recipient disabled notifications'
+            );
+        }
+
+        $this->transactionService->logTransaction(
+            LookupService::TRANSACTION_TYPES_SEND_MAIL_SKIPPED,
+            $transactionBy,
+            'scheduled_jobs',
+            $job->getId(),
+            false,
+            sprintf('Plugin email skipped: user %d disabled emails', (int) $job->getUser()?->getId())
+        );
+
+        return ScheduledJobExecutionResult::skipped(
+            LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS,
+            'Recipient disabled emails'
+        );
     }
 
     /**
@@ -623,14 +873,17 @@ class JobSchedulerService extends BaseService
      * @param string $transactionBy
      *   The transaction origin recorded in the audit trail.
      *
-     * @return bool
-     *   `true` when the email send reports success, otherwise `false`.
+     * @return ScheduledJobExecutionResult
+     *   `done` on success, `failed` on send error, or a skipped result when
+     *   the recipient disabled emails and the policy respects preferences.
      */
-    private function executeEmailJob(ScheduledJob $job, string $transactionBy): bool
+    private function executeEmailJob(ScheduledJob $job, string $transactionBy): ScheduledJobExecutionResult
     {
         $config = $job->getConfig() ?? [];
-        $emailConfig = isset($config['email']) && is_array($config['email']) ? $config['email'] : [];
-        $recipients = trim($this->asString($emailConfig['recipient_emails'] ?? $job->getUser()?->getEmail() ?? ''));
+        $emailConfig = $this->asAssocArray($config['email'] ?? null);
+
+        $target = $this->resolvePrimaryEmailRecipient($job, $emailConfig);
+        $recipients = trim($target['email']);
         if ($recipients === '') {
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_SEND_MAIL_FAIL,
@@ -640,7 +893,28 @@ class JobSchedulerService extends BaseService
                 false,
                 'No email recipients were resolved for the scheduled job'
             );
-            return false;
+            return ScheduledJobExecutionResult::failed('No email recipients resolved');
+        }
+
+        // Issue #29: respect the recipient's email preference unless the job is
+        // explicitly flagged as required system mail (account/security).
+        if (
+            $target['policy'] !== LookupService::SCHEDULED_JOB_DELIVERY_POLICY_REQUIRED_SYSTEM
+            && $target['user'] instanceof User
+            && !$target['user']->receivesEmails()
+        ) {
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_SEND_MAIL_SKIPPED,
+                $transactionBy,
+                'scheduled_jobs',
+                $job->getId(),
+                false,
+                sprintf('Email skipped: user %d disabled emails', (int) $target['user']->getId())
+            );
+            return ScheduledJobExecutionResult::skipped(
+                LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS,
+                'Recipient disabled emails'
+            );
         }
 
         $subject = $this->asString($emailConfig['subject'] ?? '');
@@ -690,7 +964,9 @@ class JobSchedulerService extends BaseService
             sprintf('Email %s to %s', $success ? 'sent' : 'failed', $recipients)
         );
 
-        return $success;
+        return $success
+            ? ScheduledJobExecutionResult::done(sprintf('Email sent to %s', $recipients))
+            : ScheduledJobExecutionResult::failed(sprintf('Email send failed to %s', $recipients));
     }
 
     /**
@@ -701,14 +977,32 @@ class JobSchedulerService extends BaseService
      * @param string $transactionBy
      *   The transaction origin recorded in the audit trail.
      *
-     * @return bool
-     *   `true` when the notification request succeeds, otherwise `false`.
+     * @return ScheduledJobExecutionResult
+     *   `done` on success, `failed` on error, or a skipped result when the
+     *   target user disabled notifications.
      */
-    private function executeNotificationJob(ScheduledJob $job, string $transactionBy): bool
+    private function executeNotificationJob(ScheduledJob $job, string $transactionBy): ScheduledJobExecutionResult
     {
         $config = $job->getConfig() ?? [];
         $notificationConfig = isset($config['notification']) && is_array($config['notification']) ? $config['notification'] : [];
         $user = $job->getUser();
+
+        // Issue #29: never push to a known user who disabled notifications.
+        // Push notifications have no `required_system` escape hatch.
+        if ($user instanceof User && !$user->receivesNotifications()) {
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_SKIPPED,
+                $transactionBy,
+                'scheduled_jobs',
+                $job->getId(),
+                false,
+                sprintf('Notification skipped: user %d disabled notifications', (int) $user->getId())
+            );
+            return ScheduledJobExecutionResult::skipped(
+                LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_NOTIFICATIONS,
+                'Recipient disabled notifications'
+            );
+        }
 
         if (!$user || !$user->getDeviceToken()) {
             $this->transactionService->logTransaction(
@@ -719,7 +1013,7 @@ class JobSchedulerService extends BaseService
                 false,
                 'Notification failed because the user does not have a device token'
             );
-            return false;
+            return ScheduledJobExecutionResult::failed('User has no device token');
         }
 
         $firebaseConfig = $this->cmsPreferences->getFirebaseConfig();
@@ -732,17 +1026,17 @@ class JobSchedulerService extends BaseService
                 false,
                 'Notification failed because Firebase config is not available'
             );
-            return false;
+            return ScheduledJobExecutionResult::failed('Firebase config unavailable');
         }
 
         $serviceAccount = $this->decodeFirebaseServiceAccount($firebaseConfig);
         if ($serviceAccount === null) {
-            return false;
+            return ScheduledJobExecutionResult::failed('Invalid Firebase service account');
         }
 
         $accessToken = $this->createFirebaseAccessToken($serviceAccount);
         if ($accessToken === null) {
-            return false;
+            return ScheduledJobExecutionResult::failed('Failed to obtain Firebase access token');
         }
 
         $payload = [
@@ -778,7 +1072,9 @@ class JobSchedulerService extends BaseService
             sprintf('Push notification %s for user %d', $result ? 'sent' : 'failed', $user->getId())
         );
 
-        return $result;
+        return $result
+            ? ScheduledJobExecutionResult::done(sprintf('Notification sent to user %d', (int) $user->getId()))
+            : ScheduledJobExecutionResult::failed(sprintf('Notification failed for user %d', (int) $user->getId()));
     }
 
     /**

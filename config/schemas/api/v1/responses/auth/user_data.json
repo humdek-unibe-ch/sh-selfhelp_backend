@@ -34,6 +34,14 @@
           "type": ["string", "null"],
           "description": "Opaque version token that changes whenever the user's ACL/permissions are invalidated. The frontend compares it across requests to decide when to invalidate its navigation cache."
         },
+        "receives_notifications": {
+          "type": "boolean",
+          "description": "Whether the user accepts platform-scheduled push notifications. Enforced at delivery time for preference-respecting notification jobs."
+        },
+        "receives_emails": {
+          "type": "boolean",
+          "description": "Whether the user accepts platform-scheduled emails. Enforced at delivery time for preference-respecting email jobs; required system mail bypasses it."
+        },
         "language": {
           "type": "object",
           "properties": {
@@ -128,7 +136,7 @@
           }
         }
       },
-      "required": ["id", "email", "name", "user_name", "blocked", "acl_version", "language", "timezone", "roles", "permissions", "groups"],
+      "required": ["id", "email", "name", "user_name", "blocked", "acl_version", "receives_notifications", "receives_emails", "language", "timezone", "roles", "permissions", "groups"],
       "additionalProperties": false
     }
   },

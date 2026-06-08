@@ -102,8 +102,10 @@ final class ActionFactory
 
     /**
      * The decoded config for a single immediate email job addressed to the
-     * triggering user (`@user` is replaced with the recipient email by
-     * {@see \App\Service\Action\ActionSchedulerService}).
+     * triggering user. The canonical `{{recipient.email}}` placeholder is
+     * rendered to the recipient's address by
+     * {@see \App\Service\Action\ActionSchedulerService} (the legacy `@user`
+     * token is deprecated and rejected by admin validation).
      *
      * @return array<string, mixed>
      */
@@ -121,7 +123,7 @@ final class ActionFactory
                             ],
                             ActionConfig::NOTIFICATION => [
                                 ActionConfig::NOTIFICATION_TYPES => LookupService::NOTIFICATION_TYPES_EMAIL,
-                                ActionConfig::RECIPIENT => '@user',
+                                ActionConfig::RECIPIENT => '{{recipient.email}}',
                                 ActionConfig::SUBJECT => $subject,
                                 ActionConfig::BODY => $body,
                                 ActionConfig::FROM_EMAIL => 'qa-noreply@selfhelp.test',

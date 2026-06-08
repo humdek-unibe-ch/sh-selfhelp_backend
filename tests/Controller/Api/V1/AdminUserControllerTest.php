@@ -249,6 +249,48 @@ class AdminUserControllerTest extends BaseControllerTest
     }
 
     /**
+     * Issue #29: a created user defaults both communication preferences to true,
+     * the create/detail payloads expose them, and an update can flip them.
+     *
+     * @group user-management
+     */
+    public function testCommunicationPreferencesDefaultTrueAndAreEditable(): void
+    {
+        // Create without explicit preferences -> both default to true.
+        $created = $this->createTestUser('commprefs');
+        $this->assertArrayHasKey('receives_notifications', $created);
+        $this->assertArrayHasKey('receives_emails', $created);
+        $this->assertTrue($created['receives_notifications'], 'New users default to receiving notifications.');
+        $this->assertTrue($created['receives_emails'], 'New users default to receiving emails.');
+
+        // Create with explicit false values -> honoured.
+        $optedOut = $this->createTestUser('commprefs_off', [
+            'receives_notifications' => false,
+            'receives_emails' => false,
+        ]);
+        $this->assertFalse($optedOut['receives_notifications']);
+        $this->assertFalse($optedOut['receives_emails']);
+
+        // Update flips one preference back on; detail GET reflects it.
+        $userId = $this->asInt($optedOut['id']);
+        $this->client->request(
+            'PUT',
+            '/cms-api/v1/admin/users/' . $userId,
+            [],
+            [],
+            [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->getAdminAccessToken(),
+                'CONTENT_TYPE' => 'application/json',
+            ],
+            (string) json_encode(['receives_emails' => true])
+        );
+        $this->assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
+        $updated = $this->asArray($this->decodeArray()['data']);
+        $this->assertFalse($updated['receives_notifications'], 'Untouched preference stays false.');
+        $this->assertTrue($updated['receives_emails'], 'Updated preference is now true.');
+    }
+
+    /**
      * @group user-management
      */
     public function testCreateUserWithInvalidEmail(): void

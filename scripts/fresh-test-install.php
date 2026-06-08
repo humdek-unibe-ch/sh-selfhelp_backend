@@ -7,38 +7,68 @@
 
 declare(strict_types=1);
 
+use App\Util\FreshTestInstallSchedulerGuard;
+
 $projectDir = realpath(__DIR__ . '/..');
 if ($projectDir === false) {
     fwrite(STDERR, "Cannot resolve project root from " . __DIR__ . "\n");
     exit(2);
 }
 
+require_once $projectDir . '/vendor/autoload.php';
+
 $adminEmail = getenv('SELFHELP_TEST_ADMIN_EMAIL') ?: 'admin@unibe.ch';
 $adminName = getenv('SELFHELP_TEST_ADMIN_NAME') ?: 'Admin';
 $adminPassword = getenv('SELFHELP_TEST_ADMIN_PASSWORD') ?: 'admin';
 
-echo "Cleaning generated plugin state before Symfony boots...\n";
-removePath($projectDir . '/config/selfhelp_plugin_bundles.php');
-removePath($projectDir . '/config/selfhelp_plugin_bundles.php.tmp');
-removePath($projectDir . '/selfhelp.plugins.lock.json');
-removePath($projectDir . '/selfhelp.plugins.lock.json.tmp');
-removePath($projectDir . '/selfhelp.plugins.lock.json.bak');
-removePath($projectDir . '/var/plugin_safe_mode.lock');
-removePath($projectDir . '/var/plugin-composer');
-removePath($projectDir . '/var/plugins');
-removePath($projectDir . '/public/plugin-artifacts');
-removePath($projectDir . '/var/cache');
+$exitCode = 0;
+$schedulerGuard = new FreshTestInstallSchedulerGuard();
+$schedulerWasPaused = false;
 
-$php = PHP_BINARY;
+try {
+    $schedulerWasPaused = $schedulerGuard->pauseIfRunning($projectDir);
+    if ($schedulerWasPaused) {
+        echo "Paused local Docker scheduler to avoid cache lock races.\n";
+    }
 
-run([$php, 'bin/console', 'doctrine:database:drop', '--force', '--if-exists'], $projectDir);
-run([$php, 'bin/console', 'doctrine:database:create'], $projectDir);
-run([$php, 'bin/console', 'doctrine:migrations:migrate', '--no-interaction'], $projectDir);
-run([$php, 'bin/console', 'app:create-admin-user', $adminEmail, $adminName, '--password=' . $adminPassword], $projectDir);
-run([$php, 'bin/console', 'cache:pool:clear', '--all'], $projectDir, allowFailure: true);
-run([$php, 'bin/console', 'cache:clear'], $projectDir);
+    echo "Cleaning generated plugin state before Symfony boots...\n";
+    removePath($projectDir . '/config/selfhelp_plugin_bundles.php');
+    removePath($projectDir . '/config/selfhelp_plugin_bundles.php.tmp');
+    removePath($projectDir . '/selfhelp.plugins.lock.json');
+    removePath($projectDir . '/selfhelp.plugins.lock.json.tmp');
+    removePath($projectDir . '/selfhelp.plugins.lock.json.bak');
+    removePath($projectDir . '/var/plugin_safe_mode.lock');
+    removePath($projectDir . '/var/plugin-composer');
+    removePath($projectDir . '/var/plugins');
+    removePath($projectDir . '/public/plugin-artifacts');
+    removePath($projectDir . '/var/cache');
 
-echo "\nFresh test install ready. Admin user: {$adminEmail}\n";
+    $php = PHP_BINARY;
+
+    run([$php, 'bin/console', 'doctrine:database:drop', '--force', '--if-exists'], $projectDir);
+    run([$php, 'bin/console', 'doctrine:database:create'], $projectDir);
+    run([$php, 'bin/console', 'doctrine:migrations:migrate', '--no-interaction'], $projectDir);
+    run([$php, 'bin/console', 'app:create-admin-user', $adminEmail, $adminName, '--password=' . $adminPassword], $projectDir);
+    run([$php, 'bin/console', 'cache:pool:clear', '--all'], $projectDir, allowFailure: true);
+    run([$php, 'bin/console', 'cache:clear'], $projectDir);
+
+    echo "\nFresh test install ready. Admin user: {$adminEmail}\n";
+} catch (Throwable $exception) {
+    fwrite(STDERR, $exception->getMessage() . "\n");
+    $exitCode = is_int($exception->getCode()) && $exception->getCode() > 0 ? $exception->getCode() : 1;
+} finally {
+    try {
+        $schedulerGuard->resumeIfPaused($projectDir, $schedulerWasPaused);
+        if ($schedulerWasPaused) {
+            echo "Restarted local Docker scheduler.\n";
+        }
+    } catch (Throwable $exception) {
+        fwrite(STDERR, $exception->getMessage() . "\n");
+        $exitCode = 1;
+    }
+}
+
+exit($exitCode);
 
 /**
  * @param list<string> $command
@@ -59,8 +89,7 @@ function run(array $command, string $cwd, bool $allowFailure = false): void
     );
 
     if (!is_resource($process)) {
-        fwrite(STDERR, "Failed to start command.\n");
-        exit(1);
+        throw new RuntimeException('Failed to start command.');
     }
 
     $exitCode = proc_close($process);
@@ -69,8 +98,7 @@ function run(array $command, string $cwd, bool $allowFailure = false): void
             fwrite(STDERR, "Command failed with exit code {$exitCode}; continuing.\n");
             return;
         }
-        fwrite(STDERR, "Command failed with exit code {$exitCode}.\n");
-        exit($exitCode);
+        throw new RuntimeException("Command failed with exit code {$exitCode}.", $exitCode);
     }
 }
 
@@ -82,8 +110,7 @@ function removePath(string $path): void
 
     if (is_file($path) || is_link($path)) {
         if (!@unlink($path) && file_exists($path)) {
-            fwrite(STDERR, "Failed to remove file: {$path}\n");
-            exit(1);
+            throw new RuntimeException("Failed to remove file: {$path}");
         }
         echo "Removed {$path}\n";
         return;
@@ -98,18 +125,15 @@ function removePath(string $path): void
         $itemPath = $item->getPathname();
         if ($item->isDir() && !$item->isLink()) {
             if (!@rmdir($itemPath) && is_dir($itemPath)) {
-                fwrite(STDERR, "Failed to remove directory: {$itemPath}\n");
-                exit(1);
+                throw new RuntimeException("Failed to remove directory: {$itemPath}");
             }
         } elseif (!@unlink($itemPath) && file_exists($itemPath)) {
-            fwrite(STDERR, "Failed to remove file: {$itemPath}\n");
-            exit(1);
+            throw new RuntimeException("Failed to remove file: {$itemPath}");
         }
     }
 
     if (!@rmdir($path) && is_dir($path)) {
-        fwrite(STDERR, "Failed to remove directory: {$path}\n");
-        exit(1);
+        throw new RuntimeException("Failed to remove directory: {$path}");
     }
 
     echo "Removed {$path}\n";

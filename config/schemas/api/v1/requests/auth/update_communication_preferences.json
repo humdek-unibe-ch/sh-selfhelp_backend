@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Update Communication Preferences Request",
+  "description": "Schema for updating user email and notification delivery preferences",
+  "type": "object",
+  "properties": {
+    "receives_notifications": { "type": "boolean" },
+    "receives_emails": { "type": "boolean" }
+  },
+  "required": ["receives_notifications", "receives_emails"],
+  "additionalProperties": false
+}
