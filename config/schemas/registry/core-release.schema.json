@@ -1,0 +1,63 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/registry/core-release.schema.json",
+    "title": "SelfHelp core release document",
+    "description": "Standalone signed Docker-based core release referenced from the unified registry index (registry.json core[].releaseUrl). The SelfHelp Manager is the trusted verifier that resolves + validates this document, checks image digests/signatures, and executes the Docker update. The CMS/backend may read it for advisory preflight only. Mirrors @selfhelp/shared CoreRelease and the Manager Zod schema.",
+    "type": "object",
+    "required": ["kind", "id", "version", "channel", "minimumDirectUpgradeFrom", "pluginApiVersion", "backend", "worker", "scheduler", "frontendCompatibility", "database", "security"],
+    "additionalProperties": true,
+    "properties": {
+        "kind": {"const": "selfhelp-core-release"},
+        "id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "channel": {"type": "string", "enum": ["stable", "beta", "nightly"]},
+        "releasedAt": {"type": "string", "format": "date-time"},
+        "minimumDirectUpgradeFrom": {"type": "string", "minLength": 1},
+        "pluginApiVersion": {"type": "string", "minLength": 1},
+        "backend": {"$ref": "#/$defs/imageRef"},
+        "worker": {"$ref": "#/$defs/imageRef"},
+        "scheduler": {"$ref": "#/$defs/imageRef"},
+        "frontendCompatibility": {
+            "type": "object",
+            "required": ["requiredFrontendRange"],
+            "additionalProperties": true,
+            "properties": {"requiredFrontendRange": {"type": "string", "minLength": 1}}
+        },
+        "database": {
+            "type": "object",
+            "required": ["migrationRange", "destructive", "requiresBackup", "manualConfirmationRequired"],
+            "additionalProperties": true,
+            "properties": {
+                "migrationRange": {"type": "string"},
+                "destructive": {"type": "boolean"},
+                "requiresBackup": {"type": "boolean"},
+                "manualConfirmationRequired": {"type": "boolean"}
+            }
+        },
+        "security": {"$ref": "#/$defs/signatureBlock"},
+        "blocked": {"type": "boolean"}
+    },
+    "$defs": {
+        "imageRef": {
+            "type": "object",
+            "required": ["image", "digest"],
+            "additionalProperties": true,
+            "properties": {
+                "image": {"type": "string", "minLength": 1},
+                "digest": {"type": "string", "pattern": "^sha256:[A-Fa-f0-9]{64}$"},
+                "phpVersion": {"type": "string"}
+            }
+        },
+        "signatureBlock": {
+            "type": "object",
+            "required": ["signature", "keyId"],
+            "additionalProperties": false,
+            "properties": {
+                "signature": {"type": "string", "minLength": 1},
+                "keyId": {"type": "string", "minLength": 1},
+                "signedPayload": {"type": "string"},
+                "signedPayloadSha256": {"type": "string"}
+            }
+        }
+    }
+}

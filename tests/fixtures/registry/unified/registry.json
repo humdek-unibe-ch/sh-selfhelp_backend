@@ -1,0 +1,36 @@
+{
+    "schemaVersion": "1.0.0",
+    "requiresManager": ">=0.1.0",
+    "publishedAt": "2026-06-09T00:00:00Z",
+    "baseUrl": "https://registry.selfhelp.test",
+    "publisher": {
+        "name": "SelfHelp (fixture)",
+        "url": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/"
+    },
+    "core": [
+        {
+            "id": "selfhelp-core",
+            "version": "0.1.0",
+            "channel": "stable",
+            "releaseUrl": "releases/core/selfhelp-core-0.1.0.json"
+        }
+    ],
+    "frontend": [],
+    "scheduler": [],
+    "worker": [],
+    "plugins": [
+        {
+            "id": "sh2-shp-survey-js",
+            "version": "0.1.0",
+            "channel": "stable",
+            "releaseUrl": "releases/plugins/sh2-shp-survey-js-0.1.0.json"
+        },
+        {
+            "id": "sh2-shp-survey-js",
+            "version": "0.2.0",
+            "channel": "stable",
+            "releaseUrl": "releases/plugins/sh2-shp-survey-js-0.2.0.json"
+        }
+    ],
+    "trustedKeysUrl": "trusted-keys.json"
+}

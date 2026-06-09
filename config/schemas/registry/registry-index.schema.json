@@ -1,8 +1,8 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "$id": "https://selfhelp.app/schemas/plugin-registry.schema.json",
+    "$id": "https://selfhelp.app/schemas/registry/registry-index.schema.json",
     "title": "SelfHelp unified registry index (registry.json)",
-    "description": "UNIFIED registry.json — the single published catalogue consumed by BOTH installers: the SelfHelp Manager (core/frontend/scheduler/worker Docker releases) and the CMS/backend (plugin releases). This REPLACES the legacy single-version inline plugin registry: every component array is now a list of release REFS (id, version, channel, releaseUrl) pointing at standalone signed release documents. Canonical copies live in config/schemas/registry/ (registry-index.schema.json, plugin-release.schema.json, core-release.schema.json). Mirrors @selfhelp/shared RegistryIndex and the Manager Zod schema. See docs/plugins/registry-and-channels.md and docs/operations/platform-and-plugin-ecosystem.md.",
+    "description": "The single published registry.json consumed by BOTH installers: the SelfHelp Manager (core/frontend/scheduler/worker Docker releases) and the CMS/backend (plugin releases). Every component array is a list of release REFS (one per published version) pointing at standalone signed release documents via releaseUrl. Mirrors @selfhelp/shared RegistryIndex and the Manager Zod schema. Release documents are validated by core-release.schema.json / plugin-release.schema.json. Supersedes the legacy single-version inline plugin registry.",
     "type": "object",
     "required": ["schemaVersion", "requiresManager", "baseUrl", "core", "frontend", "scheduler", "worker", "plugins"],
     "additionalProperties": true,
@@ -38,7 +38,7 @@
                 "id": {"type": "string", "minLength": 1},
                 "version": {"type": "string", "minLength": 1},
                 "channel": {"type": "string", "enum": ["stable", "beta", "nightly"]},
-                "releaseUrl": {"type": "string", "minLength": 1, "description": "Absolute or baseUrl-relative URL of the signed release document (validated by plugin-release.schema.json / core-release.schema.json)."},
+                "releaseUrl": {"type": "string", "minLength": 1, "description": "Absolute or baseUrl-relative URL of the signed release document."},
                 "blocked": {"type": "boolean"}
             }
         }
