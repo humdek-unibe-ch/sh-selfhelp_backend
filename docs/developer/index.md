@@ -84,6 +84,7 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 
 ## Related references
 
+- [../operations/platform-and-plugin-ecosystem.md](../operations/platform-and-plugin-ecosystem.md) - The big map: one registry, two installers (Manager-owned Docker core + CMS-owned plugins), and the install/update/maintain paths.
 - [../reference/api/index.md](../reference/api/index.md) - Endpoint usage reference.
 - [../reference/api-routes-table.md](../reference/api-routes-table.md) - `api_routes` table columns.
 - [../../migrations](../../migrations) - Doctrine migrations (canonical schema).

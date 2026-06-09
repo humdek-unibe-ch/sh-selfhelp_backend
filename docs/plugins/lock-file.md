@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-09.
 Source of truth: Plugin layer code and the schemas under this folder.
 
 Single source of truth for what is **actually installed**. Written
@@ -23,13 +23,13 @@ The canonical JSON Schema lives at
   "generatedAt": "2026-05-22T08:46:57+00:00",
   "sdk": {
     "version": "1.0.4",
-    "pluginApiVersion": "1.0"
+    "pluginApiVersion": "0.1.0"
   },
   "plugins": {
     "sh2-shp-survey-js": {
       "id": "sh2-shp-survey-js",
       "version": "1.0.0",
-      "pluginApiVersion": "1.0",
+      "pluginApiVersion": "0.1.0",
       "trustLevel": "untrusted",
       "installMode": "managed",
       "backendPackage": "humdek/sh2-shp-survey-js",

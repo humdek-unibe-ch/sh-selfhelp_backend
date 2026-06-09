@@ -3,8 +3,18 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-09.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+> 📍 **Current version scheme.** The platform is pre-release: core CMS
+> (`selfhelp.cms_version`) and plugin API (`selfhelp.plugin_api_version`) are both
+> `0.1.0`, in the `0.x` series where **every MINOR bump is breaking** (a
+> compatibility range is `>=0.1.0 <0.2.0`). The version examples in this page
+> (`7.x`/`8.x`) are **historical illustrations** of the mechanics, not current
+> values. For how the core/plugin/shared/manager versions line up and how a
+> deployment is installed/updated, see
+> [`../operations/platform-and-plugin-ecosystem.md`](../operations/platform-and-plugin-ecosystem.md)
+> and [`cross-repo-compatibility-matrix.md`](./cross-repo-compatibility-matrix.md).
 
 > ⚠️ **Document status.** The database-schema versioning mechanics described
 > below (a custom `version` table plus `db/update_scripts/NN_update_*.sql`
