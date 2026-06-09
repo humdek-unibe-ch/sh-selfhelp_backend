@@ -18,10 +18,18 @@
           "type": "array",
           "items": {
             "type": "object",
+            "description": "A single preflight check. Version/compatibility checks (e.g. plugin_compatibility, downgrade, upgrade_path) additionally carry the standardized compatibility-error fields so the admin/operator sees the blocking component and the required range.",
             "properties": {
               "code": { "type": "string" },
               "severity": { "type": "string", "enum": ["info", "warning", "error"] },
-              "message": { "type": "string" }
+              "message": { "type": "string" },
+              "component": { "type": "string", "description": "Optional: which component the check is about (e.g. 'plugin', 'core')." },
+              "component_id": { "type": "string", "description": "Optional: id of the blocking component (e.g. the plugin id)." },
+              "current_version": { "type": ["string", "null"], "description": "Optional: the instance's current version (or the blocking plugin's installed version) at preflight time." },
+              "target_version": { "type": ["string", "null"], "description": "Optional: the requested target version." },
+              "required_range": { "type": "string", "description": "Optional: the compatibility range the component requires." },
+              "blocking": { "type": "boolean", "description": "Optional: whether this compatibility error blocks the update (part of the standardized compatibility-error shape)." },
+              "pinned": { "type": "boolean", "description": "Optional: for plugin_compatibility, whether the blocking plugin is pinned (must be unpinned before it can be updated to a compatible version)." }
             },
             "required": ["code", "severity", "message"]
           }

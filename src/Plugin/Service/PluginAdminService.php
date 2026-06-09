@@ -260,6 +260,13 @@ final class PluginAdminService extends BaseService
         $aggregated = $this->registryClient->fetchAllIndexes();
         $rows = [];
         foreach ($this->plugins->findAllOrderedByName() as $installed) {
+            // Pinned plugins are intentionally frozen at their installed version
+            // (audit finding #52): never surface an auto-update for them. The
+            // installed-plugins list still exposes `pinned: true` so the UI can
+            // show the pinned state and a manual "unpin to update" affordance.
+            if ($installed->isPinned()) {
+                continue;
+            }
             $pluginId = $installed->getPluginId();
             $entriesBySource = $aggregated[$pluginId] ?? [];
             if ($entriesBySource === []) {
@@ -564,6 +571,34 @@ final class PluginAdminService extends BaseService
     }
 
     /**
+     * Pin an installed plugin: the unified resolver will never auto-update it
+     * and the core update preflight treats it as a hard block (with an
+     * "unpin first" reason) until it is explicitly unpinned. Audit finding #52.
+     *
+     * @return array<string,mixed>
+     */
+    public function pin(string $pluginId): array
+    {
+        return $this->setPinned($pluginId, true);
+    }
+
+    /** @return array<string,mixed> */
+    public function unpin(string $pluginId): array
+    {
+        return $this->setPinned($pluginId, false);
+    }
+
+    /** @return array<string,mixed> */
+    private function setPinned(string $pluginId, bool $pinned): array
+    {
+        $plugin = $this->mustFindPlugin($pluginId);
+        $plugin->setPinned($pinned);
+        $plugin->touchUpdatedAt();
+        $this->em->flush();
+        return $this->formatPlugin($plugin, deep: true);
+    }
+
+    /**
      * Single uninstall entrypoint. Creates the `plugin_operations` row
      * and dispatches the asynchronous `UninstallPluginMessage`; the
      * Messenger worker handles `composer remove` and the lock-file +
@@ -823,7 +858,7 @@ final class PluginAdminService extends BaseService
     /**
      * SemVer of the host CMS. Sourced from the `selfhelp.cms_version`
      * Symfony parameter, which itself reads `SELFHELP_CMS_VERSION`
-     * (default `8.0.0-dev`). Used by the plugin compatibility check
+     * (default `0.1.0`). Used by the plugin compatibility check
      * and exposed on the public manifest endpoint so the frontend
      * runtime can show drift warnings.
      */
@@ -875,6 +910,7 @@ final class PluginAdminService extends BaseService
             'pluginApiVersion' => $plugin->getPluginApiVersion(),
             'trustLevel' => $plugin->getTrustLevel(),
             'enabled' => $plugin->isEnabled(),
+            'pinned' => $plugin->isPinned(),
             'installMode' => $plugin->getInstallMode(),
             'backendPackage' => $plugin->getBackendPackage(),
             'backendBundleClass' => $plugin->getBackendBundleClass(),

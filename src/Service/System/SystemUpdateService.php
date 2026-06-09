@@ -13,6 +13,7 @@ namespace App\Service\System;
 use App\Entity\System\SystemUpdateOperation;
 use App\Entity\User;
 use App\Exception\ServiceException;
+use App\Plugin\Registry\Unified\CompatibilityError;
 use App\Plugin\Versioning\SemverHelper;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
@@ -94,7 +95,7 @@ class SystemUpdateService
         $currentVersion = $this->instance->getCmsVersion();
         $instanceId = $this->instance->getInstanceId();
 
-        /** @var list<array{code:string,severity:string,message:string}> $checks */
+        /** @var list<array<string,scalar|null>> $checks */
         $checks = [];
         /** @var list<array{type:string,version?:string,label:string}> $options */
         $options = [];
@@ -163,12 +164,30 @@ class SystemUpdateService
             ];
         }
 
-        foreach ($this->incompatiblePlugins($targetVersion) as $pluginId) {
-            $checks[] = [
-                'code' => self::CHECK_PLUGIN_COMPATIBILITY,
-                'severity' => 'warning',
-                'message' => sprintf('Plugin "%s" declares incompatibility with target version %s.', $pluginId, $targetVersion),
-            ];
+        // Per the distribution plan ("Core update preflight must check installed
+        // plugins"), an installed plugin that does not declare compatibility with
+        // the target core version BLOCKS the update. The reason is the SAME
+        // standardized compatibility-error object the plugin install/update flow
+        // emits ({@see CompatibilityError}), so the admin/operator sees one shape
+        // regardless of which installer raised it. Pinned plugins are respected
+        // (audit #52): they are never auto-updated, so a pinned incompatible
+        // plugin is a hard block whose reason tells the operator to unpin first.
+        foreach ($this->incompatiblePlugins($targetVersion) as $incompatible) {
+            $error = CompatibilityError::coreUpdateBlockedByPlugin(
+                pluginId: $incompatible['id'],
+                currentCoreVersion: $currentVersion,
+                coreTargetVersion: $targetVersion,
+                requiredCoreRange: $incompatible['range'],
+                pinned: $incompatible['pinned'],
+            );
+            $checks[] = array_merge(
+                [
+                    'code' => self::CHECK_PLUGIN_COMPATIBILITY,
+                    'severity' => 'error',
+                    'pinned' => $incompatible['pinned'],
+                ],
+                $error->toArray(),
+            );
         }
 
         $status = $this->deriveStatus($checks);
@@ -426,7 +445,7 @@ class SystemUpdateService
     }
 
     /**
-     * @return list<string> ids of installed plugins incompatible with $targetVersion
+     * @return list<array{id:string,range:string,pinned:bool}> installed plugins incompatible with $targetVersion
      */
     private function incompatiblePlugins(string $targetVersion): array
     {
@@ -437,9 +456,16 @@ class SystemUpdateService
             if (!is_array($compatibility)) {
                 continue;
             }
+            // Author manifests express core compatibility as `compatibility.selfhelp`
+            // (the registry release documents use `compatibility.core`; the publisher
+            // maps one to the other at build time — see PluginRelease).
             $range = $compatibility['selfhelp'] ?? null;
             if (is_string($range) && $range !== '' && !SemverHelper::satisfies($targetVersion, $range)) {
-                $incompatible[] = $plugin->getPluginId();
+                $incompatible[] = [
+                    'id' => $plugin->getPluginId(),
+                    'range' => $range,
+                    'pinned' => $plugin->isPinned(),
+                ];
             }
         }
 
@@ -447,7 +473,7 @@ class SystemUpdateService
     }
 
     /**
-     * @param list<array{code:string,severity:string,message:string}> $checks
+     * @param list<array<string,scalar|null>> $checks
      */
     private function deriveStatus(array $checks): string
     {

@@ -151,7 +151,7 @@ final class CrossInstallerArchitectureSmokeTest extends TestCase
         // The dedicated core-preflight factory produces the same standardized shape.
         $preflightError = CompatibilityError::coreUpdateBlockedByPlugin(
             pluginId: 'sh2-shp-survey-js',
-            installedPluginVersion: '0.1.0',
+            currentCoreVersion: '0.1.0',
             coreTargetVersion: '0.2.0',
             requiredCoreRange: '>=0.1.0 <0.2.0',
         );
