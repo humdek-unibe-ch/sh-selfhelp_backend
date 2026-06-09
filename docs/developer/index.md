@@ -48,6 +48,7 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 - [19-data-access-management.md](19-data-access-management.md) - Role-based data access control with auditing.
 - [permission-system-guide.md](permission-system-guide.md) - Permission model implementation guide.
 - [17-global-cache-system.md](17-global-cache-system.md) - Redis-backed cache categories and invalidation.
+- [25-instance-scoped-system-layer.md](25-instance-scoped-system-layer.md) - Instance-scoped maintenance/update layer and the SelfHelp Manager loop.
 
 ## Performance
 
