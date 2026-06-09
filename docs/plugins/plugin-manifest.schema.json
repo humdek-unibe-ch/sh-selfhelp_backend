@@ -27,8 +27,8 @@
         },
         "pluginApiVersion": {
             "type": "string",
-            "pattern": "^\\d+\\.\\d+$",
-            "description": "SDK contract version this plugin targets (e.g. \"1.0\")."
+            "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?(?:-[0-9A-Za-z.-]+)?$",
+            "description": "SDK contract version this plugin targets (SemVer, e.g. \"0.1.0\")."
         },
         "author": {
             "type": "object",

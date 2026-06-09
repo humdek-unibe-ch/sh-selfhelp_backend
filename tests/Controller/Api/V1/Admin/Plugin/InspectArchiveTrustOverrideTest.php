@@ -353,9 +353,9 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             'id' => self::PLUGIN_ID,
             'name' => 'Trust Helper Test Fixture',
             'version' => self::PLUGIN_VERSION,
-            'pluginApiVersion' => '1.0',
+            'pluginApiVersion' => '0.1.0',
             'description' => 'Synthetic plugin used only by InspectArchiveTrustOverrideTest.',
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0', 'php' => '^8.4'],
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0', 'php' => '^8.4'],
             'backend' => [
                 'bundleClass' => 'Humdek\\TrustHelperTest\\TrustHelperTestBundle',
                 'composer' => ['package' => self::PACKAGE_NAME, 'version' => self::PLUGIN_VERSION],
@@ -387,7 +387,7 @@ class InspectArchiveTrustOverrideTest extends BaseControllerTest
             'composer' => ['package' => self::PACKAGE_NAME, 'version' => self::PLUGIN_VERSION],
             'runtime' => ['entrypointUrl' => 'artifacts/plugin.esm.js', 'format' => 'esm'],
             'checksums' => ['frontendEsm' => 'sha256-' . $esmHash],
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0', 'php' => '^8.4'],
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0', 'php' => '^8.4'],
             // Matches the manifest's connected archive block so the host's
             // PluginArchiveValidator recomputes the identical canonical payload.
             'archive' => ['mode' => 'connected'],

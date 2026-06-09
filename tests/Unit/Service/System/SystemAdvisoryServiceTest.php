@@ -32,8 +32,8 @@ final class SystemAdvisoryServiceTest extends TestCase
      */
     private function service(
         ?array $feed,
-        string $coreVersion = '8.0.0',
-        string $frontendVersion = '8.0.0',
+        string $coreVersion = '0.1.0',
+        string $frontendVersion = '0.1.0',
         array $plugins = [],
     ): SystemAdvisoryService {
         $gateway = $this->createStub(SystemRegistryGatewayInterface::class);
@@ -71,16 +71,16 @@ final class SystemAdvisoryServiceTest extends TestCase
         $feed = ['advisories' => [
             [
                 'id' => 'SHSA-2026-0009', 'severity' => 'high',
-                'affected' => [['kind' => 'core', 'id' => 'selfhelp-core', 'versions' => '>=7.0.0 <8.0.0']],
-                'fixed' => [['kind' => 'core', 'id' => 'selfhelp-core', 'version' => '8.0.0']],
+                'affected' => [['kind' => 'core', 'id' => 'selfhelp-core', 'versions' => '>=0.0.1 <0.1.0']],
+                'fixed' => [['kind' => 'core', 'id' => 'selfhelp-core', 'version' => '0.1.0']],
                 'recommendedAction' => 'Update.', 'blocked' => true,
             ],
         ]];
 
-        $result = $this->service($feed, '8.0.0')->getAdvisories();
+        $result = $this->service($feed, '0.1.0')->getAdvisories();
 
         self::assertTrue($result['available']);
-        self::assertSame([], $result['advisories'], 'An advisory for 7.x must not match an 8.0.0 instance.');
+        self::assertSame([], $result['advisories'], 'An advisory for a pre-0.1.0 range must not match a 0.1.0 instance.');
     }
 
     public function testMatchesCoreAdvisoryAndSurfacesFixedVersion(): void
@@ -88,14 +88,14 @@ final class SystemAdvisoryServiceTest extends TestCase
         $feed = ['advisories' => [
             [
                 'id' => 'SHSA-2026-0010', 'severity' => 'critical',
-                'affected' => [['kind' => 'core', 'id' => 'selfhelp-core', 'versions' => '>=8.0.0 <8.1.0']],
-                'fixed' => [['kind' => 'core', 'id' => 'selfhelp-core', 'version' => '8.1.0']],
-                'recommendedAction' => 'Update core to 8.1.0.', 'blocked' => true,
+                'affected' => [['kind' => 'core', 'id' => 'selfhelp-core', 'versions' => '>=0.1.0 <0.1.1']],
+                'fixed' => [['kind' => 'core', 'id' => 'selfhelp-core', 'version' => '0.1.1']],
+                'recommendedAction' => 'Update core to 0.1.1.', 'blocked' => true,
                 'detailsUrl' => 'https://example.test/advisory',
             ],
         ]];
 
-        $result = $this->service($feed, '8.0.0')->getAdvisories();
+        $result = $this->service($feed, '0.1.0')->getAdvisories();
 
         self::assertCount(1, $result['advisories']);
         $advisory = $result['advisories'][0];
@@ -103,9 +103,9 @@ final class SystemAdvisoryServiceTest extends TestCase
         self::assertSame('critical', $advisory['severity']);
         self::assertTrue($advisory['blocked']);
         self::assertSame('https://example.test/advisory', $advisory['details_url']);
-        self::assertSame(['8.1.0'], $advisory['fixed_versions']);
+        self::assertSame(['0.1.1'], $advisory['fixed_versions']);
         self::assertSame(
-            [['kind' => 'core', 'id' => 'selfhelp-core', 'installed_version' => '8.0.0']],
+            [['kind' => 'core', 'id' => 'selfhelp-core', 'installed_version' => '0.1.0']],
             $advisory['affected'],
         );
     }
@@ -122,7 +122,7 @@ final class SystemAdvisoryServiceTest extends TestCase
                 'recommendedAction' => 'Update the plugin.', 'blocked' => false,
             ],
         ]];
-        $result = $this->service($matching, '8.0.0', '8.0.0', $plugins)->getAdvisories();
+        $result = $this->service($matching, '0.1.0', '0.1.0', $plugins)->getAdvisories();
         self::assertCount(1, $result['advisories']);
         self::assertSame(['0.3.0'], $result['advisories'][0]['fixed_versions']);
 
@@ -134,7 +134,7 @@ final class SystemAdvisoryServiceTest extends TestCase
                 'fixed' => [], 'recommendedAction' => 'x', 'blocked' => false,
             ],
         ]];
-        $resultNoId = $this->service($noId, '8.0.0', '8.0.0', $plugins)->getAdvisories();
+        $resultNoId = $this->service($noId, '0.1.0', '0.1.0', $plugins)->getAdvisories();
         self::assertSame([], $resultNoId['advisories']);
     }
 }

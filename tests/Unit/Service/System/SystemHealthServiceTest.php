@@ -40,15 +40,15 @@ final class SystemHealthServiceTest extends TestCase
     ): SystemHealthService {
         // env-forced maintenance mirrors the parameter; no file is touched.
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-health-no-maint', $maintenanceMode);
-        $instance = new SystemInstanceService('inst-qa-health', '8.0.0', '2.1', '8.0.0', $safeMode, $maintenance);
+        $instance = new SystemInstanceService('inst-qa-health', '0.1.0', '0.1.0', '0.1.0', $safeMode, $maintenance);
 
         $versionService = $this->createStub(SystemVersionService::class);
         $versionService->method('getVersion')->willReturn([
             'instance_id' => 'inst-qa-health',
-            'selfhelp_version' => '8.0.0',
-            'backend_version' => '8.0.0',
-            'frontend_version' => '8.0.0',
-            'plugin_api_version' => '1.1',
+            'selfhelp_version' => '0.1.0',
+            'backend_version' => '0.1.0',
+            'frontend_version' => '0.1.0',
+            'plugin_api_version' => '0.1.0',
             'database_migration_version' => 'Version20260608181148',
             'safe_mode' => $safeMode,
             'maintenance_mode' => $maintenanceMode,
@@ -99,7 +99,7 @@ final class SystemHealthServiceTest extends TestCase
 
         self::assertSame('healthy', $health['overall']);
         self::assertSame('inst-qa-health', $health['instance_id']);
-        self::assertSame('8.0.0', $health['version']['selfhelp']);
+        self::assertSame('0.1.0', $health['version']['selfhelp']);
 
         $byName = [];
         foreach ($health['components'] as $c) {

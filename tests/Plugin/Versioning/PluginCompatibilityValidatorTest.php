@@ -15,35 +15,38 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Version-scheme reconciliation regression (SelfHelp Manager / Docker
- * Distribution MVP, audit CRITICAL 5).
+ * Version-scheme reconciliation regression for the pre-release `0.1.0`
+ * ecosystem (SelfHelp Manager / Docker Distribution MVP).
  *
- * The official SurveyJS plugin declares `compatibility.selfhelp:
- * ">=8.0.0-dev <9.0.0"` and `pluginApiVersion: "1.1"`. These tests pin that
- * the plugin resolves against the CURRENT core version scheme (`8.0.0-dev` +
- * SDK `1.1`) and that the OLD `1.x` core scheme is correctly rejected — i.e.
- * the update/install preflight no longer compares incompatible `8.x` vs `1.x`.
+ * Nothing has shipped yet, so every axis (core CMS, plugin SDK API) starts at
+ * `0.1.0`. Per SemVer, a pre-1.0 MINOR bump (`0.1.x -> 0.2.0`) is breaking, so
+ * the reference official plugin declares `compatibility.selfhelp:
+ * ">=0.1.0 <0.2.0"` and `pluginApiVersion: "0.1.0"`. These tests pin that the
+ * plugin resolves against the CURRENT `0.1.x` core + SDK scheme and that the
+ * next MINOR/MAJOR core (and a mismatched SDK contract) are correctly blocked.
  */
 #[Group('plugin')]
 final class PluginCompatibilityValidatorTest extends TestCase
 {
     /**
      * Mirrors the real `plugins/sh2-shp-survey-js/plugin.json` compatibility
-     * block (the reference official plugin).
+     * block (the reference official plugin). The plugin keeps its own product
+     * version (`0.2.20`); only the host-facing compatibility axes track the
+     * reconciled `0.1.x` scheme.
      */
     private function officialPluginManifest(): PluginManifest
     {
         return new PluginManifest([
             'id' => 'sh2-shp-survey-js',
             'version' => '0.2.20',
-            'pluginApiVersion' => '1.1',
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0'],
+            'pluginApiVersion' => '0.1.0',
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0'],
         ]);
     }
 
     public function testOfficialPluginResolvesAgainstCurrentCoreVersion(): void
     {
-        $validator = new PluginCompatibilityValidator('8.0.0-dev', '1.1');
+        $validator = new PluginCompatibilityValidator('0.1.0', '0.1.0');
 
         $report = $validator->check($this->officialPluginManifest());
 
@@ -54,9 +57,11 @@ final class PluginCompatibilityValidatorTest extends TestCase
         self::assertSame('ok', $report['checks']['sdk']['status']);
     }
 
-    public function testOfficialPluginResolvesAgainstStableEightZero(): void
+    public function testOfficialPluginResolvesAgainstCorePatchRelease(): void
     {
-        $validator = new PluginCompatibilityValidator('8.0.0', '1.1');
+        // A core PATCH bump (0.1.0 -> 0.1.5) stays inside the plugin's
+        // `>=0.1.0 <0.2.0` range and keeps the same SDK, so it remains ok.
+        $validator = new PluginCompatibilityValidator('0.1.5', '0.1.0');
 
         $report = $validator->check($this->officialPluginManifest());
 
@@ -64,11 +69,11 @@ final class PluginCompatibilityValidatorTest extends TestCase
         self::assertSame('ok', $report['severity']);
     }
 
-    public function testLegacyOnePointFiveCoreIsRejectedAsBlocking(): void
+    public function testNextMinorCoreIsRejectedAsBlocking(): void
     {
-        // The exact mismatch CRITICAL 5 fixes: core on the old 1.x scheme can
-        // no longer satisfy the plugin's 8.x requirement.
-        $validator = new PluginCompatibilityValidator('1.5.0', '1.1');
+        // Pre-1.0 semantics: a MINOR bump (0.1.x -> 0.2.0) is breaking, so the
+        // plugin's `<0.2.0` upper bound makes the update blocking.
+        $validator = new PluginCompatibilityValidator('0.2.0', '0.1.0');
 
         $report = $validator->check($this->officialPluginManifest());
 
@@ -78,9 +83,9 @@ final class PluginCompatibilityValidatorTest extends TestCase
         self::assertNotSame([], $report['reasons']);
     }
 
-    public function testNextMajorCoreIsRejectedAsBlocking(): void
+    public function testFirstStableCoreIsRejectedAsBlocking(): void
     {
-        $validator = new PluginCompatibilityValidator('9.0.0', '1.1');
+        $validator = new PluginCompatibilityValidator('1.0.0', '0.1.0');
 
         $report = $validator->check($this->officialPluginManifest());
 
@@ -91,9 +96,10 @@ final class PluginCompatibilityValidatorTest extends TestCase
 
     public function testMismatchedSdkContractIsBlocking(): void
     {
-        // The backend SDK contract token is matched exactly on major.minor;
-        // a host SDK that is not the plugin's declared 1.1 is blocking.
-        $validator = new PluginCompatibilityValidator('8.0.0-dev', '1.2');
+        // The backend SDK contract token is matched against the plugin's
+        // declared `pluginApiVersion`; a host SDK that is not `0.1.0` is
+        // blocking under the pre-1.0 "every minor is breaking" rule.
+        $validator = new PluginCompatibilityValidator('0.1.0', '0.2.0');
 
         $report = $validator->check($this->officialPluginManifest());
 

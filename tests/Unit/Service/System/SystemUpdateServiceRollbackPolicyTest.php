@@ -33,7 +33,7 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
     private function makeService(?array $coreRelease): SystemUpdateService
     {
         $instance = $this->createStub(SystemInstanceService::class);
-        $instance->method('getCmsVersion')->willReturn('8.0.0');
+        $instance->method('getCmsVersion')->willReturn('0.1.0');
         $instance->method('getInstanceId')->willReturn('inst-qa-rollback');
 
         $plugins = $this->createStub(PluginRepository::class);
@@ -63,7 +63,7 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
             ],
         ]);
 
-        $preflight = $service->getPreflight('8.0.1');
+        $preflight = $service->getPreflight('0.1.1');
 
         self::assertIsArray($preflight['rollback']);
         self::assertTrue($preflight['rollback']['automatic_before_migrations']);
@@ -90,7 +90,7 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
     {
         $service = $this->makeService(null);
 
-        $preflight = $service->getPreflight('8.0.1');
+        $preflight = $service->getPreflight('0.1.1');
 
         self::assertIsArray($preflight['rollback']);
         self::assertFalse($preflight['rollback']['automatic_after_destructive_migrations']);
