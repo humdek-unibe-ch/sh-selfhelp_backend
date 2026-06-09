@@ -90,6 +90,23 @@ final class RegistryIndex
     }
 
     /**
+     * Core release refs sorted newest-first. The Manager follows these to the
+     * signed Docker {@see CoreRelease} documents; the backend reads the newest
+     * one for advisory preflight only.
+     *
+     * @return list<RegistryReleaseRef>
+     */
+    public function coreRefsSorted(): array
+    {
+        $refs = $this->core;
+        usort(
+            $refs,
+            static fn (RegistryReleaseRef $a, RegistryReleaseRef $b): int => \App\Plugin\Versioning\SemverHelper::compare($b->version, $a->version),
+        );
+        return $refs;
+    }
+
+    /**
      * Resolve a possibly-relative `releaseUrl` against the index `baseUrl`.
      * Absolute (scheme-qualified) URLs are returned verbatim.
      */

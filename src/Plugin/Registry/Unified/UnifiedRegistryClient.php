@@ -115,6 +115,40 @@ final class UnifiedRegistryClient
     }
 
     /**
+     * Fetch + parse + signature-verify ONE core release document.
+     *
+     * ADVISORY ONLY at the CMS boundary: the backend never pulls images and
+     * never runs a Docker update, so this metadata is for preflight display /
+     * plugin-compatibility checks. The SelfHelp Manager remains the trusted
+     * verifier that re-resolves this document, verifies image digests, and
+     * executes the update (see {@see CoreRelease}). We still verify the
+     * Ed25519 signature here so a tampered advisory cannot mislead the operator.
+     *
+     * @param array<string,string> $headers
+     */
+    public function fetchCoreRelease(string $releaseUrl, array $headers = [], ?RegistryReleaseRef $ref = null): CoreRelease
+    {
+        $decoded = $this->fetchJson($releaseUrl, $headers);
+        $release = CoreRelease::fromArray($decoded, sprintf('core release (%s)', $releaseUrl));
+
+        if ($ref !== null && ($release->id !== $ref->id || $release->version !== $ref->version)) {
+            throw new MalformedRegistryException(sprintf(
+                'Registry ref "%s@%s" points at a core release document for "%s@%s" (%s).',
+                $ref->id,
+                $ref->version,
+                $release->id,
+                $release->version,
+                $releaseUrl,
+            ));
+        }
+
+        // Core releases are Manager-signed and always treated as "official"
+        // (no untrusted bypass for a release pulled from the unified catalogue).
+        $this->verifySignedDocument('core release', $release->id, $release->version, $release->security, $release->raw, true);
+        return $release;
+    }
+
+    /**
      * Verify the Ed25519 signature of a plugin release document against the
      * host's trusted keys. The signed bytes are `security.signedPayload` when
      * present, otherwise the canonical form of the release with its `security`
@@ -124,42 +158,59 @@ final class UnifiedRegistryClient
      */
     public function verifyReleaseSignature(PluginRelease $release): void
     {
-        $payload = $release->security->signedPayload;
+        // Registry plugin releases are always signed; map `official` -> the
+        // strict "official" trust level and everything else to "reviewed" so
+        // the verifier requires a valid signature in every case.
+        $this->verifySignedDocument('plugin release', $release->id, $release->version, $release->security, $release->raw, $release->official);
+    }
+
+    /**
+     * Shared Ed25519 verification for both plugin and core release documents.
+     * The signed bytes are `security.signedPayload` when present, otherwise the
+     * canonical form of the document with its `security` block removed (matches
+     * the Manager `verifyReleaseSignature`). `$official` selects the strict
+     * "official" trust level; anything else maps to "reviewed" — both require a
+     * valid signature, neither allows the untrusted bypass.
+     *
+     * @param array<string,mixed> $raw
+     * @throws MalformedRegistryException when the signature does not verify.
+     */
+    private function verifySignedDocument(string $kind, string $id, string $version, SignatureBlock $security, array $raw, bool $official): void
+    {
+        $payload = $security->signedPayload;
         if ($payload === null) {
-            $clone = $release->raw;
+            $clone = $raw;
             unset($clone['security']);
             $payload = CanonicalJson::encode($clone);
         }
 
-        if ($release->security->signedPayloadSha256 !== null) {
-            $expected = strtolower(preg_replace('/^sha256:/i', '', $release->security->signedPayloadSha256) ?? '');
+        if ($security->signedPayloadSha256 !== null) {
+            $expected = strtolower(preg_replace('/^sha256:/i', '', $security->signedPayloadSha256) ?? '');
             $actual = hash('sha256', $payload);
             if ($expected !== $actual) {
                 throw new MalformedRegistryException(sprintf(
-                    'Plugin release "%s@%s": signedPayloadSha256 does not match the canonical payload.',
-                    $release->id,
-                    $release->version,
+                    '%s "%s@%s": signedPayloadSha256 does not match the canonical payload.',
+                    ucfirst($kind),
+                    $id,
+                    $version,
                 ));
             }
         }
 
-        // Registry plugin releases are always signed; map `official` -> the
-        // strict "official" trust level and everything else to "reviewed" so
-        // the verifier requires a valid signature in every case (no untrusted
-        // bypass for a release pulled from the unified catalogue).
-        $trustLevel = $release->official ? 'official' : 'reviewed';
+        $trustLevel = $official ? 'official' : 'reviewed';
         try {
             $this->signatureVerifier->verify(
                 $trustLevel,
-                $release->security->keyId,
-                $release->security->signature,
+                $security->keyId,
+                $security->signature,
                 $payload,
             );
         } catch (PluginSignatureException $e) {
             throw new MalformedRegistryException(sprintf(
-                'Plugin release "%s@%s" signature verification failed: %s',
-                $release->id,
-                $release->version,
+                '%s "%s@%s" signature verification failed: %s',
+                ucfirst($kind),
+                $id,
+                $version,
                 $e->getMessage(),
             ), 0, $e);
         }

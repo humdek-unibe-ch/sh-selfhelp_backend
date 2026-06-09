@@ -101,6 +101,42 @@ final class CompatibilityError
     }
 
     /**
+     * Build the canonical compatibility error for a CORE update that is blocked
+     * by an installed plugin whose declared core range does not admit the target
+     * core version. The blocking `component` is the plugin (it is what must be
+     * updated/removed), `target_version` is the CORE target, and `required_range`
+     * is the plugin's required core range. Used by the core update preflight
+     * ({@see \App\Service\System\SystemUpdateService}) so it speaks the same
+     * shape as the plugin install/update flow.
+     */
+    public static function coreUpdateBlockedByPlugin(
+        string $pluginId,
+        ?string $installedPluginVersion,
+        string $coreTargetVersion,
+        string $requiredCoreRange,
+        bool $pinned = false,
+        bool $blocking = true,
+    ): self {
+        return new self(
+            component: self::COMPONENT_PLUGIN,
+            componentId: $pluginId,
+            currentVersion: $installedPluginVersion,
+            targetVersion: $coreTargetVersion,
+            requiredRange: $requiredCoreRange,
+            blocking: $blocking,
+            message: sprintf(
+                'Plugin %s requires SelfHelp %s and is not compatible with target version %s.%s',
+                $pluginId,
+                $requiredCoreRange,
+                $coreTargetVersion,
+                $pinned
+                    ? ' This plugin is pinned, so it will not be auto-updated; unpin and update it to a compatible version, or remove it, before updating core.'
+                    : ' Update or remove the plugin, or choose a compatible target version.',
+            ),
+        );
+    }
+
+    /**
      * Build the canonical compatibility error for the plugin-API axis.
      */
     public static function pluginIncompatibleWithApi(
