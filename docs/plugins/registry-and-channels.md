@@ -8,7 +8,7 @@ Source of truth: Plugin layer code and the schemas under this folder.
 
 Plugins come from one or more **plugin sources** (registry URLs, Git
 repos, or local file paths) and ship through **release channels**
-(`stable` / `beta` / `nightly`).
+(`stable` / `beta` / `nightly` / `test`).
 
 > **One unified registry, two installers.** A single published
 > `registry.json` is consumed by BOTH installers: the **SelfHelp
@@ -59,11 +59,16 @@ Where sources are actually defined:
 | `stable` | Production | None | Yes |
 | `beta` | Staging / QA | After 30 days | Behind feature flag |
 | `nightly` | Dev only | After 24 h | No |
+| `test` | Publish rehearsal | n/a | No |
 
-> The `ReleaseChannel` enum is `stable | beta | nightly` across the
-> backend ([`RegistryReleaseRef::CHANNELS`](../../src/Plugin/Registry/Unified/RegistryReleaseRef.php)),
-> `@selfhelp/shared` (`distribution.ts`), and the Manager Zod schema.
-> The legacy `alpha` channel was removed.
+> The `ReleaseChannel` enum is `stable | beta | nightly | test` across
+> the backend ([`RegistryReleaseRef::CHANNELS`](../../src/Plugin/Registry/Unified/RegistryReleaseRef.php)),
+> `@selfhelp/shared` (`distribution.ts` + `plugin-sdk/registry.ts`), the
+> SelfHelp Manager (`@shm/schemas`), and the registry wire schema
+> (`registry.schema.json`). `test` is the staging/rehearsal channel used
+> to dry-run a publish -> install -> update before promoting a release to
+> `stable`; the legacy `alpha` channel was removed. Parity is asserted by
+> `@selfhelp/shared`'s `channel-parity.test.ts`.
 
 The channel of an installed plugin is recorded in `plugins.channel`.
 The doctor compares `plugins.channel` against the source's current

@@ -21,8 +21,13 @@ namespace App\Plugin\Registry\Unified;
  */
 final class RegistryReleaseRef
 {
-    /** Canonical release channels (matches `@selfhelp/shared` `ReleaseChannel`). */
-    public const CHANNELS = ['stable', 'beta', 'nightly'];
+    /**
+     * Canonical release channels, kept in parity with `@selfhelp/shared`
+     * `ReleaseChannel`, the SelfHelp Manager (`@shm/schemas`), and the registry
+     * wire schema. `test` is the staging/rehearsal channel used to dry-run a
+     * publish -> install -> update before promoting a release to `stable`.
+     */
+    public const CHANNELS = ['stable', 'beta', 'nightly', 'test'];
 
     public function __construct(
         public readonly string $id,

@@ -55,12 +55,17 @@ final class Version20260609142641 extends AbstractMigration
         $this->addSql("ALTER TABLE `plugins` ADD `pinned` TINYINT(1) DEFAULT 0 NOT NULL COMMENT 'When true the resolver never auto-updates this plugin; the installed version is preserved until explicitly unpinned'");
 
         foreach ($this->routeDefinitions() as $route) {
+            // `requirements` is a JSON column: pass JSON_OBJECT(...) as a bare
+            // MySQL function call (unquoted %s) so it evaluates to a JSON object,
+            // exactly like the sibling plugin routes in Version20260523141331.
+            // Wrapping it in quotes makes MySQL parse the literal text as JSON and
+            // fail with "Invalid JSON text".
             $this->addSql(sprintf(
                 "INSERT IGNORE INTO `api_routes` (`route_name`, `version`, `methods`, `path`, `controller`, `requirements`, `params`) VALUES ('%s', 'v1', 'POST', '%s', '%s', %s, '[]')",
                 addslashes($route['route_name']),
                 addslashes($route['path']),
                 $route['controller'],
-                "\"JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')\"",
+                "JSON_OBJECT('pluginId', '[a-z][a-z0-9-]*')",
             ));
             $this->addSql(sprintf(
                 "INSERT IGNORE INTO `rel_api_routes_permissions` (`id_api_routes`, `id_permissions`) SELECT ar.id, p.id FROM `api_routes` ar JOIN `permissions` p ON p.name = 'admin.plugins.execute' WHERE ar.route_name = '%s' AND ar.version = 'v1'",

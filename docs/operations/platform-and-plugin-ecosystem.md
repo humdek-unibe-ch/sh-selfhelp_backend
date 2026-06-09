@@ -109,7 +109,7 @@ host PHP `SignedPayloadBuilder`, so a signature made by either verifies in both.
 plugin-release field contract is specified in
 [`../plugins/registry-and-channels.md`](../plugins/registry-and-channels.md) and the
 schema [`../plugins/plugin-registry.schema.json`](../plugins/plugin-registry.schema.json);
-release channels (`stable`/`beta`/`nightly`) are described there too.
+release channels (`stable`/`beta`/`nightly`/`test`) are described there too.
 
 ### Multi-version resolution — shipped vs tracked
 

@@ -10,7 +10,7 @@
         "kind": {"const": "selfhelp-plugin-release"},
         "id": {"type": "string", "minLength": 1},
         "version": {"type": "string", "minLength": 1},
-        "channel": {"type": "string", "enum": ["stable", "beta", "nightly"]},
+        "channel": {"type": "string", "enum": ["stable", "beta", "nightly", "test"]},
         "official": {"type": "boolean"},
         "compatibility": {
             "type": "object",

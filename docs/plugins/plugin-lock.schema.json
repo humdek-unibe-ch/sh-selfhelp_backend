@@ -48,7 +48,7 @@
                     "type": "string",
                     "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
                 },
-                "channel": {"type": "string", "enum": ["stable", "beta", "nightly"]},
+                "channel": {"type": "string", "enum": ["stable", "beta", "nightly", "test"]},
                 "trustLevel": {"type": "string", "enum": ["official", "reviewed", "untrusted"]},
                 "installedAt": {"type": "string", "format": "date-time"},
                 "updatedAt": {"type": "string", "format": "date-time"},

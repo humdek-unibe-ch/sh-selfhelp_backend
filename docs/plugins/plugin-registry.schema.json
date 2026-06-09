@@ -37,7 +37,7 @@
             "properties": {
                 "id": {"type": "string", "minLength": 1},
                 "version": {"type": "string", "minLength": 1},
-                "channel": {"type": "string", "enum": ["stable", "beta", "nightly"]},
+                "channel": {"type": "string", "enum": ["stable", "beta", "nightly", "test"]},
                 "releaseUrl": {"type": "string", "minLength": 1, "description": "Absolute or baseUrl-relative URL of the signed release document (validated by plugin-release.schema.json / core-release.schema.json)."},
                 "blocked": {"type": "boolean"}
             }
