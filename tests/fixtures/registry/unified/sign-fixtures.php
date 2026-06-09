@@ -56,6 +56,9 @@ foreach ([$artifactsDir, $coreDir, $pluginsDir] as $dir) {
  */
 function signDocument(array $doc, string $secretKey): array
 {
+    if ($secretKey === '') {
+        throw new \InvalidArgumentException('secret key must not be empty');
+    }
     $payload = CanonicalJson::encode($doc);
     $signature = sodium_crypto_sign_detached($payload, $secretKey);
     $doc['security'] = [

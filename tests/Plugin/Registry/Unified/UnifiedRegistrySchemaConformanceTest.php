@@ -37,10 +37,15 @@ final class UnifiedRegistrySchemaConformanceTest extends TestCase
         $validator = new Validator();
         $validator->validate($data, $schema);
 
-        $errors = array_map(
-            static fn (array $e): string => sprintf('[%s] %s', $e['property'], $e['message']),
-            $validator->getErrors(),
-        );
+        $errors = [];
+        foreach ($validator->getErrors() as $error) {
+            if (!is_array($error)) {
+                continue;
+            }
+            $property = isset($error['property']) && is_string($error['property']) ? $error['property'] : '';
+            $message = isset($error['message']) && is_string($error['message']) ? $error['message'] : '';
+            $errors[] = sprintf('[%s] %s', $property, $message);
+        }
         self::assertTrue($validator->isValid(), sprintf('%s is not valid against %s: %s', basename($dataFile), basename($schemaFile), implode('; ', $errors)));
     }
 

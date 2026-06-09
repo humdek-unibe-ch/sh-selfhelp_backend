@@ -107,6 +107,7 @@ final class UnifiedRegistryClientTest extends TestCase
         $original = (string) file_get_contents($this->fixtureDir() . '/releases/plugins/sh2-shp-survey-js-0.1.0.json');
         $decoded = json_decode($original, true);
         self::assertIsArray($decoded);
+        self::assertIsArray($decoded['security']);
         $decoded['official'] = false;
         // Drop signedPayload so the verifier recomputes the canonical form from
         // the (tampered) document and detects the mismatch.
