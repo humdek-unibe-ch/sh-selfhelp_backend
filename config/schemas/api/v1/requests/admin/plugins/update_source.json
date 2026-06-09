@@ -14,7 +14,7 @@
     "authSecretEnvVar": { "type": ["string", "null"], "maxLength": 100 },
     "channel": {
       "type": "string",
-      "enum": ["stable", "beta", "alpha", "nightly"]
+      "enum": ["stable", "beta", "nightly"]
     },
     "trustLevel": {
       "type": "string",

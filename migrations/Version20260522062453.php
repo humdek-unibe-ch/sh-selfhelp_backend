@@ -92,7 +92,7 @@ final class Version20260522062453 extends AbstractMigration
               `url` VARCHAR(1000) NOT NULL,
               `auth_header_name` VARCHAR(100) DEFAULT NULL COMMENT 'e.g. Authorization or X-Token',
               `auth_secret_env_var` VARCHAR(100) DEFAULT NULL COMMENT 'Env var name holding the secret (never the secret itself)',
-              `channel` VARCHAR(20) NOT NULL DEFAULT 'stable' COMMENT 'stable | beta | alpha | nightly',
+              `channel` VARCHAR(20) NOT NULL DEFAULT 'stable' COMMENT 'stable | beta | nightly',
               `trust_level` VARCHAR(20) NOT NULL DEFAULT 'untrusted' COMMENT 'official | reviewed | untrusted',
               `enabled` TINYINT(1) NOT NULL DEFAULT 1,
               `last_synced_at` DATETIME DEFAULT NULL,
