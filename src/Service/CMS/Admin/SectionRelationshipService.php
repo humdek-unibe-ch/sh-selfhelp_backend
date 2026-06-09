@@ -8,6 +8,7 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\PagesSection;
 use App\Entity\SectionsHierarchy;
@@ -114,8 +115,8 @@ class SectionRelationshipService extends BaseService
 
             // Page-level audit entry: a single 'pages' transaction summarising
             // the batch so the page's audit trail captures "section attached"
-            // operations (otherwise only deleteSection/forceDeleteSection were
-            // ever logged for this service).
+            // operations (otherwise only section deletions were ever logged for
+            // this service).
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
                 LookupService::TRANSACTION_BY_BY_USER,
@@ -207,6 +208,17 @@ class SectionRelationshipService extends BaseService
                     $this->throwNotFound("Child section {$childSectionId} not found");
                 }
 
+                // Prevent a section from being added anywhere inside its own
+                // subtree. Walk all ancestors of the parent — if the child's ID
+                // already appears there, the insertion would create a cycle and
+                // cause infinite recursion in the page renderer.
+                if ($this->wouldCreateCycle($parentSectionId, $childSectionId)) {
+                    throw new ServiceException(
+                        "Section {$childSectionId} cannot be added here: it is an ancestor of the target parent and would create a circular reference.",
+                        Response::HTTP_UNPROCESSABLE_ENTITY
+                    );
+                }
+
                 $this->removeOldParentRelationships(
                     $oldParentPageId,
                     $oldParentSectionId,
@@ -289,11 +301,18 @@ class SectionRelationshipService extends BaseService
     }
 
     /**
-     * Remove a section from a page
-     * 
-     * @param int $pageId The ID of the page
-     * @param int $sectionId The ID of the section to remove
-     * @throws ServiceException If the relationship does not exist
+     * Detach a section from a page without destroying the section record.
+     *
+     * "Remove" means unlink only: the section is removed from the place where
+     * it sits on this page (its direct rel_pages_sections row, or its
+     * rel_sections_hierarchy row when it is nested under a parent section on
+     * this page). The `sections` row itself is left intact so the same section
+     * — e.g. a shared refContainer — keeps rendering on every other page that
+     * references it. To destroy the record entirely use {@see deleteSection()}.
+     *
+     * @param int $pageId The ID of the page to detach from
+     * @param int $sectionId The ID of the section to detach
+     * @throws ServiceException If the page or the section/link is not found
      */
     public function removeSectionFromPage(int $pageId, int $sectionId): void
     {
@@ -304,108 +323,56 @@ class SectionRelationshipService extends BaseService
                 $this->throwNotFound('Page not found');
             }
 
-            // Check if user has update access to the page
-           $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
+            $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
 
-            // First, check if the section is directly associated with the page
-            $pageSection = $this->entityManager->getRepository(PagesSection::class)->findOneBy(['page' => $page, 'section' => $sectionId]);
-            
+            $section = $this->entityManager->getRepository(Section::class)->find($sectionId);
+            if (!$section) {
+                $this->throwNotFound('Section not found');
+            }
+            $sectionName = $section->getName();
+
+            // Prefer the direct page link; fall back to the hierarchy link when
+            // the section is nested under a parent section on this page.
+            $pageSection = $this->entityManager->getRepository(PagesSection::class)
+                ->findOneBy(['page' => $page, 'section' => $sectionId]);
+
             if ($pageSection) {
-                // Capture section reference for the audit log before removal.
-                $detachedSection = $pageSection->getSection();
-                $detachedSectionName = $detachedSection?->getName();
-
-                // Direct page section - just remove the association
                 $this->entityManager->remove($pageSection);
                 $this->entityManager->flush();
                 $this->positionManagementService->normalizePageSectionPositions((int) $page->getId());
-
-                // Page-level audit entry — the page tree was modified even
-                // though the section row itself still exists.
-                $this->transactionService->logTransaction(
-                    LookupService::TRANSACTION_TYPES_UPDATE,
-                    LookupService::TRANSACTION_BY_BY_USER,
-                    'pages',
-                    $page->getId(),
-                    (object) [
-                        'id' => $page->getId(),
-                        'keyword' => $page->getKeyword(),
-                        'url' => $page->getUrl(),
-                        'detached_section_id' => $sectionId,
-                        'detached_section_name' => $detachedSectionName,
-                    ],
-                    "Detached section '{$detachedSectionName}' (ID: {$sectionId}) from page '{$page->getKeyword()}'"
-                );
-
-                // Invalidate page cache
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_PAGES)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_PAGES)
-                    ->invalidateAllListsInCategory();
             } else {
-                // Not directly associated - check if it's a child section in the page hierarchy
-                $section = $this->entityManager->getRepository(Section::class)->find($sectionId);
-                if (!$section) {
-                    $this->throwNotFound('Section not found');
-                }
-                
-                // Check if this section belongs to the page hierarchy
-                if (!$this->sectionBelongsToPageHierarchy($page, $sectionId, $this->entityManager, $this->sectionRepository)) {
+                $hierarchyLink = $this->findHierarchyLinkForPage($page, $sectionId);
+                if (!$hierarchyLink) {
                     $this->throwNotFound('Section is not associated with this page.');
                 }
-                
-                // Store the section ID before removal for cache invalidation
-                $sectionIdToInvalid = (int) $section->getId();
-                $sectionNameToInvalid = $section->getName();
-
-                // Log the deletion BEFORE removal so the entity snapshot is
-                // preserved in the audit trail (mirrors deleteSection()).
-                $this->transactionService->logTransaction(
-                    LookupService::TRANSACTION_TYPES_DELETE,
-                    LookupService::TRANSACTION_BY_BY_USER,
-                    'sections',
-                    $section->getId(),
-                    $section,
-                    "Section deleted via removeSectionFromPage: '{$sectionNameToInvalid}' (ID: {$sectionIdToInvalid}) from page '{$page->getKeyword()}'"
-                );
-
-                // This is a child section that belongs to the page hierarchy - delete it completely
-                $this->removeAllSectionRelationships($section, $this->entityManager);
-                $this->entityManager->remove($section);
+                $parentSectionId = (int) $hierarchyLink->getParentSection()?->getId();
+                $this->entityManager->remove($hierarchyLink);
                 $this->entityManager->flush();
-
-                // Companion page-level entry so the page audit trail reflects
-                // the structural change too.
-                $this->transactionService->logTransaction(
-                    LookupService::TRANSACTION_TYPES_UPDATE,
-                    LookupService::TRANSACTION_BY_BY_USER,
-                    'pages',
-                    $page->getId(),
-                    (object) [
-                        'id' => $page->getId(),
-                        'keyword' => $page->getKeyword(),
-                        'url' => $page->getUrl(),
-                        'removed_section_id' => $sectionIdToInvalid,
-                        'removed_section_name' => $sectionNameToInvalid,
-                    ],
-                    "Removed section '{$sectionNameToInvalid}' (ID: {$sectionIdToInvalid}) from page '{$page->getKeyword()}'"
-                );
-
-                // Invalidate page and section caches
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_PAGES)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionIdToInvalid);
-                $this->cache
-                    ->withCategory(CacheService::CATEGORY_SECTIONS)
-                    ->invalidateAllListsInCategory();
+                if ($parentSectionId > 0) {
+                    $this->positionManagementService->normalizeSectionHierarchyPositions($parentSectionId, true);
+                }
             }
 
+            // Page-level audit entry — only the page tree changed; the section
+            // row itself survives for its other usages.
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'pages',
+                $page->getId(),
+                (object) [
+                    'id' => $page->getId(),
+                    'keyword' => $page->getKeyword(),
+                    'url' => $page->getUrl(),
+                    'detached_section_id' => $sectionId,
+                    'detached_section_name' => $sectionName,
+                ],
+                "Detached section '{$sectionName}' (ID: {$sectionId}) from page '{$page->getKeyword()}'"
+            );
+
             $this->entityManager->commit();
+
+            $this->invalidatePageAndSectionLists((int) $page->getId(), $sectionId);
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException('Failed to remove section from page: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
@@ -568,6 +535,16 @@ class SectionRelationshipService extends BaseService
             $this->entityManager->flush();
             $this->entityManager->commit();
 
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_PAGES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_PAGES)
+                ->invalidateAllListsInCategory();
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_SECTIONS)
+                ->invalidateAllListsInCategory();
+
             return [
                 'deleted_count' => $deleted,
                 'errors' => []
@@ -675,150 +652,97 @@ class SectionRelationshipService extends BaseService
     }
 
     /**
-     * Delete a section permanently
-     * 
-     * @param int|null $pageId The page ID
+     * Permanently delete a section record.
+     *
+     * Destroys the section row and its own relationships. Each page that
+     * referenced it is independent and handles the missing section on its own.
+     * To merely unlink a section from one page while keeping the record for
+     * other usages, use {@see removeSectionFromPage()}.
+     *
      * @param int $sectionId The ID of the section to delete
      * @throws ServiceException If the section is not found
      */
-    public function deleteSection(?int $pageId, int $sectionId): void
+    public function deleteSection(int $sectionId): void
     {
         $section = $this->sectionRepository->find($sectionId);
         if (!$section) {
             $this->throwNotFound('Section not found');
         }
-        
-        // If page_id is not provided, find it from the section
-        if ($pageId === null) {
-            $pageSection = $this->entityManager->getRepository(PagesSection::class)
-                ->findOneBy(['section' => $sectionId]);
-            
-            if ($pageSection) {
-                $page = $pageSection->getPage();
-                if ($page) {
-                    $pageId = $page->getId();
-                }
-            }
-            
-            if (!$pageId) {
-                $this->throwNotFound('Page not found for this section');
-            }
-        }
-        
-        // Permission check
-       $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
-        
-        // Check if section belongs to page hierarchy
-        $page = $this->pageRepository->find($pageId);
-        if (!$page) {
-            $this->throwNotFound('Page not found');
-        }
-        
-        if (!$this->sectionBelongsToPageHierarchy($page, $sectionId, $this->entityManager, $this->sectionRepository)) {
-            $this->throwForbidden("Section $sectionId is not associated with page {$page->getId()}");
-        }
-        
+
         $this->entityManager->beginTransaction();
         try {
-            // Log the transaction BEFORE deletion (with full entity data)
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_DELETE,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'sections',
-                $section->getId(),
-                $section, // Log full entity before deletion
-                'Section deleted: ' . $section->getName() . ' (ID: ' . $section->getId() . ')'
-            );
-
-            // Remove all relationships and the section itself
-            $this->removeAllSectionRelationships($section, $this->entityManager);
-            $this->entityManager->remove($section);
-            $this->entityManager->flush();
-            
-            // Invalidate page and section caches
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateAllListsInCategory();
-            
+            $this->destroySection($section);
             $this->entityManager->commit();
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException('Failed to delete section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
         }
+
+        $this->invalidatePageAndSectionLists(null, $sectionId);
     }
 
     /**
-     * Force delete a section permanently (always delete, never just remove from page)
-     * This is different from deleteSection which might just remove from page for direct associations
-     * 
-     * @param int $pageId The page ID
-     * @param int $sectionId The ID of the section to delete
-     * @throws ServiceException If the section is not found or access denied
+     * Destroy a single section row and all of its relationships inside the
+     * caller's open transaction. Logs the deletion before removal so the audit
+     * trail keeps the full entity snapshot.
      */
-    public function forceDeleteSection(int $pageId, int $sectionId): void
+    private function destroySection(Section $section): void
     {
-        $section = $this->sectionRepository->find($sectionId);
-        if (!$section) {
-            $this->throwNotFound('Section not found');
-        }
-        
-        // Permission check
-       $this->userContextAwareService->checkAdminAccessById($pageId, 'delete');
-        
-        // Check if section belongs to page hierarchy
-        $page = $this->pageRepository->find($pageId);
-        if (!$page) {
-            $this->throwNotFound('Page not found');
-        }
-        
-        if (!$this->sectionBelongsToPageHierarchy($page, $sectionId, $this->entityManager, $this->sectionRepository)) {
-            $this->throwForbidden("Section $sectionId is not associated with page {$page->getId()}");
-        }
-        
-        $this->entityManager->beginTransaction();
-        try {
-            // Store original section for transaction logging
-            $originalSection = clone $section;
-            
-            // Always remove all relationships and delete the section completely
-            $this->removeAllSectionRelationships($section, $this->entityManager);
-            $this->entityManager->remove($section);
-            $this->entityManager->flush();
-            
-            // Log the transaction
-            $this->transactionService->logTransaction(
-                LookupService::TRANSACTION_TYPES_DELETE,
-                LookupService::TRANSACTION_BY_BY_USER,
-                'sections',
-                $section->getId(),
-                (object) ["deleted_section" => $originalSection, "page_id" => $pageId],
-                'Section force deleted from page: ' . $section->getName() . ' (ID: ' . $section->getId() . ') from page: ' . $pageId
-            );
-            
-            // Invalidate page and section caches
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $section->getId());
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_SECTIONS)
-                ->invalidateAllListsInCategory();
-            
-            $this->entityManager->commit();
-        } catch (\Throwable $e) {
-            $this->entityManager->rollback();
-            throw $e instanceof ServiceException ? $e : new ServiceException('Failed to force delete section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
+        $this->transactionService->logTransaction(
+            LookupService::TRANSACTION_TYPES_DELETE,
+            LookupService::TRANSACTION_BY_BY_USER,
+            'sections',
+            $section->getId(),
+            $section,
+            'Section deleted: ' . $section->getName() . ' (ID: ' . $section->getId() . ')'
+        );
+
+        $this->removeAllSectionRelationships($section, $this->entityManager);
+        $this->entityManager->remove($section);
+        $this->entityManager->flush();
+    }
+
+    /**
+     * Locate the rel_sections_hierarchy row that links $sectionId to a parent
+     * section that belongs to $page. Returns null when the section is not a
+     * nested child anywhere in this page's hierarchy.
+     */
+    private function findHierarchyLinkForPage(Page $page, int $sectionId): ?SectionsHierarchy
+    {
+        $links = $this->entityManager->getRepository(SectionsHierarchy::class)
+            ->findBy(['childSection' => $sectionId]);
+
+        foreach ($links as $link) {
+            $parentId = (int) $link->getParentSection()?->getId();
+            if ($parentId > 0 && $this->sectionBelongsToPageHierarchy($page, $parentId, $this->entityManager, $this->sectionRepository)) {
+                return $link;
+            }
         }
 
-        
+        return null;
+    }
+
+    /**
+     * Shared post-write cache invalidation: the section's own scope, the
+     * owning page scope (when known) and all page + section list caches
+     * (unused_sections / ref_containers must reflect the change immediately).
+     */
+    private function invalidatePageAndSectionLists(?int $pageId, int $sectionId): void
+    {
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+        if ($pageId !== null) {
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_PAGES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+        }
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateAllListsInCategory();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_SECTIONS)
+            ->invalidateAllListsInCategory();
     }
 
     /**
@@ -845,5 +769,41 @@ class SectionRelationshipService extends BaseService
         if (!in_array($sectionId, $sectionIds, true)) {
             $this->throwForbidden('Access denied: Section does not belong to page');
         }
+    }
+
+    /**
+     * Returns true if placing $childId under $parentId would create a cycle.
+     *
+     * Walks the full ancestor chain of $parentId upward through
+     * rel_sections_hierarchy. If $childId already appears there (including
+     * $parentId itself), adding it as a child would make the section a
+     * descendant of itself and cause infinite recursion in the renderer.
+     */
+    private function wouldCreateCycle(int $parentId, int $childId): bool
+    {
+        // A section is always its own ancestor in terms of identity.
+        if ($parentId === $childId) {
+            return true;
+        }
+
+        $conn = $this->entityManager->getConnection();
+
+        /** @var array<int, array{id: int|string}> $rows */
+        $rows = $conn->fetchAllAssociative(<<<SQL
+            WITH RECURSIVE ancestors AS (
+                SELECT sh.id_parent_section AS id
+                FROM rel_sections_hierarchy sh
+                WHERE sh.id_child_section = :start
+
+                UNION ALL
+
+                SELECT sh.id_parent_section
+                FROM rel_sections_hierarchy sh
+                INNER JOIN ancestors a ON sh.id_child_section = a.id
+            )
+            SELECT id FROM ancestors WHERE id = :child
+        SQL, ['start' => $parentId, 'child' => $childId]);
+
+        return $rows !== [];
     }
 }

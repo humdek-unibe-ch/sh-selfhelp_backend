@@ -452,7 +452,11 @@ Add an existing section to a page at a specific position.
 
 ### Remove Section from Page
 
-Remove a section from a page (but don't delete the section itself).
+Detach a section from a page without destroying the section record. Unlinks the
+section from this page only (its direct page link, or its hierarchy link when
+nested); the section row survives for every other page that references it. This
+is the correct operation for shared `refContainer` sections. To destroy the
+record entirely, use [Delete Section](#delete-section).
 
 **Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}`
 
@@ -603,31 +607,23 @@ Update a section's content fields and properties.
 
 ### Delete Section
 
-Delete a section and all its content.
+Permanently delete a section record, regardless of which pages use it. This is
+page-independent: it destroys the section and every relationship it has on every
+page. A shared section (e.g. a `refContainer`) deleted this way disappears from
+all pages that referenced it. To merely unlink a section from one page while
+keeping the record for its other usages, use
+[Remove Section from Page](#remove-section-from-page) instead.
 
-**Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}`
+**Endpoint:** `DELETE /cms-api/v1/admin/sections/{section_id}`
 
 **Authentication:** Required (JWT Bearer token)
 
 **Path Parameters:**
-- `page_id`: ID of the parent page
 - `section_id`: ID of the section to delete
 
 **Response:** 204 No Content
 
-**Permissions:** `admin.page.delete`
-
-### Force Delete Section
-
-Force delete a section that may have dependencies or constraints.
-
-**Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}/force-delete`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Response:** 204 No Content
-
-**Permissions:** `admin.page.delete`
+**Permissions:** `admin.page.delete` (on every page that currently references the section)
 
 ## Section Export/Import
 
