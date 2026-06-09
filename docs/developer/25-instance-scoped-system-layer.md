@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-08.
+Last verified: 2026-06-09.
 Source of truth: `src/Entity/System/`, `src/Service/System/`, `src/Controller/Api/V1/Admin/SystemController.php`, `src/Controller/Api/V1/Manager/SystemManagerController.php`, and `config/schemas/api/v1`.
 
 The **system layer** lets a CMS admin view this instance's version and health,
@@ -38,7 +38,8 @@ work. Two hard rules follow and are enforced in code:
 | Service | `SystemUpdateService` | Preflight, request, status, cross-instance guard, manager claim + write-back. |
 | Service | `MaintenanceModeService` | Maintenance-mode state + the `SELFHELP_MAINTENANCE_MODE` env hard switch. |
 | Service | `SystemInstanceService` | Server-derived instance identity + read-only safe-mode flag. |
-| Gateway | `SystemRegistryGatewayInterface` / `HttpSystemRegistryGateway` | Talks to the official registry (versions, advisories) behind an injected interface. |
+| Service | `SystemAdvisoryService` | Filters the registry advisory feed to advisories affecting installed components. |
+| Reader | `SystemRegistryReader` | The ONE registry reader for the system layer: a fail-soft adapter over the **signed** `UnifiedRegistryClient` (the same client the plugin install/Available flow uses). Core release metadata for the preflight is Ed25519-verified before it is trusted; an unsigned/tampered release degrades to `null`. The earlier unsigned `HttpSystemRegistryGateway` has been removed. |
 
 ### The operation entity
 
@@ -58,6 +59,22 @@ The status enum separates **who may write what**:
   the manager can never re-open an operation as a fresh request.
 - `isTerminalStatus()` marks the end states (`succeeded`, `failed`,
   `rolled_back`, `rollback_failed`, `rejected`).
+
+`GET /admin/system/update/status` returns the latest operation, or — when this
+instance has **never** had an update operation — the synthetic
+`SystemUpdateService::STATUS_IDLE` (`"idle"`, progress `0`, `target_version` =
+the installed version). This is deliberately honest: the old code returned a
+phantom `succeeded / 100%` for an update that never happened. `idle` is **not** a
+manager-writable status, so the manager loop can never produce it.
+
+### Plugin compatibility semantics
+
+Every backend "can this plugin run on this core?" decision (version summary,
+core-update preflight, registry resolver, manifest validator) goes through the
+single helper `App\Plugin\Versioning\PluginCompatibility`. The exact rules for
+`compatibility.selfhelp` / `compatibility.core`, `pluginApiVersion` /
+`compatibility.pluginApi`, the `blocked` flag, and advisories are documented in
+[26-plugin-compatibility-rules.md](26-plugin-compatibility-rules.md).
 
 ## Admin API (browser, permission-gated)
 
@@ -103,6 +120,13 @@ The token comes from `SELFHELP_MANAGER_TOKEN`. When it is empty the manager loop
 is **disabled** and every call is denied — an unconfigured instance can never be
 driven by an anonymous caller. The matching CLI command is
 `sh-manager instance process-operations <id> --backend-url ... --token ...`.
+
+`process-operations` drains the queue **once** and exits, so it must be invoked
+on a schedule for a `requested` update to ever be picked up. The manager ships a
+supervised trigger (systemd timer + cron recipe + a `--watch` long-running loop)
+documented in the `sh-manager` repository's `docs/operator/process-operations-scheduling.md`;
+without one of those, a CMS-requested update stays in `requested` forever. The
+backend deliberately does not run it — the CMS never controls Docker.
 
 ## Update lifecycle (happy path)
 

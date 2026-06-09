@@ -11,7 +11,7 @@
       "properties": {
         "instance_id": { "type": "string" },
         "operation_id": { "type": "string" },
-        "status": { "type": "string", "enum": ["requested", "approved", "accepted", "running", "preflight_running", "preflight_failed", "backup_running", "update_running", "migration_running", "health_check_running", "succeeded", "failed", "rollback_running", "rolled_back", "rollback_failed", "rejected"] },
+        "status": { "type": "string", "enum": ["idle", "requested", "approved", "accepted", "running", "preflight_running", "preflight_failed", "backup_running", "update_running", "migration_running", "health_check_running", "succeeded", "failed", "rollback_running", "rolled_back", "rollback_failed", "rejected"] },
         "target_version": { "type": "string" },
         "progress_percent": { "type": "integer", "minimum": 0, "maximum": 100 },
         "steps": {

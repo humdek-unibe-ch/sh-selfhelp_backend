@@ -149,6 +149,25 @@ final class UnifiedRegistryClient
     }
 
     /**
+     * Fetch the security-advisory feed referenced by the index `advisoriesUrl`.
+     *
+     * The advisory feed is an INFORMATIONAL document, not a signed release: it
+     * is fetched + JSON-decoded but not Ed25519-verified (it carries no security
+     * block). Returns null when the index declares no advisory feed. The caller
+     * (system advisory service) fails soft on transport errors.
+     *
+     * @param array<string,string> $headers
+     * @return array<string,mixed>|null
+     */
+    public function fetchAdvisoryFeed(RegistryIndex $index, array $headers = []): ?array
+    {
+        if ($index->advisoriesUrl === null) {
+            return null;
+        }
+        return $this->fetchJson($index->resolveUrl($index->advisoriesUrl), $headers);
+    }
+
+    /**
      * Verify the Ed25519 signature of a plugin release document against the
      * host's trusted keys. The signed bytes are `security.signedPayload` when
      * present, otherwise the canonical form of the release with its `security`

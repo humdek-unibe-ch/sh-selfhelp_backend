@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Plugin\Registry\Unified;
 
+use App\Plugin\Versioning\PluginCompatibility;
 use App\Plugin\Versioning\SemverHelper;
 
 /**
@@ -35,8 +36,8 @@ final class PluginReleaseResolver
         if ($release->blocked) {
             return false;
         }
-        return SemverHelper::satisfies($coreVersion, $release->compatibilityCore)
-            && SemverHelper::satisfies($pluginApiVersion, $release->compatibilityPluginApi);
+        return PluginCompatibility::coreSatisfied($coreVersion, $release->compatibilityCore)
+            && PluginCompatibility::pluginApiSatisfied($pluginApiVersion, $release->compatibilityPluginApi);
     }
 
     /**
@@ -49,7 +50,7 @@ final class PluginReleaseResolver
         string $pluginApiVersion,
         ?string $installedVersion = null,
     ): ?CompatibilityError {
-        if (!SemverHelper::satisfies($coreVersion, $release->compatibilityCore)) {
+        if (!PluginCompatibility::coreSatisfied($coreVersion, $release->compatibilityCore)) {
             return CompatibilityError::pluginIncompatibleWithCore(
                 pluginId: $release->id,
                 currentVersion: $installedVersion,
@@ -58,7 +59,7 @@ final class PluginReleaseResolver
                 coreVersion: $coreVersion,
             );
         }
-        if (!SemverHelper::satisfies($pluginApiVersion, $release->compatibilityPluginApi)) {
+        if (!PluginCompatibility::pluginApiSatisfied($pluginApiVersion, $release->compatibilityPluginApi)) {
             return CompatibilityError::pluginIncompatibleWithApi(
                 pluginId: $release->id,
                 currentVersion: $installedVersion,

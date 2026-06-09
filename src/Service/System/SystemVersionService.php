@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 namespace App\Service\System;
 
-use App\Plugin\Versioning\SemverHelper;
+use App\Plugin\Versioning\PluginCompatibility;
 use App\Repository\Plugin\PluginRepository;
 use Doctrine\DBAL\Connection;
 
@@ -108,15 +108,6 @@ class SystemVersionService
      */
     private function isPluginCompatible(array $manifest, string $cmsVersion): bool
     {
-        $compatibility = $manifest['compatibility'] ?? null;
-        if (!is_array($compatibility)) {
-            return true;
-        }
-        $range = $compatibility['selfhelp'] ?? null;
-        if (!is_string($range) || $range === '') {
-            return true;
-        }
-
-        return SemverHelper::satisfies($cmsVersion, $range);
+        return PluginCompatibility::isManifestCoreCompatible($manifest, $cmsVersion);
     }
 }

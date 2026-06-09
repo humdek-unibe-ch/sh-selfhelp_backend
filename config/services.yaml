@@ -327,14 +327,15 @@ services:
             $managerToken: '%selfhelp.manager_token%'
         tags: ['controller.service_arguments']
 
-    # Read-only registry gateway for the compatibility preflight. Points at
-    # the one official unified registry index. Fails soft when offline.
-    App\Service\System\HttpSystemRegistryGateway:
+    # The ONE registry reader for the instance-scoped system layer (advisory
+    # update preflight, registry-reachability health, advisory feed). It is a
+    # fail-soft adapter over the SAME signed UnifiedRegistryClient the plugin
+    # install/Available flow uses, so core release metadata is signature-verified
+    # before the preflight trusts it. Points at the one official unified registry
+    # index; fails soft (null/false) when offline.
+    App\Service\System\SystemRegistryReader:
         arguments:
             $registryUrl: '%selfhelp.plugin_default_registry_url%registry.json'
-
-    App\Service\System\SystemRegistryGatewayInterface:
-        alias: App\Service\System\HttpSystemRegistryGateway
 
     App\Plugin\Archive\PluginArchivePromoter:
         arguments:

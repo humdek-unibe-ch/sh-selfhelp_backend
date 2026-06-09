@@ -42,7 +42,7 @@ class SystemHealthService
         private readonly SystemInstanceService $instance,
         private readonly SystemVersionService $versionService,
         private readonly SystemUpdateService $updateService,
-        private readonly SystemRegistryGatewayInterface $registry,
+        private readonly SystemRegistryReader $registry,
         private readonly Connection $connection,
         private readonly CacheItemPoolInterface $cache,
         private readonly string $mercureUrl,
@@ -255,7 +255,7 @@ class SystemHealthService
     {
         $nowIso = ($this->now ?? new \DateTimeImmutable())->format(\DateTimeInterface::ATOM);
 
-        if ($this->registry->fetchIndex() !== null) {
+        if ($this->registry->isReachable()) {
             try {
                 $item = $this->cache->getItem(self::REGISTRY_LAST_OK_CACHE_KEY);
                 $item->set($nowIso);

@@ -12,22 +12,25 @@ namespace App\Plugin\Registry\Unified;
 /**
  * The unified `registry.json` index — the SINGLE catalogue consumed by BOTH
  * installers: the Manager (core/frontend/scheduler/worker Docker releases) and
- * the CMS/backend (plugin releases).
+ * the CMS/backend (plugin releases + advisory preflight).
  *
  * Mirrors the shared `RegistryIndex` TypeScript interface
  * (`@selfhelp/shared` `distribution.ts`) and the Manager Zod schema. Every
  * top-level component array is a list of {@see RegistryReleaseRef} — one ref
  * per published version — each pointing at a standalone signed release
- * document via `releaseUrl`. The backend follows `plugins[]` refs; the Manager
- * follows `core[]` / `frontend[]` / `scheduler[]` / `worker[]` refs.
+ * document via `releaseUrl`.
+ *
+ * The backend only ever CONSUMES `core[]` (for the signed advisory-only update
+ * preflight) and `plugins[]` (the Available list + install). The
+ * `frontend[]`/`scheduler[]`/`worker[]` Docker release refs are the Manager's
+ * concern and are intentionally NOT parsed here — the backend never pulls those
+ * images, so modelling them would be unused surface. The wire shape still
+ * carries them (see the registry-index JSON schema); they are simply ignored.
  */
 final class RegistryIndex
 {
     /**
      * @param list<RegistryReleaseRef> $core
-     * @param list<RegistryReleaseRef> $frontend
-     * @param list<RegistryReleaseRef> $scheduler
-     * @param list<RegistryReleaseRef> $worker
      * @param list<RegistryReleaseRef> $plugins
      */
     public function __construct(
@@ -35,11 +38,9 @@ final class RegistryIndex
         public readonly string $requiresManager,
         public readonly string $baseUrl,
         public readonly array $core,
-        public readonly array $frontend,
-        public readonly array $scheduler,
-        public readonly array $worker,
         public readonly array $plugins,
         public readonly ?string $trustedKeysUrl = null,
+        public readonly ?string $advisoriesUrl = null,
     ) {
     }
 
@@ -53,17 +54,16 @@ final class RegistryIndex
         $baseUrl = self::requireString($data, 'baseUrl', $context);
 
         $trustedKeysUrl = $data['trustedKeysUrl'] ?? null;
+        $advisoriesUrl = $data['advisoriesUrl'] ?? null;
 
         return new self(
             schemaVersion: $schemaVersion,
             requiresManager: $requiresManager,
             baseUrl: $baseUrl,
             core: self::parseRefs($data, 'core', $context),
-            frontend: self::parseRefs($data, 'frontend', $context),
-            scheduler: self::parseRefs($data, 'scheduler', $context),
-            worker: self::parseRefs($data, 'worker', $context),
             plugins: self::parseRefs($data, 'plugins', $context),
             trustedKeysUrl: is_string($trustedKeysUrl) && $trustedKeysUrl !== '' ? $trustedKeysUrl : null,
+            advisoriesUrl: is_string($advisoriesUrl) && $advisoriesUrl !== '' ? $advisoriesUrl : null,
         );
     }
 

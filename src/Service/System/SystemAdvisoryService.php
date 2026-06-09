@@ -19,9 +19,10 @@ use App\Repository\Plugin\PluginRepository;
  * installed plugin), so the maintenance UI can show a focused, actionable list.
  *
  * Read-only and fail-soft: the feed is fetched through
- * {@see SystemRegistryGatewayInterface} (connected installs only). When the
- * registry is unreachable the result reports `available: false` with an empty
- * list, so the UI shows "could not check advisories" instead of blocking.
+ * {@see SystemRegistryReader} (the single signed registry path; connected
+ * installs only). When the registry is unreachable the result reports
+ * `available: false` with an empty list, so the UI shows "could not check
+ * advisories" instead of blocking.
  *
  * Matching reuses {@see SemverHelper} (the same narrow range semantics the
  * plugin layer and `@selfhelp/shared` already agree on) — no new dependency.
@@ -29,7 +30,7 @@ use App\Repository\Plugin\PluginRepository;
 final class SystemAdvisoryService
 {
     public function __construct(
-        private readonly SystemRegistryGatewayInterface $gateway,
+        private readonly SystemRegistryReader $registry,
         private readonly SystemInstanceService $instance,
         private readonly PluginRepository $pluginRepository,
     ) {
@@ -51,7 +52,7 @@ final class SystemAdvisoryService
      */
     public function getAdvisories(): array
     {
-        $feed = $this->gateway->fetchAdvisories();
+        $feed = $this->registry->getAdvisoryFeed();
         if ($feed === null) {
             return ['available' => false, 'advisories' => []];
         }

@@ -10,11 +10,14 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Service\System;
 
 use App\Entity\Plugin\Plugin;
+use App\Plugin\Registry\Unified\CoreImageRef;
+use App\Plugin\Registry\Unified\CoreRelease;
+use App\Plugin\Registry\Unified\SignatureBlock;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\System\SystemInstanceService;
-use App\Service\System\SystemRegistryGatewayInterface;
+use App\Service\System\SystemRegistryReader;
 use App\Service\System\SystemUpdateService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -24,6 +27,12 @@ use Psr\Log\NullLogger;
  * Core-update preflight regression for the reconciled `0.1.0` ecosystem
  * (distribution plan: "Core update preflight must check installed plugins").
  *
+ * Also pins the SIGNED preflight path (audit fix #2): the service now reads the
+ * SAME signature-verified {@see CoreRelease} the plugin flow uses (via
+ * {@see SystemRegistryReader}) instead of an unsigned array gateway. The
+ * destructive-migration + registry-unreachable + never-updated behaviours are
+ * asserted on that typed contract.
+ *
  * Pre-1.0 every MINOR is breaking, so a plugin pinned to `>=0.1.0 <0.2.0`:
  *   - stays compatible across a core PATCH (`0.1.0 -> 0.1.1`) -> update allowed;
  *   - blocks a core MINOR (`0.1.0 -> 0.2.0`) -> update blocked with a visible,
@@ -31,8 +40,38 @@ use Psr\Log\NullLogger;
  */
 final class SystemUpdateServicePreflightTest extends TestCase
 {
-    private function makeService(bool $pinned = false): SystemUpdateService
+    /**
+     * A signed, signature-verified core release as the reader would return it.
+     */
+    private function coreRelease(bool $destructive = false, string $minimumDirectUpgradeFrom = '0.1.0'): CoreRelease
     {
+        $digest = 'sha256:' . str_repeat('a', 64);
+
+        return new CoreRelease(
+            id: 'selfhelp-core',
+            version: '0.1.1',
+            channel: 'stable',
+            minimumDirectUpgradeFrom: $minimumDirectUpgradeFrom,
+            pluginApiVersion: '0.1.0',
+            backend: new CoreImageRef('ghcr.io/selfhelp/backend', $digest),
+            worker: new CoreImageRef('ghcr.io/selfhelp/worker', $digest),
+            scheduler: new CoreImageRef('ghcr.io/selfhelp/scheduler', $digest),
+            requiredFrontendRange: '>=0.1.0 <0.2.0',
+            migrationRange: '>0.1.0 <=0.1.1',
+            destructive: $destructive,
+            requiresBackup: true,
+            manualConfirmationRequired: false,
+            security: new SignatureBlock('c2ln', 'selfhelp-official-2026'),
+            blocked: false,
+            raw: [],
+        );
+    }
+
+    private function makeService(
+        bool $pinned = false,
+        ?CoreRelease $release = null,
+        ?SystemUpdateOperationRepository $operations = null,
+    ): SystemUpdateService {
         $instance = $this->createStub(SystemInstanceService::class);
         $instance->method('getCmsVersion')->willReturn('0.1.0');
         $instance->method('getInstanceId')->willReturn('inst-qa-preflight');
@@ -48,15 +87,13 @@ final class SystemUpdateServicePreflightTest extends TestCase
         $plugins = $this->createStub(PluginRepository::class);
         $plugins->method('findAllOrderedByName')->willReturn([$plugin]);
 
-        $registry = $this->createStub(SystemRegistryGatewayInterface::class);
-        // A published core release with non-destructive migrations for the target.
-        $registry->method('fetchCoreRelease')->willReturn([
-            'database' => ['destructive' => false, 'requiresBackup' => true, 'manualConfirmationRequired' => false],
-        ]);
+        $registry = $this->createStub(SystemRegistryReader::class);
+        // Default: a published, signed core release with non-destructive migrations.
+        $registry->method('getCoreRelease')->willReturn($release ?? $this->coreRelease());
 
         return new SystemUpdateService(
             $instance,
-            $this->createStub(SystemUpdateOperationRepository::class),
+            $operations ?? $this->createStub(SystemUpdateOperationRepository::class),
             $plugins,
             $registry,
             $this->createStub(UserContextService::class),
@@ -129,6 +166,69 @@ final class SystemUpdateServicePreflightTest extends TestCase
         self::assertTrue($compat['blocking'] ?? null);
         self::assertIsString($compat['message'] ?? null);
         self::assertStringContainsString('pinned', (string) $compat['message']);
+    }
+
+    public function testDestructiveSignedReleaseRaisesDestructiveMigrationWarning(): void
+    {
+        $preflight = $this->makeService(release: $this->coreRelease(destructive: true))->getPreflight('0.1.1');
+
+        self::assertContains(
+            SystemUpdateService::CHECK_DESTRUCTIVE_MIGRATION,
+            $this->checkCodes($preflight),
+            'A destructive signed core release must surface the destructive_migration warning.',
+        );
+        self::assertIsArray($preflight['database']);
+        self::assertTrue($preflight['database']['destructive'] ?? null);
+    }
+
+    public function testUnreachableRegistryDegradesToWarningNotBlock(): void
+    {
+        // getCoreRelease() returns null both when the registry is offline AND when
+        // a tampered/unsigned core release fails verification: either way the
+        // preflight must degrade to a warning (the Manager re-validates), never a
+        // silent trust of unsigned metadata.
+        $instance = $this->createStub(SystemInstanceService::class);
+        $instance->method('getCmsVersion')->willReturn('0.1.0');
+        $instance->method('getInstanceId')->willReturn('inst-qa-preflight');
+
+        $plugins = $this->createStub(PluginRepository::class);
+        $plugins->method('findAllOrderedByName')->willReturn([]);
+
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('getCoreRelease')->willReturn(null);
+
+        $service = new SystemUpdateService(
+            $instance,
+            $this->createStub(SystemUpdateOperationRepository::class),
+            $plugins,
+            $registry,
+            $this->createStub(UserContextService::class),
+            $this->createStub(EntityManagerInterface::class),
+            new NullLogger(),
+        );
+
+        $preflight = $service->getPreflight('0.1.1');
+
+        self::assertContains(SystemUpdateService::CHECK_REGISTRY_UNREACHABLE, $this->checkCodes($preflight));
+        self::assertNotSame(SystemUpdateService::STATUS_BLOCKED, $preflight['status']);
+    }
+
+    public function testNeverUpdatedInstanceReportsIdleStatusNotFakeSuccess(): void
+    {
+        // Audit fix #7: an instance that has NEVER had an update operation must
+        // report an honest "idle" state at progress 0, not a phantom
+        // "succeeded / 100%".
+        $operations = $this->createStub(SystemUpdateOperationRepository::class);
+        $operations->method('findLatestForInstance')->willReturn(null);
+
+        $status = $this->makeService(operations: $operations)->getStatus();
+
+        self::assertSame(SystemUpdateService::STATUS_IDLE, $status['status']);
+        self::assertSame(0, $status['progress_percent']);
+        self::assertSame('', $status['operation_id']);
+        self::assertSame('0.1.0', $status['target_version']);
+        self::assertIsString($status['message']);
+        self::assertStringContainsString('0.1.0', (string) $status['message']);
     }
 
     /**

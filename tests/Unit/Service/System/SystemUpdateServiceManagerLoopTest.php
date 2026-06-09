@@ -11,12 +11,15 @@ namespace App\Tests\Unit\Service\System;
 
 use App\Entity\System\SystemUpdateOperation;
 use App\Exception\ServiceException;
+use App\Plugin\Registry\Unified\CoreImageRef;
+use App\Plugin\Registry\Unified\CoreRelease;
+use App\Plugin\Registry\Unified\SignatureBlock;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\System\MaintenanceModeService;
 use App\Service\System\SystemInstanceService;
-use App\Service\System\SystemRegistryGatewayInterface;
+use App\Service\System\SystemRegistryReader;
 use App\Service\System\SystemUpdateService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -35,7 +38,7 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
 
     private function makeService(
         SystemUpdateOperationRepository $operations,
-        ?SystemRegistryGatewayInterface $registry = null,
+        ?SystemRegistryReader $registry = null,
     ): SystemUpdateService {
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-managerloop-no-maint', false);
         $instance = new SystemInstanceService(self::INSTANCE, '0.1.0', '0.1.0', '0.1.0', false, $maintenance);
@@ -43,7 +46,7 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
         $plugins = $this->createStub(PluginRepository::class);
         $plugins->method('findAllOrderedByName')->willReturn([]);
 
-        $registryStub = $registry ?? $this->createStub(SystemRegistryGatewayInterface::class);
+        $registryStub = $registry ?? $this->createStub(SystemRegistryReader::class);
 
         $userContext = $this->createStub(UserContextService::class);
         $userContext->method('getActualUserId')->willReturn(0);
@@ -105,7 +108,7 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
 
     public function testRecordManagerStatusRejectsCrossInstanceOperation(): void
     {
-        $foreign = new SystemUpdateOperation('inst-other', 'op_1', '8.0.1');
+        $foreign = new SystemUpdateOperation('inst-other', 'op_1', '0.1.1');
         $operations = $this->createStub(SystemUpdateOperationRepository::class);
         $operations->method('findByOperationId')->willReturn($foreign);
 
@@ -120,7 +123,7 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
 
     public function testRecordManagerStatusRejectsTerminalOperation(): void
     {
-        $done = new SystemUpdateOperation(self::INSTANCE, 'op_1', '8.0.1');
+        $done = new SystemUpdateOperation(self::INSTANCE, 'op_1', '0.1.1');
         $done->setStatus(SystemUpdateOperation::STATUS_SUCCEEDED);
         $operations = $this->createStub(SystemUpdateOperationRepository::class);
         $operations->method('findByOperationId')->willReturn($done);
@@ -136,7 +139,7 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
 
     public function testRecordManagerStatusUpdatesAnInScopeOperation(): void
     {
-        $operation = new SystemUpdateOperation(self::INSTANCE, 'op_1', '8.0.1');
+        $operation = new SystemUpdateOperation(self::INSTANCE, 'op_1', '0.1.1');
         $operations = $this->createStub(SystemUpdateOperationRepository::class);
         $operations->method('findByOperationId')->willReturn($operation);
 
@@ -166,25 +169,51 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
 
     public function testClaimPendingExposesDestructiveFlagFromRegistry(): void
     {
-        $operation = new SystemUpdateOperation(self::INSTANCE, 'op_42', '8.0.1');
+        $operation = new SystemUpdateOperation(self::INSTANCE, 'op_42', '0.1.1');
         $operation->setAcceptedMigrationRisk(true)->setPreflightId('pf_42');
         $operations = $this->createStub(SystemUpdateOperationRepository::class);
         $operations->method('findLatestClaimableForInstance')->willReturn($operation);
 
-        $registry = $this->createStub(SystemRegistryGatewayInterface::class);
-        $registry->method('fetchCoreRelease')->willReturn([
-            'database' => ['destructive' => true, 'requiresBackup' => true, 'manualConfirmationRequired' => true],
-        ]);
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('getCoreRelease')->willReturn($this->coreRelease(destructive: true));
 
         $dto = $this->makeService($operations, $registry)->claimPendingOperation();
 
         self::assertNotNull($dto);
         self::assertSame('op_42', $dto['operation_id']);
         self::assertSame(self::INSTANCE, $dto['instance_id']);
-        self::assertSame('8.0.1', $dto['target_version']);
+        self::assertSame('0.1.1', $dto['target_version']);
         // The operation id doubles as the approval token in this trust model.
         self::assertSame('op_42', $dto['approval_token']);
         self::assertTrue($dto['accepted_migration_risk']);
         self::assertTrue($dto['destructive_migration']);
+    }
+
+    /**
+     * A signed, signature-verified core release as {@see SystemRegistryReader}
+     * would return it (the backend now reads the typed release, not an array).
+     */
+    private function coreRelease(bool $destructive = false): CoreRelease
+    {
+        $digest = 'sha256:' . str_repeat('b', 64);
+
+        return new CoreRelease(
+            id: 'selfhelp-core',
+            version: '0.1.1',
+            channel: 'stable',
+            minimumDirectUpgradeFrom: '0.1.0',
+            pluginApiVersion: '0.1.0',
+            backend: new CoreImageRef('ghcr.io/selfhelp/backend', $digest),
+            worker: new CoreImageRef('ghcr.io/selfhelp/worker', $digest),
+            scheduler: new CoreImageRef('ghcr.io/selfhelp/scheduler', $digest),
+            requiredFrontendRange: '>=0.1.0 <0.2.0',
+            migrationRange: '>0.1.0 <=0.1.1',
+            destructive: $destructive,
+            requiresBackup: true,
+            manualConfirmationRequired: $destructive,
+            security: new SignatureBlock('c2ln', 'selfhelp-official-2026'),
+            blocked: false,
+            raw: [],
+        );
     }
 }

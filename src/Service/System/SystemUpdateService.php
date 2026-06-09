@@ -14,6 +14,8 @@ use App\Entity\System\SystemUpdateOperation;
 use App\Entity\User;
 use App\Exception\ServiceException;
 use App\Plugin\Registry\Unified\CompatibilityError;
+use App\Plugin\Registry\Unified\CoreRelease;
+use App\Plugin\Versioning\PluginCompatibility;
 use App\Plugin\Versioning\SemverHelper;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
@@ -50,11 +52,21 @@ class SystemUpdateService
     public const STATUS_WARNING = 'warning';
     public const STATUS_BLOCKED = 'blocked';
 
+    /**
+     * Synthetic status returned by {@see getStatus()} when this instance has
+     * NEVER had an update operation. It is deliberately NOT a lifecycle status
+     * the manager can write (see {@see SystemUpdateOperation::isManagerWritableStatus()}):
+     * it means "no update has ever been requested — the instance is simply
+     * running its installed version", which is honest where the old code faked a
+     * "succeeded / 100%" terminal status for an update that never happened.
+     */
+    public const STATUS_IDLE = 'idle';
+
     public function __construct(
         private readonly SystemInstanceService $instance,
         private readonly SystemUpdateOperationRepository $operations,
         private readonly PluginRepository $pluginRepository,
-        private readonly SystemRegistryGatewayInterface $registry,
+        private readonly SystemRegistryReader $registry,
         private readonly UserContextService $userContext,
         private readonly EntityManagerInterface $entityManager,
         private readonly LoggerInterface $logger,
@@ -131,7 +143,7 @@ class SystemUpdateService
             'manual_confirmation_required' => false,
         ];
 
-        $release = $this->registry->fetchCoreRelease($targetVersion);
+        $release = $this->registry->getCoreRelease($targetVersion);
         if ($release === null) {
             $checks[] = [
                 'code' => self::CHECK_REGISTRY_UNREACHABLE,
@@ -139,7 +151,7 @@ class SystemUpdateService
                 'message' => 'Registry metadata for the target version is unavailable; the SelfHelp Manager will re-validate compatibility and migrations before applying.',
             ];
         } else {
-            $database = $this->readDatabaseFacts($release, $database);
+            $database = $this->readDatabaseFacts($release);
             if ($database['destructive']) {
                 $checks[] = [
                     'code' => self::CHECK_DESTRUCTIVE_MIGRATION,
@@ -148,8 +160,8 @@ class SystemUpdateService
                 ];
             }
 
-            $minDirect = $release['minimumDirectUpgradeFrom'] ?? null;
-            if (is_string($minDirect) && $minDirect !== '' && SemverHelper::compare($currentVersion, $minDirect) < 0) {
+            $minDirect = $release->minimumDirectUpgradeFrom;
+            if ($minDirect !== '' && SemverHelper::compare($currentVersion, $minDirect) < 0) {
                 $checks[] = [
                     'code' => self::CHECK_UPGRADE_PATH,
                     'severity' => 'error',
@@ -284,8 +296,9 @@ class SystemUpdateService
 
     /**
      * Status of the latest update operation for THIS instance. When no operation
-     * exists, returns a synthetic "no active update" status so the polling UI has
-     * a stable shape.
+     * has ever existed, returns the synthetic {@see STATUS_IDLE} state (progress
+     * 0, current version) so the polling UI has a stable shape WITHOUT pretending
+     * a phantom update "succeeded".
      *
      * @return array<string,mixed>
      */
@@ -300,13 +313,13 @@ class SystemUpdateService
             return [
                 'instance_id' => $instanceId,
                 'operation_id' => '',
-                'status' => SystemUpdateOperation::STATUS_SUCCEEDED,
+                'status' => self::STATUS_IDLE,
                 'target_version' => $this->instance->getCmsVersion(),
-                'progress_percent' => 100,
+                'progress_percent' => 0,
                 'steps' => [],
                 'requested_at' => $now,
                 'updated_at' => $now,
-                'message' => 'No update operation has been requested for this instance.',
+                'message' => sprintf('No update has been requested for this instance; it is running version %s.', $this->instance->getCmsVersion()),
             ];
         }
 
@@ -426,21 +439,19 @@ class SystemUpdateService
     }
 
     /**
-     * @param array<string,mixed> $release
-     * @param array{destructive:bool,requires_backup:bool,manual_confirmation_required:bool} $fallback
+     * Read the database-migration facts from the SIGNED, signature-verified core
+     * release (see {@see SystemRegistryReader::getCoreRelease()}). The release is
+     * a typed {@see CoreRelease}, so these facts are taken from the verified
+     * document rather than re-parsed from a raw array.
+     *
      * @return array{destructive:bool,requires_backup:bool,manual_confirmation_required:bool}
      */
-    private function readDatabaseFacts(array $release, array $fallback): array
+    private function readDatabaseFacts(CoreRelease $release): array
     {
-        $db = $release['database'] ?? null;
-        if (!is_array($db)) {
-            return $fallback;
-        }
-
         return [
-            'destructive' => (bool) ($db['destructive'] ?? $fallback['destructive']),
-            'requires_backup' => (bool) ($db['requiresBackup'] ?? $fallback['requires_backup']),
-            'manual_confirmation_required' => (bool) ($db['manualConfirmationRequired'] ?? $fallback['manual_confirmation_required']),
+            'destructive' => $release->destructive,
+            'requires_backup' => $release->requiresBackup,
+            'manual_confirmation_required' => $release->manualConfirmationRequired,
         ];
     }
 
@@ -451,16 +462,12 @@ class SystemUpdateService
     {
         $incompatible = [];
         foreach ($this->pluginRepository->findAllOrderedByName() as $plugin) {
-            $manifest = $plugin->getManifestJson();
-            $compatibility = $manifest['compatibility'] ?? null;
-            if (!is_array($compatibility)) {
-                continue;
-            }
-            // Author manifests express core compatibility as `compatibility.selfhelp`
-            // (the registry release documents use `compatibility.core`; the publisher
-            // maps one to the other at build time — see PluginRelease).
-            $range = $compatibility['selfhelp'] ?? null;
-            if (is_string($range) && $range !== '' && !SemverHelper::satisfies($targetVersion, $range)) {
+            // The CORE-axis compatibility range an installed plugin declares
+            // (manifest `compatibility.selfhelp`, registry `compatibility.core`),
+            // resolved through the single backend compatibility helper so the
+            // rule matches the version summary, resolver, and validator exactly.
+            $range = PluginCompatibility::manifestCoreRange($plugin->getManifestJson());
+            if ($range !== null && !PluginCompatibility::coreSatisfied($targetVersion, $range)) {
                 $incompatible[] = [
                     'id' => $plugin->getPluginId(),
                     'range' => $range,

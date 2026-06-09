@@ -117,17 +117,37 @@ inline plugin entries. Each component array (`core`, `frontend`,
 standalone, signed **release documents**. This is what lets one file
 serve both installers and support **multiple versions per component**.
 
-Canonical schemas (single source of truth):
+### Schema ownership and parity
 
-- [`config/schemas/registry/registry-index.schema.json`](../../config/schemas/registry/registry-index.schema.json) — the index.
-- [`config/schemas/registry/plugin-release.schema.json`](../../config/schemas/registry/plugin-release.schema.json) — a plugin release document.
-- [`config/schemas/registry/core-release.schema.json`](../../config/schemas/registry/core-release.schema.json) — a core release document.
+The **canonical** registry schemas live in the registry repository
+(`sh2-plugin-registry/*.schema.json`); that repo is the single source of
+truth and validates everything it publishes with `npm run validate:unified`.
+
+Each consumer keeps a **subset** schema that constrains only the fields it
+reads — they are deliberately *not* byte-copies of the canonical superset:
+
+- backend (this repo) — [`config/schemas/registry/registry-index.schema.json`](../../config/schemas/registry/registry-index.schema.json),
+  [`plugin-release.schema.json`](../../config/schemas/registry/plugin-release.schema.json),
+  [`core-release.schema.json`](../../config/schemas/registry/core-release.schema.json);
+- SelfHelp Manager — the Zod/JSON schemas in `@shm/schemas`;
+- `@selfhelp/shared` `distribution.ts` — the shared TypeScript contract.
+
+Agreement is enforced by tests rather than copy-discipline:
+
+- `tests/Plugin/Registry/Unified/UnifiedRegistrySchemaConformanceTest.php` —
+  the backend-local fixture conforms to the backend subset.
+- `tests/Plugin/Registry/Unified/CrossInstallerRegistrySchemaParityTest.php` —
+  the **real** published registry documents validate against the backend
+  subset (skips when the registry repo is not checked out alongside).
+- `tests/Plugin/Registry/Unified/CrossInstallerRegistryFixtureParityTest.php` —
+  canonical-JSON + Ed25519 parity on the real signed documents.
+
+A canonical-schema change the backend has not absorbed therefore fails CI
+here instead of silently breaking the live `/available` + `/install` flow.
 
 The doc-folder mirror [`plugin-registry.schema.json`](./plugin-registry.schema.json)
-now contains the **same unified index schema** (its `$id` is preserved
-for existing links); the legacy single-version inline plugin schema is
-retired. All three mirror `@selfhelp/shared` `distribution.ts` and the
-Manager Zod schema.
+carries the unified index schema (its `$id` is preserved for existing
+links); the legacy single-version inline plugin schema is retired.
 
 ### Index: `registry.json`
 

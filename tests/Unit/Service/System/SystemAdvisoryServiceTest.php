@@ -13,7 +13,7 @@ use App\Entity\Plugin\Plugin;
 use App\Repository\Plugin\PluginRepository;
 use App\Service\System\SystemAdvisoryService;
 use App\Service\System\SystemInstanceService;
-use App\Service\System\SystemRegistryGatewayInterface;
+use App\Service\System\SystemRegistryReader;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -36,8 +36,8 @@ final class SystemAdvisoryServiceTest extends TestCase
         string $frontendVersion = '0.1.0',
         array $plugins = [],
     ): SystemAdvisoryService {
-        $gateway = $this->createStub(SystemRegistryGatewayInterface::class);
-        $gateway->method('fetchAdvisories')->willReturn($feed);
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('getAdvisoryFeed')->willReturn($feed);
 
         $instance = $this->createStub(SystemInstanceService::class);
         $instance->method('getCmsVersion')->willReturn($coreVersion);
@@ -46,7 +46,7 @@ final class SystemAdvisoryServiceTest extends TestCase
         $repo = $this->createStub(PluginRepository::class);
         $repo->method('findAllOrderedByName')->willReturn($plugins);
 
-        return new SystemAdvisoryService($gateway, $instance, $repo);
+        return new SystemAdvisoryService($registry, $instance, $repo);
     }
 
     private function plugin(string $id, string $version): Plugin

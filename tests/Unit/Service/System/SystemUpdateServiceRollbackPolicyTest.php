@@ -9,11 +9,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service\System;
 
+use App\Plugin\Registry\Unified\CoreImageRef;
+use App\Plugin\Registry\Unified\CoreRelease;
+use App\Plugin\Registry\Unified\SignatureBlock;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\System\SystemInstanceService;
-use App\Service\System\SystemRegistryGatewayInterface;
+use App\Service\System\SystemRegistryReader;
 use App\Service\System\SystemUpdateService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -27,10 +30,7 @@ use Psr\Log\NullLogger;
  */
 final class SystemUpdateServiceRollbackPolicyTest extends TestCase
 {
-    /**
-     * @param array<string,mixed>|null $coreRelease
-     */
-    private function makeService(?array $coreRelease): SystemUpdateService
+    private function makeService(?CoreRelease $coreRelease): SystemUpdateService
     {
         $instance = $this->createStub(SystemInstanceService::class);
         $instance->method('getCmsVersion')->willReturn('0.1.0');
@@ -39,8 +39,8 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
         $plugins = $this->createStub(PluginRepository::class);
         $plugins->method('findAllOrderedByName')->willReturn([]);
 
-        $registry = $this->createStub(SystemRegistryGatewayInterface::class);
-        $registry->method('fetchCoreRelease')->willReturn($coreRelease);
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('getCoreRelease')->willReturn($coreRelease);
 
         return new SystemUpdateService(
             $instance,
@@ -53,15 +53,33 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
         );
     }
 
+    private function destructiveRelease(): CoreRelease
+    {
+        $digest = 'sha256:' . str_repeat('c', 64);
+
+        return new CoreRelease(
+            id: 'selfhelp-core',
+            version: '0.1.1',
+            channel: 'stable',
+            minimumDirectUpgradeFrom: '0.1.0',
+            pluginApiVersion: '0.1.0',
+            backend: new CoreImageRef('ghcr.io/selfhelp/backend', $digest),
+            worker: new CoreImageRef('ghcr.io/selfhelp/worker', $digest),
+            scheduler: new CoreImageRef('ghcr.io/selfhelp/scheduler', $digest),
+            requiredFrontendRange: '>=0.1.0 <0.2.0',
+            migrationRange: '>0.1.0 <=0.1.1',
+            destructive: true,
+            requiresBackup: true,
+            manualConfirmationRequired: true,
+            security: new SignatureBlock('c2ln', 'selfhelp-official-2026'),
+            blocked: false,
+            raw: [],
+        );
+    }
+
     public function testDestructiveUpdateNeverPromisesAutomaticRollbackAfterMigrations(): void
     {
-        $service = $this->makeService([
-            'database' => [
-                'destructive' => true,
-                'requiresBackup' => true,
-                'manualConfirmationRequired' => true,
-            ],
-        ]);
+        $service = $this->makeService($this->destructiveRelease());
 
         $preflight = $service->getPreflight('0.1.1');
 

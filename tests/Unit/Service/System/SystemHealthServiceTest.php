@@ -12,7 +12,7 @@ namespace App\Tests\Unit\Service\System;
 use App\Service\System\MaintenanceModeService;
 use App\Service\System\SystemHealthService;
 use App\Service\System\SystemInstanceService;
-use App\Service\System\SystemRegistryGatewayInterface;
+use App\Service\System\SystemRegistryReader;
 use App\Service\System\SystemUpdateService;
 use App\Service\System\SystemVersionService;
 use Doctrine\DBAL\Connection;
@@ -64,9 +64,8 @@ final class SystemHealthServiceTest extends TestCase
             'progress_percent' => 100,
         ]);
 
-        $registry = $this->createStub(SystemRegistryGatewayInterface::class);
-        $registry->method('fetchIndex')->willReturn($registryReachable ? ['core' => []] : null);
-        $registry->method('fetchCoreRelease')->willReturn(null);
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('isReachable')->willReturn($registryReachable);
 
         return new SystemHealthService(
             $instance,
