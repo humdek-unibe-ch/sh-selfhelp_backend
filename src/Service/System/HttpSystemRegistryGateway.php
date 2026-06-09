@@ -61,6 +61,21 @@ class HttpSystemRegistryGateway implements SystemRegistryGatewayInterface
         return $this->getJson($this->resolveUrl($releaseUrl));
     }
 
+    public function fetchAdvisories(): ?array
+    {
+        $index = $this->fetchIndex();
+        if ($index === null) {
+            return null;
+        }
+
+        $advisoriesUrl = $index['advisoriesUrl'] ?? null;
+        if (!is_string($advisoriesUrl) || $advisoriesUrl === '') {
+            return null;
+        }
+
+        return $this->getJson($this->resolveUrl($advisoriesUrl));
+    }
+
     /**
      * @return array<string,mixed>|null
      */

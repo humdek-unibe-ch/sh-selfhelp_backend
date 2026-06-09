@@ -14,6 +14,7 @@ use App\Service\Auth\UserContextService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\System\MaintenanceModeService;
+use App\Service\System\SystemAdvisoryService;
 use App\Service\System\SystemHealthService;
 use App\Service\System\SystemInstanceService;
 use App\Service\System\SystemUpdateService;
@@ -38,6 +39,7 @@ class SystemController extends AbstractController
         private readonly SystemVersionService $systemVersionService,
         private readonly SystemUpdateService $systemUpdateService,
         private readonly SystemHealthService $systemHealthService,
+        private readonly SystemAdvisoryService $systemAdvisoryService,
         private readonly MaintenanceModeService $maintenanceModeService,
         private readonly SystemInstanceService $systemInstanceService,
         private readonly UserContextService $userContext,
@@ -65,6 +67,19 @@ class SystemController extends AbstractController
         return $this->responseFormatter->formatSuccess(
             $this->systemHealthService->getHealth(),
             'responses/admin/system_health'
+        );
+    }
+
+    /**
+     * GET /admin/system/advisories — security advisories from the registry feed
+     * filtered to the components installed on THIS instance (under
+     * `admin.system.read`). Fails soft to `available: false` when offline.
+     */
+    public function getAdvisories(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->systemAdvisoryService->getAdvisories(),
+            'responses/admin/system_advisories'
         );
     }
 

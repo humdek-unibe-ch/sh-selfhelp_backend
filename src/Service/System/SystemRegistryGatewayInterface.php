@@ -38,4 +38,14 @@ interface SystemRegistryGatewayInterface
      * @return array<string,mixed>|null
      */
     public function fetchIndex(): ?array;
+
+    /**
+     * Fetch the security advisory feed (resolved from the registry index's
+     * `advisoriesUrl`), or null when the registry is unreachable or no feed is
+     * published. Implementations MUST fail soft so the advisories UI degrades to
+     * "could not check" rather than blocking.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function fetchAdvisories(): ?array;
 }

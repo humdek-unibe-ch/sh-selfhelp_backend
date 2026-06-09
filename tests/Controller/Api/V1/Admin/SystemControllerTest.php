@@ -83,6 +83,24 @@ final class SystemControllerTest extends QaWebTestCase
         self::assertContains('resource_checks', $codes, 'Preflight must flag that Docker/resource checks run in the manager.');
     }
 
+    public function testAdvisoriesIsAdminOnlyAndDegradesGracefullyOffline(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/advisories');
+
+        // The registry is unreachable in CI, so the feed fails soft: the endpoint
+        // reports it could not check rather than blocking.
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/advisories', null, $this->loginAsQaAdmin())
+        );
+
+        self::assertArrayHasKey('available', $data);
+        self::assertArrayHasKey('advisories', $data);
+        self::assertIsBool($data['available']);
+        self::assertIsArray($data['advisories']);
+        self::assertFalse($data['available'], 'Offline registry must degrade advisories to unavailable.');
+        self::assertSame([], $data['advisories']);
+    }
+
     public function testPreflightRequiresTargetQueryParam(): void
     {
         $this->assertEnvelope400(
