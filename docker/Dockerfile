@@ -60,6 +60,13 @@ FROM base AS backend
 
 ENV SERVER_NAME=:8080
 COPY --from=vendor --chown=www-data:www-data /app /app
+# FrankenPHP/Caddy keeps its data (including the auto-provisioned local PKI) under
+# /data and its config under /config. Those base-image directories are root-owned,
+# so running as the non-root www-data user makes Caddy fail to boot with
+# "mkdir /data/caddy/pki: permission denied". Pre-create them owned by www-data so
+# the HTTP server (SERVER_NAME=:8080, no public TLS — TLS terminates at Traefik)
+# starts cleanly behind the proxy.
+RUN mkdir -p /data/caddy /config/caddy && chown -R www-data:www-data /data /config
 EXPOSE 8080
 USER www-data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
