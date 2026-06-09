@@ -42,6 +42,20 @@ class AdminSectionUtilityController extends AbstractController
     }
 
     /**
+     * Get all pages that reference a given section (anywhere in their hierarchy).
+     * Requires permission: admin.page.update
+     */
+    public function getPagesBySection(int $section_id): JsonResponse
+    {
+        $pages = $this->adminSectionUtilityService->getPagesBySectionId($section_id);
+
+        return $this->apiResponseFormatter->formatSuccess(
+            $pages,
+            'responses/admin/sections/section_pages_envelope'
+        );
+    }
+
+    /**
      * Get all refContainer sections
      * Requires permission: admin.page.update
      */
