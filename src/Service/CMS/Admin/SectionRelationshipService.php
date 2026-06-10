@@ -269,12 +269,14 @@ class SectionRelationshipService extends BaseService
             );
 
             // Cache invalidation: parent + every touched child + page + lists
+            // Also bust every other page that shares the same parent section.
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $parentSection->getId());
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+            $this->invalidateSharedSectionPages($parentSectionId);
             foreach ($results as $row) {
                 $this->cache
                     ->withCategory(CacheService::CATEGORY_SECTIONS)
@@ -373,6 +375,7 @@ class SectionRelationshipService extends BaseService
             $this->entityManager->commit();
 
             $this->invalidatePageAndSectionLists((int) $page->getId(), $sectionId);
+            $this->invalidateSharedSectionPages($sectionId);
         } catch (\Throwable $e) {
             $this->entityManager->rollback();
             throw $e instanceof ServiceException ? $e : new ServiceException('Failed to remove section from page: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
@@ -538,6 +541,9 @@ class SectionRelationshipService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
+            foreach ($sectionIds as $sid) {
+                $this->invalidateSharedSectionPages($sid);
+            }
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateAllListsInCategory();
@@ -615,13 +621,14 @@ class SectionRelationshipService extends BaseService
                 "Detached child section '{$childName}' (ID: {$childSectionId}) from parent section '{$parentName}' (ID: {$parentSectionId}) in page '{$pageEntity?->getKeyword()}'"
             );
 
-            // Invalidate section caches
+            // Invalidate section caches + every other page sharing the parent section.
             $parentSection = $this->sectionRepository->find($parentSectionId);
             $childSection = $this->sectionRepository->find($childSectionId);
 
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+            $this->invalidateSharedSectionPages($parentSectionId);
 
             if ($parentSection) {
                 $this->cache
@@ -743,6 +750,18 @@ class SectionRelationshipService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
+    }
+
+    /**
+     * Bust the page-scope cache for every page that references $sectionId
+     * anywhere in its hierarchy. Needed so that all pages sharing a refContainer
+     * see fresh data when that container or any of its children change.
+     */
+    private function invalidateSharedSectionPages(int $sectionId): void
+    {
+        foreach ($this->sectionRepository->getPageIdsContainingSection($sectionId) as $pid) {
+            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pid);
+        }
     }
 
     /**
