@@ -41,7 +41,7 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
         ?SystemRegistryReader $registry = null,
     ): SystemUpdateService {
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-managerloop-no-maint', false);
-        $instance = new SystemInstanceService(self::INSTANCE, '0.1.0', '0.1.0', '0.1.0', false, $maintenance);
+        $instance = new SystemInstanceService(self::INSTANCE, '0.1.0', '0.1.0', '0.1.0', 'source', false, $maintenance);
 
         $plugins = $this->createStub(PluginRepository::class);
         $plugins->method('findAllOrderedByName')->willReturn([]);

@@ -89,6 +89,13 @@ parameters:
     selfhelp.frontend_version: '%env(default:selfhelp_frontend_version_default:SELFHELP_FRONTEND_VERSION)%'
     selfhelp_frontend_version_default: 'unknown'
 
+    # How this backend is deployed, surfaced in the system version summary so
+    # the admin UI can distinguish a Docker image install from a source/dev
+    # checkout. The production Docker image bakes SELFHELP_DEPLOYMENT=docker;
+    # anything else (composer dev, bare-metal checkout) reports 'source'.
+    selfhelp.deployment: '%env(default:selfhelp_deployment_default:SELFHELP_DEPLOYMENT)%'
+    selfhelp_deployment_default: 'source'
+
     # Maintenance-mode flag surfaced in the system version summary.
     selfhelp.maintenance_mode: '%env(bool:default:selfhelp_maintenance_mode_default:SELFHELP_MAINTENANCE_MODE)%'
     selfhelp_maintenance_mode_default: false
@@ -309,6 +316,7 @@ services:
             $cmsVersion: '%selfhelp.cms_version%'
             $pluginApiVersion: '%selfhelp.plugin_api_version%'
             $frontendVersion: '%selfhelp.frontend_version%'
+            $deployment: '%selfhelp.deployment%'
             $safeMode: '%selfhelp.safe_mode%'
 
     # Aggregated instance-scoped health/status. Config inputs are reduced to
@@ -480,3 +488,15 @@ services:
             $mercurePublicUrl: '%env(MERCURE_PUBLIC_URL)%'
             $mercureJwtSecret: '%env(MERCURE_JWT_SECRET)%'
             $mercureSubscriberTtl: '%mercure_subscriber_ttl%'
+
+when@test:
+    parameters:
+        # Tests never talk to the real public registry (Testing Rule 14: no
+        # external internet). Pin the registry base URL to a closed local port
+        # so every registry read fails fast and the system endpoints
+        # (advisories, update preflight/releases, registry health) degrade
+        # offline DETERMINISTICALLY — in CI and on dev machines alike, even
+        # when SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL is set in the ambient env
+        # (.env.default sets it). Tests that exercise real registry parsing
+        # inject a MockHttpClient instead of fetching anything.
+        selfhelp.plugin_default_registry_url: 'http://127.0.0.1:9/selfhelp-test-registry-offline/'

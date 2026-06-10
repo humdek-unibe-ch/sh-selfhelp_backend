@@ -98,6 +98,26 @@ class SystemUpdateService
     }
 
     /**
+     * Core versions published in the official registry, for the admin "Request
+     * an update" version picker. Fail-soft: when the registry is unreachable
+     * the result reports `available: false` with an empty list (the UI falls
+     * back to manual version entry) — the instance never blocks on the
+     * registry.
+     *
+     * @return array{available: bool, current_version: string, releases: list<array{version: string, channel: string, blocked: bool}>}
+     */
+    public function getAvailableReleases(): array
+    {
+        $releases = $this->registry->listCoreReleases();
+
+        return [
+            'available' => $releases !== null,
+            'current_version' => $this->instance->getCmsVersion(),
+            'releases' => $releases ?? [],
+        ];
+    }
+
+    /**
      * Compute the compatibility preflight for an update to $targetVersion.
      *
      * @return array<string,mixed>

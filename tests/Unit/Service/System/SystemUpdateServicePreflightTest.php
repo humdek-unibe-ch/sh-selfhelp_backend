@@ -71,6 +71,7 @@ final class SystemUpdateServicePreflightTest extends TestCase
         bool $pinned = false,
         ?CoreRelease $release = null,
         ?SystemUpdateOperationRepository $operations = null,
+        ?SystemRegistryReader $registry = null,
     ): SystemUpdateService {
         $instance = $this->createStub(SystemInstanceService::class);
         $instance->method('getCmsVersion')->willReturn('0.1.0');
@@ -87,9 +88,11 @@ final class SystemUpdateServicePreflightTest extends TestCase
         $plugins = $this->createStub(PluginRepository::class);
         $plugins->method('findAllOrderedByName')->willReturn([$plugin]);
 
-        $registry = $this->createStub(SystemRegistryReader::class);
-        // Default: a published, signed core release with non-destructive migrations.
-        $registry->method('getCoreRelease')->willReturn($release ?? $this->coreRelease());
+        if ($registry === null) {
+            $registry = $this->createStub(SystemRegistryReader::class);
+            // Default: a published, signed core release with non-destructive migrations.
+            $registry->method('getCoreRelease')->willReturn($release ?? $this->coreRelease());
+        }
 
         return new SystemUpdateService(
             $instance,
@@ -100,6 +103,32 @@ final class SystemUpdateServicePreflightTest extends TestCase
             $this->createStub(EntityManagerInterface::class),
             new NullLogger(),
         );
+    }
+
+    public function testAvailableReleasesListsRegistryCoreVersionsForThePicker(): void
+    {
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('listCoreReleases')->willReturn([
+            ['version' => '0.2.0', 'channel' => 'stable', 'blocked' => false],
+            ['version' => '0.1.0', 'channel' => 'stable', 'blocked' => false],
+        ]);
+
+        $releases = $this->makeService(registry: $registry)->getAvailableReleases();
+
+        self::assertTrue($releases['available']);
+        self::assertSame('0.1.0', $releases['current_version']);
+        self::assertSame(['0.2.0', '0.1.0'], array_column($releases['releases'], 'version'), 'Picker gets registry versions newest first.');
+    }
+
+    public function testAvailableReleasesDegradesToUnavailableWhenRegistryIsOffline(): void
+    {
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('listCoreReleases')->willReturn(null);
+
+        $releases = $this->makeService(registry: $registry)->getAvailableReleases();
+
+        self::assertFalse($releases['available'], 'Offline registry must degrade the picker to manual entry, never block.');
+        self::assertSame([], $releases['releases']);
     }
 
     public function testCompatiblePluginAllowsCorePatchUpdate(): void

@@ -83,8 +83,9 @@ Thin controller `Api\V1\Admin\SystemController`; all responses use the standard
 
 | Method + path | Permission | Purpose | Schema |
 | --- | --- | --- | --- |
-| `GET /admin/system/version` | `admin.system.read` | Version summary + installed-plugin compatibility. | `responses/admin/system_version` |
+| `GET /admin/system/version` | `admin.system.read` | Version summary + installed-plugin compatibility (incl. `deployment: docker\|source`). | `responses/admin/system_version` |
 | `GET /admin/system/health` | `admin.system.read` | Aggregated component health. | `responses/admin/system_health` |
+| `GET /admin/system/update/releases` | `admin.system.read` | Registry-published core versions for the update picker (fail-soft offline). | `responses/admin/update_releases` |
 | `GET /admin/system/update/preflight?target=<v>` | `admin.system.read` | Compatibility preflight for a target version. | `responses/admin/update_preflight` |
 | `POST /admin/system/update/request` | `admin.system.update` | Request an update for THIS instance. Returns **202 Accepted**. | `requests/admin/update_request` → `responses/admin/update_request` |
 | `GET /admin/system/update/status` | `admin.system.read` | Latest operation status for THIS instance. | `responses/admin/update_status` |

@@ -15,6 +15,7 @@
         "frontend_version": { "type": "string" },
         "plugin_api_version": { "type": "string" },
         "database_migration_version": { "type": "string", "description": "Highest applied Doctrine migration." },
+        "deployment": { "type": "string", "description": "How this backend runs: 'docker' (production image) or 'source' (dev/bare checkout)." },
         "safe_mode": { "type": "boolean" },
         "maintenance_mode": { "type": "boolean" },
         "installed_plugins": {
@@ -37,6 +38,7 @@
         "frontend_version",
         "plugin_api_version",
         "database_migration_version",
+        "deployment",
         "safe_mode",
         "maintenance_mode",
         "installed_plugins"

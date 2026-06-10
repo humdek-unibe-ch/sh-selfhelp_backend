@@ -28,8 +28,13 @@ use Symfony\Component\HttpFoundation\Response;
  *   - a valid request returns 202 and the status endpoint reflects it.
  *
  * Uses the seeded qa.admin persona; DAMA rolls back the operation rows.
- * A target far above any real version keeps the preflight non-blocked offline
- * (registry unreachable -> warning), so the happy path is deterministic in CI.
+ *
+ * Determinism: the test env pins the registry base URL to a closed local port
+ * (services.yaml `when@test`), so every registry-backed endpoint (advisories,
+ * preflight, update releases) degrades offline the SAME way in CI and locally —
+ * tests never reach the live public registry (Testing Rule 14). A target far
+ * above any real version keeps the preflight non-blocked offline (registry
+ * unreachable -> warning), so the happy path is deterministic too.
  */
 #[Group('security')]
 final class SystemControllerTest extends QaWebTestCase
@@ -49,7 +54,7 @@ final class SystemControllerTest extends QaWebTestCase
 
         foreach ([
             'instance_id', 'selfhelp_version', 'backend_version', 'frontend_version',
-            'plugin_api_version', 'database_migration_version', 'safe_mode',
+            'plugin_api_version', 'database_migration_version', 'deployment', 'safe_mode',
             'maintenance_mode', 'installed_plugins',
         ] as $key) {
             self::assertArrayHasKey($key, $data, "Version summary must expose '{$key}'.");
@@ -57,6 +62,31 @@ final class SystemControllerTest extends QaWebTestCase
         self::assertIsString($data['instance_id']);
         self::assertNotSame('', $data['instance_id'], 'Instance id is server-derived and never empty.');
         self::assertIsArray($data['installed_plugins']);
+        self::assertContains(
+            $data['deployment'],
+            ['source', 'docker'],
+            'Deployment marker distinguishes the production Docker image from a source/dev checkout.'
+        );
+    }
+
+    public function testUpdateReleasesIsAdminOnlyAndDegradesGracefullyOffline(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/update/releases');
+
+        // The registry base URL is pinned to a closed local port in the test
+        // env (services.yaml when@test), so the picker degrades to "manual
+        // entry" deterministically instead of fetching the live registry.
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/releases', null, $this->loginAsQaAdmin())
+        );
+
+        self::assertArrayHasKey('available', $data);
+        self::assertArrayHasKey('current_version', $data);
+        self::assertArrayHasKey('releases', $data);
+        self::assertFalse($data['available'], 'Offline registry must degrade the release list to unavailable.');
+        self::assertSame([], $data['releases']);
+        self::assertIsString($data['current_version']);
+        self::assertNotSame('', $data['current_version']);
     }
 
     public function testPreflightIsAdminOnlyAndReturnsCompatibilityVerdict(): void
@@ -87,8 +117,9 @@ final class SystemControllerTest extends QaWebTestCase
     {
         $this->assertAdminOnlyMatrix('GET', self::BASE . '/advisories');
 
-        // The registry is unreachable in CI, so the feed fails soft: the endpoint
-        // reports it could not check rather than blocking.
+        // The registry base URL is pinned to a closed local port in the test
+        // env, so the feed fails soft: the endpoint reports it could not check
+        // rather than blocking (and never fetches the live advisory feed).
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', self::BASE . '/advisories', null, $this->loginAsQaAdmin())
         );

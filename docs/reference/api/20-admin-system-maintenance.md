@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend (SelfHelp Manager / Docker Distribution MVP).
-Last verified: 2026-06-09.
-Source of truth: `src/Controller/Api/V1/Admin/SystemController.php`, `src/Service/System/*`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/`, and the `api_routes` rows seeded by `migrations/Version20260608160348.php`.
+Last verified: 2026-06-10.
+Source of truth: `src/Controller/Api/V1/Admin/SystemController.php`, `src/Service/System/*`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/`, and the `api_routes` rows seeded by `migrations/Version20260608160348.php` (plus `migrations/Version20260610124237.php` for `update/releases`).
 
 ## Overview
 
@@ -29,10 +29,10 @@ Hard rules (enforced server-side):
 
 ## Permissions
 
-| Permission            | Granted to | Used by                                            |
-|-----------------------|------------|----------------------------------------------------|
-| `admin.system.read`   | `admin`    | `version`, `update/preflight`, `update/status`     |
-| `admin.system.update` | `admin`    | `update/request`                                   |
+| Permission            | Granted to | Used by                                                                 |
+|-----------------------|------------|-------------------------------------------------------------------------|
+| `admin.system.read`   | `admin`    | `version`, `update/preflight`, `update/status`, `update/releases`       |
+| `admin.system.update` | `admin`    | `update/request`                                                        |
 
 Both are seeded and granted to the `admin` role by
 `migrations/Version20260608160348.php`. Non-admins receive `403`; unauthenticated
@@ -43,6 +43,7 @@ callers receive `401`.
 | Method | Path                                  | Permission            | Purpose                                  |
 |--------|---------------------------------------|-----------------------|------------------------------------------|
 | GET    | `/admin/system/version`               | `admin.system.read`   | Current instance version summary         |
+| GET    | `/admin/system/update/releases`       | `admin.system.read`   | Core versions published in the registry  |
 | GET    | `/admin/system/update/preflight`      | `admin.system.read`   | Compatibility verdict for a target       |
 | POST   | `/admin/system/update/request`        | `admin.system.update` | Record an update request for THIS instance |
 | GET    | `/admin/system/update/status`         | `admin.system.read`   | Status/progress of the latest operation  |
@@ -63,10 +64,46 @@ Response `data` (schema: `responses/admin/system_version.json`):
   "frontend_version": "0.1.0",
   "plugin_api_version": "0.1.0",
   "database_migration_version": "Version20260608160348",
+  "deployment": "docker",
   "safe_mode": false,
   "maintenance_mode": false,
   "installed_plugins": [
     { "id": "sh2-shp-survey-js", "version": "0.1.0", "compatible": true }
+  ]
+}
+```
+
+Version sources (why dev setups show `unknown`/`source`):
+
+- `frontend_version` comes from the `SELFHELP_FRONTEND_VERSION` env var. The
+  SelfHelp Manager injects it into managed installs; a source/dev backend has
+  no way to know which frontend build is running, so it reports `unknown` and
+  the admin UI falls back to the frontend's own build-time package version
+  (labelled "self-reported").
+- `deployment` comes from `SELFHELP_DEPLOYMENT`: the production Docker images
+  bake `docker` (see `docker/Dockerfile`); anything else (composer dev,
+  bare-metal checkout) defaults to `source`.
+
+### GET /admin/system/update/releases
+
+Lists the core versions published in the official registry index (newest
+first) so the admin "Request an update" picker offers real versions. Reads
+only the lightweight registry index — the SIGNED release document is still
+fetched and verified per version by the preflight.
+
+Fail-soft: when the registry is unreachable the endpoint returns
+`available: false` with an empty list and the UI falls back to manual version
+entry. The instance never blocks on the registry.
+
+Response `data` (schema: `responses/admin/update_releases.json`):
+
+```json
+{
+  "available": true,
+  "current_version": "0.1.0",
+  "releases": [
+    { "version": "0.2.0", "channel": "stable", "blocked": false },
+    { "version": "0.1.0", "channel": "stable", "blocked": false }
   ]
 }
 ```
@@ -170,5 +207,5 @@ row as it executes; the `status` endpoint reads it back.
 ## Related
 
 - Cross-repo version alignment: [../../developer/cross-repo-compatibility-matrix.md](../../developer/cross-repo-compatibility-matrix.md).
-- Shared contracts: `@selfhelp/shared` `src/types/api/system.ts` (`ISystemVersion`, `IUpdatePreflight`, `IUpdateStatus`, `IUpdateRequest`).
+- Shared contracts: `@selfhelp/shared` `src/types/api/system.ts` (`ISystemVersion`, `IUpdatePreflight`, `IUpdateStatus`, `IUpdateRequest`, `IUpdateReleases`).
 - SelfHelp Manager (owns Docker, performs the operation): the `sh-manager` repository.

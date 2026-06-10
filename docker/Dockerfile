@@ -25,7 +25,10 @@ FROM dunglas/frankenphp:${FRANKENPHP_VERSION} AS base
 ENV APP_ENV=prod \
     APP_DEBUG=0 \
     COMPOSER_ALLOW_SUPERUSER=1 \
-    COMPOSER_NO_INTERACTION=1
+    COMPOSER_NO_INTERACTION=1 \
+    # Marks this runtime as a production Docker image so the admin system page
+    # can distinguish it from a source/dev checkout (SystemInstanceService).
+    SELFHELP_DEPLOYMENT=docker
 
 WORKDIR /app
 

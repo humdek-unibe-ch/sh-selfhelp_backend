@@ -67,6 +67,34 @@ class SystemRegistryReader
     }
 
     /**
+     * The core release refs published in the registry index (newest first), or
+     * null when the registry is unreachable. Feeds the admin "Request an
+     * update" version picker; only refs are read here — the SIGNED release
+     * document is still fetched + verified per version by the preflight.
+     *
+     * @return list<array{version: string, channel: string, blocked: bool}>|null
+     */
+    public function listCoreReleases(): ?array
+    {
+        try {
+            $index = $this->client->fetchIndex($this->registryUrl);
+
+            $releases = [];
+            foreach ($index->coreRefsSorted() as $ref) {
+                $releases[] = ['version' => $ref->version, 'channel' => $ref->channel, 'blocked' => $ref->blocked];
+            }
+
+            return $releases;
+        } catch (\Throwable $e) {
+            $this->logger->info('System registry core-release listing failed; releases degrade to offline mode.', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
      * Whether the official registry index is currently reachable + parseable.
      * Used by the health endpoint to report registry availability without
      * blocking the instance.

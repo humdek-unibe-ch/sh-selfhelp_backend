@@ -39,6 +39,7 @@ class SystemVersionService
      *     frontend_version: string,
      *     plugin_api_version: string,
      *     database_migration_version: string,
+     *     deployment: string,
      *     safe_mode: bool,
      *     maintenance_mode: bool,
      *     installed_plugins: list<array{id: string, version: string, compatible: bool}>
@@ -55,6 +56,7 @@ class SystemVersionService
             'frontend_version' => $this->instance->getFrontendVersion(),
             'plugin_api_version' => $this->instance->getPluginApiVersion(),
             'database_migration_version' => $this->getDatabaseMigrationVersion(),
+            'deployment' => $this->instance->getDeployment(),
             'safe_mode' => $this->instance->isSafeMode(),
             'maintenance_mode' => $this->instance->isMaintenanceMode(),
             'installed_plugins' => $this->getInstalledPlugins($cmsVersion),

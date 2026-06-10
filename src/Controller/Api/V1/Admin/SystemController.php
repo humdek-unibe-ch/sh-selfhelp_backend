@@ -84,6 +84,19 @@ class SystemController extends AbstractController
     }
 
     /**
+     * GET /admin/system/update/releases — core versions published in the
+     * official registry (newest first) for the update version picker. Fails
+     * soft to `available: false` when the registry is unreachable.
+     */
+    public function getUpdateReleases(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->getAvailableReleases(),
+            'responses/admin/update_releases'
+        );
+    }
+
+    /**
      * GET /admin/system/update/preflight?target=<version> — compatibility
      * preflight for the current instance.
      */

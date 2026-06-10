@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Update Releases Response",
+  "description": "Core versions published in the official registry (newest first) for the admin update version picker (mirrors @selfhelp/shared IUpdateReleases). available=false means the registry could not be reached and the UI falls back to manual version entry.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether the registry index could be reached."
+        },
+        "current_version": {
+          "type": "string",
+          "description": "The core version this instance currently runs."
+        },
+        "releases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "version": { "type": "string" },
+              "channel": { "type": "string", "enum": ["stable", "beta", "nightly", "test"] },
+              "blocked": { "type": "boolean", "description": "Whether the registry marks this release as blocked (e.g. by a security advisory)." }
+            },
+            "required": ["version", "channel", "blocked"]
+          }
+        }
+      },
+      "required": ["available", "current_version", "releases"]
+    }
+  },
+  "required": ["data"]
+}

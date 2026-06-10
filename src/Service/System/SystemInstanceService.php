@@ -27,6 +27,7 @@ class SystemInstanceService
         private readonly string $cmsVersion,
         private readonly string $pluginApiVersion,
         private readonly string $frontendVersion,
+        private readonly string $deployment,
         private readonly bool $safeMode,
         private readonly MaintenanceModeService $maintenance,
     ) {
@@ -51,6 +52,16 @@ class SystemInstanceService
     public function getFrontendVersion(): string
     {
         return $this->frontendVersion;
+    }
+
+    /**
+     * How this backend is deployed: 'docker' (baked into the production image
+     * via SELFHELP_DEPLOYMENT) or 'source' (composer dev / bare checkout). Lets
+     * the admin UI distinguish a managed Docker install from a dev setup.
+     */
+    public function getDeployment(): string
+    {
+        return $this->deployment;
     }
 
     public function isSafeMode(): bool
