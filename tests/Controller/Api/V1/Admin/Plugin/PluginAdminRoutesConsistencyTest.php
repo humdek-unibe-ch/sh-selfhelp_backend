@@ -17,14 +17,17 @@ use PHPUnit\Framework\TestCase;
  * Regression guard for admin plugin routes.
  *
  * The Symfony backend wires plugin admin routes via DB rows declared
- * in `migrations/Version20260522062459.php` (initial routes) and
- * `migrations/Version20260523141331.php` (cancel endpoint). If a
- * controller method referenced by one of those rows is removed (as
+ * in several migrations:
+ *   - `Version20260522062459.php` (initial routes),
+ *   - `Version20260523141331.php` (cancel endpoint),
+ *   - `Version20260522102136.php` (the unified `/available` consumer route),
+ *   - `Version20260609142641.php` (pin/unpin routes).
+ * If a controller method referenced by one of those rows is removed (as
  * happened to `listOperations`, `getOperation`, and `rollback` during
  * the refactor), the route exists but every call to it crashes with
  * a missing-method 500.
  *
- * This test scans both migrations for the canonical
+ * This test scans every such migration for the canonical
  * `App\Controller\Api\V1\Admin\Plugin\Admin*Controller::method`
  * strings and asserts each `method` exists on the matching class.
  */
@@ -33,6 +36,8 @@ final class PluginAdminRoutesConsistencyTest extends TestCase
     private const MIGRATIONS = [
         __DIR__ . '/../../../../../../migrations/Version20260522062459.php',
         __DIR__ . '/../../../../../../migrations/Version20260523141331.php',
+        __DIR__ . '/../../../../../../migrations/Version20260522102136.php',
+        __DIR__ . '/../../../../../../migrations/Version20260609142641.php',
     ];
 
     /**

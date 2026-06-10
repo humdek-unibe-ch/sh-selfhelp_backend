@@ -146,8 +146,8 @@ final class PluginArchiveExtractorTest extends TestCase
             'id' => 'sh-test',
             'name' => 'Test plugin',
             'version' => '1.0.0',
-            'pluginApiVersion' => '1.0',
-            'compatibility' => ['selfhelp' => '>=8.0.0 <9.0.0'],
+            'pluginApiVersion' => '0.1.0',
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0'],
             'backend' => [
                 'bundleClass' => 'Test\\Bundle\\TestBundle',
                 'composer' => ['package' => 'humdek/sh-test', 'version' => '1.0.0'],

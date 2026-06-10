@@ -58,7 +58,7 @@ final class SignedPayloadBuilderTest extends TestCase
         $input = [
             'pluginId' => 'humdek/example',
             'version' => '1.0.0',
-            'compatibility' => ['selfhelp' => '>=8.0.0'],
+            'compatibility' => ['selfhelp' => '>=0.1.0'],
             'composer' => ['package' => 'humdek/example', 'version' => '1.0.0'],
             'checksums' => ['frontendEsm' => str_repeat('0', 64)],
             'runtime' => [

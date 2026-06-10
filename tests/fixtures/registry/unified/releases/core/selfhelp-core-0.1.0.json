@@ -1,0 +1,37 @@
+{
+    "kind": "selfhelp-core-release",
+    "id": "selfhelp-core",
+    "version": "0.1.0",
+    "channel": "stable",
+    "releasedAt": "2026-06-09T00:00:00Z",
+    "minimumDirectUpgradeFrom": "0.1.0",
+    "pluginApiVersion": "0.1.0",
+    "backend": {
+        "image": "ghcr.io/humdek-unibe-ch/selfhelp-backend:0.1.0",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phpVersion": "8.4"
+    },
+    "worker": {
+        "image": "ghcr.io/humdek-unibe-ch/selfhelp-worker:0.1.0",
+        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "scheduler": {
+        "image": "ghcr.io/humdek-unibe-ch/selfhelp-scheduler:0.1.0",
+        "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "frontendCompatibility": {
+        "requiredFrontendRange": ">=0.1.0 <0.2.0"
+    },
+    "database": {
+        "migrationRange": ">=0.1.0 <0.2.0",
+        "destructive": false,
+        "requiresBackup": true,
+        "manualConfirmationRequired": false
+    },
+    "security": {
+        "signature": "HpDvPu32kEgVd/0pRtQRBZGsBlnBBbhWEj49Uthnqj/SQc5KOMmK0y4YEBN9ZyCL+tzFqmy7YNYXnLE8CFRxBg==",
+        "keyId": "selfhelp-official-2026",
+        "signedPayload": "{\"backend\":{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"image\":\"ghcr.io/humdek-unibe-ch/selfhelp-backend:0.1.0\",\"phpVersion\":\"8.4\"},\"channel\":\"stable\",\"database\":{\"destructive\":false,\"manualConfirmationRequired\":false,\"migrationRange\":\">=0.1.0 <0.2.0\",\"requiresBackup\":true},\"frontendCompatibility\":{\"requiredFrontendRange\":\">=0.1.0 <0.2.0\"},\"id\":\"selfhelp-core\",\"kind\":\"selfhelp-core-release\",\"minimumDirectUpgradeFrom\":\"0.1.0\",\"pluginApiVersion\":\"0.1.0\",\"releasedAt\":\"2026-06-09T00:00:00Z\",\"scheduler\":{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"image\":\"ghcr.io/humdek-unibe-ch/selfhelp-scheduler:0.1.0\"},\"version\":\"0.1.0\",\"worker\":{\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"image\":\"ghcr.io/humdek-unibe-ch/selfhelp-worker:0.1.0\"}}",
+        "signedPayloadSha256": "sha256:319ea20596ec77d21f2c155fea406af3f46ab060f1bd48414ee9b70ec8f0322d"
+    }
+}

@@ -48,6 +48,7 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 - [19-data-access-management.md](19-data-access-management.md) - Role-based data access control with auditing.
 - [permission-system-guide.md](permission-system-guide.md) - Permission model implementation guide.
 - [17-global-cache-system.md](17-global-cache-system.md) - Redis-backed cache categories and invalidation.
+- [25-instance-scoped-system-layer.md](25-instance-scoped-system-layer.md) - Instance-scoped maintenance/update layer and the SelfHelp Manager loop.
 
 ## Performance
 
@@ -83,6 +84,7 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 
 ## Related references
 
+- [../operations/platform-and-plugin-ecosystem.md](../operations/platform-and-plugin-ecosystem.md) - The big map: one registry, two installers (Manager-owned Docker core + CMS-owned plugins), and the install/update/maintain paths.
 - [../reference/api/index.md](../reference/api/index.md) - Endpoint usage reference.
 - [../reference/api-routes-table.md](../reference/api-routes-table.md) - `api_routes` table columns.
 - [../../migrations](../../migrations) - Doctrine migrations (canonical schema).

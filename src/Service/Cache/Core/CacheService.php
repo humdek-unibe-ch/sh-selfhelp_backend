@@ -35,7 +35,7 @@ use Psr\Log\LoggerInterface;
  * - $cache->withUser($userId)->invalidateUserGlobally() // All categories for user
  *
  * @author SelfHelp Development Team
- * @version 8.0.0
+ * @version 0.1.0
  */
 class CacheService
 {

@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Manager Pending Update Operation Response",
+  "description": "The single claimable pending update operation for the current instance, returned to the SelfHelp Manager. Contains no secrets.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "operation_id": { "type": "string" },
+        "instance_id": { "type": "string" },
+        "target_version": { "type": "string" },
+        "preflight_id": { "type": "string" },
+        "approval_token": { "type": "string" },
+        "approved_by_user_id": { "type": "integer" },
+        "accepted_migration_risk": { "type": "boolean" },
+        "destructive_migration": { "type": "boolean" }
+      },
+      "required": [
+        "operation_id",
+        "instance_id",
+        "target_version",
+        "preflight_id",
+        "approval_token",
+        "approved_by_user_id",
+        "accepted_migration_risk",
+        "destructive_migration"
+      ]
+    }
+  },
+  "required": ["data"]
+}

@@ -32,6 +32,8 @@ use Symfony\Component\HttpFoundation\Response;
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/update        unified update
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/enable        enable
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/disable       disable
+ *   POST   /cms-api/v1/admin/plugins/{pluginId}/pin           pin
+ *   POST   /cms-api/v1/admin/plugins/{pluginId}/unpin         unpin
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/uninstall     uninstall
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/purge         purge (destructive)
  *   POST   /cms-api/v1/admin/plugins/{pluginId}/repair        repair single
@@ -320,6 +322,38 @@ final class AdminPluginController extends AbstractController
         try {
             return $this->responseFormatter->formatSuccess(
                 $this->pluginAdminService->disable($pluginId),
+                'responses/admin/plugins/plugin_envelope'
+            );
+        } catch (\Throwable $e) {
+            return $this->respondWithError($e);
+        }
+    }
+
+    /**
+     * @route /admin/plugins/{pluginId}/pin
+     * @method POST
+     */
+    public function pin(string $pluginId): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->pin($pluginId),
+                'responses/admin/plugins/plugin_envelope'
+            );
+        } catch (\Throwable $e) {
+            return $this->respondWithError($e);
+        }
+    }
+
+    /**
+     * @route /admin/plugins/{pluginId}/unpin
+     * @method POST
+     */
+    public function unpin(string $pluginId): JsonResponse
+    {
+        try {
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->unpin($pluginId),
                 'responses/admin/plugins/plugin_envelope'
             );
         } catch (\Throwable $e) {

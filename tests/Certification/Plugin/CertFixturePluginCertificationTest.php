@@ -43,7 +43,7 @@ final class CertFixturePluginCertificationTest extends InstallLifecycleCertifica
     {
         // Track the CMS's own SDK version so the fixture never drifts out of
         // compatibility when the host bumps it. The selfhelp constraint is a
-        // wide 8.x range that includes the dev pre-release (`8.0.0-dev`).
+        // 0.1.x range that includes the current pre-release (`0.1.0`).
         $sdkVersion = $this->coerceString(self::getContainer()->getParameter('selfhelp.plugin_api_version'));
 
         return [
@@ -54,7 +54,7 @@ final class CertFixturePluginCertificationTest extends InstallLifecycleCertifica
             'description' => 'Synthetic plugin used only by the install-lifecycle certification base.',
             'author' => ['name' => 'SelfHelp Test Harness'],
             'license' => 'MPL-2.0',
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0'],
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0'],
             'frontend' => [
                 'runtime' => [
                     'entrypoint' => '/plugin-artifacts/' . self::PLUGIN_ID . '-' . self::PLUGIN_VERSION . '/plugin.esm.js',

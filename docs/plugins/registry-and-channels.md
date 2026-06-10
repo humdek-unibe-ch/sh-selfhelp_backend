@@ -3,12 +3,23 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-09.
 Source of truth: Plugin layer code and the schemas under this folder.
 
 Plugins come from one or more **plugin sources** (registry URLs, Git
 repos, or local file paths) and ship through **release channels**
-(`stable` / `beta` / `alpha` / `nightly`).
+(`stable` / `beta` / `nightly` / `test`).
+
+> **One unified registry, two installers.** A single published
+> `registry.json` is consumed by BOTH installers: the **SelfHelp
+> Manager** installs/updates the Docker-based **core** (backend, worker,
+> scheduler images) from `core[]`/`worker[]`/`scheduler[]`/`frontend[]`
+> release refs, and the **CMS/backend** installs/updates **plugins**
+> from `plugins[]` release refs. See
+> [`platform-and-plugin-ecosystem.md`](../operations/platform-and-plugin-ecosystem.md)
+> for the split. This page documents the registry contract; the
+> versioning rules live in
+> [`versioning-and-compatibility.md`](./versioning-and-compatibility.md).
 
 ## Plugin sources
 
@@ -47,8 +58,17 @@ Where sources are actually defined:
 |---------|----------|-------------------------|---------------|
 | `stable` | Production | None | Yes |
 | `beta` | Staging / QA | After 30 days | Behind feature flag |
-| `alpha` | Internal preview | After 14 days | No |
 | `nightly` | Dev only | After 24 h | No |
+| `test` | Publish rehearsal | n/a | No |
+
+> The `ReleaseChannel` enum is `stable | beta | nightly | test` across
+> the backend ([`RegistryReleaseRef::CHANNELS`](../../src/Plugin/Registry/Unified/RegistryReleaseRef.php)),
+> `@selfhelp/shared` (`distribution.ts` + `plugin-sdk/registry.ts`), the
+> SelfHelp Manager (`@shm/schemas`), and the registry wire schema
+> (`registry.schema.json`). `test` is the staging/rehearsal channel used
+> to dry-run a publish -> install -> update before promoting a release to
+> `stable`; the legacy `alpha` channel was removed. Parity is asserted by
+> `@selfhelp/shared`'s `channel-parity.test.ts`.
 
 The channel of an installed plugin is recorded in `plugins.channel`.
 The doctor compares `plugins.channel` against the source's current
@@ -89,31 +109,119 @@ curl -X POST $API/cms-api/v1/admin/plugins/sources \
   }'
 ```
 
-## Registry entry shape (v1.0)
+## Unified registry shape
 
-Every `pluginEntry` in `registry.json` is validated against the
-canonical schema at
-[`docs/plugins/plugin-registry.schema.json`](./plugin-registry.schema.json).
-The `sh2-plugin-registry` repo pins to this file so the registry +
-backend share a single source of truth. Required fields:
+The published `registry.json` is an **index of release references**, not
+inline plugin entries. Each component array (`core`, `frontend`,
+`scheduler`, `worker`, `plugins`) holds lightweight refs that point at
+standalone, signed **release documents**. This is what lets one file
+serve both installers and support **multiple versions per component**.
 
-| Field           | Description                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------- |
-| `id`            | Kebab-case plugin id.                                                                                |
-| `name`          | Display name.                                                                                        |
-| `version`       | SemVer version (`MAJOR.MINOR.PATCH[-prerelease]`).                                                   |
-| `trustLevel`    | `official` / `reviewed` / `untrusted`.                                                               |
-| `composer`      | `{package, version, repository?}`. The host runs `composer require <package>:<version>` against this. |
-| `runtime`       | `{entrypointUrl, format='esm', stylesheetUrl?, integrity?, stylesheetIntegrity?}`. The host loads the entrypoint via `import()`. |
-| `checksums`     | `{frontendEsm, frontendCss?}` hex SHA-256.                                                           |
-| `signature`     | Base64 Ed25519 detached signature of `signedPayload`.                                                |
-| `signedPayload` | Canonical JSON document (see [`signing.md`](./signing.md)). Byte-identical between PHP + Node impls.|
-| `keyId`         | Publisher key id resolved via `SELFHELP_PLUGIN_TRUSTED_KEYS`.                                       |
+### Schema ownership and parity
 
-Optional helpers: `channel`, `homepage`, `description`,
-`manifestUrl` (path to the full canonical `plugin.json`),
-`changelogUrl`, `compatibility` (forwarded to the compatibility
-check), and the registry's top-level `publisher` block.
+The **canonical** registry schemas live in the registry repository
+(`sh2-plugin-registry/*.schema.json`); that repo is the single source of
+truth and validates everything it publishes with `npm run validate:unified`.
+
+Each consumer keeps a **subset** schema that constrains only the fields it
+reads — they are deliberately *not* byte-copies of the canonical superset:
+
+- backend (this repo) — [`config/schemas/registry/registry-index.schema.json`](../../config/schemas/registry/registry-index.schema.json),
+  [`plugin-release.schema.json`](../../config/schemas/registry/plugin-release.schema.json),
+  [`core-release.schema.json`](../../config/schemas/registry/core-release.schema.json);
+- SelfHelp Manager — the Zod/JSON schemas in `@shm/schemas`;
+- `@selfhelp/shared` `distribution.ts` — the shared TypeScript contract.
+
+Agreement is enforced by tests rather than copy-discipline:
+
+- `tests/Plugin/Registry/Unified/UnifiedRegistrySchemaConformanceTest.php` —
+  the backend-local fixture conforms to the backend subset.
+- `tests/Plugin/Registry/Unified/CrossInstallerRegistrySchemaParityTest.php` —
+  the **real** published registry documents validate against the backend
+  subset (skips when the registry repo is not checked out alongside).
+- `tests/Plugin/Registry/Unified/CrossInstallerRegistryFixtureParityTest.php` —
+  canonical-JSON + Ed25519 parity on the real signed documents.
+
+A canonical-schema change the backend has not absorbed therefore fails CI
+here instead of silently breaking the live `/available` + `/install` flow.
+
+The doc-folder mirror [`plugin-registry.schema.json`](./plugin-registry.schema.json)
+carries the unified index schema (its `$id` is preserved for existing
+links); the legacy single-version inline plugin schema is retired.
+
+### Index: `registry.json`
+
+```jsonc
+{
+  "schemaVersion": "1.0.0",
+  "requiresManager": ">=0.1.0",
+  "baseUrl": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/",
+  "publisher": { "name": "Humdek", "url": "https://www.humdek.unibe.ch/" },
+  "core":     [ { "id": "selfhelp-core", "version": "0.1.0", "channel": "stable", "releaseUrl": "releases/core/selfhelp-core-0.1.0.json" } ],
+  "frontend": [ /* RegistryReleaseRef[] */ ],
+  "scheduler":[ /* RegistryReleaseRef[] */ ],
+  "worker":   [ /* RegistryReleaseRef[] */ ],
+  "plugins":  [
+    { "id": "sh2-shp-survey-js", "version": "0.1.0", "channel": "stable", "releaseUrl": "releases/plugins/sh2-shp-survey-js-0.1.0.json" },
+    { "id": "sh2-shp-survey-js", "version": "0.2.0", "channel": "stable", "releaseUrl": "releases/plugins/sh2-shp-survey-js-0.2.0.json" }
+  ]
+}
+```
+
+A `RegistryReleaseRef` is `{ id, version, channel, releaseUrl, blocked? }`.
+`releaseUrl` is resolved against `baseUrl` when relative.
+
+### Plugin release document (followed from `plugins[].releaseUrl`)
+
+```jsonc
+{
+  "kind": "selfhelp-plugin-release",
+  "id": "sh2-shp-survey-js",
+  "version": "0.2.0",
+  "channel": "stable",
+  "official": true,
+  "compatibility": { "core": ">=0.2.0 <0.3.0", "pluginApi": ">=0.2.0 <0.3.0" },
+  "dependencies": { "plugins": [] },
+  "artifacts": {
+    "manifestUrl": "https://.../sh2-shp-survey-js-0.2.0/plugin.json",
+    "archiveUrl":  "https://.../sh2-shp-survey-js-0.2.0.shplugin",
+    "sha256": "sha256:<hex>"
+  },
+  "security": { "signature": "<base64>", "keyId": "selfhelp-official-2026", "signedPayload": "<canonical JSON>" }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `compatibility.core` | Host **SelfHelp core** range this plugin version supports (e.g. `>=0.2.0 <0.3.0`). |
+| `compatibility.pluginApi` | Host **plugin-API** range this plugin version supports. |
+| `artifacts.archiveUrl` | The signed `.shplugin` to download and install. |
+| `artifacts.sha256` | `sha256:<hex>` of the `.shplugin`, verified after download. |
+| `security` | Ed25519 detached signature over the canonical release document (see [`signing.md`](./signing.md)). |
+
+> **Naming note (resolved drift).** The author-facing `plugin.json`
+> manifest keeps `compatibility.selfhelp` + top-level `pluginApiVersion`;
+> the **release document** expresses the same two axes as
+> `compatibility.core` + `compatibility.pluginApi`. The publisher maps
+> manifest → release at build time. Backend value object:
+> [`PluginRelease`](../../src/Plugin/Registry/Unified/PluginRelease.php).
+
+### How the backend consumes it
+
+[`UnifiedRegistryClient`](../../src/Plugin/Registry/Unified/UnifiedRegistryClient.php)
+fetches and parses the index, follows each `plugins[].releaseUrl`,
+Ed25519-verifies every release document against the trusted keys, and on
+install downloads the `.shplugin` and verifies its `sha256` before the
+existing archive pipeline (`SHA256SUMS` + canonical payload + Ed25519 of
+`plugin.json`) takes over. Malformed index/release documents are rejected
+with a clear [`MalformedRegistryException`](../../src/Plugin/Registry/Unified/MalformedRegistryException.php).
+[`PluginReleaseResolver`](../../src/Plugin/Registry/Unified/PluginReleaseResolver.php)
+groups refs by `id` and selects the newest **compatible** version (see
+the next section).
+
+Optional index helpers: `publishedAt`, `advisoriesUrl`,
+`compatibilityUrl`, `trustedKeysUrl`, and the top-level `publisher`
+block.
 
 Plugin authors do **not** edit `registry.json` by hand. The
 `scripts/publish-to-registry.mjs` script in every plugin repo (single
@@ -122,89 +230,82 @@ cross-platform Node script — no `.sh` / `.ps1` wrappers) calls
 to compose a signed entry from the canonical signed payload that the
 `.shplugin` was signed with — one signing event per release.
 
-### Runtime URL contract (must be absolute)
+### Artifact + URL contract (must be absolute)
 
-`runtime.entrypointUrl` and `runtime.stylesheetUrl` in every published
-entry **MUST** be absolute `https://…` URLs. The host uses these URLs
-**at install time** as the *download source* — `PluginRuntimeArtifactFetcher`
-fetches the bundle, verifies its SHA-256 against the signed
-`checksums.frontendEsm`, then fetches the sibling `SHA256SUMS` text
-file (`<entrypoint-dir>/SHA256SUMS`) and downloads every Vite
-code-split chunk listed in it, verifying each chunk's SHA-256 against
-the manifest. The full tree (entry + stylesheet + every chunk) lands
-in `public/plugin-artifacts/<id>-<ver>/`. From then on the browser
-imports the bundle from the host's own origin
-(`/plugin-artifacts/<id>-<ver>/plugin.esm.js`); it never talks to
-GitHub Pages or any other CDN at runtime. The browser would refuse a
-bare specifier like `artifacts/foo/plugin.esm.js` and, more
-importantly, the bundle's internal imports (`/api/plugins/runtime-shim/*`)
-and code-split chunk imports
-(`./survey-creator-react-<hash>.js`) resolve against the importer's
-origin, so a CDN-hosted entrypoint would 404 on its own dependencies.
+A unified plugin release ships a signed **`.shplugin` archive**
+(`artifacts.archiveUrl`). The backend downloads it, verifies
+`artifacts.sha256` (`sha256:<hex>`), then runs the existing archive
+pipeline: extract to `var/plugins/<id>-<ver>/staging/`, validate the
+in-archive `SHA256SUMS` + canonical signed payload + Ed25519 of
+`plugin.json`, and promote the frontend bundle to
+`public/plugin-artifacts/<id>-<ver>/`. From then on the browser imports
+the bundle from the host's own origin
+(`/plugin-artifacts/<id>-<ver>/plugin.esm.js`); it never talks to a CDN
+at runtime. `artifacts.manifestUrl` and `artifacts.archiveUrl` **MUST**
+be absolute `https://…` URLs (or resolve to absolute via the index
+`baseUrl`); the schemas enforce `format: uri` + `pattern: ^https?://`.
 
-The chunk manifest itself is anchored to the signed canonical
-payload: the host refuses to trust `SHA256SUMS` unless its
-`plugin.esm.js` line's hash matches `checksums.frontendEsm`. That
-gives chunk integrity an equivalent guarantee to the in-archive
-`SHA256SUMS` used by `.shplugin` installs without expanding the
-canonical signed payload schema.
-
-The canonical schema (`docs/plugins/plugin-registry.schema.json`,
-mirrored into the registry repo as `registry.schema.json`) enforces
-this via `format: uri` + `pattern: ^https?://` on both URL fields and
-on the top-level `baseUrl`.
-
-To make publishers DRY, every registry declares its own published
-origin in a single place:
-
-```json
-{
-    "schemaVersion": "1.0",
-    "baseUrl": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/",
-    "publishedAt": "...",
-    "publisher": { ... },
-    "plugins": [ ... ]
-}
-```
-
-`scripts/publish-to-registry.mjs` reads `registry.json#baseUrl` from
-the target registry checkout, joins it to the relative artifact path
-(`artifacts/<id>-<version>/plugin.esm.js`), and feeds the resulting
-absolute URL into `build-registry-entry.mjs`. The signed canonical
-payload contains the absolute URL, so the host's
-`SignedPayloadBuilder` recompute matches the publisher's signature
-without any host-side normalisation.
-
-Resolution order in the publisher (highest priority first):
-
-1. `--registry-base-url https://…/` CLI flag.
-2. `SELFHELP_REGISTRY_BASE_URL` environment variable.
-3. `<registry>/registry.json#baseUrl`.
-
-The publisher throws when none of these resolves to a valid `https?://`
-URL — there is no silent fallback to relative paths.
-
-For private registries, set `baseUrl` to the URL where your
-authenticated host fetches the registry from (the same URL the
+`registry.json#baseUrl` is the single place a registry declares its
+published origin, used to resolve relative `releaseUrl` /
+`artifacts.*Url` paths. For private registries, set `baseUrl` to the URL
+your authenticated host fetches the registry from (the same URL the
 `PluginSource.url` column points at, with a trailing slash).
+
+Plugin authors do **not** edit `registry.json` by hand: the
+plugin-repo publish script signs one canonical release document per
+release and adds the matching `RegistryReleaseRef` to the index — one
+signing event per release.
+
+## Multi-version resolution & compatibility
+
+The registry holds **multiple versions per plugin** (multiple
+`plugins[]` refs with the same `id`). The backend
+[`PluginReleaseResolver`](../../src/Plugin/Registry/Unified/PluginReleaseResolver.php)
+groups refs by `id` and:
+
+- selects the **newest compatible** version by default — the highest
+  `version` whose `compatibility.core` matches the running host and
+  whose `compatibility.pluginApi` matches the host plugin-API;
+- checks any explicitly **requested target version** and blocks it if
+  incompatible;
+- returns a clear error when **no** version is compatible;
+- leaves an already-installed **older compatible** version valid (it is
+  not force-upgraded);
+- never auto-updates a **pinned** plugin (see
+  [`versioning-and-compatibility.md`](./versioning-and-compatibility.md#pinning)).
+
+Incompatibilities are reported with the standardized compatibility
+error object (`component`, `component_id`, `current_version`,
+`target_version`, `required_range`, `blocking`, `message`) emitted by
+[`CompatibilityError`](../../src/Plugin/Registry/Unified/CompatibilityError.php),
+the same shape the core update preflight uses.
+
+### Upgrade examples
+
+| Scenario | Outcome |
+|----------|---------|
+| Core `0.1.0` → `0.1.x` | **Allowed.** Patch within the same MINOR; installed `survey-js 0.1.0` (`>=0.1.0 <0.2.0`) stays compatible. |
+| Core `0.1.0` → `0.2.0` with `survey-js 0.1.0` installed | **Blocked.** `survey-js 0.1.0` requires `>=0.1.0 <0.2.0`; preflight returns a `blocking` compatibility error naming the plugin. |
+| `survey-js` available `0.1.0` + `0.2.0`, host on core `0.2.x` | **`0.2.0` selected** as newest compatible; `0.1.0` shown but marked incompatible. |
+| Pinned `survey-js 0.1.0`, newer `0.2.0` published | **Stays on `0.1.0`.** Resolver skips pinned plugins; the Available view shows it as pinned/not-updateable. |
+| `survey-js 0.2.0` only, host on core `0.1.x` | **Blocked / no compatible version.** Resolver returns a clear "no compatible version" error. |
 
 ## Channel promotion workflow
 
 The recommended promotion path:
 
 ```text
-nightly  ->  alpha  ->  beta  ->  stable
-   ^         ^          ^         ^
-  every    weekly     biweekly  monthly
-  green    triage     QA pass   release
-   CI                            cut
+nightly  ->  beta  ->  stable
+   ^         ^         ^
+  every    biweekly  monthly
+  green    QA pass   release
+   CI                cut
 ```
 
 Each channel transition is a tag in the plugin's source repository:
 
 ```bash
 # In the plugin repo
-git tag v1.4.2-alpha   # auto-pushes to alpha channel
 git tag v1.4.2-beta    # auto-pushes to beta channel
 git tag v1.4.2         # auto-pushes to stable channel
 ```

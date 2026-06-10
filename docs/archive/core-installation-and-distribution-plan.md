@@ -44,6 +44,65 @@ This is a detailed prompt for an implementation agent that has not seen the earl
 
 Before implementing, read the `AGENTS.md` in every touched repository. Runtime code is the source of truth. If this document conflicts with actual code, verify the code and update the plan or active docs instead of guessing.
 
+## Issue-Based Implementation Workflow
+
+This plan is too large to implement as one untracked change.
+
+Implementation must be split into GitHub issues before coding, following the GitHub issue and cross-repository workflow defined in `AGENTS.local.md`.
+
+Use one parent issue for the full distribution/installer MVP, for example:
+
+```text
+SelfHelp Manager / Docker Distribution MVP
+```
+
+Then create smaller implementation issues for clear phases, such as:
+
+1. Create `sh-manager` repository skeleton.
+2. Adapt `sh2-plugin-registry` into unified SelfHelp registry.
+3. Add registry/shared contracts and schemas.
+4. Add backend/frontend Docker release artifacts.
+5. Implement manager install/bootstrap flow.
+6. Implement per-instance manifest and lock files.
+7. Implement backup/restore/clone basics.
+8. Implement CMS system update UI integration.
+9. Add release pipeline signing, SBOM, and license checks.
+10. Add multi-instance health, preflight, and support-bundle flows.
+
+Issue rules:
+
+- Follow `AGENTS.local.md` as the source of truth for issue creation, linking, labels, repository choice, and cross-repository coordination.
+- Do not create one giant implementation issue for the full plan.
+- Do not create one issue per tiny commit.
+- Each issue must have a clear scope, affected repositories, acceptance criteria, and verification notes.
+- If one implementation task touches multiple repositories, use the same issue number/reference across all related commits.
+- Cross-repository issues must clearly state which repositories are affected.
+- Commits should reference the related issue number according to the repository rules.
+- Implementation agents should work issue-by-issue and keep each change reviewable.
+- If the implementation uncovers missing scope, create or propose a follow-up issue instead of silently expanding the current one too far.
+
+Commit guidance:
+
+```text
+Add sh-manager repository skeleton (#123)
+Add unified registry schemas (#124)
+Add instance manifest and lock handling (#125)
+Add CMS update status contract (#126)
+```
+
+For cross-repository work, use the same issue reference in every affected repository, for example:
+
+```text
+sh-manager: Add update dry-run operation (#130)
+backend: Add update status endpoint (#130)
+frontend: Add system update UI (#130)
+shared: Add update status types (#130)
+```
+
+The goal is to keep the implementation traceable, reviewable, and safe across all SelfHelp repositories.
+
+Do not start implementation yet unless explicitly requested. Only update the plan.
+
 The agent implementing this should keep the following non-negotiable scope decisions:
 
 - Official production installs are Docker-only.

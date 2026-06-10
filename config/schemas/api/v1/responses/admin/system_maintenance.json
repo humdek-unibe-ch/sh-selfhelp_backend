@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Maintenance Response",
+  "description": "Current maintenance-mode state for THIS instance (mirrors @selfhelp/shared ISystemMaintenance). Never contains secrets.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Whether maintenance mode is active (env hard switch OR the admin-toggled file)." },
+        "forced_by_env": { "type": "boolean", "description": "True when SELFHELP_MAINTENANCE_MODE forces it on; the CMS cannot disable it." },
+        "message": { "type": "string", "description": "Operator-facing note shown while in maintenance." },
+        "since": { "type": "string", "description": "ISO-8601 timestamp the file-backed state was last enabled, or empty." },
+        "updated_by": { "type": "string", "description": "Actor id that last changed the file-backed state (e.g. 'user:42'), or empty." },
+        "safe_mode": { "type": "boolean", "description": "Read-only plugin safe-mode flag, surfaced for the operator." }
+      },
+      "required": ["enabled", "forced_by_env", "message", "since", "updated_by", "safe_mode"]
+    }
+  },
+  "required": ["data"]
+}

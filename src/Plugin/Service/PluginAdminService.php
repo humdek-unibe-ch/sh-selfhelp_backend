@@ -31,6 +31,11 @@ use App\Plugin\Manifest\PluginManifest;
 use App\Plugin\Manifest\ResolvedSource;
 use App\Plugin\Registry\RegistryClient;
 use App\Plugin\Registry\PluginSourceUrlResolver;
+use App\Plugin\Registry\Unified\MalformedRegistryException;
+use App\Plugin\Registry\Unified\PluginRelease;
+use App\Plugin\Registry\Unified\PluginReleaseResolver;
+use App\Plugin\Registry\Unified\PluginResolution;
+use App\Plugin\Registry\Unified\UnifiedRegistryClient;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
@@ -89,6 +94,8 @@ final class PluginAdminService extends BaseService
         private readonly PluginCompatibilityValidator $compatibility,
         private readonly InstallModeResolver $installModeResolver,
         private readonly RegistryClient $registryClient,
+        private readonly UnifiedRegistryClient $unifiedRegistryClient,
+        private readonly PluginReleaseResolver $releaseResolver,
         private readonly PluginSourceUrlResolver $sourceUrlResolver,
         private readonly ManifestResolver $manifestResolver,
         private readonly PluginArchiveInspectionService $archiveInspectionService,
@@ -104,6 +111,16 @@ final class PluginAdminService extends BaseService
      * tab so admins can install registry-listed plugins with a single
      * click (the entry already contains a `manifest` field).
      *
+     * Unified registries (`registry.json` = index of release refs ->
+     * signed `PluginRelease` docs) are consumed via {@see UnifiedRegistryClient}
+     * + {@see PluginReleaseResolver}: every entry carries the full
+     * multi-version picture (`versions[]` with per-version compatibility +
+     * the standardized {@see \App\Plugin\Registry\Unified\CompatibilityError}),
+     * the newest-compatible `selectedVersion`, and a ready-to-install
+     * `registryEntry` (carrying `releaseUrl`) for each version. Sources still
+     * publishing the legacy single-version inline format fall back to the
+     * legacy {@see RegistryClient} so pre-migration registries keep working.
+     *
      * Already-installed plugins are filtered out so admins do not
      * re-install something that is already managed.
      *
@@ -116,56 +133,395 @@ final class PluginAdminService extends BaseService
             $installedIds[$p->getPluginId()] = true;
         }
 
-        $sourceBaseUrls = [];
-        foreach ($this->sources->findEnabled() as $source) {
-            $sourceBaseUrls[$source->getName()] = rtrim($this->sourceUrlResolver->resolve($source), '/') . '/';
+        $aggregated = $this->aggregateRegistrySources();
+        $available = [];
+
+        foreach ($aggregated['unified'] as $pluginId => $items) {
+            if (isset($installedIds[$pluginId])) {
+                continue;
+            }
+            $available[] = $this->buildUnifiedAvailableEntry((string) $pluginId, $items);
         }
 
-        $aggregated = $this->registryClient->fetchAllIndexes();
-        $available = [];
-        foreach ($aggregated as $pluginId => $entriesBySource) {
+        foreach ($aggregated['legacy'] as $pluginId => $entriesBySource) {
             if (isset($installedIds[$pluginId])) {
                 continue;
             }
             foreach ($entriesBySource as $sourceName => $entry) {
-                $resolvedManifestUrl = $this->resolveManifestUrl(
-                    $entry['manifestUrl'] ?? null,
-                    $sourceBaseUrls[$sourceName] ?? null,
-                );
-
-                // Resolve the manifest body server-side when the
-                // registry entry only points at a `manifestUrl`. This
-                // avoids CORS issues for browsers fetching static
-                // hosts (GitHub Pages, S3, etc.) and means the UI
-                // gets a ready-to-install manifest in one round-trip.
-                $manifest = isset($entry['manifest']) && is_array($entry['manifest']) ? $entry['manifest'] : null;
-                if ($manifest === null && is_string($resolvedManifestUrl) && $resolvedManifestUrl !== '') {
-                    $manifest = $this->tryFetchManifest($resolvedManifestUrl);
-                }
-
-                $registryEntry = $entry;
-                if ($resolvedManifestUrl !== null && $resolvedManifestUrl !== '') {
-                    $registryEntry['manifestUrl'] = $resolvedManifestUrl;
-                }
-                if ($manifest !== null) {
-                    $registryEntry['manifest'] = $manifest;
-                }
-
-                $available[] = [
-                    'sourceName' => $sourceName,
-                    'pluginId' => (string) $pluginId,
-                    'name' => isset($entry['name']) && is_string($entry['name']) ? $entry['name'] : (string) $pluginId,
-                    'description' => isset($entry['description']) && is_string($entry['description']) ? $entry['description'] : null,
-                    'version' => isset($entry['version']) && is_string($entry['version']) ? $entry['version'] : '0.0.0',
-                    'trustLevel' => isset($entry['trustLevel']) && is_string($entry['trustLevel']) ? $entry['trustLevel'] : 'untrusted',
-                    'homepage' => isset($entry['homepage']) && is_string($entry['homepage']) ? $entry['homepage'] : null,
-                    'manifest' => $manifest,
-                    'manifestUrl' => $resolvedManifestUrl,
-                    'registryEntry' => $registryEntry,
-                ];
+                $available[] = $this->buildLegacyAvailableEntry((string) $pluginId, (string) $sourceName, $entry);
             }
         }
+
         return $available;
+    }
+
+    /**
+     * Aggregate every enabled registry source into the unified multi-version
+     * model. Each registry source's `registry.json` is read with the
+     * {@see UnifiedRegistryClient} (index of release refs -> signed
+     * `PluginRelease` docs, Ed25519-verified). A source whose `registry.json`
+     * is still the legacy single-version inline format (no unified index shape)
+     * falls back to the legacy {@see RegistryClient} so existing registries keep
+     * working during migration. Transport failures skip the source (best-effort,
+     * matching the previous behaviour). Per plugin id the unified releases are
+     * sorted newest-first.
+     *
+     * @return array{
+     *     unified: array<string, list<array{release: PluginRelease, releaseUrl: string, sourceName: string}>>,
+     *     legacy: array<string, array<string, array<string,mixed>>>
+     * }
+     */
+    private function aggregateRegistrySources(): array
+    {
+        $unified = [];
+        $legacy = [];
+
+        foreach ($this->sources->findEnabled() as $source) {
+            if (!in_array($source->getKind(), [PluginSource::KIND_PUBLIC_REGISTRY, PluginSource::KIND_PRIVATE_REGISTRY], true)) {
+                // git/local sources point directly at a single manifest, not a
+                // unified index — they never contributed to the catalogue.
+                continue;
+            }
+
+            $registryJsonUrl = rtrim($this->sourceUrlResolver->resolve($source), '/') . '/registry.json';
+            $headers = $this->registrySourceHeaders($source);
+
+            try {
+                $index = $this->unifiedRegistryClient->fetchIndex($registryJsonUrl, $headers);
+            } catch (MalformedRegistryException) {
+                // Not a unified index -> try the legacy inline format.
+                $this->collectLegacySource($source, $legacy);
+                continue;
+            } catch (\Throwable) {
+                // Transport/DNS/5xx -> skip this source (best-effort).
+                continue;
+            }
+
+            foreach ($index->pluginRefsById() as $pluginId => $refs) {
+                foreach ($refs as $ref) {
+                    $absUrl = $index->resolveUrl($ref->releaseUrl);
+                    try {
+                        $release = $this->unifiedRegistryClient->fetchPluginRelease($absUrl, $headers, $ref);
+                    } catch (\Throwable) {
+                        // Skip one unreadable/unverifiable release; keep the rest
+                        // of the catalogue visible.
+                        continue;
+                    }
+                    $unified[(string) $pluginId][] = [
+                        'release' => $release,
+                        'releaseUrl' => $absUrl,
+                        'sourceName' => $source->getName(),
+                    ];
+                }
+            }
+        }
+
+        foreach ($unified as $pid => $items) {
+            usort(
+                $items,
+                static fn (array $a, array $b): int => SemverHelper::compare($b['release']->version, $a['release']->version),
+            );
+            $unified[$pid] = $items;
+        }
+
+        return ['unified' => $unified, 'legacy' => $legacy];
+    }
+
+    /**
+     * Read ONE source's legacy single-version inline registry index and merge
+     * its entries (with manifestUrl resolved to absolute) into the aggregate.
+     *
+     * @param array<string, array<string, array<string,mixed>>> $legacy
+     */
+    private function collectLegacySource(PluginSource $source, array &$legacy): void
+    {
+        try {
+            $index = $this->registryClient->fetchIndex($source);
+        } catch (\Throwable) {
+            return;
+        }
+        $plugins = $index['plugins'] ?? null;
+        if (!is_array($plugins)) {
+            return;
+        }
+        $base = rtrim($this->sourceUrlResolver->resolve($source), '/') . '/';
+        foreach ($plugins as $entry) {
+            if (!is_array($entry) || !isset($entry['id']) || !is_scalar($entry['id'])) {
+                continue;
+            }
+            $assoc = [];
+            foreach ($entry as $k => $v) {
+                $assoc[(string) $k] = $v;
+            }
+            $resolvedManifestUrl = $this->resolveManifestUrl($assoc['manifestUrl'] ?? null, $base);
+            if ($resolvedManifestUrl !== null && $resolvedManifestUrl !== '') {
+                $assoc['manifestUrl'] = $resolvedManifestUrl;
+            }
+            $legacy[(string) $entry['id']][$source->getName()] = $assoc;
+        }
+    }
+
+    /**
+     * Optional registry auth header for a private source, read from the env var
+     * named by the source (the secret never lives in the DB). Mirrors
+     * {@see RegistryClient}.
+     *
+     * @return array<string,string>
+     */
+    private function registrySourceHeaders(PluginSource $source): array
+    {
+        $headers = [];
+        $authHeader = $source->getAuthHeaderName();
+        $envVar = $source->getAuthSecretEnvVar();
+        if ($authHeader !== null && $authHeader !== '' && $envVar !== null && $envVar !== '') {
+            $secret = $_ENV[$envVar] ?? $_SERVER[$envVar] ?? getenv($envVar);
+            if (is_string($secret) && $secret !== '') {
+                $headers[$authHeader] = $secret;
+            }
+        }
+        return $headers;
+    }
+
+    /**
+     * Build a multi-version "Available" entry from a plugin's unified releases.
+     *
+     * @param list<array{release: PluginRelease, releaseUrl: string, sourceName: string}> $items newest-first
+     * @return array<string,mixed>
+     */
+    private function buildUnifiedAvailableEntry(string $pluginId, array $items): array
+    {
+        $releases = array_map(static fn (array $i): PluginRelease => $i['release'], $items);
+        $urlByVersion = [];
+        $sourceByVersion = [];
+        foreach ($items as $i) {
+            $urlByVersion[$i['release']->version] = $i['releaseUrl'];
+            $sourceByVersion[$i['release']->version] = $i['sourceName'];
+        }
+        $sourceName = $items[0]['sourceName'];
+
+        $resolution = $this->releaseResolver->resolveLatestCompatible($releases, $this->cmsVersion, $this->sdkApiVersion);
+        $display = $resolution->selected ?? $resolution->latestOverall;
+
+        $manifest = null;
+        $displayVersion = '0.0.0';
+        $displayManifestUrl = null;
+        $displayReleaseUrl = null;
+        if ($display !== null) {
+            $manifest = $this->tryFetchManifest($display->manifestUrl);
+            $displayVersion = $display->version;
+            $displayManifestUrl = $display->manifestUrl;
+            $displayReleaseUrl = $urlByVersion[$display->version] ?? null;
+        }
+
+        return [
+            'sourceName' => $sourceName,
+            'pluginId' => $pluginId,
+            'name' => $this->manifestStringValue($manifest, 'name') ?? $pluginId,
+            'description' => $this->manifestStringValue($manifest, 'description'),
+            'version' => $displayVersion,
+            'trustLevel' => $this->resolveTrustLevel($manifest, $display),
+            'homepage' => $this->manifestStringValue($manifest, 'homepage'),
+            'manifest' => $manifest,
+            'manifestUrl' => $displayManifestUrl,
+            'registryEntry' => ($display !== null && is_string($displayReleaseUrl))
+                ? $this->unifiedRegistryEntry($pluginId, $display, $displayReleaseUrl, $sourceName)
+                : null,
+            'installed' => false,
+            'pinned' => false,
+            'latestVersion' => $resolution->latestOverall?->version,
+            'latestCompatibleVersion' => $resolution->latestCompatible?->version,
+            'selectedVersion' => $resolution->selected?->version,
+            'hasCompatibleVersion' => $resolution->hasCompatibleVersion(),
+            'newerExistsButIncompatible' => $resolution->newerExistsButIncompatible(),
+            'compatibilityError' => $resolution->error?->toArray(),
+            'versions' => $this->buildVersionList($resolution, $urlByVersion, $sourceByVersion, $pluginId),
+        ];
+    }
+
+    /**
+     * Build the per-version list (newest-first) the Available-UI picker renders:
+     * each version carries its channel, compatibility state, the required core
+     * range, a human reason when incompatible, whether it is the default
+     * selection / latest-compatible, and a ready-to-install `registryEntry`.
+     *
+     * @param array<string,string> $urlByVersion
+     * @param array<string,string> $sourceByVersion
+     * @return list<array<string,mixed>>
+     */
+    private function buildVersionList(PluginResolution $resolution, array $urlByVersion, array $sourceByVersion, string $pluginId): array
+    {
+        $selectedVersion = $resolution->selected?->version;
+        $latestCompatibleVersion = $resolution->latestCompatible?->version;
+
+        $rows = [];
+        foreach ($resolution->compatible as $r) {
+            $rows[] = $this->versionRow($r, true, $selectedVersion, $latestCompatibleVersion, $urlByVersion, $sourceByVersion, $pluginId);
+        }
+        foreach ($resolution->incompatible as $r) {
+            $rows[] = $this->versionRow($r, false, $selectedVersion, $latestCompatibleVersion, $urlByVersion, $sourceByVersion, $pluginId);
+        }
+        usort($rows, static function (array $a, array $b): int {
+            $av = is_string($a['version']) ? $a['version'] : '';
+            $bv = is_string($b['version']) ? $b['version'] : '';
+            return SemverHelper::compare($bv, $av);
+        });
+        return $rows;
+    }
+
+    /**
+     * @param array<string,string> $urlByVersion
+     * @param array<string,string> $sourceByVersion
+     * @return array<string,mixed>
+     */
+    private function versionRow(
+        PluginRelease $r,
+        bool $compatible,
+        ?string $selectedVersion,
+        ?string $latestCompatibleVersion,
+        array $urlByVersion,
+        array $sourceByVersion,
+        string $pluginId,
+    ): array {
+        $reason = null;
+        if (!$compatible) {
+            $reason = $this->releaseResolver->compatibilityErrorFor($r, $this->cmsVersion, $this->sdkApiVersion)?->message;
+        }
+        $state = match (true) {
+            $r->version === $latestCompatibleVersion => 'latest-compatible',
+            $compatible => 'compatible',
+            default => 'incompatible',
+        };
+        $releaseUrl = $urlByVersion[$r->version] ?? null;
+        $sourceName = $sourceByVersion[$r->version] ?? 'registry';
+
+        return [
+            'version' => $r->version,
+            'channel' => $r->channel,
+            'official' => $r->official,
+            'compatible' => $compatible,
+            'blocking' => !$compatible,
+            'selected' => $r->version === $selectedVersion,
+            'requiredRange' => $r->compatibilityCore,
+            'requiredPluginApiRange' => $r->compatibilityPluginApi,
+            'reason' => $reason,
+            'releaseUrl' => $releaseUrl,
+            'state' => $state,
+            'registryEntry' => is_string($releaseUrl)
+                ? $this->unifiedRegistryEntry($pluginId, $r, $releaseUrl, $sourceName)
+                : null,
+        ];
+    }
+
+    /**
+     * The install payload for ONE unified release version: carries the
+     * `releaseUrl` so {@see resolveSource()} resolves the signed
+     * `PluginRelease` -> `.shplugin` and installs through the archive path.
+     *
+     * @return array<string,mixed>
+     */
+    private function unifiedRegistryEntry(string $pluginId, PluginRelease $r, string $releaseUrl, string $sourceName): array
+    {
+        return [
+            'id' => $pluginId,
+            'pluginId' => $pluginId,
+            'version' => $r->version,
+            'channel' => $r->channel,
+            'releaseUrl' => $releaseUrl,
+            'sourceName' => $sourceName,
+            'manifestUrl' => $r->manifestUrl,
+            'archiveUrl' => $r->archiveUrl,
+            'trustLevel' => $r->official ? 'official' : 'reviewed',
+        ];
+    }
+
+    /**
+     * Build an "Available" entry for a legacy single-version inline registry
+     * source. Mirrors the historical shape and adds the multi-version fields as
+     * a single-version list so the frontend renders both formats uniformly.
+     *
+     * @param array<string,mixed> $entry
+     * @return array<string,mixed>
+     */
+    private function buildLegacyAvailableEntry(string $pluginId, string $sourceName, array $entry): array
+    {
+        $manifestUrl = isset($entry['manifestUrl']) && is_string($entry['manifestUrl']) ? $entry['manifestUrl'] : null;
+        $manifest = isset($entry['manifest']) && is_array($entry['manifest']) ? $this->asAssocArray($entry['manifest']) : null;
+        if ($manifest === null && is_string($manifestUrl) && $manifestUrl !== '') {
+            $manifest = $this->tryFetchManifest($manifestUrl);
+        }
+        $registryEntry = $entry;
+        if ($manifest !== null) {
+            $registryEntry['manifest'] = $manifest;
+        }
+        $version = isset($entry['version']) && is_string($entry['version']) ? $entry['version'] : '0.0.0';
+        $channel = isset($entry['channel']) && is_string($entry['channel']) ? $entry['channel'] : 'stable';
+        $trustLevel = isset($entry['trustLevel']) && is_string($entry['trustLevel']) ? $entry['trustLevel'] : 'untrusted';
+
+        return [
+            'sourceName' => $sourceName,
+            'pluginId' => $pluginId,
+            'name' => isset($entry['name']) && is_string($entry['name']) ? $entry['name'] : $pluginId,
+            'description' => isset($entry['description']) && is_string($entry['description']) ? $entry['description'] : null,
+            'version' => $version,
+            'trustLevel' => $trustLevel,
+            'homepage' => isset($entry['homepage']) && is_string($entry['homepage']) ? $entry['homepage'] : null,
+            'manifest' => $manifest,
+            'manifestUrl' => $manifestUrl,
+            'registryEntry' => $registryEntry,
+            'installed' => false,
+            'pinned' => false,
+            'latestVersion' => $version,
+            'latestCompatibleVersion' => $version,
+            'selectedVersion' => $version,
+            'hasCompatibleVersion' => true,
+            'newerExistsButIncompatible' => false,
+            'compatibilityError' => null,
+            'versions' => [[
+                'version' => $version,
+                'channel' => $channel,
+                'official' => $trustLevel === 'official',
+                'compatible' => true,
+                'blocking' => false,
+                'selected' => true,
+                'requiredRange' => '*',
+                'requiredPluginApiRange' => '*',
+                'reason' => null,
+                'releaseUrl' => null,
+                'state' => 'selected',
+                'registryEntry' => $registryEntry,
+            ]],
+        ];
+    }
+
+    /**
+     * @param array<string,mixed>|null $manifest
+     */
+    private function manifestStringValue(?array $manifest, string $key): ?string
+    {
+        if ($manifest !== null && isset($manifest[$key]) && is_string($manifest[$key]) && $manifest[$key] !== '') {
+            return $manifest[$key];
+        }
+        return null;
+    }
+
+    /**
+     * Resolve the trust level for an Available entry, preferring the manifest's
+     * declared `security.trustLevel`, then the release's `official` flag.
+     *
+     * @param array<string,mixed>|null $manifest
+     */
+    private function resolveTrustLevel(?array $manifest, ?PluginRelease $release): string
+    {
+        if ($manifest !== null && isset($manifest['security']) && is_array($manifest['security'])) {
+            $tl = $manifest['security']['trustLevel'] ?? null;
+            if (is_string($tl) && $tl !== '') {
+                return $tl;
+            }
+        }
+        if ($release !== null) {
+            return $release->official ? 'official' : 'untrusted';
+        }
+        return 'untrusted';
     }
 
     /**
@@ -237,81 +593,154 @@ final class PluginAdminService extends BaseService
     }
 
     /**
-     * Cross-reference installed plugins against the registry index to
-     * surface available updates. Returns one row per installed plugin
-     * that has a strictly-newer entry in any enabled registry source.
+     * Cross-reference installed plugins against the registry to surface
+     * available updates. For unified sources the newest-COMPATIBLE release is
+     * selected via {@see PluginReleaseResolver} (never "latest overall"); a row
+     * is returned only when that release is strictly newer than the installed
+     * version. Pinned plugins are skipped (audit finding #52). Legacy
+     * single-version sources keep their historical newest-entry behaviour.
      *
      * @return array<int, array<string,mixed>>
      */
     public function listAvailableUpdates(): array
     {
-        // Same source→baseUrl map listAvailableFromRegistries() builds so
-        // the manifestUrl shipped to the admin UI is always absolute. The
-        // raw registry entry carries a registry-relative path
-        // (`manifests/<id>-<ver>.json`); without resolving it against the
-        // source's published base URL the update endpoint chokes on it
-        // ("Invalid URL: scheme is missing") when the frontend echoes the
-        // registryEntry back to /admin/plugins/{id}/update.
-        $sourceBaseUrls = [];
-        foreach ($this->sources->findEnabled() as $source) {
-            $sourceBaseUrls[$source->getName()] = rtrim($this->sourceUrlResolver->resolve($source), '/') . '/';
-        }
-
-        $aggregated = $this->registryClient->fetchAllIndexes();
+        $aggregated = $this->aggregateRegistrySources();
         $rows = [];
         foreach ($this->plugins->findAllOrderedByName() as $installed) {
+            // Pinned plugins are intentionally frozen at their installed version
+            // (audit finding #52): never surface an auto-update for them. The
+            // installed-plugins list still exposes `pinned: true` so the UI can
+            // show the pinned state and a manual "unpin to update" affordance.
+            if ($installed->isPinned()) {
+                continue;
+            }
             $pluginId = $installed->getPluginId();
-            $entriesBySource = $aggregated[$pluginId] ?? [];
-            if ($entriesBySource === []) {
+
+            if (isset($aggregated['unified'][$pluginId])) {
+                $row = $this->buildUnifiedUpdateRow($installed, $aggregated['unified'][$pluginId]);
+                if ($row !== null) {
+                    $rows[] = $row;
+                }
                 continue;
             }
-            $best = null;
-            $bestSource = null;
-            foreach ($entriesBySource as $sourceName => $entry) {
-                $candidateVersion = is_string($entry['version'] ?? null) ? (string) $entry['version'] : null;
-                if ($candidateVersion === null || $candidateVersion === '') {
-                    continue;
-                }
-                if (\App\Plugin\Versioning\SemverHelper::compare($candidateVersion, $installed->getVersion()) <= 0) {
-                    continue;
-                }
-                if ($best === null || \App\Plugin\Versioning\SemverHelper::compare($candidateVersion, $this->asString($best['version'] ?? '0.0.0')) > 0) {
-                    $best = $entry;
-                    $bestSource = $sourceName;
+            if (isset($aggregated['legacy'][$pluginId])) {
+                $row = $this->buildLegacyUpdateRow($installed, $aggregated['legacy'][$pluginId]);
+                if ($row !== null) {
+                    $rows[] = $row;
                 }
             }
-            if ($best === null || $bestSource === null) {
-                continue;
-            }
-
-            $resolvedManifestUrl = $this->resolveManifestUrl(
-                $best['manifestUrl'] ?? null,
-                $sourceBaseUrls[$bestSource] ?? null,
-            );
-            $manifest = is_array($best['manifest'] ?? null) ? $best['manifest'] : null;
-
-            $registryEntry = $best;
-            if ($resolvedManifestUrl !== null && $resolvedManifestUrl !== '') {
-                $registryEntry['manifestUrl'] = $resolvedManifestUrl;
-            }
-            if ($manifest !== null) {
-                $registryEntry['manifest'] = $manifest;
-            }
-
-            $rows[] = [
-                'pluginId' => $pluginId,
-                'name' => $installed->getName(),
-                'installedVersion' => $installed->getVersion(),
-                'availableVersion' => $this->asString($best['version']),
-                'diffKind' => \App\Plugin\Versioning\SemverHelper::diffKind($installed->getVersion(), $this->asString($best['version'])),
-                'sourceName' => $bestSource,
-                'trustLevel' => is_string($best['trustLevel'] ?? null) ? $best['trustLevel'] : $installed->getTrustLevel(),
-                'manifestUrl' => $resolvedManifestUrl,
-                'manifest' => $manifest,
-                'registryEntry' => $registryEntry,
-            ];
         }
         return $rows;
+    }
+
+    /**
+     * Build a unified update row for an installed plugin: select the newest
+     * COMPATIBLE release; return null when nothing compatible or it is not
+     * strictly newer than installed.
+     *
+     * @param list<array{release: PluginRelease, releaseUrl: string, sourceName: string}> $items
+     * @return array<string,mixed>|null
+     */
+    private function buildUnifiedUpdateRow(Plugin $installed, array $items): ?array
+    {
+        $releases = array_map(static fn (array $i): PluginRelease => $i['release'], $items);
+        $urlByVersion = [];
+        $sourceByVersion = [];
+        foreach ($items as $i) {
+            $urlByVersion[$i['release']->version] = $i['releaseUrl'];
+            $sourceByVersion[$i['release']->version] = $i['sourceName'];
+        }
+
+        $resolution = $this->releaseResolver->resolveLatestCompatible(
+            $releases,
+            $this->cmsVersion,
+            $this->sdkApiVersion,
+            $installed->getVersion(),
+        );
+        $selected = $resolution->selected;
+        if ($selected === null) {
+            return null;
+        }
+        if (SemverHelper::compare($selected->version, $installed->getVersion()) <= 0) {
+            return null;
+        }
+
+        $releaseUrl = $urlByVersion[$selected->version] ?? null;
+        $sourceName = $sourceByVersion[$selected->version] ?? 'registry';
+        $manifest = $this->tryFetchManifest($selected->manifestUrl);
+
+        return [
+            'pluginId' => $installed->getPluginId(),
+            'name' => $installed->getName(),
+            'installedVersion' => $installed->getVersion(),
+            'availableVersion' => $selected->version,
+            'diffKind' => SemverHelper::diffKind($installed->getVersion(), $selected->version),
+            'sourceName' => $sourceName,
+            'trustLevel' => $selected->official ? 'official' : $installed->getTrustLevel(),
+            'manifestUrl' => $selected->manifestUrl,
+            'manifest' => $manifest,
+            'registryEntry' => is_string($releaseUrl)
+                ? $this->unifiedRegistryEntry($installed->getPluginId(), $selected, $releaseUrl, $sourceName)
+                : null,
+            'latestVersion' => $resolution->latestOverall?->version,
+            'latestCompatibleVersion' => $resolution->latestCompatible?->version,
+            'newerExistsButIncompatible' => $resolution->newerExistsButIncompatible(),
+        ];
+    }
+
+    /**
+     * Build a legacy update row (single-version inline registry source). Mirrors
+     * the historical newest-entry behaviour.
+     *
+     * @param array<string, array<string,mixed>> $entriesBySource
+     * @return array<string,mixed>|null
+     */
+    private function buildLegacyUpdateRow(Plugin $installed, array $entriesBySource): ?array
+    {
+        $best = null;
+        $bestSource = null;
+        foreach ($entriesBySource as $sourceName => $entry) {
+            $candidateVersion = is_string($entry['version'] ?? null) ? (string) $entry['version'] : null;
+            if ($candidateVersion === null || $candidateVersion === '') {
+                continue;
+            }
+            if (SemverHelper::compare($candidateVersion, $installed->getVersion()) <= 0) {
+                continue;
+            }
+            if ($best === null || SemverHelper::compare($candidateVersion, $this->asString($best['version'] ?? '0.0.0')) > 0) {
+                $best = $entry;
+                $bestSource = $sourceName;
+            }
+        }
+        if ($best === null || $bestSource === null) {
+            return null;
+        }
+
+        $manifestUrl = isset($best['manifestUrl']) && is_string($best['manifestUrl']) ? $best['manifestUrl'] : null;
+        $manifest = is_array($best['manifest'] ?? null) ? $this->asAssocArray($best['manifest']) : null;
+        if ($manifest === null && is_string($manifestUrl) && $manifestUrl !== '') {
+            $manifest = $this->tryFetchManifest($manifestUrl);
+        }
+        $registryEntry = $best;
+        if ($manifest !== null) {
+            $registryEntry['manifest'] = $manifest;
+        }
+
+        return [
+            'pluginId' => $installed->getPluginId(),
+            'name' => $installed->getName(),
+            'installedVersion' => $installed->getVersion(),
+            'availableVersion' => $this->asString($best['version']),
+            'diffKind' => SemverHelper::diffKind($installed->getVersion(), $this->asString($best['version'])),
+            'sourceName' => $bestSource,
+            'trustLevel' => is_string($best['trustLevel'] ?? null) ? $best['trustLevel'] : $installed->getTrustLevel(),
+            'manifestUrl' => $manifestUrl,
+            'manifest' => $manifest,
+            'registryEntry' => $registryEntry,
+            'latestVersion' => $this->asString($best['version']),
+            'latestCompatibleVersion' => $this->asString($best['version']),
+            'newerExistsButIncompatible' => false,
+        ];
     }
 
     /** @return array<string,mixed> */
@@ -523,8 +952,21 @@ final class PluginAdminService extends BaseService
                 if (!isset($input['registryEntry']) || !is_array($input['registryEntry'])) {
                     $this->throwValidationError('install.source=registry requires a `registryEntry` object.');
                 }
+                $entry = $this->asAssocArray($input['registryEntry']);
                 $sourceName = isset($input['sourceName']) ? $this->asString($input['sourceName']) : 'registry';
-                return $this->manifestResolver->resolveRegistry($this->asAssocArray($input['registryEntry']), $sourceName);
+                // Unified registry: the entry carries a `releaseUrl` -> follow the
+                // signed PluginRelease, download + checksum-verify the .shplugin,
+                // and install it through the archive trust path.
+                $releaseUrl = isset($entry['releaseUrl']) && is_string($entry['releaseUrl']) ? $entry['releaseUrl'] : '';
+                if ($releaseUrl !== '') {
+                    return $this->manifestResolver->resolveRegistryRelease(
+                        $releaseUrl,
+                        $sourceName,
+                        $this->headersForSourceName($sourceName),
+                    );
+                }
+                // Legacy inline registry entry (single-version, connected install).
+                return $this->manifestResolver->resolveRegistry($entry, $sourceName);
 
             case ResolvedSource::KIND_URL:
                 if (!isset($input['manifestUrl']) || !is_string($input['manifestUrl']) || $input['manifestUrl'] === '') {
@@ -551,6 +993,22 @@ final class PluginAdminService extends BaseService
         }
     }
 
+    /**
+     * Resolve the optional registry auth headers for the named source so a
+     * unified-registry install can fetch a private release document + archive.
+     *
+     * @return array<string,string>
+     */
+    private function headersForSourceName(string $sourceName): array
+    {
+        foreach ($this->sources->findEnabled() as $source) {
+            if ($source->getName() === $sourceName) {
+                return $this->registrySourceHeaders($source);
+            }
+        }
+        return [];
+    }
+
     /** @return array<string,mixed> */
     public function enable(string $pluginId): array
     {
@@ -561,6 +1019,34 @@ final class PluginAdminService extends BaseService
     public function disable(string $pluginId): array
     {
         return $this->formatPlugin($this->enabler->disable($pluginId), deep: true);
+    }
+
+    /**
+     * Pin an installed plugin: the unified resolver will never auto-update it
+     * and the core update preflight treats it as a hard block (with an
+     * "unpin first" reason) until it is explicitly unpinned. Audit finding #52.
+     *
+     * @return array<string,mixed>
+     */
+    public function pin(string $pluginId): array
+    {
+        return $this->setPinned($pluginId, true);
+    }
+
+    /** @return array<string,mixed> */
+    public function unpin(string $pluginId): array
+    {
+        return $this->setPinned($pluginId, false);
+    }
+
+    /** @return array<string,mixed> */
+    private function setPinned(string $pluginId, bool $pinned): array
+    {
+        $plugin = $this->mustFindPlugin($pluginId);
+        $plugin->setPinned($pinned);
+        $plugin->touchUpdatedAt();
+        $this->em->flush();
+        return $this->formatPlugin($plugin, deep: true);
     }
 
     /**
@@ -823,7 +1309,7 @@ final class PluginAdminService extends BaseService
     /**
      * SemVer of the host CMS. Sourced from the `selfhelp.cms_version`
      * Symfony parameter, which itself reads `SELFHELP_CMS_VERSION`
-     * (default `8.0.0-dev`). Used by the plugin compatibility check
+     * (default `0.1.0`). Used by the plugin compatibility check
      * and exposed on the public manifest endpoint so the frontend
      * runtime can show drift warnings.
      */
@@ -875,6 +1361,7 @@ final class PluginAdminService extends BaseService
             'pluginApiVersion' => $plugin->getPluginApiVersion(),
             'trustLevel' => $plugin->getTrustLevel(),
             'enabled' => $plugin->isEnabled(),
+            'pinned' => $plugin->isPinned(),
             'installMode' => $plugin->getInstallMode(),
             'backendPackage' => $plugin->getBackendPackage(),
             'backendBundleClass' => $plugin->getBackendBundleClass(),

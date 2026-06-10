@@ -8,8 +8,12 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-09.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
+
+> For the end-to-end install/update/maintain picture (the Manager Docker path and
+> the CMS plugin path that these versions feed), see
+> [`../operations/platform-and-plugin-ecosystem.md`](../operations/platform-and-plugin-ecosystem.md).
 
 SelfHelp ships as **five repositories that must agree on shared contracts**:
 
@@ -59,20 +63,26 @@ MINOR/MAJOR is the practical compatibility key for the whole ecosystem.**
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `8.0.0-dev` | — |
-| Host plugin API (`selfhelp.plugin_api_version`) | `1.1` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.2.2` | npm |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.2.2` | shared minor `1.2` |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.2.1` | shared minor `1.2` |
-| `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=8.0.0-dev <9.0.0` | host CMS major `8` |
-| `sh2-shp-survey-js` (`pluginApiVersion`) | `1.1` | host plugin API `1.1` |
+| Host CMS (`selfhelp.cms_version`) | `0.1.0` | — |
+| Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
+| `@selfhelp/shared` | `1.4.0` | npm |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.4.0` | shared minor `1.4` |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.4.0` | shared minor `1.4` |
+| `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
+| `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |
+
+> **Pre-1.0 SemVer.** SelfHelp core, the plugin API, and plugins are in the `0.x`
+> series, where **every MINOR bump is breaking**. A `compatibility.selfhelp` range
+> therefore tracks one core MINOR (`>=0.1.0 <0.2.0`), not one MAJOR. `@selfhelp/shared`
+> is the exception: it is a published SDK already on the `1.x` line, so the standard
+> "MAJOR = breaking" SemVer applies to it.
 
 ## What the plugin `compatibility` block means
 
 ```jsonc
 "compatibility": {
-  "selfhelp": ">=8.0.0-dev <9.0.0",   // host CMS SemVer range (major = breaking)
+  "selfhelp": ">=0.1.0 <0.2.0",   // host CMS SemVer range (pre-1.0: each MINOR is breaking)
   "php": "^8.4",
   "node": "^22",
   "react": "^19",

@@ -64,7 +64,7 @@ A minimal manifest looks like this:
   "id": "sh2-shp-example",
   "name": "Example Plugin",
   "version": "1.0.0",
-  "pluginApiVersion": "1.0",
+  "pluginApiVersion": "0.1.0",
   "license": "MPL-2.0",
   "compatibility": {
     "selfhelp": "^2.0",
@@ -108,7 +108,7 @@ Key rules:
   - **minor** (`1.0.x` → `1.1.0`): must ship at least one migration class
     (the installer enforces this even for "no-op" minor bumps).
   - **major** (`1.x` → `2.x`): breaking. Migration optional.
-- `pluginApiVersion` declares the SDK contract version (currently `1.0`).
+- `pluginApiVersion` declares the SDK contract version (currently `0.1.0`).
   Patch/minor mismatches in the SDK never break a plugin. Major SDK bumps
   do; you must re-test against the new SDK.
 - `security.capabilities` is **deny-by-default**. You can only use a
@@ -137,7 +137,7 @@ import { ExampleBanner } from './styles/ExampleBanner';
 export const register = definePlugin({
     id: 'sh2-shp-example',
     version: '1.0.0',
-    pluginApiVersion: '1.0',
+    pluginApiVersion: '0.1.0',
     styles: [
         {
             name: 'example-banner',
@@ -179,7 +179,7 @@ import { ExampleBannerMobile } from './styles/ExampleBannerMobile';
 export const registerMobile = defineMobilePlugin({
     id: 'sh2-shp-example',
     version: '1.0.0',
-    pluginApiVersion: '1.0',
+    pluginApiVersion: '0.1.0',
     styles: [
         {
             name: 'example-banner',
@@ -356,7 +356,7 @@ admin sees the unmet requirement in the install request UI.
 | Thing                | Versioning rule                                                        |
 | -------------------- | ---------------------------------------------------------------------- |
 | Plugin (`version`)   | SemVer. Patch = no migration. Minor = ships migration. Major = breaking.|
-| SDK (`pluginApiVersion`) | Independent SemVer, currently `1.0`. Host honors `host minor >= plugin minor` within the same major. |
+| SDK (`pluginApiVersion`) | Independent SemVer, currently `0.1.0`. Host honors `host minor >= plugin minor` within the same major (pre-1.0: within major `0`). |
 | Host CMS             | SemVer. Declared via `compatibility.selfhelp` (npm-style range).        |
 | Lock file            | `schemaVersion` is part of the lock JSON. Currently `1.0`.             |
 

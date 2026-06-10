@@ -1,0 +1,30 @@
+# Keep production images lean and secret-free. The image installs its own
+# vendor/ (composer --no-dev) and never bakes host caches, logs, or secrets.
+.git
+.github
+.idea
+.vscode
+.phpunit.cache
+node_modules
+
+# Host-built dependencies / caches (re-created inside the image)
+vendor
+var/cache
+var/log
+build
+
+# Tests + local docker/dev assets are not part of the runtime image
+tests
+docker/test
+docker-compose*.yml
+
+# Secrets / local env (never copy into an image)
+.env.local
+.env.*.local
+*.pem
+config/jwt
+selfhelp.plugins.lock.json
+
+# Misc
+*.md
+!config/**/*.md

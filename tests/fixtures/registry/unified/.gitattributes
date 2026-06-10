@@ -1,0 +1,4 @@
+# The .shplugin artifacts are pinned in the registry by a byte-for-byte SHA-256.
+# Never apply EOL normalization or they would fail checksum verification on
+# autocrlf checkouts.
+*.shplugin binary

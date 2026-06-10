@@ -18,6 +18,7 @@
                 "installMode": { "type": "string", "enum": ["development", "managed", "trusted"] },
                 "trustLevel": { "type": "string", "enum": ["official", "reviewed", "untrusted"] },
                 "enabled": { "type": "boolean" },
+                "pinned": { "type": "boolean", "description": "When true the plugin is frozen at its installed version: the resolver never auto-updates it and the core update preflight treats it as a hard block until unpinned." },
                 "backendPackage": { "type": ["string", "null"] },
                 "backendBundleClass": { "type": ["string", "null"] },
                 "frontendRuntimeUrl": { "type": ["string", "null"] },
