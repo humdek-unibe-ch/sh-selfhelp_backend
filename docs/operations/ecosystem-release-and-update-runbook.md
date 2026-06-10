@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Release engineers, maintainers, and server operators (including first-time publishers).
 Status: active.
 Applies to: the whole SelfHelp ecosystem — `sh-selfhelp_backend`, `sh-selfhelp_frontend`, `sh-selfhelp_shared`, `sh-selfhelp_mobile`, `sh-manager`, `sh2-plugin-registry`, and plugin repos (e.g. `sh2-shp-survey-js`).
-Last verified: 2026-06-10 (every flow below was executed for real on this date: manager `v0.1.1`, backend `v0.1.1`, frontend `v0.1.3` — all green).
+Last verified: 2026-06-10 (every flow below was executed for real on this date: manager `v0.1.3`, backend `v0.1.2`, frontend `v0.1.4` — including the auto-staged registry candidates — all green).
 Source of truth: `.github/workflows/docker-release.yml` + `release-manifest.json` (backend), `frontend-release.yml` + `publish-verify.yml` + `release-manifest.json` (frontend), `publish.yml` (shared), `release.yml` (manager), `auto-core-release.yml` + `publish-core-release.yml` + `build-registry.yml` + `scripts/resolve-core-candidate.mjs` (registry), `config/services.yaml`, `registry.json` + `releases/**` (registry), and the manager `packages/*` + `apps/*` sources.
 
 This is the **one end-to-end page**: what to bump, what to tag, what runs by
@@ -78,8 +78,15 @@ the only exception: a plugin tag publishes straight through to the registry.
 | `sh2-plugin-registry` | the signed catalogue itself (GitHub Pages) | merge to `main` → `build-registry.yml`; releases assembled by `publish-core-release.yml` (manual) | release doc `version` input |
 | plugin repos | signed `.shplugin` + manifest + plugin-release doc pushed INTO the registry | tag `v*` → plugin `publish-to-registry.yml` | `plugin.json` `version` (**enforced**) |
 
-Current line (2026-06-10): backend/core `0.1.1`, frontend `0.1.3`, shared
-`1.5.0`, manager `0.1.1`, plugin API `0.1.0`, SurveyJS plugin `0.2.0`.
+Current line (2026-06-10): backend/core `0.1.2`, frontend `0.1.4`, shared
+`1.5.0`, manager `0.1.3`, plugin API `0.1.0`, SurveyJS plugin `0.2.0`.
+
+For the instant dispatch hop each component repo needs a
+`REGISTRY_DISPATCH_TOKEN` Actions secret (a token able to call
+`POST /repos/<owner>/sh2-plugin-registry/dispatches`; a fine-grained PAT
+scoped to the registry repo with **contents: read-and-write** is the right
+long-term shape). Without it the dispatch step skips with a notice and the
+registry's daily reconcile (or a manual `auto-core-release` run) covers it.
 
 ## 3. Where the "required version of each other" lives
 
@@ -317,6 +324,7 @@ Details: [platform-and-plugin-ecosystem.md](platform-and-plugin-ecosystem.md)
 | Component tag green but no auto PR in the registry | `REGISTRY_DISPATCH_TOKEN` not configured in the component repo | Expected: the registry's daily reconcile picks it up; or run **Actions → auto-core-release → Run workflow** (kind + version) yourself. Configure the fine-grained PAT for instant dispatch. |
 | `auto-core-release` says `incompatible` / `missing-component` | The declared `supports.*` ranges do not match the latest stable counterpart (or it does not exist yet) | Intentional stop. Fix `release-manifest.json` and re-tag, publish the counterpart first, or use the manual workflow with explicit metadata. |
 | `auto-core-release` says `digest-mismatch` | The digests the component workflow sent differ from what GHCR serves for that tag | Supply-chain alarm: verify the tag was not moved/rebuilt; investigate before publishing anything. |
+| Pages deploy fails after a merge: `Multiple artifacts named "github-pages" … count is 2` | "Re-run failed jobs" on `build-registry` re-uploads the artifact next to the first attempt's leftover, and `deploy-pages` refuses ambiguity (hit live 2026-06-10 after two back-to-back merges) | Delete the run's `github-pages` artifacts (API or run page) and re-run, or use "Re-run all jobs". |
 
 More signing/keys/secrets troubleshooting: the registry's
 [release-runbook §7](https://github.com/humdek-unibe-ch/sh2-plugin-registry/blob/main/docs/operations/release-runbook.md#7-troubleshooting).
@@ -329,3 +337,9 @@ More signing/keys/secrets troubleshooting: the registry's
 | Backend `v0.1.1` tag | [docker-release #27283241114](https://github.com/humdek-unibe-ch/sh-selfhelp_backend/actions/runs/27283241114) | green — 3 images + digests |
 | Frontend fix + `v0.1.3` tag | [frontend-release #27283299556](https://github.com/humdek-unibe-ch/sh-selfhelp_frontend/actions/runs/27283299556) | green — image + descriptor + SARIF upload working |
 | Registry `publish-core-release` (core `0.1.1`, frontend `0.1.3`) | run via Actions UI with the digests from the rows above | PR per kind; human review + merge publishes |
+| Manager image bugfix + `v0.1.3` tag | [manager-release (v0.1.3)](https://github.com/humdek-unibe-ch/sh-manager/actions) | green — `instance list` works from the image (the `v0.1.1`/`v0.1.2` trusted-keys ENOENT is gone) |
+| Backend `v0.1.2` tag (auto flow) | [docker-release #27288429746](https://github.com/humdek-unibe-ch/sh-selfhelp_backend/actions/runs/27288429746) | green — consistency gate + 3 images + digest artifacts + notify-registry |
+| Frontend `v0.1.4` tag (auto flow) | [frontend-release #27288469479](https://github.com/humdek-unibe-ch/sh-selfhelp_frontend/actions/runs/27288469479) | green — manifest-driven descriptor + dispatch step |
+| `auto-core-release` core `0.1.2` | [run #27288663526](https://github.com/humdek-unibe-ch/sh2-plugin-registry/actions/runs/27288663526) | resolver matched frontend `0.1.3` ⇄ core `0.1.2`, verified GHCR digests, prod-signed, staged [`PR #8`](https://github.com/humdek-unibe-ch/sh2-plugin-registry/pull/8) — digests verified against SBOM artifacts, merged |
+| `auto-core-release` frontend `0.1.4` | [run #27288953358](https://github.com/humdek-unibe-ch/sh2-plugin-registry/actions/runs/27288953358) | resolver matched core `0.1.2`, `sharedPackageVersion 1.5.0` read from the lockfile at the tag, staged [`PR #9`](https://github.com/humdek-unibe-ch/sh2-plugin-registry/pull/9) — merged |
+| Duplicate guard | re-dispatch of core `0.1.2` after the merge | `status=duplicate`, no second branch/PR |
