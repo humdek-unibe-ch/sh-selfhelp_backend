@@ -12,6 +12,7 @@ namespace App\Service\System;
 
 use Doctrine\DBAL\Connection;
 use Psr\Cache\CacheItemPoolInterface;
+use Symfony\Component\Cache\Adapter\TraceableAdapter;
 
 /**
  * Aggregated, instance-scoped system health/status for the admin maintenance UI.
@@ -161,13 +162,19 @@ class SystemHealthService
     /**
      * The cache pool IS the Redis client in production; report Redis from the
      * adapter class so dev/test (array adapter) is shown as not_configured
-     * rather than falsely "ok".
+     * rather than falsely "ok". In dev the profiler decorates every pool with
+     * TraceableAdapter, which would hide the Redis backend, so unwrap
+     * decorators before sniffing the class.
      *
      * @return array{name: string, status: string, detail: string}
      */
     private function checkRedis(): array
     {
-        $adapter = $this->cache::class;
+        $pool = $this->cache;
+        while ($pool instanceof TraceableAdapter) {
+            $pool = $pool->getPool();
+        }
+        $adapter = $pool::class;
         $isRedis = stripos($adapter, 'redis') !== false || stripos($adapter, 'predis') !== false;
         if (!$isRedis) {
             return $this->component('redis', self::COMPONENT_NOT_CONFIGURED, 'Cache backend is not Redis-based.');

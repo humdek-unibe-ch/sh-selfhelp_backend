@@ -17,7 +17,17 @@ use App\Service\System\SystemUpdateService;
 use App\Service\System\SystemVersionService;
 use Doctrine\DBAL\Connection;
 use PHPUnit\Framework\TestCase;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TraceableAdapter;
+
+/**
+ * In-memory pool whose class name carries "Redis" so the health check's
+ * adapter sniffing treats it as Redis-backed without a live Redis server.
+ */
+final class QaRedisFlavouredArrayAdapter extends ArrayAdapter
+{
+}
 
 /**
  * Unit coverage for the aggregated system health endpoint (HIGH 5).
@@ -37,6 +47,7 @@ final class SystemHealthServiceTest extends TestCase
         string $mailerDsn = 'smtp://mail:1025',
         string $messengerDsn = 'doctrine://default',
         bool $registryReachable = true,
+        ?CacheItemPoolInterface $cache = null,
     ): SystemHealthService {
         // env-forced maintenance mirrors the parameter; no file is touched.
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-health-no-maint', $maintenanceMode);
@@ -73,7 +84,7 @@ final class SystemHealthServiceTest extends TestCase
             $updateService,
             $registry,
             $connection,
-            new ArrayAdapter(),
+            $cache ?? new ArrayAdapter(),
             $mercureUrl,
             $mailerDsn,
             $messengerDsn,
@@ -106,12 +117,26 @@ final class SystemHealthServiceTest extends TestCase
         }
         self::assertSame('ok', $byName['database']);
         self::assertSame('ok', $byName['cache']);
+        self::assertSame('not_configured', $byName['redis']);
         self::assertSame('ok', $byName['worker']);
         self::assertSame('ok', $byName['scheduler']);
         self::assertSame('configured', $byName['mercure']);
         self::assertSame('configured', $byName['mailer']);
         self::assertSame('ok', $byName['registry']);
         self::assertSame('ok', $byName['plugins']);
+    }
+
+    public function testRedisReportedOkWhenDevProfilerWrapsRedisBackedCachePool(): void
+    {
+        // Regression: in dev the profiler decorates cache.app with
+        // TraceableAdapter, which used to hide the Redis backend and made the
+        // admin system page show "not_configured" despite Redis serving the cache.
+        $wrapped = new TraceableAdapter(new QaRedisFlavouredArrayAdapter());
+        $health = $this->makeService($this->healthyConnection(), cache: $wrapped)->getHealth();
+
+        $redis = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'redis'))[0];
+        self::assertSame('ok', $redis['status']);
+        self::assertSame('Redis-backed cache reachable.', $redis['detail']);
     }
 
     public function testUnreachableRegistryIsInformationalAndDoesNotDegradeInstance(): void
