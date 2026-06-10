@@ -30,6 +30,15 @@
 # configured in repository/organization secrets. Without it the cross-repo
 # jobs fail at checkout -- that is intentional and documented, not a silent
 # skip. The backend-smoke job only needs THIS repo, so it always runs.
+#
+# SIBLING REF RESOLUTION (same-branch-or-main): coordinated cross-repo work
+# happens on equally named feature branches (e.g. feature/xyz in backend +
+# shared + frontend + mobile). Every sibling checkout therefore resolves to
+# the branch with the SAME NAME as the ref this run was triggered from when
+# that branch exists in the sibling repo, and falls back to `main`
+# otherwise. Scheduled runs trigger on main and keep validating main-vs-main;
+# a workflow_dispatch from a feature branch validates the whole feature wave
+# together. See docs/developer/branch-merge-order.md.
 
 name: ecosystem-compat
 
@@ -64,11 +73,32 @@ jobs:
         with:
           path: sh-selfhelp_backend
 
+      - name: Resolve sibling refs (same branch, else main)
+        id: refs
+        env:
+          GH_TOKEN: ${{ env.ECOSYSTEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          resolve_ref() {
+            if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && \
+               git ls-remote --exit-code --heads \
+                 "https://x-access-token:${GH_TOKEN}@github.com/humdek-unibe-ch/$1.git" \
+                 "refs/heads/${BRANCH}" > /dev/null 2>&1; then
+              echo "${BRANCH}"
+            else
+              echo "main"
+            fi
+          }
+          SHARED_REF="$(resolve_ref sh-selfhelp_shared)"
+          echo "shared=${SHARED_REF}" >> "$GITHUB_OUTPUT"
+          echo "Resolved sh-selfhelp_shared ref: ${SHARED_REF} (build branch: ${BRANCH})"
+
       - name: Checkout shared
         uses: actions/checkout@v4
         with:
           repository: humdek-unibe-ch/sh-selfhelp_shared
-          ref: main
+          ref: ${{ steps.refs.outputs.shared }}
           path: sh-selfhelp_shared
           token: ${{ env.ECOSYSTEM_TOKEN }}
 
@@ -184,11 +214,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Resolve sibling refs (same branch, else main)
+        id: refs
+        env:
+          GH_TOKEN: ${{ env.ECOSYSTEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          resolve_ref() {
+            if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && \
+               git ls-remote --exit-code --heads \
+                 "https://x-access-token:${GH_TOKEN}@github.com/humdek-unibe-ch/$1.git" \
+                 "refs/heads/${BRANCH}" > /dev/null 2>&1; then
+              echo "${BRANCH}"
+            else
+              echo "main"
+            fi
+          }
+          SHARED_REF="$(resolve_ref sh-selfhelp_shared)"
+          FRONTEND_REF="$(resolve_ref sh-selfhelp_frontend)"
+          echo "shared=${SHARED_REF}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${FRONTEND_REF}" >> "$GITHUB_OUTPUT"
+          echo "Resolved refs (build branch: ${BRANCH}): shared=${SHARED_REF} frontend=${FRONTEND_REF}"
+
       - name: Checkout shared
         uses: actions/checkout@v4
         with:
           repository: humdek-unibe-ch/sh-selfhelp_shared
-          ref: main
+          ref: ${{ steps.refs.outputs.shared }}
           path: sh-selfhelp_shared
           token: ${{ env.ECOSYSTEM_TOKEN }}
 
@@ -196,7 +249,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: humdek-unibe-ch/sh-selfhelp_frontend
-          ref: main
+          ref: ${{ steps.refs.outputs.frontend }}
           path: sh-selfhelp_frontend
           token: ${{ env.ECOSYSTEM_TOKEN }}
 
@@ -236,11 +289,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Resolve sibling refs (same branch, else main)
+        id: refs
+        env:
+          GH_TOKEN: ${{ env.ECOSYSTEM_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          resolve_ref() {
+            if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && \
+               git ls-remote --exit-code --heads \
+                 "https://x-access-token:${GH_TOKEN}@github.com/humdek-unibe-ch/$1.git" \
+                 "refs/heads/${BRANCH}" > /dev/null 2>&1; then
+              echo "${BRANCH}"
+            else
+              echo "main"
+            fi
+          }
+          SHARED_REF="$(resolve_ref sh-selfhelp_shared)"
+          MOBILE_REF="$(resolve_ref sh-selfhelp_mobile)"
+          echo "shared=${SHARED_REF}" >> "$GITHUB_OUTPUT"
+          echo "mobile=${MOBILE_REF}" >> "$GITHUB_OUTPUT"
+          echo "Resolved refs (build branch: ${BRANCH}): shared=${SHARED_REF} mobile=${MOBILE_REF}"
+
       - name: Checkout shared
         uses: actions/checkout@v4
         with:
           repository: humdek-unibe-ch/sh-selfhelp_shared
-          ref: main
+          ref: ${{ steps.refs.outputs.shared }}
           path: sh-selfhelp_shared
           token: ${{ env.ECOSYSTEM_TOKEN }}
 
@@ -248,7 +324,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: humdek-unibe-ch/sh-selfhelp_mobile
-          ref: main
+          ref: ${{ steps.refs.outputs.mobile }}
           path: sh-selfhelp_mobile
           token: ${{ env.ECOSYSTEM_TOKEN }}
 
