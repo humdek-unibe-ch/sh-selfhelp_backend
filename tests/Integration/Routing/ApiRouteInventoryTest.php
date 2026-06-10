@@ -87,6 +87,14 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'health_v1',
         'user_validate_token_v1',
         'user_complete_validation_v1',
+        // Manager update loop (machine-to-machine): permission-less like the
+        // health probe, but gated in-controller by the per-instance manager
+        // bearer token (constant-time check, denied when SELFHELP_MANAGER_TOKEN
+        // is unset) and scoped to the server-derived instance id. Denial paths
+        // are covered by SystemManagerControllerSecurityTest; seeded by
+        // migrations/Version20260608174905.php.
+        'manager_system_update_pending_v1',
+        'manager_system_update_status_v1',
     ];
 
     public function testEveryDatabaseRouteResolvesToARealControllerMethod(): void
