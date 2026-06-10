@@ -187,7 +187,7 @@ A `RegistryReleaseRef` is `{ id, version, channel, releaseUrl, blocked? }`.
     "archiveUrl":  "https://.../sh2-shp-survey-js-0.2.0.shplugin",
     "sha256": "sha256:<hex>"
   },
-  "security": { "signature": "<base64>", "keyId": "selfhelp-official-2026", "signedPayload": "<canonical JSON>" }
+  "security": { "signature": "<base64>", "keyId": "prod", "signedPayload": "<canonical JSON>" }
 }
 ```
 

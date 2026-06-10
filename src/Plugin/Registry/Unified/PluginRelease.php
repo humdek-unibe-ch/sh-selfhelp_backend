@@ -30,7 +30,7 @@ namespace App\Plugin\Registry\Unified;
  *     "archiveUrl":  "https://.../sh2-shp-survey-js-0.1.0.shplugin",
  *     "sha256": "sha256:<hex>"
  *   },
- *   "security": { "signature": "...", "keyId": "selfhelp-official-2026", "signedPayload": "..." }
+ *   "security": { "signature": "...", "keyId": "prod", "signedPayload": "..." }
  * }
  * ```
  *
