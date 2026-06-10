@@ -35,7 +35,17 @@ final class CrossInstallerRegistrySchemaParityTest extends TestCase
 {
     private function registryRoot(): string
     {
-        return \dirname(__DIR__, 5) . '/plugins/sh2-plugin-registry';
+        // The registry checkout was renamed from plugins/sh2-plugin-registry to
+        // sh2-registry on 2026-06-10 (GitHub repo name unchanged); accept both
+        // workspace layouts.
+        $workspace = \dirname(__DIR__, 5);
+        foreach (['/sh2-registry', '/plugins/sh2-plugin-registry'] as $candidate) {
+            if (is_file($workspace . $candidate . '/registry.json')) {
+                return $workspace . $candidate;
+            }
+        }
+
+        return $workspace . '/sh2-registry';
     }
 
     private function backendSchemas(): string

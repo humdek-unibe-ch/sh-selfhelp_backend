@@ -46,20 +46,46 @@ final class CrossInstallerRegistryFixtureParityTest extends TestCase
 
     private function registryRoot(): string
     {
-        return \dirname(__DIR__, 5) . '/plugins/sh2-plugin-registry';
+        // The registry checkout was renamed from plugins/sh2-plugin-registry to
+        // sh2-registry on 2026-06-10 (GitHub repo name unchanged); accept both
+        // workspace layouts.
+        $workspace = \dirname(__DIR__, 5);
+        foreach (['/sh2-registry', '/plugins/sh2-plugin-registry'] as $candidate) {
+            if (is_file($workspace . $candidate . '/registry.json')) {
+                return $workspace . $candidate;
+            }
+        }
+
+        return $workspace . '/sh2-registry';
     }
 
     private function trustedVerifier(): PluginSignatureVerifier
     {
-        // Re-derive the public half of the deterministic dev seed the registry's
-        // sign-release.mjs uses; nothing secret is checked in. This is the same
-        // public key committed in the registry's keys/trusted-keys.json.
-        $seed = hash('sha256', 'selfhelp-dev-registry-signing-key-v1', true);
-        $keypair = sodium_crypto_sign_seed_keypair($seed);
-        $publicKey = sodium_crypto_sign_publickey($keypair);
+        // Trust exactly what the registry publishes: the ACTIVE public keys in
+        // its committed keys/trusted-keys.json (the `prod` publisher key —
+        // nothing secret is checked in). The published release documents must
+        // verify against the registry's own published trust anchors.
+        $raw = (string) file_get_contents($this->registryRoot() . '/keys/trusted-keys.json');
+        $decoded = json_decode($raw, true);
+        self::assertIsArray($decoded);
+        self::assertIsArray($decoded['keys'] ?? null, 'registry trusted-keys.json must list keys');
+
+        $trusted = [];
+        foreach ($decoded['keys'] as $key) {
+            if (is_array($key) && ($key['status'] ?? null) === 'active'
+                && is_string($key['keyId'] ?? null) && is_string($key['publicKey'] ?? null)) {
+                $trusted[$key['keyId']] = $key['publicKey'];
+            }
+        }
+        self::assertNotSame([], $trusted, 'registry trusted-keys.json must contain at least one active key');
+        self::assertArrayNotHasKey(
+            'selfhelp-official-2026',
+            $trusted,
+            'the retired deterministic bootstrap key must never reappear in production trust',
+        );
 
         return new PluginSignatureVerifier(
-            ['selfhelp-official-2026' => base64_encode($publicKey)],
+            $trusted,
             true,
             new NullLogger(),
             'test',
