@@ -13,6 +13,7 @@ use App\Service\CMS\Admin\AdminSectionUtilityService;
 use App\Service\Core\ApiResponseFormatter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -42,12 +43,18 @@ class AdminSectionUtilityController extends AbstractController
     }
 
     /**
-     * Get all pages that reference a given section (anywhere in their hierarchy).
+     * Get all pages that reference any of the given sections (anywhere in their hierarchy).
+     * Accepts ?ids[]=1&ids[]=2. Returns the deduplicated union across all provided IDs.
      * Requires permission: admin.page.update
      */
-    public function getPagesBySection(int $section_id): JsonResponse
+    public function getPagesBySections(Request $request): JsonResponse
     {
-        $pages = $this->adminSectionUtilityService->getPagesBySectionId($section_id);
+        /** @var list<int> $ids */
+        $ids = array_values(array_unique(array_map(
+            static fn(string|int $v): int => (int) $v,
+            array_filter((array) $request->query->all('ids'), static fn(mixed $v): bool => is_string($v) || is_int($v))
+        )));
+        $pages = $this->adminSectionUtilityService->getPagesBySectionIds($ids);
 
         return $this->apiResponseFormatter->formatSuccess(
             $pages,
