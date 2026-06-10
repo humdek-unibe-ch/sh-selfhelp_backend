@@ -97,7 +97,7 @@ final class RegistryIndexTest extends TestCase
         self::assertSame('>=0.1.0 <0.2.0', $release->compatibilityCore);
         self::assertSame('>=0.1.0 <0.2.0', $release->compatibilityPluginApi);
         self::assertTrue($release->official);
-        self::assertSame('selfhelp-official-2026', $release->security->keyId);
+        self::assertSame('selfhelp-dev-fixture', $release->security->keyId);
         self::assertNotNull($release->security->signedPayload);
     }
 

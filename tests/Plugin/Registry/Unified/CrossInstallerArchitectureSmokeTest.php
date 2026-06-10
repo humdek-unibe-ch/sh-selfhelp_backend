@@ -59,7 +59,7 @@ final class CrossInstallerArchitectureSmokeTest extends TestCase
         $publicKey = sodium_crypto_sign_publickey($keypair);
 
         return new PluginSignatureVerifier(
-            ['selfhelp-official-2026' => base64_encode($publicKey)],
+            ['selfhelp-dev-fixture' => base64_encode($publicKey)],
             true,
             new NullLogger(),
             'test',

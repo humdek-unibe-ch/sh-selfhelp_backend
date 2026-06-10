@@ -18,7 +18,8 @@ declare(strict_types=1);
  * The signing key is DETERMINISTIC (derived from a fixed dev seed) so the
  * fixtures are reproducible and the consuming tests can re-derive the public
  * key without a checked-in secret. The keyId matches the Manager dev fixtures
- * (`selfhelp-official-2026`) so the documents are interchangeable.
+ * (`selfhelp-dev-fixture`) so the documents are interchangeable. It is a test
+ * identity only — the production registry trusts solely the `prod` key.
  *
  * Regenerate with:  php tests/fixtures/registry/unified/sign-fixtures.php
  */
@@ -27,7 +28,7 @@ require __DIR__ . '/../../../../vendor/autoload.php';
 
 use App\Plugin\Registry\Unified\CanonicalJson;
 
-const KEY_ID = 'selfhelp-official-2026';
+const KEY_ID = 'selfhelp-dev-fixture';
 const SEED_PHRASE = 'selfhelp-dev-registry-signing-key-v1';
 const BASE_URL = 'https://registry.selfhelp.test';
 

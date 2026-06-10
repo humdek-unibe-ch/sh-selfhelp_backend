@@ -71,7 +71,7 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
             destructive: true,
             requiresBackup: true,
             manualConfirmationRequired: true,
-            security: new SignatureBlock('c2ln', 'selfhelp-official-2026'),
+            security: new SignatureBlock('c2ln', 'selfhelp-dev-fixture'),
             blocked: false,
             raw: [],
         );
