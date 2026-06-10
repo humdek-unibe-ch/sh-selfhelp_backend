@@ -1,3 +1,15 @@
+# v0.1.1
+
+## System Maintenance & Updates
+
+- **Registry-fed update picker**: New `GET /cms-api/v1/admin/system/update/releases` endpoint lists the core versions published in the official registry (newest first) so the admin "Request an update" picker offers real versions instead of free-typed guesses. Fails soft to `available: false` when the registry is unreachable.
+- **Deployment kind in version summary**: `GET /admin/system/version` now reports `deployment: docker|source` so the admin UI can distinguish a managed Docker image install from a source/dev checkout. The production images bake `SELFHELP_DEPLOYMENT=docker`; everything else reports `source`.
+- **Deterministic offline-registry tests**: The test environment now pins the registry base URL to a closed local port (`when@test` in `services.yaml`), so registry-dependent endpoints (advisories, preflight, releases) degrade offline the same way in CI and locally. Fixes the flaky `Advisories is admin only and degrades gracefully offline` security test.
+
+## Security
+
+- **Dependabot alerts resolved** (issue #55): all Symfony/Twig advisories fixed via the 7.4.13 / 3.27.1 patch line (`composer audit` is clean) and `aquasecurity/trivy-action` pinned to the safe `0.35.0` immutable release commit in `docker-release.yml`.
+
 # v0.1.0
 
 ## Registration & User Management
