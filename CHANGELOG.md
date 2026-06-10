@@ -1,4 +1,4 @@
-# v0.1.0 (Not released yet)
+# v0.1.0
 
 ## Registration & User Management
 
