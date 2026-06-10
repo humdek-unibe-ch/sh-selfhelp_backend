@@ -34,7 +34,7 @@ SELFHELP_PLUGIN_TRUSTED_KEYS=humdek-prod-2026;MCowBQYDK2VwAyEAYg…==,humdek-sta
 
 Every host ships with the official Humdek public key under the keyId
 `humdek-prod-2026`. The publisher's CI signs releases with the
-matching private key (`SELFHELP_PLUGIN_SIGNING_KEY` in
+matching private key (`SELFHELP_SIGNING_KEY` in
 [`sh2-plugin-registry`](https://github.com/humdek-unibe-ch/sh2-plugin-registry)
 + every plugin's `.github/workflows/publish-to-registry.yml`).
 

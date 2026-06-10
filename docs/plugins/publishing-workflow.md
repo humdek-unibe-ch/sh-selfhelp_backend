@@ -139,10 +139,10 @@ backend/migrations/.migration-state
 
 Required protected keys (read [`signing.md`](./signing.md)):
 
-- `SELFHELP_PLUGIN_SIGNING_KEY` — production Ed25519 secret key
+- `SELFHELP_SIGNING_KEY` — production Ed25519 secret key
   (base64, 64 bytes). Stored as a GitHub Actions repository secret on
   the plugin repo, never on disk.
-- `SELFHELP_PLUGIN_SIGNING_KEY_ID` — publisher key id matching one of
+- `SELFHELP_SIGNING_KEY_ID` — publisher key id matching one of
   the host's `SELFHELP_PLUGIN_TRUSTED_KEYS`.
 - `SELFHELP_PLUGIN_DEV_SIGNING_KEY` — local-dev fallback. The host
   refuses dev-signed plugins on `official` / `reviewed` trust levels
@@ -244,7 +244,7 @@ repo. The script:
    that `SignedPayloadBuilder.php` rebuilds host-side: sorted keys,
    `JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`, no whitespace.
 5. **Signs the payload** with Ed25519 (`sign.mjs sign`), using
-   `SELFHELP_PLUGIN_SIGNING_KEY` from env (or `--key <path>`).
+   `SELFHELP_SIGNING_KEY` from env (or `--key <path>`).
 6. **Writes `signature.json`** = `{keyId, signature, signedPayload}`.
 7. **Zips** the staged tree into `dist/<id>-<version>.shplugin`.
 8. **Self-validates** by re-reading SHA256SUMS and re-hashing files.
@@ -309,7 +309,7 @@ Plugin repo:
   - npm install + npm run build (frontend + mobile)
   - scripts/build-shplugin.mjs --mode connected
       → dist/<id>-<ver>.shplugin (later renamed to -connected.shplugin)
-  - sign canonical payload (Ed25519, SELFHELP_PLUGIN_SIGNING_KEY)
+  - sign canonical payload (Ed25519, SELFHELP_SIGNING_KEY)
   - node scripts/publish-to-registry.mjs --mode connected --skip-build --push
   - scripts/build-shplugin.mjs --mode standalone
       → dist/<id>-<ver>-standalone.shplugin
@@ -366,8 +366,8 @@ Required GitHub Actions secrets on the plugin repo:
 
 | Secret                          | Purpose                                                                                    |
 |--------------------------------|--------------------------------------------------------------------------------------------|
-| `SELFHELP_PLUGIN_SIGNING_KEY`   | Ed25519 base64 secret. Used by `sign.mjs sign`. Never committed.                           |
-| `SELFHELP_PLUGIN_SIGNING_KEY_ID`| Matches a `keyId=…` in the host's `SELFHELP_PLUGIN_TRUSTED_KEYS`.                          |
+| `SELFHELP_SIGNING_KEY`   | Ed25519 base64 secret. Used by `sign.mjs sign`. Never committed.                           |
+| `SELFHELP_SIGNING_KEY_ID`| Matches a `keyId=…` in the host's `SELFHELP_PLUGIN_TRUSTED_KEYS`.                          |
 | `REGISTRY_PUSH_TOKEN`           | PAT with `contents:write` on `humdek-unibe-ch/sh2-plugin-registry`. Missing → dry-run mode.|
 
 Per-plugin step-by-step (Ed25519 generation, GitHub UI navigation,

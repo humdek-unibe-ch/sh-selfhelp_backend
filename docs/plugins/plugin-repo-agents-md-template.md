@@ -120,7 +120,7 @@ Plugin progress, dashboards, chat, collaborative editing, file upload status, an
 **No `.sh` / `.ps1` wrappers** — every script under `scripts/` is a
 single `.mjs` file that runs identically on PowerShell, Git Bash,
 WSL, macOS, and Linux. Each script auto-loads `<plugin>/.env` via
-Node 22's `process.loadEnvFile`, so `SELFHELP_PLUGIN_SIGNING_KEY`,
+Node 22's `process.loadEnvFile`, so `SELFHELP_SIGNING_KEY`,
 `SELFHELP_ADMIN_TOKEN`, `SELFHELP_API_BASE`, `SELFHELP_BACKEND_PATH`,
 `SELFHELP_REGISTRY_PATH`, etc. can live next to `plugin.json` without
 being exported in every shell. Real `process.env` values still win
@@ -152,8 +152,8 @@ Every plugin repo MUST gitignore: `node_modules/`, `backend/vendor/`,
 NEVER commit private Ed25519 signing keys. Use GitHub Actions
 repository secrets:
 
-- `SELFHELP_PLUGIN_SIGNING_KEY` — Ed25519 secret key (base64).
-- `SELFHELP_PLUGIN_SIGNING_KEY_ID` — must match a host
+- `SELFHELP_SIGNING_KEY` — Ed25519 secret key (base64).
+- `SELFHELP_SIGNING_KEY_ID` — must match a host
   `SELFHELP_PLUGIN_TRUSTED_KEYS` entry.
 - `REGISTRY_PUSH_TOKEN` — PAT with `contents:write` on
   `humdek-unibe-ch/sh2-plugin-registry`.
