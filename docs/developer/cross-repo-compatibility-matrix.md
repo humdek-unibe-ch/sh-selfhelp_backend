@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-09.
+Last verified: 2026-06-10.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -63,11 +63,11 @@ MINOR/MAJOR is the practical compatibility key for the whole ecosystem.**
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.0` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.1` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.4.0` | npm |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.4.0` | shared minor `1.4` |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.4.0` | shared minor `1.4` |
+| `@selfhelp/shared` | `1.5.0` | npm |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.5.0` | shared minor `1.5` |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.4.0` (caret covers `1.5.x`) | shared `1.x` line |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |

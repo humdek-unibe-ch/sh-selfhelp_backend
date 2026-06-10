@@ -7,8 +7,8 @@ SPDX-License-Identifier: MPL-2.0
 
 Audience: Operators, deployers, and backend developers.
 Status: active.
-Applies to: SelfHelp2 platform (backend `0.1.0`, plugin API `0.1.0`).
-Last verified: 2026-06-09.
+Applies to: SelfHelp2 platform (backend `0.1.1`, plugin API `0.1.0`).
+Last verified: 2026-06-10.
 Source of truth: `src/Service/System/`, `src/Controller/Api/V1/Admin/SystemController.php`, `src/Controller/Api/V1/Manager/SystemManagerController.php`, the plugin layer under `src/Plugin/`, the `sh-manager` repository (`packages/*`, `apps/cli`, `apps/web`), and the unified registry contract in `docs/plugins/`.
 
 This is the **one big map** of how a SelfHelp deployment is installed, updated, and
@@ -147,11 +147,11 @@ implement `0.x` caret semantics, so only the **declared** versions/ranges change
 
 | Axis | Where | Value |
 | --- | --- | --- |
-| Core CMS | `selfhelp.cms_version` (`config/services.yaml`) | `0.1.0` |
+| Core CMS | `selfhelp.cms_version` (`config/services.yaml`) | `0.1.1` |
 | Plugin API | `selfhelp.plugin_api_version` | `0.1.0` |
-| `@selfhelp/shared` (TS contracts/SDK) | npm | `1.4.0` (published SDK line; consumers pin `^1.4.0`) |
-| Frontend / mobile | consume `@selfhelp/shared` | `^1.4.0` |
-| Manager | `sh-manager` | `0.1.0` |
+| `@selfhelp/shared` (TS contracts/SDK) | npm | `1.5.0` (published SDK line; frontend pins `^1.5.0`) |
+| Frontend / mobile | consume `@selfhelp/shared` | `^1.5.0` / `^1.4.0` |
+| Manager | `sh-manager` | `0.1.1` |
 | Plugin (e.g. SurveyJS) | `plugin.json#version` / `pluginApiVersion` / `compatibility.selfhelp` | `0.1.0` / `0.1.0` / `>=0.1.0 <0.2.0` |
 
 Full rules and "what to update when a contract changes" live in
