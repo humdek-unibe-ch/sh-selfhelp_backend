@@ -148,7 +148,9 @@ $index = [
     'requiresManager' => '>=0.1.0',
     'publishedAt' => '2026-06-09T00:00:00Z',
     'baseUrl' => BASE_URL,
-    'publisher' => ['name' => 'SelfHelp (fixture)', 'url' => 'https://humdek-unibe-ch.github.io/sh2-plugin-registry/'],
+    // Self-referential on purpose: the fixture publisher is the fixture
+    // registry itself (qa convention: no real-world URLs in created test data).
+    'publisher' => ['name' => 'SelfHelp (fixture)', 'url' => BASE_URL . '/'],
     'core' => [
         ['id' => 'selfhelp-core', 'version' => '0.1.0', 'channel' => 'stable', 'releaseUrl' => 'releases/core/selfhelp-core-0.1.0.json'],
     ],

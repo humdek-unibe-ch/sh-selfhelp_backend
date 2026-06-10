@@ -5,7 +5,7 @@
     "baseUrl": "https://registry.selfhelp.test",
     "publisher": {
         "name": "SelfHelp (fixture)",
-        "url": "https://humdek-unibe-ch.github.io/sh2-plugin-registry/"
+        "url": "https://registry.selfhelp.test/"
     },
     "core": [
         {
