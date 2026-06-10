@@ -1,3 +1,11 @@
+# v0.1.2
+
+## Release Automation
+
+- **Automatic core release candidates**: Tagging the backend now hands the new version + the three built image digests to the unified registry's `auto-core-release` workflow, which resolves compatibility against the latest published frontend and stages the signed core release as a reviewed PR. Publishing still requires a human to verify the digests and merge — the candidate is automatic, the publish is not.
+- **`release-manifest.json`**: New self-declaration at the repo root with the SemVer ranges of the counterparts this backend supports (`supports.frontend`, `supports.manager`), the direct-upgrade floor, and the plugin API version. The registry resolver reads it at the released tag; widen/bump `supports.frontend` deliberately — every pre-1.0 minor is breaking.
+- **Release consistency gate**: `docker-release.yml` now hard-fails when `selfhelp_cms_version_default` in `config/services.yaml` does not equal the tag, or when `release-manifest.json` `pluginApiVersion` drifts from `services.yaml`.
+
 # v0.1.1
 
 ## System Maintenance & Updates

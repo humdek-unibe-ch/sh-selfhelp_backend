@@ -35,6 +35,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Fail fast when the self-declared release metadata is out of sync with
+      # the code: the registry's auto-core-release resolver trusts
+      # release-manifest.json at this tag, and the runtime reports
+      # selfhelp_cms_version_default — both must match the version being tagged.
+      - name: Release manifest consistency
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          CMS_VERSION=$(sed -n "s/^\s*selfhelp_cms_version_default:\s*'\(.*\)'.*/\1/p" config/services.yaml)
+          PLUGIN_API=$(sed -n "s/^\s*selfhelp_plugin_api_version_default:\s*'\(.*\)'.*/\1/p" config/services.yaml)
+          MANIFEST_API=$(php -r "echo json_decode(file_get_contents('release-manifest.json'))->pluginApiVersion;")
+          echo "tag=$VERSION cms_default=$CMS_VERSION plugin_api=$PLUGIN_API manifest_api=$MANIFEST_API"
+          [ "$CMS_VERSION" = "$VERSION" ] || { echo "::error::selfhelp_cms_version_default ($CMS_VERSION) != released version ($VERSION). Bump config/services.yaml."; exit 1; }
+          [ "$MANIFEST_API" = "$PLUGIN_API" ] || { echo "::error::release-manifest.json pluginApiVersion ($MANIFEST_API) != services.yaml ($PLUGIN_API)."; exit 1; }
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -168,3 +183,50 @@ jobs:
           echo "- digest: \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Update the core release JSON in the unified registry with this digest." >> "$GITHUB_STEP_SUMMARY"
+
+      # The build-output digest, preserved per matrix leg so notify-registry can
+      # send the REAL built digests (the registry resolver cross-checks them
+      # against what GHCR serves — a mismatch is treated as a moved tag).
+      - name: Save digest for registry dispatch
+        run: |
+          mkdir -p /tmp/digests
+          echo -n "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.target }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.target }}
+          path: /tmp/digests/${{ matrix.target }}
+
+  # Hand the new version to the unified registry: auto-core-release resolves
+  # compatibility against the latest published frontend and stages the signed,
+  # human-reviewed core release PR. Skipped (with a notice) when the optional
+  # REGISTRY_DISPATCH_TOKEN secret is absent — the registry's daily reconcile
+  # or a manual auto-core-release dispatch covers that case.
+  notify-registry:
+    needs: images
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY_DISPATCH_TOKEN: ${{ secrets.REGISTRY_DISPATCH_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - name: Dispatch core-image-published to the registry
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          if [ -z "$REGISTRY_DISPATCH_TOKEN" ]; then
+            echo "::notice::REGISTRY_DISPATCH_TOKEN is not set — the registry's daily reconcile (or a manual auto-core-release run) will pick up core $VERSION."
+            exit 0
+          fi
+          PAYLOAD=$(printf '{"event_type":"core-image-published","client_payload":{"kind":"core","version":"%s","digests":{"backend":"%s","worker":"%s","scheduler":"%s"}}}' \
+            "$VERSION" "$(cat digests/backend)" "$(cat digests/worker)" "$(cat digests/scheduler)")
+          echo "$PAYLOAD"
+          curl -sf -X POST \
+            -H "Authorization: Bearer $REGISTRY_DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository_owner }}/sh2-plugin-registry/dispatches" \
+            -d "$PAYLOAD"
+          echo "::notice::auto-core-release dispatched for core $VERSION — review the staged PR in sh2-plugin-registry."
