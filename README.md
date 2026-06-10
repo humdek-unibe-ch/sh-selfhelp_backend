@@ -70,66 +70,56 @@ Notes:
 
 # Installation
 
-## System Requirements
+## Production / testing servers: use SelfHelp Manager
 
-- **PHP**: 8.3 or higher
-- **Database**: MySQL 8.0+ or MariaDB 10.5+
-- **Web Server**: Apache 2.4+ or Nginx
-- **Memory**: Minimum 512MB RAM, recommended 1GB+
-- **Disk Space**: Minimum 500MB free space
-
-## Install Dependencies
+Production instances are **never** installed by cloning this repository. The
+whole platform (this backend + worker + scheduler, the Next.js frontend,
+MySQL, Redis, Mercure) ships as **signed Docker images** installed and updated
+by [`sh-manager`](https://github.com/humdek-unibe-ch/sh-manager):
 
 ```bash
-# Update package list
-sudo apt update
+# on the server (Linux): the manager is itself a Docker image
+docker pull ghcr.io/humdek-unibe-ch/sh-manager:latest
+alias shm='docker run --rm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /opt/selfhelp:/opt/selfhelp \
+  ghcr.io/humdek-unibe-ch/sh-manager:latest'
 
-# Install Apache web server
-sudo apt install apache2
-
-# Install MySQL/MariaDB database server
-sudo apt install mysql-server
-
-# Install PHP 8.4 and required extensions
-sudo apt install php8.4 php8.4-fpm php8.4-mysql php8.4-xml php8.4-mbstring php8.4-intl php8.4-curl php8.4-zip php8.4-gd php8.4-apcu php8.4-opcache
-
-# Install Composer (PHP dependency manager)
-curl -sS https://getcomposer.org/installer | php
-sudo mv composer.phar /usr/local/bin/composer
-
-# Install Node.js and npm (for frontend assets)
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
+shm server init --server-id srv-001 --mode production --email ops@example.ch
+shm instance install --id website1 --domain website1.example.ch \
+  --registry https://humdek-unibe-ch.github.io/sh2-plugin-registry/ \
+  --version latest --provision --admin-email ops@example.ch
 ```
 
-## Install SelfHelp
+- Full operator guide: the manager repo's `docs/operator/install.md`.
+- **Windows testing** (local mode: localhost ports, no domains/SSL, multiple
+  side-by-side instances): the manager repo's `docs/operator/windows-quickstart.md`.
+- How releases/updates flow through the whole ecosystem:
+  [docs/operations/ecosystem-release-and-update-runbook.md](docs/operations/ecosystem-release-and-update-runbook.md).
+
+Everything below is the **manual developer setup** of this backend repository.
+
+## Developer setup
+
+### System Requirements
+
+- **PHP**: 8.4 or higher (8.5 supported) with `pdo_mysql`, `xml`, `mbstring`,
+  `intl`, `curl`, `zip`, `gd`, `opcache`
+- **Composer**: 2.x
+- **Database**: MySQL 8.0+
+- **Docker** (for the local support stack: Redis, Mercure, Mailpit, scheduler)
+- No Node.js needed for the backend itself (`node` is only used for optional
+  utility scripts under `scripts/`)
+
+### Clone and install
 
 ```bash
-# Clone the repository
-sudo git clone https://github.com/humdek-unibe-ch/sh-selfhelp.git __project_name__
-
-# Navigate to project directory
-cd __project_name__
-
-# Checkout the latest release (v8.0.0)
-git checkout v8.0.0
-
-# Install PHP dependencies
-composer install --no-dev --optimize-autoloader
-
-# Install Node.js dependencies
-npm install
-
-# Build frontend assets
-npm run build
-
-# Set proper permissions
-sudo chown -R www-data:www-data .
-sudo chmod -R 755 var/
-sudo chmod -R 777 var/cache/ var/log/ var/sessions/
+git clone https://github.com/humdek-unibe-ch/sh-selfhelp_backend.git
+cd sh-selfhelp_backend
+composer install
 ```
 
-## Database Setup
+### Database Setup
 
 ```bash
 # Create database
@@ -144,23 +134,15 @@ FLUSH PRIVILEGES;
 EXIT;
 ```
 
-## Environment Configuration
+### Environment Configuration
 
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit environment configuration
-nano .env
-```
-
-Configure the following variables:
+Environment defaults live in `.env` (committed). Put machine-specific
+overrides in `.env.local` (git-ignored) — do not edit `.env` for local setup:
 
 ```env
-APP_ENV=prod
-APP_SECRET=your-secret-key-here
+# .env.local
+APP_ENV=dev
 DATABASE_URL=mysql://__db_user__:__db_password__@127.0.0.1:3306/__project_name__
-JWT_SECRET_KEY=your-jwt-secret-here
 CORS_ALLOW_ORIGIN=^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$
 ```
 
@@ -531,6 +513,9 @@ REDIS_URL=redis://redis:6379?persistent=1&retry_interval=0&timeout=0.2
 
 ## Web Server Configuration
 
+> Only needed when hosting a checkout manually (bare metal/VM). Manager-managed
+> servers run the backend in containers behind Traefik and skip this section.
+
 ### Apache Configuration
 
 Create Apache virtual host configuration. Create `/etc/apache2/sites-available/__project_name__.conf`:
@@ -547,7 +532,7 @@ Create Apache virtual host configuration. Create `/etc/apache2/sites-available/_
 
         # Enable PHP-FPM
         <FilesMatch \.php$>
-            SetHandler "proxy:unix:/var/run/php/php8.3-fpm.sock|fcgi://localhost"
+            SetHandler "proxy:unix:/var/run/php/php8.4-fpm.sock|fcgi://localhost"
         </FilesMatch>
 
         # Security headers
@@ -580,7 +565,7 @@ Create Apache virtual host configuration. Create `/etc/apache2/sites-available/_
 
         # Enable PHP-FPM
         <FilesMatch \.php$>
-            SetHandler "proxy:unix:/var/run/php/php8.3-fpm.sock|fcgi://localhost"
+            SetHandler "proxy:unix:/var/run/php/php8.4-fpm.sock|fcgi://localhost"
         </FilesMatch>
     </Directory>
 
@@ -654,7 +639,7 @@ server {
 
     # PHP Configuration
     location ~ \.php$ {
-        fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         include fastcgi_params;
         fastcgi_read_timeout 300;
@@ -702,21 +687,32 @@ sudo systemctl reload nginx
 
 ## Update Process
 
-### Upgrading from Previous Versions
+### Production / testing servers (via SelfHelp Manager)
 
-**Important**: Version 8.0.0 is a complete rewrite. Direct upgrades from versions prior to 8.0.0 are not supported. Please backup your data before attempting any upgrade.
+Deployed instances are updated by the manager (backup-first, automatic
+rollback on a failed health check), never by `git pull` on the server:
 
-### For Existing v8.x Installations
+```bash
+shm instance update website1 --dry-run   # plan + preflight first
+shm instance update website1             # apply
+```
+
+Admins can also request an update **from inside the CMS** (Admin → System →
+Maintenance & updates); the manager's `process-operations` loop executes it.
+Details: [docs/operations/ecosystem-release-and-update-runbook.md](docs/operations/ecosystem-release-and-update-runbook.md).
+
+**Important**: This Symfony platform is a complete rewrite (pre-release 0.x
+line). Direct upgrades from the legacy PHP SelfHelp (`sh-selfhelp`, v7.x and
+older) are not supported.
+
+### Developer checkout
 
 ```bash
 # Pull latest changes
-git pull origin main
+git pull
 
 # Install new dependencies
-composer install --no-dev --optimize-autoloader
-
-# Update Node.js dependencies
-npm install && npm run build
+composer install
 
 # Run database migrations
 php bin/console doctrine:migrations:migrate
@@ -724,11 +720,6 @@ php bin/console doctrine:migrations:migrate
 # Clear and warmup cache
 php bin/console cache:clear
 php bin/console cache:warmup
-
-# Update assets permissions
-sudo chown -R www-data:www-data var/ public/
-sudo chmod -R 755 var/
-sudo chmod -R 777 var/cache/ var/log/ var/sessions/
 ```
 
 ## Post-Installation
@@ -774,9 +765,6 @@ echo "APP_ENV=prod" >> .env
 
 # Generate optimized autoloader
 composer install --no-dev --optimize-autoloader --classmap-authoritative
-
-# Install assets for production
-npm run build
 
 # Clear cache for production
 php bin/console cache:clear --env=prod
@@ -877,20 +865,13 @@ vendor/bin/phpunit --testsuite=unit
 
 ### Asset Management
 
-#### Development Assets
+There is no root `package.json` and no Node build step — the backend serves
+uploaded assets through the CMS asset system (`/cms-api/v1/admin/assets`).
+Node is only used for optional utility scripts:
 
 ```bash
-# Install dependencies
-npm install
-
-# Watch for changes during development
-npm run watch
-
-# Build for production
-npm run build
-
-# Build with source maps for debugging
-npm run dev
+# Regenerate the CSS class list asset (only when Tailwind/Mantine classes change)
+node scripts/generate-css-classes.js
 ```
 
 ### Symfony Console Commands
@@ -935,10 +916,10 @@ php bin/console config:dump framework
 
 ### API Documentation
 
-The REST API is documented using OpenAPI/Swagger. Access the documentation at:
+The REST API (envelope, routes, schemas) is documented in-repo:
 
-- Development: `https://your-domain.com/api/doc`
-- Production: Check your API documentation endpoint
+- [docs/developer/](docs/developer/) — API architecture, auth, permissions
+- `config/schemas/api/v1/` — JSON request/response schemas (the contract)
 
 ### Performance Optimization
 
@@ -949,7 +930,7 @@ The REST API is documented using OpenAPI/Swagger. Access the documentation at:
 php -m | grep opcache
 
 # Preload configuration (PHP 7.4+)
-echo "opcache.preload=/var/www/project/config/preload.php" >> /etc/php/8.3/fpm/php.ini
+echo "opcache.preload=/var/www/project/config/preload.php" >> /etc/php/8.4/fpm/php.ini
 
 # Use Redis for sessions (optional)
 composer require symfony/redis-pack
@@ -1018,7 +999,7 @@ For support and bug reports:
 
 - Check the [CHANGELOG](CHANGELOG.md) for recent changes
 - Review [ARCHITECTURE](./docs/developer/architecture-overview.md) for detailed technical documentation
-- Create issues at: `https://github.com/humdek-unibe-ch/sh-selfhelp/issues`
+- Create issues at: `https://github.com/humdek-unibe-ch/sh-selfhelp_backend/issues`
 
 ### Contributing
 

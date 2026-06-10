@@ -103,7 +103,7 @@ normal SemVer applies to it.
 | Backend plugin API | same file : `selfhelp_plugin_api_version_default` | Mirrors `PLUGIN_API_VERSION` in `@selfhelp/shared` plugin-sdk. Bump only on breaking plugin-SDK changes. |
 | Frontend | `sh-selfhelp_frontend/package.json` : `version` | `frontend-release.yml` refuses to run if the tag differs. Per instance the deployed value is the `SELFHELP_FRONTEND_VERSION` env written by the manager. |
 | Shared | `sh-selfhelp_shared/package.json` : `version` | The ecosystem's contract anchor (see matrix doc). |
-| Manager | `sh-manager/package.json` : `version` **plus** `packages/schemas/src/version.ts` `MANAGER_VERSION`, `apps/cli/src/env.ts` `MANAGER_VERSION`, `apps/cli/src/bin.ts` `.version(...)`, `apps/web/src/bin.ts` fallback | All five must be bumped together (they were for `0.1.1`). |
+| Manager | `sh-manager/packages/schemas/src/version.ts` : `MANAGER_VERSION` **plus** `sh-manager/package.json` : `version` | Since manager `0.1.4` these are the only two spots (the CLI `--version`, web UI, and inventory stamps all import the constant). Bump both together. |
 | Plugin | `plugin.json` : `version` | patch = code only, minor = ships a DB migration, major = breaking. |
 
 ### 3.2 Cross-component requirements (what each one demands of the others)
@@ -236,9 +236,14 @@ git tag v0.2.0 && git push origin v0.2.0     # publish-to-registry.yml does the 
 
 ```bash
 cd sh-manager
-# bump ALL FIVE version spots (§3.1) + CHANGELOG, commit, push, green check
-git tag v0.1.1 && git push origin v0.1.1     # release.yml -> ghcr.io/humdek-unibe-ch/sh-manager
+# bump BOTH version spots (§3.1: packages/schemas/src/version.ts MANAGER_VERSION
+# + root package.json) + CHANGELOG, commit, push, green check
+git tag v0.1.4 && git push origin v0.1.4     # release.yml -> ghcr.io/humdek-unibe-ch/sh-manager
 ```
+
+Operators learn about the new release via `sh-manager self-update` (exit `2`
+= update available, prints the `docker pull` / `git pull` commands) and the
+"Manager version" card in the manager web UI.
 
 ## 5. Getting releases onto servers (install + update)
 
@@ -266,20 +271,32 @@ deployed versions truthfully. Running the manager itself from Docker:
 ```bash
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
   -v /opt/selfhelp:/opt/selfhelp \
-  ghcr.io/humdek-unibe-ch/sh-manager:v0.1.3 instance list
+  ghcr.io/humdek-unibe-ch/sh-manager:latest instance list
 ```
 
 (Use `v0.1.3` or newer — the `v0.1.1`/`v0.1.2` images crash at startup; see
 the manager CHANGELOG. The image ships the official production trusted key
 as its default trust anchor, so no `SELFHELP_TRUSTED_KEYS` is needed against
 the official registry. On a fresh server run `server init` first; `instance
-list` now says so instead of printing a raw ENOENT.)
+list` now says so instead of printing a raw ENOENT. The state mount
+`-v /opt/selfhelp:/opt/selfhelp` must be identical on every invocation.)
+
+On **Windows** (Docker Desktop) the same image works for local testing —
+instances on `http://localhost:<port>`, no domains/SSL, several side by side.
+The state root must be the Docker Desktop VM view of a Windows folder
+(e.g. `/run/desktop/mnt/host/d/selfhelp` for `D:\selfhelp`) and Git Bash needs
+the `MSYS_NO_PATHCONV=1` prefix. Follow the manager repo's
+`docs/operator/windows-quickstart.md`.
 
 ### 5.2 GUI (manager web UI)
 
 ```bash
-sh-manager-web --root /opt/selfhelp                       # bootstrap install wizard
-sh-manager-web --root /opt/selfhelp --mode persistent --persist   # operations console
+sh-manager web                                       # bootstrap install wizard
+sh-manager web --mode persistent --persist           # operations console
+# from the Docker image:
+#   docker run --rm -p 127.0.0.1:8765:8765 \
+#     -v /var/run/docker.sock:/var/run/docker.sock -v /opt/selfhelp:/opt/selfhelp \
+#     ghcr.io/humdek-unibe-ch/sh-manager:latest web --host 0.0.0.0
 # from your machine: ssh -L 8765:127.0.0.1:8765 you@server -> open http://127.0.0.1:8765
 ```
 
@@ -287,8 +304,9 @@ sh-manager-web --root /opt/selfhelp --mode persistent --persist   # operations c
   config → review → install → success screen; binds to `127.0.0.1` and
   self-locks after a successful install.
 - **Operations console** (persistent mode): operator login (session + CSRF),
-  live server status, and the same lifecycle actions as the CLI (update,
-  backup, restore, clone, health, remove).
+  live server status, the manager version + "update available" indicator, and
+  the operator command reference for instance lifecycle actions (the actions
+  themselves run via the CLI).
 
 ### 5.3 From inside the CMS (admin-requested update)
 
