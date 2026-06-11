@@ -19,8 +19,8 @@ docker/test
 docker-compose*.yml
 
 # Secrets / local env (never copy into an image). The image ships its own
-# deterministic, secret-free /app/.env baked from docker/.env.prod, so no
-# host env file may ever leak into a build (local builds == CI builds).
+# deterministic, secret-free /app/.env baked from docker/.env.image-defaults,
+# so no host env file may ever leak into a build (local builds == CI builds).
 .env
 .env.*
 *.pem

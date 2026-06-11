@@ -4,7 +4,7 @@ Audience: Operators, release engineers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend production images.
 Last verified: 2026-06-11.
-Source of truth: `docker/Dockerfile`, `docker/.env.prod`, `.github/workflows/docker-release.yml`, `docker/license-policy.json`, `scripts/check-license-policy.php`.
+Source of truth: `docker/Dockerfile`, `docker/.env.image-defaults`, `.github/workflows/docker-release.yml`, `docker/license-policy.json`, `scripts/check-license-policy.php`.
 
 The backend ships three production Docker images that the unified registry's core
 release record points at. They are built from a single multi-stage Dockerfile and
@@ -42,21 +42,23 @@ keeps host `vendor/`, caches, tests, every local `.env*` file, and JWT keys out 
 the build context, so a local build is byte-identical to a CI build and can never
 leak developer secrets into an image.
 
-## Baked dotenv defaults (`docker/.env.prod`)
+## Baked dotenv defaults (`docker/.env.image-defaults`)
 
 Symfony's runtime boots a dotenv file on every request and console command, so the
 image must always contain `/app/.env` — without it the container fatals with a
 `PathException` before serving anything (every request 500s, every `bin/console`
 invocation dies). Because the repository git-ignores `.env`, the Dockerfile bakes
-the committed, secret-free `docker/.env.prod` into the image as `/app/.env`.
+the committed, secret-free `docker/.env.image-defaults` into the image as `/app/.env`.
 
-That file carries only safe defaults for env vars that have no `default:` fallback
-in `config/` and are not injected by the Manager: `JWT_TOKEN_TTL`,
-`JWT_REFRESH_TOKEN_TTL`, the JWT key *paths*, a localhost-only
-`CORS_ALLOW_ORIGIN`, and a Mailpit `MAILER_DSN` (production overrides it with a
-real SMTP DSN). Real container env vars always take precedence, so the Manager's
+That file carries only safe defaults for env vars the backend cannot run without
+and that are not secrets: `JWT_TOKEN_TTL`, `JWT_REFRESH_TOKEN_TTL`, the JWT key
+*paths*, a localhost-only `CORS_ALLOW_ORIGIN`, a Mailpit `MAILER_DSN` (production
+overrides it with a real SMTP DSN), and the in-network `MERCURE_URL`
+(`http://mercure/.well-known/mercure`) - the hub service must instantiate with a
+string URL (`new Hub(null)` is a TypeError that 500s every request), while actual
+publishes are best-effort and only log on failure. Real container env vars always take precedence, so the Manager's
 instance `.env` + `secrets/secrets.env` stay authoritative. Never add a secret or
-an instance-specific value to `docker/.env.prod`.
+an instance-specific value to `docker/.env.image-defaults`.
 
 ## Release workflow
 
