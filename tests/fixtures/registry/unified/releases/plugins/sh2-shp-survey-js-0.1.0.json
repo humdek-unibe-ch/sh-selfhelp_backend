@@ -1,0 +1,25 @@
+{
+    "kind": "selfhelp-plugin-release",
+    "id": "sh2-shp-survey-js",
+    "version": "0.1.0",
+    "channel": "stable",
+    "official": true,
+    "compatibility": {
+        "core": ">=0.1.0 <0.2.0",
+        "pluginApi": ">=0.1.0 <0.2.0"
+    },
+    "dependencies": {
+        "plugins": []
+    },
+    "artifacts": {
+        "manifestUrl": "https://registry.selfhelp.test/releases/plugins/sh2-shp-survey-js-0.1.0.plugin.json",
+        "archiveUrl": "https://registry.selfhelp.test/artifacts/sh2-shp-survey-js-0.1.0.shplugin",
+        "sha256": "sha256:2a2767cce81d862e011ccc02ddc4650ae2a336a87b9c1ce82cd60558faa5b60e"
+    },
+    "security": {
+        "signature": "hvinw8Xz70hIXKmFEnOJWXe2F1clxDTSDoMcPOOw0iyupSNwHzNK8AGkOvpVuowew9hWY0vWcm7uXKt3E211CA==",
+        "keyId": "selfhelp-dev-fixture",
+        "signedPayload": "{\"artifacts\":{\"archiveUrl\":\"https://registry.selfhelp.test/artifacts/sh2-shp-survey-js-0.1.0.shplugin\",\"manifestUrl\":\"https://registry.selfhelp.test/releases/plugins/sh2-shp-survey-js-0.1.0.plugin.json\",\"sha256\":\"sha256:2a2767cce81d862e011ccc02ddc4650ae2a336a87b9c1ce82cd60558faa5b60e\"},\"channel\":\"stable\",\"compatibility\":{\"core\":\">=0.1.0 <0.2.0\",\"pluginApi\":\">=0.1.0 <0.2.0\"},\"dependencies\":{\"plugins\":[]},\"id\":\"sh2-shp-survey-js\",\"kind\":\"selfhelp-plugin-release\",\"official\":true,\"version\":\"0.1.0\"}",
+        "signedPayloadSha256": "sha256:96256eb9835f5621e450030cc67add6969712a6a8fb1672baf8439aef68cf4c6"
+    }
+}

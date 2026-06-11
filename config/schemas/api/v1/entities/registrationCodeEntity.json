@@ -14,11 +14,21 @@
         },
         "id_groups": {
             "type": ["integer", "null"],
-            "description": "ID of the group the code grants membership to once consumed."
+            "description": "ID of the primary (first) group the code grants membership to once consumed. See group_ids for the full set."
         },
         "group_name": {
             "type": ["string", "null"],
-            "description": "Name of the linked group."
+            "description": "Name of the primary (first) linked group. See group_names for the full set."
+        },
+        "group_ids": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "IDs of every group the code grants membership to once consumed."
+        },
+        "group_names": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Names of every group the code grants membership to once consumed."
         },
         "created_at": {
             "type": "string",
@@ -46,6 +56,8 @@
         "code",
         "id_groups",
         "group_name",
+        "group_ids",
+        "group_names",
         "created_at",
         "consumed_at",
         "is_consumed",

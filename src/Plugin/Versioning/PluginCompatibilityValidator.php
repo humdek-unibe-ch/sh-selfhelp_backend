@@ -48,7 +48,7 @@ final class PluginCompatibilityValidator
         $checks = [];
 
         $cmsRange = $manifest->getCmsCompatibilityRange();
-        $cmsOk = SemverHelper::satisfies($this->cmsVersion, $cmsRange);
+        $cmsOk = PluginCompatibility::coreSatisfied($this->cmsVersion, $cmsRange);
         $checks['cms'] = [
             'name' => 'SelfHelp backend',
             'expected' => $cmsRange,
@@ -64,7 +64,7 @@ final class PluginCompatibilityValidator
         }
 
         $sdkRange = $manifest->getPluginApiVersion();
-        $sdkOk = SemverHelper::satisfies($this->sdkApiVersion, $sdkRange);
+        $sdkOk = PluginCompatibility::pluginApiSatisfied($this->sdkApiVersion, $sdkRange);
         $checks['sdk'] = [
             'name' => 'Plugin SDK',
             'expected' => $sdkRange,

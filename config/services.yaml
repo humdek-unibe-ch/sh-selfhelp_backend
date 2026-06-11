@@ -62,18 +62,68 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '8.0.0-dev'
+    selfhelp_cms_version_default: '0.1.2'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
     selfhelp.plugin_api_version: '%env(default:selfhelp_plugin_api_version_default:SELFHELP_PLUGIN_API_VERSION)%'
-    selfhelp_plugin_api_version_default: '1.1'
+    selfhelp_plugin_api_version_default: '0.1.0'
     # Default official plugin registry URL. Plugin sources remain
     # DB-backed via `plugin_sources`; this env var only overrides the
     # seeded system source `humdek-public` so an operator can point the
     # official catalogue at a mirror without editing a protected row.
     selfhelp.plugin_default_registry_url: '%env(default:selfhelp_plugin_default_registry_url_default:SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL)%'
     selfhelp_plugin_default_registry_url_default: 'https://humdek-unibe-ch.github.io/sh2-plugin-registry/'
+
+    # Trusted, server-derived instance identity for the instance-scoped
+    # system maintenance/update flow. The SelfHelp Manager injects
+    # SELFHELP_INSTANCE_ID per instance when it generates the Docker
+    # compose/env. The CMS NEVER trusts a browser-supplied instance id;
+    # every system endpoint resolves the instance through this value.
+    selfhelp.instance_id: '%env(default:selfhelp_instance_id_default:SELFHELP_INSTANCE_ID)%'
+    selfhelp_instance_id_default: 'default'
+
+    # Deployed frontend version surfaced in the system version summary.
+    # The manager sets SELFHELP_FRONTEND_VERSION to the frontend image
+    # version it deployed for this instance; 'unknown' until it does.
+    selfhelp.frontend_version: '%env(default:selfhelp_frontend_version_default:SELFHELP_FRONTEND_VERSION)%'
+    selfhelp_frontend_version_default: 'unknown'
+
+    # How this backend is deployed, surfaced in the system version summary so
+    # the admin UI can distinguish a Docker image install from a source/dev
+    # checkout. The production Docker image bakes SELFHELP_DEPLOYMENT=docker;
+    # anything else (composer dev, bare-metal checkout) reports 'source'.
+    selfhelp.deployment: '%env(default:selfhelp_deployment_default:SELFHELP_DEPLOYMENT)%'
+    selfhelp_deployment_default: 'source'
+
+    # Maintenance-mode flag surfaced in the system version summary.
+    selfhelp.maintenance_mode: '%env(bool:default:selfhelp_maintenance_mode_default:SELFHELP_MAINTENANCE_MODE)%'
+    selfhelp_maintenance_mode_default: false
+
+    # Plugin safe-mode flag (reuses the emergency SELFHELP_DISABLE_PLUGINS
+    # env that config/bundles.php already honours).
+    selfhelp.safe_mode: '%env(bool:default:selfhelp_safe_mode_default:SELFHELP_DISABLE_PLUGINS)%'
+    selfhelp_safe_mode_default: false
+
+    # Per-instance manager bearer token. The SelfHelp Manager presents this on
+    # the public /cms-api/v1/manager/* update-loop endpoints; the CMS verifies
+    # it in constant time (SystemManagerController). Empty by default, which
+    # DISABLES the manager loop (every manager call is rejected) until the
+    # manager generates and injects a per-instance token. NEVER stored in the
+    # manifest/lock/inventory/README.
+    selfhelp.manager_token: '%env(default:selfhelp_manager_token_default:SELFHELP_MANAGER_TOKEN)%'
+    selfhelp_manager_token_default: ''
+
+    # Config-presence inputs for the aggregated system health endpoint. The
+    # SystemHealthService only derives a boolean "configured" from these (it
+    # NEVER returns the raw value), so a credential-bearing DSN is safe to
+    # inject here — it is reduced to configured/not_configured.
+    selfhelp.health.mercure_url: '%env(default:selfhelp_health_mercure_url_default:MERCURE_URL)%'
+    selfhelp_health_mercure_url_default: ''
+    selfhelp.health.mailer_dsn: '%env(default:selfhelp_health_mailer_dsn_default:MAILER_DSN)%'
+    selfhelp_health_mailer_dsn_default: ''
+    selfhelp.health.messenger_dsn: '%env(default:selfhelp_health_messenger_dsn_default:MESSENGER_TRANSPORT_DSN)%'
+    selfhelp_health_messenger_dsn_default: ''
 
     # Plugin signature verification. The host trusts publisher Ed25519
     # signatures matching the keyIds declared here. Add each publisher's
@@ -109,9 +159,13 @@ parameters:
     # under "Failure modes".
     selfhelp_plugin_allow_composer_scripts_default: false
 
-    # Default lock DSNs (in-process flock). Production deployments
-    # override with `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`
-    # so the lock is cluster-safe.
+    # Default lock DSNs. `flock` only coordinates processes on a single
+    # host (advisory filesystem locks), so it is dev/single-node only.
+    # Any multi-process / multi-container / multi-host deployment MUST
+    # point both at a shared backend so the scheduled-job runner and the
+    # plugin lifecycle stay cluster-safe, e.g.
+    # `LOCK_DSN=redis://...` / `PLUGIN_LOCK_DSN=redis://...`.
+    # The bundled Docker stack already sets `LOCK_DSN=redis://redis:6379`.
     default_lock_dsn: 'flock'
     default_plugin_lock_dsn: 'flock'
 
@@ -243,6 +297,54 @@ services:
         arguments:
             $allowComposerScripts: '%env(bool:default:selfhelp_plugin_allow_composer_scripts_default:SELFHELP_PLUGIN_ALLOW_COMPOSER_SCRIPTS)%'
 
+    # ---- System maintenance / update (instance-scoped) ----
+    # Persistent, admin-toggleable maintenance switch. The env hard switch
+    # (SELFHELP_MAINTENANCE_MODE) forces it on and is not web-clearable; the
+    # var/maintenance_mode.lock file is the admin-toggled layer. Never contains
+    # secrets.
+    App\Service\System\MaintenanceModeService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+            $envForced: '%selfhelp.maintenance_mode%'
+
+    # Trusted instance identity + version facts. The instance id is
+    # server-derived only (never from a request). Maintenance state is resolved
+    # live through MaintenanceModeService.
+    App\Service\System\SystemInstanceService:
+        arguments:
+            $instanceId: '%selfhelp.instance_id%'
+            $cmsVersion: '%selfhelp.cms_version%'
+            $pluginApiVersion: '%selfhelp.plugin_api_version%'
+            $frontendVersion: '%selfhelp.frontend_version%'
+            $deployment: '%selfhelp.deployment%'
+            $safeMode: '%selfhelp.safe_mode%'
+
+    # Aggregated instance-scoped health/status. Config inputs are reduced to
+    # configured/not_configured inside the service (never echoed back).
+    App\Service\System\SystemHealthService:
+        arguments:
+            $mercureUrl: '%selfhelp.health.mercure_url%'
+            $mailerDsn: '%selfhelp.health.mailer_dsn%'
+            $messengerTransportDsn: '%selfhelp.health.messenger_dsn%'
+
+    # Manager-facing update-loop controller. Public routes (no permission rows);
+    # access is gated by the per-instance manager bearer token verified
+    # in-controller.
+    App\Controller\Api\V1\Manager\SystemManagerController:
+        arguments:
+            $managerToken: '%selfhelp.manager_token%'
+        tags: ['controller.service_arguments']
+
+    # The ONE registry reader for the instance-scoped system layer (advisory
+    # update preflight, registry-reachability health, advisory feed). It is a
+    # fail-soft adapter over the SAME signed UnifiedRegistryClient the plugin
+    # install/Available flow uses, so core release metadata is signature-verified
+    # before the preflight trusts it. Points at the one official unified registry
+    # index; fails soft (null/false) when offline.
+    App\Service\System\SystemRegistryReader:
+        arguments:
+            $registryUrl: '%selfhelp.plugin_default_registry_url%registry.json'
+
     App\Plugin\Archive\PluginArchivePromoter:
         arguments:
             $projectDir: '%kernel.project_dir%'
@@ -362,6 +464,10 @@ services:
         arguments:
             $frontendBaseUrl: '%frontend_base_url%'
 
+    App\Service\Auth\PasswordResetService:
+        arguments:
+            $frontendBaseUrl: '%frontend_base_url%'
+
     App\Service\Auth\RegistrationCodeService:
         arguments:
             $totalMax: '%registration_code_total_max%'
@@ -382,3 +488,15 @@ services:
             $mercurePublicUrl: '%env(MERCURE_PUBLIC_URL)%'
             $mercureJwtSecret: '%env(MERCURE_JWT_SECRET)%'
             $mercureSubscriberTtl: '%mercure_subscriber_ttl%'
+
+when@test:
+    parameters:
+        # Tests never talk to the real public registry (Testing Rule 14: no
+        # external internet). Pin the registry base URL to a closed local port
+        # so every registry read fails fast and the system endpoints
+        # (advisories, update preflight/releases, registry health) degrade
+        # offline DETERMINISTICALLY — in CI and on dev machines alike, even
+        # when SELFHELP_PLUGIN_DEFAULT_REGISTRY_URL is set in the ambient env
+        # (.env.default sets it). Tests that exercise real registry parsing
+        # inject a MockHttpClient instead of fetching anything.
+        selfhelp.plugin_default_registry_url: 'http://127.0.0.1:9/selfhelp-test-registry-offline/'

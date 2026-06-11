@@ -153,6 +153,66 @@ class ProfileController extends AbstractController
     }
 
     /**
+     * Update user communication (email/notification) preferences
+     *
+     * @route /auth/user/communication-preferences
+     * @method PUT
+     */
+    public function updateCommunicationPreferences(Request $request): JsonResponse
+    {
+        try {
+            // Get the authenticated user
+            $currentUser = $this->userContextService->getCurrentUser();
+            if (!$currentUser) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            // Validate request against JSON schema
+            $data = $this->validateRequest($request, 'requests/auth/update_communication_preferences', $this->jsonSchemaValidationService);
+
+            $receivesNotifications = (bool) $data['receives_notifications'];
+            $receivesEmails = (bool) $data['receives_emails'];
+
+            // Update preferences using the service
+            $updatedUser = $this->profileService->updateCommunicationPreferences(
+                $currentUser,
+                $receivesNotifications,
+                $receivesEmails
+            );
+
+            // Get updated user data
+            $userData = $this->userDataService->getUserData($updatedUser);
+
+            return $this->responseFormatter->formatSuccess(
+                $userData,
+                'responses/auth/user_data',
+                Response::HTTP_OK,
+                true
+            );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener handle this
+            throw $e;
+        } catch (\InvalidArgumentException $e) {
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                Response::HTTP_BAD_REQUEST
+            );
+        } catch (\Exception $e) {
+            $this->logger->error('Update communication preferences error', [
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return $this->responseFormatter->formatError(
+                'An error occurred while updating communication preferences.',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    /**
      * Update user password
      *
      * @route /auth/user/password

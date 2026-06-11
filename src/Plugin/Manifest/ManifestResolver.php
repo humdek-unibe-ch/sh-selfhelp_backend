@@ -12,6 +12,7 @@ namespace App\Plugin\Manifest;
 use App\Plugin\Archive\PluginArchiveException;
 use App\Plugin\Archive\PluginArchiveExtractor;
 use App\Plugin\Archive\PluginArchiveValidator;
+use App\Plugin\Registry\Unified\UnifiedRegistryClient;
 use App\Plugin\Security\PluginSignatureException;
 use App\Plugin\Security\PluginSignatureVerifier;
 use App\Plugin\Security\SignedPayloadBuilder;
@@ -36,6 +37,13 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  *     the archive validator does.
  *   - archive: the validator does the same checks plus SHA-256 hash
  *     verification.
+ *
+ * Unified registry: {@see resolveRegistryRelease()} follows a signed
+ * {@see \App\Plugin\Registry\Unified\PluginRelease} document from the unified
+ * `registry.json`, downloads + checksum-verifies the referenced `.shplugin`,
+ * then routes it through the SAME archive path as a manual upload — so a
+ * registry-driven install gets the identical trust checks (release Ed25519 +
+ * archive SHA-256 + internal SHA256SUMS + canonical signed payload).
  */
 final class ManifestResolver
 {
@@ -46,7 +54,68 @@ final class ManifestResolver
         private readonly SignedPayloadBuilder $signedPayloadBuilder,
         private readonly PluginSignatureVerifier $signatureVerifier,
         private readonly HttpClientInterface $httpClient,
+        private readonly UnifiedRegistryClient $unifiedRegistryClient,
     ) {
+    }
+
+    /**
+     * Resolve a unified-registry plugin install from a signed release document
+     * URL. Follows the {@see \App\Plugin\Registry\Unified\PluginRelease} (Ed25519
+     * verified), downloads the `.shplugin` referenced by `artifacts.archiveUrl`
+     * and checksum-verifies it against `artifacts.sha256`, then validates it
+     * exactly like an uploaded archive. The downloaded archive is removed once
+     * the staging directory has been extracted.
+     *
+     * @param array<string,string> $headers optional registry auth headers
+     * @return array{manifest: PluginManifest, resolved: ResolvedSource}
+     */
+    public function resolveRegistryRelease(string $releaseUrl, string $sourceName, array $headers = []): array
+    {
+        $release = $this->unifiedRegistryClient->fetchPluginRelease($releaseUrl, $headers);
+        $archiveUrl = $this->resolveArchiveUrl($release->archiveUrl, $releaseUrl);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'shplugin_');
+        if ($tmp === false) {
+            throw new \RuntimeException('Failed to allocate a temporary file for the plugin archive download.');
+        }
+        // assertUploadValid() requires a `.shplugin` client name; the on-disk
+        // path is irrelevant to it, but we keep a clean target path anyway.
+        $target = $tmp . '.shplugin';
+        if (@rename($tmp, $target) === false) {
+            $target = $tmp;
+        }
+
+        try {
+            $this->unifiedRegistryClient->downloadArchive($release, $target, $archiveUrl, $headers);
+            $uploaded = new UploadedFile(
+                $target,
+                sprintf('%s-%s.shplugin', $release->id, $release->version),
+                null,
+                null,
+                true,
+            );
+            return $this->resolveArchive($uploaded);
+        } finally {
+            if (is_file($target)) {
+                @unlink($target);
+            }
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
+        }
+    }
+
+    /**
+     * Resolve a possibly-relative `artifacts.archiveUrl` against the release
+     * document URL. Absolute (scheme-qualified) URLs are returned verbatim.
+     */
+    private function resolveArchiveUrl(string $archiveUrl, string $releaseUrl): string
+    {
+        if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $archiveUrl) === 1) {
+            return $archiveUrl;
+        }
+        $base = preg_replace('#/[^/]*$#', '/', $releaseUrl) ?? $releaseUrl;
+        return rtrim($base, '/') . '/' . ltrim($archiveUrl, '/');
     }
 
     /**

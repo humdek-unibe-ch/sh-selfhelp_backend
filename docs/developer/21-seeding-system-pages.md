@@ -33,7 +33,7 @@ The shipped catalogue is:
 | `home`                      | landing page                    | open access (`is_open_access = 1`) |
 | `login`                     | login form                      | open access; uses `login` style component |
 | `two-factor-authentication` | 2FA verification                | open access; uses `twoFactorAuth` style |
-| `reset_password`            | password-reset request form     | open access; uses `resetPassword` style |
+| `reset_password`            | password-reset flow             | open access; uses `resetPassword` style for both `/reset` and `/reset/[i:uid]/[a:token]` |
 | `validate`                  | account-activation form         | open access; uses `validate` style. URL pattern is `/validate/[i:uid]/[a:token]` — the slug catch-all special-cases this so `slug = ['validate', uid, token]` resolves to keyword `validate` and `ValidateStyle` reads `uid` + `token` from `params.slug`. |
 | `profile`                   | full profile management         | authenticated; uses `profile` style |
 | `missing`                   | friendly 404                    | open access; **headless**; rich content |
@@ -65,7 +65,7 @@ For pages that are forms, we already have purpose-built styled components:
 |-----------------|--------------------------------------------------------|-----------------|
 | `login`         | `src/app/components/frontend/styles/LoginStyle.tsx`    | email + password form |
 | `twoFactorAuth` | `src/app/components/frontend/styles/TwoFactorAuthStyle.tsx` | 6-digit code form |
-| `resetPassword` | `src/app/components/frontend/styles/ResetPasswordStyle.tsx` | email-only reset request |
+| `resetPassword` | `src/app/components/frontend/styles/ResetPasswordStyle.tsx` | reset request + set-new-password flow |
 | `validate`      | `src/app/components/frontend/styles/ValidateStyle.tsx` | name + password + confirm |
 | `profile`       | `src/app/components/frontend/styles/ProfileStyle.tsx`  | full profile management |
 
@@ -149,11 +149,11 @@ Some shipped pages keep a kebab-case URL but a snake-case CMS keyword:
 
 The slug catch-all has a small `SLUG_TO_KEYWORD` map for this, so
 `slug.join('/')` is rewritten to the canonical keyword before the
-backend lookup. The `validate` page is the other special case: its URL
-is `/validate/[i:uid]/[a:token]` (the legacy AltoRouter pattern), so
-the catch-all detects three-segment slugs starting with `validate` and
-resolves the keyword to plain `validate`. `ValidateStyle` reads `uid`
-and `token` from `params.slug` itself.
+backend lookup. It also special-cases the tokenised auth pages:
+`/validate/[i:uid]/[a:token]` resolves to keyword `validate`, and
+`/reset/[i:uid]/[a:token]` resolves to keyword `reset_password`.
+Their style renderers read the trailing path parts from `params.slug`
+to switch into activation / set-password mode.
 
 ### `is_headless` and the error pages
 

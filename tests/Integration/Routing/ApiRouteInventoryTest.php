@@ -56,12 +56,16 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'auth_events_stream_v1_v1',
         // Public self-registration (creates a blocked account + validation email).
         'auth_register_v1',
+        // Public password-recovery flow (JWT-not-required, token-based).
+        'auth_forgot_password_v1',
+        'auth_reset_password_v1',
         // Self-service profile: JWT-authenticated, operates only on the caller.
         'auth_user_data_get_v1_v1',
         'auth_user_account_delete_v1_v1',
         'auth_user_name_update_v1_v1',
         'auth_user_password_update_v1_v1',
         'auth_user_timezone_update_v1_v1',
+        'auth_user_communication_preferences_update_v1_v1',
         // Stop-impersonation is ALWAYS allowed by ApiSecurityListener (only
         // way out of an impersonation session).
         'admin_users_stop_impersonate_v1_v1',
@@ -83,6 +87,14 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'health_v1',
         'user_validate_token_v1',
         'user_complete_validation_v1',
+        // Manager update loop (machine-to-machine): permission-less like the
+        // health probe, but gated in-controller by the per-instance manager
+        // bearer token (constant-time check, denied when SELFHELP_MANAGER_TOKEN
+        // is unset) and scoped to the server-derived instance id. Denial paths
+        // are covered by SystemManagerControllerSecurityTest; seeded by
+        // migrations/Version20260608174905.php.
+        'manager_system_update_pending_v1',
+        'manager_system_update_status_v1',
     ];
 
     public function testEveryDatabaseRouteResolvesToARealControllerMethod(): void

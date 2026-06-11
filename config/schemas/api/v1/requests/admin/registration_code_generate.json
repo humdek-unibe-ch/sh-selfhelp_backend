@@ -9,12 +9,17 @@
       "minimum": 1,
       "description": "Number of codes to generate. The effective upper bound is enforced server-side by RegistrationCodeService (REGISTRATION_CODE_REQUEST_MAX) and surfaced to clients as config.generate_max, so the schema intentionally does not hardcode a maximum."
     },
-    "id_groups": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "ID of the group to associate with all generated codes."
+    "group_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "IDs of the groups to associate with all generated codes. Each code grants every listed group; the first is stored as the primary group."
     }
   },
-  "required": ["count", "id_groups"],
+  "required": ["count", "group_ids"],
   "additionalProperties": false
 }

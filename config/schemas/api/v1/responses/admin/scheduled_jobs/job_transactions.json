@@ -15,10 +15,11 @@
               "transaction_id": { "type": "integer", "description": "Transaction ID" },
               "transaction_time": { "type": "string", "description": "Transaction timestamp" },
               "transaction_type": { "type": "string", "description": "Type of transaction (Add new entry, Status changed, etc.)" },
+              "transaction_type_code": { "type": ["string", "null"], "description": "Stable lookup code of the transaction type (e.g. send_mail_skipped, send_notification_skipped)" },
               "transaction_verbal_log": { "type": "string", "description": "Detailed transaction log" },
               "user": { "type": ["string", "null"], "description": "User who performed the transaction" }
             },
-            "required": ["transaction_id", "transaction_time", "transaction_type", "transaction_verbal_log"]
+            "required": ["transaction_id", "transaction_time", "transaction_type", "transaction_type_code", "transaction_verbal_log"]
           }
         }
       },

@@ -844,6 +844,14 @@ class AdminUserService extends BaseService
             $user->setBlocked((bool) $userData['blocked']);
         }
 
+        if (isset($userData['receives_notifications'])) {
+            $user->setReceivesNotifications((bool) $userData['receives_notifications']);
+        }
+
+        if (isset($userData['receives_emails'])) {
+            $user->setReceivesEmails((bool) $userData['receives_emails']);
+        }
+
         $this->setUserRelatedEntities($user, $userData);
 
         return $user;
@@ -871,6 +879,12 @@ class AdminUserService extends BaseService
         }
         if (isset($userData['blocked'])) {
             $user->setBlocked((bool) $userData['blocked']);
+        }
+        if (isset($userData['receives_notifications'])) {
+            $user->setReceivesNotifications((bool) $userData['receives_notifications']);
+        }
+        if (isset($userData['receives_emails'])) {
+            $user->setReceivesEmails((bool) $userData['receives_emails']);
         }
 
         $this->setUserRelatedEntities($user, $userData);
@@ -1079,6 +1093,8 @@ class AdminUserService extends BaseService
             'last_login' => $lastLoginFormatted,
             'status' => $user->getStatus()?->getLookupValue(),
             'blocked' => $user->isBlocked(),
+            'receives_notifications' => $user->receivesNotifications(),
+            'receives_emails' => $user->receivesEmails(),
             'code' => $validationCode,
             'groups' => implode('; ', $groups),
             'user_activity' => $user->getTransactions()->count(),

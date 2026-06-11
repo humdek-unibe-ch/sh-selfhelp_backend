@@ -64,6 +64,17 @@ These rules apply to every documentation change in active SelfHelp2 repositories
 - Do not expose secrets, tokens, private keys, database URLs, Mercure/JWT secrets, or real credentials in docs, examples, logs, or screenshots. Use redacted examples and documented env var names only.
 - When docs conflict with runtime behavior, treat runtime behavior as source of truth, flag the stale doc, and update or archive it instead of copying the conflict.
 
+## Style Documentation Rules
+
+CMS styles are a cross-repo contract (backend field seeds + `@selfhelp/shared` types + frontend/mobile renderers). Every style must be documented, and the docs must stay in sync with the code.
+
+- The canonical reference lives in `docs/reference/styles/`: `index.md` is the catalog of every core style (each row links to its docs), `_conventions.md` documents the fields/Mantine props shared by every style, and `_template.md` is the page structure for a dedicated page. Every page is dual-audience: an **Administrators** view (when/how to use the style) and a **Developers** view (what it maps to and how it renders).
+- Documentation layout: the **auth flow styles** get a dedicated page under `docs/reference/styles/auth/<style>.md` (they carry lots of CMS copy). The **atomic component styles** (layout, typography, media, interactive, forms, composite) are documented in their **per-category page** `docs/reference/styles/<category>.md`, one `## <style>` section each.
+- When you **add a new style**, you MUST document it in the same change — either a new `auth/<style>.md` page (from `_template.md`) for an auth flow style, or a new `## <style>` section in the matching `<category>.md` page — and update its `index.md` row to link the docs. Cover the distinctive fields (the common/spacing/Mantine props are in `_conventions.md`), the behaviour, the children rule, and the renderer + backend references.
+- When you **change an existing style** (add/remove/rename a field, change behaviour or defaults, change the renderer contract), you MUST update its documentation (its dedicated page or its section in the category page) in the same change.
+- Keep `Last verified` current and (for dedicated pages) the `Change history`, and keep the field list aligned with the `styles` / `fields` / `rel_fields_styles` seed migrations, the `admin/styles/schema` endpoint, and the shared `I<Name>Style` type.
+- Treat a style code change with no matching `docs/reference/styles/` update as an incomplete change during review.
+
 ## Implementation Principles
 - State assumptions explicitly when they affect the change or verification.
 - If multiple interpretations exist, note the relevant options briefly and choose the simplest safe path.
@@ -81,7 +92,6 @@ These rules apply to every documentation change in active SelfHelp2 repositories
 5. Keep patches minimal and domain-focused.
 6. Update JSON schemas, route permissions, SQL route records, migrations, tests, cache invalidation, and docs when applicable.
 7. Run focused relevant tests/static analysis when the environment supports it; otherwise state what was not run.
-8. Summarize architectural, API, cache, permission, migration, and testing impact in the final response.
 
 ## Multi-Repository Changes
 When implementing features that affect multiple repositories:
@@ -254,6 +264,8 @@ When making changes, explain:
 - For API route changes, add/modify rows via a new Doctrine migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do **not** depend on `db/legacy/update_scripts/api_routes.sql` — that file is no longer wired into install/upgrade.
 
 ## Testing Rules
+- **Run only the tests related to your change — never the whole suite.** The full suite is very slow, so scope every run to the touched code: a single file (`php bin/phpunit tests/path/to/Test.php`), a `--filter`, or `composer test:changed`. Run the broad/DB-dependent suite only when explicitly asked or right before a release/push.
+- **Always write task-specific tests and add them to the suite.** Every change ships with its own focused test(s), committed alongside it so they run as part of `composer test`/CI. Never rely on the existing suite alone to cover new behaviour.
 - Main command: `composer test` or `php bin/phpunit --testdox`.
 - Run focused tests with `php bin/phpunit tests/path/to/Test.php`.
 - Static analysis: `composer phpstan` — must be **0 errors**. It runs `phpstan analyse` against the auto-discovered default `phpstan.dist.neon` (level max, whole core `bin/ config/ public/ src/`, shipmonk dead-code detector off, no baseline). This is the exact command the `core-backend-check` CI job runs. See "Static Analysis (PHPStan) Rules" below.
@@ -368,6 +380,7 @@ static-analysis gate green.
 - Add service: place it under the matching `src/Service` domain, inject dependencies via constructor, keep transactions/cache invalidation explicit.
 - Add migration: inspect schema first, create the migration with the Symfony/Doctrine generate command so the timestamp-based file/class name is automatic, update relevant SQL scripts if required, and do not run migrations automatically.
 - Add frontend page behavior: inspect `PageService`, section/field processing, interpolation, conditions, ACL, and cache effects.
+- Add/change a CMS style: update the field seed migration (`styles`/`fields`/`rel_fields_styles`), the shared `I<Name>Style` type + registry entry, the renderer, and the style's documentation (its `auth/<style>.md` page or its `## <style>` section in `docs/reference/styles/<category>.md`; see "Style Documentation Rules").
 - Add permission-sensitive feature: update route permissions and verify `ApiSecurityListener`, `UserPermissionService`, ACL, and data-access rules.
 - Update tests: prefer focused PHPUnit tests and keep fixtures/test database assumptions explicit.
 

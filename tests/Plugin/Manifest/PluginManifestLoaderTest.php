@@ -41,6 +41,9 @@ final class PluginManifestLoaderTest extends TestCase
     /**
      * Minimal schema-valid manifest: the six required top-level fields, no
      * backend/mobile/styles blocks so no cross-field invariant applies.
+     * `pluginApiVersion` is the 3-part `0.1.0` the ecosystem reconciled on, which
+     * also guards the manifest schema accepting a full SemVer SDK version (the
+     * pattern was tightened to 2-part `MAJOR.MINOR` before the 0.1.0 reset).
      *
      * @return array<string, mixed>
      */
@@ -50,8 +53,8 @@ final class PluginManifestLoaderTest extends TestCase
             'id' => 'qa-loader-probe',
             'name' => 'QA Loader Probe',
             'version' => '1.0.0',
-            'pluginApiVersion' => '1.0',
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0', 'php' => '^8.4'],
+            'pluginApiVersion' => '0.1.0',
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0', 'php' => '^8.4'],
             'security' => ['trustLevel' => 'untrusted', 'capabilities' => []],
         ];
     }

@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Advisories Response",
+  "description": "Security advisories from the registry feed, filtered to the components installed on the current instance (mirrors @selfhelp/shared ISystemAdvisories).",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether the registry advisory feed could be reached. False degrades the UI to 'could not check'."
+        },
+        "advisories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+              "recommended_action": { "type": "string" },
+              "blocked": { "type": "boolean", "description": "Whether the manager blocks updates while an affected version is installed." },
+              "details_url": { "type": ["string", "null"] },
+              "affected": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["core", "frontend", "plugin"] },
+                    "id": { "type": "string" },
+                    "installed_version": { "type": "string" }
+                  },
+                  "required": ["kind", "id", "installed_version"]
+                }
+              },
+              "fixed_versions": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["id", "severity", "recommended_action", "blocked", "affected", "fixed_versions"]
+          }
+        }
+      },
+      "required": ["available", "advisories"]
+    }
+  },
+  "required": ["data"]
+}

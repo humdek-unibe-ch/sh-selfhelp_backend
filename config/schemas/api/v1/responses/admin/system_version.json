@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Version Response",
+  "description": "Current instance version summary (mirrors @selfhelp/shared ISystemVersion).",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "instance_id": { "type": "string", "description": "Server-derived instance identity." },
+        "selfhelp_version": { "type": "string" },
+        "backend_version": { "type": "string" },
+        "frontend_version": { "type": "string" },
+        "plugin_api_version": { "type": "string" },
+        "database_migration_version": { "type": "string", "description": "Highest applied Doctrine migration." },
+        "deployment": { "type": "string", "description": "How this backend runs: 'docker' (production image) or 'source' (dev/bare checkout)." },
+        "safe_mode": { "type": "boolean" },
+        "maintenance_mode": { "type": "boolean" },
+        "installed_plugins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "version": { "type": "string" },
+              "compatible": { "type": "boolean" }
+            },
+            "required": ["id", "version", "compatible"]
+          }
+        }
+      },
+      "required": [
+        "instance_id",
+        "selfhelp_version",
+        "backend_version",
+        "frontend_version",
+        "plugin_api_version",
+        "database_migration_version",
+        "deployment",
+        "safe_mode",
+        "maintenance_mode",
+        "installed_plugins"
+      ]
+    }
+  },
+  "required": ["data"]
+}

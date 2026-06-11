@@ -31,7 +31,7 @@ checksums + compatibility) was approved by the publisher's CI.
   the old key.
 - **CI-only signing**: plugin authors never run signing locally for
   production releases. The publish workflow pulls
-  `SELFHELP_PLUGIN_SIGNING_KEY` and `SELFHELP_PLUGIN_SIGNING_KEY_ID`
+  `SELFHELP_SIGNING_KEY` and `SELFHELP_SIGNING_KEY_ID`
   from GitHub Actions secrets and runs `scripts/build-shplugin.mjs`
   + `scripts/publish-to-registry.mjs` (single cross-platform Node
   scripts; no `.sh` / `.ps1` wrappers). Local dev uses

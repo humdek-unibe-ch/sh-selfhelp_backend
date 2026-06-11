@@ -69,6 +69,9 @@ class Plugin
     #[ORM\Column(name: 'install_mode', type: Types::STRING, length: 20, options: ['default' => 'managed', 'comment' => 'development | managed | trusted'])]
     private string $installMode = self::INSTALL_MODE_MANAGED;
 
+    #[ORM\Column(name: 'pinned', type: Types::BOOLEAN, options: ['default' => 0, 'comment' => 'When true the resolver never auto-updates this plugin; the installed version is preserved until explicitly unpinned'])]
+    private bool $pinned = false;
+
     #[ORM\Column(name: 'backend_package', type: Types::STRING, length: 255, nullable: true)]
     private ?string $backendPackage = null;
 
@@ -220,6 +223,17 @@ class Plugin
     public function setInstallMode(string $installMode): self
     {
         $this->installMode = $installMode;
+        return $this;
+    }
+
+    public function isPinned(): bool
+    {
+        return $this->pinned;
+    }
+
+    public function setPinned(bool $pinned): self
+    {
+        $this->pinned = $pinned;
         return $this;
     }
 

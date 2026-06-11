@@ -8,6 +8,7 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\DataService;
@@ -21,7 +22,6 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminDataController extends AbstractController
 {
@@ -468,6 +468,10 @@ class AdminDataController extends AbstractController
                     'Content-Disposition' => 'attachment; filename="data_export.zip"',
                 ]
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener turn schema-validation failures into a
+            // 400 envelope instead of swallowing them as a generic 500 below.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatError($e->getMessage(), $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR);
         } catch (\Throwable $e) {

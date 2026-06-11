@@ -10,7 +10,9 @@ declare(strict_types=1);
 namespace App\Tests\Service\Core;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\Lookup;
 use App\Entity\ScheduledJob;
+use App\Entity\Transaction;
 use App\Entity\User;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
@@ -86,6 +88,179 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
         self::assertNotNull($job->getDateExecuted(), 'An executed job must record an execution timestamp.');
     }
 
+    /**
+     * Issue #29: an email job whose resolved recipient is a known user that
+     * disabled emails must end in the dedicated SKIPPED status (never `failed`)
+     * with a terminal timestamp and a `send_mail_skipped` audit transaction.
+     */
+    public function testEmailJobForUserWithEmailsDisabledIsSkippedAndAudited(): void
+    {
+        $user = $this->qaUser();
+        $user->setReceivesEmails(false);
+        $this->em->flush();
+
+        $job = $this->jobs->createDueQueuedEmailJob($user, 'qa_pref_skip_email_job');
+        $jobId = $this->jobId($job);
+
+        $result = $this->scheduler->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM);
+
+        self::assertInstanceOf(ScheduledJob::class, $result, 'A skipped job is terminal and must return its entity.');
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS,
+            $job->getStatus()->getLookupCode(),
+            'An email job for a user who disabled emails must end SKIPPED, not failed.'
+        );
+        self::assertNotNull($job->getDateExecuted(), 'A skipped job still records a terminal execution timestamp.');
+        self::assertTrue(
+            $this->jobTransactionExists($jobId, LookupService::TRANSACTION_TYPES_SEND_MAIL_SKIPPED),
+            'The skip must be audited as a send_mail_skipped transaction.'
+        );
+    }
+
+    /**
+     * Issue #29: `required_system` mail (account/security) must bypass the user
+     * email preference and still be delivered (status DONE).
+     */
+    public function testRequiredSystemEmailIsSentEvenWhenUserDisabledEmails(): void
+    {
+        $user = $this->qaUser();
+        $user->setReceivesEmails(false);
+        $this->em->flush();
+
+        $job = $this->jobs->create(
+            LookupService::JOB_TYPES_EMAIL,
+            LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
+            $user,
+            new \DateTime('now', new \DateTimeZone('UTC')),
+            'qa_pref_required_system_job',
+            ['email' => [
+                'recipient_emails' => (string) $user->getEmail(),
+                'subject' => 'QA required system email',
+                'body' => 'QA required system body',
+                'from_email' => 'qa-noreply@selfhelp.test',
+                'from_name' => 'QA',
+                'is_html' => false,
+                'delivery_policy' => LookupService::SCHEDULED_JOB_DELIVERY_POLICY_REQUIRED_SYSTEM,
+            ]],
+        );
+
+        $result = $this->scheduler->executeJob($this->jobId($job), LookupService::TRANSACTION_BY_BY_SYSTEM);
+
+        self::assertInstanceOf(ScheduledJob::class, $result);
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_DONE,
+            $job->getStatus()->getLookupCode(),
+            'required_system mail must ignore the user email preference and be delivered.'
+        );
+    }
+
+    /**
+     * Issue #29: an external recipient with no linked SelfHelp user has no
+     * stored preference, so the mail is delivered (status DONE).
+     */
+    public function testExternalEmailWithNoLinkedUserIsSent(): void
+    {
+        $job = $this->jobs->create(
+            LookupService::JOB_TYPES_EMAIL,
+            LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
+            null,
+            new \DateTime('now', new \DateTimeZone('UTC')),
+            'qa_pref_external_email_job',
+            ['email' => [
+                'recipient_emails' => 'qa_external_mailbox@selfhelp.test',
+                'subject' => 'QA external email',
+                'body' => 'QA external body',
+                'from_email' => 'qa-noreply@selfhelp.test',
+                'from_name' => 'QA',
+                'is_html' => false,
+            ]],
+        );
+
+        $result = $this->scheduler->executeJob($this->jobId($job), LookupService::TRANSACTION_BY_BY_SYSTEM);
+
+        self::assertInstanceOf(ScheduledJob::class, $result);
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_DONE,
+            $job->getStatus()->getLookupCode(),
+            'An external recipient with no SelfHelp user has no stored preference and must be delivered.'
+        );
+    }
+
+    /**
+     * Issue #29: a notification job for a known user that disabled notifications
+     * must end SKIPPED (push has no required_system escape hatch) and be audited
+     * as send_notification_skipped, without ever reaching the Firebase path.
+     */
+    public function testNotificationJobForUserWithNotificationsDisabledIsSkippedAndAudited(): void
+    {
+        $user = $this->qaUser();
+        $user->setReceivesNotifications(false);
+        $this->em->flush();
+
+        $job = $this->jobs->create(
+            LookupService::JOB_TYPES_NOTIFICATION,
+            LookupService::SCHEDULED_JOBS_STATUS_QUEUED,
+            $user,
+            new \DateTime('now', new \DateTimeZone('UTC')),
+            'qa_pref_skip_notification_job',
+            ['notification' => [
+                'subject' => 'QA notification',
+                'body' => 'QA notification body',
+            ]],
+        );
+        $jobId = $this->jobId($job);
+
+        $result = $this->scheduler->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM);
+
+        self::assertInstanceOf(ScheduledJob::class, $result);
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_NOTIFICATIONS,
+            $job->getStatus()->getLookupCode(),
+            'A notification job for a user who disabled notifications must end SKIPPED.'
+        );
+        self::assertNotNull($job->getDateExecuted());
+        self::assertTrue(
+            $this->jobTransactionExists($jobId, LookupService::TRANSACTION_TYPES_SEND_NOTIFICATION_SKIPPED),
+            'The skip must be audited as a send_notification_skipped transaction.'
+        );
+    }
+
+    /**
+     * Slice B1 race guard: once a job reaches a terminal (here: skipped) status
+     * the atomic queued->running claim is lost on any further attempt, so a
+     * second execution is refused and leaves the status untouched.
+     */
+    public function testATerminalSkippedJobCannotBeExecutedAgain(): void
+    {
+        $user = $this->qaUser();
+        $user->setReceivesEmails(false);
+        $this->em->flush();
+
+        $job = $this->jobs->createDueQueuedEmailJob($user, 'qa_pref_no_reexec_job');
+        $jobId = $this->jobId($job);
+
+        $this->scheduler->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM);
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS,
+            $job->getStatus()->getLookupCode()
+        );
+
+        $second = $this->scheduler->executeJob($jobId, LookupService::TRANSACTION_BY_BY_SYSTEM);
+
+        self::assertFalse($second, 'A terminal (skipped) job must not be executable again.');
+        $this->em->refresh($job);
+        self::assertSame(
+            LookupService::SCHEDULED_JOBS_STATUS_SKIPPED_USER_DISABLED_EMAILS,
+            $job->getStatus()->getLookupCode(),
+            'A refused re-execution must leave the skipped status untouched.'
+        );
+    }
+
     public function testCancelJobTransitionsQueuedJobToCancelled(): void
     {
         $job = $this->jobs->createDueQueuedEmailJob($this->qaUser(), 'qa_scheduler_cancel_job');
@@ -146,6 +321,27 @@ final class JobSchedulerServiceTest extends QaKernelTestCase
         $subject = $email['subject'] ?? null;
 
         return is_string($subject) ? $subject : null;
+    }
+
+    /**
+     * Assert (via the audit trail) that a scheduled job logged a transaction of
+     * the given transaction-type lookup code.
+     */
+    private function jobTransactionExists(int $jobId, string $transactionTypeCode): bool
+    {
+        $type = $this->em->getRepository(Lookup::class)->findOneBy([
+            'typeCode' => LookupService::TRANSACTION_TYPES,
+            'lookupCode' => $transactionTypeCode,
+        ]);
+        self::assertInstanceOf(Lookup::class, $type, 'Transaction type lookup must be seeded. Run: composer test:reset-db');
+
+        $transaction = $this->em->getRepository(Transaction::class)->findOneBy([
+            'tableName' => 'scheduled_jobs',
+            'idTableName' => $jobId,
+            'idTransactionTypes' => $type->getId(),
+        ]);
+
+        return $transaction instanceof Transaction;
     }
 
     private function qaUser(): User

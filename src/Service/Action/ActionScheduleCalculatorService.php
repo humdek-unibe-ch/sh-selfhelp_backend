@@ -41,19 +41,43 @@ class ActionScheduleCalculatorService extends BaseService
      * @param array<string, mixed> $actionConfig
      * @param array<string, mixed> $job
      * @return \DateTimeImmutable[]
-     *   One or more execution dates for the supplied job configuration.
+     *   One or more execution dates (UTC) for the supplied job configuration.
      */
-    public function calculateDates(array $actionConfig, array $job): array
+    public function calculateDates(array $actionConfig, array $job, ?ActionScheduleContext $context = null): array
     {
+        $context ??= ActionScheduleContext::forTimezone(null);
+
         if (($actionConfig[ActionConfig::REPEAT] ?? false) === true) {
-            return $this->calculateRepeaterDates($this->toConfigArray($actionConfig[ActionConfig::REPEATER] ?? null), $job);
+            return $this->calculateRepeaterDates($this->toConfigArray($actionConfig[ActionConfig::REPEATER] ?? null), $job, $context);
         }
 
         if (($actionConfig[ActionConfig::REPEAT_UNTIL_DATE] ?? false) === true) {
-            return $this->calculateRepeaterUntilDates($this->toConfigArray($actionConfig[ActionConfig::REPEATER_UNTIL_DATE] ?? null));
+            return $this->calculateRepeaterUntilDates($this->toConfigArray($actionConfig[ActionConfig::REPEATER_UNTIL_DATE] ?? null), $context);
         }
 
-        return [$this->calculateBaseDate($this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null))];
+        return [$this->calculateBaseDate($this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null), $context)];
+    }
+
+    /**
+     * Determine whether a schedule represents a wall-clock (local time) rule.
+     *
+     * Wall-clock schedules must be recalculated when the recipient changes
+     * timezone so the intended local time is preserved. Purely relative offsets
+     * ("after N hours") and immediate schedules are not wall-clock.
+     *
+     * @param array<string, mixed> $schedule
+     *   The schedule-time section of a job config.
+     */
+    public function isWallClockSchedule(array $schedule): bool
+    {
+        $scheduleType = $schedule[ActionConfig::JOB_SCHEDULE_TYPES] ?? LookupService::ACTION_SCHEDULE_TYPES_IMMEDIATELY;
+
+        return match ($scheduleType) {
+            LookupService::ACTION_SCHEDULE_TYPES_ON_FIXED_DATETIME,
+            LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD_ON_DAY_AT_TIME => true,
+            LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD => $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? '') !== '',
+            default => false,
+        };
     }
 
     /**
@@ -61,17 +85,18 @@ class ActionScheduleCalculatorService extends BaseService
      *   The schedule-time section of a job config.
      *
      * @return \DateTimeImmutable
-     *   The base execution date for a non-repeating job.
+     *   The base execution date (UTC) for a non-repeating job.
      */
-    public function calculateBaseDate(array $schedule): \DateTimeImmutable
+    public function calculateBaseDate(array $schedule, ?ActionScheduleContext $context = null): \DateTimeImmutable
     {
-        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $context ??= ActionScheduleContext::forTimezone(null);
+        $now = $context->now;
         $scheduleType = $schedule[ActionConfig::JOB_SCHEDULE_TYPES] ?? LookupService::ACTION_SCHEDULE_TYPES_IMMEDIATELY;
 
         return match ($scheduleType) {
-            LookupService::ACTION_SCHEDULE_TYPES_ON_FIXED_DATETIME => $this->createDateTime($schedule[ActionConfig::CUSTOM_TIME] ?? null, $now) ?? $now,
-            LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD => $this->calculateAfterPeriod($schedule, $now),
-            LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD_ON_DAY_AT_TIME => $this->calculateDayAtTime($schedule, $now),
+            LookupService::ACTION_SCHEDULE_TYPES_ON_FIXED_DATETIME => $this->createFixedDateTime($schedule[ActionConfig::CUSTOM_TIME] ?? null, $context) ?? $now,
+            LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD => $this->calculateAfterPeriod($schedule, $context),
+            LookupService::ACTION_SCHEDULE_TYPES_AFTER_PERIOD_ON_DAY_AT_TIME => $this->calculateDayAtTime($schedule, $context),
             default => $now,
         };
     }
@@ -121,7 +146,7 @@ class ActionScheduleCalculatorService extends BaseService
      * @return \DateTimeImmutable[]
      *   Repeated execution dates generated for an occurrences-based repeater.
      */
-    private function calculateRepeaterDates(array $repeater, array $job): array
+    private function calculateRepeaterDates(array $repeater, array $job, ActionScheduleContext $context): array
     {
         $occurrences = max(1, $this->asInt($repeater[ActionConfig::OCCURRENCES] ?? 1));
         $frequency = $this->asString($repeater[ActionConfig::FREQUENCY] ?? 'day');
@@ -129,8 +154,11 @@ class ActionScheduleCalculatorService extends BaseService
         $daysOfMonth = array_values($this->asArray($repeater[ActionConfig::DAYS_OF_MONTH] ?? null));
 
         $dates = [];
-        $baseDate = $this->calculateBaseDate($this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null));
-        $cursor = $baseDate;
+        $baseDate = $this->calculateBaseDate($this->toConfigArray($job[ActionConfig::SCHEDULE_TIME] ?? null), $context);
+        // Iterate in the recipient timezone so the wall-clock time is preserved
+        // across DST transitions, converting each occurrence back to UTC.
+        $utc = new \DateTimeZone('UTC');
+        $cursor = $baseDate->setTimezone($context->timezone);
 
         while (count($dates) < $occurrences) {
             if (
@@ -138,7 +166,7 @@ class ActionScheduleCalculatorService extends BaseService
                 ($frequency === 'week' && $this->matchesWeekday($cursor, $daysOfWeek)) ||
                 ($frequency === 'month' && $this->matchesMonthDay($cursor, $daysOfMonth))
             ) {
-                $dates[] = $cursor;
+                $dates[] = $cursor->setTimezone($utc);
             }
 
             $cursor = $cursor->modify('+1 day');
@@ -152,11 +180,11 @@ class ActionScheduleCalculatorService extends BaseService
      * @return \DateTimeImmutable[]
      *   Repeated execution dates generated until the configured deadline is reached.
      */
-    private function calculateRepeaterUntilDates(array $repeaterUntil): array
+    private function calculateRepeaterUntilDates(array $repeaterUntil, ActionScheduleContext $context): array
     {
-        $deadline = $this->createDateTime($repeaterUntil[ActionConfig::DEADLINE] ?? null, null);
+        $deadline = $this->createFixedDateTime($repeaterUntil[ActionConfig::DEADLINE] ?? null, $context);
         if ($deadline === null) {
-            return [new \DateTimeImmutable('now', new \DateTimeZone('UTC'))];
+            return [$context->now];
         }
 
         $frequency = $this->asString($repeaterUntil[ActionConfig::FREQUENCY] ?? 'day');
@@ -165,8 +193,7 @@ class ActionScheduleCalculatorService extends BaseService
         $daysOfMonth = array_values($this->asArray($repeaterUntil[ActionConfig::DAYS_OF_MONTH] ?? null));
         $scheduleAt = $this->asString($repeaterUntil[ActionConfig::SCHEDULE_AT] ?? '');
 
-        $current = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-        $current = $this->applyTimeToDate($current, $scheduleAt);
+        $current = $this->applyLocalTimeToDate($context->now, $scheduleAt, $context->timezone);
         $dates = [];
 
         while ($current <= $deadline) {
@@ -185,7 +212,7 @@ class ActionScheduleCalculatorService extends BaseService
             };
         }
 
-        return $dates === [] ? [new \DateTimeImmutable('now', new \DateTimeZone('UTC'))] : $dates;
+        return $dates === [] ? [$context->now] : $dates;
     }
 
     /**
@@ -193,15 +220,16 @@ class ActionScheduleCalculatorService extends BaseService
      *   The schedule-time section for an after-period job.
      *
      * @return \DateTimeImmutable
-     *   The computed date/time after the configured offset.
+     *   The computed date/time (UTC) after the configured offset.
      */
-    private function calculateAfterPeriod(array $schedule, \DateTimeImmutable $now): \DateTimeImmutable
+    private function calculateAfterPeriod(array $schedule, ActionScheduleContext $context): \DateTimeImmutable
     {
         $amount = max(1, $this->asInt($schedule[ActionConfig::SEND_AFTER] ?? 1));
         $unit = $this->asString($schedule[ActionConfig::SEND_AFTER_TYPE] ?? LookupService::TIME_PERIOD_DAYS);
-        $date = $now->modify(sprintf('+%d %s', $amount, $unit));
+        // The offset is elapsed time (relative); the optional time-of-day is wall-clock local.
+        $date = $context->now->modify(sprintf('+%d %s', $amount, $unit));
 
-        return $this->applyTimeToDate($date, $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? ''));
+        return $this->applyLocalTimeToDate($date, $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? ''), $context->timezone);
     }
 
     /**
@@ -209,40 +237,48 @@ class ActionScheduleCalculatorService extends BaseService
      *   The schedule-time section for an "after period on day at time" job.
      *
      * @return \DateTimeImmutable
-     *   The computed date/time matching the requested weekday/time rules.
+     *   The computed date/time (UTC) matching the requested weekday/time rules.
      */
-    private function calculateDayAtTime(array $schedule, \DateTimeImmutable $now): \DateTimeImmutable
+    private function calculateDayAtTime(array $schedule, ActionScheduleContext $context): \DateTimeImmutable
     {
         $weeks = max(1, $this->asInt($schedule[ActionConfig::SEND_ON] ?? 1));
         $weekday = $this->asString($schedule[ActionConfig::SEND_ON_DAY] ?? 'Monday');
-        $target = $now->modify(sprintf('next %s', $weekday));
-        $target = $this->applyTimeToDate($target, $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? '00:00'));
+        $time = $this->asString($schedule[ActionConfig::SEND_ON_DAY_AT] ?? '00:00');
+
+        // Compute the weekday + wall-clock time in the recipient timezone, then convert to UTC.
+        $localTarget = $context->nowInTimezone()->modify(sprintf('next %s', $weekday));
+        $localTarget = $this->setLocalTime($localTarget, $time);
 
         if ($weeks > 1) {
-            $target = $target->modify(sprintf('+%d week', $weeks - 1));
+            $localTarget = $localTarget->modify(sprintf('+%d week', $weeks - 1));
         }
 
-        return $target;
+        return $localTarget->setTimezone(new \DateTimeZone('UTC'));
     }
 
     /**
-     * Convert a config value into a UTC datetime, falling back when empty.
+     * Convert a wall-clock config value into a UTC datetime, falling back when empty.
+     *
+     * When the value carries no timezone offset it is interpreted in the
+     * context timezone; an explicit offset is respected as an absolute instant.
      *
      * @param mixed $value
      *   The raw date/time config value.
-     * @param \DateTimeImmutable|null $fallback
-     *   The fallback value when the config value is empty.
      *
      * @return \DateTimeImmutable|null
-     *   The parsed UTC datetime or the fallback.
+     *   The parsed UTC datetime, or null when the value is empty.
      */
-    private function createDateTime(mixed $value, ?\DateTimeImmutable $fallback): ?\DateTimeImmutable
+    private function createFixedDateTime(mixed $value, ActionScheduleContext $context): ?\DateTimeImmutable
     {
         if (!is_string($value) || trim($value) === '') {
-            return $fallback;
+            return null;
         }
 
-        return new \DateTimeImmutable($value, new \DateTimeZone('UTC'));
+        $raw = trim($value);
+        $hasOffset = preg_match('/(Z|[+-]\d{2}:?\d{2})$/', $raw) === 1;
+        $zone = $hasOffset ? new \DateTimeZone('UTC') : $context->timezone;
+
+        return (new \DateTimeImmutable($raw, $zone))->setTimezone(new \DateTimeZone('UTC'));
     }
 
     /**
@@ -287,17 +323,37 @@ class ActionScheduleCalculatorService extends BaseService
     }
 
     /**
-     * Apply an `HH:MM` time string to an existing date.
+     * Apply a wall-clock `HH:MM` time to a UTC date in the recipient timezone.
      *
-     * @param \DateTimeImmutable $date
-     *   The date whose time component should be adjusted.
+     * The date's calendar day in the recipient timezone is preserved; only the
+     * time-of-day is set (in local time) before converting back to UTC. An empty
+     * time leaves the original UTC datetime untouched (purely relative offset).
+     *
+     * @param \DateTimeImmutable $utcDate
+     *   The UTC date whose local time-of-day should be set.
      * @param string $time
      *   The `HH:MM` time string from config.
-     *
-     * @return \DateTimeImmutable
-     *   The adjusted datetime, or the original date when parsing fails.
      */
-    private function applyTimeToDate(\DateTimeImmutable $date, string $time): \DateTimeImmutable
+    private function applyLocalTimeToDate(\DateTimeImmutable $utcDate, string $time, \DateTimeZone $timezone): \DateTimeImmutable
+    {
+        if ($time === '') {
+            return $utcDate;
+        }
+
+        $local = $this->setLocalTime($utcDate->setTimezone($timezone), $time);
+
+        return $local->setTimezone(new \DateTimeZone('UTC'));
+    }
+
+    /**
+     * Set the `HH:MM` time component on a datetime, keeping its (local) timezone.
+     *
+     * @param \DateTimeImmutable $date
+     *   The datetime in its target timezone.
+     * @param string $time
+     *   The `HH:MM` time string from config.
+     */
+    private function setLocalTime(\DateTimeImmutable $date, string $time): \DateTimeImmutable
     {
         if ($time === '') {
             return $date;

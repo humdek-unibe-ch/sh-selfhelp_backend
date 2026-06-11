@@ -64,7 +64,17 @@ final class Version20260523141331 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
-        $this->addSql('CREATE TABLE messenger_messages (id BIGINT AUTO_INCREMENT NOT NULL, body LONGTEXT NOT NULL, headers LONGTEXT NOT NULL, queue_name VARCHAR(190) NOT NULL, created_at DATETIME NOT NULL, available_at DATETIME NOT NULL, delivered_at DATETIME DEFAULT NULL, INDEX IDX_75EA56E0FB7336F0E3BD61CE16BA31DBBF396750 (queue_name, available_at, delivered_at, id), PRIMARY KEY (id)) DEFAULT CHARACTER SET utf8mb4');
+        // `IF NOT EXISTS`: the `plugin_ops` Doctrine Messenger transport runs
+        // with `auto_setup=true` (see config/packages/messenger.yaml), so a
+        // running `messenger:consume plugin_ops` worker (the production worker
+        // container's CMD) creates `messenger_messages` itself on first use.
+        // During a fresh Docker provision the worker boots from `compose up`
+        // before the install-time `doctrine:migrations:migrate` runs, so a plain
+        // CREATE TABLE here loses the race with 1050 "table already exists" and
+        // aborts the whole migration chain. The schema is identical either way
+        // (the framework generates exactly this table), and `doctrine.yaml`
+        // already excludes `messenger_messages` from schema validation.
+        $this->addSql('CREATE TABLE IF NOT EXISTS messenger_messages (id BIGINT AUTO_INCREMENT NOT NULL, body LONGTEXT NOT NULL, headers LONGTEXT NOT NULL, queue_name VARCHAR(190) NOT NULL, created_at DATETIME NOT NULL, available_at DATETIME NOT NULL, delivered_at DATETIME DEFAULT NULL, INDEX IDX_75EA56E0FB7336F0E3BD61CE16BA31DBBF396750 (queue_name, available_at, delivered_at, id), PRIMARY KEY (id)) DEFAULT CHARACTER SET utf8mb4');
 
         $this->addSql('ALTER TABLE plugins ADD frontend_runtime_url VARCHAR(1024) DEFAULT NULL COMMENT \'ESM entrypoint URL or host-relative path served from public/plugin-artifacts\', ADD frontend_runtime_stylesheet_url VARCHAR(1024) DEFAULT NULL, ADD frontend_runtime_integrity VARCHAR(255) DEFAULT NULL COMMENT \'Subresource integrity hash for the runtime entrypoint\', ADD frontend_runtime_format VARCHAR(16) DEFAULT \'esm\' NOT NULL, DROP frontend_package, DROP frontend_package_version');
 

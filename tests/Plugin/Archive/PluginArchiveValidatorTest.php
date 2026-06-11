@@ -124,8 +124,8 @@ final class PluginArchiveValidatorTest extends TestCase
             'id' => $pluginId,
             'name' => 'Standalone Test',
             'version' => $pluginVersion,
-            'pluginApiVersion' => '1.0',
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0', 'php' => '^8.4'],
+            'pluginApiVersion' => '0.1.0',
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0', 'php' => '^8.4'],
             'backend' => [
                 'bundleClass' => 'Humdek\\StandaloneTestBundle\\HumdekStandaloneTestBundle',
                 'composer' => ['package' => $composerPackage, 'version' => $pluginVersion],
@@ -161,7 +161,7 @@ final class PluginArchiveValidatorTest extends TestCase
             'composer' => ['package' => $composerPackage, 'version' => $pluginVersion],
             'runtime' => ['entrypointUrl' => 'artifacts/plugin.esm.js', 'format' => 'esm'],
             'checksums' => ['frontendEsm' => $esmChecksum],
-            'compatibility' => ['selfhelp' => '>=8.0.0-dev <9.0.0', 'php' => '^8.4'],
+            'compatibility' => ['selfhelp' => '>=0.1.0 <0.2.0', 'php' => '^8.4'],
             'archive' => [
                 'mode' => 'standalone',
                 'backend' => [

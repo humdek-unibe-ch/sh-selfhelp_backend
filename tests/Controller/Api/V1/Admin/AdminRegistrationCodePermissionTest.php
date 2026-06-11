@@ -49,7 +49,7 @@ final class AdminRegistrationCodePermissionTest extends QaWebTestCase
         $this->assertForbiddenForNonAdmins(
             'POST',
             self::BASE . '/generate',
-            ['count' => 1, 'id_groups' => 1],
+            ['count' => 1, 'group_ids' => [1]],
         );
     }
 

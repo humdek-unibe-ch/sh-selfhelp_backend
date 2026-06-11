@@ -39,7 +39,7 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
     {
         $service = $this->service(RegistrationCodeService::class);
 
-        $result = $service->generate(25, $this->qaGroupId());
+        $result = $service->generate(25, [$this->qaGroupId()]);
         $codes = $result['codes'];
 
         self::assertCount(25, $codes, 'generate() must return exactly the requested number of codes.');
@@ -51,6 +51,8 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
             self::assertSame($code['id'], $code['code'], 'Entity id mirrors the code value.');
             self::assertSame($this->qaGroupId(), $code['id_groups']);
             self::assertSame($this->qaGroup->getName(), $code['group_name']);
+            self::assertSame([$this->qaGroupId()], $code['group_ids'], 'A single-group code reports exactly its one group id.');
+            self::assertSame([$this->qaGroup->getName()], $code['group_names']);
             self::assertFalse($code['is_consumed'], 'A freshly generated code is not consumed.');
             self::assertNull($code['consumed_at']);
             self::assertNull($code['id_users'], 'A freshly generated code is not linked to a user.');
@@ -75,7 +77,7 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Count must be between 1 and 5.');
 
-        $service->generate(6, $this->qaGroupId());
+        $service->generate(6, [$this->qaGroupId()]);
     }
 
     public function testGenerateRejectsNonPositiveCount(): void
@@ -83,7 +85,7 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
         $service = $this->service(RegistrationCodeService::class);
 
         $this->expectException(\InvalidArgumentException::class);
-        $service->generate(0, $this->qaGroupId());
+        $service->generate(0, [$this->qaGroupId()]);
     }
 
     public function testGenerateRejectsUnknownGroup(): void
@@ -93,7 +95,49 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Group not found.');
 
-        $service->generate(1, 999_999_999);
+        $service->generate(1, [999_999_999]);
+    }
+
+    public function testGenerateRejectsAnEmptyGroupSelection(): void
+    {
+        $service = $this->service(RegistrationCodeService::class);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('At least one group must be selected.');
+
+        $service->generate(1, []);
+    }
+
+    public function testGenerateAssignsEverySelectedGroupToEachCode(): void
+    {
+        // Generating with several groups must store the first as the primary
+        // (validation_codes.id_groups) and link ALL of them via
+        // validation_code_groups, so each code can enrol a user into every group.
+        $groupB = (new GroupFactory($this->em))->createGroup('qa_regcode_group_b');
+        $service = $this->service(RegistrationCodeService::class);
+
+        $result = $service->generate(3, [$this->qaGroupId(), (int) $groupB->getId()]);
+        $codes  = $result['codes'];
+
+        self::assertCount(3, $codes);
+
+        $expectedIds   = [$this->qaGroupId(), (int) $groupB->getId()];
+        $expectedNames = [(string) $this->qaGroup->getName(), (string) $groupB->getName()];
+        sort($expectedIds);
+
+        foreach ($codes as $code) {
+            self::assertSame($this->qaGroupId(), $code['id_groups'], 'The first selected group is the primary group.');
+            self::assertSame($expectedIds, $this->sortedInts($code['group_ids']), 'Every selected group id is reported.');
+            self::assertEqualsCanonicalizing($expectedNames, $code['group_names'], 'Every selected group name is reported.');
+
+            // The link rows are actually persisted for each code.
+            $linked = $this->em->getConnection()->fetchFirstColumn(
+                'SELECT id_groups FROM validation_code_groups WHERE code = :code ORDER BY id_groups',
+                ['code' => $code['code']]
+            );
+            $linkedIds = array_map(static fn ($v): int => is_numeric($v) ? (int) $v : 0, $linked);
+            self::assertSame($expectedIds, $linkedIds, 'validation_code_groups holds every selected group for the code.');
+        }
     }
 
     public function testGenerateNeverReturnsOrDuplicatesAnExistingCode(): void
@@ -103,7 +147,7 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
         $existing = $this->seedCode('QAEXISTS1');
 
         $service = $this->service(RegistrationCodeService::class);
-        $result = $service->generate(40, $this->qaGroupId());
+        $result = $service->generate(40, [$this->qaGroupId()]);
         $values = array_map(static fn (array $c): string => $c['code'], $result['codes']);
 
         self::assertCount(40, $values);
@@ -127,12 +171,23 @@ final class RegistrationCodeServiceTest extends QaKernelTestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('table limit');
 
-        $service->generate(1, $this->qaGroupId());
+        $service->generate(1, [$this->qaGroupId()]);
     }
 
     private function qaGroupId(): int
     {
         return (int) $this->qaGroup->getId();
+    }
+
+    /**
+     * @param list<int> $ids
+     * @return list<int>
+     */
+    private function sortedInts(array $ids): array
+    {
+        sort($ids);
+
+        return $ids;
     }
 
     private function availableCodeCount(): int

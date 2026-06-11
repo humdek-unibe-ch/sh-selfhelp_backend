@@ -260,8 +260,8 @@ node scripts/publish-to-registry.mjs --release --push
 ```
 
 The script auto-loads `<plugin>/.env`, so
-`SELFHELP_PLUGIN_SIGNING_KEY` /
-`SELFHELP_PLUGIN_SIGNING_KEY_ID` /
+`SELFHELP_SIGNING_KEY` /
+`SELFHELP_SIGNING_KEY_ID` /
 `SELFHELP_REGISTRY_PATH` / `NPM_TOKEN` can live in a single gitignored
 file next to `plugin.json`. Real `process.env` values still win, so
 secrets injected by the GitHub Action override the file automatically.

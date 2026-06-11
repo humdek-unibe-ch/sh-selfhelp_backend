@@ -1,0 +1,11 @@
+{
+    "$comment": "Release self-declaration consumed by the unified registry's auto-core-release resolver (sh2-plugin-registry/scripts/resolve-core-candidate.mjs) at the git tag being released. The supports.* semver ranges decide whether a tagged core can be auto-matched with the latest published counterparts into a signed release candidate PR. Keep pluginApiVersion in sync with config/services.yaml (CI enforces it) and widen/bump supports.frontend deliberately - while the platform is pre-1.0, every 0.x minor is breaking.",
+    "kind": "core",
+    "supports": {
+        "frontend": ">=0.1.0 <0.2.0",
+        "manager": ">=0.1.0"
+    },
+    "minimumDirectUpgradeFrom": "0.1.0",
+    "pluginApiVersion": "0.1.0",
+    "php": "8.4"
+}

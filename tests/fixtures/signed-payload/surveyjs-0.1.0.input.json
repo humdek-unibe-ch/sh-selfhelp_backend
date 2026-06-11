@@ -21,7 +21,7 @@
         "frontendCss": "sha256-2ab1def"
     },
     "compatibility": {
-        "selfhelp": ">=8.0.0-dev <9.0.0",
+        "selfhelp": ">=0.1.0 <0.2.0",
         "php": "^8.4",
         "node": "^22",
         "react": "^19",

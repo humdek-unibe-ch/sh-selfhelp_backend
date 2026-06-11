@@ -96,6 +96,37 @@ class AdminScheduledJobController extends AbstractController
     }
 
     /**
+     * Get the catalog of available scheduled-job types.
+     *
+     * Lists the core job-type lookups plus any types contributed by plugins via
+     * the `ScheduledJobTypeEvent` extension point, so admin UIs can present the
+     * available types (and their config schemas) without hardcoding them.
+     *
+     * @route /admin/scheduled-jobs/types
+     * @method GET
+     */
+    public function getJobTypes(): JsonResponse
+    {
+        try {
+            $types = $this->adminScheduledJobService->getJobTypeCatalog();
+
+            return $this->responseFormatter->formatSuccess(
+                ['types' => $types],
+                'responses/admin/scheduled_jobs/job_types'
+            );
+        } catch (\Exception $e) {
+            $statusCode = $e->getCode();
+            if ($statusCode < 100 || $statusCode > 599) {
+                $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
+            }
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $statusCode
+            );
+        }
+    }
+
+    /**
      * Get single scheduled job by ID
      * 
      * @route /admin/scheduled-jobs/{jobId}

@@ -65,6 +65,7 @@ See [01-authentication.md](01-authentication.md) for the login, refresh, 2FA, an
 - [04-admin-pages-sections.md](04-admin-pages-sections.md) - Page and section CRUD.
 - [05-admin-languages.md](05-admin-languages.md) - Language management.
 - [06-admin-assets.md](06-admin-assets.md) - File upload and asset management.
+- [18-admin-data-tables.md](18-admin-data-tables.md) - Read, delete, and export form-submission data tables.
 
 ### Admin - users and access
 
@@ -77,6 +78,7 @@ See [01-authentication.md](01-authentication.md) for the login, refresh, 2FA, an
 - [12-admin-audit.md](12-admin-audit.md) - Security audit logging.
 - [13-admin-scheduled-jobs.md](13-admin-scheduled-jobs.md) - Background job management.
 - [14-admin-actions.md](14-admin-actions.md) - Automated action system.
+- [20-admin-system-maintenance.md](20-admin-system-maintenance.md) - Instance-scoped version, update preflight, request, and status (SelfHelp Manager flow).
 
 ### Public and forms
 

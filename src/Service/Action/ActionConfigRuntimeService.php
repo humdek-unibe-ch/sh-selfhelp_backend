@@ -63,7 +63,47 @@ class ActionConfigRuntimeService extends BaseService
         }
 
         $config = $this->applyOverwriteVariables($config, $submittedValues);
-        return $this->toConfigArray($this->interpolationService->interpolateArray($config, $submittedValues));
+
+        // The submitted-value pass renders form/record placeholders that are
+        // known once per action run. Per-recipient scopes ({{recipient.*}},
+        // {{mail.*}}) must NOT be consumed here: Mustache blanks unknown
+        // variables, so a recipient template like "{{recipient.email}};x@y.z"
+        // would collapse to ";x@y.z" before the recipient is ever known. We
+        // therefore feed those scopes a self-referential passthrough so the
+        // placeholders survive verbatim into the per-recipient render done by
+        // ActionScheduler
+        $interpolated = $this->interpolationService->interpolateArray(
+            $config,
+            $submittedValues,
+            $this->deferredRecipientScopes()
+        );
+
+        return $this->toConfigArray($interpolated);
+    }
+
+    /**
+     * Self-referential context for scopes that are rendered per recipient.
+     *
+     * Each known sub-key maps back to its own `{{scope.key}}` placeholder so the
+     * early submitted-value interpolation preserves it instead of emptying it.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function deferredRecipientScopes(): array
+    {
+        $passthrough = static function (string $scope, string ...$keys): array {
+            $map = [];
+            foreach ($keys as $key) {
+                $map[$key] = '{{' . $scope . '.' . $key . '}}';
+            }
+
+            return $map;
+        };
+
+        return [
+            'recipient' => $passthrough('recipient', 'email', 'name', 'user_name', 'code', 'timezone'),
+            'mail' => $passthrough('mail', 'link', 'code'),
+        ];
     }
 
     /**

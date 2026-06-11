@@ -163,8 +163,8 @@ Required env (one of):
 
 | Env                                  | Use                                                        |
 | ------------------------------------ | ---------------------------------------------------------- |
-| `SELFHELP_PLUGIN_SIGNING_KEY`        | Production Ed25519 64-byte secret key (base64).            |
-| `SELFHELP_PLUGIN_SIGNING_KEY_ID`     | Publisher key id matching `SELFHELP_PLUGIN_TRUSTED_KEYS`.  |
+| `SELFHELP_SIGNING_KEY`        | Production Ed25519 64-byte secret key (base64).            |
+| `SELFHELP_SIGNING_KEY_ID`     | Publisher key id matching `SELFHELP_PLUGIN_TRUSTED_KEYS`.  |
 | `SELFHELP_PLUGIN_DEV_SIGNING_KEY`    | Local-dev fallback. KeyId defaults to `dev`. CI rejects it on the `official` channel. |
 
 The script auto-loads `<plugin>/.env` via Node 22's

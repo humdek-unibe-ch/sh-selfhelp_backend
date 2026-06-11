@@ -67,8 +67,8 @@ class ManagedModeInstallTest extends BaseControllerTest
      */
     private function manifest(): array
     {
-        // Track the CMS's own SDK version + a wide 8.x range that includes the
-        // dev pre-release (8.0.0-dev) so the fixture never drifts out of
+        // Track the CMS's own SDK version + a 0.1.x range that includes the
+        // current pre-release (0.1.0) so the fixture never drifts out of
         // compatibility when the host bumps either value.
         $sdkVersion = $this->coerceString(self::getContainer()->getParameter('selfhelp.plugin_api_version'));
 
@@ -83,7 +83,7 @@ class ManagedModeInstallTest extends BaseControllerTest
             ],
             'license' => 'MPL-2.0',
             'compatibility' => [
-                'selfhelp' => '>=8.0.0-dev <9.0.0',
+                'selfhelp' => '>=0.1.0 <0.2.0',
             ],
             'frontend' => [
                 'runtime' => [

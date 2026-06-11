@@ -1,0 +1,46 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/registry/registry-index.schema.json",
+    "title": "SelfHelp unified registry index (registry.json)",
+    "description": "The single published registry.json consumed by BOTH installers: the SelfHelp Manager (core/frontend/scheduler/worker Docker releases) and the CMS/backend (plugin releases). Every component array is a list of release REFS (one per published version) pointing at standalone signed release documents via releaseUrl. Mirrors @selfhelp/shared RegistryIndex and the Manager Zod schema. Release documents are validated by core-release.schema.json / plugin-release.schema.json. Supersedes the legacy single-version inline plugin registry.",
+    "type": "object",
+    "required": ["schemaVersion", "requiresManager", "baseUrl", "core", "frontend", "scheduler", "worker", "plugins"],
+    "additionalProperties": true,
+    "properties": {
+        "schemaVersion": {"type": "string", "minLength": 1},
+        "requiresManager": {"type": "string", "minLength": 1, "description": "Semver range of SelfHelp Manager versions that can consume this registry."},
+        "publishedAt": {"type": "string", "format": "date-time"},
+        "baseUrl": {"type": "string", "format": "uri", "pattern": "^https?://", "description": "Base URL used to resolve relative releaseUrl / artifact paths."},
+        "publisher": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": true,
+            "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "url": {"type": "string", "format": "uri"}
+            }
+        },
+        "core": {"type": "array", "items": {"$ref": "#/$defs/releaseRef"}},
+        "frontend": {"type": "array", "items": {"$ref": "#/$defs/releaseRef"}},
+        "scheduler": {"type": "array", "items": {"$ref": "#/$defs/releaseRef"}},
+        "worker": {"type": "array", "items": {"$ref": "#/$defs/releaseRef"}},
+        "plugins": {"type": "array", "items": {"$ref": "#/$defs/releaseRef"}},
+        "advisoriesUrl": {"type": "string"},
+        "compatibilityUrl": {"type": "string"},
+        "trustedKeysUrl": {"type": "string"}
+    },
+    "$defs": {
+        "releaseRef": {
+            "type": "object",
+            "required": ["id", "version", "channel", "releaseUrl"],
+            "additionalProperties": false,
+            "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "version": {"type": "string", "minLength": 1},
+                "channel": {"type": "string", "enum": ["stable", "beta", "nightly", "test"]},
+                "releaseUrl": {"type": "string", "minLength": 1, "description": "Absolute or baseUrl-relative URL of the signed release document."},
+                "blocked": {"type": "boolean"}
+            }
+        }
+    }
+}

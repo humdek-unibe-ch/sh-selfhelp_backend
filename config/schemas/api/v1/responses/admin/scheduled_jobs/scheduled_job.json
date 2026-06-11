@@ -15,7 +15,8 @@
               "type": "object",
               "properties": {
                 "id": { "type": "integer", "description": "Status lookup ID" },
-                "value": { "type": "string", "description": "Status value" }
+                "value": { "type": "string", "description": "Status value" },
+                "code": { "type": ["string", "null"], "description": "Status lookup code (stable, for UI badges)" }
               },
               "required": ["id", "value"]
             },
@@ -23,14 +24,44 @@
               "type": "object",
               "properties": {
                 "id": { "type": "integer", "description": "Job type lookup ID" },
-                "value": { "type": "string", "description": "Job type value" }
+                "value": { "type": "string", "description": "Job type value" },
+                "code": { "type": ["string", "null"], "description": "Job type lookup code" }
               },
               "required": ["id", "value"]
+            },
+            "recipients": {
+              "type": "array",
+              "description": "Per-delivery recipient snapshots for the job",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": ["integer", "null"], "description": "Recipient snapshot ID" },
+                  "channel": { "type": "string", "description": "Delivery channel (email or notification)" },
+                  "recipient_type": { "type": "string", "description": "Recipient type (to, cc, bcc)" },
+                  "recipient_email": { "type": ["string", "null"], "description": "Recipient email address" },
+                  "id_users": { "type": ["integer", "null"], "description": "Linked user id, null for external addresses" },
+                  "delivery_policy": { "type": "string", "description": "Delivery policy" },
+                  "resolved_from": { "type": ["string", "null"], "description": "How the recipient was resolved" }
+                },
+                "required": ["channel", "recipient_type", "delivery_policy"]
+              }
             },
             "description": { "type": "string", "description": "Job description" },
             "date_create": { "type": "string", "description": "Date when job was created (UTC)" },
             "date_to_be_executed": { "type": "string", "description": "Date when job should be executed (UTC)" },
             "date_executed": { "type": ["string", "null"], "description": "Date when job was actually executed (UTC)" },
+            "user_timezone": { "type": ["string", "null"], "description": "Recipient user's timezone code (falls back to CMS default)" },
+            "schedule": {
+              "type": "object",
+              "description": "Timezone-aware schedule intent for the job",
+              "properties": {
+                "timezone": { "type": "string", "description": "Timezone the execution time was calculated in" },
+                "timezone_source": { "type": ["string", "null"], "description": "Origin of the timezone: 'user' or 'cms_default'" },
+                "local_datetime": { "type": ["string", "null"], "description": "Intended local (wall-clock) execution time in the job timezone" },
+                "is_wall_clock": { "type": "boolean", "description": "True when the schedule is wall-clock (recalculated on user timezone change); false for relative/absolute schedules" }
+              },
+              "required": ["timezone", "is_wall_clock"]
+            },
             "config": { "type": ["string", "null"], "description": "Job configuration" },
             "users": {
               "type": "array",

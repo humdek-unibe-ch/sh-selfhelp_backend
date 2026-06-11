@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Update Preflight Response",
+  "description": "Compatibility preflight for the current instance (mirrors @selfhelp/shared IUpdatePreflight). Resource/Docker checks are performed by the SelfHelp Manager, not the CMS.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "preflight_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["ok", "warning", "blocked"] },
+        "instance_id": { "type": "string" },
+        "current_version": { "type": "string" },
+        "target_version": { "type": "string" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A single preflight check. Version/compatibility checks (e.g. plugin_compatibility, downgrade, upgrade_path) additionally carry the standardized compatibility-error fields so the admin/operator sees the blocking component and the required range.",
+            "properties": {
+              "code": { "type": "string" },
+              "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+              "message": { "type": "string" },
+              "component": { "type": "string", "description": "Optional: which component the check is about (e.g. 'plugin', 'core')." },
+              "component_id": { "type": "string", "description": "Optional: id of the blocking component (e.g. the plugin id)." },
+              "current_version": { "type": ["string", "null"], "description": "Optional: the instance's current version (or the blocking plugin's installed version) at preflight time." },
+              "target_version": { "type": ["string", "null"], "description": "Optional: the requested target version." },
+              "required_range": { "type": "string", "description": "Optional: the compatibility range the component requires." },
+              "blocking": { "type": "boolean", "description": "Optional: whether this compatibility error blocks the update (part of the standardized compatibility-error shape)." },
+              "pinned": { "type": "boolean", "description": "Optional: for plugin_compatibility, whether the blocking plugin is pinned (must be unpinned before it can be updated to a compatible version)." }
+            },
+            "required": ["code", "severity", "message"]
+          }
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "version": { "type": "string" },
+              "label": { "type": "string" }
+            },
+            "required": ["type", "label"]
+          }
+        },
+        "database": {
+          "type": "object",
+          "properties": {
+            "destructive": { "type": "boolean" },
+            "requires_backup": { "type": "boolean" },
+            "manual_confirmation_required": { "type": "boolean" }
+          },
+          "required": ["destructive", "requires_backup", "manual_confirmation_required"]
+        },
+        "rollback": {
+          "type": "object",
+          "properties": {
+            "automatic_before_migrations": { "type": "boolean" },
+            "automatic_after_destructive_migrations": { "type": "boolean" }
+          },
+          "required": ["automatic_before_migrations", "automatic_after_destructive_migrations"]
+        }
+      },
+      "required": [
+        "preflight_id",
+        "status",
+        "instance_id",
+        "current_version",
+        "target_version",
+        "checks",
+        "options",
+        "database",
+        "rollback"
+      ]
+    }
+  },
+  "required": ["data"]
+}

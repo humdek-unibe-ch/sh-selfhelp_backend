@@ -122,23 +122,27 @@ registry repo → create the GH Release.
 
 ```
 sh2-plugin-registry/
-├── registry.json                       (canonical pluginEntry list)
-├── plugin-registry.schema.json         (mirror of the canonical schema in sh-selfhelp_backend/docs/plugins/)
-├── plugin-manifest.schema.json         (mirror of the canonical schema in sh-selfhelp_backend/docs/plugins/)
+├── registry.json                       (unified index: release refs for core/frontend/scheduler/worker/plugins)
+├── plugin-registry.schema.json         (mirror of the unified index schema in sh-selfhelp_backend/config/schemas/registry/)
+├── plugin-manifest.schema.json         (mirror of the canonical manifest schema)
+├── trusted-keys.json                   (Ed25519 public keys)
+├── releases/
+│   ├── core/<id>-<version>.json        (signed core release documents)
+│   └── plugins/<id>-<version>.json     (signed plugin release documents)
 ├── manifests/
 │   └── <plugin-id>-<version>.json      (canonical plugin.json snapshot)
 ├── artifacts/
-│   └── <plugin-id>-<version>/          (runtime ESM + CSS, served by GH Pages)
-│       ├── plugin.esm.js
-│       └── plugin.css
+│   └── <plugin-id>-<version>.shplugin  (signed plugin archive, served by GH Pages)
 └── scripts/
     ├── sign.mjs                        (canonical payload + Ed25519 signer)
-    └── build-registry-entry.mjs        (assembles a signed pluginEntry)
+    └── build-registry-entry.mjs        (assembles a signed release document + index ref)
 ```
 
-The build-registry GitHub Pages workflow validates every push.
-Entries without a `composer`, `runtime`, `checksums`, `signature`,
-`signedPayload`, or `keyId` are rejected.
+The build-registry GitHub Pages workflow validates every push: the index
+is validated against the unified `plugin-registry.schema.json`, and each
+release document must carry its `artifacts {manifestUrl, archiveUrl,
+sha256}` plus a `security {signature, keyId, signedPayload}` block or it
+is rejected.
 
 ## Versioning
 

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scheduled-Job Runner Run-Now Response",
+  "description": "Result of a manual run-due-jobs-now invocation plus refreshed status",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "run": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string" },
+                "due_count": { "type": "integer" },
+                "attempted_count": { "type": "integer" },
+                "done_count": { "type": "integer" },
+                "failed_count": { "type": "integer" },
+                "skipped_count": { "type": "integer" },
+                "lock_acquired": { "type": "boolean" },
+                "error_message": { "type": ["string", "null"] },
+                "run_id": { "type": ["integer", "null"] }
+              },
+              "required": ["status"]
+            },
+            "status": { "type": "object" }
+          },
+          "required": ["run", "status"]
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

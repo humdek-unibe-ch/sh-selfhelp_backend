@@ -38,7 +38,6 @@ class PluginSource
 
     public const CHANNEL_STABLE = 'stable';
     public const CHANNEL_BETA = 'beta';
-    public const CHANNEL_ALPHA = 'alpha';
     public const CHANNEL_NIGHTLY = 'nightly';
 
     #[ORM\Id]
@@ -61,7 +60,7 @@ class PluginSource
     #[ORM\Column(name: 'auth_secret_env_var', type: Types::STRING, length: 100, nullable: true, options: ['comment' => 'Env var name holding the secret (never the secret itself)'])]
     private ?string $authSecretEnvVar = null;
 
-    #[ORM\Column(name: 'channel', type: Types::STRING, length: 20, options: ['default' => 'stable', 'comment' => 'stable | beta | alpha | nightly'])]
+    #[ORM\Column(name: 'channel', type: Types::STRING, length: 20, options: ['default' => 'stable', 'comment' => 'stable | beta | nightly'])]
     private string $channel = self::CHANNEL_STABLE;
 
     #[ORM\Column(name: 'trust_level', type: Types::STRING, length: 20, options: ['default' => 'untrusted', 'comment' => 'official | reviewed | untrusted'])]

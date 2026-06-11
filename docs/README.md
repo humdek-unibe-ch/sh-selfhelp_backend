@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers, technical operators, plugin authors, and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-09.
 Source of truth: Runtime backend code, migrations, JSON schemas, `AGENTS.md`, and the linked docs below.
 
 Navigation entrypoint for the backend documentation. Docs are organized by audience and purpose per the Documentation Rules in `AGENTS.md`.
@@ -17,6 +17,8 @@ Navigation entrypoint for the backend documentation. Docs are organized by audie
 
 | Need | Read |
 | --- | --- |
+| Install, update, and maintain a deployment (the big map) | [operations/platform-and-plugin-ecosystem.md](operations/platform-and-plugin-ecosystem.md) |
+| Publish a release end-to-end (tags, registry, versions, manager) | [operations/ecosystem-release-and-update-runbook.md](operations/ecosystem-release-and-update-runbook.md) |
 | Backend architecture and workflow | [developer/index.md](developer/index.md) |
 | Public and admin API usage | [reference/api/index.md](reference/api/index.md) |
 | Plugin ecosystem architecture and contracts | [plugins/architecture.md](plugins/architecture.md) |

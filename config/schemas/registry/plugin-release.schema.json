@@ -1,0 +1,68 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://selfhelp.app/schemas/registry/plugin-release.schema.json",
+    "title": "SelfHelp plugin release document",
+    "description": "Standalone signed plugin release referenced from the unified registry index (registry.json plugins[].releaseUrl). The CMS/backend follows the ref, verifies the Ed25519 signature, then downloads + checksum-verifies the .shplugin from artifacts.archiveUrl. Mirrors @selfhelp/shared PluginRelease and the Manager Zod schema. Naming: registry release docs express compatibility on two axes (compatibility.core + compatibility.pluginApi); the author-facing plugin.json manifest keeps compatibility.selfhelp + pluginApiVersion.",
+    "type": "object",
+    "required": ["kind", "id", "version", "channel", "official", "compatibility", "artifacts", "security"],
+    "additionalProperties": true,
+    "properties": {
+        "kind": {"const": "selfhelp-plugin-release"},
+        "id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "channel": {"type": "string", "enum": ["stable", "beta", "nightly", "test"]},
+        "official": {"type": "boolean"},
+        "compatibility": {
+            "type": "object",
+            "required": ["core", "pluginApi"],
+            "additionalProperties": false,
+            "properties": {
+                "core": {"type": "string", "minLength": 1, "description": "Semver range of SelfHelp core versions this plugin runs on."},
+                "pluginApi": {"type": "string", "minLength": 1, "description": "Semver range of host plugin-API versions this plugin runs on."}
+            }
+        },
+        "dependencies": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id", "range"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "id": {"type": "string", "minLength": 1},
+                            "range": {"type": "string", "minLength": 1}
+                        }
+                    }
+                }
+            }
+        },
+        "artifacts": {
+            "type": "object",
+            "required": ["manifestUrl", "archiveUrl", "sha256"],
+            "additionalProperties": false,
+            "properties": {
+                "manifestUrl": {"type": "string", "minLength": 1},
+                "archiveUrl": {"type": "string", "minLength": 1, "description": "URL of the signed .shplugin artifact."},
+                "sha256": {"type": "string", "pattern": "^(sha256:)?[A-Fa-f0-9]{64}$"}
+            }
+        },
+        "security": {"$ref": "#/$defs/signatureBlock"},
+        "blocked": {"type": "boolean"}
+    },
+    "$defs": {
+        "signatureBlock": {
+            "type": "object",
+            "required": ["signature", "keyId"],
+            "additionalProperties": false,
+            "properties": {
+                "signature": {"type": "string", "minLength": 1, "description": "Base64 detached Ed25519 signature."},
+                "keyId": {"type": "string", "minLength": 1},
+                "signedPayload": {"type": "string"},
+                "signedPayloadSha256": {"type": "string"}
+            }
+        }
+    }
+}
