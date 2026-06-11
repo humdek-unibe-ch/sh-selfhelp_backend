@@ -114,6 +114,25 @@ jobs:
             type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=sha
 
+      # Boot-smoke gate BEFORE anything is pushed: the image must boot the
+      # Symfony kernel with no host env file or external service available.
+      # Regression guard for the missing-/app/.env class of bug, where every
+      # published image 500'd on each request and fataled on every console
+      # command because the CI build context has no git-ignored `.env`.
+      - name: Build image for boot smoke
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: ${{ matrix.target }}
+          load: true
+          tags: ${{ matrix.image }}:boot-smoke
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+      - name: Boot smoke (kernel must boot without host env)
+        run: docker run --rm ${{ matrix.image }}:boot-smoke php bin/console about
+
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6

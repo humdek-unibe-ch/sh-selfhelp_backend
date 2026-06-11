@@ -54,6 +54,12 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-scripts --prefer-dist --no-progress --no-autoloader
 
 COPY . .
+# Symfony's runtime boots a dotenv file on every request/command, so the image
+# MUST ship /app/.env. The build context never contains one (`.env` is
+# git-ignored and `.dockerignore` excludes all local `.env*` files to keep
+# developer secrets out of images), so bake the committed, secret-free
+# defaults file instead. Real container env vars always override it.
+COPY docker/.env.image-defaults ./.env
 RUN composer dump-autoload --no-dev --classmap-authoritative \
     && mkdir -p var/cache var/log \
     && chown -R www-data:www-data var

@@ -3,8 +3,8 @@
 Audience: Operators, release engineers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend production images.
-Last verified: 2026-06-08.
-Source of truth: `docker/Dockerfile`, `.github/workflows/docker-release.yml`, `docker/license-policy.json`, `scripts/check-license-policy.php`.
+Last verified: 2026-06-11.
+Source of truth: `docker/Dockerfile`, `docker/.env.prod`, `.github/workflows/docker-release.yml`, `docker/license-policy.json`, `scripts/check-license-policy.php`.
 
 The backend ships three production Docker images that the unified registry's core
 release record points at. They are built from a single multi-stage Dockerfile and
@@ -36,10 +36,27 @@ docker build --target scheduler -f docker/Dockerfile -t selfhelp-scheduler .
 ```
 
 Runtime configuration (`APP_SECRET`, `DATABASE_URL`, `REDIS_URL`, `MERCURE_*`,
-`MAILER_DSN`, JWT keys, `MESSENGER_PLUGIN_OPS_DSN`, ...) is provided at container
-start by the Manager-generated compose stack, never baked into the image. The
-`.dockerignore` keeps host `vendor/`, caches, tests, `.env.local`, and JWT keys out
-of the build context.
+JWT keys, `MESSENGER_PLUGIN_OPS_DSN`, ...) is provided at container start by the
+Manager-generated compose stack, never baked into the image. The `.dockerignore`
+keeps host `vendor/`, caches, tests, every local `.env*` file, and JWT keys out of
+the build context, so a local build is byte-identical to a CI build and can never
+leak developer secrets into an image.
+
+## Baked dotenv defaults (`docker/.env.prod`)
+
+Symfony's runtime boots a dotenv file on every request and console command, so the
+image must always contain `/app/.env` — without it the container fatals with a
+`PathException` before serving anything (every request 500s, every `bin/console`
+invocation dies). Because the repository git-ignores `.env`, the Dockerfile bakes
+the committed, secret-free `docker/.env.prod` into the image as `/app/.env`.
+
+That file carries only safe defaults for env vars that have no `default:` fallback
+in `config/` and are not injected by the Manager: `JWT_TOKEN_TTL`,
+`JWT_REFRESH_TOKEN_TTL`, the JWT key *paths*, a localhost-only
+`CORS_ALLOW_ORIGIN`, and a Mailpit `MAILER_DSN` (production overrides it with a
+real SMTP DSN). Real container env vars always take precedence, so the Manager's
+instance `.env` + `secrets/secrets.env` stay authoritative. Never add a secret or
+an instance-specific value to `docker/.env.prod`.
 
 ## Release workflow
 
@@ -50,11 +67,15 @@ of the build context.
    --format=json`, and enforces `docker/license-policy.json` via
    `scripts/check-license-policy.php`. Blocked/unknown licenses fail the build
    unless `vars.ALLOW_LICENSE_OVERRIDE=1` (explicit reviewer/legal approval).
-2. `images` job (matrix over the three targets) - builds + pushes to GHCR, then for
-   each image: generates an SPDX SBOM (`anchore/sbom-action`), scans it
-   (`aquasecurity/trivy-action`, reported as SARIF), and signs the pushed digest
-   with cosign. Signing uses `secrets.COSIGN_PRIVATE_KEY` when present, otherwise
-   keyless via GitHub OIDC (`id-token: write`).
+2. `images` job (matrix over the three targets) - first builds the image locally
+   and runs the **boot smoke** (`docker run --rm <image> php bin/console about`):
+   the kernel must boot with no host env file or external service available. A
+   broken image (for example missing `/app/.env`) is rejected before anything is
+   pushed. Then builds + pushes to GHCR, and for each image: generates an SPDX
+   SBOM (`anchore/sbom-action`), scans it (`aquasecurity/trivy-action`, reported
+   as SARIF), and signs the pushed digest with cosign. Signing uses
+   `secrets.COSIGN_PRIVATE_KEY` when present, otherwise keyless via GitHub OIDC
+   (`id-token: write`).
 3. Each image's digest is written to the job summary.
 
 ## License policy

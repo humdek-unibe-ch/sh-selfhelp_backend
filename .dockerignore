@@ -18,9 +18,11 @@ tests
 docker/test
 docker-compose*.yml
 
-# Secrets / local env (never copy into an image)
-.env.local
-.env.*.local
+# Secrets / local env (never copy into an image). The image ships its own
+# deterministic, secret-free /app/.env baked from docker/.env.prod, so no
+# host env file may ever leak into a build (local builds == CI builds).
+.env
+.env.*
 *.pem
 config/jwt
 selfhelp.plugins.lock.json
