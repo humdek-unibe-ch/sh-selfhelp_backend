@@ -8,12 +8,14 @@
 
 namespace App\Service\CMS;
 
+use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\Core\BaseService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Service\Core\UserContextAwareService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 
@@ -27,7 +29,8 @@ class FormValidationService extends BaseService
     public function __construct(
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly EntityManagerInterface $entityManager
     ) {
     }
 
@@ -116,8 +119,50 @@ class FormValidationService extends BaseService
         return [
             'page' => $page,
             'section' => $section,
-            'validated' => true
+            'validated' => true,
+            'own_entries_only' => $this->readSectionBoolField($sectionId, 'own_entries_only', true),
+            'data_table_id' => $this->readSectionIntField($sectionId, 'data_table'),
         ];
+    }
+
+    private function readSectionIntField(int $sectionId, string $fieldName): ?int
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('t.content')
+            ->from(SectionsFieldsTranslation::class, 't')
+            ->join('t.field', 'f')
+            ->where('t.section = :sectionId')
+            ->andWhere('f.name = :fieldName')
+            ->setParameter('sectionId', $sectionId)
+            ->setParameter('fieldName', $fieldName)
+            ->setMaxResults(1);
+
+        /** @var array{content: mixed}|null $result */
+        $result = $qb->getQuery()->getOneOrNullResult();
+        if ($result === null || ($result['content'] ?? '') === '') {
+            return null;
+        }
+        return is_numeric($result['content']) ? (int) $result['content'] : null;
+    }
+
+    private function readSectionBoolField(int $sectionId, string $fieldName, bool $default): bool
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('t.content')
+            ->from(SectionsFieldsTranslation::class, 't')
+            ->join('t.field', 'f')
+            ->where('t.section = :sectionId')
+            ->andWhere('f.name = :fieldName')
+            ->setParameter('sectionId', $sectionId)
+            ->setParameter('fieldName', $fieldName)
+            ->setMaxResults(1);
+
+        /** @var array{content: mixed}|null $result */
+        $result = $qb->getQuery()->getOneOrNullResult();
+        if ($result === null) {
+            return $default;
+        }
+        return ($result['content'] ?? '') === '1';
     }
 
     /**

@@ -13,6 +13,7 @@ use App\Service\CMS\DataService;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\Core\VariableResolverService;
+use App\Service\Security\DataAccessSecurityService;
 
 /**
  * Utility service for section-related operations
@@ -24,7 +25,8 @@ class SectionUtilityService
         private readonly DataService $dataService,
         private readonly StylesFieldRepository $stylesFieldRepository,
         private readonly UserContextService $userContextService,
-        private readonly VariableResolverService $variableResolverService
+        private readonly VariableResolverService $variableResolverService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService
     ) {
     }
 
@@ -710,6 +712,44 @@ class SectionUtilityService
         // Handle form record data
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
             $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
+        }
+
+        // Handle showUserInput data: fetch rows from the configured data_table
+        if ($section['style_name'] == StyleNames::STYLE_SHOW_USER_INPUT) {
+            $dataTableId = is_array($section['data_table'] ?? null)
+                ? (int) $this->asString($section['data_table']['content'] ?? '')
+                : 0;
+            $ownEntriesOnly = is_array($section['own_entries_only'] ?? null)
+                ? ($section['own_entries_only']['content'] === '1')
+                : true;
+
+            if ($dataTableId > 0) {
+                $section['entries'] = $this->dataService->getData(
+                    $dataTableId,
+                    '',
+                    $ownEntriesOnly,
+                    null,
+                    false,
+                    true,
+                    $languageId
+                );
+
+                // When own_entries_only=false, hide the delete button for users
+                // who lack DELETE permission on the data table.
+                if (!$ownEntriesOnly && is_array($section['delete_entry'] ?? null)) {
+                    $currentUser = $this->userContextService->getCurrentUser();
+                    $userId = $currentUser ? (int) $currentUser->getId() : 0;
+                    $canDelete = $userId > 0 && $this->dataAccessSecurityService->hasPermission(
+                        $userId,
+                        'data_table',
+                        $dataTableId,
+                        DataAccessSecurityService::PERMISSION_DELETE
+                    );
+                    if (!$canDelete) {
+                        $section['delete_entry']['content'] = '0';
+                    }
+                }
+            }
         }
 
         // Get variable values (flat array from VariableResolverService)

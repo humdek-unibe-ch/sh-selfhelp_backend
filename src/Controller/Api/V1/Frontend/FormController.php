@@ -16,6 +16,7 @@ use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Auth\UserContextService;
+use App\Service\Security\DataAccessSecurityService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -35,7 +36,8 @@ class FormController extends AbstractController
         private readonly FormFileUploadService $formFileUploadService,
         private readonly ApiResponseFormatter $apiResponseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly UserContextService $userContextService
+        private readonly UserContextService $userContextService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService
     ) {}
 
     /**
@@ -484,10 +486,30 @@ class FormController extends AbstractController
             $sectionId = $this->asIntField($requestData, 'section_id');
 
             // Validate ACL delete access and that section belongs to page and is correct type
-            $this->formValidationService->validateFormDeletion($pageId, $sectionId);
+            $validation = $this->formValidationService->validateFormDeletion($pageId, $sectionId);
+            $ownEntriesOnly = (bool) ($validation['own_entries_only'] ?? true);
+
+            // When own_entries_only=false, require DELETE permission on the data table.
+            // Without it the user cannot delete any record at all.
+            if (!$ownEntriesOnly) {
+                $userId = (int) $currentUser->getId();
+                $rawDtId = $validation['data_table_id'] ?? null;
+                $dataTableId = is_numeric($rawDtId) ? (int) $rawDtId : 0;
+                if ($dataTableId === 0 || !$this->dataAccessSecurityService->hasPermission(
+                    $userId,
+                    'data_table',
+                    $dataTableId,
+                    DataAccessSecurityService::PERMISSION_DELETE
+                )) {
+                    return $this->apiResponseFormatter->formatError(
+                        'You do not have permission to delete entries.',
+                        Response::HTTP_FORBIDDEN
+                    );
+                }
+            }
 
             // Delete form data
-            $success = $this->dataService->deleteData($recordId, true);
+            $success = $this->dataService->deleteData($recordId, $ownEntriesOnly);
 
             if (!$success) {
                 return $this->apiResponseFormatter->formatError(
