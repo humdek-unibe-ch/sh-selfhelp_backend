@@ -1,3 +1,10 @@
+# v0.1.3
+
+## Development Environment
+
+- **Pinned Docker image versions**: All third-party Docker images now use specific version tags instead of `latest` for reproducibility. Mailpit pinned to v1.30.1, Redis to 7-alpine, Mercure to v0.16.
+- **Windows line ending fix**: Added `.gitattributes` to enforce LF line endings for shell scripts (`*.sh`), preventing Docker container execution failures on Windows due to CRLF line endings.
+
 # v0.1.2
 
 ## Release Automation
