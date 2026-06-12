@@ -1,3 +1,13 @@
+# v0.1.4
+
+## System Updates
+
+- **Manager-loop visibility**: a CMS-requested update that nobody picks up is no longer a silent black hole. The backend records when an authenticated SelfHelp Manager last polled the manager endpoints (cache key `selfhelp_manager_last_seen_at`), `GET /admin/system/health` gains a `manager_loop` component (`ok` / `not_configured` / `down` / `degraded`), and `GET /admin/system/update/status` gains a `manager` block (`configured`, `last_seen_at`, `requested_stale`) so the UI can warn when an operation sits unclaimed in `requested`.
+
+## Plugins
+
+- **Open-ended core compatibility policy**: plugin manifests should declare a minimum core version without an upper bound (`compatibility.selfhelp: ">=0.1.0"`); `pluginApiVersion` is the breakage contract and registry `blocked` flags/advisories handle retroactive breakage. Documented in `docs/developer/26-plugin-compatibility-rules.md` and the plugin developer guide.
+
 # v0.1.3
 
 ## Development Environment
