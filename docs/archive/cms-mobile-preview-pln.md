@@ -18,10 +18,10 @@ todos:
     content: "Frontend: MobilePreviewPanel creates a preview session through the protected admin/BFF flow and embeds /mobile-preview without exposing CMS/admin JWTs"
     status: pending
   - id: manager-compose
-    content: "sh-manager: add mobile-preview compose service, Traefik /mobile-preview routing, internal backend URL/env, health checks, update/rollback/clone/e2e coverage"
+    content: "sh-manager: add mobile-preview compose service, Traefik /mobile-preview routing, internal backend URL/env, health checks, plugin/mobile compatibility blocking rules, update/rollback/clone/e2e coverage"
     status: pending
   - id: registry-metadata
-    content: "Registry: add mobile-preview image/artifact metadata, compatibility rules, signatures/checksums, and manager consumption path"
+    content: "Registry: add mobile-preview image/artifact metadata, plugin mobile compatibility rules, signatures/checksums, and manager consumption path"
     status: pending
   - id: ci-release
     content: "Mobile/registry/manager CI: build and publish versioned mobile-preview image/artifact, verify export assets and proxy health, record version provenance"
@@ -151,11 +151,30 @@ Security impact: this adds a new authentication path. It must be reviewed as aut
 - Add health checks and include the service in install, update, rollback, clone, backup/restore assumptions, and e2e deployment validation.
 - Ensure service updates can be rolled back independently according to the manager's existing versioning model.
 - Keep `/cms-api` private in the generated deployment.
+- Enforce plugin/mobile compatibility before install and update:
+  - block installation or update when an enabled plugin requires a mobile renderer version that the selected mobile/mobile-preview artifact does not support;
+  - allow warning-only compatibility issues only when the plugin marks the mobile surface as optional or degraded;
+  - require an explicit manual override for non-blocking warnings if the manager already supports override flows;
+  - show the incompatible plugin id, installed plugin version, required mobile range, and selected mobile artifact version in the manager output.
 
 ## Registry Work
 
 - Add mobile-preview artifact/image metadata to the registry model consumed by sh-manager.
 - Include exact version, digest/checksum, compatibility with backend/frontend versions, and signature/provenance metadata if the registry already supports it.
+- Treat plugin mobile support as a single compatibility contract against the mobile renderer version. The mobile preview artifact is built from the same mobile tag and must inherit the same plugin compatibility decision instead of using a separate `mobilePreview` range.
+- Extend plugin manifest/registry metadata with mobile compatibility, for example:
+
+```json
+{
+  "compatibility": {
+    "backend": ">=0.8 <1.0",
+    "frontend": ">=0.8 <1.0",
+    "mobile": ">=0.5 <0.7"
+  }
+}
+```
+
+- If a plugin has no mobile renderer support, make that explicit in metadata rather than omitting the field. The manager and CMS preview UI must distinguish unsupported, optional/degraded, and fully supported mobile surfaces.
 - Document the release order:
   1. tag mobile and publish the mobile-preview image/artifact;
   2. update registry metadata;
@@ -192,6 +211,8 @@ Security impact: this adds a new authentication path. It must be reviewed as aut
   - generated compose includes `mobile-preview`;
   - only `/mobile-preview` is public;
   - `/cms-api` remains private;
+  - incompatible enabled plugins block mobile/mobile-preview install or update with a clear manager error;
+  - optional/degraded mobile plugin support produces a clear manager warning and CMS preview state;
   - mobile preview can fetch content through the internal proxy;
   - rollback restores the prior mobile-preview version.
 
@@ -202,6 +223,7 @@ Security impact: this adds a new authentication path. It must be reviewed as aut
 - Frontend docs: admin preview panel behavior and unavailable-state expectations.
 - Manager docs: compose service, route, health check, update, rollback, clone, and troubleshooting.
 - Registry docs: mobile-preview metadata and release process.
+- Plugin docs: mobile compatibility metadata, unsupported/optional/full support states, and manager install/update behavior.
 - CHANGELOG entries in every changed repo.
 
 ## Risks And Mitigations
@@ -210,5 +232,6 @@ Security impact: this adds a new authentication path. It must be reviewed as aut
 - Proxy accidentally exposes admin/write APIs: use an explicit allowlist and tests that rejected routes stay rejected.
 - Preview session leaks through browser history: the URL contains only a short-lived one-time code that is invalid after exchange.
 - Version skew between frontend panel and mobile-preview service: expose `version.json` and compatibility metadata in the registry/manager flow.
+- Plugin version skew with the mobile renderer: require plugin manifests to declare mobile compatibility, and make sh-manager block incompatible install/update paths before deployment.
 - Local dev complexity: keep `backendUrl` in dev builds only and document the exact workflow.
 - Mercure realtime may still be unavailable in embedded deployments: document graceful degradation and provide a reload control.
