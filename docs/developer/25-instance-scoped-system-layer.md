@@ -143,8 +143,8 @@ not run it — the CMS never controls Docker.
 So that "requested but nothing happens" is diagnosable from the CMS:
 
 - `SystemUpdateService` records a **manager last-seen** timestamp (cache key
-  `system_manager_last_seen`) on every authenticated manager call (claim or
-  status write-back).
+  `selfhelp_manager_last_seen_at`) on every authenticated manager call (claim
+  or status write-back).
 - `GET /admin/system/health` includes a `manager_loop` component:
   `not_configured` (token empty — informational, CLI-managed instances still
   work), `down` (configured but no manager has ever polled), `degraded` (last
