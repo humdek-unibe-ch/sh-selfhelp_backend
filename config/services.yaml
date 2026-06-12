@@ -327,6 +327,12 @@ services:
             $mailerDsn: '%selfhelp.health.mailer_dsn%'
             $messengerTransportDsn: '%selfhelp.health.messenger_dsn%'
 
+    # Instance-scoped update orchestration. The manager token is only used to
+    # report whether the CMS<->Manager loop is enabled (never echoed back).
+    App\Service\System\SystemUpdateService:
+        arguments:
+            $managerToken: '%selfhelp.manager_token%'
+
     # Manager-facing update-loop controller. Public routes (no permission rows);
     # access is gated by the per-instance manager bearer token verified
     # in-controller.

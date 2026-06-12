@@ -21,6 +21,7 @@ use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -62,6 +63,20 @@ class SystemUpdateService
      */
     public const STATUS_IDLE = 'idle';
 
+    /**
+     * Cache key holding the ISO-8601 timestamp of the manager's last
+     * authenticated call to the manager-loop endpoints (claim / status
+     * write-back). Lets the health UI distinguish "manager polls this
+     * instance" from "requests fall into a black hole".
+     */
+    private const MANAGER_LAST_SEEN_CACHE_KEY = 'selfhelp_manager_last_seen_at';
+
+    /**
+     * An operation still in `requested` after this many seconds means no
+     * manager has picked it up (the manager poller claims within ~15s).
+     */
+    private const REQUESTED_STALE_AFTER_SECONDS = 120;
+
     public function __construct(
         private readonly SystemInstanceService $instance,
         private readonly SystemUpdateOperationRepository $operations,
@@ -70,6 +85,9 @@ class SystemUpdateService
         private readonly UserContextService $userContext,
         private readonly EntityManagerInterface $entityManager,
         private readonly LoggerInterface $logger,
+        private readonly CacheItemPoolInterface $cache,
+        private readonly string $managerToken = '',
+        private readonly ?\DateTimeImmutable $now = null,
     ) {
     }
 
@@ -328,7 +346,7 @@ class SystemUpdateService
         $operation = $this->operations->findLatestForInstance($instanceId);
 
         if ($operation === null) {
-            $now = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format(\DateTimeInterface::ATOM);
+            $now = $this->utcNow()->format(\DateTimeInterface::ATOM);
 
             return [
                 'instance_id' => $instanceId,
@@ -340,6 +358,7 @@ class SystemUpdateService
                 'requested_at' => $now,
                 'updated_at' => $now,
                 'message' => sprintf('No update has been requested for this instance; it is running version %s.', $this->instance->getCmsVersion()),
+                'manager' => $this->managerStatus(null),
             ];
         }
 
@@ -353,7 +372,78 @@ class SystemUpdateService
             'requested_at' => $operation->getRequestedAt()->format(\DateTimeInterface::ATOM),
             'updated_at' => $operation->getUpdatedAt()->format(\DateTimeInterface::ATOM),
             'message' => $operation->getMessage(),
+            'manager' => $this->managerStatus($operation),
         ];
+    }
+
+    /**
+     * Record that an authenticated manager touched the manager-loop endpoints
+     * just now. Called from the manager-facing service methods only (the
+     * controller verifies the bearer token before they run).
+     */
+    private function recordManagerSeen(): void
+    {
+        try {
+            $item = $this->cache->getItem(self::MANAGER_LAST_SEEN_CACHE_KEY);
+            $item->set($this->utcNow()->format(\DateTimeInterface::ATOM));
+            $this->cache->save($item);
+        } catch (\Throwable) {
+            // A cache hiccup must never fail the manager loop itself.
+        }
+    }
+
+    /**
+     * Manager-loop visibility facts for the health/status surfaces:
+     * whether a manager token is configured at all, and when an authenticated
+     * manager last polled this instance.
+     *
+     * @return array{configured: bool, last_seen_at: string|null}
+     */
+    public function getManagerLoopInfo(): array
+    {
+        $lastSeen = null;
+        try {
+            $stored = $this->cache->getItem(self::MANAGER_LAST_SEEN_CACHE_KEY)->get();
+            if (is_string($stored) && $stored !== '') {
+                $lastSeen = $stored;
+            }
+        } catch (\Throwable) {
+            // Report "never seen" on cache failure rather than erroring.
+        }
+
+        return [
+            'configured' => $this->managerToken !== '',
+            'last_seen_at' => $lastSeen,
+        ];
+    }
+
+    /**
+     * Manager block for {@see getStatus()}: loop facts plus whether the
+     * current operation sits unclaimed in `requested` for too long — the
+     * "I requested an update and nothing happens" signal.
+     *
+     * @return array{configured: bool, last_seen_at: string|null, requested_stale: bool}
+     */
+    private function managerStatus(?SystemUpdateOperation $operation): array
+    {
+        $info = $this->getManagerLoopInfo();
+
+        $stale = false;
+        if ($operation !== null && $operation->getStatus() === SystemUpdateOperation::STATUS_REQUESTED) {
+            $age = $this->utcNow()->getTimestamp() - $operation->getRequestedAt()->getTimestamp();
+            $stale = $age > self::REQUESTED_STALE_AFTER_SECONDS;
+        }
+
+        return [
+            'configured' => $info['configured'],
+            'last_seen_at' => $info['last_seen_at'],
+            'requested_stale' => $stale,
+        ];
+    }
+
+    private function utcNow(): \DateTimeImmutable
+    {
+        return $this->now ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
 
     /**
@@ -365,6 +455,8 @@ class SystemUpdateService
      */
     public function claimPendingOperation(): ?array
     {
+        $this->recordManagerSeen();
+
         $instanceId = $this->instance->getInstanceId();
         $operation = $this->operations->findLatestClaimableForInstance($instanceId);
         if ($operation === null) {
@@ -409,6 +501,8 @@ class SystemUpdateService
         ?array $steps = null,
         ?string $message = null,
     ): array {
+        $this->recordManagerSeen();
+
         if (!SystemUpdateOperation::isManagerWritableStatus($status)) {
             throw new ServiceException(
                 sprintf('Status "%s" is not a valid manager-writable operation status.', $status),

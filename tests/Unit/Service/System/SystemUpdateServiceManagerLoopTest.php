@@ -23,7 +23,9 @@ use App\Service\System\SystemRegistryReader;
 use App\Service\System\SystemUpdateService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -39,6 +41,9 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
     private function makeService(
         SystemUpdateOperationRepository $operations,
         ?SystemRegistryReader $registry = null,
+        ?CacheItemPoolInterface $cache = null,
+        string $managerToken = 'qa-manager-token',
+        ?\DateTimeImmutable $now = null,
     ): SystemUpdateService {
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-managerloop-no-maint', false);
         $instance = new SystemInstanceService(self::INSTANCE, '0.1.0', '0.1.0', '0.1.0', 'source', false, $maintenance);
@@ -59,6 +64,9 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
             $userContext,
             $this->createStub(EntityManagerInterface::class),
             new NullLogger(),
+            $cache ?? new ArrayAdapter(),
+            $managerToken,
+            $now,
         );
     }
 
@@ -187,6 +195,83 @@ final class SystemUpdateServiceManagerLoopTest extends TestCase
         self::assertSame('op_42', $dto['approval_token']);
         self::assertTrue($dto['accepted_migration_risk']);
         self::assertTrue($dto['destructive_migration']);
+    }
+
+    public function testManagerLoopInfoReportsUnconfiguredWhenTokenIsEmpty(): void
+    {
+        $service = $this->makeService(
+            $this->createStub(SystemUpdateOperationRepository::class),
+            managerToken: '',
+        );
+
+        $info = $service->getManagerLoopInfo();
+
+        self::assertFalse($info['configured']);
+        self::assertNull($info['last_seen_at']);
+    }
+
+    public function testClaimAndStatusWriteBackRecordManagerLastSeen(): void
+    {
+        $cache = new ArrayAdapter();
+        $operations = $this->createStub(SystemUpdateOperationRepository::class);
+        $operations->method('findLatestClaimableForInstance')->willReturn(null);
+
+        $service = $this->makeService($operations, cache: $cache);
+        $before = $service->getManagerLoopInfo();
+        self::assertNull($before['last_seen_at']);
+
+        $service->claimPendingOperation();
+
+        $after = $service->getManagerLoopInfo();
+        self::assertIsString($after['last_seen_at']);
+        self::assertNotSame('', $after['last_seen_at']);
+        self::assertTrue($after['configured']);
+    }
+
+    public function testStatusFlagsAStaleRequestedOperationNobodyClaimed(): void
+    {
+        // requestedAt = real now (entity constructor); the service clock runs
+        // 10 minutes later, far beyond the 2-minute staleness budget.
+        $operation = new SystemUpdateOperation(self::INSTANCE, 'op_stale', '0.1.1');
+        $operations = $this->createStub(SystemUpdateOperationRepository::class);
+        $operations->method('findLatestForInstance')->willReturn($operation);
+
+        $service = $this->makeService(
+            $operations,
+            now: (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify('+10 minutes'),
+        );
+
+        $status = $service->getStatus();
+
+        self::assertSame('requested', $status['status']);
+        self::assertIsArray($status['manager']);
+        self::assertTrue($status['manager']['requested_stale']);
+        self::assertTrue($status['manager']['configured']);
+    }
+
+    public function testStatusDoesNotFlagAFreshRequestedOperation(): void
+    {
+        $operation = new SystemUpdateOperation(self::INSTANCE, 'op_fresh', '0.1.1');
+        $operations = $this->createStub(SystemUpdateOperationRepository::class);
+        $operations->method('findLatestForInstance')->willReturn($operation);
+
+        $status = $this->makeService($operations)->getStatus();
+
+        self::assertIsArray($status['manager']);
+        self::assertFalse($status['manager']['requested_stale']);
+    }
+
+    public function testIdleStatusCarriesTheManagerBlockForTheUi(): void
+    {
+        $operations = $this->createStub(SystemUpdateOperationRepository::class);
+        $operations->method('findLatestForInstance')->willReturn(null);
+
+        $status = $this->makeService($operations, managerToken: '')->getStatus();
+
+        self::assertSame(SystemUpdateService::STATUS_IDLE, $status['status']);
+        self::assertIsArray($status['manager']);
+        self::assertFalse($status['manager']['configured']);
+        self::assertFalse($status['manager']['requested_stale']);
     }
 
     /**
