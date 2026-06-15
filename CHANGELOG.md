@@ -1,3 +1,13 @@
+# v0.1.7
+
+## Plugins
+
+- **Plugin purge no longer returns a 500** (`Class "Symfony\Component\Process\Process" not found`): `symfony/process` was only a transitive **dev** dependency, so a production image built with `--no-dev` had no `Process` class. The synchronous purge / remove-package path (`PackageManagerRunner`, which runs in the web request rather than the Messenger worker) therefore fatal-errored on `POST /admin/plugins/{plugin}/purge`. `symfony/process` is now a direct production `require`, and a regression test asserts it stays in both the production `require` block and the locked `packages` section so the purge/remove flow keeps working on the shipped image.
+
+## System Maintenance
+
+- **Public maintenance page**: a new seeded, open-access `maintenance` CMS page is shown to visitors while the instance is in maintenance, instead of a bare `503`. Its content renders the operator's live note through a new `{{system.maintenance_message}}` interpolation variable (resolved from `MaintenanceModeService`, with a friendly default when the note is blank), so changing the maintenance message from the admin panel updates the page with no content edit. The maintenance `503` gate now exempts the `maintenance` page's own content fetch and the `languages` list the render needs, so the styled page is reachable during the outage. The frontend keeps a hardcoded fallback for when the seeded page is missing or unreachable.
+
 # v0.1.6
 
 ## System Health
