@@ -112,6 +112,22 @@ class InterpolationServiceTest extends TestCase
     }
 
     /**
+     * Guards the exact token seeded into the maintenance page's alert section
+     * (`Version20260615150000`): the operator's live note, exposed by
+     * VariableResolverService under the `system` namespace, must replace
+     * `{{system.maintenance_message}}` at render time.
+     */
+    public function testMaintenanceMessageTokenResolvesToOperatorNote(): void
+    {
+        $content = '{{system.maintenance_message}}';
+        $data = ['system' => ['maintenance_message' => 'Back online at 14:00 UTC.']];
+
+        $result = $this->interpolationService->interpolate($content, $data);
+
+        $this->assertSame('Back online at 14:00 UTC.', $result);
+    }
+
+    /**
      * Test interpolation with multiple data arrays (merging behavior)
      */
     public function testMultipleDataArraysInterpolation(): void
