@@ -13,6 +13,8 @@
         "operation_id": { "type": "string" },
         "status": { "type": "string", "enum": ["idle", "requested", "approved", "accepted", "running", "preflight_running", "preflight_failed", "backup_running", "update_running", "migration_running", "health_check_running", "succeeded", "failed", "rollback_running", "rolled_back", "rollback_failed", "rejected"] },
         "target_version": { "type": "string" },
+        "kind": { "type": "string", "enum": ["core", "frontend"], "description": "What the latest operation updates: core (default) or a stateless frontend-only swap." },
+        "target_frontend_version": { "type": ["string", "null"], "description": "The frontend version a 'frontend'-kind operation targets; null for a core/idle status." },
         "progress_percent": { "type": "integer", "minimum": 0, "maximum": 100 },
         "steps": {
           "type": "array",

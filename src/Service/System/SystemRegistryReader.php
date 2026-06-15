@@ -95,6 +95,37 @@ class SystemRegistryReader
     }
 
     /**
+     * The frontend release refs published in the registry index (newest first),
+     * or null when the registry is unreachable. Feeds the CMS frontend-only
+     * update version picker; only refs are read here — the frontend ships
+     * independently of the core, so a newer compatible frontend can exist for an
+     * instance already on the newest core. The SelfHelp Manager remains the
+     * trusted verifier that re-resolves compatibility + verifies the signed
+     * Docker release before pulling.
+     *
+     * @return list<array{version: string, channel: string, blocked: bool}>|null
+     */
+    public function listFrontendReleases(): ?array
+    {
+        try {
+            $index = $this->client->fetchIndex($this->registryUrl);
+
+            $releases = [];
+            foreach ($index->frontendRefsSorted() as $ref) {
+                $releases[] = ['version' => $ref->version, 'channel' => $ref->channel, 'blocked' => $ref->blocked];
+            }
+
+            return $releases;
+        } catch (\Throwable $e) {
+            $this->logger->info('System registry frontend-release listing failed; releases degrade to offline mode.', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
      * Whether the official registry index is currently reachable + parseable.
      * Used by the health endpoint to report registry availability without
      * blocking the instance.

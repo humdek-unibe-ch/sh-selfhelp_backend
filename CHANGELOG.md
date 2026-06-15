@@ -1,3 +1,9 @@
+# v0.1.5
+
+## System Updates
+
+- **Frontend-only updates**: the frontend ships independently of the core, so an instance already on the newest core can now move to a newer compatible frontend without a full-stack update. New admin endpoints (guarded by the existing `admin.system.read` / `admin.system.update` permissions): `GET /admin/system/update/frontend/releases` (registry-published frontend versions, newest first; fails soft to `available: false` offline), `GET /admin/system/update/frontend/preflight?target=…` (a lightweight, stateless verdict — no destructive-migration/backup checks; downgrade + invalid-version are the only blocks, and an `unknown` installed frontend never falsely blocks), and `POST /admin/system/update/frontend/request` (records a `kind = frontend` operation; the request body omits `accepted_migration_risk` — a frontend swap is stateless). `system_update_operations` gains `kind` (`core` default / `frontend`) and `target_frontend_version`; `GET /admin/system/update/status` and the manager-claim payload now carry both fields. The SelfHelp Manager re-resolves the signed frontend release and performs the authoritative compatibility + signature check before swapping only the frontend container (rolling it back on a failed health check).
+
 # v0.1.4
 
 ## System Updates

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Frontend Update Request",
+  "description": "Request a FRONTEND-only update for the CURRENT instance. The frontend ships independently of the core and is stateless, so there is no migration-risk field. Intentionally has NO instance_id: the backend derives and verifies the instance identity server-side, so the browser can never target a different instance. additionalProperties:false rejects any instance_id (or other unknown field).",
+  "type": "object",
+  "properties": {
+    "target_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Frontend version to update this instance to."
+    },
+    "preflight_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Id of the frontend preflight the operator reviewed. The backend recomputes the preflight server-side regardless."
+    }
+  },
+  "required": [
+    "target_version",
+    "preflight_id"
+  ],
+  "additionalProperties": false
+}

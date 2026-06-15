@@ -144,6 +144,38 @@ final class SystemUpdateManagerLoopRoundTripTest extends QaKernelTestCase
         }
     }
 
+    public function testFrontendRequestThroughClaimCarriesTheFrontendKindRoundTrip(): void
+    {
+        // The frontend ships independently of the core: an instance can request a
+        // frontend-only update. It must persist with kind=frontend + the frontend
+        // target, and the claim DTO the manager reads must carry both so it takes
+        // the lightweight (stateless) path. A far-future target keeps the
+        // recomputed preflight non-blocked offline.
+        $requested = $this->updates->requestFrontendUpdate([
+            'target_version' => self::TARGET,
+            'preflight_id' => 'pff_roundtrip',
+        ]);
+        $operationId = $requested['operation_id'];
+        self::assertNotSame('', $operationId);
+        self::assertSame('frontend', $requested['kind']);
+        self::assertSame(self::TARGET, $requested['target_frontend_version']);
+        self::assertSame(SystemUpdateOperation::STATUS_REQUESTED, $requested['status']);
+
+        $claim = $this->updates->claimPendingOperation();
+        self::assertNotNull($claim, 'The just-requested frontend operation must be claimable.');
+        self::assertSame($operationId, $claim['operation_id']);
+        self::assertSame('frontend', $claim['kind']);
+        self::assertSame(self::TARGET, $claim['target_frontend_version']);
+        // A stateless frontend swap never carries destructive migrations.
+        self::assertFalse($claim['destructive_migration']);
+
+        // The status the admin UI polls reflects the frontend kind.
+        $status = $this->updates->getStatus();
+        self::assertSame($operationId, $status['operation_id']);
+        self::assertSame('frontend', $status['kind']);
+        self::assertSame(self::TARGET, $status['target_frontend_version']);
+    }
+
     public function testFailedUpdateRecordsTerminalFailureForTheInstance(): void
     {
         $requested = $this->updates->requestUpdate([
