@@ -134,6 +134,24 @@ final class SystemHealthServiceTest extends TestCase
         self::assertSame('ok', $byName['plugins']);
     }
 
+    public function testWorkerProbesTheRealPluginOpsTransportAndIsNotFalselyNotConfigured(): void
+    {
+        // Regression: the worker health probe now reads the SINGLE real worker
+        // transport (MESSENGER_PLUGIN_OPS_DSN, doctrine default) instead of a
+        // never-set MESSENGER_TRANSPORT_DSN alias. A normally-installed instance
+        // must therefore report the worker as running — not the old false
+        // "not_configured" that showed on every maintenance page.
+        $health = $this->makeService(
+            $this->healthyConnection(),
+            messengerDsn: 'doctrine://default?queue_name=plugin_ops&auto_setup=true',
+        )->getHealth();
+
+        $worker = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'worker'))[0];
+        self::assertSame('ok', $worker['status']);
+        self::assertStringContainsString('queued', $worker['detail']);
+        self::assertNotSame('not_configured', $worker['status']);
+    }
+
     public function testManagerLoopNotConfiguredIsInformationalButExplains(): void
     {
         $health = $this->makeService(

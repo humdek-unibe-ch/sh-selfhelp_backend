@@ -1,3 +1,9 @@
+# v0.1.6
+
+## System Health
+
+- **Worker health no longer falsely reports "not configured"**: the aggregated system-health probe (`GET /admin/system/health`, shown on the admin System and maintenance pages) checked a `MESSENGER_TRANSPORT_DSN` env var that the platform never sets, so **every** instance showed the `worker` component as `not_configured` even though the worker runs fine on its real transport. The probe now reads the single, authoritative worker transport env (`MESSENGER_PLUGIN_OPS_DSN`, with the same `doctrine://default` fallback the messenger config uses), so the worker reports `ok`/`configured` as expected. This was always cosmetic — `not_configured` never degraded the overall verdict — but it was alarming on the maintenance page. No parallel transport alias is introduced; the probe simply targets the transport that is actually running.
+
 # v0.1.5
 
 ## System Updates
