@@ -1,3 +1,9 @@
+# v0.1.8
+
+## System Maintenance
+
+- **`system.maintenance_message` is offered in the CMS `{{ }}` editor**: the section editor's variable autocomplete (`DataVariableResolver`) now lists `system.maintenance_message` alongside the other `system.*` variables, so an operator designing the maintenance page can insert the live note from the suggestion dropdown instead of typing it from memory. The variable was already resolvable and allow-listed; this surfaces it in the picker and adds guard tests that pin the full chain — `MaintenanceModeService` -> `VariableResolverService` (`maintenance_message`, both the set value and the blank-note default) -> the `{{system.maintenance_message}}` render token — so the seeded maintenance page reliably shows the operator's message.
+
 # v0.1.7
 
 ## Plugins

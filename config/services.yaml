@@ -62,7 +62,7 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '0.1.7'
+    selfhelp_cms_version_default: '0.1.8'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
