@@ -847,7 +847,7 @@ class SystemUpdateService
     private function frontendVersionPublished(array $published, string $version): bool
     {
         foreach ($published as $release) {
-            if (($release['version'] ?? null) === $version) {
+            if ($release['version'] === $version) {
                 return true;
             }
         }

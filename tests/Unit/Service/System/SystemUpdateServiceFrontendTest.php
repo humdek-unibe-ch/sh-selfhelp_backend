@@ -112,7 +112,9 @@ final class SystemUpdateServiceFrontendTest extends TestCase
         self::assertFalse($preflight['database']['destructive']);
         self::assertFalse($preflight['database']['requires_backup']);
         self::assertIsArray($preflight['options']);
-        self::assertSame('frontend', $preflight['options'][0]['type'] ?? null);
+        $firstOption = $preflight['options'][0] ?? null;
+        self::assertIsArray($firstOption);
+        self::assertSame('frontend', $firstOption['type'] ?? null);
     }
 
     public function testFrontendPreflightBlocksADowngrade(): void
