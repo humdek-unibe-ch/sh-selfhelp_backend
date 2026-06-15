@@ -32,10 +32,17 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *   - the Manager update loop (`manager_*` routes);
  *   - authentication (`/auth/...` — so an admin can still log in);
  *   - system management (`admin.system.*` routes — version/health/update/
- *     maintenance, so maintenance itself can be toggled off again).
+ *     maintenance, so maintenance itself can be toggled off again);
+ *   - the public `maintenance` page content + the `languages` list it needs,
+ *     so visitors get the styled "we're down" page instead of a raw 503
+ *     envelope (the whole point of having a maintenance page). Both are
+ *     read-only, secret-free reads.
  */
 final class MaintenanceModeListener implements EventSubscriberInterface
 {
+    /** Keyword of the CMS page rendered to visitors while maintenance is on. */
+    private const MAINTENANCE_KEYWORD = 'maintenance';
+
     public function __construct(
         private readonly MaintenanceModeService $maintenanceMode,
         private readonly UserPermissionService $permissionService,
@@ -88,6 +95,17 @@ final class MaintenanceModeListener implements EventSubscriberInterface
         }
         // Authentication (login / refresh / register / 2FA) under any API version.
         if (preg_match('#^/cms-api/v\d+/auth/#', $path) === 1) {
+            return true;
+        }
+
+        // The public maintenance page itself (and the languages list the SSR
+        // render resolves first) must stay reachable, otherwise the visitor
+        // sees a bare 503 instead of the styled maintenance page.
+        $keyword = preg_quote(self::MAINTENANCE_KEYWORD, '#');
+        if (preg_match('#^/cms-api/v\d+/pages/by-keyword/' . $keyword . '$#', $path) === 1) {
+            return true;
+        }
+        if (preg_match('#^/cms-api/v\d+/languages$#', $path) === 1) {
             return true;
         }
 

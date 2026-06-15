@@ -116,4 +116,33 @@ final class MaintenanceModeListenerTest extends TestCase
         );
         $this->expectNotToPerformAssertions();
     }
+
+    public function testMaintenancePageContentStaysReachable(): void
+    {
+        // The styled maintenance page must render during the outage, so its own
+        // by-keyword fetch is exempt from the 503 gate.
+        $listener = $this->listener(true, ['get_page_by_keyword' => ['admin.page.read']]);
+        $listener->onKernelController(
+            $this->event('/cms-api/v1/pages/by-keyword/maintenance', 'get_page_by_keyword'),
+        );
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testLanguagesListStaysReachable(): void
+    {
+        // The SSR maintenance render resolves the active language first.
+        $listener = $this->listener(true, ['languages_get_all' => ['admin.language.read']]);
+        $listener->onKernelController($this->event('/cms-api/v1/languages', 'languages_get_all'));
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testOtherPagesByKeywordAreStillBlocked(): void
+    {
+        // Only the `maintenance` keyword is exempt — every other page 503s.
+        $listener = $this->listener(true, ['get_page_by_keyword' => ['admin.page.read']]);
+        $this->assert503(
+            $listener,
+            $this->event('/cms-api/v1/pages/by-keyword/home', 'get_page_by_keyword'),
+        );
+    }
 }
