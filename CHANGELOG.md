@@ -1,3 +1,14 @@
+# v0.1.9
+
+## System Updates
+
+- **Live update progress is pushed over SSE — the CMS no longer polls for it.** A new Doctrine listener (`App\EventListener\SystemUpdateMercurePublisher`) publishes a `system-update` Mercure event on every insert/update of a `SystemUpdateOperation` row, to the **requester's** per-user topic. It fires both when the CMS creates the `requested` row and on every state / `steps` / `progress_percent` write-back the SelfHelp Manager makes while draining it, so the System Maintenance page repaints its step tracker live over the existing `/auth/events` connection. The topic is minted by a new `MercureTopicResolver::userSystemUpdateTopic()` and multiplexed onto the same single subscriber JWT as the ACL + impersonation topics by `AuthEventsController` (one upstream socket per user). `GET /auth/events` now returns `systemUpdateTopic`; `responses/auth/events.json` requires it. Publish failures are logged and swallowed — the frontend's reconnect-aware fallback poll is the safety net.
+
+## Plugins
+
+- **Plugin operations always reach a terminal status — async worker path included.** When a plugin operation failed **after** marking the row `running` — a missing snapshot payload, an unknown type, a `composer require/remove` non-zero exit, or any thrown orchestrator error — it could be left stuck on `running`. The admin UI then showed progress forever and the per-plugin lock blocked every later install/uninstall until its TTL expired. The terminal guarantee is now centralized in `PluginOperationRecorder::fail()`, which both the manager-driven finalizer (`selfhelp:plugin:run-operation`) **and** the async `plugin_ops` Messenger worker handlers (`InstallPluginHandler` / `UpdatePluginHandler` / `UninstallPluginHandler`) route their catch-all failure through. `fail()` is now terminal-idempotent: it records a terminal `failed` status + the final `plugin-operation-progress` event for a still-running operation, and it never overwrites or re-emits for an operation that already reached a terminal state (so a post-`finalize()` cleanup error can no longer flip a `succeeded` row to `failed`). The recorder's existing raw-DBAL fallback keeps this working even when the EntityManager is poisoned, and the recovery never masks the original error.
+- **A single broken plugin no longer 500s the whole plugin list.** `PluginAdminService::listPlugins()` formatted every row eagerly, so one inconsistent bundle (e.g. a half-removed plugin whose `composer remove` ran but whose row/manifest was briefly out of sync during a manager-driven restart) threw and turned the entire admin **Plugins** screen into a dead "Failed to load plugins" error. Rows are now formatted defensively: a bad row is logged and skipped, and the operator still sees — and can repair / uninstall — everything else.
+
 # v0.1.8
 
 ## System Maintenance
