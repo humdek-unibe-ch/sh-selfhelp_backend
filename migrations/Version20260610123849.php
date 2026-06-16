@@ -66,17 +66,22 @@ final class Version20260610123849 extends AbstractMigration
         SQL);
         $this->addSql("DELETE FROM `api_routes` WHERE `route_name` = 'admin_sections_pages_batch' AND `version` = 'v1'");
 
-        // Restore old single-ID route
+        // Restore the old route name. The original single-ID controller method
+        // (AdminSectionUtilityController::getPagesBySection) was permanently
+        // removed when the batch variant replaced it, so a faithful restore is
+        // impossible. To avoid recreating a route that points at a non-existent
+        // controller method, the rollback maps the old route name to the
+        // surviving batch handler/path instead.
         $this->addSql(<<<SQL
             INSERT IGNORE INTO `api_routes`
                 (`route_name`, `version`, `path`, `controller`, `methods`, `requirements`, `params`)
             VALUES (
                 'admin_sections_pages',
                 'v1',
-                '/admin/sections/{section_id}/pages',
-                'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\AdminSectionUtilityController::getPagesBySection',
+                '/admin/sections/pages',
+                'App\\\\Controller\\\\Api\\\\V1\\\\Admin\\\\AdminSectionUtilityController::getPagesBySections',
                 'GET',
-                JSON_OBJECT('section_id', '[0-9]+'),
+                NULL,
                 NULL
             )
         SQL);

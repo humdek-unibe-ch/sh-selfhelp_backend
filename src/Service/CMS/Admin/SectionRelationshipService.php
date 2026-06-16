@@ -383,12 +383,20 @@ class SectionRelationshipService extends BaseService
     }
 
     /**
-     * Remove multiple sections from a page
-     * 
-     * @param int $pageId The ID of the page
-     * @param list<int> $sectionIds The List of IDs of the sections to remove
-     * @return array<string, mixed>
-     * @throws ServiceException If the relationship does not exist
+     * Detach multiple sections from a page in one atomic operation.
+     *
+     * This is the batch form of {@see removeSectionFromPage()} and shares its
+     * detach-only semantics: each section is unlinked from this page (its direct
+     * rel_pages_sections row, or its rel_sections_hierarchy row when nested) but
+     * the `sections` rows themselves are kept, so a shared section — e.g. a
+     * refContainer reused on other pages — keeps rendering everywhere else. To
+     * permanently destroy a section use {@see deleteSection()}.
+     *
+     * @param int $pageId The ID of the page to detach from
+     * @param list<int> $sectionIds The IDs of the sections to detach
+     * @return array{deleted_count: int, errors: list<array{sectionId: int, error: string}>}
+     * @throws ServiceException If the page is missing, access is denied, or any
+     *                          section is not found / not on this page
      */
     public function bulkRemoveSections(int $pageId, array $sectionIds): array
     {
@@ -401,14 +409,26 @@ class SectionRelationshipService extends BaseService
 
         $this->userContextAwareService->checkAdminAccessById($pageId, 'update');
 
+        // Resolve every page that renders any targeted section BEFORE detaching,
+        // so shared sections (refContainers) on other pages get their caches
+        // busted even though the links will be gone afterwards.
+        $affectedPageIds = [$pageId => $pageId];
+        foreach ($sectionIds as $sid) {
+            foreach ($this->sectionRepository->getPageIdsContainingSection($sid) as $pid) {
+                $affectedPageIds[$pid] = $pid;
+            }
+        }
+
         $this->entityManager->beginTransaction();
         try {
             $pageSectionsToRemove = [];
-            $sectionsToDelete = [];
+            /** @var list<SectionsHierarchy> $hierarchyLinksToRemove */
+            $hierarchyLinksToRemove = [];
             $parentSectionIdsToNormalize = [];
             $errors = [];
 
             foreach ($sectionIds as $sectionId) {
+                // Prefer the direct page link.
                 $pageSection = $this->entityManager
                     ->getRepository(PagesSection::class)
                     ->findOneBy([
@@ -433,14 +453,9 @@ class SectionRelationshipService extends BaseService
                     continue;
                 }
 
-                if (
-                    !$this->sectionBelongsToPageHierarchy(
-                        $page,
-                        $sectionId,
-                        $this->entityManager,
-                        $this->sectionRepository
-                    )
-                ) {
+                // Nested: detach only the hierarchy link that sits on this page.
+                $hierarchyLink = $this->findHierarchyLinkForPage($page, $sectionId);
+                if (!$hierarchyLink) {
                     $errors[] = [
                         'sectionId' => $sectionId,
                         'error' => 'Section not in page hierarchy'
@@ -448,23 +463,11 @@ class SectionRelationshipService extends BaseService
                     continue;
                 }
 
-                /** @var list<array<string, mixed>> $parentRows */
-                $parentRows = $this->entityManager
-                    ->createQueryBuilder()
-                    ->select('IDENTITY(sh.parentSection) AS parent_id')
-                    ->from(SectionsHierarchy::class, 'sh')
-                    ->where('sh.childSection = :section')
-                    ->setParameter('section', $section)
-                    ->getQuery()
-                    ->getArrayResult();
-
-                foreach ($parentRows as $parentRow) {
-                    if (isset($parentRow['parent_id'])) {
-                        $parentSectionIdsToNormalize[] = $this->asInt($parentRow['parent_id']);
-                    }
+                $hierarchyLinksToRemove[] = $hierarchyLink;
+                $parentSectionId = (int) $hierarchyLink->getParentSection()?->getId();
+                if ($parentSectionId > 0) {
+                    $parentSectionIdsToNormalize[] = $parentSectionId;
                 }
-
-                $sectionsToDelete[] = $section;
             }
 
             if ($errors !== []) {
@@ -478,35 +481,21 @@ class SectionRelationshipService extends BaseService
                 );
             }
 
-            // Audit each deleted section BEFORE removal so the entity
-            // snapshot is preserved in the transaction log (mirrors
-            // deleteSection()).
+            // Detach only — the section rows survive for their other usages,
+            // mirroring the single removeSectionFromPage(). Bulk remove is
+            // "detach from this page", never a page-independent destroy. Use
+            // deleteSection() to permanently destroy a section everywhere.
             $detachedSectionIds = [];
             foreach ($pageSectionsToRemove as $pageSection) {
-                $sectionEntity = $pageSection->getSection();
-                $detachedSectionIds[] = $sectionEntity?->getId();
+                $detachedSectionIds[] = $pageSection->getSection()?->getId();
                 $this->entityManager->remove($pageSection);
             }
-
-            $deletedSectionAudit = [];
-            foreach ($sectionsToDelete as $section) {
-                $this->transactionService->logTransaction(
-                    LookupService::TRANSACTION_TYPES_DELETE,
-                    LookupService::TRANSACTION_BY_BY_USER,
-                    'sections',
-                    $section->getId(),
-                    $section,
-                    "Section deleted via bulkRemoveSections: '{$section->getName()}' (ID: {$section->getId()}) from page '{$page->getKeyword()}'"
-                );
-                $deletedSectionAudit[] = [
-                    'id' => $section->getId(),
-                    'name' => $section->getName(),
-                ];
-                $this->removeAllSectionRelationships($section, $this->entityManager);
-                $this->entityManager->remove($section);
+            foreach ($hierarchyLinksToRemove as $hierarchyLink) {
+                $detachedSectionIds[] = $hierarchyLink->getChildSection()?->getId();
+                $this->entityManager->remove($hierarchyLink);
             }
 
-            $deleted = count($pageSectionsToRemove) + count($sectionsToDelete);
+            $detached = count($pageSectionsToRemove) + count($hierarchyLinksToRemove);
 
             $this->entityManager->flush();
 
@@ -521,10 +510,9 @@ class SectionRelationshipService extends BaseService
                     'keyword' => $page->getKeyword(),
                     'url' => $page->getUrl(),
                     'detached_section_ids' => array_values(array_filter($detachedSectionIds)),
-                    'deleted_sections' => $deletedSectionAudit,
-                    'total_removed' => $deleted,
+                    'total_removed' => $detached,
                 ],
-                "Bulk-removed {$deleted} section(s) from page '{$page->getKeyword()}'"
+                "Bulk-detached {$detached} section(s) from page '{$page->getKeyword()}'"
             );
 
             if ($pageSectionsToRemove !== []) {
@@ -538,12 +526,7 @@ class SectionRelationshipService extends BaseService
             $this->entityManager->flush();
             $this->entityManager->commit();
 
-            $this->cache
-                ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
-            foreach ($sectionIds as $sid) {
-                $this->invalidateSharedSectionPages($sid);
-            }
+            $this->invalidatePageScopes(array_values($affectedPageIds));
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
                 ->invalidateAllListsInCategory();
@@ -552,7 +535,7 @@ class SectionRelationshipService extends BaseService
                 ->invalidateAllListsInCategory();
 
             return [
-                'deleted_count' => $deleted,
+                'deleted_count' => $detached,
                 'errors' => []
             ];
 
@@ -676,6 +659,14 @@ class SectionRelationshipService extends BaseService
             $this->throwNotFound('Section not found');
         }
 
+        // Resolve every page that renders this section BEFORE its relationship
+        // rows are removed. destroySection() deletes the rel_pages_sections /
+        // rel_sections_hierarchy rows, so querying afterwards would return an
+        // empty set and the other pages that share this section (e.g. a
+        // refContainer reused across pages) would keep serving stale cached
+        // content.
+        $affectedPageIds = $this->sectionRepository->getPageIdsContainingSection($sectionId);
+
         $this->entityManager->beginTransaction();
         try {
             $this->destroySection($section);
@@ -685,8 +676,9 @@ class SectionRelationshipService extends BaseService
             throw $e instanceof ServiceException ? $e : new ServiceException('Failed to delete section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
         }
 
-        // Invalidate all pages that referenced this section before it was deleted.
-        $this->invalidateSharedSectionPages($sectionId);
+        // Invalidate every page that referenced this section (captured above)
+        // plus the page/section list caches.
+        $this->invalidatePageScopes($affectedPageIds);
         $this->invalidatePageAndSectionLists(null, $sectionId);
     }
 
@@ -761,7 +753,19 @@ class SectionRelationshipService extends BaseService
      */
     private function invalidateSharedSectionPages(int $sectionId): void
     {
-        foreach ($this->sectionRepository->getPageIdsContainingSection($sectionId) as $pid) {
+        $this->invalidatePageScopes($this->sectionRepository->getPageIdsContainingSection($sectionId));
+    }
+
+    /**
+     * Bust the page-scope cache for an explicit list of page IDs. Used when the
+     * referencing pages must be resolved up-front (e.g. before a section and its
+     * relationship rows are destroyed) and then invalidated after the write.
+     *
+     * @param list<int> $pageIds
+     */
+    private function invalidatePageScopes(array $pageIds): void
+    {
+        foreach ($pageIds as $pid) {
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pid);
         }
     }
