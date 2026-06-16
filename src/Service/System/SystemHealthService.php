@@ -39,6 +39,12 @@ class SystemHealthService
 
     private const REGISTRY_LAST_OK_CACHE_KEY = 'selfhelp_registry_last_successful_check';
 
+    /**
+     * The manager poller ticks every ~15s; no authenticated poll for this long
+     * means the loop has stopped (manager down, watch loop killed, ...).
+     */
+    private const MANAGER_STALE_AFTER_SECONDS = 600;
+
     public function __construct(
         private readonly SystemInstanceService $instance,
         private readonly SystemVersionService $versionService,
@@ -77,6 +83,7 @@ class SystemHealthService
             $this->checkMercure(),
             $this->checkWorker(),
             $this->checkScheduler(),
+            $this->checkManagerLoop(),
             $this->checkMailer(),
             $this->checkRegistry(),
             $this->checkPlugins($version['installed_plugins']),
@@ -237,6 +244,54 @@ class SystemHealthService
         $runStatus = is_scalar($row['status'] ?? null) ? (string) $row['status'] : 'unknown';
 
         return $this->component('scheduler', self::COMPONENT_OK, sprintf('Last run %s (%s).', $startedAt, $runStatus));
+    }
+
+    /**
+     * CMS<->Manager update loop visibility. The backend cannot probe the
+     * manager directly (it runs outside the stack), but it CAN report honestly
+     * whether the loop is enabled (token configured) and when an authenticated
+     * manager last polled — which is exactly what an operator needs when a
+     * requested update "does nothing".
+     *
+     * @return array{name: string, status: string, detail: string}
+     */
+    private function checkManagerLoop(): array
+    {
+        $info = $this->updateService->getManagerLoopInfo();
+
+        if (!$info['configured']) {
+            return $this->component(
+                'manager_loop',
+                self::COMPONENT_NOT_CONFIGURED,
+                'Manager loop disabled: SELFHELP_MANAGER_TOKEN is not set for this instance. CMS-requested updates will not execute. Update the instance with a current SelfHelp Manager (or run "sh-manager instance repair <id>") to provision the token.',
+            );
+        }
+
+        $lastSeen = $info['last_seen_at'];
+        if ($lastSeen === null) {
+            return $this->component(
+                'manager_loop',
+                self::COMPONENT_DOWN,
+                'Manager token is configured but no manager has ever polled this instance. Ensure the SelfHelp Manager web service is running (persistent mode) or a "sh-manager instance process-operations <id> --watch" loop is active.',
+            );
+        }
+
+        $seenAt = null;
+        try {
+            $seenAt = new \DateTimeImmutable($lastSeen);
+        } catch (\Throwable) {
+            // Unparseable timestamp: fall through to the stale branch below.
+        }
+        $now = $this->now ?? new \DateTimeImmutable();
+        if ($seenAt === null || ($now->getTimestamp() - $seenAt->getTimestamp()) > self::MANAGER_STALE_AFTER_SECONDS) {
+            return $this->component(
+                'manager_loop',
+                self::COMPONENT_DEGRADED,
+                sprintf('Manager last polled %s; it appears to have stopped. CMS-requested updates will wait until it returns.', $lastSeen),
+            );
+        }
+
+        return $this->component('manager_loop', self::COMPONENT_OK, sprintf('Manager last polled %s.', $lastSeen));
     }
 
     /** @return array{name: string, status: string, detail: string} */

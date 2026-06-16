@@ -45,6 +45,19 @@ final class VariableResolverServiceTest extends QaKernelTestCase
         self::assertSame('', $vars['user_email']);
     }
 
+    public function testMaintenanceMessageFallsBackToDefaultWhenNotInMaintenance(): void
+    {
+        // With no maintenance lock file / env switch the operator note is empty,
+        // so the seeded `maintenance` page never renders a blank placeholder.
+        $vars = $this->resolver->getAllVariables(null, 1, false);
+
+        self::assertArrayHasKey('maintenance_message', $vars);
+        self::assertSame(
+            VariableResolverService::DEFAULT_MAINTENANCE_MESSAGE,
+            $vars['maintenance_message'],
+        );
+    }
+
     public function testTimeVariablesAreCurrentAndWellFormed(): void
     {
         $vars = $this->resolver->getAllVariables(null, 1, false);

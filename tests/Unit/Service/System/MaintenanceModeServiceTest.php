@@ -9,8 +9,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service\System;
 
+use App\Service\Cache\Core\CacheService;
 use App\Service\System\MaintenanceModeService;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 
 /**
  * Unit coverage for the persistent maintenance-mode switch (MEDIUM 4).
@@ -104,5 +107,55 @@ final class MaintenanceModeServiceTest extends TestCase
         $state = $service->getState();
         self::assertTrue($state['enabled']);
         self::assertSame('', $state['message']);
+    }
+
+    /**
+     * Regression for #4: editing/enabling maintenance must drop the rendered
+     * `pages` + `sections` caches, otherwise the public page keeps serving the
+     * previously baked `{{system.maintenance_message}}` value.
+     */
+    public function testEnableInvalidatesRenderedPageAndSectionCaches(): void
+    {
+        $cache = new CacheService(new TagAwareAdapter(new ArrayAdapter()));
+        $this->seedRenderedCaches($cache);
+
+        (new MaintenanceModeService($this->projectDir, false, $cache))->enable('Upgrading to 8.1.0', 'user:42');
+
+        self::assertSame('FRESH', $cache->withCategory(CacheService::CATEGORY_PAGES)->getList('maint_probe', fn() => 'FRESH'));
+        self::assertSame('FRESH', $cache->withCategory(CacheService::CATEGORY_SECTIONS)->getList('maint_probe', fn() => 'FRESH'));
+    }
+
+    /**
+     * Regression for #4: disabling maintenance must likewise re-render, so the
+     * "we're back" page does not keep showing the maintenance banner.
+     */
+    public function testDisableInvalidatesRenderedPageAndSectionCaches(): void
+    {
+        $cache = new CacheService(new TagAwareAdapter(new ArrayAdapter()));
+        $service = new MaintenanceModeService($this->projectDir, false, $cache);
+        $service->enable('msg', 'user:1');
+        $this->seedRenderedCaches($cache);
+
+        $service->disable();
+
+        self::assertSame('FRESH', $cache->withCategory(CacheService::CATEGORY_PAGES)->getList('maint_probe', fn() => 'FRESH'));
+        self::assertSame('FRESH', $cache->withCategory(CacheService::CATEGORY_SECTIONS)->getList('maint_probe', fn() => 'FRESH'));
+    }
+
+    /**
+     * Seed both rendered-content categories with a stale value and assert the
+     * cache actually serves it back (control), so a later "FRESH" read proves
+     * invalidation rather than a non-caching no-op.
+     */
+    private function seedRenderedCaches(CacheService $cache): void
+    {
+        foreach ([CacheService::CATEGORY_PAGES, CacheService::CATEGORY_SECTIONS] as $category) {
+            $cache->withCategory($category)->getList('maint_probe', fn() => 'STALE');
+            self::assertSame(
+                'STALE',
+                $cache->withCategory($category)->getList('maint_probe', fn() => 'FRESH'),
+                "Cache category {$category} must serve the cached value before invalidation.",
+            );
+        }
     }
 }

@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-05.
-Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
+Last verified: 2026-06-16.
+Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository (auth-events: `src/Controller/Api/V1/Auth/AuthEventsController.php`, `src/Service/Mercure/MercureTopicResolver.php`, `src/EventListener/SystemUpdateMercurePublisher.php`, `config/schemas/api/v1/responses/auth/events.json`).
 
 ## Overview
 
@@ -483,22 +483,30 @@ The payload is wrapped in the standard `ApiResponseFormatter` envelope
   "data": {
     "hubUrl": "https://app.example.com/.well-known/mercure",
     "topic": "https://selfhelp.app/users/123/acl",
+    "impersonationTopic": "https://selfhelp.app/users/123/impersonation",
+    "systemUpdateTopic": "https://selfhelp.app/users/123/system-update",
+    "pluginTopics": ["https://selfhelp.app/admin/plugins"],
     "token": "eyJhbGciOiJIUzI1NiJ9.eyJtZXJjdXJlIjp7InN1YnNjcmliZSI6Wy4uLl19fQ.…",
     "expiresIn": 3600
   }
 }
 ```
 
-| `data` field | Type    | Meaning                                                                                                                       |
-|--------------|---------|-------------------------------------------------------------------------------------------------------------------------------|
-| `hubUrl`     | string  | Public URL of the Mercure hub (`MERCURE_PUBLIC_URL`).                                                                         |
-| `topic`      | string  | Per-user, private topic IRI. Issued JWT only authorises *this exact* topic.                                                   |
-| `token`      | string  | HMAC-SHA256 JWT to send as `Authorization: Bearer …` when subscribing to the hub.                                             |
-| `expiresIn`  | integer | Lifetime of `token` in seconds. The frontend should treat this as an upper bound and re-call `/auth/events` on every reconnect. |
+| `data` field         | Type    | Meaning                                                                                                                       |
+|----------------------|---------|-------------------------------------------------------------------------------------------------------------------------------|
+| `hubUrl`             | string  | Public URL of the Mercure hub (`MERCURE_PUBLIC_URL`).                                                                         |
+| `topic`              | string  | Per-user ACL topic IRI (`acl-changed` events).                                                                                |
+| `impersonationTopic` | string  | Per-user impersonation-lifecycle topic IRI (`impersonation-status` events).                                                   |
+| `systemUpdateTopic`  | string  | Per-user system-update progress topic IRI (`system-update` events) — fired when an update operation this user requested changes state (CMS request or manager write-back), so the System Maintenance page tracks progress live instead of polling. |
+| `pluginTopics`       | array   | Admin plugin-manager topic IRIs the user may subscribe to (empty for non-admins).                                            |
+| `token`              | string  | One HMAC-SHA256 JWT scoped to **all** the topics above; send as `Authorization: Bearer …`. One JWT ⇒ one upstream socket.    |
+| `expiresIn`          | integer | Lifetime of `token` in seconds. The frontend should treat this as an upper bound and re-call `/auth/events` on every reconnect. |
 
-**Subscribing:** open a `text/event-stream` request to
-`${hubUrl}?topic=${encodeURIComponent(topic)}` with the `Authorization`
-header set to `Bearer ${token}`.
+**Subscribing:** open a single `text/event-stream` request and pass each topic
+as a repeated `topic` query parameter
+(`${hubUrl}?topic=${enc(topic)}&topic=${enc(impersonationTopic)}&topic=${enc(systemUpdateTopic)}…`)
+with the `Authorization` header set to `Bearer ${token}` — the one JWT authorises
+all of them, so the client holds **one** connection.
 
 - `sh-selfhelp_frontend` uses a BFF proxy
   (`src/app/api/auth/events/route.ts`): it calls this endpoint, opens
@@ -513,9 +521,11 @@ header set to `Bearer ${token}`.
 
 **Hub events:**
 
-| Event           | Payload                                   | Meaning                                                                                                                                                                |
-|-----------------|--------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `acl-changed`   | `{ "aclVersion": "<hex string>" }`         | The user's `users.acl_version` changed. The client should re-fetch `/auth/user-data` and any nav/permission-gated data caches.                                          |
+| Event                  | Payload                                                              | Meaning                                                                                                                                                                |
+|------------------------|---------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `acl-changed`          | `{ "aclVersion": "<hex string>" }`                                  | The user's `users.acl_version` changed. The client should re-fetch `/auth/user-data` and any nav/permission-gated data caches.                                          |
+| `impersonation-status` | `{ "active": bool, … }`                                             | An admin started or stopped impersonating this user.                                                                                                                   |
+| `system-update`        | `{ "operationId": string, "status": string, "progressPercent": int }` | An update operation **this user requested** changed state (CMS request or manager write-back). The System Maintenance page refetches the update status to repaint its live step tracker. |
 
 The Mercure hub also injects synthetic events of its own (`ping` keep-alives,
 `Last-Event-ID` cursor) — they are protocol-level bookkeeping the
@@ -539,6 +549,15 @@ update on `postFlush`. As of v8.0.0 those code paths are
 `ProfileService`, and `TaskJobExecutorService` (async job grants).
 New ACL-mutating code only needs to bump `acl_version` and flush the
 entity — no Mercure wiring required.
+
+**What triggers `system-update`:** any insert/update of a
+`SystemUpdateOperation` row — Doctrine listener
+`App\EventListener\SystemUpdateMercurePublisher` publishes on `postFlush`
+to the **requester's** per-user topic. This fires both when the CMS creates
+the request (`requested`) and on every state/`steps`/`progress_percent`
+write-back the SelfHelp Manager makes while draining it, so any code that
+persists the operation row gets live progress for free — no per-caller
+Mercure wiring required.
 
 **Permissions:** None (requires valid JWT token).
 

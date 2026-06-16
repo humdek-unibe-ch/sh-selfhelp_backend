@@ -38,6 +38,7 @@ final class QaRedisFlavouredArrayAdapter extends ArrayAdapter
  */
 final class SystemHealthServiceTest extends TestCase
 {
+    /** @param array{configured: bool, last_seen_at: string|null}|null $managerLoop */
     private function makeService(
         Connection $connection,
         bool $safeMode = false,
@@ -48,6 +49,7 @@ final class SystemHealthServiceTest extends TestCase
         string $messengerDsn = 'doctrine://default',
         bool $registryReachable = true,
         ?CacheItemPoolInterface $cache = null,
+        ?array $managerLoop = null,
     ): SystemHealthService {
         // env-forced maintenance mirrors the parameter; no file is touched.
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-health-no-maint', $maintenanceMode);
@@ -74,6 +76,11 @@ final class SystemHealthServiceTest extends TestCase
             'status' => 'succeeded',
             'progress_percent' => 100,
         ]);
+        // Default: a healthy manager loop (token configured, polled 30s before
+        // the injected health-check clock 2026-06-08T18:00:00Z).
+        $updateService->method('getManagerLoopInfo')->willReturn(
+            $managerLoop ?? ['configured' => true, 'last_seen_at' => '2026-06-08T17:59:30+00:00'],
+        );
 
         $registry = $this->createStub(SystemRegistryReader::class);
         $registry->method('isReachable')->willReturn($registryReachable);
@@ -120,10 +127,72 @@ final class SystemHealthServiceTest extends TestCase
         self::assertSame('not_configured', $byName['redis']);
         self::assertSame('ok', $byName['worker']);
         self::assertSame('ok', $byName['scheduler']);
+        self::assertSame('ok', $byName['manager_loop']);
         self::assertSame('configured', $byName['mercure']);
         self::assertSame('configured', $byName['mailer']);
         self::assertSame('ok', $byName['registry']);
         self::assertSame('ok', $byName['plugins']);
+    }
+
+    public function testWorkerProbesTheRealPluginOpsTransportAndIsNotFalselyNotConfigured(): void
+    {
+        // Regression: the worker health probe now reads the SINGLE real worker
+        // transport (MESSENGER_PLUGIN_OPS_DSN, doctrine default) instead of a
+        // never-set MESSENGER_TRANSPORT_DSN alias. A normally-installed instance
+        // must therefore report the worker as running — not the old false
+        // "not_configured" that showed on every maintenance page.
+        $health = $this->makeService(
+            $this->healthyConnection(),
+            messengerDsn: 'doctrine://default?queue_name=plugin_ops&auto_setup=true',
+        )->getHealth();
+
+        $worker = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'worker'))[0];
+        self::assertSame('ok', $worker['status']);
+        self::assertStringContainsString('queued', $worker['detail']);
+        self::assertNotSame('not_configured', $worker['status']);
+    }
+
+    public function testManagerLoopNotConfiguredIsInformationalButExplains(): void
+    {
+        $health = $this->makeService(
+            $this->healthyConnection(),
+            managerLoop: ['configured' => false, 'last_seen_at' => null],
+        )->getHealth();
+
+        // Not configured = informational (a CLI-managed instance still works);
+        // the detail must spell out that CMS-requested updates will not run.
+        self::assertSame('healthy', $health['overall']);
+        $loop = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'manager_loop'))[0];
+        self::assertSame('not_configured', $loop['status']);
+        self::assertStringContainsString('SELFHELP_MANAGER_TOKEN', $loop['detail']);
+        self::assertStringContainsString('will not execute', $loop['detail']);
+    }
+
+    public function testManagerLoopNeverSeenIsDownAndDegradesInstance(): void
+    {
+        $health = $this->makeService(
+            $this->healthyConnection(),
+            managerLoop: ['configured' => true, 'last_seen_at' => null],
+        )->getHealth();
+
+        self::assertSame('degraded', $health['overall']);
+        $loop = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'manager_loop'))[0];
+        self::assertSame('down', $loop['status']);
+        self::assertStringContainsString('no manager has ever polled', $loop['detail']);
+    }
+
+    public function testManagerLoopStalePollDegrades(): void
+    {
+        $health = $this->makeService(
+            $this->healthyConnection(),
+            // Last poll 2 hours before the injected clock — way beyond 10 min.
+            managerLoop: ['configured' => true, 'last_seen_at' => '2026-06-08T16:00:00+00:00'],
+        )->getHealth();
+
+        self::assertSame('degraded', $health['overall']);
+        $loop = array_values(array_filter($health['components'], static fn (array $c): bool => $c['name'] === 'manager_loop'))[0];
+        self::assertSame('degraded', $loop['status']);
+        self::assertStringContainsString('stopped', $loop['detail']);
     }
 
     public function testRedisReportedOkWhenDevProfilerWrapsRedisBackedCachePool(): void

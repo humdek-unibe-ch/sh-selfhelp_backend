@@ -58,6 +58,7 @@ final class AuthEventsControllerTest extends QaWebTestCase
         self::assertIsString($data['topic'] ?? null);
         self::assertStringContainsString("/users/{$userId}/acl", $data['topic']);
         self::assertStringContainsString("/users/{$userId}/impersonation", $this->coerceString($data['impersonationTopic'] ?? ''));
+        self::assertStringContainsString("/users/{$userId}/system-update", $this->coerceString($data['systemUpdateTopic'] ?? ''));
         self::assertIsArray($data['pluginTopics'] ?? null);
         self::assertIsString($data['token'] ?? null);
         self::assertNotSame('', $data['token'], 'Bearer transport must return a non-empty subscriber JWT.');

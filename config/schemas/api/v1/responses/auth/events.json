@@ -24,6 +24,11 @@
                     "format": "uri",
                     "description": "Per-user impersonation-lifecycle topic IRI (e.g. https://selfhelp.app/users/{id}/impersonation). Receives `impersonation-status` events when an admin starts or stops impersonating this user. Both topics share the same subscriber JWT in the `token` field."
                 },
+                "systemUpdateTopic": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Per-user system-update progress topic IRI (e.g. https://selfhelp.app/users/{id}/system-update). Receives `system-update` events when an update operation this user requested changes state (CMS request or manager write-back), so the System Maintenance page tracks progress live instead of polling. Shares the same subscriber JWT in the `token` field."
+                },
                 "pluginTopics": {
                     "type": "array",
                     "items": { "type": "string", "format": "uri" },
@@ -39,7 +44,7 @@
                     "description": "Lifetime of token in seconds (MERCURE_SUBSCRIBER_TTL). Treat as an upper bound."
                 }
             },
-            "required": ["hubUrl", "topic", "impersonationTopic", "pluginTopics", "token", "expiresIn"],
+            "required": ["hubUrl", "topic", "impersonationTopic", "systemUpdateTopic", "pluginTopics", "token", "expiresIn"],
             "additionalProperties": false
         }
     },

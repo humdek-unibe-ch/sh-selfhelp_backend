@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend and the plugin/registry ecosystem.
-Last verified: 2026-06-09.
+Last verified: 2026-06-12.
 Source of truth: `src/Plugin/Versioning/PluginCompatibility.php`, `src/Plugin/Versioning/SemverHelper.php`, `src/Plugin/Versioning/PluginCompatibilityValidator.php`, `src/Plugin/Registry/Unified/PluginReleaseResolver.php`, `src/Service/System/SystemVersionService.php`, `src/Service/System/SystemUpdateService.php`, `src/Service/System/SystemAdvisoryService.php`.
 
 Every backend decision of the form "can this plugin run on this host / can this
@@ -45,6 +45,45 @@ minor is breaking**, so a plugin pinned to `>=0.1.0 <0.2.0`:
 
 - stays compatible across a core **patch** (`0.1.0 → 0.1.1`);
 - becomes incompatible at the next core **minor** (`0.1.0 → 0.2.0`).
+
+That mechanical strictness is exactly why plugins must NOT pin a closed core
+range — see the authoring policy below.
+
+## Recommended ranges (authoring policy)
+
+Plugins declare an **open-ended minimum** on the core axis:
+
+```json
+"compatibility": { "selfhelp": ">=0.1.0" }
+```
+
+- **The core axis is a floor, not a contract.** `compatibility.selfhelp` states
+  the oldest core the plugin supports. It never declares an upper bound: a
+  closed range (`>=0.1.0 <0.2.0`) wrongly blocks every future core minor in
+  both the backend core-update preflight (`SystemUpdateService`) and the
+  manager update plan, even when nothing plugin-facing changed.
+- **The plugin-API axis is the breakage contract.** Core bumps
+  `pluginApiVersion` only on breaking plugin-facing changes; that is the gate
+  that protects plugins from incompatible hosts (enforced at install/update by
+  `PluginReleaseResolver` + `PluginCompatibilityValidator`).
+- **Retroactive breakage is data, not ranges.** When a core release does break
+  an already-published plugin, yank or constrain it via the registry `blocked`
+  flag and/or a security/compatibility advisory, and ship a new plugin release
+  stating its new requirements. Ranges published in the past cannot predict
+  future breakage, so they must not try.
+
+Net effect: a new core release installs and updates with existing plugins
+untouched; only an explicit upper bound (discouraged), a `blocked` flag, or an
+advisory blocks. `PluginCompatibility` already treats open ranges correctly on
+both the backend and the manager side — this policy needs no machinery, only
+correctly authored manifests.
+
+The reference implementation is the SurveyJS plugin (`sh2-shp-survey-js`
+`0.2.1`+, `compatibility.selfhelp: ">=0.1.0"`); its
+`frontend/tests/manifest.test.ts` guardrail fails the build if a closed core
+range is ever reintroduced. A closed range in a manifest should be treated as a
+review finding unless the author documents a concrete known-incompatible core
+version.
 
 ## `blocked` and advisories are NOT range checks
 

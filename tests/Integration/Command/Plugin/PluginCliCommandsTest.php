@@ -9,6 +9,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Command\Plugin;
 
+use App\Entity\Plugin\PluginOperation;
+use App\Plugin\Lifecycle\PluginOperationRecorder;
+use App\Repository\Plugin\PluginOperationRepository;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Command\Command;
@@ -93,5 +96,38 @@ final class PluginCliCommandsTest extends KernelTestCase
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertStringContainsString('Refusing to purge without --confirm', $tester->getDisplay());
+    }
+
+    /**
+     * Regression for #8: purge is now parked like uninstall, so a managed-mode
+     * `purge` operation is finalized by `selfhelp:plugin:run-operation`. Before
+     * the wiring this command had no `TYPE_PURGE` case and fell through to the
+     * "cannot be finalized" failure branch. Driving it against a `purge` row
+     * whose plugin is absent exercises the new case end to end through the real
+     * container and lands on the idempotent "already purged" success path — no
+     * real plugin, no DDL. Writes roll back under DAMA.
+     */
+    public function testRunOperationFinalizesPurgeForMissingPluginIdempotently(): void
+    {
+        $container = self::getContainer();
+        /** @var PluginOperationRecorder $recorder */
+        $recorder = $container->get(PluginOperationRecorder::class);
+        $operation = $recorder->start('qa_nonexistent_purge', PluginOperation::TYPE_PURGE, 'managed');
+        $operationId = $operation->getId();
+        self::assertIsInt($operationId);
+
+        $tester = $this->runConsole('selfhelp:plugin:run-operation', ['operationId' => (string) $operationId]);
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+
+        /** @var PluginOperationRepository $operations */
+        $operations = $container->get(PluginOperationRepository::class);
+        $reloaded = $operations->find($operationId);
+        self::assertInstanceOf(PluginOperation::class, $reloaded);
+        self::assertSame(
+            PluginOperation::STATUS_SUCCEEDED,
+            $reloaded->getStatus(),
+            'run-operation must finalize a purge operation (idempotent success when the plugin row is already gone).',
+        );
     }
 }

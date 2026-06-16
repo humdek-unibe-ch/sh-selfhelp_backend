@@ -55,6 +55,40 @@ final class RegistryIndexTest extends TestCase
         self::assertSame(['0.2.0', '0.1.0'], $versions, 'plugin refs must be newest-first');
     }
 
+    public function testParsesFrontendRefsNewestFirstForTheCmsPicker(): void
+    {
+        // The backend now reads frontend[] refs (version list) so the CMS can
+        // offer a frontend-only update; the signed Docker docs remain the
+        // Manager's concern.
+        $index = RegistryIndex::fromArray([
+            'schemaVersion' => '1.0.0',
+            'requiresManager' => '>=0.1.0',
+            'baseUrl' => 'https://r.test',
+            'core' => [],
+            'plugins' => [],
+            'frontend' => [
+                ['id' => 'selfhelp-frontend', 'version' => '0.1.5', 'channel' => 'stable', 'releaseUrl' => 'f-0.1.5.json'],
+                ['id' => 'selfhelp-frontend', 'version' => '0.1.7', 'channel' => 'stable', 'releaseUrl' => 'f-0.1.7.json'],
+                ['id' => 'selfhelp-frontend', 'version' => '0.1.0', 'channel' => 'stable', 'releaseUrl' => 'f-0.1.0.json'],
+            ],
+        ]);
+
+        $versions = array_map(static fn ($r) => $r->version, $index->frontendRefsSorted());
+        self::assertSame(['0.1.7', '0.1.5', '0.1.0'], $versions, 'frontend refs must be newest-first');
+    }
+
+    public function testFrontendRefsDefaultToEmptyWhenIndexOmitsThem(): void
+    {
+        $index = RegistryIndex::fromArray([
+            'schemaVersion' => '1.0.0',
+            'requiresManager' => '>=0.1.0',
+            'baseUrl' => 'https://r.test',
+            'plugins' => [],
+        ]);
+
+        self::assertSame([], $index->frontendRefsSorted());
+    }
+
     public function testResolvesRelativeReleaseUrlAgainstBaseUrl(): void
     {
         $index = RegistryIndex::fromArray($this->loadJson('registry.json'));

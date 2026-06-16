@@ -62,7 +62,7 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '0.1.2'
+    selfhelp_cms_version_default: '0.1.10'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
@@ -122,8 +122,13 @@ parameters:
     selfhelp_health_mercure_url_default: ''
     selfhelp.health.mailer_dsn: '%env(default:selfhelp_health_mailer_dsn_default:MAILER_DSN)%'
     selfhelp_health_mailer_dsn_default: ''
-    selfhelp.health.messenger_dsn: '%env(default:selfhelp_health_messenger_dsn_default:MESSENGER_TRANSPORT_DSN)%'
-    selfhelp_health_messenger_dsn_default: ''
+    # Probe the SINGLE, real worker transport env (MESSENGER_PLUGIN_OPS_DSN) —
+    # NOT a parallel MESSENGER_TRANSPORT_DSN alias (which nothing sets, so the
+    # worker health falsely showed "not_configured" on every instance). Falls
+    # back to the same doctrine default messenger.yaml uses, so the probe always
+    # reflects the transport that is actually running.
+    selfhelp.health.messenger_dsn: '%env(default:selfhelp_health_messenger_dsn_default:MESSENGER_PLUGIN_OPS_DSN)%'
+    selfhelp_health_messenger_dsn_default: 'doctrine://default?queue_name=plugin_ops&auto_setup=true'
 
     # Plugin signature verification. The host trusts publisher Ed25519
     # signatures matching the keyIds declared here. Add each publisher's
@@ -326,6 +331,12 @@ services:
             $mercureUrl: '%selfhelp.health.mercure_url%'
             $mailerDsn: '%selfhelp.health.mailer_dsn%'
             $messengerTransportDsn: '%selfhelp.health.messenger_dsn%'
+
+    # Instance-scoped update orchestration. The manager token is only used to
+    # report whether the CMS<->Manager loop is enabled (never echoed back).
+    App\Service\System\SystemUpdateService:
+        arguments:
+            $managerToken: '%selfhelp.manager_token%'
 
     # Manager-facing update-loop controller. Public routes (no permission rows);
     # access is gated by the per-instance manager bearer token verified

@@ -10,6 +10,8 @@ declare(strict_types=1);
 
 namespace App\Service\System;
 
+use App\Service\Cache\Core\CacheService;
+
 /**
  * Persistent, admin-toggleable maintenance-mode switch for the CURRENT instance.
  *
@@ -24,12 +26,21 @@ namespace App\Service\System;
  *
  * The state carries an operator-facing message plus audit fields (who/when). It
  * NEVER contains secrets — only a human note and the acting user id.
+ *
+ * The operator message reaches visitors through the `{{system.maintenance_message}}`
+ * variable, which `PageService` resolves and bakes into the cached, rendered
+ * `pages`/`sections` payload. So toggling maintenance or editing the message MUST
+ * invalidate those cache categories, otherwise the public page keeps serving the
+ * previous (or empty) message until an unrelated cache bump. The cache is an
+ * optional dependency: when absent (pure unit tests) the toggle still works, it
+ * just skips the (irrelevant) invalidation.
  */
 class MaintenanceModeService
 {
     public function __construct(
         private readonly string $projectDir,
         private readonly bool $envForced,
+        private readonly ?CacheService $cache = null,
     ) {
     }
 
@@ -91,6 +102,7 @@ class MaintenanceModeService
             'updated_by' => $actor,
         ];
         file_put_contents($path, json_encode($payload, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR) . "\n");
+        $this->invalidateRenderedContent();
 
         return $this->getState();
     }
@@ -108,8 +120,26 @@ class MaintenanceModeService
         if (is_file($path)) {
             @unlink($path);
         }
+        $this->invalidateRenderedContent();
 
         return $this->getState();
+    }
+
+    /**
+     * Drop the rendered-page caches that may have baked in the previous
+     * `{{system.maintenance_message}}` value. Generation-bump invalidation is
+     * O(1); maintenance toggles are rare, so a category-wide bump (rather than a
+     * single-page scope) is the safe choice — the message variable is global and
+     * an operator may surface it on more than just the seeded maintenance page.
+     */
+    private function invalidateRenderedContent(): void
+    {
+        if ($this->cache === null) {
+            return;
+        }
+
+        $this->cache->withCategory(CacheService::CATEGORY_PAGES)->invalidateCategory();
+        $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateCategory();
     }
 
     /**

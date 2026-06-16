@@ -408,7 +408,11 @@ class DataVariableResolver extends BaseService
             'current_date',
             'current_datetime',
             'current_time',
-            'project_name'
+            'project_name',
+            // Operator's maintenance note, resolved by VariableResolverService from
+            // MaintenanceModeService state. Listed here so the CMS `{{ }}` editor
+            // suggests `system.maintenance_message` (used by the seeded maintenance page).
+            'maintenance_message'
         ];
 
         // Add system. prefix to all variables

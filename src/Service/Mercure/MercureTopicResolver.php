@@ -68,6 +68,25 @@ final class MercureTopicResolver
     }
 
     /**
+     * Per-user system-update progress topic.
+     *
+     * A CMS admin requests an update for THIS instance; the SelfHelp Manager
+     * then drains it and writes back lifecycle states + `steps` + a progress
+     * percent (see {@see \App\Entity\System\SystemUpdateOperation}). Each such
+     * persistence is published as a `system-update` event to the REQUESTER's
+     * topic by {@see \App\EventListener\SystemUpdateMercurePublisher}, so the
+     * System Maintenance page tracks the operation live over the existing
+     * auth-events SSE connection instead of polling. Scoped to the requester's
+     * own user id (like the ACL topic) so the subscriber JWT minted by
+     * {@see \App\Controller\Api\V1\Auth\AuthEventsController::events()} only
+     * ever exposes that user's own operations.
+     */
+    public function userSystemUpdateTopic(int $userId): string
+    {
+        return rtrim($this->topicPrefix, '/') . '/users/' . $userId . '/system-update';
+    }
+
+    /**
      * Admin plugin-manager state topic.
      *
      * Single topic published from {@see \App\EventListener\PluginStateMercurePublisher}

@@ -105,6 +105,77 @@ final class JWTServiceTest extends QaKernelTestCase
         // The new access token is a valid, decodable JWT for the same user.
         $payload = $this->jwt->verifyAndDecodeAccessToken((string) $result['access_token']);
         self::assertSame($user->getId(), $this->coerceInt($payload['id_users'] ?? 0));
+
+        // Rotation writes a short-lived replay entry to Redis (survives DAMA
+        // rollback) — purge it so it cannot leak into a later test.
+        $this->forgetRotationReplay($originalHash);
+    }
+
+    /**
+     * Regression for #9 ("uninstalling a plugin logged me out").
+     *
+     * The web client refreshes from two independent runtimes that share no
+     * state (the Edge proxy for SSR + the Node BFF for `/api/*`, possibly
+     * across replicas). When the access token is near expiry and the backend
+     * briefly restarts — exactly what a plugin install / update / uninstall
+     * does — both can POST the SAME single-use refresh token. The first wins
+     * and rotates it; the straggler must NOT be rejected (which would wipe the
+     * session and bounce the operator to login). Within the grace window it
+     * replays onto the SAME new refresh token and still gets a valid access
+     * token.
+     */
+    public function testConcurrentRefreshWithinGraceWindowReplaysInsteadOfLoggingOut(): void
+    {
+        $user = $this->qaUser();
+        $originalHash = $this->jwt->createRefreshToken($user)->getTokenHash();
+        self::assertNotNull($originalHash);
+
+        // The "winner" of the race rotates the single-use token.
+        $first = $this->jwt->processRefreshToken($originalHash);
+        self::assertNotEmpty($first['refresh_token']);
+        self::assertNull(
+            $this->em->getRepository(RefreshToken::class)->findOneBy(['tokenHash' => $originalHash]),
+            'The consumed refresh token must be deleted.'
+        );
+
+        try {
+            // The concurrent straggler still carries the OLD (now-deleted) hash.
+            $second = $this->jwt->processRefreshToken($originalHash);
+
+            self::assertSame(
+                $first['refresh_token'],
+                $second['refresh_token'],
+                'A concurrent refresh within the grace window must converge on the rotated token, not 401.'
+            );
+            $payload = $this->jwt->verifyAndDecodeAccessToken((string) $second['access_token']);
+            self::assertSame(
+                $user->getId(),
+                $this->coerceInt($payload['id_users'] ?? 0),
+                'The replayed access token must be a valid JWT for the same user.'
+            );
+        } finally {
+            $this->forgetRotationReplay($originalHash);
+        }
+    }
+
+    /**
+     * Security: the rotation grace window must not become a permanent bypass of
+     * single-use semantics. Once the replay entry is gone (the window elapsed),
+     * the already-consumed token is rejected like any other invalid token.
+     */
+    public function testConsumedRefreshTokenIsRejectedOnceGraceWindowElapsed(): void
+    {
+        $user = $this->qaUser();
+        $originalHash = $this->jwt->createRefreshToken($user)->getTokenHash();
+        self::assertNotNull($originalHash);
+
+        $this->jwt->processRefreshToken($originalHash);
+
+        // Simulate the grace window elapsing (Redis TTL expiry).
+        $this->forgetRotationReplay($originalHash);
+
+        $this->expectException(AuthenticationException::class);
+        $this->jwt->processRefreshToken($originalHash);
     }
 
     public function testProcessUnknownRefreshTokenThrows(): void
@@ -220,6 +291,19 @@ final class JWTServiceTest extends QaKernelTestCase
         /** @var \Symfony\Contracts\Cache\CacheInterface $cache */
         $cache = $property->getValue($this->jwt);
         $cache->delete(JWTService::BLACKLIST_PREFIX . md5($token));
+    }
+
+    /**
+     * Drop the refresh-token rotation replay entry from the precise pool the
+     * service uses, so the Redis state (which survives DAMA rollback) is clean
+     * for the next test.
+     */
+    private function forgetRotationReplay(string $oldHash): void
+    {
+        $property = new \ReflectionProperty(JWTService::class, 'cache');
+        /** @var \Symfony\Contracts\Cache\CacheInterface $cache */
+        $cache = $property->getValue($this->jwt);
+        $cache->delete(JWTService::REFRESH_REPLAY_PREFIX . md5($oldHash));
     }
 
     private function qaUser(): User

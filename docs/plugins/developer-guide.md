@@ -67,7 +67,7 @@ A minimal manifest looks like this:
   "pluginApiVersion": "0.1.0",
   "license": "MPL-2.0",
   "compatibility": {
-    "selfhelp": "^2.0",
+    "selfhelp": ">=0.1.0",
     "php": "^8.4",
     "node": "^22"
   },
@@ -116,7 +116,9 @@ Key rules:
   it under `security.externalHosts` and request the `externalNetworkAccess`
   capability.
 - `compatibility.selfhelp` must satisfy the host CMS version range. The
-  admin UI shows a clear "blocking" reason when this fails.
+  admin UI shows a clear "blocking" reason when this fails. Declare an
+  **open-ended minimum** (`">=0.1.0"`), never a closed range — see
+  "Recommended compatibility ranges" in section 7.
 
 See `plugin-manifest.schema.json` for the full property list.
 
@@ -364,6 +366,32 @@ admin sees the unmet requirement in the install request UI.
 plugin CI to catch SemVer rule violations before publishing.
 `assertCmsCompatibility(cmsVersion, range)` runs at install time on
 the host.
+
+### Recommended compatibility ranges
+
+Declare the core axis as an **open-ended minimum** and let the
+plugin-API axis carry the breakage contract:
+
+```json
+"compatibility": { "selfhelp": ">=0.1.0" }
+```
+
+- `compatibility.selfhelp` is a floor ("oldest core I support"), never a
+  ceiling. A closed range such as `>=0.1.0 <0.2.0` blocks every future
+  core minor in the host update preflight and the SelfHelp Manager update
+  plan even when nothing plugin-facing changed.
+- Breaking plugin-facing changes are signalled by the host bumping
+  `pluginApiVersion`; that axis (checked at install/update) is what
+  protects your plugin from incompatible hosts.
+- If a core release retroactively breaks a published plugin version, the
+  registry `blocked` flag and the advisory feed take that version out of
+  circulation; ship a new plugin release stating the new requirements.
+
+The full policy with rationale lives in the backend developer doc
+[`docs/developer/26-plugin-compatibility-rules.md`](../developer/26-plugin-compatibility-rules.md)
+("Recommended ranges"). The SurveyJS plugin (`>=0.1.0` since `0.2.1`) is
+the reference implementation, including a CI guardrail test that fails on
+a reintroduced closed core range.
 
 ---
 

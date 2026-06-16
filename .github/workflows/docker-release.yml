@@ -27,7 +27,7 @@ on:
         required: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   # Step 8 + 10: dependency license report + policy gate (once, shared by images).
@@ -249,3 +249,66 @@ jobs:
             "https://api.github.com/repos/${{ github.repository_owner }}/sh2-plugin-registry/dispatches" \
             -d "$PAYLOAD"
           echo "::notice::auto-core-release dispatched for core $VERSION — review the staged PR in sh2-plugin-registry."
+
+  # Create GitHub Release with artifacts and changelog notes
+  create-release:
+    needs: [license, images]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          echo "ver=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Extract per-version changelog notes
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.ver }}
+        run: |
+          VER="${VERSION}"
+          NOTES_FILE="$GITHUB_WORKSPACE/release-notes.md"
+          if [ ! -f CHANGELOG.md ]; then
+              echo "_No CHANGELOG.md present._" > "$NOTES_FILE"
+          else
+              # Extract the section between ## [<version>] and the next ## heading.
+              # Falls back to the full file if no matching section is found.
+              awk -v ver="$VER" '
+                  BEGIN { found = 0 }
+                  /^## / {
+                      if (found == 1) { exit }
+                      if (index($0, "[" ver "]") > 0 || index($0, " " ver " ") > 0 || index($0, " " ver "$") > 0) {
+                          found = 1
+                          print
+                          next
+                      }
+                  }
+                  found == 1 { print }
+              ' CHANGELOG.md > "$NOTES_FILE"
+              if [ ! -s "$NOTES_FILE" ]; then
+                  echo "_No matching section for ${VER} in CHANGELOG.md — full changelog attached below._" > "$NOTES_FILE"
+                  echo "" >> "$NOTES_FILE"
+                  cat CHANGELOG.md >> "$NOTES_FILE"
+              fi
+          fi
+          echo "notes-file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: sh-selfhelp_backend ${{ steps.version.outputs.ver }}
+          files: artifacts/**/*
+          body_path: ${{ steps.notes.outputs.notes-file }}
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}
+          generate_release_notes: false

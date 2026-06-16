@@ -149,6 +149,61 @@ class SystemController extends AbstractController
     }
 
     /**
+     * GET /admin/system/update/frontend/releases — frontend versions published
+     * in the official registry (newest first) for the frontend-only update
+     * version picker. Fails soft to `available: false` when offline.
+     */
+    public function getUpdateFrontendReleases(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->getAvailableFrontendReleases(),
+            'responses/admin/update_releases'
+        );
+    }
+
+    /**
+     * GET /admin/system/update/frontend/preflight?target=<version> — lightweight
+     * compatibility preflight for a frontend-only update. The frontend is
+     * stateless (no migrations / backup); the manager re-validates frontend ⇄
+     * core compatibility + signatures at execution.
+     */
+    public function getUpdateFrontendPreflight(Request $request): JsonResponse
+    {
+        $target = $request->query->get('target');
+        if (!is_string($target) || $target === '') {
+            throw new ServiceException('Query parameter "target" (target frontend version) is required.', Response::HTTP_BAD_REQUEST);
+        }
+
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->getFrontendPreflight($target),
+            'responses/admin/update_preflight'
+        );
+    }
+
+    /**
+     * POST /admin/system/update/frontend/request — request a frontend-only
+     * update for the current instance. Returns 202 Accepted; the SelfHelp
+     * Manager performs the stateless frontend swap.
+     */
+    public function requestFrontendUpdate(Request $request): JsonResponse
+    {
+        // Cross-instance guard FIRST (same hard rule as the core request): any
+        // client-supplied instance id is denied and logged before validation.
+        $raw = json_decode($request->getContent(), true);
+        if (is_array($raw) && array_key_exists('instance_id', $raw)) {
+            $this->systemUpdateService->denyCrossInstance($raw['instance_id']);
+        }
+
+        $data = $this->validateRequest($request, 'requests/admin/frontend_update_request', $this->jsonSchemaValidationService);
+
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->requestFrontendUpdate($data),
+            'responses/admin/frontend_update_request',
+            Response::HTTP_ACCEPTED
+        );
+    }
+
+    /**
      * GET /admin/system/maintenance — current maintenance-mode state for THIS
      * instance (under `admin.system.read`).
      */

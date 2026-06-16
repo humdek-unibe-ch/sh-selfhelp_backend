@@ -21,6 +21,7 @@ use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -62,6 +63,20 @@ class SystemUpdateService
      */
     public const STATUS_IDLE = 'idle';
 
+    /**
+     * Cache key holding the ISO-8601 timestamp of the manager's last
+     * authenticated call to the manager-loop endpoints (claim / status
+     * write-back). Lets the health UI distinguish "manager polls this
+     * instance" from "requests fall into a black hole".
+     */
+    private const MANAGER_LAST_SEEN_CACHE_KEY = 'selfhelp_manager_last_seen_at';
+
+    /**
+     * An operation still in `requested` after this many seconds means no
+     * manager has picked it up (the manager poller claims within ~15s).
+     */
+    private const REQUESTED_STALE_AFTER_SECONDS = 120;
+
     public function __construct(
         private readonly SystemInstanceService $instance,
         private readonly SystemUpdateOperationRepository $operations,
@@ -70,6 +85,9 @@ class SystemUpdateService
         private readonly UserContextService $userContext,
         private readonly EntityManagerInterface $entityManager,
         private readonly LoggerInterface $logger,
+        private readonly CacheItemPoolInterface $cache,
+        private readonly string $managerToken = '',
+        private readonly ?\DateTimeImmutable $now = null,
     ) {
     }
 
@@ -114,6 +132,127 @@ class SystemUpdateService
             'available' => $releases !== null,
             'current_version' => $this->instance->getCmsVersion(),
             'releases' => $releases ?? [],
+        ];
+    }
+
+    /**
+     * Frontend versions published in the official registry, for the admin
+     * "Update frontend" version picker. The frontend ships independently of the
+     * core, so this is a separate list from {@see getAvailableReleases()} and
+     * reports the current FRONTEND version. Fail-soft like the core list: an
+     * unreachable registry reports `available: false` with an empty list.
+     *
+     * @return array{available: bool, current_version: string, releases: list<array{version: string, channel: string, blocked: bool}>}
+     */
+    public function getAvailableFrontendReleases(): array
+    {
+        $releases = $this->registry->listFrontendReleases();
+
+        return [
+            'available' => $releases !== null,
+            'current_version' => $this->instance->getFrontendVersion(),
+            'releases' => $releases ?? [],
+        ];
+    }
+
+    /**
+     * Compute a lightweight compatibility preflight for a FRONTEND-only update to
+     * $targetVersion. The frontend is stateless, so — unlike the core preflight —
+     * there are no destructive-migration, backup-required, or plugin-compatibility
+     * checks: the manager swaps only the frontend container and rolls it back on
+     * failure. The CMS validates the version + downgrade locally and defers the
+     * authoritative frontend ⇄ core compatibility + signature checks to the
+     * SelfHelp Manager (which re-resolves the signed frontend release at execution
+     * time).
+     *
+     * @return array<string,mixed>
+     */
+    public function getFrontendPreflight(string $targetVersion): array
+    {
+        $currentVersion = $this->instance->getFrontendVersion();
+        $instanceId = $this->instance->getInstanceId();
+
+        /** @var list<array<string,scalar|null>> $checks */
+        $checks = [];
+        /** @var list<array{type:string,version?:string,label:string}> $options */
+        $options = [];
+
+        // The manager performs Docker/resource checks and the authoritative
+        // frontend ⇄ core compatibility + signature verification at execution.
+        $checks[] = [
+            'code' => self::CHECK_RESOURCE,
+            'severity' => 'info',
+            'message' => 'Frontend ⇄ core compatibility, signature verification and Docker checks are performed by the SelfHelp Manager at execution time.',
+        ];
+
+        if (SemverHelper::parse($targetVersion) === null) {
+            $checks[] = [
+                'code' => self::CHECK_VERSION_INVALID,
+                'severity' => 'error',
+                'message' => sprintf('Target frontend version "%s" is not a valid version.', $targetVersion),
+            ];
+        }
+
+        // The downgrade check is only meaningful when BOTH versions are real,
+        // parseable versions. A frontend stamped 'unknown' (a build made before
+        // version stamping) must not masquerade as a downgrade and block the
+        // update — the manager re-resolves and refuses real downgrades anyway.
+        if (
+            SemverHelper::parse($currentVersion) !== null
+            && SemverHelper::parse($targetVersion) !== null
+            && SemverHelper::diffKind($currentVersion, $targetVersion) === 'downgrade'
+        ) {
+            $checks[] = [
+                'code' => self::CHECK_DOWNGRADE,
+                'severity' => 'error',
+                'message' => sprintf('Frontend downgrades are not supported (current %s, target %s).', $currentVersion, $targetVersion),
+            ];
+        }
+
+        // Advisory: is the requested frontend version published in the registry?
+        // A miss is a warning (not a block) — the manager re-resolves the signed
+        // release and is the final authority on availability + compatibility.
+        $published = $this->registry->listFrontendReleases();
+        if ($published === null) {
+            $checks[] = [
+                'code' => self::CHECK_REGISTRY_UNREACHABLE,
+                'severity' => 'warning',
+                'message' => 'Registry metadata for the frontend is unavailable; the SelfHelp Manager will re-validate availability and compatibility before applying.',
+            ];
+        } elseif (!$this->frontendVersionPublished($published, $targetVersion)) {
+            $checks[] = [
+                'code' => self::CHECK_REGISTRY_UNREACHABLE,
+                'severity' => 'warning',
+                'message' => sprintf('Frontend %s is not listed on the registry; the SelfHelp Manager will re-validate it before applying.', $targetVersion),
+            ];
+        } else {
+            $options[] = [
+                'type' => 'frontend',
+                'version' => $targetVersion,
+                'label' => sprintf('SelfHelp frontend %s', $targetVersion),
+            ];
+        }
+
+        return [
+            'preflight_id' => $this->makeFrontendPreflightId($instanceId, $currentVersion, $targetVersion),
+            'status' => $this->deriveStatus($checks),
+            'instance_id' => $instanceId,
+            'current_version' => $currentVersion,
+            'target_version' => $targetVersion,
+            'checks' => $checks,
+            'options' => $options,
+            // The frontend is stateless: no database migration, no backup needed.
+            'database' => [
+                'destructive' => false,
+                'requires_backup' => false,
+                'manual_confirmation_required' => false,
+            ],
+            // The manager recreates only the frontend container and rolls it back
+            // on a failed health check — rollback is always safe (no migrations).
+            'rollback' => [
+                'automatic_before_migrations' => true,
+                'automatic_after_destructive_migrations' => true,
+            ],
         ];
     }
 
@@ -315,6 +454,72 @@ class SystemUpdateService
     }
 
     /**
+     * Persist an instance-scoped FRONTEND-only update request. Mirrors
+     * {@see requestUpdate()} but for the stateless frontend swap: the preflight
+     * is recomputed server-side (a blocked frontend cannot be requested), and the
+     * operation is stored with `kind = frontend` and the target frontend version.
+     * `target_version` is set to the frontend version too so the manager's
+     * approval verification (keyed on the operation's target version) stays
+     * consistent with the core flow.
+     *
+     * @param array<array-key,mixed> $data validated request body
+     * @return array{operation_id:string, instance_id:string, status:string, kind:string, target_frontend_version:string}
+     */
+    public function requestFrontendUpdate(array $data): array
+    {
+        $targetVersion = is_scalar($data['target_version'] ?? null) ? (string) $data['target_version'] : '';
+        $preflightId = is_scalar($data['preflight_id'] ?? null) ? (string) $data['preflight_id'] : null;
+
+        $preflight = $this->getFrontendPreflight($targetVersion);
+        if ($preflight['status'] === self::STATUS_BLOCKED) {
+            throw new ServiceException(
+                'Frontend update is blocked by preflight checks: ' . $this->firstErrorMessage($preflight),
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
+
+        $operation = new SystemUpdateOperation(
+            $this->instance->getInstanceId(),
+            $this->makeOperationId(),
+            $targetVersion
+        );
+        $requesterId = $this->userContext->getCurrentUser()?->getId();
+        $requestedBy = $requesterId !== null
+            ? $this->entityManager->getReference(User::class, $requesterId)
+            : null;
+        $operation
+            ->setKind(SystemUpdateOperation::KIND_FRONTEND)
+            ->setTargetFrontendVersion($targetVersion)
+            ->setPreflightId($preflightId)
+            // Frontend swaps carry no destructive migrations, so risk is never accepted.
+            ->setAcceptedMigrationRisk(false)
+            ->setRequestedBy($requestedBy)
+            ->setStatus(SystemUpdateOperation::STATUS_REQUESTED)
+            ->setProgressPercent(0)
+            ->setStepsJson([
+                ['name' => 'requested', 'status' => 'succeeded', 'detail' => 'Frontend update requested from the CMS; awaiting the SelfHelp Manager.'],
+            ]);
+
+        $this->entityManager->persist($operation);
+        $this->entityManager->flush();
+
+        $this->logger->info('System frontend update requested (instance-scoped).', [
+            'instance_id' => $operation->getInstanceId(),
+            'operation_id' => $operation->getOperationId(),
+            'target_frontend_version' => $targetVersion,
+            'actual_user_id' => $this->userContext->getActualUserId(),
+        ]);
+
+        return [
+            'operation_id' => $operation->getOperationId(),
+            'instance_id' => $operation->getInstanceId(),
+            'status' => $operation->getStatus(),
+            'kind' => $operation->getKind(),
+            'target_frontend_version' => $targetVersion,
+        ];
+    }
+
+    /**
      * Status of the latest update operation for THIS instance. When no operation
      * has ever existed, returns the synthetic {@see STATUS_IDLE} state (progress
      * 0, current version) so the polling UI has a stable shape WITHOUT pretending
@@ -328,18 +533,21 @@ class SystemUpdateService
         $operation = $this->operations->findLatestForInstance($instanceId);
 
         if ($operation === null) {
-            $now = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format(\DateTimeInterface::ATOM);
+            $now = $this->utcNow()->format(\DateTimeInterface::ATOM);
 
             return [
                 'instance_id' => $instanceId,
                 'operation_id' => '',
                 'status' => self::STATUS_IDLE,
                 'target_version' => $this->instance->getCmsVersion(),
+                'kind' => SystemUpdateOperation::KIND_CORE,
+                'target_frontend_version' => null,
                 'progress_percent' => 0,
                 'steps' => [],
                 'requested_at' => $now,
                 'updated_at' => $now,
                 'message' => sprintf('No update has been requested for this instance; it is running version %s.', $this->instance->getCmsVersion()),
+                'manager' => $this->managerStatus(null),
             ];
         }
 
@@ -348,12 +556,85 @@ class SystemUpdateService
             'operation_id' => $operation->getOperationId(),
             'status' => $operation->getStatus(),
             'target_version' => $operation->getTargetVersion(),
+            'kind' => $operation->getKind(),
+            'target_frontend_version' => $operation->getTargetFrontendVersion(),
             'progress_percent' => $operation->getProgressPercent(),
             'steps' => $operation->getStepsJson() ?? [],
             'requested_at' => $operation->getRequestedAt()->format(\DateTimeInterface::ATOM),
             'updated_at' => $operation->getUpdatedAt()->format(\DateTimeInterface::ATOM),
             'message' => $operation->getMessage(),
+            'manager' => $this->managerStatus($operation),
         ];
+    }
+
+    /**
+     * Record that an authenticated manager touched the manager-loop endpoints
+     * just now. Called from the manager-facing service methods only (the
+     * controller verifies the bearer token before they run).
+     */
+    private function recordManagerSeen(): void
+    {
+        try {
+            $item = $this->cache->getItem(self::MANAGER_LAST_SEEN_CACHE_KEY);
+            $item->set($this->utcNow()->format(\DateTimeInterface::ATOM));
+            $this->cache->save($item);
+        } catch (\Throwable) {
+            // A cache hiccup must never fail the manager loop itself.
+        }
+    }
+
+    /**
+     * Manager-loop visibility facts for the health/status surfaces:
+     * whether a manager token is configured at all, and when an authenticated
+     * manager last polled this instance.
+     *
+     * @return array{configured: bool, last_seen_at: string|null}
+     */
+    public function getManagerLoopInfo(): array
+    {
+        $lastSeen = null;
+        try {
+            $stored = $this->cache->getItem(self::MANAGER_LAST_SEEN_CACHE_KEY)->get();
+            if (is_string($stored) && $stored !== '') {
+                $lastSeen = $stored;
+            }
+        } catch (\Throwable) {
+            // Report "never seen" on cache failure rather than erroring.
+        }
+
+        return [
+            'configured' => $this->managerToken !== '',
+            'last_seen_at' => $lastSeen,
+        ];
+    }
+
+    /**
+     * Manager block for {@see getStatus()}: loop facts plus whether the
+     * current operation sits unclaimed in `requested` for too long — the
+     * "I requested an update and nothing happens" signal.
+     *
+     * @return array{configured: bool, last_seen_at: string|null, requested_stale: bool}
+     */
+    private function managerStatus(?SystemUpdateOperation $operation): array
+    {
+        $info = $this->getManagerLoopInfo();
+
+        $stale = false;
+        if ($operation !== null && $operation->getStatus() === SystemUpdateOperation::STATUS_REQUESTED) {
+            $age = $this->utcNow()->getTimestamp() - $operation->getRequestedAt()->getTimestamp();
+            $stale = $age > self::REQUESTED_STALE_AFTER_SECONDS;
+        }
+
+        return [
+            'configured' => $info['configured'],
+            'last_seen_at' => $info['last_seen_at'],
+            'requested_stale' => $stale,
+        ];
+    }
+
+    private function utcNow(): \DateTimeImmutable
+    {
+        return $this->now ?? new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
 
     /**
@@ -365,17 +646,24 @@ class SystemUpdateService
      */
     public function claimPendingOperation(): ?array
     {
+        $this->recordManagerSeen();
+
         $instanceId = $this->instance->getInstanceId();
         $operation = $this->operations->findLatestClaimableForInstance($instanceId);
         if ($operation === null) {
             return null;
         }
 
-        // Recompute whether the target carries destructive migrations so the
-        // manager-side approval guard has accurate input (defense-in-depth on
-        // top of the check already enforced at request time).
-        $database = $this->getPreflight($operation->getTargetVersion())['database'] ?? null;
-        $destructive = is_array($database) && ($database['destructive'] ?? false) === true;
+        // A frontend-only swap is stateless: it never carries destructive
+        // migrations, so skip the (core-only) registry recomputation entirely.
+        // For a core update, recompute whether the target carries destructive
+        // migrations so the manager-side approval guard has accurate input
+        // (defense-in-depth on top of the check already enforced at request time).
+        $destructive = false;
+        if (!$operation->isFrontendUpdate()) {
+            $database = $this->getPreflight($operation->getTargetVersion())['database'] ?? null;
+            $destructive = is_array($database) && ($database['destructive'] ?? false) === true;
+        }
 
         return [
             'operation_id' => $operation->getOperationId(),
@@ -390,6 +678,10 @@ class SystemUpdateService
             'approved_by_user_id' => $operation->getRequestedBy()?->getId() ?? 0,
             'accepted_migration_risk' => $operation->isAcceptedMigrationRisk(),
             'destructive_migration' => $destructive,
+            // Tell the manager which update path to take. A core operation omits
+            // the frontend target (the manager resolves the compatible frontend).
+            'kind' => $operation->getKind(),
+            'target_frontend_version' => $operation->getTargetFrontendVersion(),
         ];
     }
 
@@ -409,6 +701,8 @@ class SystemUpdateService
         ?array $steps = null,
         ?string $message = null,
     ): array {
+        $this->recordManagerSeen();
+
         if (!SystemUpdateOperation::isManagerWritableStatus($status)) {
             throw new ServiceException(
                 sprintf('Status "%s" is not a valid manager-writable operation status.', $status),
@@ -537,6 +831,28 @@ class SystemUpdateService
     private function makePreflightId(string $instanceId, string $current, string $target): string
     {
         return 'pf_' . substr(hash('sha256', $instanceId . '|' . $current . '->' . $target), 0, 16);
+    }
+
+    /** Frontend preflight ids carry a distinct prefix from core ones. */
+    private function makeFrontendPreflightId(string $instanceId, string $current, string $target): string
+    {
+        return 'pff_' . substr(hash('sha256', 'frontend|' . $instanceId . '|' . $current . '->' . $target), 0, 16);
+    }
+
+    /**
+     * Whether $version appears in the registry's published frontend list.
+     *
+     * @param list<array{version: string, channel: string, blocked: bool}> $published
+     */
+    private function frontendVersionPublished(array $published, string $version): bool
+    {
+        foreach ($published as $release) {
+            if ($release['version'] === $version) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function makeOperationId(): string

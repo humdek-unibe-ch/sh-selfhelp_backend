@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend (SelfHelp Manager / Docker Distribution MVP).
-Last verified: 2026-06-10.
-Source of truth: `src/Controller/Api/V1/Admin/SystemController.php`, `src/Service/System/*`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/`, and the `api_routes` rows seeded by `migrations/Version20260608160348.php` (plus `migrations/Version20260610124237.php` for `update/releases`).
+Last verified: 2026-06-15.
+Source of truth: `src/Controller/Api/V1/Admin/SystemController.php`, `src/Service/System/*`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/`, and the `api_routes` rows seeded by `migrations/Version20260608160348.php` (plus `migrations/Version20260610124237.php` for `update/releases` and `migrations/Version20260615130915.php` for the `update/frontend/*` routes; the `kind` + `target_frontend_version` columns come from `migrations/Version20260615130842.php`).
 
 ## Overview
 
@@ -31,8 +31,8 @@ Hard rules (enforced server-side):
 
 | Permission            | Granted to | Used by                                                                 |
 |-----------------------|------------|-------------------------------------------------------------------------|
-| `admin.system.read`   | `admin`    | `version`, `update/preflight`, `update/status`, `update/releases`       |
-| `admin.system.update` | `admin`    | `update/request`                                                        |
+| `admin.system.read`   | `admin`    | `version`, `update/preflight`, `update/status`, `update/releases`, `update/frontend/releases`, `update/frontend/preflight` |
+| `admin.system.update` | `admin`    | `update/request`, `update/frontend/request`                             |
 
 Both are seeded and granted to the `admin` role by
 `migrations/Version20260608160348.php`. Non-admins receive `403`; unauthenticated
@@ -47,6 +47,9 @@ callers receive `401`.
 | GET    | `/admin/system/update/preflight`      | `admin.system.read`   | Compatibility verdict for a target       |
 | POST   | `/admin/system/update/request`        | `admin.system.update` | Record an update request for THIS instance |
 | GET    | `/admin/system/update/status`         | `admin.system.read`   | Status/progress of the latest operation  |
+| GET    | `/admin/system/update/frontend/releases`  | `admin.system.read`   | Frontend versions published in the registry |
+| GET    | `/admin/system/update/frontend/preflight` | `admin.system.read`   | Frontend-only compatibility verdict      |
+| POST   | `/admin/system/update/frontend/request`   | `admin.system.update` | Record a frontend-only update request    |
 
 ### GET /admin/system/version
 
@@ -185,7 +188,9 @@ Response `data` (schema: `responses/admin/update_status.json`):
   "instance_id": "selfhelp-prod-01",
   "operation_id": "op_9f8e7d6c",
   "status": "running",
+  "kind": "core",
   "target_version": "0.1.1",
+  "target_frontend_version": null,
   "progress_percent": 40,
   "steps": [
     { "name": "pull", "status": "succeeded" },
@@ -197,15 +202,78 @@ Response `data` (schema: `responses/admin/update_status.json`):
 }
 ```
 
+`kind` is `core` (default, full-stack update) or `frontend` (a frontend-only
+swap requested via `update/frontend/request`); `target_frontend_version` is the
+targeted frontend version for a `frontend`-kind operation and `null` otherwise
+(including the synthetic `idle` status). The same two fields are emitted on the
+manager-claim payload so the SelfHelp Manager runs the right kind of update.
+
+## Frontend-only updates
+
+The frontend ships independently of the core, so an instance already on the
+newest core can still move to a newer **compatible** frontend without a
+full-stack update. These three endpoints mirror the core update flow but are
+deliberately lightweight: the frontend is **stateless** (no database migration,
+no backup), so the CMS only validates the version + downgrade locally and defers
+the authoritative frontend ⇄ core compatibility + signature checks to the
+SelfHelp Manager, which re-resolves the signed frontend release and swaps only
+the frontend container (rolling it back on a failed health check).
+
+### GET /admin/system/update/frontend/releases
+
+Lists the frontend versions published in the official registry index (newest
+first) for the frontend-only picker. Same shape and fail-soft behaviour as
+`update/releases` (`available: false` + empty list when the registry is
+unreachable); `current_version` is the instance's installed frontend version.
+Response schema: `responses/admin/update_releases.json` (reused).
+
+### GET /admin/system/update/frontend/preflight
+
+Query parameter: `target` (required) — the target frontend version. A missing
+`target` returns `400`.
+
+Returns the same verdict shape as `update/preflight`, but because a frontend
+swap is stateless the verdict is always non-destructive: `database.destructive`
+and `database.requires_backup` are always `false`. The only blocking checks are
+an **invalid version** and a **downgrade** (and a downgrade is only evaluated
+when the installed frontend version is a real, parseable version — an `unknown`
+stamp from a pre-versioning build never falsely blocks). A target that is not
+listed in the registry is a `warning`, not a block — the manager re-validates
+availability authoritatively. Response schema:
+`responses/admin/update_preflight.json` (reused).
+
+### POST /admin/system/update/frontend/request
+
+Records a frontend-only update request and returns `202 Accepted`. Like the core
+request it carries **no `instance_id`** (sending it returns `403`), but its body
+also omits `accepted_migration_risk`/`typed_confirmation` — a frontend swap has
+no destructive migration to confirm.
+
+Request body (schema: `requests/admin/frontend_update_request.json`,
+`additionalProperties: false`):
+
+```json
+{ "target_version": "0.1.7", "preflight_id": "fe_pf_0a1b2c3d" }
+```
+
+- A `blocked` preflight returns `422`.
+
+Response `data` (schema: `responses/admin/frontend_update_request.json`):
+
+```json
+{ "operation_id": "op_5c6d7e8f", "instance_id": "selfhelp-prod-01", "status": "requested", "kind": "frontend", "target_frontend_version": "0.1.7" }
+```
+
 ## Audit trail
 
 Every request is persisted to `system_update_operations` (entity
 `App\Entity\System\SystemUpdateOperation`) with the requesting user, target
-version, preflight id, status, progress, and step log. The manager updates the
-row as it executes; the `status` endpoint reads it back.
+version, preflight id, status, progress, and step log. A frontend-only request
+additionally sets `kind = frontend` and `target_frontend_version`. The manager
+updates the row as it executes; the `status` endpoint reads it back.
 
 ## Related
 
 - Cross-repo version alignment: [../../developer/cross-repo-compatibility-matrix.md](../../developer/cross-repo-compatibility-matrix.md).
-- Shared contracts: `@selfhelp/shared` `src/types/api/system.ts` (`ISystemVersion`, `IUpdatePreflight`, `IUpdateStatus`, `IUpdateRequest`, `IUpdateReleases`).
+- Shared contracts: `@selfhelp/shared` `src/types/api/system.ts` (`ISystemVersion`, `IUpdatePreflight`, `IUpdateStatus`, `IUpdateRequest`, `IUpdateReleases`, and the frontend-only `TUpdateKind`, `IFrontendUpdateRequest`, `IFrontendUpdateRequestResponse`, `IFrontendUpdateReleases`, `IFrontendUpdatePreflight`).
 - SelfHelp Manager (owns Docker, performs the operation): the `sh-manager` repository.

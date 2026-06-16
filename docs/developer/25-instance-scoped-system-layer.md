@@ -3,8 +3,8 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-09.
-Source of truth: `src/Entity/System/`, `src/Service/System/`, `src/Controller/Api/V1/Admin/SystemController.php`, `src/Controller/Api/V1/Manager/SystemManagerController.php`, and `config/schemas/api/v1`.
+Last verified: 2026-06-16.
+Source of truth: `src/Entity/System/`, `src/Service/System/`, `src/Controller/Api/V1/Admin/SystemController.php`, `src/Controller/Api/V1/Manager/SystemManagerController.php`, `src/EventListener/SystemUpdateMercurePublisher.php`, and `config/schemas/api/v1`.
 
 The **system layer** lets a CMS admin view this instance's version and health,
 run an update **compatibility preflight**, and **request** a connected, signed
@@ -119,15 +119,40 @@ manager bearer token** verified in-controller with a constant-time comparison
 
 The token comes from `SELFHELP_MANAGER_TOKEN`. When it is empty the manager loop
 is **disabled** and every call is denied — an unconfigured instance can never be
-driven by an anonymous caller. The matching CLI command is
-`sh-manager instance process-operations <id> --backend-url ... --token ...`.
+driven by an anonymous caller. The manager generates this token per instance
+(`secrets.env`) and injects it into the backend container; instances installed
+before the token existed get it backfilled on `instance update` / repair.
 
-`process-operations` drains the queue **once** and exits, so it must be invoked
-on a schedule for a `requested` update to ever be picked up. The manager ships a
-supervised trigger (systemd timer + cron recipe + a `--watch` long-running loop)
-documented in the `sh-manager` repository's `docs/operator/process-operations-scheduling.md`;
-without one of those, a CMS-requested update stays in `requested` forever. The
-backend deliberately does not run it — the CMS never controls Docker.
+The default transport is **exec-based**: `sh-manager instance process-operations <id>`
+runs a PHP one-liner inside the backend container via `docker compose exec`,
+calling `http://localhost:8080/cms-api/v1/manager/system/update/*` with the
+container's own `$SELFHELP_MANAGER_TOKEN`. No published ports, no host-side token
+handling. `--backend-url ... --token ...` remains for remote/advanced setups.
+
+`process-operations` drains the queue **once** and exits. The persistent-mode
+manager web UI runs a background poller that drains all inventory instances on
+an interval (default 15s), so on a managed host no extra scheduling is needed.
+For headless setups, a supervised trigger (systemd timer + cron recipe + a
+`--watch` long-running loop) is documented in the `sh-manager` repository's
+`docs/operator/process-operations-scheduling.md`. Without either, a
+CMS-requested update stays in `requested` forever. The backend deliberately does
+not run it — the CMS never controls Docker.
+
+### Manager-loop visibility (last seen, staleness)
+
+So that "requested but nothing happens" is diagnosable from the CMS:
+
+- `SystemUpdateService` records a **manager last-seen** timestamp (cache key
+  `selfhelp_manager_last_seen_at`) on every authenticated manager call (claim
+  or status write-back).
+- `GET /admin/system/health` includes a `manager_loop` component:
+  `not_configured` (token empty — informational, CLI-managed instances still
+  work), `down` (configured but no manager has ever polled), `degraded` (last
+  poll older than 10 minutes), `ok` otherwise.
+- `GET /admin/system/update/status` includes a `manager` block:
+  `{ configured, last_seen_at, requested_stale }`. `requested_stale` becomes
+  `true` when the latest operation has sat in `requested` for over 2 minutes —
+  the frontend uses it to warn "the manager has not picked this up".
 
 ## Update lifecycle (happy path)
 
@@ -138,8 +163,22 @@ Manager: GET /manager/system/update/pending  -> claims it
 Manager: POST .../status accepted -> preflight_running -> backup_running
          -> update_running -> migration_running -> health_check_running
          -> succeeded            (or failed / rolled_back on error)
-CMS UI: polls GET /admin/system/update/status until a terminal state
+CMS UI: tracks live over the `system-update` SSE event (see below); a short
+        GET /admin/system/update/status poll runs only while SSE is disconnected
 ```
+
+### Live progress (SSE, not polling)
+
+Every insert/update of a `SystemUpdateOperation` row is published to the
+**requester's** per-user `system-update` Mercure topic by the Doctrine listener
+`App\EventListener\SystemUpdateMercurePublisher` (on `postFlush`, exactly like
+`AclVersionMercurePublisher` does for ACL). This fires both when the CMS creates
+the `requested` row and on every state / `steps` / `progress_percent` write-back
+the manager makes while draining it — so the CMS System Maintenance page tracks
+the operation live over the existing `/auth/events` SSE connection (the topic is
+multiplexed onto that one stream) and only falls back to polling
+`GET /admin/system/update/status` while the stream is disconnected. Publish
+failures are logged and swallowed; the fallback poll is the safety net.
 
 A destructive DB migration requires the admin to **accept the migration risk**
 and type the target version to confirm before the request is allowed (enforced in

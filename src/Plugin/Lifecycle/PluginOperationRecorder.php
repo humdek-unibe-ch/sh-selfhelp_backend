@@ -41,6 +41,20 @@ use Psr\Log\NullLogger;
  */
 final class PluginOperationRecorder
 {
+    /**
+     * Statuses that are already terminal. {@see fail()} never overwrites one
+     * of these — every async worker handler and the CLI finalizer call
+     * `fail()` from a catch-all, so a re-fail after `finalize()` already
+     * marked the row `succeeded`/`rolled_back` (or a prior `fail()` ran) would
+     * flip a good result to `failed` and broadcast a misleading final event.
+     */
+    private const TERMINAL_STATUSES = [
+        PluginOperation::STATUS_SUCCEEDED,
+        PluginOperation::STATUS_FAILED,
+        PluginOperation::STATUS_CANCELLED,
+        PluginOperation::STATUS_ROLLED_BACK,
+    ];
+
     public function __construct(
         private readonly EntityManagerInterface $em,
         private readonly UserContextService $userContext,
@@ -147,6 +161,23 @@ final class PluginOperationRecorder
 
     public function fail(PluginOperation $operation, \Throwable $error, ?string $stage = null): void
     {
+        // Terminal-idempotent guarantee. The async plugin worker handlers
+        // (install/update/uninstall) and the CLI finalizer all call fail()
+        // from a catch-all `catch (\Throwable)`. If finalize() already reached
+        // a terminal state — succeeded, rolled_back, or a prior fail() — a
+        // second fail() would corrupt the row (e.g. flip succeeded → failed)
+        // and emit a misleading final `plugin-operation-progress` event. Skip
+        // it: the operation already has its terminal status + final event.
+        if (in_array($operation->getStatus(), self::TERMINAL_STATUSES, true)) {
+            $this->logger->debug('Plugin operation fail() ignored — operation already terminal', [
+                'plugin_id' => $operation->getPluginId(),
+                'operation_id' => $operation->getId(),
+                'status' => $operation->getStatus(),
+                'ignored_error' => $error->getMessage(),
+            ]);
+            return;
+        }
+
         $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
         $operation->setStatus(PluginOperation::STATUS_FAILED);
         $operation->setFinishedAt($now);

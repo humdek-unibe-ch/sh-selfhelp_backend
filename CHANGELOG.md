@@ -1,3 +1,72 @@
+# v0.1.10
+
+## Authentication
+
+- **Refreshing the session no longer logs the operator out during a plugin install / update / uninstall.** The web client refreshes the access token from two independent runtimes that share no state — the Edge proxy (SSR navigations) and the Node BFF (`/api/*`), possibly across replicas — so when the short-lived access token was near expiry while the backend briefly restarted (exactly what a plugin lifecycle operation does) both could POST the **same** single-use refresh token at once. The first rotated it, the second found nothing, got a `401`, and the BFF wiped a perfectly good session → the operator was bounced to the login page ("uninstalling a plugin logged me out"). `JWTService::processRefreshToken()` now keeps a short (`30 s`) Redis-backed rotation **grace window**: a concurrent refresh of a just-consumed token replays onto the same newly issued refresh token (and mints a fresh access token) instead of being rejected, so all concurrent callers converge on the live token. Single-use semantics are preserved once the window elapses — a genuinely reused token is still rejected — and both the replay and the post-window rejection are pinned by regression + security tests in `JWTServiceTest`.
+
+## System Maintenance
+
+- **Editing the maintenance system message now takes effect immediately.** Toggling maintenance mode interpolates `{{system.maintenance_message}}` into cached page/section payloads, so a changed note kept serving the stale message until the cache TTL elapsed. `MaintenanceModeService::enable()/disable()` now invalidates the `pages` and `sections` cache categories whenever maintenance mode is toggled, so the public maintenance page reflects the current note on the next request. Covered by `MaintenanceModeServiceTest`.
+- **The seeded maintenance alert message is stored in the field the renderer reads.** The original seed wrote the operator note into the alert style's `value` field, but the alert renders its `content` field, so the styled message never appeared. A data-only migration (`Version20260616094205`) moves the existing `maintenance-sys-message` translation from `value` to `content`; it is idempotent (`INSERT IGNORE` + scoped `DELETE`) and has a round-trip test.
+
+## Plugins
+
+- **Plugin purge is now an asynchronous, manager-parked operation, like install / uninstall.** `POST /admin/plugins/{plugin}/purge` previously ran synchronously and returned `200`; it now records a `purge` `plugin_operation`, dispatches it onto the `plugin_ops` Messenger transport, and returns `202 Accepted` with the operation envelope so the admin UI can track it on the operations console and the SelfHelp Manager can park it for the operator. `PluginPurger::purge()` is split into `request()` (validate + lock + snapshot the owned tables / manifest / backup flag + dispatch) and `finalize()` (the destructive cleanup: drop plugin-owned tables and tagged rows, foreign keys, migration versions, the plugin row, then regenerate bundles + clean artefacts), mirroring `PluginUninstaller`. The new `PurgePluginMessage` / `PurgePluginHandler` run `finalize()` inline in `development` / `trusted` modes and write a runbook in `managed` mode, where the operator runs `composer remove` and then `selfhelp:plugin:run-operation <id>` (now handles `TYPE_PURGE` via `PluginCliFinalizer::finalizePurge()`). `selfhelp:plugin:purge` reports the parked operation instead of claiming an immediate, synchronous purge.
+
+## System Updates
+
+- **Live update progress is pushed over SSE — the CMS no longer polls for it.** A new Doctrine listener (`App\EventListener\SystemUpdateMercurePublisher`) publishes a `system-update` Mercure event on every insert/update of a `SystemUpdateOperation` row, to the **requester's** per-user topic. It fires both when the CMS creates the `requested` row and on every state / `steps` / `progress_percent` write-back the SelfHelp Manager makes while draining it, so the System Maintenance page repaints its step tracker live over the existing `/auth/events` connection. The topic is minted by a new `MercureTopicResolver::userSystemUpdateTopic()` and multiplexed onto the same single subscriber JWT as the ACL + impersonation topics by `AuthEventsController` (one upstream socket per user). `GET /auth/events` now returns `systemUpdateTopic`; `responses/auth/events.json` requires it. Publish failures are logged and swallowed — the frontend's reconnect-aware fallback poll is the safety net.
+
+## Plugins
+
+- **Plugin operations always reach a terminal status — async worker path included.** When a plugin operation failed **after** marking the row `running` — a missing snapshot payload, an unknown type, a `composer require/remove` non-zero exit, or any thrown orchestrator error — it could be left stuck on `running`. The admin UI then showed progress forever and the per-plugin lock blocked every later install/uninstall until its TTL expired. The terminal guarantee is now centralized in `PluginOperationRecorder::fail()`, which both the manager-driven finalizer (`selfhelp:plugin:run-operation`) **and** the async `plugin_ops` Messenger worker handlers (`InstallPluginHandler` / `UpdatePluginHandler` / `UninstallPluginHandler`) route their catch-all failure through. `fail()` is now terminal-idempotent: it records a terminal `failed` status + the final `plugin-operation-progress` event for a still-running operation, and it never overwrites or re-emits for an operation that already reached a terminal state (so a post-`finalize()` cleanup error can no longer flip a `succeeded` row to `failed`). The recorder's existing raw-DBAL fallback keeps this working even when the EntityManager is poisoned, and the recovery never masks the original error.
+- **A single broken plugin no longer 500s the whole plugin list.** `PluginAdminService::listPlugins()` formatted every row eagerly, so one inconsistent bundle (e.g. a half-removed plugin whose `composer remove` ran but whose row/manifest was briefly out of sync during a manager-driven restart) threw and turned the entire admin **Plugins** screen into a dead "Failed to load plugins" error. Rows are now formatted defensively: a bad row is logged and skipped, and the operator still sees — and can repair / uninstall — everything else.
+
+# v0.1.8
+
+## System Maintenance
+
+- **`system.maintenance_message` is offered in the CMS `{{ }}` editor**: the section editor's variable autocomplete (`DataVariableResolver`) now lists `system.maintenance_message` alongside the other `system.*` variables, so an operator designing the maintenance page can insert the live note from the suggestion dropdown instead of typing it from memory. The variable was already resolvable and allow-listed; this surfaces it in the picker and adds guard tests that pin the full chain — `MaintenanceModeService` -> `VariableResolverService` (`maintenance_message`, both the set value and the blank-note default) -> the `{{system.maintenance_message}}` render token — so the seeded maintenance page reliably shows the operator's message.
+
+# v0.1.7
+
+## Plugins
+
+- **Plugin purge no longer returns a 500** (`Class "Symfony\Component\Process\Process" not found`): `symfony/process` was only a transitive **dev** dependency, so a production image built with `--no-dev` had no `Process` class. The synchronous purge / remove-package path (`PackageManagerRunner`, which runs in the web request rather than the Messenger worker) therefore fatal-errored on `POST /admin/plugins/{plugin}/purge`. `symfony/process` is now a direct production `require`, and a regression test asserts it stays in both the production `require` block and the locked `packages` section so the purge/remove flow keeps working on the shipped image.
+
+## System Maintenance
+
+- **Public maintenance page**: a new seeded, open-access `maintenance` CMS page is shown to visitors while the instance is in maintenance, instead of a bare `503`. Its content renders the operator's live note through a new `{{system.maintenance_message}}` interpolation variable (resolved from `MaintenanceModeService`, with a friendly default when the note is blank), so changing the maintenance message from the admin panel updates the page with no content edit. The maintenance `503` gate now exempts the `maintenance` page's own content fetch and the `languages` list the render needs, so the styled page is reachable during the outage. The frontend keeps a hardcoded fallback for when the seeded page is missing or unreachable.
+
+# v0.1.6
+
+## System Health
+
+- **Worker health no longer falsely reports "not configured"**: the aggregated system-health probe (`GET /admin/system/health`, shown on the admin System and maintenance pages) checked a `MESSENGER_TRANSPORT_DSN` env var that the platform never sets, so **every** instance showed the `worker` component as `not_configured` even though the worker runs fine on its real transport. The probe now reads the single, authoritative worker transport env (`MESSENGER_PLUGIN_OPS_DSN`, with the same `doctrine://default` fallback the messenger config uses), so the worker reports `ok`/`configured` as expected. This was always cosmetic — `not_configured` never degraded the overall verdict — but it was alarming on the maintenance page. No parallel transport alias is introduced; the probe simply targets the transport that is actually running.
+
+# v0.1.5
+
+## System Updates
+
+- **Frontend-only updates**: the frontend ships independently of the core, so an instance already on the newest core can now move to a newer compatible frontend without a full-stack update. New admin endpoints (guarded by the existing `admin.system.read` / `admin.system.update` permissions): `GET /admin/system/update/frontend/releases` (registry-published frontend versions, newest first; fails soft to `available: false` offline), `GET /admin/system/update/frontend/preflight?target=…` (a lightweight, stateless verdict — no destructive-migration/backup checks; downgrade + invalid-version are the only blocks, and an `unknown` installed frontend never falsely blocks), and `POST /admin/system/update/frontend/request` (records a `kind = frontend` operation; the request body omits `accepted_migration_risk` — a frontend swap is stateless). `system_update_operations` gains `kind` (`core` default / `frontend`) and `target_frontend_version`; `GET /admin/system/update/status` and the manager-claim payload now carry both fields. The SelfHelp Manager re-resolves the signed frontend release and performs the authoritative compatibility + signature check before swapping only the frontend container (rolling it back on a failed health check).
+
+# v0.1.4
+
+## System Updates
+
+- **Manager-loop visibility**: a CMS-requested update that nobody picks up is no longer a silent black hole. The backend records when an authenticated SelfHelp Manager last polled the manager endpoints (cache key `selfhelp_manager_last_seen_at`), `GET /admin/system/health` gains a `manager_loop` component (`ok` / `not_configured` / `down` / `degraded`), and `GET /admin/system/update/status` gains a `manager` block (`configured`, `last_seen_at`, `requested_stale`) so the UI can warn when an operation sits unclaimed in `requested`.
+
+## Plugins
+
+- **Open-ended core compatibility policy**: plugin manifests should declare a minimum core version without an upper bound (`compatibility.selfhelp: ">=0.1.0"`); `pluginApiVersion` is the breakage contract and registry `blocked` flags/advisories handle retroactive breakage. Documented in `docs/developer/26-plugin-compatibility-rules.md` and the plugin developer guide.
+
+# v0.1.3
+
+## Development Environment
+
+- **Pinned Docker image versions**: All third-party Docker images now use specific version tags instead of `latest` for reproducibility. Mailpit pinned to v1.30.1, Redis to 7-alpine, Mercure to v0.16.
+- **Windows line ending fix**: Added `.gitattributes` to enforce LF line endings for shell scripts (`*.sh`), preventing Docker container execution failures on Windows due to CRLF line endings.
+
 # v0.1.2
 
 ## Release Automation

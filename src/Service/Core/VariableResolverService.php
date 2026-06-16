@@ -12,6 +12,7 @@ use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\GlobalVariableService;
+use App\Service\System\MaintenanceModeService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Routing\RouterInterface;
@@ -25,6 +26,15 @@ use App\Service\Core\UserContextAwareService;
  */
 class VariableResolverService
 {
+    /**
+     * Fallback shown for `{{system.maintenance_message}}` when maintenance mode
+     * is off (or on but the operator left the note blank). Keeping a sensible
+     * default here means the seeded maintenance page never renders an empty
+     * placeholder, regardless of how maintenance was toggled.
+     */
+    public const DEFAULT_MAINTENANCE_MESSAGE =
+        'The platform is currently undergoing scheduled maintenance. Please check back again shortly.';
+
     /**
      * Request-scoped memoization for getAllVariables().
      * Keys: "{userId}|{languageId}|{includeGlobalVars}". A typical page render
@@ -42,7 +52,8 @@ class VariableResolverService
         private readonly RequestStack $requestStack,
         private readonly RouterInterface $router,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly GlobalVariableService $globalVariableService
+        private readonly GlobalVariableService $globalVariableService,
+        private readonly MaintenanceModeService $maintenanceMode
     ) {
     }
 
@@ -126,6 +137,17 @@ class VariableResolverService
         if ($includeGlobalVars) {
             $variables = $this->addGlobalVariables($variables, $languageId);
         }
+
+        // Maintenance note exposed as a system variable so any page (in
+        // particular the seeded `maintenance` page) can render the operator's
+        // current message with `{{system.maintenance_message}}`. Set AFTER the
+        // global-values merge so a custom global can never shadow the
+        // authoritative maintenance state. Falls back to a friendly default
+        // when no message is set so the placeholder is never empty.
+        $maintenanceMessage = $this->maintenanceMode->getState()['message'];
+        $variables['maintenance_message'] = $maintenanceMessage !== ''
+            ? $maintenanceMessage
+            : self::DEFAULT_MAINTENANCE_MESSAGE;
 
         // Add custom variables from request (supporting {{var}} syntax from frontend)
         // Only add plain versions to prevent duplication and confusion
