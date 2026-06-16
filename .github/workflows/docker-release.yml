@@ -27,7 +27,16 @@ on:
         required: true
 
 permissions:
-  contents: read
+  contents: write
+
+# Stop `docker/build-push-action` from auto-uploading its large `*.dockerbuild`
+# build-record artifact for every build (boot-smoke + push, x3 images = 6 of
+# them). They are not part of the release, and bundling them into the
+# `create-release` "download all artifacts" step bloated it to 16 artifacts and
+# made `actions/download-artifact@v4` flake out ("Artifact download failed after
+# 5 retries"). The intended supply-chain artifacts are uploaded explicitly.
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
 
 jobs:
   # Step 8 + 10: dependency license report + policy gate (once, shared by images).
@@ -153,6 +162,10 @@ jobs:
           image: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: ${{ matrix.image }}.sbom.spdx.json
+          # We re-upload the SBOM ourselves in the "Upload SBOM + scan" step
+          # below; the action's own auto-upload only adds a duplicate artifact
+          # (one per image) to the release's "download all" step.
+          upload-artifact: false
 
       # SHA-pinned to the 0.35.0 immutable release — the only tag guaranteed
       # safe after the March 2026 Trivy supply-chain compromise
@@ -249,3 +262,66 @@ jobs:
             "https://api.github.com/repos/${{ github.repository_owner }}/sh2-plugin-registry/dispatches" \
             -d "$PAYLOAD"
           echo "::notice::auto-core-release dispatched for core $VERSION — review the staged PR in sh2-plugin-registry."
+
+  # Create GitHub Release with artifacts and changelog notes
+  create-release:
+    needs: [license, images]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          echo "ver=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Extract per-version changelog notes
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.ver }}
+        run: |
+          VER="${VERSION}"
+          NOTES_FILE="$GITHUB_WORKSPACE/release-notes.md"
+          if [ ! -f CHANGELOG.md ]; then
+              echo "_No CHANGELOG.md present._" > "$NOTES_FILE"
+          else
+              # Extract the section between ## [<version>] and the next ## heading.
+              # Falls back to the full file if no matching section is found.
+              awk -v ver="$VER" '
+                  BEGIN { found = 0 }
+                  /^## / {
+                      if (found == 1) { exit }
+                      if (index($0, "[" ver "]") > 0 || index($0, " " ver " ") > 0 || index($0, " " ver "$") > 0) {
+                          found = 1
+                          print
+                          next
+                      }
+                  }
+                  found == 1 { print }
+              ' CHANGELOG.md > "$NOTES_FILE"
+              if [ ! -s "$NOTES_FILE" ]; then
+                  echo "_No matching section for ${VER} in CHANGELOG.md — full changelog attached below._" > "$NOTES_FILE"
+                  echo "" >> "$NOTES_FILE"
+                  cat CHANGELOG.md >> "$NOTES_FILE"
+              fi
+          fi
+          echo "notes-file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: sh-selfhelp_backend ${{ steps.version.outputs.ver }}
+          files: artifacts/**/*
+          body_path: ${{ steps.notes.outputs.notes-file }}
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}
+          generate_release_notes: false

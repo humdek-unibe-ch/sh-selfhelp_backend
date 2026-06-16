@@ -21,6 +21,7 @@ use App\Service\System\SystemUpdateService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /**
  * Regression guard for the distribution plan's "Backup And Rollback" policy
@@ -50,6 +51,7 @@ final class SystemUpdateServiceRollbackPolicyTest extends TestCase
             $this->createStub(UserContextService::class),
             $this->createStub(EntityManagerInterface::class),
             new NullLogger(),
+            new ArrayAdapter(),
         );
     }
 

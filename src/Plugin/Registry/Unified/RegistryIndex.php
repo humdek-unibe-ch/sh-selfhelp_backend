@@ -20,17 +20,21 @@ namespace App\Plugin\Registry\Unified;
  * per published version — each pointing at a standalone signed release
  * document via `releaseUrl`.
  *
- * The backend only ever CONSUMES `core[]` (for the signed advisory-only update
- * preflight) and `plugins[]` (the Available list + install). The
- * `frontend[]`/`scheduler[]`/`worker[]` Docker release refs are the Manager's
- * concern and are intentionally NOT parsed here — the backend never pulls those
- * images, so modelling them would be unused surface. The wire shape still
- * carries them (see the registry-index JSON schema); they are simply ignored.
+ * The backend CONSUMES `core[]` (for the signed advisory-only update preflight),
+ * `frontend[]` (the version list for the CMS frontend-only update picker — refs
+ * only; the SIGNED frontend Docker release docs remain the Manager's concern,
+ * which re-resolves and verifies them before pulling), and `plugins[]` (the
+ * Available list + install). The `scheduler[]`/`worker[]` Docker release refs
+ * are the Manager's concern and are intentionally NOT parsed here — the backend
+ * never pulls those images, so modelling them would be unused surface. The wire
+ * shape still carries them (see the registry-index JSON schema); they are
+ * simply ignored.
  */
 final class RegistryIndex
 {
     /**
      * @param list<RegistryReleaseRef> $core
+     * @param list<RegistryReleaseRef> $frontend
      * @param list<RegistryReleaseRef> $plugins
      */
     public function __construct(
@@ -39,6 +43,7 @@ final class RegistryIndex
         public readonly string $baseUrl,
         public readonly array $core,
         public readonly array $plugins,
+        public readonly array $frontend = [],
         public readonly ?string $trustedKeysUrl = null,
         public readonly ?string $advisoriesUrl = null,
     ) {
@@ -62,6 +67,7 @@ final class RegistryIndex
             baseUrl: $baseUrl,
             core: self::parseRefs($data, 'core', $context),
             plugins: self::parseRefs($data, 'plugins', $context),
+            frontend: self::parseRefs($data, 'frontend', $context),
             trustedKeysUrl: is_string($trustedKeysUrl) && $trustedKeysUrl !== '' ? $trustedKeysUrl : null,
             advisoriesUrl: is_string($advisoriesUrl) && $advisoriesUrl !== '' ? $advisoriesUrl : null,
         );
@@ -99,6 +105,24 @@ final class RegistryIndex
     public function coreRefsSorted(): array
     {
         $refs = $this->core;
+        usort(
+            $refs,
+            static fn (RegistryReleaseRef $a, RegistryReleaseRef $b): int => \App\Plugin\Versioning\SemverHelper::compare($b->version, $a->version),
+        );
+        return $refs;
+    }
+
+    /**
+     * Frontend release refs sorted newest-first. Feeds the CMS frontend-only
+     * update version picker; only refs (version/channel/blocked) are read here —
+     * the SIGNED frontend Docker release document is the Manager's concern,
+     * re-resolved + signature-verified before any image is pulled.
+     *
+     * @return list<RegistryReleaseRef>
+     */
+    public function frontendRefsSorted(): array
+    {
+        $refs = $this->frontend;
         usort(
             $refs,
             static fn (RegistryReleaseRef $a, RegistryReleaseRef $b): int => \App\Plugin\Versioning\SemverHelper::compare($b->version, $a->version),

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Frontend Update Request Accepted Response",
+  "description": "Acknowledgement that an instance-scoped frontend-only update was requested (202). The SelfHelp Manager performs the stateless frontend swap.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "operation_id": { "type": "string" },
+        "instance_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["requested", "approved", "running", "succeeded", "failed", "rolled_back", "rejected"] },
+        "kind": { "type": "string", "enum": ["frontend"] },
+        "target_frontend_version": { "type": "string" }
+      },
+      "required": ["operation_id", "instance_id", "status", "kind", "target_frontend_version"]
+    }
+  },
+  "required": ["data"]
+}

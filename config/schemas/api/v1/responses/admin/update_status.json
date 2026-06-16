@@ -13,6 +13,8 @@
         "operation_id": { "type": "string" },
         "status": { "type": "string", "enum": ["idle", "requested", "approved", "accepted", "running", "preflight_running", "preflight_failed", "backup_running", "update_running", "migration_running", "health_check_running", "succeeded", "failed", "rollback_running", "rolled_back", "rollback_failed", "rejected"] },
         "target_version": { "type": "string" },
+        "kind": { "type": "string", "enum": ["core", "frontend"], "description": "What the latest operation updates: core (default) or a stateless frontend-only swap." },
+        "target_frontend_version": { "type": ["string", "null"], "description": "The frontend version a 'frontend'-kind operation targets; null for a core/idle status." },
         "progress_percent": { "type": "integer", "minimum": 0, "maximum": 100 },
         "steps": {
           "type": "array",
@@ -28,7 +30,17 @@
         },
         "requested_at": { "type": "string" },
         "updated_at": { "type": "string" },
-        "message": { "type": ["string", "null"] }
+        "message": { "type": ["string", "null"] },
+        "manager": {
+          "type": "object",
+          "description": "CMS<->Manager loop visibility: whether the per-instance manager token is configured, when an authenticated manager last polled, and whether the current operation sits unclaimed in 'requested' for too long.",
+          "properties": {
+            "configured": { "type": "boolean" },
+            "last_seen_at": { "type": ["string", "null"] },
+            "requested_stale": { "type": "boolean" }
+          },
+          "required": ["configured", "last_seen_at", "requested_stale"]
+        }
       },
       "required": [
         "instance_id",
@@ -38,7 +50,8 @@
         "progress_percent",
         "steps",
         "requested_at",
-        "updated_at"
+        "updated_at",
+        "manager"
       ]
     }
   },

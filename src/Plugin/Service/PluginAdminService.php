@@ -47,6 +47,7 @@ use App\Repository\Plugin\PluginRepository;
 use App\Repository\Plugin\PluginSourceRepository;
 use App\Service\Core\BaseService;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -102,6 +103,7 @@ final class PluginAdminService extends BaseService
         private readonly HttpClientInterface $httpClient,
         private readonly string $cmsVersion,
         private readonly string $sdkApiVersion,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -582,14 +584,27 @@ final class PluginAdminService extends BaseService
             $updatesByPluginId = [];
         }
 
-        return array_map(
-            function (Plugin $p) use ($updatesByPluginId): array {
+        // Format each row defensively: one inconsistent plugin (e.g. a
+        // half-removed bundle whose `composer remove` ran but whose row /
+        // manifest is briefly out of sync during a manager-driven restart)
+        // must NOT 500 the entire list and strand the operator on a dead
+        // "Failed to load plugins" screen. Skip the bad row, log it, and let
+        // the operator see (and repair / uninstall) everything else.
+        $rows = [];
+        foreach ($this->plugins->findAllOrderedByName() as $p) {
+            try {
                 $row = $this->formatPlugin($p);
                 $row['availableUpdate'] = $updatesByPluginId[$p->getPluginId()] ?? null;
-                return $row;
-            },
-            $this->plugins->findAllOrderedByName()
-        );
+                $rows[] = $row;
+            } catch (\Throwable $e) {
+                $this->logger->error('Failed to format plugin row for the admin list; skipping it', [
+                    'pluginId' => $p->getPluginId(),
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $rows;
     }
 
     /**
@@ -1062,9 +1077,19 @@ final class PluginAdminService extends BaseService
         return $this->formatOperation($this->uninstaller->request($pluginId));
     }
 
-    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void
+    /**
+     * Single purge entrypoint. Creates the `plugin_operations` row and
+     * dispatches the asynchronous `PurgePluginMessage`; the Messenger
+     * worker handles `composer remove` (dev/trusted) or parks a managed
+     * runbook, then `PluginPurger::finalize()` performs the destructive
+     * DB/artefact cleanup. Returns the parked operation so the admin UI
+     * tracks progress exactly like install/uninstall.
+     *
+     * @return PluginOperationData
+     */
+    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): array
     {
-        $this->purger->purge($pluginId, $confirmedPluginId, $backupBefore);
+        return $this->formatOperation($this->purger->request($pluginId, $confirmedPluginId, $backupBefore));
     }
 
     /** @return PluginOperationData */

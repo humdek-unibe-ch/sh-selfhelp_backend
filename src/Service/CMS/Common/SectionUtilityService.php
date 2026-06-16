@@ -824,7 +824,8 @@ class SectionUtilityService
             'current_date',
             'current_datetime',
             'current_time',
-            'project_name'
+            'project_name',
+            'maintenance_message'
         ];
 
         return in_array($variableName, $systemVariables);

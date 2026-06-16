@@ -387,8 +387,15 @@ final class AdminPluginController extends AbstractController
         try {
             $payload = $this->validateRequest($request, 'requests/admin/plugins/purge_plugin', $this->jsonSchemaValidationService);
             $confirmed = $this->asStringField($this->toAssocArray($payload), 'confirmedPluginId');
-            $this->pluginAdminService->purge($pluginId, $confirmed);
-            return $this->responseFormatter->formatSuccess(['pluginId' => $pluginId, 'status' => 'purged']);
+            // Purge is now parked like uninstall: it records a plugin_operations
+            // row and dispatches PurgePluginMessage. The destructive teardown
+            // runs in the worker / manager finalize, NOT in this HTTP request,
+            // so we return the operation envelope with 202 Accepted.
+            return $this->responseFormatter->formatSuccess(
+                $this->pluginAdminService->purge($pluginId, $confirmed),
+                'responses/admin/plugins/plugin_operation',
+                Response::HTTP_ACCEPTED,
+            );
         } catch (\Throwable $e) {
             return $this->respondWithError($e);
         }

@@ -77,13 +77,29 @@ final class PluginPurgeCommand extends Command
         }
 
         try {
-            $this->pluginAdminService->purge($pluginId, $pluginId, (bool) $input->getOption('backup-before'));
+            $operation = $this->pluginAdminService->purge($pluginId, $pluginId, (bool) $input->getOption('backup-before'));
         } catch (\Throwable $e) {
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
 
-        $io->success(sprintf('Plugin "%s" purged.', $pluginId));
+        $io->success(sprintf(
+            'Purge requested for "%s". Operation #%d (mode=%s) dispatched to the Messenger worker.',
+            $pluginId,
+            (int) $operation['id'],
+            $operation['installMode'],
+        ));
+        if ($operation['installMode'] === 'managed') {
+            $io->note(sprintf(
+                'Managed mode: the worker recorded a runbook (composer remove). After the operator deploys the change, call selfhelp:plugin:run-operation %d to DROP plugin-owned tables, delete plugin-tagged data, and remove the plugin row (irreversible).',
+                (int) $operation['id'],
+            ));
+        } else {
+            $io->note(sprintf(
+                'The Messenger worker is now running composer remove + the destructive finalize for operation #%d. Monitor with `selfhelp:plugin:status` or the Mercure stream.',
+                (int) $operation['id'],
+            ));
+        }
         return Command::SUCCESS;
     }
 }

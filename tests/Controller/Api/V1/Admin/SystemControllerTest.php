@@ -202,6 +202,91 @@ final class SystemControllerTest extends QaWebTestCase
         self::assertSame('requested', $status['status']);
     }
 
+    public function testFrontendUpdateReleasesIsAdminOnlyAndDegradesGracefullyOffline(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/update/frontend/releases');
+
+        // Registry pinned to a closed local port in the test env: the frontend
+        // picker degrades to "manual entry" deterministically.
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/frontend/releases', null, $this->loginAsQaAdmin())
+        );
+
+        self::assertArrayHasKey('available', $data);
+        self::assertArrayHasKey('current_version', $data);
+        self::assertArrayHasKey('releases', $data);
+        self::assertFalse($data['available'], 'Offline registry must degrade the frontend release list to unavailable.');
+        self::assertSame([], $data['releases']);
+        self::assertIsString($data['current_version']);
+    }
+
+    public function testFrontendPreflightIsAdminOnlyAndReturnsStatelessVerdict(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/update/frontend/preflight?target=' . self::TARGET);
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/frontend/preflight?target=' . self::TARGET, null, $this->loginAsQaAdmin())
+        );
+
+        self::assertContains($data['status'], ['ok', 'warning', 'blocked']);
+        self::assertSame(self::TARGET, $data['target_version']);
+        self::assertIsArray($data['database']);
+        // The frontend is stateless: never destructive, never requires a backup.
+        self::assertFalse($data['database']['destructive']);
+        self::assertFalse($data['database']['requires_backup']);
+    }
+
+    public function testFrontendPreflightRequiresTargetQueryParam(): void
+    {
+        $this->assertEnvelope400(
+            $this->jsonRequest('GET', self::BASE . '/update/frontend/preflight', null, $this->loginAsQaAdmin())
+        );
+    }
+
+    public function testFrontendUpdateRequestIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', self::BASE . '/update/frontend/request', [
+            'target_version' => self::TARGET,
+            'preflight_id' => 'pff_test',
+        ]);
+    }
+
+    public function testFrontendUpdateRequestDeniesClientSuppliedInstanceId(): void
+    {
+        $envelope = $this->jsonRequest('POST', self::BASE . '/update/frontend/request', [
+            'target_version' => self::TARGET,
+            'preflight_id' => 'pff_test',
+            'instance_id' => 'some-other-instance',
+        ], $this->loginAsQaAdmin());
+
+        $this->assertEnvelope403($envelope);
+    }
+
+    public function testFrontendUpdateRequestAcceptsAndStatusReflectsTheFrontendKind(): void
+    {
+        $token = $this->loginAsQaAdmin();
+
+        $accepted = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', self::BASE . '/update/frontend/request', [
+                'target_version' => self::TARGET,
+                'preflight_id' => 'pff_test',
+            ], $token),
+            Response::HTTP_ACCEPTED
+        );
+
+        self::assertNotSame('', $accepted['operation_id']);
+        self::assertSame('requested', $accepted['status']);
+        self::assertSame('frontend', $accepted['kind']);
+        self::assertSame(self::TARGET, $accepted['target_frontend_version']);
+
+        $status = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/status', null, $token)
+        );
+        self::assertSame($accepted['operation_id'], $status['operation_id']);
+        self::assertSame('frontend', $status['kind'], 'Status must report the operation kind.');
+        self::assertSame(self::TARGET, $status['target_frontend_version']);
+    }
+
     public function testMaintenanceReadIsAdminOnlyAndDefaultsToDisabled(): void
     {
         $this->assertAdminOnlyMatrix('GET', self::BASE . '/maintenance');

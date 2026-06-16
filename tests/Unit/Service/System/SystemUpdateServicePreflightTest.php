@@ -22,6 +22,7 @@ use App\Service\System\SystemUpdateService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /**
  * Core-update preflight regression for the reconciled `0.1.0` ecosystem
@@ -102,6 +103,7 @@ final class SystemUpdateServicePreflightTest extends TestCase
             $this->createStub(UserContextService::class),
             $this->createStub(EntityManagerInterface::class),
             new NullLogger(),
+            new ArrayAdapter(),
         );
     }
 
@@ -234,6 +236,7 @@ final class SystemUpdateServicePreflightTest extends TestCase
             $this->createStub(UserContextService::class),
             $this->createStub(EntityManagerInterface::class),
             new NullLogger(),
+            new ArrayAdapter(),
         );
 
         $preflight = $service->getPreflight('0.1.1');

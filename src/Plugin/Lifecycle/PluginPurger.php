@@ -19,7 +19,7 @@ use App\Plugin\Bundle\PluginBundlesFileWriter;
 use App\Plugin\Cache\PluginCacheInvalidator;
 use App\Plugin\Event\Lifecycle\PluginPurgedEvent;
 use App\Plugin\Manifest\PluginManifest;
-use App\Plugin\PackageManager\PackageManagerRunner;
+use App\Plugin\Messenger\PurgePluginMessage;
 use App\Plugin\Security\ProtectedTablesPolicy;
 use App\Repository\Plugin\PluginRepository;
 use App\Service\Core\LookupService;
@@ -28,6 +28,7 @@ use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 /**
  * The only destructive plugin operation.
@@ -78,14 +79,28 @@ final class PluginPurger
         private readonly PluginArchivePromoter $archivePromoter,
         private readonly PluginBackupHookInterface $backupHook,
         private readonly InstallModeResolver $installModeResolver,
-        private readonly PackageManagerRunner $packageManager,
         private readonly TransactionService $transactions,
         private readonly EventDispatcherInterface $events,
         private readonly PluginCacheInvalidator $cacheInvalidator,
+        private readonly MessageBusInterface $messageBus,
     ) {
     }
 
-    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void
+    /**
+     * Stage 1 — validate + record + dispatch. Mirrors
+     * {@see PluginUninstaller::request()} so purge "parks" for the operator
+     * exactly like uninstall/install: it creates the `plugin_operations`
+     * row, takes the per-plugin lock, and dispatches `PurgePluginMessage`
+     * onto the `plugin_ops` transport, returning immediately. The worker
+     * (`PurgePluginHandler`) runs `composer remove` for dev/trusted modes,
+     * or writes a managed-mode runbook the SelfHelp Manager drains; either
+     * path ends in {@see finalize()}, which does the destructive DB work.
+     *
+     * The destructive teardown therefore NEVER runs inside the admin HTTP
+     * request on a managed-mode (production) instance — it is parked for the
+     * manager just like every other lifecycle operation.
+     */
+    public function request(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): PluginOperation
     {
         if ($pluginId !== $confirmedPluginId) {
             throw new ServiceException(
@@ -103,6 +118,9 @@ final class PluginPurger
             }
 
             $manifestData = $plugin->getManifestJson();
+            // Validate owned tables up front (protected / unsafe names) so a
+            // bad manifest fails the request synchronously instead of parking
+            // an operation that can only ever fail in finalize().
             $ownedTables = $this->collectOwnedTables($manifestData);
 
             $installMode = $this->installModeResolver->resolve();
@@ -114,14 +132,65 @@ final class PluginPurger
                 $plugin->getVersion(),
             );
 
-            $backup = $this->backupHook->beforeDestructive($pluginId, PluginOperation::TYPE_PURGE, $ownedTables);
             $this->recorder->snapshot($operation, [
                 'ownedTables' => $ownedTables,
                 'manifestAtPurge' => $manifestData,
-                'backup' => $backup,
                 'backupRequested' => $backupBefore,
             ]);
+
+            $opId = $operation->getId();
+            if (!is_int($opId)) {
+                throw new \LogicException('PluginOperation id was not generated.');
+            }
+            $this->messageBus->dispatch(new PurgePluginMessage(
+                operationId: $opId,
+                pluginId: $pluginId,
+                confirmedPluginId: $confirmedPluginId,
+                backupBefore: $backupBefore,
+            ));
+
+            return $operation;
+        } catch (\Throwable $e) {
+            $this->lock->release($pluginId);
+            throw $e;
+        }
+    }
+
+    /**
+     * Stage 2 — the destructive teardown, invoked by `PurgePluginHandler`
+     * (dev/trusted) or `selfhelp:plugin:run-operation` (managed) AFTER
+     * `composer remove` has already run. Drops plugin-owned tables, deletes
+     * `id_plugins`-tagged rows, forgets the plugin's migration versions,
+     * removes the `plugins` row, regenerates artefacts, and fires
+     * `PluginPurgedEvent`.
+     */
+    public function finalize(PluginOperation $operation): void
+    {
+        $pluginId = $operation->getPluginId();
+        try {
+            $plugin = $this->plugins->findOneByPluginId($pluginId);
+            if (!$plugin instanceof Plugin) {
+                // Idempotent: a previous attempt already removed the row.
+                $this->recorder->succeed($operation, 'Plugin already purged');
+                return;
+            }
+
             $this->recorder->markRunning($operation, 'Purging plugin');
+
+            $manifestData = $plugin->getManifestJson();
+            $ownedTables = $this->collectOwnedTables($manifestData);
+
+            // Snapshot the owned tables BEFORE dropping them, regardless of
+            // the `backupRequested` flag — the hook decides whether it is a
+            // no-op. Runs here (not in request()) so the data is captured
+            // right before the drop, the latest possible safe moment.
+            $snapshots = $operation->getSnapshotsJson() ?? [];
+            $backupRequested = (bool) ($snapshots['backupRequested'] ?? false);
+            $backup = $this->backupHook->beforeDestructive($pluginId, PluginOperation::TYPE_PURGE, $ownedTables);
+            $this->recorder->appendLog($operation, 'purge-backup', [
+                'backupRequested' => $backupRequested,
+                'backup' => $backup,
+            ], 10);
 
             // MySQL implicitly COMMITs the active transaction the moment a
             // DDL statement runs (DROP TABLE, ALTER TABLE, ...). Wrapping
@@ -135,40 +204,6 @@ final class PluginPurger
             // `running`. Run each step as its own autocommitted statement
             // instead — DDL has no rollback guarantee anyway.
             try {
-                $backendPackage = $plugin->getBackendPackage();
-                if (is_string($backendPackage) && $backendPackage !== '') {
-                    $this->recorder->appendLog($operation, 'composer-remove:start', [
-                        'package' => $backendPackage,
-                    ], 15);
-                    $result = $this->packageManager->removeComposerPackage(
-                        $backendPackage,
-                        function (string $line, string $stream) use ($operation): void {
-                            if ($line === '') {
-                                return;
-                            }
-                            $this->recorder->appendLog($operation, 'composer-remove:line', [
-                                'stream' => $stream,
-                                'line' => $line,
-                            ]);
-                        },
-                    );
-                    if (!$result->success) {
-                        throw new ServiceException(sprintf(
-                            'composer remove failed during purge (exit %d): %s',
-                            $result->exitCode,
-                            trim($result->stderr !== '' ? $result->stderr : $result->stdout),
-                        ), Response::HTTP_INTERNAL_SERVER_ERROR);
-                    }
-                    $this->recorder->appendLog($operation, 'composer-remove:done', [
-                        'package' => $backendPackage,
-                        'exitCode' => $result->exitCode,
-                    ], 20);
-                } else {
-                    $this->recorder->appendLog($operation, 'composer-remove:skipped', [
-                        'reason' => 'No backend.composer.package declared (frontend-only plugin).',
-                    ], 20);
-                }
-
                 // Plugin-tagged rows on shared tables are removed via the
                 // FK ON DELETE SET NULL on `id_plugins` when the plugin row
                 // is removed. We additionally hard-delete rows whose
@@ -228,7 +263,7 @@ final class PluginPurger
             // entries without an operator having to flush Redis.
             $this->cacheInvalidator->invalidateAllCaches();
             $this->bundlesWriter->regenerate();
-            $this->lockFileWriter->removePlugin($pluginId, $installMode);
+            $this->lockFileWriter->removePlugin($pluginId, $operation->getInstallMode());
 
             // Purge is destructive by definition — wipe the promoted
             // artefacts in `public/plugin-artifacts/<id>-<ver>/` and the

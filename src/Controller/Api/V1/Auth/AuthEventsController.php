@@ -36,7 +36,8 @@ use Symfony\Component\Mercure\Jwt\LcobucciFactory;
  *     "hubUrl": "...",
  *     "topic": "...",                 // ACL topic (kept for compatibility)
  *     "impersonationTopic": "...",    // impersonation-status topic
- *     "token": "...",                 // single JWT scoped to BOTH topics
+ *     "systemUpdateTopic": "...",     // system-update progress topic
+ *     "token": "...",                 // single JWT scoped to ALL topics
  *     "expiresIn": 3600
  *   }
  * }
@@ -127,6 +128,7 @@ class AuthEventsController extends AbstractController
         $userId = (int) $user->getId();
         $aclTopic = $this->topics->userAclTopic($userId);
         $impersonationTopic = $this->topics->userImpersonationTopic($userId);
+        $systemUpdateTopic = $this->topics->userSystemUpdateTopic($userId);
         $useCookieTransport = $this->shouldUseCookieTransport($request);
         $hubUrl = $this->resolvePublicHubUrl($request);
 
@@ -159,7 +161,7 @@ class AuthEventsController extends AbstractController
         // opens ONE upstream socket instead of N — half the RAM in the
         // hub, half the file descriptors per logged-in user.
         $token = $factory->create(
-            array_values(array_unique(array_merge([$aclTopic, $impersonationTopic], $pluginTopics))),
+            array_values(array_unique(array_merge([$aclTopic, $impersonationTopic, $systemUpdateTopic], $pluginTopics))),
             null,
         );
 
@@ -175,6 +177,7 @@ class AuthEventsController extends AbstractController
                 'hubUrl' => $hubUrl,
                 'topic' => $aclTopic,
                 'impersonationTopic' => $impersonationTopic,
+                'systemUpdateTopic' => $systemUpdateTopic,
                 'pluginTopics' => $pluginTopics,
                 'token' => $useCookieTransport ? null : $token,
                 'expiresIn' => $this->mercureSubscriberTtl,

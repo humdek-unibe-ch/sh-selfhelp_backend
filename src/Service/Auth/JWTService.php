@@ -28,6 +28,34 @@ class JWTService
 {
     public const BLACKLIST_PREFIX = 'jwt_blacklist_';
 
+    /**
+     * Cache-key prefix for the short-lived refresh-token rotation replay map
+     * (see {@see processRefreshToken()}). Public so tests can purge the entry
+     * from the same pool the service uses (Redis survives DAMA rollback).
+     */
+    public const REFRESH_REPLAY_PREFIX = 'refresh_rotation_replay_';
+
+    /**
+     * Grace window, in seconds, during which an already-rotated (and therefore
+     * deleted) refresh token can be replayed to a *concurrent* caller instead
+     * of being rejected.
+     *
+     * Refresh tokens are single-use: the first refresh deletes the old token
+     * and issues a new pair. But the web client refreshes from two independent
+     * runtimes that do NOT share state — the Edge proxy (`src/proxy.ts`) for
+     * SSR navigations and the Node BFF (`src/app/api/[...path]`) for `/api/*`
+     * — and may run several replicas. When the access token is near expiry and
+     * the backend briefly restarts (exactly what a plugin install / update /
+     * uninstall does), both can POST the SAME refresh token at once. Without a
+     * grace window the first rotates it and the second finds nothing, gets a
+     * 401, and the BFF wipes a perfectly good session → the operator is bounced
+     * to the login page ("uninstalling a plugin logged me out"). Replaying the
+     * rotation result for a few seconds lets every concurrent caller converge
+     * on the same new refresh token. Kept short so a stolen, already-consumed
+     * token cannot be replayed long after the fact.
+     */
+    public const REFRESH_ROTATION_GRACE_SECONDS = 30;
+
     public function __construct(
         private readonly JWTTokenManagerInterface $jwtManager,
         private readonly JWTEncoderInterface $jwtEncoder,
@@ -174,14 +202,26 @@ class JWTService
      */
     public function processRefreshToken(string $refreshTokenString): array
     {
-        $tokenEntity = $this->entityManager->getRepository(RefreshToken::class)
-            ->findOneBy(['tokenHash' => $refreshTokenString]);
+        $repository = $this->entityManager->getRepository(RefreshToken::class);
+        $tokenEntity = $repository->findOneBy(['tokenHash' => $refreshTokenString]);
 
-        if (!$tokenEntity || $tokenEntity->getExpiresAt() < new \DateTime()) {
-            if ($tokenEntity) {
-                $this->entityManager->remove($tokenEntity);
-                $this->entityManager->flush();
+        // The row is gone. Either a concurrent refresh just rotated this
+        // single-use token (the Edge proxy and the Node BFF — or two web
+        // replicas — racing it while the backend restarts during a plugin
+        // install/update/uninstall), or it was never ours. Replay the recent
+        // rotation for a short grace window so the concurrent caller converges
+        // on the SAME new refresh token instead of being logged out.
+        if (!$tokenEntity) {
+            $replacement = $this->resolveRotationReplay($refreshTokenString);
+            if ($replacement !== null) {
+                return $replacement;
             }
+            throw new AuthenticationException('Invalid or expired refresh token.');
+        }
+
+        if ($tokenEntity->getExpiresAt() < new \DateTime()) {
+            $this->entityManager->remove($tokenEntity);
+            $this->entityManager->flush();
             throw new AuthenticationException('Invalid or expired refresh token.');
         }
 
@@ -197,9 +237,73 @@ class JWTService
         $this->entityManager->remove($tokenEntity);
         $newRefreshToken = $this->createRefreshToken($user);
 
+        // Remember the rotation briefly so a concurrent refresh of this
+        // now-consumed token replays the replacement instead of 401-ing the
+        // operator to the login page. createRefreshToken() already flushed.
+        $this->rememberRotationReplay($refreshTokenString, (string) $newRefreshToken->getTokenHash());
+
         return [
             'access_token' => $newAccessToken,
             'refresh_token' => $newRefreshToken->getTokenHash(),
+        ];
+    }
+
+    /**
+     * Persist the `oldHash → newHash` rotation in the cache for the grace
+     * window so a concurrent refresh of the consumed token can be replayed.
+     */
+    private function rememberRotationReplay(string $oldHash, string $newHash): void
+    {
+        if ($oldHash === '' || $newHash === '') {
+            return;
+        }
+        $cacheKey = self::REFRESH_REPLAY_PREFIX . md5($oldHash);
+        // Delete-then-set so a re-rotation within the window overwrites the
+        // mapping with a fresh TTL (mirrors blacklistAccessToken()).
+        $this->cache->delete($cacheKey);
+        $this->cache->get($cacheKey, function (ItemInterface $item) use ($newHash): string {
+            $item->expiresAfter(self::REFRESH_ROTATION_GRACE_SECONDS);
+            return $newHash;
+        });
+    }
+
+    /**
+     * If the just-presented (missing) token was recently rotated, mint a fresh
+     * access token for the replacement refresh token and return the pair so the
+     * concurrent caller converges on the live token. Returns `null` when there
+     * is nothing to replay (genuine invalid/expired) so the caller can reject.
+     *
+     * @return array{access_token: string, refresh_token: string}|null
+     */
+    private function resolveRotationReplay(string $oldHash): ?array
+    {
+        if ($oldHash === '') {
+            return null;
+        }
+        $cacheKey = self::REFRESH_REPLAY_PREFIX . md5($oldHash);
+        /** @var mixed $stored */
+        $stored = $this->cache->get($cacheKey, function (ItemInterface $item): ?string {
+            // Cache miss: nothing to replay. Don't pin a negative result.
+            $item->expiresAfter(1);
+            return null;
+        });
+        if (!is_string($stored) || $stored === '') {
+            return null;
+        }
+
+        $replacement = $this->entityManager->getRepository(RefreshToken::class)
+            ->findOneBy(['tokenHash' => $stored]);
+        if (!$replacement instanceof RefreshToken || $replacement->getExpiresAt() < new \DateTime()) {
+            return null;
+        }
+        $user = $replacement->getUser();
+        if (!$user) {
+            return null;
+        }
+
+        return [
+            'access_token' => $this->createToken($user),
+            'refresh_token' => $stored,
         ];
     }
 

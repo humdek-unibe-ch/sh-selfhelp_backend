@@ -34,6 +34,15 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'fk_system_update_operations_id_requested_by_users', columns: ['id_requested_by_users'])]
 class SystemUpdateOperation
 {
+    /**
+     * What the operation updates. `core` (default, back-compat) updates the core
+     * stack and its compatible frontend; `frontend` is the lightweight,
+     * stateless frontend-only swap performed by the SelfHelp Manager. A row
+     * without an explicit kind is a `core` operation.
+     */
+    public const KIND_CORE = 'core';
+    public const KIND_FRONTEND = 'frontend';
+
     public const STATUS_REQUESTED = 'requested';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_RUNNING = 'running';
@@ -107,6 +116,20 @@ class SystemUpdateOperation
     #[ORM\Column(name: 'target_version', type: Types::STRING, length: 50)]
     private string $targetVersion;
 
+    /**
+     * Operation kind. Defaults to `core` so existing rows (and any backend that
+     * never requests a frontend-only update) keep their original meaning.
+     */
+    #[ORM\Column(name: 'kind', type: Types::STRING, length: 16, options: ['default' => self::KIND_CORE, 'comment' => 'What the operation updates: core (default) or frontend (stateless frontend-only swap)'])]
+    private string $kind = self::KIND_CORE;
+
+    /**
+     * The frontend version a `frontend`-kind operation targets. Null for `core`
+     * operations (which resolve the compatible frontend at execution time).
+     */
+    #[ORM\Column(name: 'target_frontend_version', type: Types::STRING, length: 50, nullable: true)]
+    private ?string $targetFrontendVersion = null;
+
     #[ORM\Column(name: 'preflight_id', type: Types::STRING, length: 64, nullable: true)]
     private ?string $preflightId = null;
 
@@ -164,6 +187,33 @@ class SystemUpdateOperation
     public function getTargetVersion(): string
     {
         return $this->targetVersion;
+    }
+
+    public function getKind(): string
+    {
+        return $this->kind;
+    }
+
+    public function setKind(string $kind): self
+    {
+        $this->kind = $kind === self::KIND_FRONTEND ? self::KIND_FRONTEND : self::KIND_CORE;
+        return $this;
+    }
+
+    public function isFrontendUpdate(): bool
+    {
+        return $this->kind === self::KIND_FRONTEND;
+    }
+
+    public function getTargetFrontendVersion(): ?string
+    {
+        return $this->targetFrontendVersion;
+    }
+
+    public function setTargetFrontendVersion(?string $targetFrontendVersion): self
+    {
+        $this->targetFrontendVersion = $targetFrontendVersion;
+        return $this;
     }
 
     public function getPreflightId(): ?string
