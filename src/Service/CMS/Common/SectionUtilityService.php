@@ -26,7 +26,7 @@ class SectionUtilityService
         private readonly StylesFieldRepository $stylesFieldRepository,
         private readonly UserContextService $userContextService,
         private readonly VariableResolverService $variableResolverService,
-        private readonly DataAccessSecurityService $dataAccessSecurityService
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
     ) {
     }
 
@@ -724,7 +724,7 @@ class SectionUtilityService
                 : true;
 
             if ($dataTableId > 0) {
-                $section['entries'] = $this->dataService->getData(
+                $entries = $this->dataService->getData(
                     $dataTableId,
                     '',
                     $ownEntriesOnly,
@@ -734,21 +734,41 @@ class SectionUtilityService
                     $languageId
                 );
 
-                // When own_entries_only=false, hide the delete button for users
-                // who lack DELETE permission on the data table.
-                if (!$ownEntriesOnly && is_array($section['delete_entry'] ?? null)) {
+                $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
+                    && ($section['delete_entry']['content'] ?? '0') === '1';
+
+                if ($deleteEntryEnabled && !$ownEntriesOnly) {
                     $currentUser = $this->userContextService->getCurrentUser();
-                    $userId = $currentUser ? (int) $currentUser->getId() : 0;
-                    $canDelete = $userId > 0 && $this->dataAccessSecurityService->hasPermission(
-                        $userId,
-                        'data_table',
-                        $dataTableId,
-                        DataAccessSecurityService::PERMISSION_DELETE
-                    );
-                    if (!$canDelete) {
-                        $section['delete_entry']['content'] = '0';
+                    $currentUserId = $currentUser ? (int) $currentUser->getId() : 0;
+                    $hasDeletePermission = $currentUserId > 0
+                        && $this->dataAccessSecurityService->hasPermission(
+                            $currentUserId,
+                            'data_table',
+                            $dataTableId,
+                            DataAccessSecurityService::PERMISSION_DELETE
+                        );
+
+                    foreach ($entries as &$entry) {
+                        if (!is_array($entry)) {
+                            continue;
+                        }
+                        $rawOwner = $entry['id_users'] ?? null;
+                        $entryOwnerId = is_numeric($rawOwner) ? (int) $rawOwner : 0;
+                        $entry['_can_delete'] = $entryOwnerId === $currentUserId || $hasDeletePermission;
                     }
+                    unset($entry);
+                } elseif ($deleteEntryEnabled) {
+                    foreach ($entries as &$entry) {
+                        if (!is_array($entry)) {
+                            continue;
+                        }
+                        /** @var array<string, mixed> $entry */
+                        $entry['_can_delete'] = true;
+                    }
+                    unset($entry);
                 }
+
+                $section['entries'] = $entries;
             }
         }
 

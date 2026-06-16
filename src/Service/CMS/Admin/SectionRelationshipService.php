@@ -685,6 +685,8 @@ class SectionRelationshipService extends BaseService
             throw $e instanceof ServiceException ? $e : new ServiceException('Failed to delete section: ' . $e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR, ['previous' => $e]);
         }
 
+        // Invalidate all pages that referenced this section before it was deleted.
+        $this->invalidateSharedSectionPages($sectionId);
         $this->invalidatePageAndSectionLists(null, $sectionId);
     }
 
