@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace App\Command\Plugin;
 
 use App\Entity\Plugin\PluginOperation;
+use App\Plugin\Lifecycle\PluginOperationRecorder;
 use App\Plugin\Service\PluginCliFinalizer;
 use App\Repository\Plugin\PluginOperationRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -40,9 +41,18 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 final class PluginRunOperationCommand extends Command
 {
+    /** Statuses that are already terminal — never re-fail one of these. */
+    private const TERMINAL_STATUSES = [
+        PluginOperation::STATUS_SUCCEEDED,
+        PluginOperation::STATUS_FAILED,
+        PluginOperation::STATUS_CANCELLED,
+        PluginOperation::STATUS_ROLLED_BACK,
+    ];
+
     public function __construct(
         private readonly PluginCliFinalizer $finalizer,
         private readonly PluginOperationRepository $operations,
+        private readonly PluginOperationRecorder $recorder,
     ) {
         parent::__construct();
     }
@@ -70,16 +80,14 @@ final class PluginRunOperationCommand extends Command
                 case PluginOperation::TYPE_INSTALL:
                     $manifestData = $snapshots['manifest'] ?? null;
                     if (!is_array($manifestData)) {
-                        $io->error('Operation snapshot is missing the manifest payload; cannot finalize install.');
-                        return Command::FAILURE;
+                        return $this->failOperation($io, $operation, 'Operation snapshot is missing the manifest payload; cannot finalize install.');
                     }
                     $this->finalizer->finalizeInstall($opId, self::toAssoc($manifestData));
                     break;
                 case PluginOperation::TYPE_UPDATE:
                     $manifestData = $snapshots['newManifest'] ?? $snapshots['manifest'] ?? null;
                     if (!is_array($manifestData)) {
-                        $io->error('Operation snapshot is missing the new manifest payload; cannot finalize update.');
-                        return Command::FAILURE;
+                        return $this->failOperation($io, $operation, 'Operation snapshot is missing the new manifest payload; cannot finalize update.');
                     }
                     $this->finalizer->finalizeUpdate($opId, self::toAssoc($manifestData));
                     break;
@@ -87,16 +95,51 @@ final class PluginRunOperationCommand extends Command
                     $this->finalizer->finalizeUninstall($opId);
                     break;
                 default:
-                    $io->error(sprintf('Operation type "%s" cannot be finalized by run-operation.', $operation->getType()));
-                    return Command::FAILURE;
+                    return $this->failOperation($io, $operation, sprintf('Operation type "%s" cannot be finalized by run-operation.', $operation->getType()));
             }
         } catch (\Throwable $e) {
+            // Guarantee a terminal status + final Mercure progress event even
+            // when the finalizer throws AFTER markRunning. Otherwise the row is
+            // stuck `running` (admin UI shows progress forever) and the
+            // per-plugin lock blocks every later operation until its TTL.
+            $this->failIfNotTerminal($operation, $e);
             $io->error($e->getMessage());
             return Command::FAILURE;
         }
 
         $io->success(sprintf('Operation #%d (%s) finalized.', $opId, $operation->getType()));
         return Command::SUCCESS;
+    }
+
+    /**
+     * Mark the operation failed (so the UI gets a terminal status + final
+     * `plugin-operation-progress` event), print the message, and return the
+     * console failure code.
+     */
+    private function failOperation(SymfonyStyle $io, PluginOperation $operation, string $message): int
+    {
+        $this->failIfNotTerminal($operation, new \RuntimeException($message));
+        $io->error($message);
+        return Command::FAILURE;
+    }
+
+    /**
+     * Record a terminal `failed` status unless the operation already reached a
+     * terminal state (e.g. the orchestrator's own catch already failed it).
+     * Best-effort: the recorder's `fail()` has a raw-DBAL fallback for a
+     * poisoned EntityManager, and we never let this recovery path mask the
+     * original error or crash the command.
+     */
+    private function failIfNotTerminal(PluginOperation $operation, \Throwable $error): void
+    {
+        if (in_array($operation->getStatus(), self::TERMINAL_STATUSES, true)) {
+            return;
+        }
+        try {
+            $this->recorder->fail($operation, $error, 'run-operation');
+        } catch (\Throwable) {
+            // Swallow — `fail()` already logs + has a DBAL fallback.
+        }
     }
 
     /**

@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-16.
 Source of truth: Plugin layer code and the schemas under this folder.
 
 This document is the system-level overview of the SelfHelp plugin
@@ -263,6 +263,23 @@ Every step writes a `plugin_operations` row with snapshots of:
 
 Failed operations are recorded as `failed`. `rollback` is a separate
 operation type that re-applies the previous snapshot.
+
+**Terminal-status guarantee.** Every orchestration path that can fail
+after `markRunning()` routes its catch-all through
+`PluginOperationRecorder::fail()` — the async `plugin_ops` worker handlers
+(`InstallPluginHandler` / `UpdatePluginHandler` / `UninstallPluginHandler`,
+each wrapping `__invoke()` in `try { … } catch (\Throwable $e) { recorder->fail(); throw $e; }`)
+and the managed-mode `selfhelp:plugin:run-operation` finalizer. `fail()`
+is **terminal-idempotent**: for a still-running operation it sets a
+terminal `failed` status and emits the final `plugin-operation-progress`
+event, but it never overwrites or re-emits for an operation that already
+reached a terminal state (`succeeded` / `failed` / `cancelled` /
+`rolled_back`). This means a row can never be left stuck on `running`
+(which would freeze the admin UI's progress and hold the per-plugin lock
+until its TTL), and a post-`finalize()` cleanup error can never flip a
+`succeeded` operation to `failed`. `fail()` persists the terminal status
+before dispatching the final event and falls back to a raw-DBAL `UPDATE`
+when the EntityManager has been poisoned by the original DB error.
 
 In `managed` mode the worker stops at the runbook stage (writes a
 `managed-runbook` entry into `logs_json`) and the operator runs the
