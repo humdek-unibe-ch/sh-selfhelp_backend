@@ -3,8 +3,8 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-12.
-Source of truth: `src/Entity/System/`, `src/Service/System/`, `src/Controller/Api/V1/Admin/SystemController.php`, `src/Controller/Api/V1/Manager/SystemManagerController.php`, and `config/schemas/api/v1`.
+Last verified: 2026-06-16.
+Source of truth: `src/Entity/System/`, `src/Service/System/`, `src/Controller/Api/V1/Admin/SystemController.php`, `src/Controller/Api/V1/Manager/SystemManagerController.php`, `src/EventListener/SystemUpdateMercurePublisher.php`, and `config/schemas/api/v1`.
 
 The **system layer** lets a CMS admin view this instance's version and health,
 run an update **compatibility preflight**, and **request** a connected, signed
@@ -163,8 +163,22 @@ Manager: GET /manager/system/update/pending  -> claims it
 Manager: POST .../status accepted -> preflight_running -> backup_running
          -> update_running -> migration_running -> health_check_running
          -> succeeded            (or failed / rolled_back on error)
-CMS UI: polls GET /admin/system/update/status until a terminal state
+CMS UI: tracks live over the `system-update` SSE event (see below); a short
+        GET /admin/system/update/status poll runs only while SSE is disconnected
 ```
+
+### Live progress (SSE, not polling)
+
+Every insert/update of a `SystemUpdateOperation` row is published to the
+**requester's** per-user `system-update` Mercure topic by the Doctrine listener
+`App\EventListener\SystemUpdateMercurePublisher` (on `postFlush`, exactly like
+`AclVersionMercurePublisher` does for ACL). This fires both when the CMS creates
+the `requested` row and on every state / `steps` / `progress_percent` write-back
+the manager makes while draining it — so the CMS System Maintenance page tracks
+the operation live over the existing `/auth/events` SSE connection (the topic is
+multiplexed onto that one stream) and only falls back to polling
+`GET /admin/system/update/status` while the stream is disconnected. Publish
+failures are logged and swallowed; the fallback poll is the safety net.
 
 A destructive DB migration requires the admin to **accept the migration risk**
 and type the target version to confirm before the request is allowed (enforced in
