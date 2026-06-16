@@ -16,6 +16,7 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
 use App\Service\CMS\Common\SectionUtilityService;
+use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\ConditionService;
@@ -676,6 +677,58 @@ class PageService extends BaseService
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // showUserInput sections reference their data table through the
+                // `data_table` property field, NOT data_config. Without registering
+                // it here the page render cache never carries the data-table entity
+                // scope, so DataService's write-path invalidation
+                // (invalidateEntityScope(DATA_TABLE, id) on submit/update/delete)
+                // cannot bust the cached page and the rendered rows stay stale until
+                // a manual cache clear.
+                $showUserInputSectionIds = [];
+                foreach ($flatSections as $section) {
+                    if (($section['style_name'] ?? null) === StyleNames::STYLE_SHOW_USER_INPUT) {
+                        $rawSectionId = $section['id'] ?? null;
+                        $sectionId = is_numeric($rawSectionId) ? (int) $rawSectionId : 0;
+                        if ($sectionId > 0) {
+                            $showUserInputSectionIds[] = $sectionId;
+                        }
+                    }
+                }
+
+                if ($showUserInputSectionIds !== []) {
+                    $showUserInputProperties = $this->translationRepository->fetchTranslationsForSections(
+                        $showUserInputSectionIds,
+                        self::PROPERTY_LANGUAGE_ID
+                    );
+
+                    foreach ($showUserInputProperties as $fields) {
+                        $dataTableId = isset($fields['data_table']['content'])
+                            ? (int) $this->asString($fields['data_table']['content'])
+                            : 0;
+                        if ($dataTableId <= 0) {
+                            continue;
+                        }
+
+                        // own_entries_only defaults to true (mirrors applySectionData):
+                        // own-records render is user-scoped, otherwise it is global.
+                        $ownEntriesOnly = !isset($fields['own_entries_only']['content'])
+                            || $this->asString($fields['own_entries_only']['content']) !== '0';
+
+                        if (!isset($dataTableConfigs[$dataTableId])) {
+                            $dataTableConfigs[$dataTableId] = [
+                                'has_current_user_config' => false,
+                                'has_global_config' => false,
+                            ];
+                        }
+
+                        if ($ownEntriesOnly) {
+                            $dataTableConfigs[$dataTableId]['has_current_user_config'] = true;
+                        } else {
+                            $dataTableConfigs[$dataTableId]['has_global_config'] = true;
                         }
                     }
                 }
