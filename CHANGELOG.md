@@ -1,4 +1,17 @@
-# v0.1.9
+# v0.1.10
+
+## Authentication
+
+- **Refreshing the session no longer logs the operator out during a plugin install / update / uninstall.** The web client refreshes the access token from two independent runtimes that share no state — the Edge proxy (SSR navigations) and the Node BFF (`/api/*`), possibly across replicas — so when the short-lived access token was near expiry while the backend briefly restarted (exactly what a plugin lifecycle operation does) both could POST the **same** single-use refresh token at once. The first rotated it, the second found nothing, got a `401`, and the BFF wiped a perfectly good session → the operator was bounced to the login page ("uninstalling a plugin logged me out"). `JWTService::processRefreshToken()` now keeps a short (`30 s`) Redis-backed rotation **grace window**: a concurrent refresh of a just-consumed token replays onto the same newly issued refresh token (and mints a fresh access token) instead of being rejected, so all concurrent callers converge on the live token. Single-use semantics are preserved once the window elapses — a genuinely reused token is still rejected — and both the replay and the post-window rejection are pinned by regression + security tests in `JWTServiceTest`.
+
+## System Maintenance
+
+- **Editing the maintenance system message now takes effect immediately.** Toggling maintenance mode interpolates `{{system.maintenance_message}}` into cached page/section payloads, so a changed note kept serving the stale message until the cache TTL elapsed. `MaintenanceModeService::enable()/disable()` now invalidates the `pages` and `sections` cache categories whenever maintenance mode is toggled, so the public maintenance page reflects the current note on the next request. Covered by `MaintenanceModeServiceTest`.
+- **The seeded maintenance alert message is stored in the field the renderer reads.** The original seed wrote the operator note into the alert style's `value` field, but the alert renders its `content` field, so the styled message never appeared. A data-only migration (`Version20260616094205`) moves the existing `maintenance-sys-message` translation from `value` to `content`; it is idempotent (`INSERT IGNORE` + scoped `DELETE`) and has a round-trip test.
+
+## Plugins
+
+- **Plugin purge is now an asynchronous, manager-parked operation, like install / uninstall.** `POST /admin/plugins/{plugin}/purge` previously ran synchronously and returned `200`; it now records a `purge` `plugin_operation`, dispatches it onto the `plugin_ops` Messenger transport, and returns `202 Accepted` with the operation envelope so the admin UI can track it on the operations console and the SelfHelp Manager can park it for the operator. `PluginPurger::purge()` is split into `request()` (validate + lock + snapshot the owned tables / manifest / backup flag + dispatch) and `finalize()` (the destructive cleanup: drop plugin-owned tables and tagged rows, foreign keys, migration versions, the plugin row, then regenerate bundles + clean artefacts), mirroring `PluginUninstaller`. The new `PurgePluginMessage` / `PurgePluginHandler` run `finalize()` inline in `development` / `trusted` modes and write a runbook in `managed` mode, where the operator runs `composer remove` and then `selfhelp:plugin:run-operation <id>` (now handles `TYPE_PURGE` via `PluginCliFinalizer::finalizePurge()`). `selfhelp:plugin:purge` reports the parked operation instead of claiming an immediate, synchronous purge.
 
 ## System Updates
 
