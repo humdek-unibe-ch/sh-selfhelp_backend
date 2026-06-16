@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-16.
 Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
@@ -352,6 +352,25 @@ Mantine cosmetic props are not repeated below.
 **Developers.** Renders `<Progress.Section value>`.
 
 **Distinctive fields.** `value`, `label`, `mantine_progress_striped`, `mantine_progress_animated`, `mantine_tooltip_label` / `mantine_tooltip_position`.
+
+**Children.** No.
+
+---
+
+## showUserInput
+
+**Purpose.** Read-only **display** companion to `form-log` / `form-record`: renders a user's previously submitted entries from a data table as a Mantine Table.
+
+**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table and use `fields_map` to choose which columns appear and how they are labelled. Two switches control *whose* data is shown and *what* can be deleted:
+
+- **Own Entries Only** (`own_entries_only`, default on) — each user sees only their **own** submissions. Turn it **off** to show **all** users' entries (only do this where viewing everyone's data is allowed; it is still subject to data-access permissions).
+- **Delete** (`delete_entry`, default on) — shows a per-row delete button. A user may always delete **their own** record; deleting **another user's** record additionally requires the table's delete data-access permission. The confirmation dialog copy is set by the translatable `delete_modal_title` / `delete_modal_body`.
+
+Optional table behaviour: search (`dt_searching`), sorting (`dt_sortable` + `dt_default_order_column` / `dt_default_order_dir`), pagination (`dt_paginate`), the row-count footer (`dt_info`), a CSV export button (`csv_export`), and a leading timestamp column (`show_timestamp`).
+
+**Developers.** Renders as a Mantine Table (the style always uses the Mantine renderer). Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
+
+**Distinctive fields.** `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `mantine_table_striped`, `mantine_table_highlight_on_hover`, `mantine_table_with_table_border`, `mantine_table_with_column_borders`, `mantine_table_with_row_borders`, `mantine_table_sticky_header`, `mantine_table_caption_side`.
 
 **Children.** No.
 

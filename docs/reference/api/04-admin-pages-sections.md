@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-16.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -478,6 +478,53 @@ record entirely, use [Delete Section](#delete-section).
     "timestamp": "2025-01-23T10:30:00Z"
   },
   "data": null
+}
+```
+
+**Permissions:** `admin.page.update`
+
+### Bulk Remove Sections from Page
+
+Detach several sections from a page in one request. This is the multi-select
+equivalent of [Remove Section from Page](#remove-section-from-page) and has the
+**same detach-only** semantics: each section is unlinked from this page only
+(its direct page link, or its hierarchy link when nested) and the section
+**record survives** for every other page that references it. Bulk remove never
+destroys a shared `refContainer` — to destroy a record entirely use
+[Delete Section](#delete-section). Cache invalidation fans out to every page
+that referenced each detached section.
+
+**Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Path Parameters:**
+- `page_id`: ID of the page to detach the sections from
+
+**Request Body:**
+[View JSON Schema](../../../config/schemas/api/v1/requests/section/bulk_remove_sections.json)
+```json
+{
+  "sectionIds": [15, 16, 17]
+}
+```
+
+**Response:** `200 OK` with the number of page links detached and a per-section
+error list for any ids that could not be detached.
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": true,
+  "meta": {
+    "version": "v1",
+    "timestamp": "2025-01-23T10:30:00Z"
+  },
+  "data": {
+    "deleted_count": 3,
+    "errors": []
+  }
 }
 ```
 
