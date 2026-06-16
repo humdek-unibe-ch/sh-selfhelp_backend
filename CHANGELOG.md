@@ -1,4 +1,8 @@
-# v0.1.10
+# v0.1.11
+
+## Release pipeline
+
+- **The `docker-release` GitHub Actions release no longer fails at "Download all artifacts".** The `create-release` job downloaded *every* workflow artifact with no filter, which on the 3-image build matrix meant 16 artifacts — including six large `*.dockerbuild` build records auto-uploaded by `docker/build-push-action` and three duplicate SBOMs auto-uploaded by `anchore/sbom-action`. That bloated download intermittently aborted with `Error: Unable to download and extract artifact: Artifact download failed after 5 retries.` and also attached the build records to the public release. The build-record upload is now disabled workflow-wide (`DOCKER_BUILD_RECORD_UPLOAD: 'false'`) and the SBOM action's own upload is turned off (`upload-artifact: false`, since the SBOM is re-uploaded in the `*-supply-chain` artifact), so the release job downloads only the intended supply-chain / digest / license artifacts. No runtime code changed; this is a release-tooling fix (the v0.1.10 images had already been built, pushed and signed before the failing step).
 
 ## Authentication
 

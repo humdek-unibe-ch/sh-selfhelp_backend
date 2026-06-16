@@ -29,6 +29,15 @@ on:
 permissions:
   contents: write
 
+# Stop `docker/build-push-action` from auto-uploading its large `*.dockerbuild`
+# build-record artifact for every build (boot-smoke + push, x3 images = 6 of
+# them). They are not part of the release, and bundling them into the
+# `create-release` "download all artifacts" step bloated it to 16 artifacts and
+# made `actions/download-artifact@v4` flake out ("Artifact download failed after
+# 5 retries"). The intended supply-chain artifacts are uploaded explicitly.
+env:
+  DOCKER_BUILD_RECORD_UPLOAD: 'false'
+
 jobs:
   # Step 8 + 10: dependency license report + policy gate (once, shared by images).
   license:
@@ -153,6 +162,10 @@ jobs:
           image: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           format: spdx-json
           output-file: ${{ matrix.image }}.sbom.spdx.json
+          # We re-upload the SBOM ourselves in the "Upload SBOM + scan" step
+          # below; the action's own auto-upload only adds a duplicate artifact
+          # (one per image) to the release's "download all" step.
+          upload-artifact: false
 
       # SHA-pinned to the 0.35.0 immutable release — the only tag guaranteed
       # safe after the March 2026 Trivy supply-chain compromise
