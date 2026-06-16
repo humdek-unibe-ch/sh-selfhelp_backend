@@ -1077,9 +1077,19 @@ final class PluginAdminService extends BaseService
         return $this->formatOperation($this->uninstaller->request($pluginId));
     }
 
-    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): void
+    /**
+     * Single purge entrypoint. Creates the `plugin_operations` row and
+     * dispatches the asynchronous `PurgePluginMessage`; the Messenger
+     * worker handles `composer remove` (dev/trusted) or parks a managed
+     * runbook, then `PluginPurger::finalize()` performs the destructive
+     * DB/artefact cleanup. Returns the parked operation so the admin UI
+     * tracks progress exactly like install/uninstall.
+     *
+     * @return PluginOperationData
+     */
+    public function purge(string $pluginId, string $confirmedPluginId, bool $backupBefore = false): array
     {
-        $this->purger->purge($pluginId, $confirmedPluginId, $backupBefore);
+        return $this->formatOperation($this->purger->request($pluginId, $confirmedPluginId, $backupBefore));
     }
 
     /** @return PluginOperationData */

@@ -24,13 +24,14 @@ framework:
             App\Plugin\Messenger\InstallPluginMessage: plugin_ops
             App\Plugin\Messenger\UpdatePluginMessage: plugin_ops
             App\Plugin\Messenger\UninstallPluginMessage: plugin_ops
+            App\Plugin\Messenger\PurgePluginMessage: plugin_ops
 
 when@test:
     framework:
         messenger:
             transports:
                 # Sync transport so PHPUnit integration tests see the
-                # install/update/uninstall handler run inline and can
+                # install/update/uninstall/purge handler run inline and can
                 # assert on the resulting plugin row immediately.
                 plugin_ops: 'sync://'
 

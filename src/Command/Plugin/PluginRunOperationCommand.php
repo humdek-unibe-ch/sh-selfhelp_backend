@@ -94,6 +94,9 @@ final class PluginRunOperationCommand extends Command
                 case PluginOperation::TYPE_UNINSTALL:
                     $this->finalizer->finalizeUninstall($opId);
                     break;
+                case PluginOperation::TYPE_PURGE:
+                    $this->finalizer->finalizePurge($opId);
+                    break;
                 default:
                     return $this->failOperation($io, $operation, sprintf('Operation type "%s" cannot be finalized by run-operation.', $operation->getType()));
             }
