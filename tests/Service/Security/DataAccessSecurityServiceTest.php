@@ -20,6 +20,7 @@ use App\Service\Security\DataAccessSecurityService;
 use App\Tests\Support\Factories\ActionFactory;
 use App\Tests\Support\Factories\RoleDataAccessFactory;
 use App\Tests\Support\QaKernelTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\AbstractLogger;
 use Psr\Log\LoggerInterface;
@@ -134,6 +135,43 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
             ),
             'Admin role must override stored data-access permissions.',
         );
+    }
+
+    /**
+     * The shared "may this user delete this form/showUserInput record?" rule.
+     * It is the single source of truth used by both the delete endpoint
+     * ({@see \App\Controller\Api\V1\Frontend\FormController::deleteForm})
+     * and the showUserInput renderer's per-row `_can_delete` flag
+     * ({@see \App\Service\CMS\Common\SectionUtilityService}), so the two can
+     * never drift: own_entries_only sections are always deletable; otherwise a
+     * user may delete their own record, or any record with table DELETE rights.
+     */
+    #[DataProvider('deletableRecordCases')]
+    public function testCanDeleteOwnedRecordRule(
+        bool $ownEntriesOnly,
+        bool $isOwnRecord,
+        bool $hasDeletePermission,
+        bool $expected,
+    ): void {
+        self::assertSame(
+            $expected,
+            $this->service->canDeleteOwnedRecord($ownEntriesOnly, $isOwnRecord, $hasDeletePermission),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{bool, bool, bool, bool}>
+     */
+    public static function deletableRecordCases(): iterable
+    {
+        // own_entries_only: every visible row is the user's own -> always deletable.
+        yield 'own_entries_only always deletable' => [true, false, false, true];
+        yield 'own_entries_only ignores missing perm' => [true, false, false, true];
+        // showing everyone's records: own row is always deletable.
+        yield 'own record deletable when showing all' => [false, true, false, true];
+        // someone else's row: needs the data-table DELETE grant.
+        yield 'other record deletable with table delete perm' => [false, false, true, true];
+        yield 'other record blocked without perm' => [false, false, false, false];
     }
 
     public function testPermissionCheckWritesAnAuditRowWithNonNullLookups(): void

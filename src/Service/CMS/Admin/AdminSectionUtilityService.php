@@ -75,53 +75,7 @@ class AdminSectionUtilityService extends BaseService
      */
     public function getPagesBySectionIds(array $sectionIds): array
     {
-        if ($sectionIds === []) {
-            return [];
-        }
-
-        $conn = $this->entityManager->getConnection();
-        $seen = [];
-        $result = [];
-
-        foreach ($sectionIds as $sectionId) {
-            /** @var list<array{id: int|string, keyword: string, is_published: int|string}> $rows */
-            $rows = $conn->fetchAllAssociative(<<<SQL
-                WITH RECURSIVE ancestors AS (
-                    SELECT id_child_section AS id, id_parent_section AS parent_id
-                    FROM rel_sections_hierarchy
-                    WHERE id_child_section = :sectionId
-
-                    UNION ALL
-
-                    SELECT sh.id_child_section, sh.id_parent_section
-                    FROM rel_sections_hierarchy sh
-                    INNER JOIN ancestors a ON sh.id_child_section = a.parent_id
-                )
-                SELECT DISTINCT p.id, p.keyword,
-                    (p.id_published_page_versions IS NOT NULL) AS is_published
-                FROM pages p
-                JOIN rel_pages_sections ps ON ps.id_pages = p.id
-                WHERE ps.id_sections = :sectionId
-                   OR ps.id_sections IN (SELECT parent_id FROM ancestors WHERE parent_id IS NOT NULL)
-                ORDER BY p.keyword ASC
-            SQL, ['sectionId' => $sectionId]);
-
-            foreach ($rows as $r) {
-                $id = (int) $r['id'];
-                if (!isset($seen[$id])) {
-                    $seen[$id] = true;
-                    $result[] = [
-                        'id'          => $id,
-                        'keyword'     => (string) $r['keyword'],
-                        'isPublished' => (bool) $r['is_published'],
-                    ];
-                }
-            }
-        }
-
-        usort($result, static fn(array $a, array $b): int => strcmp($a['keyword'], $b['keyword']));
-
-        return $result;
+        return $this->sectionRepository->getPagesContainingSections($sectionIds);
     }
 
     /**

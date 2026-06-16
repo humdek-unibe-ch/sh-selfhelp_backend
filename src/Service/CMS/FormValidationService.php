@@ -120,12 +120,19 @@ class FormValidationService extends BaseService
             'page' => $page,
             'section' => $section,
             'validated' => true,
-            'own_entries_only' => $this->readSectionBoolField($sectionId, 'own_entries_only', true),
-            'data_table_id' => $this->readSectionIntField($sectionId, 'data_table'),
+            'own_entries_only' => ($this->readSectionFieldContent($sectionId, 'own_entries_only') ?? '1') === '1',
+            'data_table_id' => $this->parseNullableInt($this->readSectionFieldContent($sectionId, 'data_table')),
         ];
     }
 
-    private function readSectionIntField(int $sectionId, string $fieldName): ?int
+    /**
+     * Read the stored content of a section field by field name.
+     *
+     * Internal config fields (e.g. own_entries_only, data_table) carry a single
+     * row, so the first match is returned. Returns null when the field has no
+     * stored value for the section.
+     */
+    private function readSectionFieldContent(int $sectionId, string $fieldName): ?string
     {
         $qb = $this->entityManager->createQueryBuilder();
         $qb->select('t.content')
@@ -139,30 +146,17 @@ class FormValidationService extends BaseService
 
         /** @var array{content: mixed}|null $result */
         $result = $qb->getQuery()->getOneOrNullResult();
-        if ($result === null || ($result['content'] ?? '') === '') {
-            return null;
-        }
-        return is_numeric($result['content']) ? (int) $result['content'] : null;
+        $content = $result['content'] ?? null;
+
+        return is_scalar($content) ? (string) $content : null;
     }
 
-    private function readSectionBoolField(int $sectionId, string $fieldName, bool $default): bool
+    private function parseNullableInt(?string $value): ?int
     {
-        $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('t.content')
-            ->from(SectionsFieldsTranslation::class, 't')
-            ->join('t.field', 'f')
-            ->where('t.section = :sectionId')
-            ->andWhere('f.name = :fieldName')
-            ->setParameter('sectionId', $sectionId)
-            ->setParameter('fieldName', $fieldName)
-            ->setMaxResults(1);
-
-        /** @var array{content: mixed}|null $result */
-        $result = $qb->getQuery()->getOneOrNullResult();
-        if ($result === null) {
-            return $default;
+        if ($value === null || $value === '') {
+            return null;
         }
-        return ($result['content'] ?? '') === '1';
+        return is_numeric($value) ? (int) $value : null;
     }
 
     /**

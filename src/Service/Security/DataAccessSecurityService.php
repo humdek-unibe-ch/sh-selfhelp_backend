@@ -73,6 +73,25 @@ class DataAccessSecurityService
     }
 
     /**
+     * Single source of truth for "may this user delete this form/showUserInput
+     * record?". Shared by the delete endpoint (enforcement, FormController) and
+     * the showUserInput renderer (per-row `_can_delete` flag, SectionUtilityService)
+     * so the two never drift.
+     *
+     * - own_entries_only=true: the section only ever shows the user's own
+     *   records, so deletion is always allowed.
+     * - own_entries_only=false: the user may always delete their own record;
+     *   deleting someone else's requires DELETE permission on the data table.
+     *
+     * Callers resolve $hasDeletePermission themselves (typically hoisted out of
+     * a per-row loop) so this stays a pure decision with no extra queries.
+     */
+    public function canDeleteOwnedRecord(bool $ownEntriesOnly, bool $isOwnRecord, bool $hasDeletePermission): bool
+    {
+        return $ownEntriesOnly || $isOwnRecord || $hasDeletePermission;
+    }
+
+    /**
      * Check permissions only through role_data_access, without role-name overrides.
      */
     public function hasStoredPermission(int $userId, string $resourceType, int $resourceId, int $requiredPermission): bool

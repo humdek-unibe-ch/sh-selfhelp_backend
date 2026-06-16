@@ -737,10 +737,15 @@ class SectionUtilityService
                 $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
                     && ($section['delete_entry']['content'] ?? '0') === '1';
 
-                if ($deleteEntryEnabled && !$ownEntriesOnly) {
+                if ($deleteEntryEnabled) {
                     $currentUser = $this->userContextService->getCurrentUser();
                     $currentUserId = $currentUser ? (int) $currentUser->getId() : 0;
-                    $hasDeletePermission = $currentUserId > 0
+                    // Resolve the data-table DELETE permission once (hoisted out
+                    // of the per-row loop). Only relevant when the section shows
+                    // everyone's records; when own_entries_only is true every
+                    // visible row is the user's own and is always deletable.
+                    $hasDeletePermission = !$ownEntriesOnly
+                        && $currentUserId > 0
                         && $this->dataAccessSecurityService->hasPermission(
                             $currentUserId,
                             'data_table',
@@ -752,18 +757,16 @@ class SectionUtilityService
                         if (!is_array($entry)) {
                             continue;
                         }
+                        /** @var array<string, mixed> $entry */
                         $rawOwner = $entry['id_users'] ?? null;
                         $entryOwnerId = is_numeric($rawOwner) ? (int) $rawOwner : 0;
-                        $entry['_can_delete'] = $entryOwnerId === $currentUserId || $hasDeletePermission;
-                    }
-                    unset($entry);
-                } elseif ($deleteEntryEnabled) {
-                    foreach ($entries as &$entry) {
-                        if (!is_array($entry)) {
-                            continue;
-                        }
-                        /** @var array<string, mixed> $entry */
-                        $entry['_can_delete'] = true;
+                        $isOwnRecord = $entryOwnerId > 0 && $entryOwnerId === $currentUserId;
+                        // Same rule as FormController::deleteForm enforcement.
+                        $entry['_can_delete'] = $this->dataAccessSecurityService->canDeleteOwnedRecord(
+                            $ownEntriesOnly,
+                            $isOwnRecord,
+                            $hasDeletePermission
+                        );
                     }
                     unset($entry);
                 }

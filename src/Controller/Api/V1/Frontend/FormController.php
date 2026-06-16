@@ -491,26 +491,28 @@ class FormController extends AbstractController
 
             // When own_entries_only=false the section shows all users' records.
             // Users may always delete their own records; deleting another user's
-            // record requires DELETE permission on the data table.
+            // record requires DELETE permission on the data table. The rule lives
+            // in DataAccessSecurityService::canDeleteOwnedRecord() so it stays in
+            // lockstep with the showUserInput renderer's per-row _can_delete flag.
             if (!$ownEntriesOnly) {
                 $userId = (int) $currentUser->getId();
                 $recordOwnerId = $this->dataService->getRecordOwnerId($recordId);
-                $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $currentUser->getId();
+                $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
 
-                if (!$isOwnRecord) {
-                    $rawDtId = $validation['data_table_id'] ?? null;
-                    $dataTableId = is_numeric($rawDtId) ? (int) $rawDtId : 0;
-                    if ($dataTableId === 0 || !$this->dataAccessSecurityService->hasPermission(
-                        $userId,
-                        'data_table',
-                        $dataTableId,
-                        DataAccessSecurityService::PERMISSION_DELETE
-                    )) {
-                        return $this->apiResponseFormatter->formatError(
-                            'You do not have permission to delete this entry.',
-                            Response::HTTP_FORBIDDEN
-                        );
-                    }
+                $rawDtId = $validation['data_table_id'] ?? null;
+                $dataTableId = is_numeric($rawDtId) ? (int) $rawDtId : 0;
+                $hasDeletePermission = $dataTableId > 0 && $this->dataAccessSecurityService->hasPermission(
+                    $userId,
+                    'data_table',
+                    $dataTableId,
+                    DataAccessSecurityService::PERMISSION_DELETE
+                );
+
+                if (!$this->dataAccessSecurityService->canDeleteOwnedRecord($ownEntriesOnly, $isOwnRecord, $hasDeletePermission)) {
+                    return $this->apiResponseFormatter->formatError(
+                        'You do not have permission to delete this entry.',
+                        Response::HTTP_FORBIDDEN
+                    );
                 }
             }
 
