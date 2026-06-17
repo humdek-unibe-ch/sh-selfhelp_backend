@@ -81,7 +81,7 @@ parameters:
     # files and properties; an unmatched one must not fail the build (the set
     # is intentionally narrow and message text carries no byte offsets, so it
     # stays stable across CRLF/LF checkouts — unlike a baseline entry).
-    reportUnmatchedIgnoredErrors: false
+    reportUnmatchedIgnoredErrors: true
 
     ignoreErrors:
         # The API controllers document their HTTP verb with a plain-text
