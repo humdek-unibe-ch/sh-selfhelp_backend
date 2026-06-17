@@ -47,6 +47,14 @@ class SystemUpdateService
     public const CHECK_DOWNGRADE = 'downgrade';
     public const CHECK_DESTRUCTIVE_MIGRATION = 'destructive_migration';
     public const CHECK_PLUGIN_COMPATIBILITY = 'plugin_compatibility';
+    /**
+     * A FRONTEND-only update target that the registry-known frontend ⇄ core
+     * compatibility rule rejects (the running core forbids this frontend, or this
+     * frontend requires a different core). Carries the standardized
+     * {@see CompatibilityError} shape. Mirrors the SelfHelp Manager's resolver
+     * verdict so the CMS preflight is consistent with what the manager enforces.
+     */
+    public const CHECK_FRONTEND_COMPATIBILITY = 'frontend_compatibility';
     public const CHECK_VERSION_INVALID = 'version_invalid';
 
     public const STATUS_OK = 'ok';
@@ -156,20 +164,30 @@ class SystemUpdateService
     }
 
     /**
-     * Compute a lightweight compatibility preflight for a FRONTEND-only update to
+     * Compute the compatibility preflight for a FRONTEND-only update to
      * $targetVersion. The frontend is stateless, so — unlike the core preflight —
      * there are no destructive-migration, backup-required, or plugin-compatibility
      * checks: the manager swaps only the frontend container and rolls it back on
-     * failure. The CMS validates the version + downgrade locally and defers the
-     * authoritative frontend ⇄ core compatibility + signature checks to the
-     * SelfHelp Manager (which re-resolves the signed frontend release at execution
-     * time).
+     * failure.
+     *
+     * Frontend ⇄ core compatibility IS checked here, against the SAME signed
+     * registry metadata the SelfHelp Manager resolves, so the CMS verdict is
+     * consistent with what the manager enforces at execution (no more "preflight
+     * OK" for a frontend the running core forbids). The rule is bidirectional:
+     *   - the running core's `requiredFrontendRange` must admit the target frontend;
+     *   - the target frontend's `requiredCoreRange` must admit the running core.
+     * When a release document is unavailable (registry offline, version not yet
+     * published, or signature failure) the corresponding direction degrades to a
+     * warning, never a silent pass: the manager re-resolves the signed release —
+     * and enforces the running core's range from the instance lock even when the
+     * core release has left the registry — as the FINAL authority.
      *
      * @return array<string,mixed>
      */
     public function getFrontendPreflight(string $targetVersion): array
     {
         $currentVersion = $this->instance->getFrontendVersion();
+        $coreVersion = $this->instance->getCmsVersion();
         $instanceId = $this->instance->getInstanceId();
 
         /** @var list<array<string,scalar|null>> $checks */
@@ -177,12 +195,14 @@ class SystemUpdateService
         /** @var list<array{type:string,version?:string,label:string}> $options */
         $options = [];
 
-        // The manager performs Docker/resource checks and the authoritative
-        // frontend ⇄ core compatibility + signature verification at execution.
+        // The manager performs Docker/resource checks and re-verifies the signed
+        // frontend release + image digest at execution. The frontend ⇄ core
+        // compatibility verdict below is computed from the same signed registry
+        // metadata the manager resolves, so the CMS and manager agree.
         $checks[] = [
             'code' => self::CHECK_RESOURCE,
             'severity' => 'info',
-            'message' => 'Frontend ⇄ core compatibility, signature verification and Docker checks are performed by the SelfHelp Manager at execution time.',
+            'message' => 'Signature re-verification, image-digest checks and Docker checks are performed by the SelfHelp Manager at execution time.',
         ];
 
         if (SemverHelper::parse($targetVersion) === null) {
@@ -207,6 +227,14 @@ class SystemUpdateService
                 'severity' => 'error',
                 'message' => sprintf('Frontend downgrades are not supported (current %s, target %s).', $currentVersion, $targetVersion),
             ];
+        }
+
+        // Bidirectional frontend ⇄ core compatibility (the fix that keeps the CMS
+        // preflight consistent with the SelfHelp Manager): a frontend the running
+        // core forbids — or one that needs a different core — must BLOCK here, not
+        // sail through as "OK" only to be rejected by the manager at execution.
+        foreach ($this->frontendCompatibilityChecks($coreVersion, $currentVersion, $targetVersion) as $compatCheck) {
+            $checks[] = $compatCheck;
         }
 
         // Advisory: is the requested frontend version published in the registry?
@@ -831,6 +859,68 @@ class SystemUpdateService
     private function makePreflightId(string $instanceId, string $current, string $target): string
     {
         return 'pf_' . substr(hash('sha256', $instanceId . '|' . $current . '->' . $target), 0, 16);
+    }
+
+    /**
+     * Registry-backed frontend ⇄ core compatibility checks for a frontend-only
+     * update, mirroring the SelfHelp Manager's `@shm/resolver` rule against the
+     * SAME signed registry metadata so the CMS preflight and the manager agree:
+     *
+     *   1. the running core's `requiredFrontendRange` MUST admit the target
+     *      frontend (the running core forbids an out-of-range frontend);
+     *   2. the target frontend's `backendCompatibility.requiredCoreRange` MUST
+     *      admit the running core (the new frontend needs a different core).
+     *
+     * Each violation is a BLOCKING error carrying the standardized
+     * {@see CompatibilityError} shape. When a release document is unavailable
+     * (offline registry / unpublished version / signature failure) that direction
+     * is skipped — the existing registry-unreachable warning plus the manager's
+     * execution-time check (which also enforces the core range from the instance
+     * lock) remain the final authority, so a missing document never produces a
+     * silent false "compatible".
+     *
+     * @return list<array<string,scalar|null>>
+     */
+    private function frontendCompatibilityChecks(string $coreVersion, string $currentFrontendVersion, string $targetFrontendVersion): array
+    {
+        /** @var list<array<string,scalar|null>> $checks */
+        $checks = [];
+
+        // A range check against a non-version is meaningless; the invalid-version
+        // error already blocks that case.
+        if (SemverHelper::parse($targetFrontendVersion) === null) {
+            return $checks;
+        }
+
+        // Direction 1: does the RUNNING CORE accept this frontend?
+        $core = $this->registry->getCoreRelease($coreVersion);
+        if ($core !== null && !SemverHelper::satisfies($targetFrontendVersion, $core->requiredFrontendRange)) {
+            $checks[] = array_merge(
+                ['code' => self::CHECK_FRONTEND_COMPATIBILITY, 'severity' => 'error'],
+                CompatibilityError::frontendUpdateBlockedByCore(
+                    currentFrontendVersion: $currentFrontendVersion,
+                    targetFrontendVersion: $targetFrontendVersion,
+                    coreVersion: $coreVersion,
+                    requiredFrontendRange: $core->requiredFrontendRange,
+                )->toArray(),
+            );
+        }
+
+        // Direction 2: does this FRONTEND accept the running core?
+        $frontend = $this->registry->getFrontendRelease($targetFrontendVersion);
+        if ($frontend !== null && !SemverHelper::satisfies($coreVersion, $frontend->requiredCoreRange)) {
+            $checks[] = array_merge(
+                ['code' => self::CHECK_FRONTEND_COMPATIBILITY, 'severity' => 'error'],
+                CompatibilityError::frontendUpdateRequiresCore(
+                    currentFrontendVersion: $currentFrontendVersion,
+                    targetFrontendVersion: $targetFrontendVersion,
+                    coreVersion: $coreVersion,
+                    requiredCoreRange: $frontend->requiredCoreRange,
+                )->toArray(),
+            );
+        }
+
+        return $checks;
     }
 
     /** Frontend preflight ids carry a distinct prefix from core ones. */
