@@ -106,7 +106,9 @@ Frontend and backend are released and deployed independently, so a feature that 
 - `sh-selfhelp_backend/release-manifest.json` → `supports.frontend`: raise the floor to the first frontend version that adopts it.
 - `docs/developer/cross-repo-compatibility-matrix.md`: update the snapshot table and the "Current floor" note.
 
-These two `supports.*` SemVer ranges are the **bidirectional gate** the registry resolver (`sh2-plugin-registry/scripts/resolve-core-candidate.mjs`) uses to refuse assembling an incompatible frontend+backend release. Pre-1.0 every `0.x` minor is breaking, so the ranges track one core minor (`<0.2.0`). `@selfhelp/shared` (typed contracts) is the complementary anchor for *response-shape* drift; the `release-manifest.json` ranges are the anchor for *version pairing*. Before finishing any frontend/backend change, re-check that both `supports.*` floors still reflect reality. Full rules: `docs/developer/cross-repo-compatibility-matrix.md`.
+These two `supports.*` SemVer ranges are the **bidirectional gate** the registry resolver (`sh2-plugin-registry/scripts/resolve-core-candidate.mjs`) uses to refuse assembling an incompatible frontend+backend release. Pre-1.0 every `0.x` minor is breaking, so the ranges track one core minor (`<0.2.0`). `@selfhelp/shared` (typed contracts) is the complementary anchor for *response-shape* drift; the `release-manifest.json` ranges are the anchor for *version pairing*. Before finishing any frontend/backend change, re-check that both `supports.*` floors still reflect reality.
+
+A coordinated breaking wave does **not** deadlock the registry: once both repos are tagged (in either order), the resolver pairs each new side against the counterpart's newest compatible git tag and stages both release PRs automatically — no manual publish. So the workflow for a coupled change is: bump both `supports.*` floors, tag both repos, merge the two staged PRs. Full rules: `docs/developer/cross-repo-compatibility-matrix.md`.
 
 ## Architecture Rules
 - Inspect existing controllers, services, schemas, routes, SQL, and docs before changing behavior.

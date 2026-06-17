@@ -76,6 +76,15 @@ will assemble a signed core+frontend release candidate. A pair that fails either
 direction is reported `incompatible` and never published, so a mismatched
 frontend+backend can't be shipped to an instance.
 
+During a **coordinated breaking wave** (both sides bump together) the published
+counterpart is briefly the old, incompatible version. To avoid a chicken-and-egg
+deadlock, the resolver then falls back to the newest *mutually compatible* counterpart
+**git tag** (read from the counterpart repo's `release-manifest.json`), so tagging
+backend and frontend in **either order** auto-stages both release PRs instead of
+blocking. It still fails when the compatible counterpart has not been tagged at all
+yet. Net effect for a coupled change: bump both `supports.*` floors, tag both repos,
+merge the two staged PRs — no manual publish needed.
+
 **These ranges are a hand-maintained contract — keep them honest.** Whenever a
 frontend feature starts depending on a backend feature (a new / changed / removed
 `/cms-api` endpoint, response field, permission, or behavior), update BOTH sides in
