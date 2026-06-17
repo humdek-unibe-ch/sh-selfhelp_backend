@@ -149,6 +149,41 @@ final class UnifiedRegistryClient
     }
 
     /**
+     * Fetch + parse + signature-verify ONE frontend release document.
+     *
+     * ADVISORY ONLY at the CMS boundary (mirrors {@see fetchCoreRelease()}): the
+     * backend reads this to compute the frontend-only update compatibility
+     * verdict ({@see \App\Service\System\SystemUpdateService::getFrontendPreflight()})
+     * — specifically the frontend's `backendCompatibility.requiredCoreRange`. The
+     * SelfHelp Manager remains the trusted verifier that re-resolves this
+     * document, verifies the image digest, and swaps the container. The Ed25519
+     * signature is still verified here so a tampered advisory cannot mislead the
+     * operator.
+     *
+     * @param array<string,string> $headers
+     */
+    public function fetchFrontendRelease(string $releaseUrl, array $headers = [], ?RegistryReleaseRef $ref = null): FrontendRelease
+    {
+        $decoded = $this->fetchJson($releaseUrl, $headers);
+        $release = FrontendRelease::fromArray($decoded, sprintf('frontend release (%s)', $releaseUrl));
+
+        if ($ref !== null && ($release->id !== $ref->id || $release->version !== $ref->version)) {
+            throw new MalformedRegistryException(sprintf(
+                'Registry ref "%s@%s" points at a frontend release document for "%s@%s" (%s).',
+                $ref->id,
+                $ref->version,
+                $release->id,
+                $release->version,
+                $releaseUrl,
+            ));
+        }
+
+        // Frontend releases are Manager-signed and always treated as "official".
+        $this->verifySignedDocument('frontend release', $release->id, $release->version, $release->security, $release->raw, true);
+        return $release;
+    }
+
+    /**
      * Fetch the security-advisory feed referenced by the index `advisoriesUrl`.
      *
      * The advisory feed is an INFORMATIONAL document, not a signed release: it
