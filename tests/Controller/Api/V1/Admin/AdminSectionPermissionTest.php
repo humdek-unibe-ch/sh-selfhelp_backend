@@ -40,17 +40,16 @@ final class AdminSectionPermissionTest extends QaWebTestCase
         ]);
     }
 
-    public function testSectionDeleteIsForbiddenForNonAdmins(): void
+    public function testSectionRemoveFromPageIsForbiddenForNonAdmins(): void
     {
+        // DELETE on the page-scoped path detaches the section from the page.
         $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/pages/2147483600/sections/2147483601');
     }
 
-    public function testSectionForceDeleteIsForbiddenForNonAdmins(): void
+    public function testSectionDestroyIsForbiddenForNonAdmins(): void
     {
-        $this->assertForbiddenForNonAdmins(
-            'DELETE',
-            '/cms-api/v1/admin/pages/2147483600/sections/2147483601/force-delete',
-        );
+        // Page-independent permanent delete.
+        $this->assertForbiddenForNonAdmins('DELETE', '/cms-api/v1/admin/sections/2147483601');
     }
 
     public function testSectionRestoreFromVersionIsForbiddenForNonAdmins(): void

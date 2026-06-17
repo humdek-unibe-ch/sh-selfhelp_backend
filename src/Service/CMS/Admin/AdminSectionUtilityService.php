@@ -66,6 +66,19 @@ class AdminSectionUtilityService extends BaseService
     }
 
     /**
+     * Return all pages that reference any of the given sections anywhere in their
+     * hierarchy (direct rel_pages_sections or nested via rel_sections_hierarchy).
+     * Results are deduplicated by page ID across all provided section IDs.
+     *
+     * @param list<int> $sectionIds
+     * @return list<array{id: int, keyword: string, isPublished: bool}>
+     */
+    public function getPagesBySectionIds(array $sectionIds): array
+    {
+        return $this->sectionRepository->getPagesContainingSections($sectionIds);
+    }
+
+    /**
      * Get all refContainer sections
      * 
      * @return array<int, array<string, mixed>>

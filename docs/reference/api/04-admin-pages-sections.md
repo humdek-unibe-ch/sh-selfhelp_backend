@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-16.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -452,7 +452,11 @@ Add an existing section to a page at a specific position.
 
 ### Remove Section from Page
 
-Remove a section from a page (but don't delete the section itself).
+Detach a section from a page without destroying the section record. Unlinks the
+section from this page only (its direct page link, or its hierarchy link when
+nested); the section row survives for every other page that references it. This
+is the correct operation for shared `refContainer` sections. To destroy the
+record entirely, use [Delete Section](#delete-section).
 
 **Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}`
 
@@ -474,6 +478,53 @@ Remove a section from a page (but don't delete the section itself).
     "timestamp": "2025-01-23T10:30:00Z"
   },
   "data": null
+}
+```
+
+**Permissions:** `admin.page.update`
+
+### Bulk Remove Sections from Page
+
+Detach several sections from a page in one request. This is the multi-select
+equivalent of [Remove Section from Page](#remove-section-from-page) and has the
+**same detach-only** semantics: each section is unlinked from this page only
+(its direct page link, or its hierarchy link when nested) and the section
+**record survives** for every other page that references it. Bulk remove never
+destroys a shared `refContainer` — to destroy a record entirely use
+[Delete Section](#delete-section). Cache invalidation fans out to every page
+that referenced each detached section.
+
+**Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Path Parameters:**
+- `page_id`: ID of the page to detach the sections from
+
+**Request Body:**
+[View JSON Schema](../../../config/schemas/api/v1/requests/section/bulk_remove_sections.json)
+```json
+{
+  "sectionIds": [15, 16, 17]
+}
+```
+
+**Response:** `200 OK` with the number of page links detached and a per-section
+error list for any ids that could not be detached.
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": true,
+  "meta": {
+    "version": "v1",
+    "timestamp": "2025-01-23T10:30:00Z"
+  },
+  "data": {
+    "deleted_count": 3,
+    "errors": []
+  }
 }
 ```
 
@@ -603,31 +654,23 @@ Update a section's content fields and properties.
 
 ### Delete Section
 
-Delete a section and all its content.
+Permanently delete a section record, regardless of which pages use it. This is
+page-independent: it destroys the section and every relationship it has on every
+page. A shared section (e.g. a `refContainer`) deleted this way disappears from
+all pages that referenced it. To merely unlink a section from one page while
+keeping the record for its other usages, use
+[Remove Section from Page](#remove-section-from-page) instead.
 
-**Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}`
+**Endpoint:** `DELETE /cms-api/v1/admin/sections/{section_id}`
 
 **Authentication:** Required (JWT Bearer token)
 
 **Path Parameters:**
-- `page_id`: ID of the parent page
 - `section_id`: ID of the section to delete
 
 **Response:** 204 No Content
 
-**Permissions:** `admin.page.delete`
-
-### Force Delete Section
-
-Force delete a section that may have dependencies or constraints.
-
-**Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}/force-delete`
-
-**Authentication:** Required (JWT Bearer token)
-
-**Response:** 204 No Content
-
-**Permissions:** `admin.page.delete`
+**Permissions:** `admin.page.delete` (on every page that currently references the section)
 
 ## Section Export/Import
 
@@ -727,13 +770,13 @@ Retrieve sections that are not attached to any page.
 
 ### Get Reference Containers
 
-Get sections that serve as containers for other sections.
+List all sections whose style is `refContainer`. These are reusable structural blocks that can be placed on multiple pages. `refContainer` is a transparent pass-through: it introduces no visual styling, layout, or presentation of its own; all rendering comes from its children. This endpoint is used by the admin page builder to let editors select an existing reusable block when wiring a page.
 
 **Endpoint:** `GET /cms-api/v1/admin/sections/ref-containers`
 
 **Authentication:** Required (JWT Bearer token)
 
-**Response:** Array of container sections
+**Response:** Array of `{ id, name, idStyles, styleName }` objects (styleName is always `refContainer`)
 
 **Permissions:** `admin.page.update`
 

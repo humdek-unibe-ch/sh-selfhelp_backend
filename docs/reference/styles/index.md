@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, shared types, frontend/mobile renderers).
-Last verified: 2026-06-04.
+Last verified: 2026-06-16.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 A **style** is a reusable CMS building block. Each style:
@@ -59,6 +59,7 @@ A **style** is a reusable CMS building block. Each style:
 | `card-segment` | yes | [layout.md#card-segment](./layout.md#card-segment) |
 | `aspect-ratio` | yes | [layout.md#aspect-ratio](./layout.md#aspect-ratio) |
 | `background-image` | yes | [layout.md#background-image](./layout.md#background-image) |
+| `refContainer` | yes | [layout.md#refcontainer](./layout.md#refcontainer) |
 
 ## typography
 
@@ -127,6 +128,7 @@ A **style** is a reusable CMS building block. Each style:
 | `progress` | no | [forms.md#progress](./forms.md#progress) |
 | `progress-root` | yes | [forms.md#progress-root](./forms.md#progress-root) |
 | `progress-section` | no | [forms.md#progress-section](./forms.md#progress-section) |
+| `showUserInput` | no | [forms.md#showuserinput](./forms.md#showuserinput) |
 
 ## composite
 

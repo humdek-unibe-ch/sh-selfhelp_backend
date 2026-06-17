@@ -13,6 +13,7 @@ use App\Service\CMS\DataService;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\Core\VariableResolverService;
+use App\Service\Security\DataAccessSecurityService;
 
 /**
  * Utility service for section-related operations
@@ -24,7 +25,8 @@ class SectionUtilityService
         private readonly DataService $dataService,
         private readonly StylesFieldRepository $stylesFieldRepository,
         private readonly UserContextService $userContextService,
-        private readonly VariableResolverService $variableResolverService
+        private readonly VariableResolverService $variableResolverService,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
     ) {
     }
 
@@ -710,6 +712,67 @@ class SectionUtilityService
         // Handle form record data
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
             $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
+        }
+
+        // Handle showUserInput data: fetch rows from the configured data_table
+        if ($section['style_name'] == StyleNames::STYLE_SHOW_USER_INPUT) {
+            $dataTableId = is_array($section['data_table'] ?? null)
+                ? (int) $this->asString($section['data_table']['content'] ?? '')
+                : 0;
+            $ownEntriesOnly = is_array($section['own_entries_only'] ?? null)
+                ? ($section['own_entries_only']['content'] === '1')
+                : true;
+
+            if ($dataTableId > 0) {
+                $entries = $this->dataService->getData(
+                    $dataTableId,
+                    '',
+                    $ownEntriesOnly,
+                    null,
+                    false,
+                    true,
+                    $languageId
+                );
+
+                $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
+                    && ($section['delete_entry']['content'] ?? '0') === '1';
+
+                if ($deleteEntryEnabled) {
+                    $currentUser = $this->userContextService->getCurrentUser();
+                    $currentUserId = $currentUser ? (int) $currentUser->getId() : 0;
+                    // Resolve the data-table DELETE permission once (hoisted out
+                    // of the per-row loop). Only relevant when the section shows
+                    // everyone's records; when own_entries_only is true every
+                    // visible row is the user's own and is always deletable.
+                    $hasDeletePermission = !$ownEntriesOnly
+                        && $currentUserId > 0
+                        && $this->dataAccessSecurityService->hasPermission(
+                            $currentUserId,
+                            'data_table',
+                            $dataTableId,
+                            DataAccessSecurityService::PERMISSION_DELETE
+                        );
+
+                    foreach ($entries as &$entry) {
+                        if (!is_array($entry)) {
+                            continue;
+                        }
+                        /** @var array<string, mixed> $entry */
+                        $rawOwner = $entry['id_users'] ?? null;
+                        $entryOwnerId = is_numeric($rawOwner) ? (int) $rawOwner : 0;
+                        $isOwnRecord = $entryOwnerId > 0 && $entryOwnerId === $currentUserId;
+                        // Same rule as FormController::deleteForm enforcement.
+                        $entry['_can_delete'] = $this->dataAccessSecurityService->canDeleteOwnedRecord(
+                            $ownEntriesOnly,
+                            $isOwnRecord,
+                            $hasDeletePermission
+                        );
+                    }
+                    unset($entry);
+                }
+
+                $section['entries'] = $entries;
+            }
         }
 
         // Get variable values (flat array from VariableResolverService)

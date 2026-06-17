@@ -8,12 +8,14 @@
 
 namespace App\Service\CMS;
 
+use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\Core\BaseService;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Service\Core\UserContextAwareService;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 
@@ -27,7 +29,8 @@ class FormValidationService extends BaseService
     public function __construct(
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly EntityManagerInterface $entityManager
     ) {
     }
 
@@ -116,8 +119,44 @@ class FormValidationService extends BaseService
         return [
             'page' => $page,
             'section' => $section,
-            'validated' => true
+            'validated' => true,
+            'own_entries_only' => ($this->readSectionFieldContent($sectionId, 'own_entries_only') ?? '1') === '1',
+            'data_table_id' => $this->parseNullableInt($this->readSectionFieldContent($sectionId, 'data_table')),
         ];
+    }
+
+    /**
+     * Read the stored content of a section field by field name.
+     *
+     * Internal config fields (e.g. own_entries_only, data_table) carry a single
+     * row, so the first match is returned. Returns null when the field has no
+     * stored value for the section.
+     */
+    private function readSectionFieldContent(int $sectionId, string $fieldName): ?string
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('t.content')
+            ->from(SectionsFieldsTranslation::class, 't')
+            ->join('t.field', 'f')
+            ->where('t.section = :sectionId')
+            ->andWhere('f.name = :fieldName')
+            ->setParameter('sectionId', $sectionId)
+            ->setParameter('fieldName', $fieldName)
+            ->setMaxResults(1);
+
+        /** @var array{content: mixed}|null $result */
+        $result = $qb->getQuery()->getOneOrNullResult();
+        $content = $result['content'] ?? null;
+
+        return is_scalar($content) ? (string) $content : null;
+    }
+
+    private function parseNullableInt(?string $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return is_numeric($value) ? (int) $value : null;
     }
 
     /**

@@ -197,9 +197,15 @@ class DataService extends BaseService
         }
     }
 
+    public function getRecordOwnerId(int $recordId): ?int
+    {
+        $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
+        return $dataRow ? $dataRow->getIdUsers() : null;
+    }
+
     /**
      * Delete form data record
-     * 
+     *
      * @param int $recordId The ID of the record to delete
      * @param bool $ownEntriesOnly Whether to restrict to user's own entries
      * @return bool Success status

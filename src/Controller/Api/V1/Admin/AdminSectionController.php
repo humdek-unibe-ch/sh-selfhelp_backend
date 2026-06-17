@@ -102,17 +102,21 @@ class AdminSectionController extends AbstractController
         return $this->apiResponseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
     }
 
-    public function deleteSection(int $page_id, int $section_id): Response
-    {
-        $this->adminSectionService->deleteSection($page_id, $section_id);
-
-        return $this->apiResponseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
-    }
-
-    public function forceDeleteSection(int $page_id, int $section_id): Response
+    /**
+     * Permanently delete a section record, regardless of which pages use it.
+     *
+     * This is page-independent: it destroys the section and every relationship
+     * it has on every page. To merely unlink a section from one page while
+     * keeping the record for its other usages, use the "remove from page"
+     * endpoint (AdminPageController::removeSectionFromPage).
+     *
+     * @route /admin/sections/{section_id}
+     * @method DELETE
+     */
+    public function deleteSection(int $section_id): Response
     {
         try {
-            $this->adminSectionService->forceDeleteSection($page_id, $section_id);
+            $this->adminSectionService->deleteSection($section_id);
 
             return $this->apiResponseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
         } catch (\App\Exception\ServiceException $e) {

@@ -591,27 +591,21 @@ class AdminPageService extends BaseService
     }
 
     /**
-     * Removes a section from a page.
-     * If the section is directly associated with the page, it removes the association.
-     * If the section is a child section in the page hierarchy, it deletes the section completely.
+     * Detach a section from a page without destroying the section record.
+     *
+     * Unlinks the section from this page only (its direct page link, or its
+     * hierarchy link when nested). The section row survives for every other
+     * page that references it. To destroy the record entirely, use the
+     * page-independent delete endpoint (AdminSectionController::deleteSection).
+     * Cache invalidation is handled inside the relationship service.
      *
      * @param int $pageId The ID of the page.
-     * @param int $sectionId The ID of the section to remove.
-     * @throws ServiceException If the relationship does not exist.
+     * @param int $sectionId The ID of the section to detach.
+     * @throws ServiceException If the page or the section/link is not found.
      */
     public function removeSectionFromPage(int $pageId, int $sectionId): void
     {
         $this->sectionRelationshipService->removeSectionFromPage($pageId, $sectionId);
-
-        // Invalidate cache for this specific page
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_PAGES)
-            ->invalidateAllListsInCategory();
-        $this->cache
-            ->withCategory(CacheService::CATEGORY_SECTIONS)
-            ->invalidateAllListsInCategory();
     }
 
     /**

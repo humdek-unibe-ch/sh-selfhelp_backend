@@ -269,35 +269,17 @@ class AdminSectionService extends BaseService
         $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
     }
 
-    public function deleteSection(?int $page_id, int $section_id): void
-    {
-        $this->sectionRelationshipService->deleteSection($page_id, $section_id);
-        
-        // Invalidate section-specific cache
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id);
-        if ($page_id) {
-            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
-        }
-        
-        // Invalidate all section lists in category
-        $this->cache->withCategory(CacheService::CATEGORY_SECTIONS)->invalidateAllListsInCategory();
-    }
-
     /**
-     * Force deletes a section permanently (always delete, never just remove from page).
+     * Permanently delete a section record regardless of which pages use it.
+     * Cache invalidation (section + every affected page + lists) is handled
+     * inside the relationship service.
      *
-     * This will always completely delete the section and all its relationships,
-     * unlike deleteSection which might just remove from page for direct associations.
-     *
-     * @param int $page_id The page ID.
-     * @param int $section_id The ID of the section to force delete.
+     * @param int $section_id The ID of the section to delete.
      * @throws ServiceException If the section is not found or access denied.
      */
-    public function forceDeleteSection(int $page_id, int $section_id): void
+    public function deleteSection(int $section_id): void
     {
-        $this->sectionRelationshipService->forceDeleteSection($page_id, $section_id);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id);
-        $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $page_id);
+        $this->sectionRelationshipService->deleteSection($section_id);
     }
 
     /**
@@ -427,9 +409,18 @@ class AdminSectionService extends BaseService
 
             $this->entityManager->commit();
 
-            // Invalidate cache for this specific section
+            // Invalidate the section itself and every page that contains it
+            // anywhere in its hierarchy. A refContainer may be nested inside
+            // another section rather than sitting directly in rel_pages_sections,
+            // so we walk up the full ancestor chain to find all owning pages.
             $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
-            $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $pageId);
+
+            $affectedPageIds = $this->sectionRepository->getPageIdsContainingSection($sectionId);
+            // Always include the page the editor is on in case the query misses it.
+            $affectedPageIds[] = $pageId;
+            foreach (array_unique($affectedPageIds) as $affectedPageId) {
+                $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, $affectedPageId);
+            }
 
             return $section;
         } catch (\Throwable $e) {
