@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-10.
+Last verified: 2026-06-17.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -56,6 +56,43 @@ MINOR/MAJOR is the practical compatibility key for the whole ecosystem.**
 | **minor** (`1.2.x → 1.3.0`) | additive (new optional field/type/registry entry) | optional adopt; safe within caret range |
 | **major** (`1.x → 2.0.0`) | breaking (removed/renamed/retyped export or required field) | frontend **and** mobile must bump the dependency and adapt in the same release wave |
 
+## Frontend ⇄ core version pinning (`release-manifest.json`)
+
+`@selfhelp/shared` catches *type/contract drift*, but it does **not** by itself stop
+someone from running a frontend build against a backend that is too old (or too new)
+for the `/cms-api` endpoints it calls. That version pairing is the **second
+compatibility axis**, gated by a `release-manifest.json` at the root of each of the
+two deployable repos:
+
+| Repo | Field | Meaning |
+|------|-------|---------|
+| `sh-selfhelp_backend` | `supports.frontend` | the frontend SemVer range this core serves |
+| `sh-selfhelp_frontend` | `supports.core` | the core (backend) SemVer range this frontend needs |
+
+The unified registry's auto-release resolver
+(`sh2-plugin-registry/scripts/resolve-core-candidate.mjs`) reads both manifests at the
+git tag being released and runs a **bidirectional** `semver.satisfies` check before it
+will assemble a signed core+frontend release candidate. A pair that fails either
+direction is reported `incompatible` and never published, so a mismatched
+frontend+backend can't be shipped to an instance.
+
+**These ranges are a hand-maintained contract — keep them honest.** Whenever a
+frontend feature starts depending on a backend feature (a new / changed / removed
+`/cms-api` endpoint, response field, permission, or behavior), update BOTH sides in
+the same change wave:
+
+- raise `sh-selfhelp_frontend` → `supports.core` to the first core version that ships
+  the feature, **and**
+- raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
+  adopts it.
+
+> **Current floor (2026-06-17):** the 0.1.12 core "section detach/destroy + batch
+> `GET /admin/sections/pages`" API (which removed the single-section and the
+> `force-delete` routes) is adopted by frontend 0.1.18. So the live pairing is
+> **frontend `>=0.1.18` ⇄ core `>=0.1.12`** (both still `<0.2.0`); anything older on
+> either side is an incompatible mix. `@selfhelp/shared` stays the type anchor on top
+> of this version gate.
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -63,11 +100,15 @@ MINOR/MAJOR is the practical compatibility key for the whole ecosystem.**
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.1` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.12` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.5.0` | npm |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.5.0` | shared minor `1.5` |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.4.0` (caret covers `1.5.x`) | shared `1.x` line |
+| `@selfhelp/shared` | `1.7.0` | npm |
+| `sh-selfhelp_frontend` | `0.1.19` | — |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.7.0` | shared minor `1.7` |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.12 <0.2.0` | core that ships the `/cms-api` it needs |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.18 <0.2.0` | frontend that adopted its `/cms-api` |
+| `sh-selfhelp_mobile` | `0.1.0` | — |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.6.0` (caret covers `1.7.x`) | shared `1.x` line |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |
@@ -121,6 +162,7 @@ consumer.
 | You change… | You MUST also update… | Verify with |
 |-------------|-----------------------|-------------|
 | **Backend response schema** (`config/schemas/api/v1/responses/**`) | the shared TS mirror (`@selfhelp/shared`), then any frontend/mobile/plugin reading the field; add a JSON-schema contract test | `composer test` + `npm run check:schemas` |
+| **A `/cms-api` endpoint or behavior a client depends on** (added / changed / removed route, permission, or contract) | raise the `release-manifest.json` floors on BOTH sides — `supports.core` (frontend) and `supports.frontend` (backend) — to the new compatible pair, in the same change wave; update this matrix's "Current floor" note | `resolve-core-candidate.mjs` reports the intended pair as compatible (not `incompatible`) |
 | **Shared DTO / exported type** | bump `@selfhelp/shared` (minor if additive, major if breaking); adapt frontend + mobile; update the CHANGELOG | `npm run typecheck && npm test` (shared) + `ecosystem-compat` |
 | **Frontend renderer contract** (style impl map vs registry) | the shared style registry if a style was added/removed | frontend `npm run tsc` + Vitest |
 | **Mobile renderer contract** (`components/renderer/**`) | the shared registry/types it reads; keep `frontendOnly` styles renderable | mobile `npm run typecheck && npm test` |

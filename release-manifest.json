@@ -1,8 +1,8 @@
 {
-    "$comment": "Release self-declaration consumed by the unified registry's auto-core-release resolver (sh2-plugin-registry/scripts/resolve-core-candidate.mjs) at the git tag being released. The supports.* semver ranges decide whether a tagged core can be auto-matched with the latest published counterparts into a signed release candidate PR. Keep pluginApiVersion in sync with config/services.yaml (CI enforces it) and widen/bump supports.frontend deliberately - while the platform is pre-1.0, every 0.x minor is breaking.",
+    "$comment": "Release self-declaration consumed by the unified registry's auto-core-release resolver (sh2-plugin-registry/scripts/resolve-core-candidate.mjs) at the git tag being released. The supports.* semver ranges decide whether a tagged core can be auto-matched with the latest published counterparts into a signed release candidate PR. Keep pluginApiVersion in sync with config/services.yaml (CI enforces it) and widen/bump supports.frontend deliberately - while the platform is pre-1.0, every 0.x minor is breaking. Raise supports.frontend's lower bound whenever core changes/removes an API contract the frontend depends on: the current floor 0.1.18 is the frontend release that adopted the 0.1.12 section detach/destroy + batch /admin/sections/pages endpoints (and dropped the removed force-delete route), so an incompatible frontend+backend pair can never be auto-assembled into a release.",
     "kind": "core",
     "supports": {
-        "frontend": ">=0.1.0 <0.2.0",
+        "frontend": ">=0.1.18 <0.2.0",
         "manager": ">=0.1.0"
     },
     "minimumDirectUpgradeFrom": "0.1.0",
