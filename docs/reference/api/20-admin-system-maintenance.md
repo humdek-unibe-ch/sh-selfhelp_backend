@@ -234,12 +234,34 @@ Query parameter: `target` (required) — the target frontend version. A missing
 
 Returns the same verdict shape as `update/preflight`, but because a frontend
 swap is stateless the verdict is always non-destructive: `database.destructive`
-and `database.requires_backup` are always `false`. The only blocking checks are
-an **invalid version** and a **downgrade** (and a downgrade is only evaluated
-when the installed frontend version is a real, parseable version — an `unknown`
-stamp from a pre-versioning build never falsely blocks). A target that is not
-listed in the registry is a `warning`, not a block — the manager re-validates
-availability authoritatively. Response schema:
+and `database.requires_backup` are always `false`. Blocking checks are:
+
+- an **invalid version** (`version_invalid`);
+- a **downgrade** (`downgrade`) — only evaluated when the installed frontend
+  version is a real, parseable version, so an `unknown` stamp from a
+  pre-versioning build never falsely blocks;
+- a **frontend ⇄ core incompatibility** (`frontend_compatibility`) — the
+  bidirectional rule the SelfHelp Manager enforces, applied here against the
+  SAME signed registry metadata so the CMS verdict matches the manager's:
+  - the running core's `frontendCompatibility.requiredFrontendRange` must admit
+    the target frontend (otherwise: "update the core first, or pick a frontend
+    in range"), **and**
+  - the target frontend's `backendCompatibility.requiredCoreRange` must admit
+    the running core (otherwise: "this frontend needs a newer core; update the
+    core first").
+
+  Each `frontend_compatibility` check carries the standardized
+  `CompatibilityError` fields (`component: "frontend"`, `component_id`,
+  `current_version`, `target_version`, `required_range`, `blocking`). When a
+  signed release document is unavailable (registry offline, version not yet
+  published, or signature failure) the corresponding direction degrades to the
+  `registry_unreachable` **warning**, never a silent pass — the manager
+  re-resolves the signed release and, crucially, enforces the running core's
+  range from the instance lock even when the core release has left the registry,
+  so it remains the final authority.
+
+A target that is not listed in the registry is a `warning`, not a block — the
+manager re-validates availability authoritatively. Response schema:
 `responses/admin/update_preflight.json` (reused).
 
 ### POST /admin/system/update/frontend/request
