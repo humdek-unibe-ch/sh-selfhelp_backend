@@ -49,6 +49,12 @@ final class CrossInstallerManagerFixtureParityTest extends TestCase
         return \dirname(__DIR__, 5) . '/sh-manager/packages/schemas/examples/core-release.json';
     }
 
+    /** The Manager's own committed, signed frontend-release example. */
+    private function managerFrontendFixture(): string
+    {
+        return \dirname(__DIR__, 5) . '/sh-manager/packages/schemas/examples/frontend-release.json';
+    }
+
     private function trustedVerifier(): PluginSignatureVerifier
     {
         // Re-derive the public half of the deterministic dev seed the manager
@@ -110,5 +116,52 @@ final class CrossInstallerManagerFixtureParityTest extends TestCase
         self::assertSame('0.1.0', $core->version);
         self::assertSame('0.1.0', $core->pluginApiVersion);
         self::assertStringStartsWith('sha256:', $core->backend->digest, 'manager-authored advisory digest is readable by the backend');
+    }
+
+    public function testBackendVerifiesManagerSignedFrontendReleaseProvingCanonicalParity(): void
+    {
+        // The frontend-only update preflight reads the SIGNED frontend release to
+        // apply the SAME bidirectional frontend ⇄ core rule the manager enforces.
+        // This proves the backend verifies a frontend release the OTHER installer
+        // authored + signed (manager example, no inline signedPayload → forces the
+        // backend to recompute canonical JSON), closing the cross-installer loop.
+        $fixture = $this->managerFrontendFixture();
+        if (!is_file($fixture)) {
+            self::markTestSkipped('SelfHelp Manager repo not checked out alongside the backend.');
+        }
+        $body = (string) file_get_contents($fixture);
+
+        $decoded = json_decode($body, true);
+        self::assertIsArray($decoded);
+        self::assertIsArray($decoded['security']);
+        self::assertArrayNotHasKey(
+            'signedPayload',
+            $decoded['security'],
+            'the manager frontend example ships no inline payload, forcing the backend to recompute canonical JSON',
+        );
+        $clone = $decoded;
+        unset($clone['security']);
+        $canonical = CanonicalJson::encode($clone);
+        $declaredHash = $decoded['security']['signedPayloadSha256'] ?? null;
+        self::assertIsString($declaredHash);
+        $expectedHash = strtolower((string) preg_replace('/^sha256:/i', '', $declaredHash));
+        self::assertSame(
+            $expectedHash,
+            hash('sha256', $canonical),
+            'backend canonical JSON of the manager-authored frontend release is byte-identical to the manager signer',
+        );
+
+        $http = new MockHttpClient(static function (string $method, string $url) use ($body): MockResponse {
+            if (str_ends_with($url, '/releases/frontend/selfhelp-frontend-0.1.0.json')) {
+                return new MockResponse($body);
+            }
+            return new MockResponse('not found', ['http_code' => 404]);
+        });
+        $client = new UnifiedRegistryClient($http, $this->trustedVerifier(), new NullLogger());
+        $frontend = $client->fetchFrontendRelease(self::BASE_URL . '/releases/frontend/selfhelp-frontend-0.1.0.json');
+
+        self::assertSame('0.1.0', $frontend->version);
+        self::assertSame('>=0.1.0 <0.2.0', $frontend->requiredCoreRange);
+        self::assertSame('0.1.0', $frontend->requiredApiVersion);
     }
 }
