@@ -11,6 +11,10 @@ namespace App\Tests\Unit\Service\System;
 
 use App\Entity\System\SystemUpdateOperation;
 use App\Exception\ServiceException;
+use App\Plugin\Registry\Unified\CoreImageRef;
+use App\Plugin\Registry\Unified\CoreRelease;
+use App\Plugin\Registry\Unified\FrontendRelease;
+use App\Plugin\Registry\Unified\SignatureBlock;
 use App\Repository\Plugin\PluginRepository;
 use App\Repository\System\SystemUpdateOperationRepository;
 use App\Service\Auth\UserContextService;
@@ -74,6 +78,69 @@ final class SystemUpdateServiceFrontendTest extends TestCase
         $registry->method('listFrontendReleases')->willReturn($frontendReleases);
 
         return $registry;
+    }
+
+    /**
+     * A registry stub that ALSO answers the signed release fetches the
+     * bidirectional frontend ⇄ core preflight reads. `getCoreRelease` /
+     * `getFrontendRelease` return null by default (offline / unpublished /
+     * signature failure), exactly as the fail-soft reader would.
+     *
+     * @param list<array{version: string, channel: string, blocked: bool}>|null $frontendReleases
+     */
+    private function registryWith(
+        ?array $frontendReleases,
+        ?CoreRelease $core = null,
+        ?FrontendRelease $frontend = null,
+    ): SystemRegistryReader {
+        $registry = $this->createStub(SystemRegistryReader::class);
+        $registry->method('listFrontendReleases')->willReturn($frontendReleases);
+        $registry->method('getCoreRelease')->willReturn($core);
+        $registry->method('getFrontendRelease')->willReturn($frontend);
+
+        return $registry;
+    }
+
+    /** A signed core release as the reader returns it, with a chosen frontend range. */
+    private function coreReleaseDoc(string $requiredFrontendRange, string $version = '0.1.4'): CoreRelease
+    {
+        $digest = 'sha256:' . str_repeat('a', 64);
+
+        return new CoreRelease(
+            id: 'selfhelp-core',
+            version: $version,
+            channel: 'stable',
+            minimumDirectUpgradeFrom: '0.1.0',
+            pluginApiVersion: '0.1.0',
+            backend: new CoreImageRef('ghcr.io/selfhelp/backend', $digest),
+            worker: new CoreImageRef('ghcr.io/selfhelp/worker', $digest),
+            scheduler: new CoreImageRef('ghcr.io/selfhelp/scheduler', $digest),
+            requiredFrontendRange: $requiredFrontendRange,
+            migrationRange: '>=0.1.0 <0.2.0',
+            destructive: false,
+            requiresBackup: true,
+            manualConfirmationRequired: false,
+            security: new SignatureBlock('c2ln', 'selfhelp-dev-fixture'),
+            blocked: false,
+            raw: [],
+        );
+    }
+
+    /** A signed frontend release as the reader returns it, with a chosen core range. */
+    private function frontendReleaseDoc(string $version, string $requiredCoreRange): FrontendRelease
+    {
+        return new FrontendRelease(
+            id: 'selfhelp-frontend-' . $version,
+            version: $version,
+            channel: 'stable',
+            image: 'ghcr.io/humdek-unibe-ch/selfhelp-frontend:' . $version,
+            digest: 'sha256:' . str_repeat('d', 64),
+            requiredCoreRange: $requiredCoreRange,
+            requiredApiVersion: '0.1.0',
+            security: new SignatureBlock('c2ln', 'selfhelp-dev-fixture'),
+            blocked: false,
+            raw: [],
+        );
     }
 
     public function testAvailableFrontendReleasesListsRegistryVersionsForThePicker(): void
@@ -145,6 +212,126 @@ final class SystemUpdateServiceFrontendTest extends TestCase
 
         self::assertNotSame(SystemUpdateService::STATUS_BLOCKED, $preflight['status']);
         self::assertContains(SystemUpdateService::CHECK_REGISTRY_UNREACHABLE, $this->checkCodes($preflight));
+    }
+
+    public function testFrontendPreflightBlocksWhenRunningCoreForbidsTheTargetFrontend(): void
+    {
+        // The reported bug: the instance runs core 0.1.4 whose registry release
+        // only supports frontend ">=0.1.0 <0.1.18", but the operator asks for
+        // frontend 0.1.19. The manager would reject it at execution, so the CMS
+        // preflight must BLOCK here too (not return "OK") to stay consistent.
+        $registry = $this->registryWith(
+            [['version' => '0.1.19', 'channel' => 'stable', 'blocked' => false]],
+            core: $this->coreReleaseDoc('>=0.1.0 <0.1.18'),
+            frontend: $this->frontendReleaseDoc('0.1.19', '>=0.1.0 <0.2.0'),
+        );
+
+        $preflight = $this->makeService($registry)->getFrontendPreflight('0.1.19');
+
+        self::assertSame(SystemUpdateService::STATUS_BLOCKED, $preflight['status']);
+        $compat = $this->firstCheck($preflight, SystemUpdateService::CHECK_FRONTEND_COMPATIBILITY);
+        self::assertNotNull($compat, 'A frontend the running core forbids must raise a frontend_compatibility check.');
+        self::assertSame('error', $compat['severity'] ?? null);
+        self::assertSame('frontend', $compat['component'] ?? null);
+        self::assertSame('selfhelp-frontend', $compat['component_id'] ?? null);
+        self::assertSame('0.1.5', $compat['current_version'] ?? null);
+        self::assertSame('0.1.19', $compat['target_version'] ?? null);
+        self::assertSame('>=0.1.0 <0.1.18', $compat['required_range'] ?? null);
+        self::assertTrue($compat['blocking'] ?? null);
+        self::assertIsString($compat['message'] ?? null);
+        self::assertStringContainsString('0.1.19', (string) $compat['message']);
+    }
+
+    public function testFrontendPreflightBlocksWhenTargetFrontendRequiresANewerCore(): void
+    {
+        // The other direction: the running core admits the frontend pick, but the
+        // frontend itself requires core >=0.2.0 while the instance runs 0.1.4 →
+        // block with "update the core first".
+        $registry = $this->registryWith(
+            [['version' => '0.1.7', 'channel' => 'stable', 'blocked' => false]],
+            core: $this->coreReleaseDoc('>=0.1.0 <0.2.0'),
+            frontend: $this->frontendReleaseDoc('0.1.7', '>=0.2.0 <0.3.0'),
+        );
+
+        $preflight = $this->makeService($registry)->getFrontendPreflight('0.1.7');
+
+        self::assertSame(SystemUpdateService::STATUS_BLOCKED, $preflight['status']);
+        $compat = $this->firstCheck($preflight, SystemUpdateService::CHECK_FRONTEND_COMPATIBILITY);
+        self::assertNotNull($compat, 'A frontend that needs a newer core must raise a frontend_compatibility check.');
+        self::assertSame('>=0.2.0 <0.3.0', $compat['required_range'] ?? null);
+        $message = $compat['message'] ?? null;
+        self::assertIsString($message);
+        self::assertStringContainsString('core', strtolower($message));
+    }
+
+    public function testFrontendPreflightIsOkWhenBothFrontendAndCoreRangesAreSatisfied(): void
+    {
+        $registry = $this->registryWith(
+            [['version' => '0.1.7', 'channel' => 'stable', 'blocked' => false]],
+            core: $this->coreReleaseDoc('>=0.1.0 <0.2.0'),
+            frontend: $this->frontendReleaseDoc('0.1.7', '>=0.1.0 <0.2.0'),
+        );
+
+        $preflight = $this->makeService($registry)->getFrontendPreflight('0.1.7');
+
+        self::assertSame(SystemUpdateService::STATUS_OK, $preflight['status']);
+        self::assertNotContains(
+            SystemUpdateService::CHECK_FRONTEND_COMPATIBILITY,
+            $this->checkCodes($preflight),
+            'A frontend both sides accept must not raise a compatibility check.',
+        );
+    }
+
+    public function testFrontendPreflightDoesNotFabricateACompatBlockWhenReleasesAreAbsentFromRegistry(): void
+    {
+        // getCoreRelease + getFrontendRelease both null (offline / unpublished /
+        // tampered-signature). The CMS cannot see either range, so it must NOT
+        // invent a compatibility block — the SelfHelp Manager re-resolves and
+        // enforces the running core's range from the instance LOCK (even when the
+        // core release has left the registry) as the final authority.
+        $registry = $this->registryWith(
+            [['version' => '0.1.7', 'channel' => 'stable', 'blocked' => false]],
+            core: null,
+            frontend: null,
+        );
+
+        $preflight = $this->makeService($registry)->getFrontendPreflight('0.1.7');
+
+        self::assertNotSame(SystemUpdateService::STATUS_BLOCKED, $preflight['status']);
+        self::assertNotContains(SystemUpdateService::CHECK_FRONTEND_COMPATIBILITY, $this->checkCodes($preflight));
+    }
+
+    public function testFrontendPreflightStillBlocksFromTheCoreRangeWhenTheFrontendDocIsUnavailable(): void
+    {
+        // Only the core release is readable (the frontend release doc 404s / fails
+        // verification). The core-direction check alone must still block an
+        // out-of-range frontend — a missing frontend doc must not weaken the gate.
+        $registry = $this->registryWith(
+            [['version' => '0.1.19', 'channel' => 'stable', 'blocked' => false]],
+            core: $this->coreReleaseDoc('>=0.1.0 <0.1.18'),
+            frontend: null,
+        );
+
+        $preflight = $this->makeService($registry)->getFrontendPreflight('0.1.19');
+
+        self::assertSame(SystemUpdateService::STATUS_BLOCKED, $preflight['status']);
+        self::assertContains(SystemUpdateService::CHECK_FRONTEND_COMPATIBILITY, $this->checkCodes($preflight));
+    }
+
+    public function testRequestFrontendUpdateRejectsAFrontendTheRunningCoreForbids(): void
+    {
+        $registry = $this->registryWith(
+            [['version' => '0.1.19', 'channel' => 'stable', 'blocked' => false]],
+            core: $this->coreReleaseDoc('>=0.1.0 <0.1.18'),
+            frontend: $this->frontendReleaseDoc('0.1.19', '>=0.1.0 <0.2.0'),
+        );
+
+        try {
+            $this->makeService($registry)->requestFrontendUpdate(['target_version' => '0.1.19', 'preflight_id' => 'pff_x']);
+            self::fail('Expected a 422 for a frontend the running core forbids.');
+        } catch (ServiceException $e) {
+            self::assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $e->getCode());
+        }
     }
 
     public function testRequestFrontendUpdatePersistsAFrontendKindOperation(): void
@@ -260,5 +447,24 @@ final class SystemUpdateServiceFrontendTest extends TestCase
         }
 
         return $codes;
+    }
+
+    /**
+     * The first preflight check with the given code, or null.
+     *
+     * @param array<string,mixed> $preflight
+     * @return array<array-key,mixed>|null
+     */
+    private function firstCheck(array $preflight, string $code): ?array
+    {
+        self::assertIsArray($preflight['checks']);
+        foreach ($preflight['checks'] as $check) {
+            self::assertIsArray($check);
+            if (($check['code'] ?? null) === $code) {
+                return $check;
+            }
+        }
+
+        return null;
     }
 }
