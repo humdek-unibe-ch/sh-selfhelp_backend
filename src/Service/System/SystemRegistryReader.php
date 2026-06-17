@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace App\Service\System;
 
 use App\Plugin\Registry\Unified\CoreRelease;
+use App\Plugin\Registry\Unified\FrontendRelease;
 use App\Plugin\Registry\Unified\UnifiedRegistryClient;
 use Psr\Log\LoggerInterface;
 
@@ -87,6 +88,35 @@ class SystemRegistryReader
             return $releases;
         } catch (\Throwable $e) {
             $this->logger->info('System registry core-release listing failed; releases degrade to offline mode.', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Fetch the signed, signature-verified frontend release document for a
+     * version, or null when the registry is unreachable, the version is not
+     * published, or the signature does not verify. Used by the frontend-only
+     * update preflight to read the frontend's `backendCompatibility.requiredCoreRange`
+     * so the CMS can apply the SAME bidirectional frontend ⇄ core compatibility
+     * rule the SelfHelp Manager enforces at execution time.
+     */
+    public function getFrontendRelease(string $version): ?FrontendRelease
+    {
+        try {
+            $index = $this->client->fetchIndex($this->registryUrl);
+            foreach ($index->frontendRefsSorted() as $ref) {
+                if ($ref->version === $version) {
+                    return $this->client->fetchFrontendRelease($index->resolveUrl($ref->releaseUrl), [], $ref);
+                }
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            $this->logger->info('System registry frontend-release fetch failed; preflight degrades to offline mode.', [
+                'version' => $version,
                 'error' => $e->getMessage(),
             ]);
 
