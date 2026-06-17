@@ -139,6 +139,76 @@ final class CompatibilityError
     }
 
     /**
+     * Build the canonical compatibility error for a FRONTEND-only update that is
+     * blocked because the running core's `requiredFrontendRange` does not admit
+     * the target frontend version (the running core forbids that frontend). The
+     * operator must upgrade the core first, or pick a frontend within the range.
+     *
+     * `component` is the frontend (the artifact the operator is updating),
+     * `current_version`/`target_version` are the FRONTEND versions, and
+     * `required_range` is the core's required frontend range. Mirrors the
+     * SelfHelp Manager's `@shm/resolver` frontend-update verdict so the operator
+     * sees the same shape regardless of which side raised it.
+     */
+    public static function frontendUpdateBlockedByCore(
+        string $currentFrontendVersion,
+        string $targetFrontendVersion,
+        string $coreVersion,
+        string $requiredFrontendRange,
+        bool $blocking = true,
+    ): self {
+        return new self(
+            component: self::COMPONENT_FRONTEND,
+            componentId: 'selfhelp-frontend',
+            currentVersion: $currentFrontendVersion,
+            targetVersion: $targetFrontendVersion,
+            requiredRange: $requiredFrontendRange,
+            blocking: $blocking,
+            message: sprintf(
+                'The running SelfHelp core %s only supports frontend %s, so frontend %s cannot be installed. Update the core to a version that supports frontend %s first, or choose a frontend within %s.',
+                $coreVersion,
+                $requiredFrontendRange,
+                $targetFrontendVersion,
+                $targetFrontendVersion,
+                $requiredFrontendRange,
+            ),
+        );
+    }
+
+    /**
+     * Build the canonical compatibility error for a FRONTEND-only update that is
+     * blocked because the target frontend's `backendCompatibility.requiredCoreRange`
+     * does not admit the running core version (the new frontend needs a different
+     * core). The operator must upgrade the core first.
+     *
+     * `component` is the frontend, `current_version`/`target_version` are the
+     * FRONTEND versions, and `required_range` is the frontend's required core
+     * range. The other half of the bidirectional frontend ⇄ core check.
+     */
+    public static function frontendUpdateRequiresCore(
+        string $currentFrontendVersion,
+        string $targetFrontendVersion,
+        string $coreVersion,
+        string $requiredCoreRange,
+        bool $blocking = true,
+    ): self {
+        return new self(
+            component: self::COMPONENT_FRONTEND,
+            componentId: 'selfhelp-frontend',
+            currentVersion: $currentFrontendVersion,
+            targetVersion: $targetFrontendVersion,
+            requiredRange: $requiredCoreRange,
+            blocking: $blocking,
+            message: sprintf(
+                'SelfHelp frontend %s requires core %s, but this instance runs core %s. Update the core to a compatible version first, then update the frontend.',
+                $targetFrontendVersion,
+                $requiredCoreRange,
+                $coreVersion,
+            ),
+        );
+    }
+
+    /**
      * Build the canonical compatibility error for the plugin-API axis.
      */
     public static function pluginIncompatibleWithApi(
