@@ -18,7 +18,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "description": "A single preflight check. Version/compatibility checks (e.g. plugin_compatibility, downgrade, upgrade_path) additionally carry the standardized compatibility-error fields so the admin/operator sees the blocking component and the required range.",
+            "description": "A single preflight check. Version/compatibility checks (e.g. plugin_compatibility for a core update blocked by a plugin, frontend_compatibility for a frontend-only update the running core forbids or that needs a different core, downgrade, upgrade_path) additionally carry the standardized compatibility-error fields so the admin/operator sees the blocking component and the required range.",
             "properties": {
               "code": { "type": "string" },
               "severity": { "type": "string", "enum": ["info", "warning", "error"] },
