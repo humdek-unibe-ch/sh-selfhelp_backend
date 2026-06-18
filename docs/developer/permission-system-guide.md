@@ -418,10 +418,16 @@ class ApiSecurityListener implements EventSubscriberInterface
 
 ### 3.5 Voters
 
-#### ApiRouteVoter
+#### ApiRouteVoter (removed)
+
+> **Removed.** `ApiRouteVoter` no longer exists in the codebase. It was a dead,
+> duplicate authorization path (`api_route_access` was never granted/checked
+> anywhere). Route-permission enforcement is done exclusively by
+> `ApiSecurityListener` (§3.4). The snippet below is kept only for historical
+> reference.
 
 ```php
-// src/Security/Voter/ApiRouteVoter.php
+// src/Security/Voter/ApiRouteVoter.php  (historical — file removed)
 namespace App\Security\Voter;
 
 use App\Entity\User;
@@ -620,22 +626,12 @@ class UserController extends AbstractController
 }
 ```
 
-### 4.3 Using the Voter in Controllers
+### 4.3 Route Permission Checks Are Automatic
 
-For more complex permission checks, use the voter pattern:
-
-```php
-// In a controller
-public function someAction(Request $request)
-{
-    // Check if user can access the API route
-    if (!$this->isGranted('api_route_access')) {
-        throw $this->createAccessDeniedException('Permission denied');
-    }
-    
-    // Continue with controller logic
-}
-```
+Controllers do **not** call any permission API for route-level checks. Once a
+route has permissions associated, `ApiSecurityListener` enforces them
+automatically on every request (see §3.4). For resource-specific checks, add a
+custom voter (§4.4).
 
 ### 4.4 Creating Custom Voters for Specific Resources
 
@@ -704,8 +700,13 @@ public function viewUser(User $user)
 
 ### 5.1 Unit Testing Voters
 
+> **Historical.** The `ApiRouteVoter` shown below was removed; this test no
+> longer exists. Permission enforcement is covered by integration tests against
+> `ApiSecurityListener` (e.g.
+> `tests/Controller/Api/V1/Admin/AdminRolePermissionTest.php`).
+
 ```php
-// tests/Security/Voter/ApiRouteVoterTest.php
+// tests/Security/Voter/ApiRouteVoterTest.php  (historical — voter removed)
 namespace App\Tests\Security\Voter;
 
 use App\Entity\User;
