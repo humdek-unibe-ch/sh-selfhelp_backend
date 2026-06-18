@@ -1,3 +1,13 @@
+# v0.1.14
+
+## API — Security & robustness audit
+
+- **Internal server-error details are no longer leaked to API clients in production.** A new `ApiResponseFormatter::formatThrowable()` centralizes the error handling that controller `catch` blocks used to copy-paste (`formatError($e->getMessage(), $e->getCode() ?: 500)`): it clamps a `Throwable`'s code to a valid HTTP status (a raw `0`/`999`/SQLSTATE string can no longer make `JsonResponse` throw), preserves the intended status + user-facing message for domain `ServiceException`s, logs unexpected (non-domain) 5xx so a swallowed 500 is never invisible, and — outside `kernel.debug` — masks 5xx messages behind a generic `Internal Server Error`. `ApiExceptionListener` applies the same masking for bubbled exceptions. All admin/auth/frontend controllers were migrated to `formatThrowable()`. (`ApiResponseFormatter`, `ApiExceptionListener`, `config/services.yaml` `$debug` wiring, `ApiResponseFormatterTest`)
+- **The section export/import raw-SQL fallback is parameter-bound.** When the Doctrine relationship-clearing path fails and falls back to raw SQL, section ids are now passed as bound parameters (`ArrayParameterType::INTEGER`) instead of being interpolated into the statement; the only remaining concatenation is the computed `AUTO_INCREMENT` integer (DDL cannot bind parameters), documented as injection-safe. (`SectionExportImportService`)
+- **User-supplied date filters are validated instead of crashing the request.** The audit-log and scheduled-job list endpoints fed `date_from` / `date_to` straight into `new \DateTime(...)`, so an unparseable value surfaced as an uncaught `500`; both now reject a bad filter with a `400`. The user block toggle now requires an explicit boolean `blocked` in the body rather than silently defaulting to "block". (`AdminAuditService`, `AdminScheduledJobService`, `AdminUserController`)
+- **Interpolation, page-version and data-record errors are written to the PSR logger.** `error_log()` calls were replaced with the injected `LoggerInterface` (with the throwable attached), and the non-autowired `InterpolationService` now receives `$logger` explicitly. (`InterpolationService`, `PageVersionService`, `DataService`, `config/services.yaml`)
+- **Smaller correctness fixes:** strict (`true`) `in_array()` permission comparison in `ApiSecurityListener`; `User::isTwoFactorRequired()` is now a pure getter (it no longer mutates `twoFactorRequired` as a side effect of reading it); and the dead, unreferenced `ApiRouteVoter` was removed (route-level permissions are enforced by `ApiSecurityListener`).
+
 # v0.1.13
 
 ## System Maintenance — Frontend update compatibility
