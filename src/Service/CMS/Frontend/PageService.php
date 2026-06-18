@@ -32,11 +32,11 @@ class PageService extends BaseService
     // keyword => style name to look for. If style name equals keyword, just use keyword as value.
     private const FALLBACK_CHECK_KEYWORDS = [
         'login'                    => 'login',
-        'two-factor-authentication' => 'twoFactorAuth',
-        'reset-password'           => 'resetPassword',
+        'two-factor-authentication' => 'two-factor-auth',
+        'reset-password'           => 'reset-password',
         'profile'                  => 'profile',
-        'no-access'                => 'noAccess',
-        'no-access-guest'          => 'noAccess',
+        'no-access'                => 'no-access',
+        'no-access-guest'          => 'no-access',
         'missing'                  => 'missing',
     ];
 

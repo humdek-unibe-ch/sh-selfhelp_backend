@@ -9,7 +9,7 @@ Source of truth: `ILoginStyle` in `@selfhelp/shared`, `LoginStyle.tsx`, the auth
 ## Summary
 
 Email/password sign-in form. On submit it calls the login API; if the account
-has 2FA enabled it routes to the [`twoFactorAuth`](../index.md) page, otherwise
+has 2FA enabled it routes to the [`two-factor-auth`](../index.md) page, otherwise
 it redirects to `redirectTo` (or home). Provides links to password reset and
 registration.
 

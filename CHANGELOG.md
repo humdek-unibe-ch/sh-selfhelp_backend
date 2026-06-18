@@ -1,3 +1,38 @@
+# v0.1.14
+
+## API — Security & robustness audit
+
+- **Internal server-error details are no longer leaked to API clients in production.** A new `ApiResponseFormatter::formatThrowable()` centralizes the error handling that controller `catch` blocks used to copy-paste (`formatError($e->getMessage(), $e->getCode() ?: 500)`): it clamps a `Throwable`'s code to a valid HTTP status (a raw `0`/`999`/SQLSTATE string can no longer make `JsonResponse` throw), preserves the intended status + user-facing message for domain `ServiceException`s, logs unexpected (non-domain) 5xx so a swallowed 500 is never invisible, and — outside `kernel.debug` — masks 5xx messages behind a generic `Internal Server Error`. `ApiExceptionListener` applies the same masking for bubbled exceptions. All admin/auth/frontend controllers were migrated to `formatThrowable()`. (`ApiResponseFormatter`, `ApiExceptionListener`, `config/services.yaml` `$debug` wiring, `ApiResponseFormatterTest`)
+- **The section export/import raw-SQL fallback is parameter-bound.** When the Doctrine relationship-clearing path fails and falls back to raw SQL, section ids are now passed as bound parameters (`ArrayParameterType::INTEGER`) instead of being interpolated into the statement; the only remaining concatenation is the computed `AUTO_INCREMENT` integer (DDL cannot bind parameters), documented as injection-safe. (`SectionExportImportService`)
+- **User-supplied date filters are validated instead of crashing the request.** The audit-log and scheduled-job list endpoints fed `date_from` / `date_to` straight into `new \DateTime(...)`, so an unparseable value surfaced as an uncaught `500`; both now reject a bad filter with a `400`. The user block toggle now requires an explicit boolean `blocked` in the body rather than silently defaulting to "block". (`AdminAuditService`, `AdminScheduledJobService`, `AdminUserController`)
+- **Interpolation, page-version and data-record errors are written to the PSR logger.** `error_log()` calls were replaced with the injected `LoggerInterface` (with the throwable attached), and the non-autowired `InterpolationService` now receives `$logger` explicitly. (`InterpolationService`, `PageVersionService`, `DataService`, `config/services.yaml`)
+- **Smaller correctness fixes:** strict (`true`) `in_array()` permission comparison in `ApiSecurityListener`; `User::isTwoFactorRequired()` is now a pure getter (it no longer mutates `twoFactorRequired` as a side effect of reading it); and the dead, unreferenced `ApiRouteVoter` was removed (route-level permissions are enforced by `ApiSecurityListener`).
+
+## CMS Styles — kebab-case style names
+
+- **The remaining camelCase CMS style names were renamed to kebab-case** so the
+  style catalog uses one casing across the backend `styles` rows,
+  `@selfhelp/shared` 1.8.0 (the `style_name` discriminator), the frontend
+  `BasicStyle` dispatcher and the mobile renderers: `resetPassword`→
+  `reset-password`, `twoFactorAuth`→`two-factor-auth`, `noAccess`→`no-access`,
+  `notFound`→`not-found`, `entryList`→`entry-list`, `entryRecord`→`entry-record`,
+  `entryRecordDelete`→`entry-record-delete`, `showUserInput`→`show-user-input`,
+  `refContainer`→`ref-container`, `dataContainer`→`data-container`. A
+  name-guarded, reversible migration renames the `styles.name` rows; because
+  sections reference styles by `id_styles` (FK), this is a metadata rename, not a
+  content migration, and the `styles_fields` links are unaffected. The PHP
+  look-ups were updated in lockstep (`StyleNames::STYLE_SHOW_USER_INPUT`,
+  `PageService::FALLBACK_CHECK_KEYWORDS`, and `AdminSectionUtilityService`'s
+  `ref-container` query). This is a **coordinated breaking change**: a CMS running
+  this migration requires frontend `>=0.1.21` and `@selfhelp/shared` `>=1.8.0`
+  (older clients dispatch the camelCase names and would render these styles as
+  Unknown). `AGENTS.md` now mandates kebab-case style names, and the
+  `docs/reference/styles/` per-style reference (the catalog `index.md`, the
+  renamed `auth/reset-password.md` / `auth/two-factor-auth.md`, and the
+  layout/composite/forms pages) plus the affected developer/API docs were
+  updated to match. (migration `Version20260618120000`; `StyleNames`,
+  `PageService`, `AdminSectionUtilityService`)
+
 # v0.1.13
 
 ## System Maintenance — Frontend update compatibility

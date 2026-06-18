@@ -97,7 +97,7 @@ class AdminSectionUtilityService extends BaseService
                         ->from(Section::class, 's')
                         ->innerJoin('s.style', 'st')
                         ->where('st.name = :styleName')
-                        ->setParameter('styleName', 'refContainer')
+                        ->setParameter('styleName', 'ref-container')
                         ->orderBy('s.name', 'ASC')
                         ->getQuery()
                         ->getArrayResult();

@@ -62,9 +62,11 @@ Routes are defined in the database (`api_routes` table) with associated permissi
 
 ### 2.3 Layer 3: Voter-Based Authorization (Fine-Grained)
 
-For more complex authorization logic:
+Route-level permission enforcement is centralized in `ApiSecurityListener`
+(see §4.1). For object- or context-specific checks beyond route permissions,
+Symfony's standard voter system remains available:
 
-1. **Voters**: Custom voters like `ApiRouteVoter` implement specific authorization logic
+1. **Voters**: Add a custom `Voter` for object-scoped authorization logic
 2. **Controller Usage**: Controllers can use `$this->isGranted()` for fine-grained checks
 
 ## 3. Permission System
@@ -134,29 +136,6 @@ public function onKernelController(ControllerEvent $event): void
 }
 ```
 
-### 4.2 ApiRouteVoter
-
-The `ApiRouteVoter` provides a more flexible way to check permissions:
-
-```php
-// ApiRouteVoter.php (simplified)
-protected function voteOnAttribute(string $attribute, mixed $subject, TokenInterface $token): bool
-{
-    // Get user, route, and required permissions
-    $user = $token->getUser();
-    $requiredPermissions = $route->getOption('permissions') ?? [];
-    
-    // Check permissions
-    foreach ($requiredPermissions as $permission) {
-        if (in_array($permission, $user->getPermissionNames())) {
-            return true;
-        }
-    }
-    
-    return false;
-}
-```
-
 ## 5. How to Use and Extend the Permission System
 
 ### 5.1 Adding a New Permission
@@ -190,22 +169,12 @@ protected function voteOnAttribute(string $attribute, mixed $subject, TokenInter
    );
    ```
 
-### 5.3 Using the Voter in Controllers
+### 5.3 Route Permission Checks Are Automatic
 
-For more complex permission checks, use the voter pattern:
-
-```php
-// In a controller
-public function someAction(Request $request)
-{
-    // Check if user can access the API route
-    if (!$this->isGranted('api_route_access')) {
-        throw $this->createAccessDeniedException('Permission denied');
-    }
-    
-    // Continue with controller logic
-}
-```
+You do not call any permission API in the controller for route-level checks:
+once a route has permissions associated (§5.2), `ApiSecurityListener` enforces
+them automatically on every request. For object-scoped checks, add a custom
+voter (§5.4).
 
 ### 5.4 Custom Permission Checks
 
@@ -281,6 +250,6 @@ class ContentVoter extends Voter
                channels: [security]
    ```
 
-2. **Check Security Logs**: Look for log entries from `ApiSecurityListener` and `ApiRouteVoter`.
+2. **Check Security Logs**: Look for log entries from `ApiSecurityListener`.
 
 3. **Use the Profiler**: In development, use the Symfony Profiler to inspect security details.

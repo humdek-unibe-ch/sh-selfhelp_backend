@@ -1,4 +1,4 @@
-# `twoFactorAuth` style
+# `two-factor-auth` style
 
 Audience: Developers and CMS administrators.
 Status: active.
@@ -20,7 +20,7 @@ to enter it. On success they receive their session tokens.
 
 ## For administrators
 
-Place a `twoFactorAuth` section on the page the login flow redirects to when 2FA
+Place a `two-factor-auth` section on the page the login flow redirects to when 2FA
 is required. Configure the heading, the explanatory text, the code-input label,
 the submit-button label, the failure message, and the text that tells the user
 how long the code stays valid (`label_expiration_2fa`).

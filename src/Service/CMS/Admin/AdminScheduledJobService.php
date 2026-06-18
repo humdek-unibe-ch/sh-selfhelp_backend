@@ -283,15 +283,28 @@ class AdminScheduledJobService extends BaseService
         };
 
         if (!empty($filters['date_from'])) {
-            $dateFromObj = new \DateTime($this->asString($filters['date_from']));
+            $dateFromObj = $this->parseFilterDate($this->asString($filters['date_from']), 'date_from');
             $qb->andWhere("{$dateField} >= :date_from_start")
                 ->setParameter('date_from_start', $dateFromObj->format('Y-m-d 00:00:00'));
         }
 
         if (!empty($filters['date_to'])) {
-            $dateToObj = new \DateTime($this->asString($filters['date_to']));
+            $dateToObj = $this->parseFilterDate($this->asString($filters['date_to']), 'date_to');
             $qb->andWhere("{$dateField} <= :date_to_end")
                 ->setParameter('date_to_end', $dateToObj->format('Y-m-d 23:59:59'));
+        }
+    }
+
+    /**
+     * Parse a user-supplied list filter date, rejecting unparseable input with
+     * a 400 instead of letting `new \DateTime()` raise an uncaught 500.
+     */
+    private function parseFilterDate(string $value, string $field): \DateTime
+    {
+        try {
+            return new \DateTime($value);
+        } catch (\Exception) {
+            $this->throwBadRequest("Invalid {$field} filter");
         }
     }
 

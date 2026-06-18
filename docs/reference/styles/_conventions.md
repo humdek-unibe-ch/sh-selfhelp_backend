@@ -43,7 +43,7 @@ Each field is either:
 | `css_mobile` | css | Class string used by the **mobile** app (the mobile renderer reads only this, never `css`). |
 | `condition` | condition | A JSON-Logic expression evaluated per request. When it resolves to false the section is hidden (mirrors the backend `ConditionService`). |
 | `debug` | checkbox | When on, the section emits debug data (condition result, resolved variables) for editors. |
-| `data_config` | data-config | Optional JSON that binds the section to backend data (used by data-driven styles such as `entryList`, `loop`, and the form styles). |
+| `data_config` | data-config | Optional JSON that binds the section to backend data (used by data-driven styles such as `entry-list`, `loop`, and the form styles). |
 
 ## Spacing and "use Mantine style"
 

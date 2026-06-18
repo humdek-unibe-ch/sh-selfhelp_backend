@@ -24,6 +24,7 @@ use App\Service\Auth\UserContextService;
 use App\Util\JsonNormalizer;
 use Doctrine\ORM\EntityManagerInterface;
 use Jfcherng\Diff\DiffHelper;
+use Psr\Log\LoggerInterface;
 
 /**
  * PageVersionService
@@ -51,7 +52,8 @@ class PageVersionService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly SectionsFieldsTranslationRepository $translationRepository,
         private readonly SectionUtilityService $sectionUtilityService,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -718,7 +720,10 @@ class PageVersionService extends BaseService
                 $deletedCount++;
             } catch (\Exception $e) {
                 // Log error but continue
-                error_log("Failed to delete version {$version->getId()}: " . $e->getMessage());
+                $this->logger->error(
+                    "Failed to delete version {$version->getId()}: " . $e->getMessage(),
+                    ['exception' => $e]
+                );
             }
         }
 

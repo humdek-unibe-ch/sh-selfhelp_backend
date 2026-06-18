@@ -9,7 +9,6 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
-use App\Exception\ServiceException;
 use App\Service\CMS\Admin\AdminActionService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
@@ -51,9 +50,7 @@ class AdminActionController extends AbstractController
                 Response::HTTP_CREATED
             );
         } catch (\Throwable $e) {
-            $message = $e instanceof ServiceException || $_ENV['APP_DEBUG'] ? $e->getMessage() : 'Internal Server Error';
-            $status = $e instanceof ServiceException ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError($message, $status);
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -80,9 +77,7 @@ class AdminActionController extends AbstractController
                 'responses/admin/actions/actions_envelope'
             );
         } catch (\Throwable $e) {
-            $message = $e instanceof ServiceException || $_ENV['APP_DEBUG'] ? $e->getMessage() : 'Internal Server Error';
-            $status = $e instanceof ServiceException ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError($message, $status);
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -106,9 +101,7 @@ class AdminActionController extends AbstractController
                 'responses/admin/actions/action_envelope'
             );
         } catch (\Throwable $e) {
-            $message = $e instanceof ServiceException || $_ENV['APP_DEBUG'] ? $e->getMessage() : 'Internal Server Error';
-            $status = $e instanceof ServiceException ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError($message, $status);
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -123,9 +116,7 @@ class AdminActionController extends AbstractController
             $this->adminActionService->deleteAction($actionId);
             return $this->responseFormatter->formatSuccess(['deleted' => true], 'responses/admin/actions/action_deleted_envelope');
         } catch (\Throwable $e) {
-            $message = $e instanceof ServiceException || $_ENV['APP_DEBUG'] ? $e->getMessage() : 'Internal Server Error';
-            $status = $e instanceof ServiceException ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError($message, $status);
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -143,9 +134,7 @@ class AdminActionController extends AbstractController
                 'responses/admin/actions/action_envelope'
             );
         } catch (\Throwable $e) {
-            $message = $e instanceof ServiceException || $_ENV['APP_DEBUG'] ? $e->getMessage() : 'Internal Server Error';
-            $status = $e instanceof ServiceException ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError($message, $status);
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 

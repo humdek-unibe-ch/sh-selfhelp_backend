@@ -114,13 +114,13 @@ the matching item children inside it.
 
 ---
 
-## entryList
+## entry-list
 
 **Purpose.** A **data-driven** list that renders the rows saved by a `form-log` (one block per stored entry).
 
 **Administrators.** Show submitted entries back to the user (e.g. a list of past journal entries). Bind it to the source form via the section's data config; lay out how each entry looks using child sections, which can interpolate the entry's fields with `{{field_name}}`.
 
-**Developers.** Driven by `data_config`. Renders its child template once per backend-provided row; `line_clamp` truncates long text. Pairs with `entryRecord` / `entryRecordDelete`.
+**Developers.** Driven by `data_config`. Renders its child template once per backend-provided row; `line_clamp` truncates long text. Pairs with `entry-record` / `entry-record-delete`.
 
 **Distinctive fields.** `line_clamp` (max lines per entry). Data binding via `data_config` (see [_conventions.md](./_conventions.md)).
 
@@ -128,7 +128,7 @@ the matching item children inside it.
 
 ---
 
-## entryRecord
+## entry-record
 
 **Purpose.** A **data-driven** container for a single stored record (the `form-record` row).
 
@@ -142,7 +142,7 @@ the matching item children inside it.
 
 ---
 
-## entryRecordDelete
+## entry-record-delete
 
 **Purpose.** An inline delete control/confirmation for a stored entry.
 
@@ -173,5 +173,5 @@ the matching item children inside it.
 ## Related references
 
 - [_conventions.md](./_conventions.md) — common fields and Mantine prop conventions.
-- [forms.md](./forms.md) — the `form-log` / `form-record` styles that produce the data `entryList` / `entryRecord` display.
+- [forms.md](./forms.md) — the `form-log` / `form-record` styles that produce the data `entry-list` / `entry-record` display.
 - [index.md](./index.md) — full style catalog.

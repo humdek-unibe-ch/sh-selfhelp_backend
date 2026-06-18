@@ -58,10 +58,7 @@ class AdminRoleController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -75,10 +72,7 @@ class AdminRoleController extends AbstractController
             $role = $this->adminRoleService->getRoleById($roleId);
             return $this->responseFormatter->formatSuccess($role);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -99,10 +93,7 @@ class AdminRoleController extends AbstractController
                 Response::HTTP_CREATED
             );
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -119,10 +110,7 @@ class AdminRoleController extends AbstractController
             
             return $this->responseFormatter->formatSuccess($role);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -137,10 +125,7 @@ class AdminRoleController extends AbstractController
             
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -154,10 +139,7 @@ class AdminRoleController extends AbstractController
             $permissions = $this->adminRoleService->getRolePermissions($roleId);
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -181,10 +163,7 @@ class AdminRoleController extends AbstractController
             $permissions = $this->adminRoleService->addPermissionsToRole($roleId, $this->toIntList($permissionIds));
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -208,10 +187,7 @@ class AdminRoleController extends AbstractController
             $permissions = $this->adminRoleService->removePermissionsFromRole($roleId, $this->toIntList($permissionIds));
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -227,10 +203,7 @@ class AdminRoleController extends AbstractController
             $permissions = $this->adminRoleService->updateRolePermissions($roleId, $this->toIntList($data['permission_ids'] ?? null));
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -247,10 +220,7 @@ class AdminRoleController extends AbstractController
             $permissions = $this->adminRoleService->getAllPermissions();
             return $this->responseFormatter->formatSuccess(['permissions' => $permissions]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -270,10 +240,7 @@ class AdminRoleController extends AbstractController
                 'total' => count($routes)
             ]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 } 

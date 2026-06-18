@@ -262,7 +262,10 @@ class DataService extends BaseService
                     $this->formFileUploadService->deleteFiles($fileData);
                 } catch (\Exception $e) {
                     // Log file cleanup error but don't fail the deletion
-                    error_log("File cleanup failed for record {$recordId}: " . $e->getMessage());
+                    $this->logger->warning(
+                        "File cleanup failed for record {$recordId}: " . $e->getMessage(),
+                        ['exception' => $e]
+                    );
                 }
             }
 

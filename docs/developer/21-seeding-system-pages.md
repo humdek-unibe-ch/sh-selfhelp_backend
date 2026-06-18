@@ -32,8 +32,8 @@ The shipped catalogue is:
 |---|---|---|
 | `home`                      | landing page                    | open access (`is_open_access = 1`) |
 | `login`                     | login form                      | open access; uses `login` style component |
-| `two-factor-authentication` | 2FA verification                | open access; uses `twoFactorAuth` style |
-| `reset_password`            | password-reset flow             | open access; uses `resetPassword` style for both `/reset` and `/reset/[i:uid]/[a:token]` |
+| `two-factor-authentication` | 2FA verification                | open access; uses `two-factor-auth` style |
+| `reset_password`            | password-reset flow             | open access; uses `reset-password` style for both `/reset` and `/reset/[i:uid]/[a:token]` |
 | `validate`                  | account-activation form         | open access; uses `validate` style. URL pattern is `/validate/[i:uid]/[a:token]` — the slug catch-all special-cases this so `slug = ['validate', uid, token]` resolves to keyword `validate` and `ValidateStyle` reads `uid` + `token` from `params.slug`. |
 | `profile`                   | full profile management         | authenticated; uses `profile` style |
 | `missing`                   | friendly 404                    | open access; **headless**; rich content |
@@ -64,8 +64,8 @@ For pages that are forms, we already have purpose-built styled components:
 | Style name      | Frontend file                                          | What it renders |
 |-----------------|--------------------------------------------------------|-----------------|
 | `login`         | `src/app/components/frontend/styles/LoginStyle.tsx`    | email + password form |
-| `twoFactorAuth` | `src/app/components/frontend/styles/TwoFactorAuthStyle.tsx` | 6-digit code form |
-| `resetPassword` | `src/app/components/frontend/styles/ResetPasswordStyle.tsx` | reset request + set-new-password flow |
+| `two-factor-auth` | `src/app/components/frontend/styles/TwoFactorAuthStyle.tsx` | 6-digit code form |
+| `reset-password` | `src/app/components/frontend/styles/ResetPasswordStyle.tsx` | reset request + set-new-password flow |
 | `validate`      | `src/app/components/frontend/styles/ValidateStyle.tsx` | name + password + confirm |
 | `profile`       | `src/app/components/frontend/styles/ProfileStyle.tsx`  | full profile management |
 
@@ -282,7 +282,7 @@ Pick one of two approaches:
 [
   {
     "section_name": "<keyword>-<style>",
-    "style_name": "login",            // or twoFactorAuth, validate, etc.
+    "style_name": "login",            // or two-factor-auth, validate, etc.
     "fields": {
       "label_user":   { "en-GB": "Email", "de-CH": "E-Mail" },
       "label_pw":     { "en-GB": "Password", "de-CH": "Passwort" },

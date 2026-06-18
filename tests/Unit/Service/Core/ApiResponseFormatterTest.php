@@ -29,7 +29,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
  */
 final class ApiResponseFormatterTest extends TestCase
 {
-    private function formatter(bool $loggedInUser = false): ApiResponseFormatter
+    private function formatter(bool $loggedInUser = false, bool $debug = false): ApiResponseFormatter
     {
         $user = $loggedInUser ? $this->createStub(UserInterface::class) : null;
 
@@ -47,6 +47,7 @@ final class ApiResponseFormatterTest extends TestCase
             $this->createStub(JsonSchemaValidationService::class),
             new NullLogger(),
             false, // validate_response_schema OFF (default)
+            $debug,
         );
     }
 
@@ -129,5 +130,55 @@ final class ApiResponseFormatterTest extends TestCase
         self::assertSame(Response::HTTP_FORBIDDEN, $envelope['status']);
         self::assertSame('Not allowed', $envelope['error']);
         self::assertSame(['reason' => 'denied'], $envelope['data']);
+    }
+
+    public function testFormatThrowableKeepsDomainExceptionStatusAndMessage(): void
+    {
+        // A ServiceException is an intentional, user-facing domain error: its
+        // carried status + message must survive untouched (matches the old
+        // controller pattern formatError($e->getMessage(), $e->getCode())).
+        $response = $this->formatter()->formatThrowable(
+            new ServiceException('Not found', Response::HTTP_NOT_FOUND)
+        );
+        self::assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        self::assertSame('Not found', $this->decode($response)['error']);
+    }
+
+    public function testFormatThrowableClampsOutOfRangeCodeToServerError(): void
+    {
+        // The common "no code" default (0) and any non-HTTP code would make
+        // JsonResponse throw; formatThrowable must clamp it to 500.
+        $response = $this->formatter()->formatThrowable(new \RuntimeException('boom', 0));
+        self::assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
+    }
+
+    public function testFormatThrowableMasksServerErrorMessageInProduction(): void
+    {
+        // debug=false (prod): internal 5xx text must never reach the client.
+        $envelope = $this->decode(
+            $this->formatter(debug: false)->formatThrowable(new \RuntimeException('secret connection dsn'))
+        );
+        self::assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $envelope['status']);
+        self::assertSame('Internal Server Error', $envelope['error']);
+    }
+
+    public function testFormatThrowableRevealsServerErrorMessageWhenDebug(): void
+    {
+        // debug=true (dev/test): the real message is helpful and allowed.
+        $envelope = $this->decode(
+            $this->formatter(debug: true)->formatThrowable(new \RuntimeException('detailed failure'))
+        );
+        self::assertSame('detailed failure', $envelope['error']);
+    }
+
+    public function testFormatThrowableKeepsClientErrorMessageEvenInProduction(): void
+    {
+        // 4xx describe the request, not internals — keep them even in prod.
+        $envelope = $this->decode(
+            $this->formatter(debug: false)->formatThrowable(
+                new ServiceException('Bad input', Response::HTTP_BAD_REQUEST)
+            )
+        );
+        self::assertSame('Bad input', $envelope['error']);
     }
 }

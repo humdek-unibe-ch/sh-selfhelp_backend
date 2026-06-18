@@ -31,7 +31,8 @@ class ApiResponseFormatter
         private readonly Security $security,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly LoggerInterface $logger,
-        private readonly bool $validateResponseSchema = false
+        private readonly bool $validateResponseSchema = false,
+        private readonly bool $debug = false
     ) {}
 
     /**
@@ -191,6 +192,57 @@ class ApiResponseFormatter
             $exception->getCode(),
             $exception->getData()
         );
+    }
+
+    /**
+     * Format any throwable into the standard error envelope.
+     *
+     * Centralises the error-handling concerns that used to be copy-pasted
+     * across controller catch blocks:
+     *   - clamps the exception code to a valid HTTP status (a raw, out-of-range
+     *     `getCode()` would otherwise make `JsonResponse` throw);
+     *   - keeps the intended status + message for domain {@see ServiceException}s;
+     *   - logs unexpected (non-domain) server errors so a swallowed 500 is never
+     *     invisible;
+     *   - does not leak internal exception messages for 5xx responses in
+     *     production (client 4xx messages describe the request and are kept).
+     *
+     * Behaviour for the common controller pattern it replaces
+     * (`formatError($e->getMessage(), $e->getCode() ?: 500)`) is preserved:
+     * a ServiceException still returns its message + carried status, and an
+     * unexpected exception still returns a 500 — only now clamped, logged and
+     * masked in prod.
+     */
+    public function formatThrowable(\Throwable $exception): JsonResponse
+    {
+        // Throwable::getCode() is int|string (e.g. PDOException returns a string
+        // SQLSTATE); clamp anything that is not a valid HTTP status to 500 so a
+        // raw 0/999/"42S22" can never make JsonResponse throw.
+        $code = $exception->getCode();
+        $status = (is_int($code) && $code >= 100 && $code <= 599)
+            ? $code
+            : Response::HTTP_INTERNAL_SERVER_ERROR;
+
+        // Domain exceptions carry their intended HTTP status and a
+        // user-facing message — return them unchanged.
+        if ($exception instanceof ServiceException) {
+            return $this->formatError($exception->getMessage() ?: 'An error occurred', $status);
+        }
+
+        // Unexpected failure: make it observable.
+        if ($status >= Response::HTTP_INTERNAL_SERVER_ERROR) {
+            $this->logger->error('Unhandled API exception', [
+                'exception' => $exception,
+                'class' => $exception::class,
+            ]);
+        }
+
+        // Never expose internal error text for server errors in production.
+        $message = ($status >= Response::HTTP_INTERNAL_SERVER_ERROR && !$this->debug)
+            ? 'Internal Server Error'
+            : ($exception->getMessage() ?: 'An error occurred');
+
+        return $this->formatError($message, $status);
     }
     
     /**
