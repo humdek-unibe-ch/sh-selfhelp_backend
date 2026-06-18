@@ -14,7 +14,7 @@ final class StyleNames
     /**
      * Style that is used to display a user input form (read/view context)
      */
-    public const STYLE_SHOW_USER_INPUT = 'showUserInput';
+    public const STYLE_SHOW_USER_INPUT = 'show-user-input';
 
     /**
      * Style that is used for form record
