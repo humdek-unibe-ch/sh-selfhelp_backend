@@ -75,10 +75,7 @@ class AdminUserController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/users/users_envelope');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -112,10 +109,7 @@ class AdminUserController extends AbstractController
             $user = $this->adminUserService->getUserById($userId);
             return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -165,10 +159,7 @@ class AdminUserController extends AbstractController
                 Response::HTTP_CREATED
             );
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -197,10 +188,7 @@ class AdminUserController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -227,10 +215,7 @@ class AdminUserController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -264,17 +249,22 @@ class AdminUserController extends AbstractController
                 return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
             }
 
+            // Require an explicit boolean: previously a missing/invalid body
+            // silently defaulted to blocking the user, which is a surprising
+            // and risky default for a destructive toggle.
             $data = json_decode($request->getContent(), true);
-            $blocked = is_array($data) ? ($data['blocked'] ?? true) : true;
+            if (!is_array($data) || !array_key_exists('blocked', $data) || !is_bool($data['blocked'])) {
+                return $this->responseFormatter->formatError(
+                    "Validation failed: 'blocked' must be provided as a boolean",
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
 
-            $user = $this->adminUserService->toggleUserBlock($userId, (bool) $blocked);
+            $user = $this->adminUserService->toggleUserBlock($userId, $data['blocked']);
 
             return $this->responseFormatter->formatSuccess($user, 'responses/admin/users/user_envelope');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -311,10 +301,7 @@ class AdminUserController extends AbstractController
             $groups = $this->adminUserService->getUserGroups($userId);
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -351,10 +338,7 @@ class AdminUserController extends AbstractController
             $roles = $this->adminUserService->getUserRoles($userId);
             return $this->responseFormatter->formatSuccess(['roles' => $roles]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -402,10 +386,7 @@ class AdminUserController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -436,10 +417,7 @@ class AdminUserController extends AbstractController
             
             return $this->responseFormatter->formatSuccess(['groups' => $groups]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -470,10 +448,7 @@ class AdminUserController extends AbstractController
             
             return $this->responseFormatter->formatSuccess(['roles' => $roles]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -504,10 +479,7 @@ class AdminUserController extends AbstractController
             
             return $this->responseFormatter->formatSuccess(['roles' => $roles]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -523,10 +495,7 @@ class AdminUserController extends AbstractController
             $result = $this->adminUserService->sendActivationMail($userId);
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -542,10 +511,7 @@ class AdminUserController extends AbstractController
             $result = $this->adminUserService->cleanUserData($userId);
             return $this->responseFormatter->formatSuccess(['cleaned' => $result]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -574,10 +540,7 @@ class AdminUserController extends AbstractController
             $result = $this->adminUserService->impersonateUser((int) $currentUser->getId(), $userId);
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -637,10 +600,7 @@ class AdminUserController extends AbstractController
             $result = $this->adminUserService->stopImpersonateUser($adminUserId, $targetUserId, $token);
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 

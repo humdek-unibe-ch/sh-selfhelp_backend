@@ -93,6 +93,14 @@ class ApiExceptionListener
         $statusCode = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
         $message = $exception->getMessage() ?: 'An error occurred';
 
+        // Do not leak internal exception messages for server errors outside of
+        // debug. Client (4xx) messages describe the request and are preserved;
+        // the framework's error logger has already recorded the bubbled
+        // exception, so no extra logging is needed here.
+        if ($statusCode >= Response::HTTP_INTERNAL_SERVER_ERROR && !$this->kernel->isDebug()) {
+            $message = 'Internal Server Error';
+        }
+
         // Use the ApiResponseFormatter for consistent error responses
         $response = $this->apiResponseFormatter->formatError($message, $statusCode);
         $event->setResponse($response);

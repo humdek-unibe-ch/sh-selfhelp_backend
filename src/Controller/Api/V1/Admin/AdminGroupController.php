@@ -73,10 +73,7 @@ class AdminGroupController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($result);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -115,10 +112,7 @@ class AdminGroupController extends AbstractController
             $group = $this->adminGroupService->getGroupById($groupId);
             return $this->responseFormatter->formatSuccess($group);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -141,10 +135,7 @@ class AdminGroupController extends AbstractController
                 Response::HTTP_CREATED
             );
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -181,10 +172,7 @@ class AdminGroupController extends AbstractController
 
             return $this->responseFormatter->formatSuccess($group);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -221,10 +209,7 @@ class AdminGroupController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -240,10 +225,7 @@ class AdminGroupController extends AbstractController
             $acls = $this->adminGroupService->getGroupAcls($groupId);
             return $this->responseFormatter->formatSuccess(['acls' => $acls]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -264,10 +246,7 @@ class AdminGroupController extends AbstractController
             
             return $this->responseFormatter->formatSuccess(['acls' => $acls]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 } 

@@ -547,11 +547,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
             return true;
         }
 
-        // Check if any of the user's groups require 2FA
+        // Check if any of the user's groups require 2FA. No memoization here:
+        // a getter must not mutate state. The flag checked above is set
+        // explicitly via setTwoFactorRequired() (e.g. during the login flow).
         foreach ($this->usersGroups as $userGroup) {
             $group = $userGroup->getGroup();
             if ($group && $group->isRequires2fa()) {
-                $this->twoFactorRequired = true;
                 return true;
             }
         }

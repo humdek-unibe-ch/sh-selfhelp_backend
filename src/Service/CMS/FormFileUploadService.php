@@ -10,6 +10,7 @@ namespace App\Service\CMS;
 
 use App\Exception\ServiceException;
 use App\Service\Core\BaseService;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -35,7 +36,8 @@ class FormFileUploadService extends BaseService
     private const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB total per form submission
 
     public function __construct(
-        private readonly string $projectDir
+        private readonly string $projectDir,
+        private readonly LoggerInterface $logger
     ) {
     }
 
@@ -293,7 +295,7 @@ class FormFileUploadService extends BaseService
                     if (file_exists($fullPath)) {
                         if (!unlink($fullPath)) {
                             // Log warning but don't throw exception for cleanup failures
-                            error_log("Failed to delete file: {$fullPath}");
+                            $this->logger->warning("Failed to delete file: {$fullPath}");
                         }
                     }
                 }

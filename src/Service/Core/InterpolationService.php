@@ -9,6 +9,7 @@
 namespace App\Service\Core;
 
 use App\Service\Core\BaseService;
+use Psr\Log\LoggerInterface;
 
 /**
  * Service for handling variable interpolation in content fields using Mustache templating
@@ -21,14 +22,21 @@ class InterpolationService extends BaseService
 {
     private \Mustache\Engine $mustache;
 
+    private ?LoggerInterface $logger;
+
     /**
      * Constructor - Initialize Mustache engine
      *
      * @param array<string, mixed> $config Configuration options:
      *   - custom_helpers: Array of custom Mustache helpers (optional)
+     * @param LoggerInterface|null $logger Optional PSR logger. Null when the
+     *   service is instantiated directly (e.g. in unit tests), in which case
+     *   interpolation errors fall back to error_log.
      */
-    public function __construct(array $config = [])
+    public function __construct(array $config = [], ?LoggerInterface $logger = null)
     {
+        $this->logger = $logger;
+
         // Create Mustache engine with explicit empty array
         $this->mustache = new \Mustache\Engine([]);
 
@@ -250,7 +258,14 @@ class InterpolationService extends BaseService
      */
     private function logError(string $message): void
     {
-        // No PSR logger is injected into this service, so fall back to error_log.
+        if ($this->logger !== null) {
+            $this->logger->warning($message);
+
+            return;
+        }
+
+        // No PSR logger injected (e.g. when instantiated directly in tests):
+        // fall back to error_log so interpolation errors are never silent.
         error_log($message);
     }
 }

@@ -17,6 +17,7 @@ use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Service\Auth\UserContextService;
 use App\Service\Security\DataAccessSecurityService;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -37,7 +38,8 @@ class FormController extends AbstractController
         private readonly ApiResponseFormatter $apiResponseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
-        private readonly DataAccessSecurityService $dataAccessSecurityService
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly LoggerInterface $logger
     ) {}
 
     /**
@@ -209,7 +211,10 @@ class FormController extends AbstractController
                     } catch (\Exception $e) {
                         // If file processing fails, keep the original value
                         // This allows the form to still be submitted even if file processing fails
-                        error_log("File processing failed for field {$fieldName}: " . $e->getMessage());
+                        $this->logger->warning(
+                            "File processing failed for field {$fieldName}: " . $e->getMessage(),
+                            ['exception' => $e]
+                        );
                     }
                 }
             }

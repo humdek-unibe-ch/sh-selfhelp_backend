@@ -24,6 +24,7 @@ use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
 use App\Service\Core\UserContextAwareService;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -1112,12 +1113,18 @@ class SectionExportImportService extends BaseService
                     "Doctrine relationship clearing failed, using raw SQL fallback"
                 );
 
-                // If Doctrine queries fail, try raw SQL
+                // If Doctrine queries fail, try raw SQL (values bound, never interpolated)
                 $conn = $this->entityManager->getConnection();
-                $idsString = implode(',', array_map(static fn (int $id): string => (string) $id, $sectionIds));
 
-                $conn->executeStatement("DELETE FROM rel_pages_sections WHERE id_pages = {$page->getId()}");
-                $conn->executeStatement("DELETE FROM rel_sections_hierarchy WHERE id_parent_section IN ({$idsString}) OR id_child_section IN ({$idsString})");
+                $conn->executeStatement(
+                    'DELETE FROM rel_pages_sections WHERE id_pages = ?',
+                    [$page->getId()]
+                );
+                $conn->executeStatement(
+                    'DELETE FROM rel_sections_hierarchy WHERE id_parent_section IN (:idsParent) OR id_child_section IN (:idsChild)',
+                    ['idsParent' => $sectionIds, 'idsChild' => $sectionIds],
+                    ['idsParent' => ArrayParameterType::INTEGER, 'idsChild' => ArrayParameterType::INTEGER]
+                );
             }
         }
 
@@ -1331,8 +1338,10 @@ class SectionExportImportService extends BaseService
 
         // If our max ID is higher than current auto-increment, update it
         if ($maxId >= $currentAutoIncrement) {
+            // DDL cannot use bound parameters; $newAutoIncrement is a computed
+            // integer (max section id + 1), so concatenating it is injection-safe.
             $newAutoIncrement = $maxId + 1;
-            $conn->executeStatement("ALTER TABLE sections AUTO_INCREMENT = {$newAutoIncrement}");
+            $conn->executeStatement('ALTER TABLE sections AUTO_INCREMENT = ' . $newAutoIncrement);
         }
     }
 

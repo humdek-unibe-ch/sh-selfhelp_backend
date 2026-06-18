@@ -130,7 +130,7 @@ class ApiSecurityListener implements EventSubscriberInterface
             // Check if the user has at least one of the required permissions
             $hasPermission = false;
             foreach ($requiredPermissions as $permission) {
-                if (in_array($permission, $userPermissions)) {
+                if (in_array($permission, $userPermissions, true)) {
                     $hasPermission = true;
                     break;
                 }

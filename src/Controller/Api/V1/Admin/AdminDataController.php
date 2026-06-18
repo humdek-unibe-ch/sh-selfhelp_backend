@@ -70,10 +70,7 @@ class AdminDataController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(['dataTables' => $result]);
         } catch (\Throwable $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -142,10 +139,7 @@ class AdminDataController extends AbstractController
 
             return $this->responseFormatter->formatSuccess(['rows' => $rows]);
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to fetch data',
@@ -187,10 +181,7 @@ class AdminDataController extends AbstractController
             $success = $this->dataService->deleteData($recordId, $ownEntriesOnly);
             return $this->responseFormatter->formatSuccess(['deleted' => $success]);
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to delete record',
@@ -227,10 +218,7 @@ class AdminDataController extends AbstractController
             }
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to delete data table',
@@ -271,10 +259,7 @@ class AdminDataController extends AbstractController
             }
             return $this->responseFormatter->formatSuccess(['deleted_column_count' => $result]);
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to delete columns',
@@ -311,10 +296,7 @@ class AdminDataController extends AbstractController
             }
             return $this->responseFormatter->formatSuccess(['columns' => $columns]);
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to fetch columns',
@@ -385,7 +367,7 @@ class AdminDataController extends AbstractController
                 ]
             );
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError($e->getMessage(), $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError('Export failed', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -473,7 +455,7 @@ class AdminDataController extends AbstractController
             // 400 envelope instead of swallowing them as a generic 500 below.
             throw $e;
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError($e->getMessage(), $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError('Export failed', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -555,10 +537,7 @@ class AdminDataController extends AbstractController
             }
             return $this->responseFormatter->formatSuccess(['columnNames' => $columnNames]);
         } catch (ServiceException $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to fetch column names',

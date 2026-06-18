@@ -12,6 +12,7 @@ use App\Service\Cache\Core\CacheService;
 use App\Service\Cache\Core\CacheStatsService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Controller\Trait\RequestValidatorTrait;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -33,6 +34,7 @@ class AdminCacheController extends AbstractController
         private CacheService $cacheService,
         private CacheStatsService $statsService,
         private ApiResponseFormatter $responseFormatter,
+        private LoggerInterface $logger,
     ) {
     }
 
@@ -57,6 +59,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to retrieve cache statistics',
@@ -77,9 +80,6 @@ class AdminCacheController extends AbstractController
             }
             $this->statsService->resetStats();
 
-            $user = $this->getUser();
-            $userId = $user && method_exists($user, 'getId') ? $user->getId() : null;
-
             return $this->responseFormatter->formatSuccess(
                 ['cleared' => true, 'timestamp' => date('c')],
                 null,
@@ -87,6 +87,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to clear all caches',
@@ -122,9 +123,6 @@ class AdminCacheController extends AbstractController
 
             $this->cacheService->withCategory($category)->invalidateCategory();
 
-            $user = $this->getUser();
-            $userId = $user && method_exists($user, 'getId') ? $user->getId() : null;
-
             return $this->responseFormatter->formatSuccess(
                 [
                     'category' => $category,
@@ -136,6 +134,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to clear cache category',
@@ -180,6 +179,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to clear user cache',
@@ -209,6 +209,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to clear API routes cache',
@@ -237,6 +238,7 @@ class AdminCacheController extends AbstractController
                 Response::HTTP_BAD_REQUEST
             );
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to retrieve category cache statistics',
@@ -253,9 +255,6 @@ class AdminCacheController extends AbstractController
         try {
             $this->statsService->resetStats();
 
-            $user = $this->getUser();
-            $userId = $user && method_exists($user, 'getId') ? $user->getId() : null;
-
             return $this->responseFormatter->formatSuccess(
                 ['reset' => true, 'timestamp' => date('c')],
                 null,
@@ -263,6 +262,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to reset cache statistics',
@@ -286,6 +286,7 @@ class AdminCacheController extends AbstractController
             );
 
         } catch (\Exception $e) {
+            $this->logger->error('Cache operation failed', ['exception' => $e]);
 
             return $this->responseFormatter->formatError(
                 'Failed to retrieve cache health status',

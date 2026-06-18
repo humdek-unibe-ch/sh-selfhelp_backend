@@ -52,10 +52,7 @@ class AdminAssetController extends AbstractController
             $result = $this->adminAssetService->getAllAssets($page, $pageSize, $search, $folder);
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_envelope');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -71,10 +68,7 @@ class AdminAssetController extends AbstractController
             $asset = $this->adminAssetService->getAssetById($assetId);
             return $this->responseFormatter->formatSuccess($asset, 'responses/admin/assets/asset_envelope');
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -148,10 +142,7 @@ class AdminAssetController extends AbstractController
                 $e->getValidationErrors()
             );
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 
@@ -168,10 +159,7 @@ class AdminAssetController extends AbstractController
             
             return $this->responseFormatter->formatSuccess(['deleted' => true]);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 

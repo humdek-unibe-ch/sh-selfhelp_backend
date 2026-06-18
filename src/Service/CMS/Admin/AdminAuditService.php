@@ -36,8 +36,8 @@ class AdminAuditService extends BaseService
         $resourceType = $request->query->get('resource_type');
         $action = $request->query->get('action');
         $permissionResult = $request->query->get('permission_result');
-        $dateFrom = $request->query->get('date_from');
-        $dateTo = $request->query->get('date_to');
+        $dateFrom = $this->normalizeDateFilter($request->query->get('date_from'), 'date_from');
+        $dateTo = $this->normalizeDateFilter($request->query->get('date_to'), 'date_to');
         $httpMethod = $request->query->get('http_method');
         $page = max(1, (int)$request->query->get('page', 1));
         $pageSize = min(100, max(1, (int)$request->query->get('pageSize', 20)));
@@ -86,8 +86,8 @@ class AdminAuditService extends BaseService
      */
     public function getDataAccessStats(Request $request): array
     {
-        $dateFrom = $request->query->get('date_from');
-        $dateTo = $request->query->get('date_to');
+        $dateFrom = $this->normalizeDateFilter($request->query->get('date_from'), 'date_from');
+        $dateTo = $this->normalizeDateFilter($request->query->get('date_to'), 'date_to');
 
         $stats = $this->auditRepository->getAuditStatistics(
             $dateFrom,
@@ -96,6 +96,34 @@ class AdminAuditService extends BaseService
         );
 
         return $stats;
+    }
+
+    /**
+     * Validate an optional date filter coming from the request query string.
+     *
+     * The repository feeds these straight into `new \DateTime(...)`, so an
+     * unparseable value would otherwise surface as an uncaught 500. A null
+     * value means "no filter" (unchanged); any non-null value must be a
+     * parseable date or the request is rejected with a 400.
+     */
+    private function normalizeDateFilter(mixed $value, string $field): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $stringValue = $this->asStringOrNull($value);
+        if ($stringValue === null) {
+            $this->throwBadRequest("Invalid {$field} filter");
+        }
+
+        try {
+            new \DateTimeImmutable($stringValue);
+        } catch (\Exception) {
+            $this->throwBadRequest("Invalid {$field} filter");
+        }
+
+        return $stringValue;
     }
 
     /**

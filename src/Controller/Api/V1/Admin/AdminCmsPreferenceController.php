@@ -14,7 +14,6 @@ use App\Service\Core\ApiResponseFormatter;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Admin CMS Preference Controller
@@ -43,10 +42,7 @@ class AdminCmsPreferenceController extends AbstractController
             $preferences = $this->adminCmsPreferenceService->getCmsPreferences();
             return $this->responseFormatter->formatSuccess($preferences);
         } catch (\Exception $e) {
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $e->getCode() ?: Response::HTTP_INTERNAL_SERVER_ERROR
-            );
+            return $this->responseFormatter->formatThrowable($e);
         }
     }
 

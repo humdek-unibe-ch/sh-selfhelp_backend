@@ -460,16 +460,22 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    # Interpolation Service - Mustache-based template interpolation
+    # Interpolation Service - Mustache-based template interpolation.
+    # Not autowired (it is also instantiated directly with custom config), so
+    # the PSR logger is wired explicitly; $config keeps its empty-array default.
     App\Service\Core\InterpolationService:
         autowire: false
         autoconfigure: false
-        arguments: []
+        arguments:
+            $logger: '@logger'
 
     # Response-schema validation toggle wired from the `validate_response_schema` param.
+    # `$debug` (kernel.debug) gates whether internal 5xx exception messages are
+    # surfaced (dev) or masked behind a generic message (prod) in formatThrowable().
     App\Service\Core\ApiResponseFormatter:
         arguments:
             $validateResponseSchema: '%validate_response_schema%'
+            $debug: '%kernel.debug%'
 
     App\Service\Auth\UserValidationService:
         arguments:

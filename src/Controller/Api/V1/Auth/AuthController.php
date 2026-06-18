@@ -59,19 +59,14 @@ class AuthController extends AbstractController
 
     private function logDebugException(string $context, \Throwable $exception): void
     {
-        if (!filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOL)) {
-            return;
-        }
-
-        error_log(sprintf(
-            '[AuthController][%s] %s in %s:%d%s%s',
-            $context,
-            $exception->getMessage(),
-            $exception->getFile(),
-            $exception->getLine(),
-            PHP_EOL,
-            $exception->getTraceAsString()
-        ));
+        // Logged at debug level: recorded in dev and dropped by the prod
+        // Monolog threshold (preserving the previous "only in debug" intent)
+        // without reading the APP_DEBUG superglobal. The exception object
+        // carries the file/line/trace that used to be formatted by hand.
+        $this->logger->debug(
+            sprintf('[AuthController][%s] %s', $context, $exception->getMessage()),
+            ['exception' => $exception]
+        );
     }
 
 
