@@ -34,8 +34,8 @@ A **style** is a reusable CMS building block. Each style:
 | `login` | no | [auth/login.md](./auth/login.md) |
 | `register` | no | [auth/register.md](./auth/register.md) |
 | `validate` | yes | [auth/validate.md](./auth/validate.md) |
-| `resetPassword` | no | [auth/resetPassword.md](./auth/resetPassword.md) |
-| `twoFactorAuth` | no | [auth/twoFactorAuth.md](./auth/twoFactorAuth.md) |
+| `reset-password` | no | [auth/reset-password.md](./auth/reset-password.md) |
+| `two-factor-auth` | no | [auth/two-factor-auth.md](./auth/two-factor-auth.md) |
 | `profile` | no | [auth/profile.md](./auth/profile.md) |
 
 ## layout
@@ -59,7 +59,7 @@ A **style** is a reusable CMS building block. Each style:
 | `card-segment` | yes | [layout.md#card-segment](./layout.md#card-segment) |
 | `aspect-ratio` | yes | [layout.md#aspect-ratio](./layout.md#aspect-ratio) |
 | `background-image` | yes | [layout.md#background-image](./layout.md#background-image) |
-| `refContainer` | yes | [layout.md#refcontainer](./layout.md#refcontainer) |
+| `ref-container` | yes | [layout.md#ref-container](./layout.md#ref-container) |
 
 ## typography
 
@@ -128,7 +128,7 @@ A **style** is a reusable CMS building block. Each style:
 | `progress` | no | [forms.md#progress](./forms.md#progress) |
 | `progress-root` | yes | [forms.md#progress-root](./forms.md#progress-root) |
 | `progress-section` | no | [forms.md#progress-section](./forms.md#progress-section) |
-| `showUserInput` | no | [forms.md#showuserinput](./forms.md#showuserinput) |
+| `show-user-input` | no | [forms.md#show-user-input](./forms.md#show-user-input) |
 
 ## composite
 
@@ -141,9 +141,9 @@ A **style** is a reusable CMS building block. Each style:
 | `timeline` | yes | [composite.md#timeline](./composite.md#timeline) |
 | `list` | yes | [composite.md#list](./composite.md#list) |
 | `list-item` | yes | [composite.md#list-item](./composite.md#list-item) |
-| `entryList` | yes | [composite.md#entrylist](./composite.md#entrylist) |
-| `entryRecord` | yes | [composite.md#entryrecord](./composite.md#entryrecord) |
-| `entryRecordDelete` | no | [composite.md#entryrecorddelete](./composite.md#entryrecorddelete) |
+| `entry-list` | yes | [composite.md#entry-list](./composite.md#entry-list) |
+| `entry-record` | yes | [composite.md#entry-record](./composite.md#entry-record) |
+| `entry-record-delete` | no | [composite.md#entry-record-delete](./composite.md#entry-record-delete) |
 | `loop` | yes | [composite.md#loop](./composite.md#loop) |
 
 ## Related references

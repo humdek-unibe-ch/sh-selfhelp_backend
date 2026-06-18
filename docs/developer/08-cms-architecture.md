@@ -225,14 +225,14 @@ class PagesSection
 - **Hierarchical Sections**: Sections can contain child sections
 - **Style Integration**: Each section has an associated style
 - **Position Management**: Ordered positioning within pages and parent sections
-- **Limited Reusability**: Only sections with style `refContainer` can be reused across multiple pages
-- **Content Flexibility**: Within a `refContainer` section, any content can be added and styled
+- **Limited Reusability**: Only sections with style `ref-container` can be reused across multiple pages
+- **Content Flexibility**: Within a `ref-container` section, any content can be added and styled
 
 #### Section Reusability Rules
-- **`refContainer` Style**: Structural, semantic container for reusable blocks. It does not introduce visual styling, layout behaviour, or presentation of its own — it passes children through transparently. Sections with this style can be placed on multiple pages.
+- **`ref-container` Style**: Structural, semantic container for reusable blocks. It does not introduce visual styling, layout behaviour, or presentation of its own — it passes children through transparently. Sections with this style can be placed on multiple pages.
 - **Other Styles**: Regular sections are page-specific and may carry visual or layout semantics.
 - **Content Management**: Reusable sections maintain their content and child structure across all pages where they are referenced.
-- **No visual output**: `refContainer` renders nothing of its own. Visual composition must come from child sections using layout/wrapper styles (e.g. `box`, `container`, `paper`).
+- **No visual output**: `ref-container` renders nothing of its own. Visual composition must come from child sections using layout/wrapper styles (e.g. `box`, `container`, `paper`).
 
 ## **CRITICAL: Section Processing Order**
 

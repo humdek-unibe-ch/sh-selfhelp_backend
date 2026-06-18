@@ -357,7 +357,7 @@ Mantine cosmetic props are not repeated below.
 
 ---
 
-## showUserInput
+## show-user-input
 
 **Purpose.** Read-only **display** companion to `form-log` / `form-record`: renders a user's previously submitted entries from a data table as a Mantine Table.
 
@@ -379,5 +379,5 @@ Optional table behaviour: search (`dt_searching`), sorting (`dt_sortable` + `dt_
 ## Related references
 
 - [_conventions.md](./_conventions.md) — common fields and Mantine prop conventions.
-- [composite.md](./composite.md) — `entryList` / `entryRecord` that display saved form data.
+- [composite.md](./composite.md) — `entry-list` / `entry-record` that display saved form data.
 - [index.md](./index.md) — full style catalog.

@@ -455,7 +455,7 @@ Add an existing section to a page at a specific position.
 Detach a section from a page without destroying the section record. Unlinks the
 section from this page only (its direct page link, or its hierarchy link when
 nested); the section row survives for every other page that references it. This
-is the correct operation for shared `refContainer` sections. To destroy the
+is the correct operation for shared `ref-container` sections. To destroy the
 record entirely, use [Delete Section](#delete-section).
 
 **Endpoint:** `DELETE /cms-api/v1/admin/pages/{page_id}/sections/{section_id}`
@@ -490,7 +490,7 @@ equivalent of [Remove Section from Page](#remove-section-from-page) and has the
 **same detach-only** semantics: each section is unlinked from this page only
 (its direct page link, or its hierarchy link when nested) and the section
 **record survives** for every other page that references it. Bulk remove never
-destroys a shared `refContainer` — to destroy a record entirely use
+destroys a shared `ref-container` — to destroy a record entirely use
 [Delete Section](#delete-section). Cache invalidation fans out to every page
 that referenced each detached section.
 
@@ -656,7 +656,7 @@ Update a section's content fields and properties.
 
 Permanently delete a section record, regardless of which pages use it. This is
 page-independent: it destroys the section and every relationship it has on every
-page. A shared section (e.g. a `refContainer`) deleted this way disappears from
+page. A shared section (e.g. a `ref-container`) deleted this way disappears from
 all pages that referenced it. To merely unlink a section from one page while
 keeping the record for its other usages, use
 [Remove Section from Page](#remove-section-from-page) instead.
@@ -770,13 +770,13 @@ Retrieve sections that are not attached to any page.
 
 ### Get Reference Containers
 
-List all sections whose style is `refContainer`. These are reusable structural blocks that can be placed on multiple pages. `refContainer` is a transparent pass-through: it introduces no visual styling, layout, or presentation of its own; all rendering comes from its children. This endpoint is used by the admin page builder to let editors select an existing reusable block when wiring a page.
+List all sections whose style is `ref-container`. These are reusable structural blocks that can be placed on multiple pages. `ref-container` is a transparent pass-through: it introduces no visual styling, layout, or presentation of its own; all rendering comes from its children. This endpoint is used by the admin page builder to let editors select an existing reusable block when wiring a page.
 
 **Endpoint:** `GET /cms-api/v1/admin/sections/ref-containers`
 
 **Authentication:** Required (JWT Bearer token)
 
-**Response:** Array of `{ id, name, idStyles, styleName }` objects (styleName is always `refContainer`)
+**Response:** Array of `{ id, name, idStyles, styleName }` objects (styleName is always `ref-container`)
 
 **Permissions:** `admin.page.update`
 

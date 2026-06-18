@@ -257,18 +257,18 @@ and `box`/`flex` when you need full control.
 
 ---
 
-## refContainer
+## ref-container
 
 **Purpose.** Structural, transparent container for **reusable section blocks**. It passes its children through without adding any visual styling, layout, or presentation of its own — it is the mechanism for rendering one section on several pages.
 
-**Administrators.** Reach for `refContainer` when the *same* block of content must appear on more than one page (a shared banner, a reusable card group, …). Author it once, then add it to other pages from the **Reference Containers** picker in the page editor (it lists every `refContainer` so you can pick an existing one instead of recreating it). Editing the block updates it everywhere it is used. Two distinct verbs apply when taking it off a page:
+**Administrators.** Reach for `ref-container` when the *same* block of content must appear on more than one page (a shared banner, a reusable card group, …). Author it once, then add it to other pages from the **Reference Containers** picker in the page editor (it lists every `ref-container` so you can pick an existing one instead of recreating it). Editing the block updates it everywhere it is used. Two distinct verbs apply when taking it off a page:
 
 - **Remove from page** (single or bulk) only *detaches* the shared block from that one page — it keeps rendering on every other page that references it.
 - **Delete** *destroys* the block on every page at once.
 
-**Developers.** `refContainer` has no renderer chrome: the frontend renders its children directly, so it introduces no DOM wrapper or Mantine element. It is surfaced to the editor by `GET /cms-api/v1/admin/sections/ref-containers` (`styleName` is always `refContainer`). The same section row is linked to multiple pages through `rel_pages_sections` / `rel_sections_hierarchy`; `SectionRelationshipService` resolves every referencing page (`SectionRepository::getPageIdsContainingSection`) and fans cache invalidation out to all of them on edit, on detach, and — capturing the page set **before** the relationship rows are removed — on destroy, so no page keeps serving a stale shared block. See [Admin Pages & Sections APIs](../api/04-admin-pages-sections.md) for the add / remove-from-page / bulk-remove / delete endpoints.
+**Developers.** `ref-container` has no renderer chrome: the frontend renders its children directly, so it introduces no DOM wrapper or Mantine element. It is surfaced to the editor by `GET /cms-api/v1/admin/sections/ref-containers` (`styleName` is always `ref-container`). The same section row is linked to multiple pages through `rel_pages_sections` / `rel_sections_hierarchy`; `SectionRelationshipService` resolves every referencing page (`SectionRepository::getPageIdsContainingSection`) and fans cache invalidation out to all of them on edit, on detach, and — capturing the page set **before** the relationship rows are removed — on destroy, so no page keeps serving a stale shared block. See [Admin Pages & Sections APIs](../api/04-admin-pages-sections.md) for the add / remove-from-page / bulk-remove / delete endpoints.
 
-**Distinctive fields.** None — `refContainer` has no own fields; all rendering comes from its children.
+**Distinctive fields.** None — `ref-container` has no own fields; all rendering comes from its children.
 
 **Children.** Yes (required — the children *are* the reusable block).
 

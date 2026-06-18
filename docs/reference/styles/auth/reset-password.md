@@ -1,4 +1,4 @@
-# `resetPassword` style
+# `reset-password` style
 
 Audience: Developers and CMS administrators.
 Status: active.
@@ -28,7 +28,7 @@ even when the recipient disabled platform emails in their profile.
 
 ## For administrators
 
-Place a `resetPassword` section on your "forgot password" page (usually linked
+Place a `reset-password` section on your "forgot password" page (usually linked
 from the [`login`](./login.md) page's `label_pw_reset` link). It handles both
 the "request a reset link" screen and the "set a new password" screen reached
 from the recovery email. Fill in the text for both modes so visitors see the
