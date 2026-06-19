@@ -69,8 +69,8 @@ de-CH translations are seeded for all seven fields.
 ### Form behaviour / styling config
 
 `name`, `redirect_at_end`, `cancel_url`, `page_keyword`, `value_name`,
-`label_save`, `label_update`, `label_cancel`, plus the `mantine_buttons_*`,
-`mantine_btn_*_color`, `mantine_card_*`, `mantine_radius`, and `mantine_border`
+`label_save`, `label_update`, `label_cancel`, plus the `web_buttons_*`,
+`web_btn_*_color`, `web_card_*`, `web_radius`, and `web_border`
 appearance fields. See the live `admin/styles/schema` endpoint for their exact
 defaults.
 

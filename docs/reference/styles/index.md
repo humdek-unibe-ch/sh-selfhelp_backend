@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, shared types, frontend/mobile renderers).
-Last verified: 2026-06-16.
+Last verified: 2026-06-18.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 A **style** is a reusable CMS building block. Each style:
@@ -26,6 +26,24 @@ A **style** is a reusable CMS building block. Each style:
 - Every page is written for **two audiences**: an "Administrators" view (when/how to use the style in the page editor) and a "Developers" view (what it maps to and how it renders).
 - Per repository rule, any style you add or change must ship/refresh its documentation (see [`_template.md`](./_template.md) and the "Style documentation" rule in `AGENTS.md`).
 - Plugin-contributed styles are not listed here; they are documented in their owning plugin repository and registered at runtime through `extendStyleRegistry()`.
+
+## Architecture and audit (mobile readiness)
+
+These cross-cutting pages document the **style contract** itself — how a DB style
+maps through the shared semantic layer to the web (Mantine) and mobile (HeroUI
+Native / React Native) renderers — and audit the catalog against the live DB:
+
+| Page | What it gives you |
+|------|-------------------|
+| [style-field-naming-rules.md](./style-field-naming-rules.md) | The field naming taxonomy (`content`/`common`/`shared_`/`web_`/`mobile_`) + lifecycle statuses. The rulebook. |
+| [style-platform-matrix.md](./style-platform-matrix.md) | One row per style: render target, web Mantine target, mobile HeroUI Native / RN target, mobile fit. |
+| [style-mobile-mapping.md](./style-mobile-mapping.md) | The semantic mapper tables and per-field web/mobile loading (deep mobile mapping). |
+| [style-field-audit.md](./style-field-audit.md) | DB-vs-code audit: drift, duplicates, typos, scope distribution. |
+| [style-refactoring-recommendations.md](./style-refactoring-recommendations.md) | The prioritised cleanup plan derived from the audit. |
+| [style-field-audit.generated.json](./style-field-audit.generated.json) | Machine-readable audit data (regenerate with `php scripts/build-style-audit.php`). |
+
+Each style below is currently `render_target = both`; see the platform matrix for
+the per-style web/mobile mapping and the recommended targeting.
 
 ## auth
 
@@ -60,6 +78,7 @@ A **style** is a reusable CMS building block. Each style:
 | `aspect-ratio` | yes | [layout.md#aspect-ratio](./layout.md#aspect-ratio) |
 | `background-image` | yes | [layout.md#background-image](./layout.md#background-image) |
 | `ref-container` | yes | [layout.md#ref-container](./layout.md#ref-container) |
+| `data-container` | yes | [layout.md#data-container](./layout.md#data-container) |
 
 ## typography
 
@@ -139,12 +158,22 @@ A **style** is a reusable CMS building block. Each style:
 | `tabs` | yes | [composite.md#tabs](./composite.md#tabs) |
 | `tab` | yes | [composite.md#tab](./composite.md#tab) |
 | `timeline` | yes | [composite.md#timeline](./composite.md#timeline) |
+| `timeline-item` | yes | [composite.md#timeline-item](./composite.md#timeline-item) |
 | `list` | yes | [composite.md#list](./composite.md#list) |
 | `list-item` | yes | [composite.md#list-item](./composite.md#list-item) |
 | `entry-list` | yes | [composite.md#entry-list](./composite.md#entry-list) |
 | `entry-record` | yes | [composite.md#entry-record](./composite.md#entry-record) |
 | `entry-record-delete` | no | [composite.md#entry-record-delete](./composite.md#entry-record-delete) |
 | `loop` | yes | [composite.md#loop](./composite.md#loop) |
+
+## system
+
+| Style | Can have children | Documentation |
+|-------|-------------------|---------------|
+| `no-access` | no | [system.md#no-access](./system.md#no-access) |
+| `missing` | no | [system.md#missing](./system.md#missing) |
+| `not-found` | no | [system.md#not-found](./system.md#not-found) |
+| `version` | no | [system.md#version](./system.md#version) |
 
 ## Related references
 

@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, `@selfhelp/shared` types, frontend/mobile renderers).
-Last verified: 2026-06-04.
+Last verified: 2026-06-18.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 This page describes the fields and conventions **shared by every style**, so the
@@ -35,6 +35,60 @@ Each field is either:
 - **`display = 0` (internal / configuration)** — not translated. One value shared across all languages (e.g. a size, a colour, a toggle).
 - **`display = 1` (content)** — translatable. You can enter a different value per language; the visitor sees the value for their active locale.
 
+## Field naming, scope, and platform
+
+Field scope has **two independent dimensions** — translatability (`display`) and
+the name prefix — which the backend collapses into a single five-value `scope` on
+every field of the `admin/styles/schema` and `admin` section responses (computed
+once in `StyleRepository::deriveFieldScope()`). Translatability wins first
+(`display = 1` is always `content`); property fields (`display = 0`) then split by
+prefix. The CMS groups fields by this `scope` and must not re-derive it from the
+name or the `display` flag.
+
+| Field | `display` | Scope | Examples | Meaning |
+|-------|-----------|-------|----------|---------|
+| translatable copy | `1` | `content` | `label`, `title`, `text`, `placeholder` | Authored content, grouped per language |
+| unprefixed property | `0` | `common` | `value`, `is_required`, `url`, `name` | Cross-platform behavior / data property |
+| `shared_` property | `0` | `shared` | `shared_size`, `shared_radius`, `shared_spacing`, `shared_color` | Portable visual semantics mapped to each platform by the `@selfhelp/shared` mapper |
+| `web_` property | `0` | `web` | `web_variant`, `web_shadow` | Mantine / browser-specific presentation (web renderer only) |
+| `mobile_` property | `0` | `mobile` | `mobile_keyboard_type`, `mobile_haptic_feedback` | HeroUI Native / native-device presentation (mobile renderer only) |
+
+Do not prefix ordinary content or workflow fields just because both platforms
+read them. Renderer precedence is: current-platform `web_*`/`mobile_*` override →
+`shared_*` semantic → component default. The mobile renderer never reads `web_*`
+and the web renderer never reads `mobile_*`.
+
+`shared_*` semantics use the **true cross-platform common denominator** (HeroUI
+Native has no `xs`/`xl`), so they are intentionally narrower than the Mantine
+`web_*` scales and are mapped 1:1 per platform by `@selfhelp/shared`
+(`theme/semantic.ts`) with no clamping:
+
+| Field | Allowed values | Notes |
+|-------|----------------|-------|
+| `shared_size` | `sm`, `md`, `lg` | `web_size` keeps the full Mantine `xs..xl` |
+| `shared_radius` | `none`, `sm`, `md`, `lg`, `full` | `full` = pill, `none` = square |
+| `shared_intent` | `neutral`, `primary`, `secondary`, `success`, `warning`, `danger` | mapped to Mantine color+variant / HeroUI variant+color |
+| `shared_spacing` | box-model object | one complete margin+padding control |
+
+The backend enforces these option lists (`fields.config`) and default domains;
+narrowing was applied by migration `Version20260618195450`
+(`mantine_size`/`mantine_radius` were promoted to `shared_*` by
+`Version20260618143216`).
+
+## Render target
+
+Every style has a **render target** (`web` | `mobile` | `both`), returned as
+`renderTarget` by the catalog/schema endpoints and sourced from the
+`styleRenderTargets` lookup (`styles.id_render_target`; `NULL` means `both`). It
+declares where a style is *intentionally* renderable. This is distinct from:
+
+- the **page access target** (`pageAccessTypes`: `web` | `mobile` | `mobile_and_web`), which controls where a page may load; and
+- the **request client** (`web` | `mobile`), which identifies the current renderer.
+
+There is no `pages.id_platform` — page-level targeting lives only on
+`pageAccessTypes`. A client silently omits styles whose render target excludes
+it; that is not an error.
+
 ## Common fields on (almost) every style
 
 | Field | Type | Purpose |
@@ -45,15 +99,13 @@ Each field is either:
 | `debug` | checkbox | When on, the section emits debug data (condition result, resolved variables) for editors. |
 | `data_config` | data-config | Optional JSON that binds the section to backend data (used by data-driven styles such as `entry-list`, `loop`, and the form styles). |
 
-## Spacing and "use Mantine style"
+## Spacing
 
 Most visual styles also expose:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `mantine_spacing_margin_padding` | segment | A visual box-model control for the section's margin **and** padding. |
-| `mantine_spacing_margin` | segment | Legacy margin-only spacing still present on some styles. |
-| `use_mantine_style` | checkbox | `1` (default for most) renders the real Mantine component with its theme. `0` renders a plain element you fully control with `css` / Tailwind. Turn it off when you want raw HTML styling. |
+| Field | Type | Scope | Purpose |
+|-------|------|-------|---------|
+| `shared_spacing` | spacing | shared | Portable box-model control for the section's margin **and** padding. Mapped to both platforms (the cross-platform spacing field). RF-15 (slice 9) merged the legacy margin-only `web_spacing_margin` into this, so every spacing-capable style now uses it. |
 
 ## Standard Mantine cosmetic props
 
@@ -63,15 +115,15 @@ in the live `admin/styles/schema` endpoint:
 
 | Field | Purpose |
 |-------|---------|
-| `mantine_size` | Component size — usually `xs`–`xl` (some accept a CSS length). |
-| `mantine_color` | Theme colour key (e.g. `blue`, `red`) or a custom colour. |
-| `mantine_radius` | Corner radius — `xs`–`xl` or a number. |
-| `mantine_variant` | Visual variant (e.g. `filled`, `outline`, `light`, `subtle`, `default`). |
-| `mantine_left_icon` / `mantine_right_icon` | Icon name picked from the icon selector, rendered before/after the content. |
+| `web_size` | Component size — usually `xs`–`xl` (some accept a CSS length). |
+| `shared_color` | Semantic theme colour key (e.g. `blue`, `red`); mapped to Mantine `color` on web and HeroUI Native colour on mobile (slice 2 / RF-13). |
+| `web_radius` | Corner radius — `xs`–`xl` or a number. |
+| `web_variant` | Visual variant (e.g. `filled`, `outline`, `light`, `subtle`, `default`). |
+| `web_left_icon` / `web_right_icon` | Icon name picked from the icon selector, rendered before/after the content. |
 
 ## Icons
 
-Icon fields (`mantine_left_icon`, `mantine_right_icon`, and similar) take an icon
+Icon fields (`web_left_icon`, `web_right_icon`, and similar) take an icon
 name from the bundled Tabler icon set, chosen through the admin icon picker.
 
 ## Conventions used on the per-category pages
@@ -93,6 +145,10 @@ Each style entry on a category page has:
 ## Related references
 
 - [index.md](./index.md) — the full style catalog.
+- [style-field-naming-rules.md](./style-field-naming-rules.md) — the field naming taxonomy + lifecycle contract (the *why* behind this page).
+- [style-platform-matrix.md](./style-platform-matrix.md) — per-style render target + web/mobile renderer mapping.
+- [style-mobile-mapping.md](./style-mobile-mapping.md) — semantic contract → Mantine + HeroUI Native.
+- [style-field-audit.md](./style-field-audit.md) — DB-vs-code field audit and drift report.
 - [style-schema-endpoint.md](../../developer/style-schema-endpoint.md) — the live schema contract (every style + field + default).
 - [section.md](../../developer/section.md) — how sections instantiate styles and resolve field content.
 - [cms-translation.md](../../developer/cms-translation.md) — how translatable (`display = 1`) content is stored and resolved per locale.

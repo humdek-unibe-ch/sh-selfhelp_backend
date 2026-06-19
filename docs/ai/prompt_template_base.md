@@ -76,20 +76,20 @@ Markdown fences):
    - Do **not** put a token under `css_mobile` that already starts with a
      viewport prefix (`sm:`, `md:`, `max-md:`, …). Strip the prefix first.
 10. **Responsive layout grids use the v9 object syntax.** `simple-grid`'s
-    `mantine_cols` and `grid-column`'s `mantine_grid_span` accept either:
+    `web_cols` and `grid-column`'s `web_grid_span` accept either:
     - a fixed number string (`"3"`) — same column count on every viewport, or
     - a **JSON object** keyed by Mantine breakpoints
       (`base`, `xs`, `sm`, `md`, `lg`, `xl`) stored as a stringified JSON in
       the `content` field. Examples:
       ```json
-      "mantine_cols": {
+      "web_cols": {
         "all": { "content": "{\"base\":1,\"sm\":2,\"lg\":3}" }
       }
-      "mantine_grid_span": {
+      "web_grid_span": {
         "all": { "content": "{\"base\":12,\"sm\":6,\"md\":4}" }
       }
       ```
-    `mantine_breakpoints` (legacy) is honoured only when `mantine_cols` is
+    `web_breakpoints` (legacy) is honoured only when `web_cols` is
     omitted; new content should ignore it.
 11. Image fields use `img_src`. For placeholder/illustrative images, use the
     canonical URL `/assets/image-holder.png` (relative path; the backend
@@ -100,8 +100,8 @@ Markdown fences):
     invent new values. Free-form fields (`text`, `textarea`, `markdown-inline`,
     `json`) have no options list — write what makes sense.
 13. **Mantine spacing fields are JSON objects, NOT Tailwind strings.** Any
-    field whose catalog type is `mantine_spacing_margin`,
-    `mantine_spacing_padding`, or `mantine_spacing_margin_padding` expects a
+    field whose catalog type is `web_spacing_margin`,
+    `web_spacing_padding`, or `web_spacing_margin_padding` expects a
     JSON-encoded object keyed by Mantine spacing keys with Mantine size
     tokens as values. Tailwind utility classes belong in
     `global_fields.css` / `global_fields.css_mobile`, never inside these
@@ -117,16 +117,16 @@ Markdown fences):
 
     Valid values: the Mantine size tokens `"none"`, `"xs"`, `"sm"`, `"md"`,
     `"lg"`, `"xl"`, or a numeric pixel string (e.g. `"0"`, `"8"`, `"24"`).
-    `mantine_spacing_padding` only accepts the four `p*` keys;
-    `mantine_spacing_margin` only accepts the four `m*` keys;
-    `mantine_spacing_margin_padding` accepts all eight. Omit keys you do
+    `web_spacing_padding` only accepts the four `p*` keys;
+    `web_spacing_margin` only accepts the four `m*` keys;
+    `web_spacing_margin_padding` accepts all eight. Omit keys you do
     not set rather than writing empty strings.
 
     Correct shape (stringified JSON stored under the `all` locale — always
     a property field):
 
     ```json
-    "mantine_spacing_margin_padding": {
+    "web_spacing_margin_padding": {
       "all": {
         "content": "{\"mt\":\"md\",\"mb\":\"md\",\"pt\":\"lg\",\"pb\":\"lg\"}"
       }
@@ -136,10 +136,10 @@ Markdown fences):
     WRONG — do NOT put Tailwind classes here (they will crash the frontend):
 
     ```json
-    "mantine_spacing_margin_padding": {
+    "web_spacing_margin_padding": {
       "all": { "content": "pt-10" }
     }
-    "mantine_spacing_margin_padding": {
+    "web_spacing_margin_padding": {
       "all": { "content": "mx-auto max-w-sm" }
     }
     ```
@@ -154,21 +154,21 @@ Markdown fences):
     below is the source of truth, but these mistakes show up in nearly
     every freshly generated page. Fix them before emitting:
 
-    - `group` uses **`mantine_group_wrap`** with `"0"` (no wrap) /
-      `"1"` (wrap). It does **not** use `mantine_wrap` (that's only on
+    - `group` uses **`web_group_wrap`** with `"0"` (no wrap) /
+      `"1"` (wrap). It does **not** use `web_wrap` (that's only on
       `flex` and takes Mantine's keyword strings `"wrap"`/`"nowrap"`).
-    - `simple-grid` exposes **`mantine_vertical_spacing`** for its
-      `verticalSpacing` prop. There is **no** `mantine_spacing` field on
+    - `simple-grid` exposes **`web_vertical_spacing`** for its
+      `verticalSpacing` prop. There is **no** `web_spacing` field on
       `simple-grid`; horizontal gap defaults to `sm` and is overridden
-      via the standard `mantine_spacing_margin_padding` field if needed.
-    - `card` does **not** carry a `mantine_card_padding` field. To
+      via the standard `web_spacing_margin_padding` field if needed.
+    - `card` does **not** carry a `web_card_padding` field. To
       remove its built-in padding, use a `card-segment` child with
       `global_fields.css = "p-0"` (or whatever spacing you want).
     - Native form-record/log fields are `name`, `alert_success`,
       `btn_save_label`, etc. Always read the catalog entry for the
       `form-*` style — its required fields differ from generic styles.
-    - Image fields are `img_src`/`alt`. Audio is `mantine_audio_*`,
-      Video is `mantine_video_*`. Mixing these (e.g. `video_src` on
+    - Image fields are `img_src`/`alt`. Audio is `web_audio_*`,
+      Video is `web_video_*`. Mixing these (e.g. `video_src` on
       `audio`) yields `unknown_field`.
     - Any field name your draft uses that the catalog below does not
       list — drop it. The importer's `unknown_field` and
@@ -187,7 +187,7 @@ Single locale (`<LOCALES>` = `en-GB`), hero container with one title:
     "section_name": "hero",
     "style_name": "container",
     "fields": {
-      "mantine_size": {
+      "web_size": {
         "all": { "content": "md" }
       }
     },
@@ -201,7 +201,7 @@ Single locale (`<LOCALES>` = `en-GB`), hero container with one title:
           "content": {
             "en-GB": { "content": "Welcome" }
           },
-          "mantine_title_order": {
+          "web_title_order": {
             "all": { "content": "1" }
           }
         }
@@ -222,7 +222,7 @@ Multi-locale (`<LOCALES>` = `en-GB,de-CH`):
         "en-GB": { "content": "Welcome" },
         "de-CH": { "content": "Willkommen" }
       },
-      "mantine_title_order": {
+      "web_title_order": {
         "all": { "content": "1" }
       }
     }
@@ -231,7 +231,7 @@ Multi-locale (`<LOCALES>` = `en-GB,de-CH`):
 ```
 
 Notice how the translatable `content` field is replicated across every real
-locale while the property `mantine_title_order` uses the `all` locale exactly
+locale while the property `web_title_order` uses the `all` locale exactly
 once. The style/field catalog below tells you which is which (`locale=all` for
 property, `locale=en-GB|de-CH|...` for translatable).
 
@@ -248,17 +248,17 @@ property, `locale=en-GB|de-CH|...` for translatable).
       {
         "style_name": "simple-grid",
         "fields": {
-          "mantine_cols": {
+          "web_cols": {
             "all": { "content": "{\"base\":1,\"sm\":2,\"lg\":3}" }
           },
-          "mantine_vertical_spacing": { "all": { "content": "md" } }
+          "web_vertical_spacing": { "all": { "content": "md" } }
         },
         "children": [
           {
             "style_name": "card",
             "fields": {
-              "mantine_border": { "all": { "content": "1" } },
-              "mantine_radius": { "all": { "content": "lg" } }
+              "web_border": { "all": { "content": "1" } },
+              "web_radius": { "all": { "content": "lg" } }
             },
             "global_fields": {
               "css": "min-w-0 overflow-hidden bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
@@ -274,7 +274,7 @@ property, `locale=en-GB|de-CH|...` for translatable).
                       "content": {
                         "en-GB": { "content": "Fast" }
                       },
-                      "mantine_title_order": { "all": { "content": "3" } }
+                      "web_title_order": { "all": { "content": "3" } }
                     },
                     "global_fields": {
                       "css": "text-lg font-semibold text-gray-900 dark:text-gray-50"
@@ -306,12 +306,12 @@ property, `locale=en-GB|de-CH|...` for translatable).
 
 Notes on the snippet above:
 
-- `mantine_cols` is a stringified JSON object for true responsive behaviour
+- `web_cols` is a stringified JSON object for true responsive behaviour
   (1 col on mobile, 2 on tablet, 3 on desktop).
 - Each card carries `min-w-0 overflow-hidden` so long text can break instead
   of pushing the grid sideways.
 - Padding is responsive (`p-4 sm:p-6`) instead of a fixed
-  `mantine_card_padding`.
+  `web_card_padding`.
 - The text body has `break-words` so unbroken words/URLs do not overflow on
   narrow screens.
 
@@ -363,7 +363,7 @@ if a `<p>` contains another `<p>`, so follow these rules:
   `html_tag` that is not a paragraph (`"div"`, `"section"`, etc.).
 - Same rule applies when wrapping text in a `blockquote`: only put
   inline content there, never another block-level text style.
-- `title` renders as `<h1>`…`<h6>` depending on `mantine_title_order`,
+- `title` renders as `<h1>`…`<h6>` depending on `web_title_order`,
   so it is always safe to nest inside `<div>`-like containers.
 - Never put another `button`, `a`, or form control inside a `button`.
 
@@ -381,9 +381,9 @@ if a `<p>` contains another `<p>`, so follow these rules:
   precede them with a separate `text` or `title` sibling that acts as a
   visual label, or rely on the control's `label` field when present.
 - `textarea` ships with its own built-in label when
-  `use_mantine_style` is `"1"` (the default).
+  `use_web_style` is `"1"` (the default).
 - Wrap multi-input rows in a `simple-grid` with
-  `mantine_cols="{\"base\":1,\"md\":2}"` so they collapse to one column on
+  `web_cols="{\"base\":1,\"md\":2}"` so they collapse to one column on
   mobile. Plain `flex` rows with hard-coded `gap-6` will overflow.
 
 ### Reading the style catalog's relationship lines
@@ -415,7 +415,7 @@ inventing new combinations — it keeps pages consistent.
   (article), `max-w-3xl mx-auto` (prose/form), `max-w-xl mx-auto` (auth).
 - Horizontal flow: `flex items-center justify-between gap-4`.
 - Vertical rhythm: `space-y-6` (default), `space-y-10` (between major
-  blocks). For Mantine `stack` use `mantine_gap`.
+  blocks). For Mantine `stack` use `web_gap`.
 - Responsive grid of cards:
   `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`.
 
@@ -538,8 +538,8 @@ The web renderer is consumed inside cards, drawers and narrow viewports.
 Skip these and the page breaks the moment you open it on a phone.
 
 1. **Container width**: top-level `container`/`box` should be a single
-   column on mobile. Use `mantine_cols="{\"base\":1,\"sm\":2,\"lg\":3}"`
-   on `simple-grid`, NEVER fixed `mantine_cols="3"` for content cards.
+   column on mobile. Use `web_cols="{\"base\":1,\"sm\":2,\"lg\":3}"`
+   on `simple-grid`, NEVER fixed `web_cols="3"` for content cards.
 2. **Min-width zero**: any flex/grid child that contains long text must
    include `min-w-0` (and often `flex-1`) in its `css` so the parent can
    shrink instead of overflowing horizontally.
@@ -547,7 +547,7 @@ Skip these and the page breaks the moment you open it on a phone.
    `break-words` (or `overflow-wrap-anywhere` for code-like content).
    Card surfaces should also include `overflow-hidden`.
 4. **Responsive padding**: prefer `p-4 sm:p-6 lg:p-8` in `css` over a
-   single fixed `mantine_card_padding="lg"`. Mobile users do not need
+   single fixed `web_card_padding="lg"`. Mobile users do not need
    24-32px of dead space on every side of a card.
 5. **Responsive display text**: hero/title classes always need a mobile
    step (`text-3xl sm:text-4xl lg:text-5xl`).
@@ -555,10 +555,10 @@ Skip these and the page breaks the moment you open it on a phone.
    (`w-[1200px]`, `min-w-[400px]`). If a media element absolutely needs a
    ratio, wrap it in `aspect-ratio` and let the parent govern width.
 7. **Tap targets**: interactive elements (`button`, `action-icon`,
-   `link`, `chip`) need a minimum height of 36-44px. Use `mantine_size="md"`
+   `link`, `chip`) need a minimum height of 36-44px. Use `web_size="md"`
    or larger on mobile-critical actions; do not shrink them to `xs` to
    save space.
-8. **Carousel slides**: set `mantine_carousel_slide_size="100%"` on
+8. **Carousel slides**: set `web_carousel_slide_size="100%"` on
    mobile (or by default and override to a percentage on larger screens
    via `css`); the default `slideSize` of `100` (px) creates a horizontal
    scroll trap on phones.
@@ -566,7 +566,7 @@ Skip these and the page breaks the moment you open it on a phone.
    add `overflow-x-auto` and `scrollbar-thin` to its `css` so users can
    swipe through them on narrow viewports.
 10. **Timeline alignment**: `timeline` looks best with
-    `mantine_timeline_align="left"` on mobile. Avoid `right` alignment
+    `web_timeline_align="left"` on mobile. Avoid `right` alignment
     unless your design requires it.
 
 ---
@@ -585,9 +585,9 @@ Because the same JSON has to render in all three, follow these rules:
 
 - **Carry meaning in Mantine props first, Tailwind second.** Color, size,
   variant, radius, spacing, alignment, layout direction and gap should be
-  expressed via `mantine_color`, `mantine_size`, `mantine_variant`,
-  `mantine_radius`, `mantine_gap`, `mantine_align`, `mantine_justify`,
-  `mantine_direction`, `mantine_cols`, `mantine_grid_span`. These map 1:1
+  expressed via `web_color`, `web_size`, `web_variant`,
+  `web_radius`, `web_gap`, `web_align`, `web_justify`,
+  `web_direction`, `web_cols`, `web_grid_span`. These map 1:1
   to the native renderer; Tailwind classes do not.
 - **Use Tailwind for visual polish, not for structure.** Gradients,
   shadows, hover effects, dark-mode tints — fine. Building a flex layout
@@ -616,19 +616,19 @@ Because the same JSON has to render in all three, follow these rules:
   font size in `css`), `text` (body), `group` with two `button`s].
   Container `css`: `px-4 py-12 sm:px-6 sm:py-16 lg:py-20 max-w-7xl mx-auto`.
 - **Feature grid (responsive)**: `container` → `simple-grid` with
-  `mantine_cols="{\"base\":1,\"sm\":2,\"lg\":3}"` → three `card` entries
+  `web_cols="{\"base\":1,\"sm\":2,\"lg\":3}"` → three `card` entries
   with `min-w-0 break-words` in `css`. Each card holds a `card-segment`
   with a `title`, `text`, and a trailing `button`.
 - **Form**: `form-record` (or `form-log`) → `fieldset` → input controls in
   a `stack`. Follow with the form's built-in submit; do not add an extra
   button.
 - **FAQ**: `accordion` → several `accordion-item`s, each with `text`
-  children. `mantine_accordion_variant="separated"` reads well on mobile.
-- **Marketing list**: `list` with `mantine_list_list_style_type="disc"`
-  and `list-item` children each holding `mantine_list_item_content`.
+  children. `web_accordion_variant="separated"` reads well on mobile.
+- **Marketing list**: `list` with `web_list_list_style_type="disc"`
+  and `list-item` children each holding `web_list_item_content`.
 - **Side-by-side that collapses on mobile**: `grid` with
-  `mantine_cols="12"` and two `grid-column` children whose
-  `mantine_grid_span` is `"{\"base\":12,\"md\":8}"` and
+  `web_cols="12"` and two `grid-column` children whose
+  `web_grid_span` is `"{\"base\":12,\"md\":8}"` and
   `"{\"base\":12,\"md\":4}"` respectively.
 
 ---

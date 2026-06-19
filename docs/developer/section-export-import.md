@@ -51,7 +51,7 @@ Example (minimized export of one hero container):
     "section_name": "hero",
     "style_name": "container",
     "fields": {
-      "mantine_size": { "en-GB": { "content": "md" } }
+      "web_size": { "en-GB": { "content": "md" } }
     }
   }
 ]
@@ -95,7 +95,7 @@ happens server-side in the pre-validation pass.
       {
         "section_name": "hero",
         "style_name": "container",
-        "fields": { "mantine_size": { "en-GB": { "content": "md" } } }
+        "fields": { "web_size": { "en-GB": { "content": "md" } } }
       }
     ]
   }
@@ -110,7 +110,7 @@ happens server-side in the pre-validation pass.
     {
       "section_name": "hero",
       "style_name": "container",
-      "fields": { "mantine_size": { "en-GB": { "content": "md" } } }
+      "fields": { "web_size": { "en-GB": { "content": "md" } } }
     }
   ],
   "position": 0

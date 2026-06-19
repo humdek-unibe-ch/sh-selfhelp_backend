@@ -3,14 +3,15 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-18.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 ## `GET /cms-api/v1/admin/styles/schema`
 
 Returns a canonical view of every style registered in the `styles` table
-together with its allowed fields, the DB default for each field, and the
-allowed parent / child relationships.
+together with its render target, allowed fields (each carrying a derived
+`scope`), the DB default for each field, and the allowed parent / child
+relationships.
 
 **Permission:** `admin.access` (same level as the existing styles list).
 
@@ -25,10 +26,12 @@ allowed parent / child relationships.
       "group": "mantine",
       "can_have_children": true,
       "description": "Generic Mantine container component…",
+      "renderTarget": "both",          // 'web' | 'mobile' | 'both' (NULL id_render_target => 'both')
       "fields": {
-        "mantine_size":      { "type": "slider",   "display": 0, "default_value": null, "help": "…", "title": "Size" },
-        "mantine_fluid":     { "type": "checkbox", "display": 0, "default_value": "0" },
-        "use_mantine_style": { "type": "checkbox", "display": 0, "default_value": "1", "hidden": 1 }
+        "web_size":      { "type": "slider",   "scope": "web",     "display": 0, "default_value": null, "help": "…", "title": "Size" },
+        "shared_spacing":{ "type": "spacing",  "scope": "shared",  "display": 0, "default_value": null },
+        "title":         { "type": "text",     "scope": "content", "display": 1, "default_value": null },
+        "use_web_style": { "type": "checkbox", "scope": "common",  "display": 0, "default_value": "1", "hidden": 1 }
       },
       "allowed_children": ["card", "text", "flex"],
       "allowed_parents":  []
@@ -36,6 +39,35 @@ allowed parent / child relationships.
   }
 }
 ```
+
+### Render target (`renderTarget`)
+
+Every style carries a `renderTarget` (`web` | `mobile` | `both`) sourced from
+the `styleRenderTargets` lookup (`styles.id_render_target`; `NULL` serialises to
+`both`). It declares where a style is *intentionally* renderable and is distinct
+from the page access target (`pageAccessTypes`) and the request client. There is
+no `pages.id_platform`; page-level targeting stays on `pageAccessTypes`.
+
+### Field scope (`scope`)
+
+Every field carries a backend-derived `scope` (`content` | `common` | `shared` |
+`web` | `mobile`) — the single source of truth the CMS groups by. It is computed
+once in `StyleRepository::deriveFieldScope()` from two independent dimensions —
+translatability (`display`) and the canonical name prefix. Translatability wins
+first (a translatable field is always authored content), then property fields
+split by prefix:
+
+| Field (`display`)        | `scope`   | Meaning                                            |
+|--------------------------|-----------|----------------------------------------------------|
+| any name (`display=1`)   | `content` | Translatable authored copy, grouped per language   |
+| `shared_*` (`display=0`) | `shared`  | Portable visual semantics mapped per platform      |
+| `web_*` (`display=0`)    | `web`     | Mantine / browser-specific presentation            |
+| `mobile_*` (`display=0`) | `mobile`  | HeroUI Native / native-device presentation         |
+| (unprefixed, `display=0`)| `common`  | Cross-platform behavior / data property            |
+
+The CMS must consume `scope` directly and must not re-derive it from the field
+name or the `display` flag. The same `scope` is emitted per field by the admin
+section endpoint (`responses/admin/sections/section.json`).
 
 ### Consumers
 

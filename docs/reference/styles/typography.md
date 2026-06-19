@@ -20,11 +20,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Title` — a semantic heading (`h1`–`h6`).
 
-**Administrators.** Use for page and section headings. Set the heading level with `mantine_title_order` (1 = biggest). The text is translatable.
+**Administrators.** Use for page and section headings. Set the heading level with `web_title_order` (1 = biggest). The text is translatable.
 
-**Developers.** Renders `<Title order={…}>`. `mantine_title_line_clamp` truncates after N lines.
+**Developers.** Renders `<Title order={…}>`. `web_title_line_clamp` truncates after N lines.
 
-**Distinctive fields.** `content` (heading text), `mantine_title_order` (1–6), `mantine_size`, `mantine_title_text_wrap` (wrap/balance/nowrap), `mantine_title_line_clamp`.
+**Distinctive fields.** `content` (heading text), `web_title_order` (1–6), `web_size`, `web_title_text_wrap` (wrap/balance/nowrap), `web_title_line_clamp`.
 
 **Children.** No.
 
@@ -36,9 +36,9 @@ language and the visitor sees their locale's version.
 
 **Administrators.** The workhorse for body copy. Set size, colour, weight, alignment, and decoration. Use the gradient variant for accent text. Text is translatable.
 
-**Developers.** Renders `<Text>`. `mantine_text_span` renders it inline (`<span>`); `mantine_text_inherit` inherits parent typography; gradient needs `mantine_text_gradient`.
+**Developers.** Renders `<Text>`. `web_text_span` renders it inline (`<span>`); `web_text_inherit` inherits parent typography; gradient needs `web_text_gradient`.
 
-**Distinctive fields.** `text` (the copy), `mantine_text_font_weight`, `mantine_text_font_style`, `mantine_text_text_decoration`, `mantine_text_text_transform`, `mantine_text_align`, `mantine_text_variant` (default/gradient), `mantine_text_gradient`, `mantine_text_truncate`, `mantine_text_line_clamp`, `mantine_text_inherit`, `mantine_text_span`, `mantine_size`, `mantine_color`.
+**Distinctive fields.** `text` (the copy), `web_text_font_weight`, `web_text_font_style`, `web_text_text_decoration`, `web_text_text_transform`, `web_text_align`, `web_text_variant` (default/gradient), `web_text_gradient`, `web_text_truncate`, `web_text_line_clamp`, `web_text_inherit`, `web_text_span`, `web_size`, `shared_color`.
 
 **Children.** No.
 
@@ -48,11 +48,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Code` — inline or block monospaced code.
 
-**Administrators.** Show code snippets or technical values. Turn on `mantine_code_block` for a multi-line block; leave off for inline code. Content is translatable.
+**Administrators.** Show code snippets or technical values. Turn on `web_code_block` for a multi-line block; leave off for inline code. Content is translatable.
 
 **Developers.** Renders `<Code block={…}>`.
 
-**Distinctive fields.** `content` (the code), `mantine_code_block` (block vs inline), `mantine_color`.
+**Distinctive fields.** `content` (the code), `web_code_block` (block vs inline), `shared_color`.
 
 **Children.** No.
 
@@ -62,11 +62,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Highlight` — text with one or more substrings highlighted.
 
-**Administrators.** Draw attention to keywords inside a sentence. Put the full sentence in `text` and the word(s) to highlight in `mantine_highlight_highlight`.
+**Administrators.** Draw attention to keywords inside a sentence. Put the full sentence in `text` and the word(s) to highlight in `highlight_highlight`.
 
 **Developers.** Renders `<Highlight highlight={…}>`.
 
-**Distinctive fields.** `text` (full text), `mantine_highlight_highlight` (substring(s) to highlight), `mantine_color`.
+**Distinctive fields.** `text` (full text), `highlight_highlight` (substring(s) to highlight), `shared_color`.
 
 **Children.** No.
 
@@ -80,7 +80,7 @@ language and the visitor sees their locale's version.
 
 **Developers.** Renders `<Blockquote cite icon>`.
 
-**Distinctive fields.** `content` (quote), `cite` (attribution), `mantine_left_icon`, `mantine_icon_size`, `mantine_color`.
+**Distinctive fields.** `content` (quote), `cite` (attribution), `web_left_icon`, `web_icon_size`, `shared_color`.
 
 **Children.** No.
 
@@ -108,7 +108,7 @@ language and the visitor sees their locale's version.
 
 **Developers.** Renders `<Kbd>{label}</Kbd>`.
 
-**Distinctive fields.** `label` (key text), `mantine_size`.
+**Distinctive fields.** `label` (key text), `web_size`.
 
 **Children.** No.
 
@@ -136,7 +136,7 @@ language and the visitor sees their locale's version.
 
 **Developers.** Renders `<Fieldset legend disabled>`; `disabled` cascades to nested inputs.
 
-**Distinctive fields.** `legend` (group title), `label`, `mantine_fieldset_variant`, `mantine_radius`, `disabled`.
+**Distinctive fields.** `legend` (group title), `label`, `web_fieldset_variant`, `web_radius`, `disabled`.
 
 **Children.** Yes.
 
@@ -150,7 +150,7 @@ language and the visitor sees their locale's version.
 
 **Developers.** Renders `<Spoiler maxHeight showLabel hideLabel>`.
 
-**Distinctive fields.** `mantine_height` (collapsed max-height), `mantine_spoiler_show_label`, `mantine_spoiler_hide_label`.
+**Distinctive fields.** `web_height` (collapsed max-height), `spoiler_show_label`, `spoiler_hide_label`.
 
 **Children.** Yes.
 

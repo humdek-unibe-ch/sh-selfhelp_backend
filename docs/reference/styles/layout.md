@@ -9,7 +9,7 @@ Source of truth: `src/types/styles/layout.ts`, `src/registry/styles.registry.ts`
 Layout styles arrange other sections on the page. They are almost all
 [Mantine](https://mantine.dev) layout primitives. Read
 [`_conventions.md`](./_conventions.md) first — the common fields (`css`,
-`css_mobile`, `condition`, spacing, `use_mantine_style`) are documented there and
+`css_mobile`, `condition`, spacing, `use_web_style`) are documented there and
 are not repeated below.
 
 **When to reach for which layout (administrators):** use `stack` for a vertical
@@ -25,9 +25,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Wrap a page's main content in a container so it stays readable on wide screens. Pick a `size` for the max width, or turn on `fluid` to span the full width.
 
-**Developers.** Renders `<Container>`; children render inside. Honors horizontal/vertical padding via `mantine_px` / `mantine_py`.
+**Developers.** Renders `<Container>`; children render inside. Honors horizontal/vertical padding via `web_px` / `web_py`.
 
-**Distinctive fields.** `mantine_size` (max-width preset), `mantine_fluid` (full-width toggle), `mantine_px` / `mantine_py` (inner horizontal/vertical padding).
+**Distinctive fields.** `web_size` (max-width preset), `web_fluid` (full-width toggle), `web_px` / `web_py` (inner horizontal/vertical padding).
 
 **Children.** Yes.
 
@@ -39,7 +39,7 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** A neutral container when no other layout fits. Style it with `css` / spacing. Use it to group sections without imposing flex/grid behaviour.
 
-**Developers.** Renders `<Box>` (or a plain element when `use_mantine_style = 0`). `content` is an optional inline text/HTML payload for simple cases.
+**Developers.** Renders `<Box>` (or a plain element when `use_web_style = 0`). `content` is an optional inline text/HTML payload for simple cases.
 
 **Distinctive fields.** `content` (optional inline content).
 
@@ -53,9 +53,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use when you need precise control over how children line up: direction (row/column), spacing, alignment, justification, and wrapping.
 
-**Developers.** Renders `<Flex>` mapping each `mantine_*` prop directly to the flexbox CSS property.
+**Developers.** Renders `<Flex>` mapping each `web_*` prop directly to the flexbox CSS property.
 
-**Distinctive fields.** `mantine_gap`, `mantine_justify` (justify-content), `mantine_align` (align-items), `mantine_direction` (row/column), `mantine_wrap`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_gap`, `web_justify` (justify-content), `web_align` (align-items), `web_direction` (row/column), `web_wrap`, `web_width`, `web_height`.
 
 **Children.** Yes.
 
@@ -67,9 +67,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** The quickest way to put items in a row (e.g. buttons side by side). Set the gap, and optionally let items grow to fill the row or wrap to the next line.
 
-**Developers.** Renders `<Group>`. `mantine_group_grow` makes children share width equally; `mantine_group_wrap` toggles wrapping.
+**Developers.** Renders `<Group>`. `web_group_grow` makes children share width equally; `web_group_wrap` toggles wrapping.
 
-**Distinctive fields.** `mantine_gap`, `mantine_justify`, `mantine_align`, `mantine_group_wrap` (`0`/`1`), `mantine_group_grow` (`0`/`1`), `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_gap`, `web_justify`, `web_align`, `web_group_wrap` (`0`/`1`), `web_group_grow` (`0`/`1`), `web_width`, `web_height`.
 
 **Children.** Yes.
 
@@ -83,7 +83,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Stack>`.
 
-**Distinctive fields.** `mantine_gap`, `mantine_justify`, `mantine_align`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_gap`, `web_justify`, `web_align`, `web_width`, `web_height`.
 
 **Children.** Yes.
 
@@ -95,9 +95,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use for galleries or card rows where every column is the same width. Set the column count and spacing; use breakpoints to change columns on small screens.
 
-**Developers.** Renders `<SimpleGrid>`. `mantine_breakpoints` is a JSON string of responsive column overrides.
+**Developers.** Renders `<SimpleGrid>`. `web_breakpoints` is a JSON string of responsive column overrides.
 
-**Distinctive fields.** `mantine_cols` (column count), `mantine_spacing` (horizontal), `mantine_vertical_spacing`, `mantine_breakpoints` (responsive JSON), `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_cols` (column count), `web_spacing` (horizontal), `web_vertical_spacing`, `web_breakpoints` (responsive JSON), `web_width`, `web_height`.
 
 **Children.** Yes.
 
@@ -111,7 +111,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Grid>`; direct children should be `grid-column` sections.
 
-**Distinctive fields.** `mantine_cols`, `mantine_gap`, `mantine_justify`, `mantine_align`, `mantine_grid_overflow`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_cols`, `web_gap`, `web_justify`, `web_align`, `web_grid_overflow`, `web_width`, `web_height`.
 
 **Children.** Yes (typically `grid-column`).
 
@@ -123,9 +123,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Place inside a `grid`. Set how many of the 12 columns it spans, and optionally an offset or order.
 
-**Developers.** Renders `<Grid.Col>`. `mantine_grid_span` accepts a number, `auto`, or `content`.
+**Developers.** Renders `<Grid.Col>`. `web_grid_span` accepts a number, `auto`, or `content`.
 
-**Distinctive fields.** `mantine_grid_span` (width), `mantine_grid_offset`, `mantine_grid_order`, `mantine_grid_grow`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_grid_span` (width), `web_grid_offset`, `web_grid_order`, `web_grid_grow`, `web_width`, `web_height`.
 
 **Children.** Yes.
 
@@ -139,7 +139,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Space>`. Leaf node.
 
-**Distinctive fields.** `mantine_size`, `mantine_space_direction` (horizontal/vertical).
+**Distinctive fields.** `web_size`, `web_space_direction` (horizontal/vertical).
 
 **Children.** No.
 
@@ -153,7 +153,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Divider>`.
 
-**Distinctive fields.** `mantine_divider_variant` (solid/dashed/dotted), `mantine_size` (thickness), `mantine_divider_label`, `mantine_divider_label_position`, `mantine_orientation`, `mantine_color`.
+**Distinctive fields.** `web_divider_variant` (solid/dashed/dotted), `web_size` (thickness), `divider_label`, `web_divider_label_position`, `web_orientation`, `shared_color`.
 
 **Children.** No.
 
@@ -167,7 +167,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Paper>`.
 
-**Distinctive fields.** `mantine_paper_shadow`, `mantine_radius`, `mantine_px` / `mantine_py` (padding), `mantine_border` (`0`/`1`).
+**Distinctive fields.** `web_paper_shadow`, `web_radius`, `web_px` / `web_py` (padding), `web_border` (`0`/`1`).
 
 **Children.** Yes.
 
@@ -179,9 +179,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use to centre a logo, spinner, or message. Optionally constrain min/max width and height.
 
-**Developers.** Renders `<Center>`. `mantine_center_inline` switches to inline centering.
+**Developers.** Renders `<Center>`. `web_center_inline` switches to inline centering.
 
-**Distinctive fields.** `mantine_center_inline`, `mantine_width` / `mantine_height`, `mantine_miw` / `mantine_mih` (min), `mantine_maw` / `mantine_mah` (max).
+**Distinctive fields.** `web_center_inline`, `web_width` / `web_height`, `web_miw` / `web_mih` (min), `web_maw` / `web_mah` (max).
 
 **Children.** Yes.
 
@@ -195,7 +195,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<ScrollArea>`.
 
-**Distinctive fields.** `mantine_scroll_area_type` (hover/always/never/scroll), `mantine_scroll_area_scrollbar_size`, `mantine_scroll_area_offset_scrollbars`, `mantine_scroll_area_scroll_hide_delay`, `mantine_height`, `mantine_width`.
+**Distinctive fields.** `web_scroll_area_type` (hover/always/never/scroll), `web_scroll_area_scrollbar_size`, `web_scroll_area_offset_scrollbars`, `web_scroll_area_scroll_hide_delay`, `web_height`, `web_width`.
 
 **Children.** Yes.
 
@@ -209,7 +209,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Card>`.
 
-**Distinctive fields.** `mantine_card_shadow`, `mantine_border` (`0`/`1`), `mantine_radius`.
+**Distinctive fields.** `web_card_shadow`, `web_border` (`0`/`1`), `web_radius`.
 
 **Children.** Yes (often `card-segment`).
 
@@ -237,7 +237,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<AspectRatio>`.
 
-**Distinctive fields.** `mantine_aspect_ratio` (e.g. `16/9`).
+**Distinctive fields.** `web_aspect_ratio` (e.g. `16/9`).
 
 **Children.** Yes.
 
@@ -251,7 +251,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<BackgroundImage>` with `img_src` as the source.
 
-**Distinctive fields.** `img_src` (image URL/asset), `mantine_radius`.
+**Distinctive fields.** `img_src` (image URL/asset), `web_radius`.
 
 **Children.** Yes.
 
@@ -271,6 +271,20 @@ and `box`/`flex` when you need full control.
 **Distinctive fields.** None — `ref-container` has no own fields; all rendering comes from its children.
 
 **Children.** Yes (required — the children *are* the reusable block).
+
+---
+
+## data-container
+
+**Purpose.** A **data-scoped** structural container: it renders its child subtree against a backend-resolved data scope (so the children can interpolate `{{field}}` values from that scope) without adding any visual chrome.
+
+**Administrators.** Wrap a block of sections that should read from a specific data source. Bind the scope via the section's data config; the children then interpolate the scoped values. Like `ref-container`, it is transparent — it adds no visual styling of its own.
+
+**Developers.** The backend resolves the `scope` data context and interpolates the subtree server-side, so both renderers render the already-resolved children through the normal recursive dispatcher (no second renderer): web `DataContainerStyle`, mobile `components/styles/layout/DataContainer.tsx`. Binding is via `data_config` (see [_conventions.md](./_conventions.md)).
+
+**Distinctive fields.** None beyond the common fields; data binding via `data_config`.
+
+**Children.** Yes (the scoped subtree).
 
 ---
 

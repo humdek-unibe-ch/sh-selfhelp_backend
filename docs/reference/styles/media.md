@@ -17,11 +17,11 @@ for how files are stored and validated.
 
 **Purpose.** Mantine `Image` on web / native `Image` on mobile.
 
-**Administrators.** Place a single image. Set the source, alternative text (`alt`, important for accessibility), and how it fits its box (`mantine_image_fit`). Use `is_fluid` to make it scale to the container width.
+**Administrators.** Place a single image. Set the source, alternative text (`alt`, important for accessibility), and how it fits its box (`web_image_fit`). Use `is_fluid` to make it scale to the container width.
 
-**Developers.** Renders `<Image src fit radius>`. `width`/`height` and `mantine_width`/`mantine_height` constrain the box; `mantine_image_fit` maps to `object-fit`.
+**Developers.** Renders `<Image src fit radius>`. `width`/`height` and `web_width`/`web_height` constrain the box; `web_image_fit` maps to `object-fit`.
 
-**Distinctive fields.** `img_src` (source), `alt` (alt text), `title`, `is_fluid` (responsive width), `height` / `width`, `mantine_image_fit` (contain/cover/fill/none/scale-down), `mantine_width` / `mantine_height`, `mantine_radius`.
+**Distinctive fields.** `img_src` (source), `alt` (alt text), `title`, `is_fluid` (responsive width), `height` / `width`, `web_image_fit` (contain/cover/fill/none/scale-down), `web_width` / `web_height`, `web_radius`.
 
 **Children.** No.
 
@@ -75,9 +75,9 @@ for how files are stored and validated.
 
 **Administrators.** Show a rotating set of slides/images. Toggle navigation controls and indicator dots, set slide size/gap, autoplay-style looping, and drag behaviour.
 
-**Developers.** Renders a carousel over `sources` (or child slides). The many `mantine_carousel_*` fields map to Embla options; `mantine_carousel_embla_options` accepts raw Embla JSON for advanced tuning.
+**Developers.** Renders a carousel over `sources` (or child slides). The many `web_carousel_*` fields map to Embla options; `web_carousel_embla_options` accepts raw Embla JSON for advanced tuning.
 
-**Distinctive fields.** `sources` (slides), `has_controls`, `has_indicators`, `has_crossfade`, `mantine_loop`, `drag_free`, `skip_snaps`, `mantine_carousel_slide_size`, `mantine_carousel_slide_gap`, `mantine_carousel_align`, `mantine_carousel_contain_scroll`, `mantine_carousel_in_view_threshold`, `mantine_carousel_duration`, `mantine_control_size`, `mantine_carousel_controls_offset`, `mantine_carousel_next_control_icon` / `mantine_carousel_previous_control_icon`, `mantine_orientation`, `mantine_height`, `mantine_carousel_embla_options` (raw JSON).
+**Distinctive fields.** `sources` (slides), `has_controls`, `has_indicators`, `has_crossfade`, `web_loop`, `drag_free`, `skip_snaps`, `web_carousel_slide_size`, `web_carousel_slide_gap`, `web_carousel_align`, `web_carousel_contain_scroll`, `web_carousel_in_view_threshold`, `web_carousel_duration`, `web_control_size`, `web_carousel_controls_offset`, `web_carousel_next_control_icon` / `web_carousel_previous_control_icon`, `web_orientation`, `web_height`, `web_carousel_embla_options` (raw JSON).
 
 **Children.** Yes.
 
