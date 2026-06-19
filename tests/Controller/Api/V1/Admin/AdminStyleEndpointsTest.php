@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Admin;
 
+use App\Repository\StyleRepository;
 use App\Tests\Support\QaWebTestCase;
 use App\Tests\Support\Security\PermissionMatrixProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -46,6 +47,54 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         $first = $data[array_key_first($data)];
         self::assertIsArray($first, 'Each style schema entry must be an object.');
         self::assertArrayHasKey('fields', $first, 'Each style schema entry exposes its fields.');
+    }
+
+    public function testGetStylesSchemaEmitsFieldScopeForEveryField(): void
+    {
+        // Mobile rendering plan section 6.4: every field carries a backend-derived
+        // `scope` computed from two dimensions — translatability (display) and the
+        // platform prefix. The CMS groups by this value, so a missing/wrong scope
+        // is a contract break.
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        $validScopes = ['content', 'common', 'shared', 'web', 'mobile'];
+        $checked = 0;
+        $sawContent = false;
+        $sawCommon = false;
+        $sawShared = false;
+        $sawWeb = false;
+        foreach ($data as $styleName => $styleMeta) {
+            if (!is_array($styleMeta) || !isset($styleMeta['fields']) || !is_array($styleMeta['fields'])) {
+                continue;
+            }
+            foreach ($styleMeta['fields'] as $fieldName => $fieldMeta) {
+                if (!is_array($fieldMeta)) {
+                    continue;
+                }
+                self::assertArrayHasKey('scope', $fieldMeta, "Field '{$fieldName}' on style '{$styleName}' must expose a scope.");
+                self::assertArrayHasKey('display', $fieldMeta, "Field '{$fieldName}' on style '{$styleName}' must expose display.");
+                $scope = $fieldMeta['scope'];
+                self::assertContains($scope, $validScopes, "Field '{$fieldName}' on '{$styleName}' has an invalid scope.");
+
+                $name = (string) $fieldName;
+                $display = self::asInt($fieldMeta['display']);
+                $expected = StyleRepository::deriveFieldScope($name, $display);
+                self::assertSame($expected, $scope, "Emitted scope for field '{$name}' (display={$display}) must match the central derivation.");
+
+                $sawContent = $sawContent || $scope === 'content';
+                $sawCommon = $sawCommon || $scope === 'common';
+                $sawShared = $sawShared || $scope === 'shared';
+                $sawWeb = $sawWeb || $scope === 'web';
+                $checked++;
+            }
+        }
+
+        self::assertGreaterThan(0, $checked, 'The style schema must expose fields with a scope.');
+        self::assertTrue($sawContent, 'The catalog must expose translatable content fields (display=1).');
+        self::assertTrue($sawCommon, 'The catalog must expose unprefixed common properties (display=0).');
+        self::assertTrue($sawShared, 'The catalog must expose shared_* fields after the rename migration.');
+        self::assertTrue($sawWeb, 'The catalog must expose web_* fields.');
     }
 
     public function testStylesSchemaEnforcesTheAdminOnlyMatrix(): void
