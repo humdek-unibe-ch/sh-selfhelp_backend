@@ -404,7 +404,7 @@
                         },
                         "required": ["content"]
                     },
-                    "mantine_spacing_margin_padding": {
+                    "shared_spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -417,7 +417,7 @@
                             }
                         }
                     },
-                    "mantine_color": {
+                    "web_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -430,7 +430,7 @@
                             }
                         }
                     },
-                    "mantine_size": {
+                    "shared_size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -444,7 +444,7 @@
                         },
                         "required": ["content"]
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -457,7 +457,7 @@
                             }
                         }
                     },
-                    "mantine_text_font_weight": {
+                    "web_text_font_weight": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -470,7 +470,7 @@
                             }
                         }
                     },
-                    "mantine_text_font_style": {
+                    "web_text_font_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -483,7 +483,7 @@
                             }
                         }
                     },
-                    "mantine_text_text_decoration": {
+                    "web_text_text_decoration": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -496,7 +496,7 @@
                             }
                         }
                     },
-                    "mantine_text_text_transform": {
+                    "web_text_text_transform": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -509,7 +509,7 @@
                             }
                         }
                     },
-                    "mantine_text_align": {
+                    "shared_text_align": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -522,7 +522,7 @@
                             }
                         }
                     },
-                    "mantine_text_variant": {
+                    "web_text_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -535,7 +535,7 @@
                             }
                         }
                     },
-                    "mantine_text_gradient": {
+                    "web_text_gradient": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -548,7 +548,7 @@
                             }
                         }
                     },
-                    "mantine_text_truncate": {
+                    "web_text_truncate": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -561,7 +561,7 @@
                             }
                         }
                     },
-                    "mantine_text_line_clamp": {
+                    "web_text_line_clamp": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -574,7 +574,7 @@
                             }
                         }
                     },
-                    "mantine_text_inherit": {
+                    "web_text_inherit": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -587,7 +587,7 @@
                             }
                         }
                     },
-                    "mantine_text_span": {
+                    "web_text_span": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -637,7 +637,7 @@
                         },
                         "required": ["content"]
                     },
-                    "mantine_spacing_margin_padding": {
+                    "shared_spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -650,7 +650,7 @@
                             }
                         }
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -663,7 +663,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_size": {
+                    "web_buttons_size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -676,7 +676,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_radius": {
+                    "web_buttons_radius": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -689,7 +689,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_variant": {
+                    "web_buttons_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -702,7 +702,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_position": {
+                    "web_buttons_position": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -715,7 +715,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_order": {
+                    "web_buttons_order": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -728,7 +728,7 @@
                             }
                         }
                     },
-                    "mantine_btn_save_color": {
+                    "web_btn_save_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -741,7 +741,7 @@
                             }
                         }
                     },
-                    "mantine_btn_cancel_color": {
+                    "web_btn_cancel_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -869,7 +869,7 @@
                         },
                         "required": ["content"]
                     },
-                    "mantine_spacing_margin_padding": {
+                    "shared_spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -882,7 +882,7 @@
                             }
                         }
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -895,7 +895,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_size": {
+                    "web_buttons_size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -908,7 +908,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_radius": {
+                    "web_buttons_radius": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -921,7 +921,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_variant": {
+                    "web_buttons_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -934,7 +934,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_position": {
+                    "web_buttons_position": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -947,7 +947,7 @@
                             }
                         }
                     },
-                    "mantine_buttons_order": {
+                    "web_buttons_order": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -960,7 +960,7 @@
                             }
                         }
                     },
-                    "mantine_btn_save_color": {
+                    "web_btn_save_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -973,7 +973,7 @@
                             }
                         }
                     },
-                    "mantine_btn_update_color": {
+                    "web_btn_update_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -986,7 +986,7 @@
                             }
                         }
                     },
-                    "mantine_btn_cancel_color": {
+                    "web_btn_cancel_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1152,7 +1152,7 @@
                             }
                         }
                     },
-                    "mantine_spacing_margin": {
+                    "web_spacing_margin": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1178,7 +1178,7 @@
                             }
                         }
                     },
-                    "mantine_size": {
+                    "shared_size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1191,7 +1191,7 @@
                             }
                         }
                     },
-                    "mantine_radius": {
+                    "shared_radius": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1204,7 +1204,7 @@
                             }
                         }
                     },
-                    "mantine_left_icon": {
+                    "web_left_icon": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1217,7 +1217,7 @@
                             }
                         }
                     },
-                    "mantine_right_icon": {
+                    "web_right_icon": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1230,7 +1230,7 @@
                             }
                         }
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1243,7 +1243,7 @@
                             }
                         }
                     },
-                    "mantine_text_input_variant": {
+                    "web_text_input_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1370,7 +1370,7 @@
                             }
                         }
                     },
-                    "mantine_spacing_margin": {
+                    "web_spacing_margin": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1396,7 +1396,7 @@
                             }
                         }
                     },
-                    "mantine_variant": {
+                    "web_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1409,7 +1409,7 @@
                             }
                         }
                     },
-                    "mantine_size": {
+                    "shared_size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1422,7 +1422,7 @@
                             }
                         }
                     },
-                    "mantine_radius": {
+                    "shared_radius": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1435,7 +1435,7 @@
                             }
                         }
                     },
-                    "mantine_left_icon": {
+                    "web_left_icon": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1448,7 +1448,7 @@
                             }
                         }
                     },
-                    "mantine_right_icon": {
+                    "web_right_icon": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1461,7 +1461,7 @@
                             }
                         }
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1474,7 +1474,7 @@
                             }
                         }
                     },
-                    "mantine_textarea_autosize": {
+                    "web_textarea_autosize": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1487,7 +1487,7 @@
                             }
                         }
                     },
-                    "mantine_textarea_min_rows": {
+                    "web_textarea_min_rows": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1500,7 +1500,7 @@
                             }
                         }
                     },
-                    "mantine_textarea_max_rows": {
+                    "web_textarea_max_rows": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1513,7 +1513,7 @@
                             }
                         }
                     },
-                    "mantine_textarea_resize": {
+                    "web_textarea_resize": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1526,7 +1526,7 @@
                             }
                         }
                     },
-                    "mantine_textarea_variant": {
+                    "web_textarea_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1539,7 +1539,7 @@
                             }
                         }
                     },
-                    "mantine_textarea_rows": {
+                    "web_textarea_rows": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1653,7 +1653,7 @@
                             }
                         }
                     },
-                    "mantine_spacing_margin": {
+                    "web_spacing_margin": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1666,7 +1666,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_type": {
+                    "web_datepicker_type": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1679,7 +1679,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_format": {
+                    "web_datepicker_format": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1692,7 +1692,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_locale": {
+                    "web_datepicker_locale": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1705,7 +1705,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_min_date": {
+                    "web_datepicker_min_date": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1718,7 +1718,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_max_date": {
+                    "web_datepicker_max_date": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1731,7 +1731,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_first_day_of_week": {
+                    "web_datepicker_first_day_of_week": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1744,7 +1744,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_weekend_days": {
+                    "web_datepicker_weekend_days": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1757,7 +1757,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_clearable": {
+                    "web_datepicker_clearable": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1770,7 +1770,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_allow_deseselect": {
+                    "web_datepicker_allow_deseselect": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1783,7 +1783,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_readonly": {
+                    "web_datepicker_readonly": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1796,7 +1796,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_with_time_grid": {
+                    "web_datepicker_with_time_grid": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1809,7 +1809,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_consistent_weeks": {
+                    "web_datepicker_consistent_weeks": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1822,7 +1822,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_hide_outside_dates": {
+                    "web_datepicker_hide_outside_dates": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1835,7 +1835,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_hide_weekends": {
+                    "web_datepicker_hide_weekends": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1848,7 +1848,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_time_step": {
+                    "web_datepicker_time_step": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1861,7 +1861,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_time_format": {
+                    "web_datepicker_time_format": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1874,7 +1874,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_date_format": {
+                    "web_datepicker_date_format": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1887,7 +1887,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_time_grid_config": {
+                    "web_datepicker_time_grid_config": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1900,7 +1900,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_with_seconds": {
+                    "web_datepicker_with_seconds": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1939,7 +1939,7 @@
                             }
                         }
                     },
-                    "mantine_datepicker_placeholder": {
+                    "web_datepicker_placeholder": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2014,7 +2014,7 @@
                             }
                         }
                     },
-                    "mantine_spacing_margin": {
+                    "web_spacing_margin": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2040,7 +2040,7 @@
                             }
                         }
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2053,7 +2053,7 @@
                             }
                         }
                     },
-                    "mantine_rich_text_editor_variant": {
+                    "web_rich_text_editor_variant": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2066,7 +2066,7 @@
                             }
                         }
                     },
-                    "mantine_rich_text_editor_bubble_menu": {
+                    "web_rich_text_editor_bubble_menu": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2079,7 +2079,7 @@
                             }
                         }
                     },
-                    "mantine_rich_text_editor_text_color": {
+                    "web_rich_text_editor_text_color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2092,7 +2092,7 @@
                             }
                         }
                     },
-                    "mantine_rich_text_editor_task_list": {
+                    "web_rich_text_editor_task_list": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2131,7 +2131,7 @@
                             }
                         }
                     },
-                    "mantine_rich_text_editor_placeholder": {
+                    "web_rich_text_editor_placeholder": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2166,7 +2166,7 @@
                             }
                         }
                     },
-                    "mantine_spacing_margin_padding": {
+                    "shared_spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -2179,7 +2179,7 @@
                             }
                         }
                     },
-                    "use_mantine_style": {
+                    "use_web_style": {
                         "type": "object",
                         "properties": {
                             "content": {
