@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-16.
+Last verified: 2026-06-19.
 Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
@@ -153,9 +153,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A yes/no or opt-in checkbox. Set `name`, the checked value (`checkbox_value`), label position, and required.
 
-**Developers.** Renders `<Checkbox>`. `web_checkbox_label_position` puts the label left/right; `web_use_input_wrapper` adds description support.
+**Developers.** Renders `<Checkbox>`. `shared_label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
 
-**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `web_checkbox_icon`, `web_checkbox_label_position`, `web_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `shared_label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`.
 
 **Children.** No.
 

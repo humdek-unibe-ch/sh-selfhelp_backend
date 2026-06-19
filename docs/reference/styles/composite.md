@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 composite styles (`@selfhelp/shared` `composite` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-19.
 Source of truth: `src/types/styles/composite.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Composite styles combine child sections into a richer widget (accordions, tabs,
@@ -18,13 +18,18 @@ the matching item children inside it.
 
 ## accordion
 
-**Purpose.** Mantine `Accordion` — a stack of collapsible panels.
+**Purpose.** Mantine `Accordion` (web) / HeroUI Native `Accordion` compound (mobile) — a stack of collapsible panels.
 
-**Administrators.** Use for FAQs or grouped content where only some panels are open at a time. Add `accordion-item` children. Allow multiple open panels via `web_accordion_multiple`, and set the default-open item.
+**Administrators.** Use for FAQs or grouped content where only some panels are open at a time. Add `accordion-item` children. Allow multiple open panels via **Multiple** (`shared_multiple`), pick the **Variant**, and (web) set the default-open item.
 
-**Developers.** Renders `<Accordion>`; children are `accordion-item`. `web_accordion_default_value` selects the initially open item value(s).
+**Developers.** Web renders `<Accordion>`; mobile renders the HeroUI Native `Accordion` compound (themed + animated) and each child `accordion-item` consults the HeroUI accordion context automatically (no custom context). The mobile renderer reads `shared_*` only. Precedence is shared → component default.
 
-**Distinctive fields.** `web_accordion_variant`, `web_accordion_multiple`, `web_accordion_chevron_position`, `web_accordion_chevron_size`, `web_accordion_disable_chevron_rotation`, `web_accordion_loop`, `web_accordion_transition_duration`, `web_accordion_default_value`, `web_radius`.
+**Distinctive fields.**
+
+- `shared_accordion_variant` (shared, select: `default`/`contained`/`filled`/`separated`) — web → Mantine `variant`; mobile → HeroUI `variant` (`default`, or `surface` for the boxed variants), via `mapAccordionVariantToHeroUiVariant`. *Renamed from the web-only `web_accordion_variant` in `Version20260619183601`; clearable.*
+- `shared_multiple` (shared, checkbox) — single vs multiple open; read by both platforms.
+- `shared_radius` (shared, slider) — web → Mantine `radius`; mobile → surface container border radius.
+- `web_accordion_chevron_position`, `web_accordion_chevron_size`, `web_accordion_disable_chevron_rotation`, `web_accordion_loop`, `web_accordion_transition_duration`, `web_accordion_default_value` (web-only Mantine presentation; the mobile chevron is HeroUI's animated `Accordion.Indicator`).
 
 **Children.** Yes (`accordion-item`).
 
@@ -32,13 +37,19 @@ the matching item children inside it.
 
 ## accordion-item
 
-**Purpose.** Mantine `Accordion.Item` — one collapsible panel.
+**Purpose.** Mantine `Accordion.Item` (web) / HeroUI Native `Accordion.Item` (mobile) — one collapsible panel.
 
-**Administrators.** Place inside an `accordion`. Set the panel `label` (the clickable header) and a unique `web_accordion_item_value`. Put the panel body as children.
+**Administrators.** Place inside an `accordion`. Set the panel `label` (the clickable header) and an optional `description` subtitle shown under it. Put the panel body as children. (Web also offers a unique `web_accordion_item_value` and an optional header icon.)
 
-**Developers.** Renders `<Accordion.Item value>` with a control + panel; body comes from child sections.
+**Developers.** Web renders `<Accordion.Item value>` with a control (label + optional dimmed `description` + icon) and a panel. Mobile renders `Accordion.Item` / `.Trigger` / `.Indicator` / `.Content` with theme-aware text from `useAppColors()`; the mobile item value is the section id (the web-only `web_accordion_item_value` / icon are not read on mobile). Plain-text slots are sanitized (web `stripHtmlTags`, mobile `stripHtmlToText`). Body comes from child sections.
 
-**Distinctive fields.** `label` (header), `web_accordion_item_value` (unique key), `web_accordion_item_icon`, `disabled`.
+**Distinctive fields.**
+
+- `label` (content, markdown-inline) — the clickable header text.
+- `description` (content, textarea) — optional subtitle under the label; empty = hidden. *Added in `Version20260619183601`.*
+- `disabled` (common, checkbox) — disables the panel.
+- `web_accordion_item_value` (web, text) — unique key used by the accordion's web default-open feature.
+- `web_accordion_item_icon` (web, select-icon) — header icon (web only).
 
 **Children.** Yes (the panel body).
 

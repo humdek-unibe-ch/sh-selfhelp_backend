@@ -145,9 +145,9 @@ web-only. Can also contain child sections.
 
 **Administrators.** A toggleable tag. As a form input, set `name`, the on/off values (`chip_on_value` / `chip_off_value`), and whether it is required. `web_chip_multiple` allows multi-select within a group.
 
-**Developers.** Renders `<Chip>`; participates in form submission via `name`/`value`. `web_chip_checked` sets the initial state; tooltip fields add a hover hint.
+**Developers.** Renders `<Chip>`; participates in form submission via `name`/`value`. `chip_checked` sets the initial state; tooltip fields add a hover hint. The visual variant is the cross-platform `shared_chip_variant` (Mantine `filled`/`outline`/`light` on web; the HeroUI Native chip variant on mobile) and is clearable.
 
-**Distinctive fields.** `label`, `name`, `value`, `chip_on_value` / `chip_off_value` (and the `web_chip_on_value`/`web_chip_off_value` mirrors), `chip_checked` / `web_chip_checked`, `web_chip_multiple`, `is_required`, `disabled`, `web_chip_variant`, `tooltip`, `web_tooltip_position`, `web_left_icon`, `web_icon_size`.
+**Distinctive fields.** `label`, `name`, `value`, `chip_on_value` / `chip_off_value`, `chip_checked`, `is_required`, `disabled`, `shared_chip_variant` (filled/outline/light, shared, clearable), `web_tooltip_position`, `web_left_icon`, `web_icon_size`.
 
 **Children.** No.
 

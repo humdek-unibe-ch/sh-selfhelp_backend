@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 typography styles (`@selfhelp/shared` `typography` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-19.
 Source of truth: `src/types/styles/typography.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Typography styles render text — headings, paragraphs, quotes, code, and rich
@@ -20,11 +20,14 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Title` — a semantic heading (`h1`–`h6`).
 
-**Administrators.** Use for page and section headings. Set the heading level with `web_title_order` (1 = biggest). The text is translatable.
+**Administrators.** Use for page and section headings. Set the heading level with `title_order` (1 = biggest), pick a size and a theme colour, and optionally clamp to N lines. The text is translatable.
 
-**Developers.** Renders `<Title order={…}>`. `web_title_line_clamp` truncates after N lines.
+**Developers.** Renders `<Title order={…}>`. `title_order` (common) is the
+semantic heading level on both platforms; `shared_color` tints the heading;
+`shared_line_clamp` truncates after N lines (web `lineClamp` / mobile
+`numberOfLines`). `web_title_text_wrap` stays web-only.
 
-**Distinctive fields.** `content` (heading text), `web_title_order` (1–6), `web_size`, `web_title_text_wrap` (wrap/balance/nowrap), `web_title_line_clamp`.
+**Distinctive fields.** `content` (heading text), `title_order` (1–6, common), `shared_size`, `shared_color`, `shared_line_clamp`, `web_title_text_wrap` (wrap/balance/nowrap, web only).
 
 **Children.** No.
 
@@ -48,11 +51,13 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Code` — inline or block monospaced code.
 
-**Administrators.** Show code snippets or technical values. Turn on `web_code_block` for a multi-line block; leave off for inline code. Content is translatable.
+**Administrators.** Show code snippets or technical values. Turn on `code_block` for a multi-line block; leave off for inline code. Pick a colour and corner radius. Content is translatable.
 
-**Developers.** Renders `<Code block={…}>`.
+**Developers.** Renders `<Code block={…}>`. `code_block` (common) selects block
+vs inline on both platforms; `shared_radius` rounds the block corners per
+platform.
 
-**Distinctive fields.** `content` (the code), `web_code_block` (block vs inline), `shared_color`.
+**Distinctive fields.** `content` (the code), `code_block` (block vs inline, common), `shared_color`, `shared_radius`.
 
 **Children.** No.
 

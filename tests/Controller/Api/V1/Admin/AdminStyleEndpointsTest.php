@@ -135,6 +135,69 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         self::assertSame('shared', $login['shared_color']['scope'] ?? null, 'login.shared_color must be shared.');
     }
 
+    public function testAccordionPolishWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // accordion: web_accordion_variant promoted to the cross-platform shared_accordion_variant.
+        $accordion = $this->fieldsOf($data, 'accordion');
+        self::assertArrayNotHasKey('web_accordion_variant', $accordion, 'accordion.web_accordion_variant must be renamed to shared_accordion_variant.');
+        self::assertSame('shared', $accordion['shared_accordion_variant']['scope'] ?? null, 'accordion.shared_accordion_variant must be shared (cross-platform).');
+
+        // accordion-item: optional translatable description subtitle.
+        $accordionItem = $this->fieldsOf($data, 'accordion-item');
+        self::assertSame('content', $accordionItem['description']['scope'] ?? null, 'accordion-item.description must be translatable content.');
+    }
+
+    /**
+     * Regression for the 2026-06-19 style polish wave (migration
+     * Version20260619191224): card/card-segment/checkbox/chip/code/title field +
+     * scope changes must be reflected by the live schema endpoint.
+     */
+    public function testCardFamilyAndTypographyPolishWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // card: optional auto-styled title + image content; border promoted to shared.
+        $card = $this->fieldsOf($data, 'card');
+        self::assertSame('content', $card['title']['scope'] ?? null, 'card.title must be translatable content.');
+        self::assertSame('content', $card['img_src']['scope'] ?? null, 'card.img_src must be translatable content (asset picker).');
+        self::assertSame('shared', $card['shared_border']['scope'] ?? null, 'card.shared_border must be shared (cross-platform).');
+        self::assertArrayNotHasKey('web_border', $card, 'card.web_border must be unlinked (replaced by shared_border).');
+
+        // card-segment: shared border + web-only inherit padding.
+        $cardSegment = $this->fieldsOf($data, 'card-segment');
+        self::assertSame('shared', $cardSegment['shared_border']['scope'] ?? null, 'card-segment.shared_border must be shared.');
+        self::assertSame('web', $cardSegment['web_segment_inherit_padding']['scope'] ?? null, 'card-segment.web_segment_inherit_padding must remain web-only.');
+
+        // checkbox: label position promoted to shared.
+        $checkbox = $this->fieldsOf($data, 'checkbox');
+        self::assertSame('shared', $checkbox['shared_label_position']['scope'] ?? null, 'checkbox.shared_label_position must be shared.');
+        self::assertArrayNotHasKey('web_checkbox_label_position', $checkbox, 'checkbox.web_checkbox_label_position must be renamed.');
+
+        // chip: dedicated shared_chip_variant (distinct from generic shared_variant).
+        $chip = $this->fieldsOf($data, 'chip');
+        self::assertSame('shared', $chip['shared_chip_variant']['scope'] ?? null, 'chip.shared_chip_variant must be shared.');
+        self::assertArrayNotHasKey('web_chip_variant', $chip, 'chip.web_chip_variant must be renamed to shared_chip_variant.');
+
+        // code: block toggle promoted to common behaviour + shared radius.
+        $code = $this->fieldsOf($data, 'code');
+        self::assertSame('common', $code['code_block']['scope'] ?? null, 'code.code_block must be a common (cross-platform) behaviour field.');
+        self::assertSame('shared', $code['shared_radius']['scope'] ?? null, 'code.shared_radius must be shared.');
+        self::assertArrayNotHasKey('web_code_block', $code, 'code.web_code_block must be renamed to code_block.');
+
+        // title: colourable + semantic order/line-clamp promoted; text wrap stays web.
+        $title = $this->fieldsOf($data, 'title');
+        self::assertSame('shared', $title['shared_color']['scope'] ?? null, 'title.shared_color must be shared.');
+        self::assertSame('common', $title['title_order']['scope'] ?? null, 'title.title_order must be a common semantic field.');
+        self::assertSame('shared', $title['shared_line_clamp']['scope'] ?? null, 'title.shared_line_clamp must be shared.');
+        self::assertSame('web', $title['web_title_text_wrap']['scope'] ?? null, 'title.web_title_text_wrap must remain web-only.');
+        self::assertArrayNotHasKey('web_title_order', $title, 'title.web_title_order must be renamed.');
+        self::assertArrayNotHasKey('web_title_line_clamp', $title, 'title.web_title_line_clamp must be renamed.');
+    }
+
     /**
      * @param array<string, mixed> $schema
      * @return array<string, array<string, mixed>>
