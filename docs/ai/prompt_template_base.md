@@ -161,9 +161,10 @@ Markdown fences):
       `verticalSpacing` prop. There is **no** `web_spacing` field on
       `simple-grid`; horizontal gap defaults to `sm` and is overridden
       via the standard `web_spacing_margin_padding` field if needed.
-    - `card` does **not** carry a `web_card_padding` field. To
-      remove its built-in padding, use a `card-segment` child with
-      `global_fields.css = "p-0"` (or whatever spacing you want).
+    - `card` does **not** carry a `web_card_padding` field. Its inner
+      padding is the fixed Mantine default; tune it with the shared
+      `Spacing` field (`shared_spacing` padding side), or use a
+      `card-segment` child for full-bleed content.
     - Native form-record/log fields are `name`, `alert_success`,
       `btn_save_label`, etc. Always read the catalog entry for the
       `form-*` style — its required fields differ from generic styles.
@@ -310,8 +311,8 @@ Notes on the snippet above:
   (1 col on mobile, 2 on tablet, 3 on desktop).
 - Each card carries `min-w-0 overflow-hidden` so long text can break instead
   of pushing the grid sideways.
-- Padding is responsive (`p-4 sm:p-6`) instead of a fixed
-  `web_card_padding`.
+- Padding is responsive (`p-4 sm:p-6`) via `css` / `shared_spacing`
+  instead of a single fixed value.
 - The text body has `break-words` so unbroken words/URLs do not overflow on
   narrow screens.
 
@@ -546,9 +547,9 @@ Skip these and the page breaks the moment you open it on a phone.
 3. **Word breaking**: paragraphs and titles inside narrow cards need
    `break-words` (or `overflow-wrap-anywhere` for code-like content).
    Card surfaces should also include `overflow-hidden`.
-4. **Responsive padding**: prefer `p-4 sm:p-6 lg:p-8` in `css` over a
-   single fixed `web_card_padding="lg"`. Mobile users do not need
-   24-32px of dead space on every side of a card.
+4. **Responsive padding**: prefer `p-4 sm:p-6 lg:p-8` in `css` (or the
+   shared `Spacing` control) over a single fixed padding. Mobile users do
+   not need 24-32px of dead space on every side of a card.
 5. **Responsive display text**: hero/title classes always need a mobile
    step (`text-3xl sm:text-4xl lg:text-5xl`).
 6. **No horizontal scroll**: never set fixed pixel widths on body content

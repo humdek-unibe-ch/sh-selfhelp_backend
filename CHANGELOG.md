@@ -8,6 +8,22 @@
 - **Interpolation, page-version and data-record errors are written to the PSR logger.** `error_log()` calls were replaced with the injected `LoggerInterface` (with the throwable attached), and the non-autowired `InterpolationService` now receives `$logger` explicitly. (`InterpolationService`, `PageVersionService`, `DataService`, `config/services.yaml`)
 - **Smaller correctness fixes:** strict (`true`) `in_array()` permission comparison in `ApiSecurityListener`; `User::isTwoFactorRequired()` is now a pure getter (it no longer mutates `twoFactorRequired` as a side effect of reading it); and the dead, unreferenced `ApiRouteVoter` was removed (route-level permissions are enforced by `ApiSecurityListener`).
 
+## CMS Styles — card padding cleanup
+
+- **The `card` style dropped the redundant web-only `web_card_padding` field**
+  (migration `Version20260619205908`). `card` already extends the portable
+  spacing contract (`shared_spacing`), whose padding side (`pt`/`pb`/`ps`/`pe`)
+  renders on web AND mobile, so a second Mantine-`padding` control was a
+  duplicate that confused authors. The migration unlinks the field from `card`
+  only (it stays on `validate`, which is intentionally web-only) and removes any
+  authored card-section values for it; the web `CardStyle` renderer keeps a fixed
+  Mantine `padding="md"` inner default (also the `Card.Section` image-bleed
+  reference) and authors now tune padding through the shared **Spacing** control.
+  Coupled with `@selfhelp/shared` `1.14.11` (`ICardStyle.web_card_padding`
+  removed) and the frontend `card` renderer. Docs (`docs/reference/styles/
+  layout.md`, the AI prompt template, the regenerated style-field audit) updated
+  to match. (migration `Version20260619205908`)
+
 ## CMS Styles — kebab-case style names
 
 - **The remaining camelCase CMS style names were renamed to kebab-case** so the
@@ -32,6 +48,64 @@
   layout/composite/forms pages) plus the affected developer/API docs were
   updated to match. (migration `Version20260618120000`; `StyleNames`,
   `PageService`, `AdminSectionUtilityService`)
+
+## CMS Styles — accordion/accordion-item authoring polish
+
+- **The `accordion` and `accordion-item` styles got a cross-platform field
+  clean-up and a mobile rebuild** (migration `Version20260619183601`). The
+  accordion variant is no longer web-only: `web_accordion_variant` was renamed
+  (id-stable, options + authored values preserved) to the shared
+  `shared_accordion_variant`, so it flips from the Web card to the Shared card
+  (`StyleRepository::deriveFieldScope`) and is read by both platforms — web maps
+  it to the Mantine `variant` (default/contained/filled/separated), mobile maps
+  it through `@selfhelp/shared` `mapAccordionVariantToHeroUiVariant` onto the
+  HeroUI Native Accordion `variant` (`default`/`surface`). The field is now
+  `clearable`. `accordion-item` gains the existing translatable `description`
+  field as an optional subtitle under the item label (empty = hidden). The
+  mobile renderers were rebuilt on the HeroUI Native `Accordion` compound
+  (themed + animated, theme-aware text via `useAppColors`), fixing the previous
+  hard-coded `#e9ecef` border + uncoloured `<Text>` dark-mode bugs. This is a
+  **coordinated change** paired with `@selfhelp/shared` `>=1.14.8` and the
+  coupled web + mobile renderers. (migration `Version20260619183601`;
+  `AdminStyleEndpointsTest::testAccordionPolishWaveFieldsAndScopes`,
+  `Version20260619183601RoundTripTest`; docs `docs/reference/styles/composite.md`)
+
+## CMS Styles — card/card-segment/checkbox/chip/code/title authoring polish
+
+- **Seven core styles got a cross-platform field clean-up and an authoring-UX
+  upgrade** (migration `Version20260619191224`), continuing the style polish
+  wave. Highlights:
+  - **`card`** gains two optional auto-styled **content** fields — `title` (an
+    automatic heading) and `img_src` (an asset-picker top image). They render
+    only when filled (empty = a plain card, exactly as before) and **never**
+    auto-create a child section — authors keep full manual control with child
+    sections. Border becomes cross-platform: `card` drops the web-only
+    `web_border` and gains the new shared `shared_border` (Mantine `withBorder`
+    on web, a themed border on mobile). The global `web_border` field stays for
+    `indicator`/`notification`/`paper`/`validate`, which remain web-only for now.
+  - **`card-segment`** gains the new shared `shared_border` (Mantine
+    `Card.Section withBorder`; a themed divider on mobile) and the new web-only
+    `web_segment_inherit_padding` (Mantine `inheritPadding`).
+  - **`checkbox`** promotes `web_checkbox_label_position` → `shared_label_position`
+    (label side is honoured on both platforms).
+  - **`chip`** promotes `web_chip_variant` → `shared_chip_variant` (id-stable;
+    keeps the `filled`/`outline`/`light` enum — distinct from the wider generic
+    `shared_variant` — and is now clearable).
+  - **`code`** promotes `web_code_block` → `code_block` (cross-platform
+    block-vs-inline behaviour, unprefixed) and links `shared_radius`.
+  - **`title`** links `shared_color`, and promotes `web_title_order` →
+    `title_order` (semantic heading level on both platforms) and
+    `web_title_line_clamp` → `shared_line_clamp` (mobile `numberOfLines`);
+    `web_title_text_wrap` stays web-only.
+  - Field scope is derived from the name prefix
+    (`StyleRepository::deriveFieldScope`), so each rename flips the field from the
+    Web card to the Shared/Properties card and makes it readable by the mobile
+    renderer. Relationships and authored content reference fields by id, so the
+    id-stable renames never break a link. This is a **coordinated change** paired
+    with `@selfhelp/shared` and the coupled web + mobile renderers.
+    (`AdminStyleEndpointsTest::testCardFamilyAndTypographyPolishWaveFieldsAndScopes`,
+    `Version20260619191224RoundTripTest`; docs `docs/reference/styles/layout.md`,
+    `typography.md`, `forms.md`, `interactive.md`)
 
 ## CMS Styles — alert/badge/avatar/button/login authoring polish
 

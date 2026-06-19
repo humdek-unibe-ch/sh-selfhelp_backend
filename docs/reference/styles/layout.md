@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 layout styles (`@selfhelp/shared` `layout` category).
-Last verified: 2026-06-16.
+Last verified: 2026-06-19.
 Source of truth: `src/types/styles/layout.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Layout styles arrange other sections on the page. They are almost all
@@ -205,11 +205,27 @@ and `box`/`flex` when you need full control.
 
 **Purpose.** Mantine `Card` — a bordered, rounded content card.
 
-**Administrators.** Group related content (image + title + text + button) into a card. Combine with `card-segment` for full-bleed sections inside the card.
+**Administrators.** Group related content into a card. For a quick good-looking
+result you can fill in the optional **Title** and **Image** fields — when set,
+the renderer draws a styled heading and a top image automatically; leave them
+empty and the card renders exactly as before (a plain container). These fields
+are a convenience layered on top of manual composition: you can still build the
+same thing with child sections (and combine with `card-segment` for full-bleed
+sections). Filling a field never adds a section — it only changes how this card
+draws. Turn **Border** on/off and pick a radius/shadow; padding is the shared
+**Spacing** control (there is no separate card-padding field).
 
-**Developers.** Renders `<Card>`.
+**Developers.** Renders `<Card>`. `title` (translatable) renders as an automatic
+`<Text fw>` heading when non-empty; `img_src` renders as a top
+`<Card.Section><Image></Card.Section>` when non-empty. Border is the
+cross-platform `shared_border` (Mantine `withBorder`; themed border on mobile).
 
-**Distinctive fields.** `web_card_shadow`, `web_border` (`0`/`1`), `web_radius`.
+**Distinctive fields.** `title` (optional auto-styled heading, content),
+`img_src` (optional top image via the asset picker, content), `shared_border`
+(`0`/`1`), `shared_radius`, `web_card_shadow`. Padding is the portable
+`shared_spacing` (`pt`/`pb`/`ps`/`pe`) — there is no web-only card-padding field;
+the renderer keeps a fixed Mantine `padding="md"` inner default (also the
+`Card.Section` image-bleed reference).
 
 **Children.** Yes (often `card-segment`).
 
@@ -220,10 +236,15 @@ and `box`/`flex` when you need full control.
 **Purpose.** Mantine `Card.Section` — a full-width segment inside a `card` (e.g. an image that bleeds to the card edges).
 
 **Administrators.** Place inside a `card` to make a part of it span edge to edge.
+Turn **Border** on to separate the segment with a divider line; turn **Inherit
+padding** on (web) to align the segment with the card's horizontal padding.
 
 **Developers.** Renders `<Card.Section>`. Only meaningful as a `card` child.
+`shared_border` maps to Mantine `withBorder` (a themed divider on mobile);
+`web_segment_inherit_padding` maps to Mantine `inheritPadding` (web only).
 
-**Distinctive fields.** None beyond the common/spacing fields.
+**Distinctive fields.** `shared_border` (`0`/`1`), `web_segment_inherit_padding`
+(`0`/`1`, web only).
 
 **Children.** Yes.
 
