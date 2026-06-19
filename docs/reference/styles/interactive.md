@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 interactive styles (`@selfhelp/shared` `interactive` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-19.
 Source of truth: `src/types/styles/interactive.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Interactive styles are buttons, links, badges, and status chrome. Read
@@ -17,11 +17,18 @@ cosmetic props (`web_size`, `shared_color`, `web_radius`,
 
 **Purpose.** Mantine `Button` — the primary call-to-action. Can act as a link and can ask for confirmation before navigating.
 
-**Administrators.** Set the `label`. To make it navigate, turn on `is_link` and set either `page_keyword` (an internal page) or `url` (external); `open_in_new_tab` opens a new tab. For destructive/important actions, fill the `confirmation_*` fields to pop a confirm dialog first.
+**Administrators.** Set the `label`. To make it navigate, turn on `is_link` and set either `page_keyword` (an internal page) or `url` (external); `open_in_new_tab` opens a new tab. Pick the cross-platform `shared_variant` (filled / light / outline / subtle / transparent / white) so the button looks the same on web and mobile. For destructive/important actions, fill the `confirmation_*` fields to pop a confirm dialog first.
 
-**Developers.** Renders `<Button>`; when `is_link` it wraps navigation. When `confirmation_title`/`confirmation_message` are set, a confirmation modal gates the action (with `confirmation_continue` / `label_cancel` buttons). `web_fullwidth`, `web_compact`, and `web_auto_contrast` tune layout/contrast.
+**Developers.** Renders `<Button>`; when `is_link` it wraps navigation (internal `page_keyword` takes precedence over the external `url`). When `confirmation_title`/`confirmation_message` are set, a confirmation modal gates the action (with `confirmation_continue` / `label_cancel` buttons). The visual variant comes from `shared_variant` (mapped to the Mantine variant on web and HeroUI on mobile); `shared_full_width`, `web_compact`, and `web_auto_contrast` tune layout/contrast.
 
-**Distinctive fields.** `label`, `is_link`, `page_keyword`, `url`, `open_in_new_tab`, `disabled`, `web_left_icon` / `web_right_icon`, `web_fullwidth`, `web_compact`, `web_auto_contrast`, `confirmation_title`, `confirmation_message`, `confirmation_continue`, `label_cancel`.
+**Distinctive fields.** `label`, `is_link`, `page_keyword`, `url`, `open_in_new_tab`, `disabled`, `shared_variant`, `shared_full_width`, `web_left_icon` / `web_right_icon`, `web_compact`, `web_auto_contrast`, `confirmation_title`, `confirmation_message`, `confirmation_continue`, `label_cancel`.
+
+> **Audit note (see [style-field-audit.md](./style-field-audit.md) §5).**
+> **Landed (backend `Version20260619131830`):** the visual variant is now the
+> cross-platform `shared_variant` (default `filled`); existing `web_variant`
+> values were migrated onto it and the button-only `web_variant` link was
+> removed. The `url` field is now linked so external links work without an
+> internal `page_keyword`.
 
 **Children.** No.
 
@@ -63,16 +70,17 @@ cosmetic props (`web_size`, `shared_color`, `web_radius`,
 [style-mobile-mapping.md](./style-mobile-mapping.md) §5.
 
 **Administrators.** Surface a notice, warning, or success message. Set the title
-and `content`, pick a colour/variant (web), and optionally allow it to be
-dismissed.
+and `content`, pick a colour (and a web `web_variant`), and optionally allow it
+to be dismissed with the `closable` toggle.
 
 **Developers.** The message comes from `content` (read by both platforms; mobile
-maps it to `Alert.Description`). On web `web_with_close_button` adds a dismiss
-control. The mobile status colour comes from `shared_intent` via the shared
-mapper, not from `shared_color`. Can also contain child sections.
+maps it to `Alert.Description`). `closable` (a cross-platform `common` toggle)
+adds a dismiss control on both web and mobile. The colour comes from
+`shared_color` via the shared mapper; `web_variant` and `web_left_icon` are
+web-only. Can also contain child sections.
 
-**Distinctive fields.** `content` (the message), the title field,
-`web_with_close_button`, `shared_color`, `web_variant`, `web_left_icon`.
+**Distinctive fields.** `content` (the message), `alert_title`, `closable`,
+`shared_color`, `shared_radius`, `web_variant`, `web_left_icon`.
 
 > **Audit note (see [style-field-audit.md](./style-field-audit.md) §5).**
 > **Landed (backend `Version20260619090609`):** `value` (duplicated `content`) and
@@ -82,6 +90,11 @@ mapper, not from `shared_color`. Can also contain child sections.
 > coupled renderer wave (the shared type's stale `close_button_label` is dropped
 > there). Tracked in
 > [style-refactoring-recommendations.md](./style-refactoring-recommendations.md).
+>
+> **Landed (backend `Version20260619131830`):** the dead `shared_size` link
+> (Mantine `Alert` has no `size`) was removed, and `web_with_close_button` was
+> renamed to the cross-platform `closable` (`common` scope) so mobile can honour
+> the dismiss control too.
 
 **Children.** Yes.
 
@@ -91,11 +104,16 @@ mapper, not from `shared_color`. Can also contain child sections.
 
 **Purpose.** Mantine `Badge` — a small status pill/label.
 
-**Administrators.** Tag content with a short label (e.g. "New", a count, a status). Set the `label`, colour, and variant.
+**Administrators.** Tag content with a short label (e.g. "New", a count, a status). Set the `label`, colour, and the cross-platform `shared_variant` (filled / light / outline / dot …). Turn on `circle` for a round count chip. `web_variant` is an optional web-only override for web-specific looks.
 
-**Developers.** Renders `<Badge>`. Supports left/right icons and `web_auto_contrast`.
+**Developers.** Renders `<Badge>`. The visual variant comes from `shared_variant` (mapped to the Mantine variant on web and HeroUI on mobile); the optional `web_variant` overrides it on web only when set. `circle` is a cross-platform `common` toggle that makes the badge a circle (equal width/height, no horizontal padding). Supports left/right icons and `web_auto_contrast`.
 
-**Distinctive fields.** `label`, `web_left_icon` / `web_right_icon`, `web_auto_contrast`.
+**Distinctive fields.** `label`, `shared_variant`, `circle`, `web_left_icon` / `web_right_icon`, `web_auto_contrast`, `web_variant` (web-only override).
+
+> **Audit note.** **Landed (backend `Version20260619131830`):** added the
+> cross-platform `shared_variant` (default `filled`; existing `web_variant`
+> values migrated onto it) and the `circle` toggle. `web_variant` is kept as a
+> web-only escape hatch (default empty) for web-specific variants such as `dot`.
 
 **Children.** No.
 
@@ -105,11 +123,17 @@ mapper, not from `shared_color`. Can also contain child sections.
 
 **Purpose.** Mantine `Avatar` — a user/profile image, initials, or icon placeholder.
 
-**Administrators.** Show a profile picture. Provide `img_src`, or fall back to `web_avatar_initials` / an icon when there is no image.
+**Administrators.** Show a profile picture. Provide `img_src`; when there is no image, set `name` to auto-generate initials and a stable colour, or fall back to explicit `web_avatar_initials` / an icon.
 
-**Developers.** Renders `<Avatar src>`; falls back to initials/icon.
+**Developers.** Renders `<Avatar src>`; when `img_src` is empty it falls back to initials derived from `name` (cross-platform `common`, also seeds Mantine's auto colour), then `web_avatar_initials`, then `web_left_icon`. The visual variant is the web-only `web_variant`.
 
-**Distinctive fields.** `img_src`, `alt`, `web_avatar_initials`, `web_left_icon`, `web_avatar_variant`.
+**Distinctive fields.** `img_src`, `alt`, `name`, `web_avatar_initials`, `web_left_icon`, `web_variant`.
+
+> **Audit note.** **Landed (backend `Version20260619131830`):** the existing
+> `name` field is now linked so authors get auto-initials/colour without manual
+> `web_avatar_initials`. The variant field on web is `web_variant` (the
+> `@selfhelp/shared` type's stale `web_avatar_variant` is corrected in the
+> coupled shared/renderer wave).
 
 **Children.** No.
 

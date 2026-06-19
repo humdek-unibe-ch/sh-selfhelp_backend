@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (auth API, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-04.
-Source of truth: `ILoginStyle` in `@selfhelp/shared`, `LoginStyle.tsx`, the auth login endpoint, and `migrations/Version20260604111011.php` (for `label_register`).
+Last verified: 2026-06-19.
+Source of truth: `ILoginStyle` in `@selfhelp/shared`, `LoginStyle.tsx`, the auth login endpoint, `migrations/Version20260604111011.php` (for `label_register`), and `migrations/Version20260619131830.php` (for `subtitle`).
 
 ## Summary
 
@@ -27,13 +27,14 @@ defaults are the frontend fallback used when the field is empty.
 | Field | Type | `display` | Default | Purpose |
 |-------|------|-----------|---------|---------|
 | `login_title` | text | 1 | `Welcome back!` | Form heading. |
+| `subtitle` | text | 1 | `` (empty) | Optional subtitle under the title; hidden when empty. |
 | `label_user` | text | 1 | `Email/Username` | Email input label/placeholder. |
 | `label_pw` | text | 1 | `Password` | Password input label/placeholder. |
 | `label_login` | text | 1 | `Sign in` | Submit button label. |
 | `label_pw_reset` | text | 1 | `Forgot password?` | Reset-password link label (→ `/reset`). |
 | `label_register` | text | 1 | `Create account` **(seeded)** | Registration link label (→ register page). |
 | `alert_fail` | text | 1 | `Invalid email or password.` | Failure notification message (overridden by the API error when present). |
-| `type` | text | 0 | `light` | Button variant: `dark` → filled, otherwise light. |
+| `shared_color` | color-picker | 0 | `dark` | Submit button colour (cross-platform, via the shared mapper). |
 | spacing fields | various | 0 | — | Inherited from `IStyleWithSpacing`. |
 
 de-CH translation seeded for `label_register`: `Konto erstellen`.
@@ -65,5 +66,9 @@ second `Anchor` below the submit button. All other labels use the
 
 ## Change history
 
+- `2026-06-19` — Linked the optional translatable `subtitle` content field
+  (`Version20260619131830`) and documented the existing `shared_color` submit
+  colour. Removed the stale `type` field row (no such DB field; the dead `type`
+  read in the renderer is dropped in the coupled shared/renderer wave).
 - `2026-06-04` — Added the CMS-managed `label_register` link label
   (`Version20260604111011`).
