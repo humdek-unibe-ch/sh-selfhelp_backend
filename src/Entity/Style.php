@@ -14,6 +14,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'uq_styles_name', columns: ['name'])]
 #[ORM\Index(name: 'idx_styles_id_style_groups', columns: ['id_style_groups'])]
 #[ORM\Index(name: 'idx_styles_id_plugins', columns: ['id_plugins'])]
+#[ORM\Index(name: 'idx_styles_id_render_target', columns: ['id_render_target'])]
 class Style
 {
     public function __construct()
@@ -61,6 +62,21 @@ class Style
     #[ORM\ManyToOne(targetEntity: \App\Entity\Plugin\Plugin::class)]
     #[ORM\JoinColumn(name: 'id_plugins', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?\App\Entity\Plugin\Plugin $plugin = null;
+
+    /**
+     * Render target for this style, lookup-backed by `styleRenderTargets`
+     * (`web` | `mobile` | `both`). NULL is treated as `both` by the catalog
+     * serializer, so legacy rows keep rendering on every platform.
+     * `ON DELETE SET NULL` matches the other lookup FKs.
+     *
+     * This is distinct from the request *client* platform (resolved by
+     * {@see \App\Service\Core\VariableResolverService::getPlatform()}) and from
+     * the *page access* target (`pages.id_page_access_types`). It declares only
+     * where a style is intentionally renderable.
+     */
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_render_target', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Lookup $renderTarget = null;
 
     public function getId(): ?int
     {
@@ -125,6 +141,18 @@ class Style
     public function setPlugin(?\App\Entity\Plugin\Plugin $plugin): static
     {
         $this->plugin = $plugin;
+
+        return $this;
+    }
+
+    public function getRenderTarget(): ?Lookup
+    {
+        return $this->renderTarget;
+    }
+
+    public function setRenderTarget(?Lookup $renderTarget): static
+    {
+        $this->renderTarget = $renderTarget;
 
         return $this;
     }

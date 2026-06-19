@@ -16,6 +16,7 @@ use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
 use App\Entity\StylesField;
 use App\Exception\ServiceException;
+use App\Repository\StyleRepository;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\CMS\DataTableService;
@@ -125,6 +126,10 @@ class SectionFieldService extends BaseService
             $fieldData = [
                 'id' => $fieldId,
                 'name' => $field->getName(),
+                // Single backend source of truth for field scope (mobile rendering
+                // plan, section 6.4). The CMS section inspector groups by this value
+                // and must not re-derive it from the field name or display flag.
+                'scope' => StyleRepository::deriveFieldScope($this->asString($field->getName()), $field->isDisplay() ? 1 : 0),
                 'title' => $stylesField->getTitle(),
                 'type' => $fieldTypeName,
                 'default_value' => $stylesField->getDefaultValue(),
