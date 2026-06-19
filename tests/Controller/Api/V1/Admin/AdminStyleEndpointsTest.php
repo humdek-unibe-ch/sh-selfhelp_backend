@@ -97,6 +97,61 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         self::assertTrue($sawWeb, 'The catalog must expose web_* fields.');
     }
 
+    /**
+     * Regression for the 2026-06-19 style polish wave (migration
+     * Version20260619131830): alert/badge/avatar/button/login field + scope
+     * changes must be reflected by the live schema endpoint.
+     */
+    public function testStylePolishWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // alert: dead shared_size removed; close toggle is now cross-platform common.
+        $alert = $this->fieldsOf($data, 'alert');
+        self::assertArrayNotHasKey('shared_size', $alert, 'alert.shared_size must be removed (dead field).');
+        self::assertArrayNotHasKey('web_with_close_button', $alert, 'alert.web_with_close_button must be renamed to closable.');
+        self::assertSame('common', $alert['closable']['scope'] ?? null, 'alert.closable must be a common (cross-platform) field.');
+
+        // badge: primary cross-platform shared_variant + circle; web_variant escape hatch.
+        $badge = $this->fieldsOf($data, 'badge');
+        self::assertSame('shared', $badge['shared_variant']['scope'] ?? null, 'badge.shared_variant must be shared.');
+        self::assertSame('common', $badge['circle']['scope'] ?? null, 'badge.circle must be common.');
+        self::assertSame('web', $badge['web_variant']['scope'] ?? null, 'badge.web_variant remains a web-only escape hatch.');
+
+        // avatar: name added for auto-initials.
+        $avatar = $this->fieldsOf($data, 'avatar');
+        self::assertSame('common', $avatar['name']['scope'] ?? null, 'avatar.name must be linked as a common field.');
+
+        // button: web_variant -> shared_variant (clean promotion) + url.
+        $button = $this->fieldsOf($data, 'button');
+        self::assertSame('shared', $button['shared_variant']['scope'] ?? null, 'button.shared_variant must be shared.');
+        self::assertArrayNotHasKey('web_variant', $button, 'button.web_variant must be unlinked (promoted to shared_variant).');
+        self::assertSame('common', $button['url']['scope'] ?? null, 'button.url must be linked as a common field.');
+
+        // login: optional subtitle + the already-present shared_color.
+        $login = $this->fieldsOf($data, 'login');
+        self::assertSame('content', $login['subtitle']['scope'] ?? null, 'login.subtitle must be translatable content.');
+        self::assertSame('shared', $login['shared_color']['scope'] ?? null, 'login.shared_color must be shared.');
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<string, array<string, mixed>>
+     */
+    private function fieldsOf(array $schema, string $style): array
+    {
+        self::assertArrayHasKey($style, $schema, "Style '{$style}' must exist in the schema.");
+        $entry = $schema[$style];
+        self::assertIsArray($entry);
+        self::assertArrayHasKey('fields', $entry, "Style '{$style}' must expose fields.");
+        $fields = $entry['fields'];
+        self::assertIsArray($fields, "Style '{$style}' fields must be an object.");
+
+        /** @var array<string, array<string, mixed>> $fields */
+        return $fields;
+    }
+
     public function testStylesSchemaEnforcesTheAdminOnlyMatrix(): void
     {
         $this->assertAdminOnlyMatrix('GET', '/cms-api/v1/admin/styles/schema');

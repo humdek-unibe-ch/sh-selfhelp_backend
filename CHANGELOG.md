@@ -33,6 +33,44 @@
   updated to match. (migration `Version20260618120000`; `StyleNames`,
   `PageService`, `AdminSectionUtilityService`)
 
+## CMS Styles — alert/badge/avatar/button/login authoring polish
+
+- **The `alert`, `badge`, `avatar`, `button` and `login` styles got a field
+  clean-up so their cross-platform visual semantics live in `shared_*`/`common`
+  fields and the catalog drops dead/mis-scoped fields** (migration
+  `Version20260619131830`, FK-safe + reversible):
+  - **alert** — removed the dead `shared_size` link (Mantine `Alert` has no
+    `size`) and renamed the web-only `web_with_close_button` to the
+    cross-platform `closable` (`common` scope) so mobile can honour the dismiss
+    control.
+  - **badge** — added the cross-platform `shared_variant` (default `filled`;
+    existing `web_variant` values migrated onto it) and a `circle` toggle
+    (`common`) for round count chips; `web_variant` is kept as a web-only escape
+    hatch (default empty) for web-specific variants such as `dot`.
+  - **avatar** — linked the existing `name` field (`common`) so authors get
+    auto-initials + a stable auto colour without filling `web_avatar_initials`.
+  - **button** — promoted the variant to the cross-platform `shared_variant`
+    (default `filled`; existing `web_variant` values migrated onto it) and
+    removed the button-only `web_variant` link; linked the existing `url` field
+    so external links work without an internal `page_keyword`.
+  - **login** — linked the optional translatable `subtitle` content field
+    (shown under the title; hidden when empty); `shared_color` (already present)
+    is now documented as the submit-button colour.
+  - The `admin/styles/schema` contract, the regenerated
+    `docs/reference/styles/style-field-audit.generated.json`, the
+    `interactive.md` / `auth/login.md` reference pages, a migration round-trip
+    test and an `AdminStyleEndpointsTest` regression covering the new
+    fields/scopes all ship in the same change. The coupled `@selfhelp/shared`
+    type + web/mobile renderer reads (incl. correcting the shared type's stale
+    `web_avatar_variant`/`type`) land in the renderer wave.
+  - **Compatibility:** the field renames finalise the (still-unreleased) `0.1.15`
+    style-schema contract, so `release-manifest.json` `supports.frontend` rose to
+    `>=0.1.23 <0.2.0` (the frontend that reads the renamed `closable` /
+    `shared_variant` names); `selfhelp.cms_version` stays `0.1.15` (unreleased —
+    the changes fold into it) and `docs/developer/cross-repo-compatibility-matrix.md`
+    was updated to the `frontend >=0.1.23 ⇄ core >=0.1.15`, shared `1.14.6`,
+    mobile `0.1.2` snapshot.
+
 # v0.1.13
 
 ## System Maintenance — Frontend update compatibility
