@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-17.
+Last verified: 2026-06-18.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -95,12 +95,15 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-06-17):** the 0.1.12 core "section detach/destroy + batch
-> `GET /admin/sections/pages`" API (which removed the single-section and the
-> `force-delete` routes) is adopted by frontend 0.1.18. So the live pairing is
-> **frontend `>=0.1.18` ⇄ core `>=0.1.12`** (both still `<0.2.0`); anything older on
-> either side is an incompatible mix. `@selfhelp/shared` stays the type anchor on top
-> of this version gate.
+> **Current floor (2026-06-18):** the 0.1.15 core mobile-rendering style-schema
+> contract — style `renderTarget`, a required field `scope` on every style-schema
+> field (drives the frontend inspector grouping), and the shared_/web_ field
+> taxonomy, with the duplicate `pages.id_platform` removed in favour of the
+> existing page access type — is adopted by frontend 0.1.22. So the live pairing
+> is **frontend `>=0.1.22` ⇄ core `>=0.1.15`** (both still `<0.2.0`); anything
+> older on either side is an incompatible mix. `@selfhelp/shared` (now `1.11.0`,
+> which additionally owns the single-source mobile UI adapter contract) stays the
+> type anchor on top of this version gate.
 
 ## Current matrix (snapshot)
 
@@ -109,15 +112,15 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.12` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.15` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.7.0` | npm |
-| `sh-selfhelp_frontend` | `0.1.19` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.7.0` | shared minor `1.7` |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.12 <0.2.0` | core that ships the `/cms-api` it needs |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.18 <0.2.0` | frontend that adopted its `/cms-api` |
-| `sh-selfhelp_mobile` | `0.1.0` | — |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.6.0` (caret covers `1.7.x`) | shared `1.x` line |
+| `@selfhelp/shared` | `1.11.0` | npm |
+| `sh-selfhelp_frontend` | `0.1.22` | — |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.10.0` (caret covers `1.11.x`) | shared `1.x` line |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.15 <0.2.0` | core that ships the render-target + field-scope style schema |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.22 <0.2.0` | frontend that adopted the render-target + field-scope style schema |
+| `sh-selfhelp_mobile` | `0.1.1` | — |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.11.0` | shared `1.x` line (mobile UI adapter contract) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |
