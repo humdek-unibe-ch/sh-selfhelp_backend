@@ -21,7 +21,7 @@ cosmetic props (`web_size`, `shared_color`, `web_radius`,
 
 **Developers.** Renders `<Button>`; when `is_link` it wraps navigation (internal `page_keyword` takes precedence over the external `url`). When `confirmation_title`/`confirmation_message` are set, a confirmation modal gates the action (with `confirmation_continue` / `label_cancel` buttons). The visual variant comes from `shared_variant` (mapped to the Mantine variant on web and HeroUI on mobile); `shared_full_width`, `web_compact`, and `web_auto_contrast` tune layout/contrast.
 
-**Distinctive fields.** `label`, `is_link`, `page_keyword`, `url`, `open_in_new_tab`, `disabled`, `shared_variant`, `shared_full_width`, `web_left_icon` / `web_right_icon`, `web_compact`, `web_auto_contrast`, `confirmation_title`, `confirmation_message`, `confirmation_continue`, `label_cancel`.
+**Distinctive fields.** `label`, `is_link`, `page_keyword`, `url`, `open_in_new_tab`, `disabled`, `shared_variant`, `shared_full_width`, `web_left_icon` / `web_right_icon`, `web_compact`, `web_auto_contrast`, `confirmation_title`, `confirmation_message`, `confirmation_continue`, `label_cancel`, `mobile_button_feedback` (mobile-only HeroUI Native press feedback: scale-highlight / scale-ripple / scale / none).
 
 > **Audit note (see [style-field-audit.md](./style-field-audit.md) §5).**
 > **Landed (backend `Version20260619131830`):** the visual variant is now the

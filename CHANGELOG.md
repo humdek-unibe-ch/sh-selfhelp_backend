@@ -1,3 +1,30 @@
+# v0.1.17
+
+## CMS Styles — mobile-only (HeroUI Native) capability pass
+
+- **Migration `Version20260622145334`** adds 7 `mobile_*` fields (all additive /
+  id-stable) for HeroUI Native props that have **no web/Mantine equivalent**, so
+  authors can tune the native look from the CMS without affecting the web
+  renderer (which ignores `mobile_*`):
+  - **`select` + `combobox`**: `mobile_select_presentation` (`select`) — how the
+    HeroUI Native option list opens: `bottom-sheet` (default), `dialog`, or
+    `popover`. Left empty → the renderer's `bottom-sheet` default. Combobox reuses
+    the mobile select renderer, so it links the same field.
+  - **`button`**: `mobile_button_feedback` (`select`) — native press feedback:
+    `scale-highlight` (default), `scale-ripple`, `scale`, `none`.
+  - **`slider` / `range-slider`**: `mobile_slider_show_value` /
+    `mobile_range_slider_show_value` (`checkbox`, default `1`) — toggle the HeroUI
+    Native `Slider.Output` value bubble.
+  - **`text-input` / `textarea` / `checkbox`**: `mobile_input_variant` /
+    `mobile_textarea_variant` / `mobile_checkbox_variant` (`segment`, default
+    `primary`) — HeroUI Native `primary`/`secondary` field variant.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622145334RoundTripTest.php`
+  (`#[Group('migration')]`) proves `up()`/`down()` reversibility.
+- The new author fields are consumed only by the mobile renderer (backend `src/`
+  reads none of them; the web renderer ignores `mobile_*`); requires
+  `@selfhelp/shared` ≥ 1.14.18. No `/cms-api` route, response-shape, or
+  permission change, so the frontend ⇄ backend `supports.*` floors are unchanged.
+
 # v0.1.16
 
 ## CMS Styles — form / interactive capability pass

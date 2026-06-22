@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
@@ -85,7 +85,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<TextInput>`. Supports left/right icons and a variant. `shared_max_length` caps characters on both platforms (HTML / RN `maxLength`); the `mobile_*` knobs map to the native keyboard (`keyboardType` / `autoCapitalize` / `secureTextEntry`) and are mobile-only.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `shared_max_length` (web + mobile), `mobile_keyboard_type` / `mobile_auto_capitalize` / `mobile_secure_entry` (mobile-only keyboard knobs), `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `shared_max_length` (web + mobile), `mobile_keyboard_type` / `mobile_auto_capitalize` / `mobile_secure_entry` (mobile-only keyboard knobs), `mobile_input_variant` (mobile-only HeroUI Native primary/secondary field style), `translatable`.
 
 **Children.** No.
 
@@ -99,7 +99,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Textarea>` (or a Markdown editor when `markdown_editor` is set). Autosize via `web_textarea_autosize` + min/max rows.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `shared_max_length` (web + mobile), `mobile_auto_capitalize` (mobile-only), `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `shared_max_length` (web + mobile), `mobile_auto_capitalize` / `mobile_textarea_variant` (mobile-only), `translatable`.
 
 **Children.** No.
 
@@ -127,7 +127,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders a select; `options` is a serialized option list. `max` caps multi-select count.
 
-**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`. *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
+**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`, `mobile_select_presentation` (mobile-only: how the option list opens — bottom-sheet / dialog / popover). *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
 
 **Children.** No.
 
@@ -155,7 +155,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Checkbox>`. `shared_label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
 
-**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `shared_label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `shared_label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`, `mobile_checkbox_variant` (mobile-only HeroUI Native primary/secondary).
 
 **Children.** No.
 
@@ -169,7 +169,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Slider>` on web. Marks come from `slider_marks_values`. On mobile (`components/styles/forms/Slider.tsx`) it renders the HeroUI Native `Slider` compound (draggable single thumb + tap-to-position) bound to the form value through `web_numeric_min` / `web_numeric_max` / `web_numeric_step`.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `slider_marks_values`, `web_slider_show_label`, `web_slider_labels_always_on`, `web_slider_inverted`, `web_slider_thumb_size`, `web_slider_required`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `slider_marks_values`, `web_slider_show_label`, `web_slider_labels_always_on`, `web_slider_inverted`, `web_slider_thumb_size`, `web_slider_required`, `mobile_slider_show_value` (mobile-only: toggle the HeroUI Native value bubble).
 
 **Children.** No.
 
@@ -183,7 +183,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<RangeSlider>` on web. On mobile (`components/styles/forms/RangeSlider.tsx`) it renders the HeroUI Native `Slider` compound in two-thumb mode (its value supports `number[]`), serialising the pair to the canonical `"lo,hi"` form value.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `range_slider_marks_values`, `web_range_slider_show_label`, `web_range_slider_labels_always_on`, `web_range_slider_inverted`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `range_slider_marks_values`, `web_range_slider_show_label`, `web_range_slider_labels_always_on`, `web_range_slider_inverted`, `mobile_range_slider_show_value` (mobile-only: toggle the HeroUI Native value bubble).
 
 **Children.** No.
 
@@ -225,7 +225,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders a Combobox over `combobox_options`. `web_combobox_multi_select`, `_searchable`, `_creatable`, `_clearable` toggle behaviours.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`, `mobile_select_presentation` (mobile-only: reuses the select renderer; bottom-sheet / dialog / popover).
 
 **Children.** No.
 
