@@ -16,6 +16,7 @@ use App\Service\Core\ApiResponseFormatter;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -167,12 +168,36 @@ class AdminStyleController extends AbstractController
      *
      * GET /cms-api/v1/admin/ai/section-prompt-template
      *
+     * Additive, back-compatible query parameters (no params = legacy behaviour:
+     * the full prompt as `text/markdown`):
+     * - `format=json` returns the structured style catalog (the same shape as
+     *   `/admin/styles/schema`) in the standard JSON envelope, for machine
+     *   callers that build their own prompt. `format=markdown` (default) returns
+     *   the rendered prompt markdown.
+     * - `styles=a,b,c` restricts the catalog to those style names (compact /
+     *   task-filtered prompt). Always request a style's required slot children
+     *   too. Unknown names are ignored; an empty/absent value = the full catalog.
+     *
      * Permission: admin.page.export (same as export/import). Locked down via rel_api_routes_permissions.
      */
-    public function getSectionPromptTemplate(): Response
+    public function getSectionPromptTemplate(Request $request): Response
     {
+        $only = $this->parseStyleFilter($request->query->get('styles'));
+        $format = strtolower((string) $request->query->get('format', 'markdown'));
+
+        if ($format === 'json') {
+            $schema = $this->promptTemplateService->filterSchema(
+                $this->styleSchemaService->getSchema(),
+                $only
+            );
+            return $this->apiResponseFormatter->formatSuccess(
+                $schema,
+                'responses/style/stylesSchema'
+            );
+        }
+
         try {
-            $markdown = $this->promptTemplateService->render();
+            $markdown = $this->promptTemplateService->render($only);
         } catch (\RuntimeException $e) {
             return $this->apiResponseFormatter->formatError(
                 $e->getMessage(),
@@ -184,5 +209,22 @@ class AdminStyleController extends AbstractController
         $response->headers->set('Content-Type', 'text/markdown; charset=utf-8');
         $response->headers->set('Cache-Control', 'private, max-age=60');
         return $response;
+    }
+
+    /**
+     * Parse the additive `?styles=a,b,c` filter into a clean allow-list.
+     *
+     * @return list<string>|null Null when no usable filter was supplied (full catalog).
+     */
+    private function parseStyleFilter(mixed $raw): ?array
+    {
+        if (!is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+        $names = array_values(array_unique(array_filter(
+            array_map('trim', explode(',', $raw)),
+            static fn (string $name): bool => $name !== ''
+        )));
+        return $names === [] ? null : $names;
     }
 }
