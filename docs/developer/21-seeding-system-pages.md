@@ -82,10 +82,10 @@ build the content out of the same Mantine-flavoured catalogue admins use
 in the UI:
 
 - `paper` / `card` / `card-segment` — visual containers
-- `title` (`web_title_order: 1` / `2` / `3`) — headings
+- `title` (`title_order: 1` / `2` / `3`) — headings
 - `text` — paragraphs
 - `theme-icon` (`web_left_icon`: a tabler icon name like `IconShield`)
-- `alert` (`web_color`: `blue` / `green` / `yellow` / `red`)
+- `alert` (`color`: `blue` / `green` / `yellow` / `red`)
 - `list` + `list-item` — bullet/ordered lists
 - `divider` — visual separators
 - `button` (`label`, `page_keyword`) — call-to-action

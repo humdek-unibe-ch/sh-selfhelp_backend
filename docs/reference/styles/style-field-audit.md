@@ -2,7 +2,7 @@
 
 Audience: Developers and maintainers.
 Status: active (living audit — regenerate the data after catalog/renderer changes).
-Applies to: the 90 core CMS styles and their 430 distinct in-use fields.
+Applies to: the 90 core CMS styles and their 473 distinct in-use fields.
 Last verified: 2026-06-22.
 Source of truth: the live DB catalog (`admin/styles/schema`), `@selfhelp/shared` (registry + types + mapper), the web + mobile dispatch maps. Machine-readable companion: [`style-field-audit.generated.json`](./style-field-audit.generated.json), produced by `scripts/build-style-audit.php`.
 
@@ -30,7 +30,7 @@ sections degrade gracefully when a repo is absent.
 |--------|------:|
 | Styles in DB | 90 |
 | Styles in shared registry / web renderer / mobile renderer | 90 / 90 / 90 |
-| Distinct fields in use | 430 |
+| Distinct fields in use | 473 |
 | Field instances by scope: `content` | 276 |
 | `common` | 453 |
 | `web` | 232 |
@@ -79,59 +79,31 @@ fallback is gone); mobile reads the same field. **Spacing is now one
 cross-platform field** — all 76 spacing-capable styles get portable spacing on
 both platforms.
 
-## 4. DB ↔ shared-type drift
+## 4. DB ↔ shared-type drift — clean
 
-34 styles have DB fields **missing from** their `@selfhelp/shared` interface; 32
-styles declare type fields **absent from** the DB. (Base-inherited `spacing`
-is excluded as a false positive.) The shared types are partly **stale or
-aspirational** — the DB is the truth. High-signal cases:
+The generator parses every `I*Style` interface in `@selfhelp/shared`, compares
+its fields against the DB catalog, and records the delta per style in
+`drift_db_fields_missing_from_type` / `drift_type_fields_missing_from_db`. After
+the field-naming unification wave (`Version20260622165615` + `@selfhelp/shared`
+v1.14.22/1.14.23) and the parser fix below, **all 90 styles report empty drift
+arrays and `has_shared_type: true`** — the shared types now match the installed
+catalog field-for-field.
 
-> **Caveat (read before trusting the cells below).** This drift section is derived
-> by the generator's **regex** TypeScript-interface parser, which can consume an
-> adjacent interface when one closes with formatting that does not match `\n}`
-> (so a style can appear to "own" fields from an unrelated style). Treat the table
-> as **indicative, not exact** — an AST-based comparison gives materially
-> different counts (~65 DB fields missing from types across ~30 styles; ~41 type
-> fields absent from the DB across ~26 styles). Replacing the parser is
-> [refactor §5](./style-refactoring-recommendations.md). The snapshot also
-> **predates the landed `web_color` → `color` (RF-13) and
-> `web_spacing_margin` → `spacing` (RF-15) renames**, so any cell still
-> naming `web_color` / `web_spacing_margin` is historical — those fields no longer
-> exist in the catalog (see §3 and the generated JSON, the authoritative source).
+```
+drift across all 90 styles: 0 db-fields-missing-from-type, 0 type-fields-missing-from-db
+has_shared_type: true for all 90 styles
+```
 
-### 4.1 DB has fields the shared type omits (type under-declares)
-
-| Style | DB fields missing from the type |
-|-------|--------------------------------|
-| `register` | `anonymous_users_registration`, `label_security_question_1`, `label_security_question_2`, `group`, `web_color` |
-| `form-log` / `form-record` | `alert_error`, `alert_success`, `btn_save_label`, `btn_cancel_label`, `btn_cancel_url`, `is_log`, `name`, `redirect_at_end`, `web_buttons_*`, `web_btn_*` |
-| `input` | `label`, `locked_after_submit`, `size`, `radius`, `web_variant`, `web_left_icon`, `web_right_icon` |
-| `select` | `label`, `web_multi_select_data`, `locked_after_submit`, `size`, `radius`, `web_select_clearable`, `web_select_searchable` |
-| `alert` | `value`, `web_alert_with_close_button`, `size` |
-| `image` | `web_image_alt`, `web_image_src` |
-| `video` | `video_src` |
-| `entry-list` | `data_table`, `filter`, `load_as_table`, `own_entries_only`, `scope` |
-| `entry-record` | `data_table`, `filter`, `own_entries_only`, `scope`, `url_param` |
-| `entry-record-delete` | `confirmation_*`, `label_delete`, `own_entries_only`, `type` |
-
-### 4.2 Shared type declares fields the DB lacks (type over-declares / stale)
-
-| Style | Type fields absent from the DB |
-|-------|-------------------------------|
-| `profile` | `profile_timezone_change_*` (8 fields), `alert_fail`, `alert_success`, `alert_del_fail`, `alert_del_success` |
-| `validate` | `label_login`, `success`, `page_keyword`, `value_name`, `cancel_url` |
-| `two-factor-auth` | `label_code`, `label_submit`, `title` |
-| `select` | `alt`, `live_search`, `image_selector`, `allow_clear` |
-| `image` | `height`, `width` |
-| `video` | `sources` |
-| `carousel` | `id_prefix`, `has_crossfade`, `sources` |
-| `alert` | `close_button_label` |
-| `chip` | `web_chip_checked`, `web_chip_multiple`, `web_chip_on_value`, `web_chip_off_value`, `tooltip` |
-| `datepicker` | `web_datepicker_allow_deselect` (see §5 typo), `size`, `radius`, `use_web_style` |
-
-These are the cross-repo contract bugs the shared `@selfhelp/shared` types must be
-reconciled to the DB (or the DB extended) to fix. The current frontend docs page
-for `alert` even lists `close_button_label`, which **does not exist in the DB**.
+> **Parser fix (2026-06-22).** Earlier snapshots of this section were unreliable.
+> The generator's regex interface-parser terminated a body only on `\n}`, so an
+> interface that closed with `;}` on one line (or any non-`\n}` formatting) made
+> the non-greedy match swallow the *next* interface: a style appeared to "own"
+> an unrelated style's fields, and the swallowed style reported
+> `has_shared_type: false`. The terminator is now `[\n;]\s*\}` (tolerant of `;}`,
+> `;\n}`, and indented braces), which lifted the parsed-interface count from 59 to
+> all 90 and collapsed the phantom drift to zero. If non-empty drift reappears
+> here it is now a **real** type↔DB contract gap to reconcile (fix the shared
+> type or extend the DB seed), not a parser artefact.
 
 ## 5. Duplicate / typo / mis-scope findings
 
@@ -157,28 +129,29 @@ widest:
 | Field | # styles | Scope |
 |-------|---------:|-------|
 | `spacing` | 76 | common |
-| `radius` | 33 | common |
-| `color` | 32 | common |
-| `size` | 31 | common |
+| `color` | 35 | common |
+| `radius` | 35 | common |
+| `size` | 30 | common |
 | `label` | 28 | content |
-| `name` | 22 | common |
+| `name` | 23 | common |
 | `disabled` | 22 | common |
 | `value` | 20 | common |
+| `description` | 19 | content |
 | `is_required` | 17 | common |
-| `description` | 16 | content |
+| `title` | 14 | content |
 | `web_left_icon` | 14 | web |
-| `web_height` | 13 | web |
-| `web_width` | 10 | web |
+| `placeholder` | 9 | content |
 
-The most-shared field is now `spacing` (76 styles) after the spacing
+The most-shared field is `spacing` (76 styles) after the spacing
 consolidation (§3) — the single widest-rippling contract in the catalog, portable
-to both platforms. The next three (`radius`, `color`, `size`)
+to both platforms. The next three (`color`, `radius`, `size`)
 are all unprefixed cross-platform appearance fields (`common` scope since the
 `shared_` prefix was dropped in `Version20260622165615`), so the de-facto common
 library is genuinely cross-platform. The earlier near-universal `use_web_style`
 "Mantine vs raw element" toggle has been **removed** (RF-01) — it was meaningless
-on mobile. The only `web_*` fields still in the top tier are the genuinely
-web-only box metrics `web_left_icon` / `web_height` / `web_width`.
+on mobile. The only `web_*` field still in the top tier is `web_left_icon` (the
+icon affordance); the box metrics `web_height` / `web_width` have dropped out of
+the top tier as their usage consolidated.
 
 ## 7. Per-field "where used / how loaded" — the contract
 

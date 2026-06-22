@@ -1,5 +1,5 @@
 {
-    "generated_at": "2026-06-22T17:08:56+00:00",
+    "generated_at": "2026-06-22T19:23:11+00:00",
     "generator": "scripts/build-style-audit.php",
     "note": "Source of truth = live DB catalog + cross-repo TS. Regenerate after schema/renderer changes.",
     "warnings": [],
@@ -2727,40 +2727,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "web_accordion_item_value",
-                "label",
-                "description",
-                "web_accordion_item_icon",
-                "disabled",
-                "web_tabs_variant",
-                "web_tabs_orientation",
-                "web_tabs_radius",
-                "color",
-                "web_tabs_grow",
-                "web_tabs_justify",
-                "web_tabs_keep_mounted",
-                "web_tabs_placement",
-                "web_width",
-                "web_height",
-                "web_left_icon",
-                "web_right_icon",
-                "web_tab_disabled",
-                "web_timeline_bullet_size",
-                "web_timeline_line_width",
-                "web_timeline_active",
-                "web_timeline_align",
-                "web_timeline_line_variant",
-                "title",
-                "web_timeline_item_bullet",
-                "web_timeline_item_line_variant",
-                "web_list_type",
-                "web_spacing",
-                "size",
-                "web_list_with_padding",
-                "web_list_center",
-                "web_list_icon"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "accordion-item": {
@@ -2772,7 +2739,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 6,
@@ -2918,11 +2885,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "alert_title",
-                "closable",
-                "content"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "alert": {
@@ -2934,7 +2897,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 8,
@@ -3007,7 +2970,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 2,
@@ -3129,7 +3092,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 3,
@@ -3263,7 +3226,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 6,
@@ -3349,15 +3312,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "gap",
-                "justify",
-                "align",
-                "direction",
-                "wrap",
-                "shared_width",
-                "shared_height"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "card": {
@@ -3418,10 +3373,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "web_segment_inherit_padding",
-                "web_aspect_ratio"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "card-segment": {
@@ -3433,7 +3385,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 3,
@@ -3476,7 +3428,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 19,
@@ -3603,7 +3555,11 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_type_fields_missing_from_db": [
+                "id_prefix",
+                "has_crossfade",
+                "sources"
+            ],
             "duplicate_candidates": []
         },
         "center": {
@@ -3615,7 +3571,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 8,
@@ -3962,7 +3918,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 5,
@@ -4115,24 +4071,7 @@
             },
             "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [
-                "web_color_input_swatches",
-                "web_color_picker_swatches_per_row",
-                "web_color_picker_swatches",
-                "web_color_picker_with_picker",
-                "color_picker_saturation_label",
-                "color_picker_hue_label",
-                "color_picker_alpha_label",
-                "web_color_picker_as_button",
-                "web_color_picker_button_label",
-                "full_width",
-                "web_file_input_multiple",
-                "web_file_input_accept",
-                "web_file_input_clearable",
-                "web_file_input_max_size",
-                "web_file_input_max_files",
-                "web_file_input_drag_drop",
-                "web_left_icon",
-                "web_right_icon"
+                "web_color_input_swatches"
             ],
             "duplicate_candidates": []
         },
@@ -4145,7 +4084,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 14,
@@ -4242,7 +4181,11 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_type_fields_missing_from_db": [
+                "web_color_picker_with_picker",
+                "web_color_picker_as_button",
+                "web_color_picker_button_label"
+            ],
             "duplicate_candidates": []
         },
         "combobox": {
@@ -4597,16 +4540,7 @@
             "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [
                 "size",
-                "radius",
-                "switch_on_label",
-                "switch_off_label",
-                "color",
-                "web_label_position",
-                "web_switch_on_value",
-                "web_use_input_wrapper",
-                "web_switch_off_value",
-                "web_switch_with_thumb_indicator",
-                "web_switch_thumb_icon"
+                "radius"
             ],
             "duplicate_candidates": []
         },
@@ -4674,19 +4608,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "title",
-                "web_paper_shadow",
-                "radius",
-                "border",
-                "web_center_inline",
-                "shared_width",
-                "shared_height",
-                "miw",
-                "mih",
-                "maw",
-                "mah"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "fieldset": {
@@ -4698,7 +4620,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 5,
@@ -4740,8 +4662,12 @@
                     "default": "default"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_db_fields_missing_from_type": [
+                "disabled"
+            ],
+            "drift_type_fields_missing_from_db": [
+                "legend"
+            ],
             "duplicate_candidates": []
         },
         "file-input": {
@@ -4753,7 +4679,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 17,
@@ -4867,7 +4793,9 @@
                     "default": null
                 }
             },
-            "drift_db_fields_missing_from_type": [],
+            "drift_db_fields_missing_from_type": [
+                "is_required"
+            ],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
@@ -4880,7 +4808,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 8,
@@ -5203,14 +5131,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "blockquote_content",
-                "cite",
-                "web_left_icon",
-                "web_icon_size",
-                "html_tag",
-                "html_tag_content"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "indicator": {
@@ -5301,10 +5222,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "web_variant",
-                "size"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "kbd": {
@@ -5347,11 +5265,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "legend",
-                "web_fieldset_variant",
-                "radius"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "list": {
@@ -5363,7 +5277,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 8,
@@ -5423,8 +5337,13 @@
                     "default": "0"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_db_fields_missing_from_type": [
+                "web_list_list_style_type",
+                "web_list_spacing"
+            ],
+            "drift_type_fields_missing_from_db": [
+                "web_spacing"
+            ],
             "duplicate_candidates": []
         },
         "list-item": {
@@ -5467,9 +5386,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "line_clamp"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "notification": {
@@ -5481,7 +5398,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 9,
@@ -5693,13 +5610,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "segmented_control_data",
-                "orientation",
-                "color",
-                "fullwidth",
-                "readonly"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "paper": {
@@ -5711,7 +5622,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 5,
@@ -5766,7 +5677,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 8,
@@ -5839,7 +5750,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 4,
@@ -5888,7 +5799,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 8,
@@ -6330,18 +6241,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "radius",
-                "web_progress_striped",
-                "web_progress_animated",
-                "web_progress_transition_duration",
-                "web_progress_auto_contrast",
-                "tooltip_label",
-                "web_tooltip_position",
-                "record_id",
-                "id_users",
-                "_can_delete"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "rich-text-editor": {
@@ -6521,7 +6421,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 14,
@@ -6617,8 +6517,12 @@
                     "default": "0"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_db_fields_missing_from_type": [
+                "web_segmented_control_item_border"
+            ],
+            "drift_type_fields_missing_from_db": [
+                "fullwidth"
+            ],
             "duplicate_candidates": []
         },
         "simple-grid": {
@@ -6903,7 +6807,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 5,
@@ -7019,7 +6923,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 17,
@@ -7133,8 +7037,12 @@
                     "default": "0"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_db_fields_missing_from_type": [
+                "name"
+            ],
+            "drift_type_fields_missing_from_db": [
+                "web_switch_off_value"
+            ],
             "duplicate_candidates": []
         },
         "tab": {
@@ -7146,7 +7054,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 7,
@@ -7213,7 +7121,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 11,
@@ -7291,8 +7199,14 @@
                     "default": null
                 }
             },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_db_fields_missing_from_type": [
+                "orientation",
+                "radius"
+            ],
+            "drift_type_fields_missing_from_db": [
+                "web_tabs_orientation",
+                "web_tabs_radius"
+            ],
             "duplicate_candidates": []
         },
         "text": {
@@ -7304,7 +7218,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 15,
@@ -7560,7 +7474,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 6,
@@ -7608,7 +7522,9 @@
                     "default": "filled"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
+            "drift_db_fields_missing_from_type": [
+                "web_left_icon"
+            ],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
@@ -7621,7 +7537,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 6,
@@ -7670,7 +7586,9 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_type_fields_missing_from_db": [
+                "web_timeline_line_variant"
+            ],
             "duplicate_candidates": []
         },
         "timeline-item": {
@@ -7682,7 +7600,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 4,
@@ -7786,22 +7704,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "text",
-                "web_text_font_weight",
-                "web_text_font_style",
-                "web_text_text_decoration",
-                "web_text_text_transform",
-                "text_align",
-                "web_text_variant",
-                "web_text_gradient",
-                "web_text_truncate",
-                "web_text_line_clamp",
-                "web_text_inherit",
-                "web_text_span",
-                "code_block",
-                "radius"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "typography": {
@@ -7813,7 +7716,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 1,
@@ -8033,16 +7936,7 @@
                 }
             },
             "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "height",
-                "width",
-                "video_src",
-                "poster_src",
-                "has_controls",
-                "media_loop",
-                "media_autoplay",
-                "media_muted"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "video": {
@@ -8054,7 +7948,7 @@
             "can_have_children_db": 0,
             "can_have_children_shared": false,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 9,
@@ -8164,7 +8058,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 5,
@@ -8206,8 +8100,16 @@
                     "default": ""
                 }
             },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [],
+            "drift_db_fields_missing_from_type": [
+                "data_table",
+                "filter",
+                "load_as_table",
+                "own_entries_only",
+                "scope"
+            ],
+            "drift_type_fields_missing_from_db": [
+                "line_clamp"
+            ],
             "duplicate_candidates": []
         },
         "entry-record": {
@@ -8355,7 +8257,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 2,
@@ -8431,7 +8333,7 @@
             "can_have_children_db": 1,
             "can_have_children_shared": true,
             "in_shared_registry": true,
-            "has_shared_type": false,
+            "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
             "field_count": 0,

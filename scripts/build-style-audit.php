@@ -110,7 +110,12 @@ if (is_file($registryFile)) {
 $typeFields = [];
 foreach (glob($sharedDir . '/src/types/styles/*.ts') ?: [] as $file) {
     $src = (string) file_get_contents($file);
-    if (!preg_match_all('/export interface (I\w+Style)[^\{]*\{(.*?)\n\}/s', $src, $blocks, PREG_SET_ORDER)) {
+    // Capture each interface body up to its closing brace. The terminator
+    // tolerates a brace that sits on its own line (`\n}`), shares the last
+    // field's line (`;}`), or is indented — otherwise a `;}` ending makes the
+    // non-greedy match swallow the following interface (the IImageStyle/IVideoStyle
+    // false-drift bug). See docs/reference/styles/style-field-audit.generated.json.
+    if (!preg_match_all('/export interface (I\w+Style)[^\{]*\{(.*?)[\n;]\s*\}/s', $src, $blocks, PREG_SET_ORDER)) {
         continue;
     }
     foreach ($blocks as $b) {
