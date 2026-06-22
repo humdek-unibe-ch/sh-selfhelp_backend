@@ -16,7 +16,6 @@ use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
-use App\Repository\PageRepository;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -31,8 +30,8 @@ class PageFieldService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly CacheService $cache,
-        private readonly PageRepository $pageRepository,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly PagePublishedVersionRepairService $pagePublishedVersionRepairService,
     ) {
     }
 
@@ -45,7 +44,7 @@ class PageFieldService extends BaseService
      */
     public function getPageWithFields(int $pageId): array
     {
-        $page = $this->pageRepository->find($pageId);
+        $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
         if (!$page) {
             $this->throwNotFound('Page not found');
         }
@@ -68,8 +67,7 @@ class PageFieldService extends BaseService
      */
     private function fetchPageWithFieldsFromDatabase(int $pageId): array
     {
-
-        $page = $this->pageRepository->find($pageId);
+        $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
 
         if (!$page) {
             $this->throwNotFound('Page not found');
