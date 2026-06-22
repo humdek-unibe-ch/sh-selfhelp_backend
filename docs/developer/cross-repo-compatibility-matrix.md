@@ -95,22 +95,28 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-06-19):** the 0.1.15 core style-schema contract — the
+> **Current floor (2026-06-22):** the **core 0.1.17** style-schema contract
+> (built up across the 0.1.15 → 0.1.17 style waves; `selfhelp.cms_version` was
+> caught up from `0.1.15` to the changelog's latest `0.1.17` in this change) — the
 > mobile-rendering taxonomy (style `renderTarget`, a required field `scope` on
 > every style-schema field that drives the frontend inspector grouping, and the
 > shared_/web_ field split with the duplicate `pages.id_platform` removed in
-> favour of the existing page access type) **plus** the alert/badge/avatar/button/
-> login authoring-polish wave (alert `web_with_close_button` → common `closable`;
-> button/badge promoted to `variant` with `web_variant` repurposed/
-> unlinked; badge `circle`; avatar `name`; login `subtitle` — migration
-> `Version20260619131830`) — is adopted by frontend 0.1.23. The renames mean a
-> pre-0.1.23 frontend reads field names this core no longer emits, so the floor
-> moved up. The live pairing is **frontend `>=0.1.23` ⇄ core `>=0.1.15`** (both
-> still `<0.2.0`); anything older on either side is an incompatible mix.
-> `@selfhelp/shared` (now `1.14.6`, carrying the matching `IAlertStyle.closable`,
-> `IButtonStyle`/`IBadgeStyle.variant`, `IBadgeStyle.circle`,
-> `IAvatarStyle.name`, `ILoginStyle.subtitle` type contracts) stays the type
-> anchor on top of this version gate.
+> favour of the existing page access type), the alert/badge/avatar/button/login
+> authoring-polish wave (migration `Version20260619131830`), **and** the
+> field-naming unification (migration `Version20260622165615`): the `shared_`
+> prefix is dropped from 47 style props (`shared_color` → `color`,
+> `shared_variant` → `variant`, `shared_radius` → `radius`, …;
+> `shared_height`/`shared_width`/`shared_icon` are kept as reserved-name
+> exceptions). All of this is part of the current **core 0.1.17** and is
+> adopted by **frontend 0.1.29**. Because this core emits the unprefixed names, a
+> 0.1.23–0.1.28 frontend (which still reads `shared_*`) is an incompatible mix —
+> an **old frontend that still reads `shared_*` must not be paired with this
+> backend** — so the frontend floor moved up from 0.1.23 to 0.1.29. The live
+> pairing is now **frontend `>=0.1.29` ⇄ core `>=0.1.17`** (both still `<0.2.0`);
+> anything older on the frontend side is an incompatible mix. `@selfhelp/shared`
+> (the prefix drop landed in `1.14.22`; this branch resolves the caret to `1.14.23`,
+> carrying the unprefixed `I*Style` field contracts) stays the type anchor on top
+> of this version gate.
 
 ## Current matrix (snapshot)
 
@@ -119,14 +125,14 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.15` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.17` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.14.22` | npm (1.14.22 drops the `shared_` field-name prefix — "no prefix = both platforms"; paired with backend migration `Version20260622165615`) |
-| `sh-selfhelp_frontend` | `0.1.23` | — |
+| `@selfhelp/shared` | `1.14.23` | npm (1.14.22 dropped the `shared_` field-name prefix — "no prefix = both platforms" — paired with backend migration `Version20260622165615`; 1.14.23 follows up: removes the orphan `IImageStyle.height`/`width`, corrects the rich-text-editor registry description, tidies `media.ts`) |
+| `sh-selfhelp_frontend` | `0.1.29` | — |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.22` | shared `1.x` line (field-naming unification) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.15 <0.2.0` | core that ships the render-target + field-scope style schema (incl. the alert/badge/avatar/button/login polish wave) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.23 <0.2.0` | frontend that adopted the full 0.1.15 style schema incl. the polish-wave field renames |
-| `sh-selfhelp_mobile` | `0.1.2` | — |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.17 <0.2.0` | first core that emits the unprefixed field names (field-naming unification, `Version20260622165615`) on top of the render-target + field-scope style schema + polish wave |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.29 <0.2.0` | frontend that adopted the field-naming unification (unprefixed common names from `Version20260622165615`) on top of the full 0.1.15 → 0.1.17 style schema + polish wave |
+| `sh-selfhelp_mobile` | `0.1.9` | — |
 | `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.22` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
