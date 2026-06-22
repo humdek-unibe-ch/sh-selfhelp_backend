@@ -42,6 +42,16 @@
     `testLayoutCrossPlatformPassFieldsAndScopes`; docs
     (`docs/reference/styles/layout.md`) + regenerated style-field audit updated
     to match. (migration `Version20260622063129`)
+- **The new layout fields show proper labels in the section inspector.** The
+  inspector renders a field's `rel_fields_styles.title` and falls back to the
+  raw `fields.name` when it is empty, so the freshly-linked layout fields read
+  "shared_width"/"shared_height" instead of "Width"/"Height". Backfilled the
+  missing per-style labels (`shared_width`→Width, `shared_height`→Height,
+  `paper.title`→Title, `paper.shared_border`→Border, `space.shared_orientation`→
+  Orientation, `simple-grid.shared_gap`→Gap, `web_cols_sm|md|lg`→Columns
+  (SM|MD|LG)) to match the convention used by the established links. Reversible
+  `down()`; round-trip test `Version20260622080852RoundTripTest`. (migration
+  `Version20260622080852`)
 
 ## API — Security & robustness audit
 
