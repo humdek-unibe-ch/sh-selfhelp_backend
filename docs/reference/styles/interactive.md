@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 interactive styles (`@selfhelp/shared` `interactive` category).
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/interactive.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Interactive styles are buttons, links, badges, and status chrome. Read
@@ -38,11 +38,11 @@ cosmetic props (`web_size`, `shared_color`, `web_radius`,
 
 **Purpose.** A plain anchor / pressable navigation element.
 
-**Administrators.** A text link. Set the `label` and `url`, and whether it opens in a new tab.
+**Administrators.** A text link. Set the `label` and `url`, whether it opens in a new tab, the link `shared_color`, when the underline shows (`web_link_underline`: always / hover / never), and optional leading/trailing icons (`web_left_icon` / `web_right_icon`, e.g. an external-link arrow).
 
-**Developers.** Renders `<a>` (web) / `Pressable` (mobile).
+**Developers.** Renders Mantine `<Anchor c={shared_color} underline={web_link_underline}>` (web) / themed `Pressable`+`Text` (mobile). `web_left_icon` / `web_right_icon` render `<IconRenderer>` before/after the label. `shared_color` resolves through the semantic mapper so the same colour applies on mobile.
 
-**Distinctive fields.** `label`, `url`, `open_in_new_tab`.
+**Distinctive fields.** `label`, `url`, `open_in_new_tab`, `shared_color`, `web_link_underline` (`always` | `hover` | `never`), `web_left_icon`, `web_right_icon`.
 
 **Children.** No.
 
@@ -52,11 +52,11 @@ cosmetic props (`web_size`, `shared_color`, `web_radius`,
 
 **Purpose.** Mantine `ActionIcon` — an icon-only button.
 
-**Administrators.** A compact button showing just an icon (e.g. a settings cog). Pick the icon (`web_left_icon`); optionally make it a link to a page.
+**Administrators.** A compact button showing just an icon (e.g. a settings cog). Pick the icon (`web_left_icon`); set an `aria_label` so screen readers announce what it does; optionally make it a link to a page.
 
-**Developers.** Renders `<ActionIcon>`; `web_action_icon_loading` shows a spinner. Supports `is_link` + `page_keyword` navigation.
+**Developers.** Renders `<ActionIcon aria-label={aria_label}>`; `web_action_icon_loading` shows a spinner. Supports `is_link` + `page_keyword` navigation. `aria_label` is the accessible name for the icon-only control.
 
-**Distinctive fields.** `web_left_icon` (the icon), `web_action_icon_loading`, `is_link`, `page_keyword`, `open_in_new_tab`, `disabled`.
+**Distinctive fields.** `web_left_icon` (the icon), `aria_label` (accessible name), `web_action_icon_loading`, `is_link`, `page_keyword`, `open_in_new_tab`, `disabled`.
 
 **Children.** No.
 

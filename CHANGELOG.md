@@ -1,3 +1,65 @@
+# v0.1.15
+
+## CMS Styles — typography / media / interactive field pass
+
+- **Migration `Version20260622110041`** rounds out the styles in the
+  `typography, media, interactive` groups with author-requested fields (all
+  additive / id-stable, so authored content survives):
+  - **`list-item`**: `list_item_content` converted `textarea` → `markdown-inline`
+    (inline bold/italic/underline/link, same cross-platform contract as `text`).
+  - **`blockquote`**: new dedicated `blockquote_content` (`markdown-inline`)
+    field; existing `blockquote` content rows are migrated from the shared
+    `content` field to it and the generic `content` field is unlinked from
+    `blockquote` (so the `code` style keeps a plain `content`). `down()` restores
+    the old link and moves the data back.
+  - **`image`**: `fallback_src` (Mantine `Image.fallbackSrc`).
+  - **`figure`**: optional built-in `img_src` + `alt` (render-only convenience —
+    never auto-creates a child section).
+  - **`link`**: `shared_color`, `web_link_underline` (always/hover/never),
+    `web_left_icon`, `web_right_icon`.
+  - **`action-icon`**: `aria_label` (accessible name for the icon-only control).
+  - **`spoiler`**: `shared_color` (show/hide control colour).
+  - **`video`**: `poster_src`, `has_controls`, `media_loop`, `media_autoplay`,
+    `media_muted` (new `'0'|'1'` playback toggles + poster).
+  - **`audio`**: `has_controls`, `media_loop`, `media_autoplay`.
+  - New reusable field rows: `web_link_underline` (segment), `aria_label` (text),
+    `poster_src` / `fallback_src` (select-image), `media_loop` / `media_autoplay`
+    / `media_muted` (checkbox); existing `shared_color`, `img_src`, `alt`,
+    `has_controls`, `web_left_icon`, `web_right_icon` are reused via
+    `rel_fields_styles`.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622110041RoundTripTest.php`
+  (`#[Group('migration')]`) — `up()`/`down()` verified against an isolated
+  throwaway DB.
+- **Shared** `@selfhelp/shared@1.14.15` carries the matching `I<Name>Style`
+  additions (`IBlockquoteStyle.blockquote_content`, `IImageStyle.fallback_src`,
+  `IFigureStyle.img_src/alt`, `ILinkStyle.shared_color/web_link_underline/
+  web_left_icon/web_right_icon`, `IActionIconStyle.aria_label`,
+  `ISpoilerStyle.shared_color`, `IVideoStyle.*`, `IAudioStyle.*`).
+- **Docs** `docs/reference/styles/{typography,media,interactive,composite}.md`
+  updated for every changed style (fields, behaviour, web/mobile mapping).
+- **Activate:** `php bin/console doctrine:migrations:migrate` then invalidate the
+  styles cache (`/cms-api/v1/admin/cache/clear/all` or restart Redis) and
+  regenerate the audit with `php scripts/build-style-audit.php`.
+
+## CMS Styles — inline rich-text on the `text` field (text + highlight)
+
+- **Migration `Version20260622100253`** switches the shared `text` content field
+  (used by the `text` and `highlight` styles) from the plain multi-line
+  `textarea` editor to `markdown-inline`, so an author can select a word and
+  apply inline **bold / italic / underline / link** (Ctrl/⌘ + B/I/U). The web
+  and mobile `text` renderers preserve that safe inline subset, so a bold label
+  authored on the web also renders bold on the mobile app — the cross-platform
+  goal. Existing stored values are untouched (only the editor changes);
+  `down()` restores the `textarea` editor.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622100253RoundTripTest.php`
+  (`#[Group('migration')]`) — verified locally against an isolated throwaway DB
+  (1 test, 7 assertions).
+- **Docs** `docs/reference/styles/typography.md` (`text` + `highlight` sections)
+  updated to describe the inline-formatting behaviour and the web/mobile render
+  contract.
+- **Activate:** run `php bin/console doctrine:migrations:migrate` (not auto-run),
+  then regenerate the audit with `php scripts/build-style-audit.php`.
+
 # v0.1.14
 
 ## CMS Styles — layout cross-platform pass

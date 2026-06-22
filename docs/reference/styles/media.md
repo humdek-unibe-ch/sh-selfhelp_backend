@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 media styles (`@selfhelp/shared` `media` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/media.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Media styles embed images, video, and audio. Read
@@ -19,9 +19,9 @@ for how files are stored and validated.
 
 **Administrators.** Place a single image. Set the source, alternative text (`alt`, important for accessibility), and how it fits its box (`web_image_fit`). Use `is_fluid` to make it scale to the container width.
 
-**Developers.** Renders `<Image src fit radius>`. `width`/`height` and `web_width`/`web_height` constrain the box; `web_image_fit` maps to `object-fit`.
+**Developers.** Renders `<Image src fit radius>`. `width`/`height` and `web_width`/`web_height` constrain the box; `web_image_fit` maps to `object-fit`. `fallback_src` maps to Mantine `Image.fallbackSrc` and is shown if the main source 404s/errors.
 
-**Distinctive fields.** `img_src` (source), `alt` (alt text), `title`, `is_fluid` (responsive width), `height` / `width`, `web_image_fit` (contain/cover/fill/none/scale-down), `web_width` / `web_height`, `web_radius`.
+**Distinctive fields.** `img_src` (source), `alt` (alt text), `title`, `is_fluid` (responsive width), `height` / `width`, `web_image_fit` (contain/cover/fill/none/scale-down), `web_width` / `web_height`, `web_radius`, `fallback_src` (image shown when the main source fails to load).
 
 **Children.** No.
 
@@ -31,11 +31,11 @@ for how files are stored and validated.
 
 **Purpose.** HTML5 `<video>` on web / `expo-video` on mobile.
 
-**Administrators.** Embed a video with one or more sources (for format fallbacks). Set `is_fluid` for responsive width and `alt` for accessibility.
+**Administrators.** Embed a video. Set `video_src` (the file), a `poster_src` still frame shown before playback, `alt` for accessibility, and `is_fluid` for responsive width. The playback toggles `has_controls`, `media_loop`, `media_autoplay`, `media_muted` map straight to the player (autoplay generally requires muted in browsers).
 
-**Developers.** Renders a video player from the `sources` array (each entry is a `{ source, type }`-style descriptor).
+**Developers.** Renders `<video src={video_src} poster={poster_src} controls={has_controls} loop muted autoplay>`. Toggles are `'0' | '1'` strings; precedence is the literal field value → default. `video_src`/`poster_src` resolve through the asset URL resolver.
 
-**Distinctive fields.** `sources` (list of video sources), `is_fluid`, `alt`.
+**Distinctive fields.** `video_src` (source), `poster_src` (poster image), `alt`, `is_fluid`, `has_controls`, `media_loop`, `media_autoplay`, `media_muted`.
 
 **Children.** No.
 
@@ -45,11 +45,11 @@ for how files are stored and validated.
 
 **Purpose.** HTML5 `<audio>` on web / `expo-audio` on mobile.
 
-**Administrators.** Embed an audio player with one or more sources.
+**Administrators.** Embed an audio player. Set the source(s) and the playback toggles `has_controls`, `media_loop`, `media_autoplay`.
 
-**Developers.** Renders an audio player from the `sources` array.
+**Developers.** Renders an audio player from `sources`. Toggles are `'0' | '1'` strings mapped to `controls`/`loop`/`autoplay`.
 
-**Distinctive fields.** `sources` (list of audio sources).
+**Distinctive fields.** `sources` (list of audio sources), `alt`, `has_controls`, `media_loop`, `media_autoplay`.
 
 **Children.** No.
 
@@ -59,13 +59,13 @@ for how files are stored and validated.
 
 **Purpose.** A `<figure>` with a caption — wraps a media child and attaches a title/caption.
 
-**Administrators.** Use to add a caption under an image or video. Put the media section inside the figure and fill in `caption_title` / `caption`.
+**Administrators.** Use to add a caption under an image or video. Either put a media section inside the figure, **or** fill in the optional built-in `img_src` / `alt` to render the image automatically without a child section. Fill in `caption_title` / `caption` for the caption text.
 
-**Developers.** Renders `<figure>` with a `<figcaption>`; the media is provided as a child section.
+**Developers.** Renders `<figure>` with a `<figcaption>`. When `img_src` is set the renderer draws that image itself (with `alt`); otherwise the media is provided as a child section. The built-in image is a render-only convenience — it never auto-creates a child section.
 
-**Distinctive fields.** `caption_title`, `caption` (both translatable).
+**Distinctive fields.** `caption_title`, `caption` (both translatable), `img_src` (optional built-in image), `alt` (alt text for the built-in image).
 
-**Children.** Yes (a media style).
+**Children.** Yes (a media style) — optional when `img_src` is used instead.
 
 ---
 

@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 composite styles (`@selfhelp/shared` `composite` category).
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/composite.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Composite styles combine child sections into a richer widget (accordions, tabs,
@@ -129,11 +129,11 @@ the matching item children inside it.
 
 **Purpose.** Mantine `List.Item` — one list entry.
 
-**Administrators.** Place inside a `list`. Set the item text (`list_item_content`) and an optional per-item icon.
+**Administrators.** Place inside a `list`. Set the item text (`list_item_content`) and an optional per-item icon. `list_item_content` is a **rich-text** field (`markdown-inline`): select a word and press **Ctrl/⌘ + B / I / U** or add a link — it renders the same on web and mobile.
 
-**Developers.** Renders `<List.Item>`.
+**Developers.** Renders `<List.Item>`. `list_item_content` is `markdown-inline`; web renders it via `sanitizeHtmlForParsing` + `html-react-parser`, mobile via `parseInlineRich` + `<InlineText>` (plain strings pass straight through).
 
-**Distinctive fields.** `list_item_content` (text), `web_list_item_icon`.
+**Distinctive fields.** `list_item_content` (text, `markdown-inline`), `web_list_item_icon`.
 
 **Children.** Yes.
 
