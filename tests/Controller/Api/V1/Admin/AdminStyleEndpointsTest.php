@@ -199,6 +199,93 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
     }
 
     /**
+     * Regression for the 2026-06-22 layout cross-platform pass (migration
+     * Version20260622063129): the layout styles promote width/height/cols/
+     * grid-column/divider/space props to shared_*, add paper.title +
+     * simple-grid responsive cols, and remove web_px/web_py/web_breakpoints.
+     */
+    public function testLayoutCrossPlatformPassFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // flex: every flexbox prop + size is cross-platform now.
+        $flex = $this->fieldsOf($data, 'flex');
+        self::assertSame('shared', $flex['shared_width']['scope'] ?? null, 'flex.shared_width must be shared.');
+        self::assertSame('shared', $flex['shared_height']['scope'] ?? null, 'flex.shared_height must be shared.');
+        self::assertSame('shared', $flex['shared_direction']['scope'] ?? null, 'flex.shared_direction must be shared.');
+        self::assertSame('shared', $flex['shared_wrap']['scope'] ?? null, 'flex.shared_wrap must be shared.');
+        self::assertArrayNotHasKey('web_width', $flex, 'flex.web_width must be relinked to shared_width.');
+        self::assertArrayNotHasKey('web_height', $flex, 'flex.web_height must be relinked to shared_height.');
+
+        // group: size shared; wrap/grow stay web-only.
+        $group = $this->fieldsOf($data, 'group');
+        self::assertSame('shared', $group['shared_width']['scope'] ?? null, 'group.shared_width must be shared.');
+        self::assertSame('web', $group['web_group_wrap']['scope'] ?? null, 'group.web_group_wrap stays web-only.');
+
+        // grid: cols promoted; restricted children unchanged.
+        $grid = $this->fieldsOf($data, 'grid');
+        self::assertSame('shared', $grid['shared_cols']['scope'] ?? null, 'grid.shared_cols must be shared.');
+        self::assertArrayNotHasKey('web_cols', $grid, 'grid.web_cols must be renamed to shared_cols.');
+
+        // grid-column: span/offset/order/grow all cross-platform.
+        $gridColumn = $this->fieldsOf($data, 'grid-column');
+        self::assertSame('shared', $gridColumn['shared_grid_span']['scope'] ?? null, 'grid-column.shared_grid_span must be shared.');
+        self::assertSame('shared', $gridColumn['shared_grid_offset']['scope'] ?? null, 'grid-column.shared_grid_offset must be shared.');
+        self::assertSame('shared', $gridColumn['shared_grid_order']['scope'] ?? null, 'grid-column.shared_grid_order must be shared.');
+        self::assertSame('shared', $gridColumn['shared_grid_grow']['scope'] ?? null, 'grid-column.shared_grid_grow must be shared.');
+        self::assertArrayNotHasKey('web_grid_span', $gridColumn, 'grid-column.web_grid_span must be renamed.');
+
+        // simple-grid: shared cols/gap + new web responsive overrides; old breakpoints gone.
+        $simpleGrid = $this->fieldsOf($data, 'simple-grid');
+        self::assertSame('shared', $simpleGrid['shared_cols']['scope'] ?? null, 'simple-grid.shared_cols must be shared.');
+        self::assertSame('shared', $simpleGrid['shared_gap']['scope'] ?? null, 'simple-grid.shared_gap must be shared.');
+        self::assertSame('shared', $simpleGrid['shared_vertical_spacing']['scope'] ?? null, 'simple-grid.shared_vertical_spacing must be shared.');
+        self::assertSame('web', $simpleGrid['web_cols_sm']['scope'] ?? null, 'simple-grid.web_cols_sm must be a web-only responsive override.');
+        self::assertSame('web', $simpleGrid['web_cols_md']['scope'] ?? null, 'simple-grid.web_cols_md must be web-only.');
+        self::assertSame('web', $simpleGrid['web_cols_lg']['scope'] ?? null, 'simple-grid.web_cols_lg must be web-only.');
+        self::assertArrayNotHasKey('web_breakpoints', $simpleGrid, 'simple-grid.web_breakpoints must be removed.');
+        self::assertArrayNotHasKey('web_cols', $simpleGrid, 'simple-grid.web_cols must be renamed to shared_cols.');
+
+        // container: shared size; web padding removed in favour of shared_spacing.
+        $container = $this->fieldsOf($data, 'container');
+        self::assertSame('shared', $container['shared_size']['scope'] ?? null, 'container.shared_size must be shared.');
+        self::assertArrayNotHasKey('web_px', $container, 'container.web_px must be removed.');
+        self::assertArrayNotHasKey('web_py', $container, 'container.web_py must be removed.');
+
+        // paper: optional title content + shared border; web padding removed.
+        $paper = $this->fieldsOf($data, 'paper');
+        self::assertSame('content', $paper['title']['scope'] ?? null, 'paper.title must be translatable content.');
+        self::assertSame('shared', $paper['shared_border']['scope'] ?? null, 'paper.shared_border must be shared.');
+        self::assertArrayNotHasKey('web_border', $paper, 'paper.web_border must be replaced by shared_border.');
+        self::assertArrayNotHasKey('web_px', $paper, 'paper.web_px must be removed.');
+        self::assertArrayNotHasKey('web_py', $paper, 'paper.web_py must be removed.');
+
+        // center: size constraints cross-platform; inline stays web.
+        $center = $this->fieldsOf($data, 'center');
+        self::assertSame('shared', $center['shared_maw']['scope'] ?? null, 'center.shared_maw must be shared.');
+        self::assertSame('shared', $center['shared_width']['scope'] ?? null, 'center.shared_width must be shared.');
+        self::assertSame('web', $center['web_center_inline']['scope'] ?? null, 'center.web_center_inline stays web-only.');
+
+        // space: direction folded into shared_orientation.
+        $space = $this->fieldsOf($data, 'space');
+        self::assertSame('shared', $space['shared_orientation']['scope'] ?? null, 'space.shared_orientation must be shared.');
+        self::assertArrayNotHasKey('web_space_direction', $space, 'space.web_space_direction must be removed.');
+
+        // divider: variant/label-position/orientation all cross-platform.
+        $divider = $this->fieldsOf($data, 'divider');
+        self::assertSame('shared', $divider['shared_divider_variant']['scope'] ?? null, 'divider.shared_divider_variant must be shared.');
+        self::assertSame('shared', $divider['shared_divider_label_position']['scope'] ?? null, 'divider.shared_divider_label_position must be shared.');
+        self::assertSame('shared', $divider['shared_orientation']['scope'] ?? null, 'divider.shared_orientation must be shared.');
+        self::assertArrayNotHasKey('web_divider_variant', $divider, 'divider.web_divider_variant must be renamed.');
+
+        // scroll-area: height shared so mobile ScrollView can scroll.
+        $scrollArea = $this->fieldsOf($data, 'scroll-area');
+        self::assertSame('shared', $scrollArea['shared_height']['scope'] ?? null, 'scroll-area.shared_height must be shared.');
+        self::assertSame('web', $scrollArea['web_scroll_area_type']['scope'] ?? null, 'scroll-area.web_scroll_area_type stays web-only.');
+    }
+
+    /**
      * @param array<string, mixed> $schema
      * @return array<string, array<string, mixed>>
      */

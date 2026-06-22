@@ -1,5 +1,48 @@
 # v0.1.14
 
+## CMS Styles — layout cross-platform pass
+
+- **The 13 layout styles (`box`, `container`, `paper`, `center`, `group`,
+  `stack`, `flex`, `grid`, `grid-column`, `simple-grid`, `space`, `divider`,
+  `scroll-area`) became configurable on mobile, not just web** (migration
+  `Version20260622063129`). The portable sizing/behaviour properties that were
+  trapped under `web_*` were promoted to `shared_*` so the same field now drives
+  both the Mantine (web) and the React-Native (mobile) renderer through the
+  `@selfhelp/shared` semantic mapper:
+  - **id-stable renames** (field used only by layout styles): `web_cols`→
+    `shared_cols` (grid, simple-grid), `web_divider_variant`→
+    `shared_divider_variant`, `web_divider_label_position`→
+    `shared_divider_label_position`, `web_grid_span|offset|order|grow`→`shared_*`
+    (grid-column), `web_miw|mih|maw|mah`→`shared_*` (center),
+    `web_vertical_spacing`→`shared_vertical_spacing` (simple-grid). Authored
+    values + relationships survive (the field id is unchanged).
+  - **re-links** (field still used by non-layout styles): `web_width`/
+    `web_height` → new `shared_width`/`shared_height` on the layout styles only
+    (the `web_*` fields stay for the non-layout styles that still need them);
+    `paper.web_border`→`shared_border` (the existing field that already powers
+    `card`); `space.web_space_direction`→`shared_orientation`. Authored content
+    is repointed in `sections_fields_translation` so values are preserved across
+    the scope change.
+  - **additions:** `paper.title` (optional auto-styled heading — renders a
+    heading above the content when filled, a plain surface when empty; never
+    creates a child section); `simple-grid.shared_gap` (the horizontal column
+    spacing that was missing) plus `web_cols_sm`/`web_cols_md`/`web_cols_lg`
+    (web responsive overrides, clearable to inherit `shared_cols`).
+  - **removals (FK-safe):** `web_px`/`web_py` (container, paper — padding now
+    comes from the portable `shared_spacing`), `web_breakpoints` (simple-grid —
+    replaced by the responsive `web_cols_*`), and `web_space_direction` (folded
+    into `shared_orientation`).
+  - `grid.can_have_children` is intentionally left at `0`: grid stays
+    **restricted to `grid-column` children** through
+    `rel_styles_allowed_relationships` (the `0 + whitelist` "restricted children"
+    model), which is correct, not a missing-children bug.
+  - Coupled with `@selfhelp/shared` (the `shared_*` layout types + mapper) and
+    the frontend/mobile layout renderers. Reversible `down()`; round-trip test
+    `Version20260622063129RoundTripTest`; `AdminStyleEndpointsTest`
+    `testLayoutCrossPlatformPassFieldsAndScopes`; docs
+    (`docs/reference/styles/layout.md`) + regenerated style-field audit updated
+    to match. (migration `Version20260622063129`)
+
 ## API — Security & robustness audit
 
 - **Internal server-error details are no longer leaked to API clients in production.** A new `ApiResponseFormatter::formatThrowable()` centralizes the error handling that controller `catch` blocks used to copy-paste (`formatError($e->getMessage(), $e->getCode() ?: 500)`): it clamps a `Throwable`'s code to a valid HTTP status (a raw `0`/`999`/SQLSTATE string can no longer make `JsonResponse` throw), preserves the intended status + user-facing message for domain `ServiceException`s, logs unexpected (non-domain) 5xx so a swallowed 500 is never invisible, and — outside `kernel.debug` — masks 5xx messages behind a generic `Internal Server Error`. `ApiExceptionListener` applies the same masking for bubbled exceptions. All admin/auth/frontend controllers were migrated to `formatThrowable()`. (`ApiResponseFormatter`, `ApiExceptionListener`, `config/services.yaml` `$debug` wiring, `ApiResponseFormatterTest`)
