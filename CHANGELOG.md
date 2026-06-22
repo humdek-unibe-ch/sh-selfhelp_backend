@@ -1,3 +1,31 @@
+# v0.1.16
+
+## CMS Styles — form / interactive capability pass
+
+- **Migration `Version20260622132034`** exposes Mantine props these styles could
+  already render but had no CMS field for (all additive / id-stable), plus one
+  cleanup unlink:
+  - **`number-input`**: `web_number_input_prefix`, `web_number_input_suffix`
+    (currency / unit affixes), `web_number_input_thousand_separator`,
+    `web_number_input_allow_negative`, `web_number_input_hide_controls`.
+  - **`color-input`**: `web_color_input_with_eye_dropper`,
+    `web_color_input_disallow_input`, `web_color_input_with_preview`.
+  - **`tabs`**: `web_tabs_grow`, `web_tabs_justify` (Mantine `JustifyContent`
+    lookup), `web_tabs_keep_mounted`, `web_tabs_placement` (vertical list side).
+  - **`switch`**: `web_switch_with_thumb_indicator`, `web_switch_thumb_icon`
+    (`select-icon` picker).
+  - **`text-input` + `textarea`**: `shared_max_length` (web + mobile max chars)
+    and the mobile native keyboard knobs `mobile_keyboard_type`,
+    `mobile_auto_capitalize`, plus `mobile_secure_entry` (text-input only).
+  - **`progress-root`**: links the existing `shared_radius` field (rounder bar).
+  - **Cleanup**: unlinks the unused `alt` field from `select` (the field row
+    stays — avatar / image still use it); authored `alt` values on `select`
+    sections are dropped. `down()` is a best-effort structural inverse.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622132034RoundTripTest.php`
+  (`#[Group('migration')]`) proves `up()`/`down()` reversibility.
+- The new author fields are consumed only by the web / mobile renderers (backend
+  `src/` reads none of them); requires `@selfhelp/shared` ≥ 1.14.17.
+
 # v0.1.15
 
 ## CMS Styles — typography / media / interactive field pass

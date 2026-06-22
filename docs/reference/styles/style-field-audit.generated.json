@@ -1,5 +1,5 @@
 {
-    "generated_at": "2026-06-22T11:03:34+00:00",
+    "generated_at": "2026-06-22T13:22:05+00:00",
     "generator": "scripts/build-style-audit.php",
     "note": "Source of truth = live DB catalog + cross-repo TS. Regenerate after schema/renderer changes.",
     "warnings": [],
@@ -8,13 +8,13 @@
         "styles_shared_registry": 90,
         "styles_web_renderer": 90,
         "styles_mobile_renderer": 90,
-        "distinct_fields_in_use": 442,
+        "distinct_fields_in_use": 460,
         "scope_field_instances": {
             "content": 264,
             "common": 178,
-            "shared": 268,
-            "web": 220,
-            "mobile": 0
+            "shared": 271,
+            "web": 234,
+            "mobile": 4
         }
     },
     "catalog_parity": {
@@ -28,7 +28,7 @@
     "most_shared_fields": {
         "shared_spacing": 76,
         "shared_color": 35,
-        "shared_radius": 34,
+        "shared_radius": 35,
         "shared_size": 30,
         "label": 28,
         "name": 23,
@@ -2044,13 +2044,13 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 21,
+            "field_count": 23,
             "scope_counts": {
                 "content": 3,
                 "common": 6,
-                "shared": 7,
+                "shared": 8,
                 "web": 5,
-                "mobile": 0
+                "mobile": 1
             },
             "fields": {
                 "description": {
@@ -2089,6 +2089,12 @@
                     "display": 0,
                     "default": "0"
                 },
+                "mobile_auto_capitalize": {
+                    "type": "select",
+                    "scope": "mobile",
+                    "display": 0,
+                    "default": ""
+                },
                 "name": {
                     "type": "text",
                     "scope": "common",
@@ -2100,6 +2106,12 @@
                     "scope": "shared",
                     "display": 0,
                     "default": "1"
+                },
+                "shared_max_length": {
+                    "type": "number",
+                    "scope": "shared",
+                    "display": 0,
+                    "default": ""
                 },
                 "shared_max_rows": {
                     "type": "select",
@@ -2182,6 +2194,8 @@
             },
             "drift_db_fields_missing_from_type": [
                 "locked_after_submit",
+                "mobile_auto_capitalize",
+                "shared_max_length",
                 "shared_rows",
                 "translatable",
                 "web_variant"
@@ -2542,12 +2556,7 @@
                     "default": null
                 }
             },
-            "drift_db_fields_missing_from_type": [
-                "shared_color",
-                "web_left_icon",
-                "web_link_underline",
-                "web_right_icon"
-            ],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
@@ -2822,9 +2831,7 @@
                     "default": "subtle"
                 }
             },
-            "drift_db_fields_missing_from_type": [
-                "aria_label"
-            ],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [
                 "alert_title",
                 "closable",
@@ -3935,12 +3942,12 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 11,
+            "field_count": 14,
             "scope_counts": {
                 "content": 3,
                 "common": 4,
                 "shared": 3,
-                "web": 1,
+                "web": 4,
                 "mobile": 0
             },
             "fields": {
@@ -4009,9 +4016,31 @@
                     "scope": "web",
                     "display": 0,
                     "default": "hex"
+                },
+                "web_color_input_disallow_input": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
+                },
+                "web_color_input_with_eye_dropper": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                },
+                "web_color_input_with_preview": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
+            "drift_db_fields_missing_from_type": [
+                "web_color_input_disallow_input",
+                "web_color_input_with_eye_dropper",
+                "web_color_input_with_preview"
+            ],
             "drift_type_fields_missing_from_db": [
                 "web_color_input_swatches",
                 "web_color_picker_swatches_per_row",
@@ -5096,7 +5125,7 @@
             },
             "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [
-                "content",
+                "blockquote_content",
                 "cite",
                 "web_left_icon",
                 "web_icon_size",
@@ -5460,12 +5489,12 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 15,
+            "field_count": 20,
             "scope_counts": {
                 "content": 3,
                 "common": 4,
                 "shared": 3,
-                "web": 5,
+                "web": 10,
                 "mobile": 0
             },
             "fields": {
@@ -5529,6 +5558,12 @@
                     "display": 0,
                     "default": ""
                 },
+                "web_number_input_allow_negative": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                },
                 "web_number_input_clamp_behavior": {
                     "type": "segment",
                     "scope": "web",
@@ -5540,6 +5575,30 @@
                     "scope": "web",
                     "display": 0,
                     "default": "2"
+                },
+                "web_number_input_hide_controls": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
+                },
+                "web_number_input_prefix": {
+                    "type": "text",
+                    "scope": "web",
+                    "display": 0,
+                    "default": ""
+                },
+                "web_number_input_suffix": {
+                    "type": "text",
+                    "scope": "web",
+                    "display": 0,
+                    "default": ""
+                },
+                "web_number_input_thousand_separator": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
                 },
                 "web_numeric_max": {
                     "type": "select",
@@ -5560,7 +5619,13 @@
                     "default": "1"
                 }
             },
-            "drift_db_fields_missing_from_type": [],
+            "drift_db_fields_missing_from_type": [
+                "web_number_input_allow_negative",
+                "web_number_input_hide_controls",
+                "web_number_input_prefix",
+                "web_number_input_suffix",
+                "web_number_input_thousand_separator"
+            ],
             "drift_type_fields_missing_from_db": [
                 "segmented_control_data",
                 "shared_orientation",
@@ -5712,15 +5777,21 @@
             "has_shared_type": false,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 3,
+            "field_count": 4,
             "scope_counts": {
                 "content": 0,
                 "common": 0,
-                "shared": 2,
+                "shared": 3,
                 "web": 1,
                 "mobile": 0
             },
             "fields": {
+                "shared_radius": {
+                    "type": "slider",
+                    "scope": "shared",
+                    "display": 0,
+                    "default": "sm"
+                },
                 "shared_size": {
                     "type": "slider",
                     "scope": "shared",
@@ -6915,12 +6986,12 @@
             "has_shared_type": false,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 15,
+            "field_count": 17,
             "scope_counts": {
                 "content": 4,
                 "common": 4,
                 "shared": 4,
-                "web": 3,
+                "web": 5,
                 "mobile": 0
             },
             "fields": {
@@ -7004,6 +7075,18 @@
                 },
                 "web_switch_on_value": {
                     "type": "text",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                },
+                "web_switch_thumb_icon": {
+                    "type": "select-icon",
+                    "scope": "web",
+                    "display": 0,
+                    "default": ""
+                },
+                "web_switch_with_thumb_indicator": {
+                    "type": "checkbox",
                     "scope": "web",
                     "display": 0,
                     "default": "1"
@@ -7099,12 +7182,12 @@
             "has_shared_type": false,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 7,
+            "field_count": 11,
             "scope_counts": {
                 "content": 0,
                 "common": 0,
                 "shared": 4,
-                "web": 3,
+                "web": 7,
                 "mobile": 0
             },
             "fields": {
@@ -7137,6 +7220,30 @@
                     "scope": "web",
                     "display": 0,
                     "default": null
+                },
+                "web_tabs_grow": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
+                },
+                "web_tabs_justify": {
+                    "type": "select",
+                    "scope": "web",
+                    "display": 0,
+                    "default": ""
+                },
+                "web_tabs_keep_mounted": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                },
+                "web_tabs_placement": {
+                    "type": "segment",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "left"
                 },
                 "web_tabs_variant": {
                     "type": "select",
@@ -7283,13 +7390,13 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 14,
+            "field_count": 18,
             "scope_counts": {
                 "content": 3,
                 "common": 5,
-                "shared": 3,
+                "shared": 4,
                 "web": 3,
-                "mobile": 0
+                "mobile": 3
             },
             "fields": {
                 "description": {
@@ -7322,11 +7429,35 @@
                     "display": 0,
                     "default": "0"
                 },
+                "mobile_auto_capitalize": {
+                    "type": "select",
+                    "scope": "mobile",
+                    "display": 0,
+                    "default": ""
+                },
+                "mobile_keyboard_type": {
+                    "type": "select",
+                    "scope": "mobile",
+                    "display": 0,
+                    "default": ""
+                },
+                "mobile_secure_entry": {
+                    "type": "checkbox",
+                    "scope": "mobile",
+                    "display": 0,
+                    "default": "0"
+                },
                 "name": {
                     "type": "text",
                     "scope": "common",
                     "display": 0,
                     "default": null
+                },
+                "shared_max_length": {
+                    "type": "number",
+                    "scope": "shared",
+                    "display": 0,
+                    "default": ""
                 },
                 "shared_radius": {
                     "type": "slider",
@@ -7378,6 +7509,10 @@
                 }
             },
             "drift_db_fields_missing_from_type": [
+                "mobile_auto_capitalize",
+                "mobile_keyboard_type",
+                "mobile_secure_entry",
+                "shared_max_length",
                 "shared_size"
             ],
             "drift_type_fields_missing_from_db": [],
@@ -7730,12 +7865,7 @@
                     "default": ""
                 }
             },
-            "drift_db_fields_missing_from_type": [
-                "alt",
-                "has_controls",
-                "media_autoplay",
-                "media_loop"
-            ],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
@@ -7791,10 +7921,7 @@
                     "default": ""
                 }
             },
-            "drift_db_fields_missing_from_type": [
-                "alt",
-                "img_src"
-            ],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
@@ -7880,13 +8007,16 @@
                     "default": null
                 }
             },
-            "drift_db_fields_missing_from_type": [
-                "fallback_src"
-            ],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [
                 "height",
                 "width",
-                "sources"
+                "video_src",
+                "poster_src",
+                "has_controls",
+                "media_loop",
+                "media_autoplay",
+                "media_muted"
             ],
             "duplicate_candidates": []
         },

@@ -83,9 +83,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** The standard one-line text question. Set `label`, `name`, `placeholder`, `description` (helper text), and required.
 
-**Developers.** Renders `<TextInput>`. Supports left/right icons and a variant.
+**Developers.** Renders `<TextInput>`. Supports left/right icons and a variant. `shared_max_length` caps characters on both platforms (HTML / RN `maxLength`); the `mobile_*` knobs map to the native keyboard (`keyboardType` / `autoCapitalize` / `secureTextEntry`) and are mobile-only.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `shared_max_length` (web + mobile), `mobile_keyboard_type` / `mobile_auto_capitalize` / `mobile_secure_entry` (mobile-only keyboard knobs), `translatable`.
 
 **Children.** No.
 
@@ -99,7 +99,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Textarea>` (or a Markdown editor when `markdown_editor` is set). Autosize via `web_textarea_autosize` + min/max rows.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `shared_max_length` (web + mobile), `mobile_auto_capitalize` (mobile-only), `translatable`.
 
 **Children.** No.
 
@@ -127,7 +127,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders a select; `options` is a serialized option list. `max` caps multi-select count.
 
-**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`, `alt`.
+**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`. *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
 
 **Children.** No.
 
@@ -209,9 +209,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** An on/off toggle (a friendlier checkbox). Set on/off labels and the values stored for each state.
 
-**Developers.** Renders `<Switch>`. `web_switch_on_value` / `web_switch_off_value` define the persisted values.
+**Developers.** Renders `<Switch>`. `web_switch_on_value` / `web_switch_off_value` define the persisted values. `web_switch_with_thumb_indicator` shows a coloured dot in the thumb; `web_switch_thumb_icon` renders an optional icon inside the thumb (both web-only).
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `switch_on_label` / `switch_off_label`, `web_switch_on_value` / `web_switch_off_value`, `web_label_position`, `web_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `switch_on_label` / `switch_off_label`, `web_switch_on_value` / `web_switch_off_value`, `web_label_position`, `web_use_input_wrapper`, `web_switch_with_thumb_indicator`, `web_switch_thumb_icon`.
 
 **Children.** No.
 
@@ -237,9 +237,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** Let users enter or pick a colour. Set the format (hex/rgb/hsl) and preset swatches.
 
-**Developers.** Renders `<ColorInput>`. `web_color_input_swatches` is the preset list.
+**Developers.** Renders `<ColorInput>`. `web_color_input_swatches` is the preset list. `web_color_input_with_eye_dropper` shows the screen eye-dropper, `web_color_input_disallow_input` makes it pick-only, `web_color_input_with_preview` shows the selected-colour swatch in the field (all web-only).
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_color_format`, `web_color_input_swatches`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_color_format`, `web_color_input_swatches`, `web_color_input_with_eye_dropper`, `web_color_input_disallow_input`, `web_color_input_with_preview`.
 
 **Children.** No.
 
@@ -279,9 +279,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** For numbers. Set min/max/step, decimal places, and clamp behaviour.
 
-**Developers.** Renders `<NumberInput>`.
+**Developers.** Renders `<NumberInput>`. `web_number_input_prefix` / `_suffix` add currency/unit affixes; `_thousand_separator` groups thousands; `_allow_negative` permits negatives; `_hide_controls` hides the steppers (all web-only).
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `web_number_input_decimal_scale`, `web_number_input_clamp_behavior`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `web_number_input_decimal_scale`, `web_number_input_clamp_behavior`, `web_number_input_prefix`, `web_number_input_suffix`, `web_number_input_thousand_separator`, `web_number_input_allow_negative`, `web_number_input_hide_controls`.
 
 **Children.** No.
 
@@ -335,9 +335,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** Use when one bar must show several coloured segments. Add `progress-section` children.
 
-**Developers.** Renders `<Progress.Root>`; children are `progress-section`.
+**Developers.** Renders `<Progress.Root>`; children are `progress-section`. `shared_radius` rounds the bar on both platforms (web `radius`, mobile `borderRadius`).
 
-**Distinctive fields.** `web_progress_auto_contrast`.
+**Distinctive fields.** `web_progress_auto_contrast`, `shared_size`, `shared_radius` (web + mobile).
 
 **Children.** Yes (`progress-section`).
 

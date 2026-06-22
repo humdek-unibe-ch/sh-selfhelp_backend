@@ -61,9 +61,9 @@ the matching item children inside it.
 
 **Administrators.** Split content across tabs. Add `tab` children; choose orientation (horizontal/vertical) and variant.
 
-**Developers.** Renders `<Tabs>`; children are `tab` (each contributing a `Tabs.Tab` + `Tabs.Panel`).
+**Developers.** Renders `<Tabs>`; children are `tab` (each contributing a `Tabs.Tab` + `Tabs.Panel`). `web_tabs_grow` / `web_tabs_justify` apply to the `Tabs.List` (stretch / alignment); `web_tabs_keep_mounted` keeps inactive panels mounted; `web_tabs_placement` sets the list side when the orientation is vertical (all web-only).
 
-**Distinctive fields.** `web_tabs_variant`, `web_tabs_orientation`, `web_tabs_radius`, `shared_color`, `web_width`, `web_height`.
+**Distinctive fields.** `web_tabs_variant`, `web_tabs_orientation`, `web_tabs_radius`, `shared_color`, `web_tabs_grow`, `web_tabs_justify`, `web_tabs_keep_mounted`, `web_tabs_placement`, `web_width`, `web_height`.
 
 **Children.** Yes (`tab`).
 
