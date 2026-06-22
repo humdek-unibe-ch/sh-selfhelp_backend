@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, `@selfhelp/shared` types, frontend/mobile renderers).
-Last verified: 2026-06-18.
+Last verified: 2026-06-22.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 This page describes the fields and conventions **shared by every style**, so the
@@ -38,42 +38,51 @@ Each field is either:
 ## Field naming, scope, and platform
 
 Field scope has **two independent dimensions** — translatability (`display`) and
-the name prefix — which the backend collapses into a single five-value `scope` on
+the name prefix — which the backend collapses into a single four-value `scope` on
 every field of the `admin/styles/schema` and `admin` section responses (computed
 once in `StyleRepository::deriveFieldScope()`). Translatability wins first
 (`display = 1` is always `content`); property fields (`display = 0`) then split by
 prefix. The CMS groups fields by this `scope` and must not re-derive it from the
 name or the `display` flag.
 
+**No prefix = both platforms.** A property field with no platform prefix applies
+to both web and mobile. There is no separate `shared_` prefix: the cross-platform
+presentation fields (`size`, `radius`, `spacing`, `color`, `variant`, `gap`, …)
+are plain unprefixed `common`-scope fields, the same scope as cross-platform
+behaviour/data fields (`value`, `name`, `url`). Only `web_` and `mobile_` mark a
+field as platform-specific. (Migration `Version20260622165615` dropped the
+redundant `shared_` prefix from 47 fields — see the reserved-name note below.)
+
 | Field | `display` | Scope | Examples | Meaning |
 |-------|-----------|-------|----------|---------|
 | translatable copy | `1` | `content` | `label`, `title`, `text`, `placeholder` | Authored content, grouped per language |
-| unprefixed property | `0` | `common` | `value`, `is_required`, `url`, `name` | Cross-platform behavior / data property |
-| `shared_` property | `0` | `shared` | `shared_size`, `shared_radius`, `shared_spacing`, `shared_color` | Portable visual semantics mapped to each platform by the `@selfhelp/shared` mapper |
-| `web_` property | `0` | `web` | `web_variant`, `web_shadow` | Mantine / browser-specific presentation (web renderer only) |
+| unprefixed property | `0` | `common` | `value`, `name`, `url`, `size`, `radius`, `spacing`, `color`, `variant` | Cross-platform behaviour, data, **and** presentation (both platforms) |
+| `web_` property | `0` | `web` | `web_variant`, `web_shadow`, `web_size` | Mantine / browser-specific presentation (web renderer only) |
 | `mobile_` property | `0` | `mobile` | `mobile_keyboard_type`, `mobile_haptic_feedback` | HeroUI Native / native-device presentation (mobile renderer only) |
 
-Do not prefix ordinary content or workflow fields just because both platforms
-read them. Renderer precedence is: current-platform `web_*`/`mobile_*` override →
-`shared_*` semantic → component default. The mobile renderer never reads `web_*`
-and the web renderer never reads `mobile_*`.
+Do not prefix ordinary fields just because both platforms read them — unprefixed
+already means both. Renderer precedence is: current-platform `web_*`/`mobile_*`
+override → unprefixed cross-platform semantic → component default. The mobile
+renderer never reads `web_*` and the web renderer never reads `mobile_*`.
 
-`shared_*` semantics use the **true cross-platform common denominator** (HeroUI
-Native has no `xs`/`xl`), so they are intentionally narrower than the Mantine
-`web_*` scales and are mapped 1:1 per platform by `@selfhelp/shared`
-(`theme/semantic.ts`) with no clamping:
+> **Reserved-name exceptions.** Three cross-platform presentation fields keep a
+> `shared_` prefix — `shared_height`, `shared_width`, `shared_icon` — because the
+> bare names `height` / `width` / `icon` already exist as **page-type** fields in
+> the globally-unique `fields` table (page `icon` is live on real pages). They
+> are still `common`-scope (both platforms); only their *name* is prefixed.
+
+The unprefixed cross-platform semantic fields use the **true cross-platform
+common denominator** (HeroUI Native has no `xs`/`xl`), so they are intentionally
+narrower than the Mantine `web_*` scales and are mapped 1:1 per platform by
+`@selfhelp/shared` (`theme/semantic.ts`) with no clamping:
 
 | Field | Allowed values | Notes |
 |-------|----------------|-------|
-| `shared_size` | `sm`, `md`, `lg` | `web_size` keeps the full Mantine `xs..xl` |
-| `shared_radius` | `none`, `sm`, `md`, `lg`, `full` | `full` = pill, `none` = square |
-| `shared_intent` | `neutral`, `primary`, `secondary`, `success`, `warning`, `danger` | mapped to Mantine color+variant / HeroUI variant+color |
-| `shared_spacing` | box-model object | one complete margin+padding control |
+| `size` | `sm`, `md`, `lg` | `web_size` keeps the full Mantine `xs..xl` |
+| `radius` | `none`, `sm`, `md`, `lg`, `full` | `full` = pill, `none` = square |
+| `spacing` | box-model object | one complete margin+padding control |
 
-The backend enforces these option lists (`fields.config`) and default domains;
-narrowing was applied by migration `Version20260618195450`
-(`mantine_size`/`mantine_radius` were promoted to `shared_*` by
-`Version20260618143216`).
+The backend enforces these option lists (`fields.config`) and default domains.
 
 ## Render target
 
@@ -105,7 +114,7 @@ Most visual styles also expose:
 
 | Field | Type | Scope | Purpose |
 |-------|------|-------|---------|
-| `shared_spacing` | spacing | shared | Portable box-model control for the section's margin **and** padding. Mapped to both platforms (the cross-platform spacing field). RF-15 (slice 9) merged the legacy margin-only `web_spacing_margin` into this, so every spacing-capable style now uses it. |
+| `spacing` | spacing | common | Portable box-model control for the section's margin **and** padding. Mapped to both platforms (the cross-platform spacing field). RF-15 (slice 9) merged the legacy margin-only `web_spacing_margin` into this, so every spacing-capable style now uses it. |
 
 ## Standard Mantine cosmetic props
 
@@ -116,7 +125,7 @@ in the live `admin/styles/schema` endpoint:
 | Field | Purpose |
 |-------|---------|
 | `web_size` | Component size — usually `xs`–`xl` (some accept a CSS length). |
-| `shared_color` | Semantic theme colour key (e.g. `blue`, `red`); mapped to Mantine `color` on web and HeroUI Native colour on mobile (slice 2 / RF-13). |
+| `color` | Semantic theme colour key (e.g. `blue`, `red`); mapped to Mantine `color` on web and HeroUI Native colour on mobile (slice 2 / RF-13). Cross-platform (both renderers). |
 | `web_radius` | Corner radius — `xs`–`xl` or a number. |
 | `web_variant` | Visual variant (e.g. `filled`, `outline`, `light`, `subtle`, `default`). |
 | `web_left_icon` / `web_right_icon` | Icon name picked from the icon selector, rendered before/after the content. |

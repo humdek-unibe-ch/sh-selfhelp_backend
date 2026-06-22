@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -101,14 +101,14 @@ the same change wave:
 > shared_/web_ field split with the duplicate `pages.id_platform` removed in
 > favour of the existing page access type) **plus** the alert/badge/avatar/button/
 > login authoring-polish wave (alert `web_with_close_button` → common `closable`;
-> button/badge promoted to `shared_variant` with `web_variant` repurposed/
+> button/badge promoted to `variant` with `web_variant` repurposed/
 > unlinked; badge `circle`; avatar `name`; login `subtitle` — migration
 > `Version20260619131830`) — is adopted by frontend 0.1.23. The renames mean a
 > pre-0.1.23 frontend reads field names this core no longer emits, so the floor
 > moved up. The live pairing is **frontend `>=0.1.23` ⇄ core `>=0.1.15`** (both
 > still `<0.2.0`); anything older on either side is an incompatible mix.
 > `@selfhelp/shared` (now `1.14.6`, carrying the matching `IAlertStyle.closable`,
-> `IButtonStyle`/`IBadgeStyle.shared_variant`, `IBadgeStyle.circle`,
+> `IButtonStyle`/`IBadgeStyle.variant`, `IBadgeStyle.circle`,
 > `IAvatarStyle.name`, `ILoginStyle.subtitle` type contracts) stays the type
 > anchor on top of this version gate.
 
@@ -121,13 +121,13 @@ the same change wave:
 |-----------|---------|-------------|
 | Host CMS (`selfhelp.cms_version`) | `0.1.15` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.14.6` | npm |
+| `@selfhelp/shared` | `1.14.22` | npm (1.14.22 drops the `shared_` field-name prefix — "no prefix = both platforms"; paired with backend migration `Version20260622165615`) |
 | `sh-selfhelp_frontend` | `0.1.23` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.6` | shared `1.x` line |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.22` | shared `1.x` line (field-naming unification) |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.15 <0.2.0` | core that ships the render-target + field-scope style schema (incl. the alert/badge/avatar/button/login polish wave) |
 | `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.23 <0.2.0` | frontend that adopted the full 0.1.15 style schema incl. the polish-wave field renames |
 | `sh-selfhelp_mobile` | `0.1.2` | — |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.5` | shared `1.x` line (mobile UI adapter contract) |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.22` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |

@@ -20,15 +20,15 @@ the matching item children inside it.
 
 **Purpose.** Mantine `Accordion` (web) / HeroUI Native `Accordion` compound (mobile) — a stack of collapsible panels.
 
-**Administrators.** Use for FAQs or grouped content where only some panels are open at a time. Add `accordion-item` children. Allow multiple open panels via **Multiple** (`shared_multiple`), pick the **Variant**, and (web) set the default-open item.
+**Administrators.** Use for FAQs or grouped content where only some panels are open at a time. Add `accordion-item` children. Allow multiple open panels via **Multiple** (`multiple`), pick the **Variant**, and (web) set the default-open item.
 
 **Developers.** Web renders `<Accordion>`; mobile renders the HeroUI Native `Accordion` compound (themed + animated) and each child `accordion-item` consults the HeroUI accordion context automatically (no custom context). The mobile renderer reads `shared_*` only. Precedence is shared → component default.
 
 **Distinctive fields.**
 
-- `shared_accordion_variant` (shared, select: `default`/`contained`/`filled`/`separated`) — web → Mantine `variant`; mobile → HeroUI `variant` (`default`, or `surface` for the boxed variants), via `mapAccordionVariantToHeroUiVariant`. *Renamed from the web-only `web_accordion_variant` in `Version20260619183601`; clearable.*
-- `shared_multiple` (shared, checkbox) — single vs multiple open; read by both platforms.
-- `shared_radius` (shared, slider) — web → Mantine `radius`; mobile → surface container border radius.
+- `accordion_variant` (shared, select: `default`/`contained`/`filled`/`separated`) — web → Mantine `variant`; mobile → HeroUI `variant` (`default`, or `surface` for the boxed variants), via `mapAccordionVariantToHeroUiVariant`. *Renamed from the web-only `web_accordion_variant` in `Version20260619183601`; clearable.*
+- `multiple` (shared, checkbox) — single vs multiple open; read by both platforms.
+- `radius` (shared, slider) — web → Mantine `radius`; mobile → surface container border radius.
 - `web_accordion_chevron_position`, `web_accordion_chevron_size`, `web_accordion_disable_chevron_rotation`, `web_accordion_loop`, `web_accordion_transition_duration`, `web_accordion_default_value` (web-only Mantine presentation; the mobile chevron is HeroUI's animated `Accordion.Indicator`).
 
 **Children.** Yes (`accordion-item`).
@@ -63,7 +63,7 @@ the matching item children inside it.
 
 **Developers.** Renders `<Tabs>`; children are `tab` (each contributing a `Tabs.Tab` + `Tabs.Panel`). `web_tabs_grow` / `web_tabs_justify` apply to the `Tabs.List` (stretch / alignment); `web_tabs_keep_mounted` keeps inactive panels mounted; `web_tabs_placement` sets the list side when the orientation is vertical (all web-only).
 
-**Distinctive fields.** `web_tabs_variant`, `web_tabs_orientation`, `web_tabs_radius`, `shared_color`, `web_tabs_grow`, `web_tabs_justify`, `web_tabs_keep_mounted`, `web_tabs_placement`, `web_width`, `web_height`.
+**Distinctive fields.** `web_tabs_variant`, `web_tabs_orientation`, `web_tabs_radius`, `color`, `web_tabs_grow`, `web_tabs_justify`, `web_tabs_keep_mounted`, `web_tabs_placement`, `web_width`, `web_height`.
 
 **Children.** Yes (`tab`).
 
@@ -91,7 +91,7 @@ the matching item children inside it.
 
 **Developers.** Renders `<Timeline active>`. `web_timeline_active` marks completed items.
 
-**Distinctive fields.** `web_timeline_bullet_size`, `web_timeline_line_width`, `web_timeline_active`, `web_timeline_align`, `web_timeline_line_variant`, `shared_color`.
+**Distinctive fields.** `web_timeline_bullet_size`, `web_timeline_line_width`, `web_timeline_active`, `web_timeline_align`, `web_timeline_line_variant`, `color`.
 
 **Children.** Yes.
 

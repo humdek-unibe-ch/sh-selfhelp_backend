@@ -19,7 +19,7 @@ below.
 > position, and the space direction — were promoted to `shared_*`, so the same
 > field now drives both the web (Mantine) and the mobile (React Native flexbox)
 > renderer. `web_px`/`web_py` (paper, container) were removed in favour of the
-> portable `shared_spacing` padding, and `simple-grid` gained `shared_gap` plus
+> portable `spacing` padding, and `simple-grid` gained `gap` plus
 > `web_cols_sm`/`md`/`lg` responsive overrides (replacing the old
 > `web_breakpoints`). See migration `Version20260622063129`.
 
@@ -36,9 +36,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Wrap a page's main content in a container so it stays readable on wide screens. Pick a `size` for the max width, or turn on `fluid` to span the full width.
 
-**Developers.** Renders `<Container>`; children render inside. Padding comes from the cross-platform `shared_spacing`. `web_fluid` (web only) switches to full width; on mobile a container is full-width by default.
+**Developers.** Renders `<Container>`; children render inside. Padding comes from the cross-platform `spacing`. `web_fluid` (web only) switches to full width; on mobile a container is full-width by default.
 
-**Distinctive fields.** `shared_size` (max-width preset), `web_fluid` (full-width toggle, web-only). Inner padding is the portable `shared_spacing` — the old web-only `web_px`/`web_py` were removed.
+**Distinctive fields.** `size` (max-width preset), `web_fluid` (full-width toggle, web-only). Inner padding is the portable `spacing` — the old web-only `web_px`/`web_py` were removed.
 
 **Children.** Yes.
 
@@ -64,9 +64,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use when you need precise control over how children line up: direction (row/column), spacing, alignment, justification, and wrapping.
 
-**Developers.** Renders `<Flex>`; the `shared_*` flexbox props map to Mantine on web and to React Native flexbox on mobile (RN defaults to `column`/no-wrap, so `shared_direction`/`shared_wrap` should be set explicitly).
+**Developers.** Renders `<Flex>`; the `shared_*` flexbox props map to Mantine on web and to React Native flexbox on mobile (RN defaults to `column`/no-wrap, so `direction`/`wrap` should be set explicitly).
 
-**Distinctive fields.** `shared_gap`, `shared_justify` (justify-content), `shared_align` (align-items), `shared_direction` (row/column), `shared_wrap`, `shared_width`, `shared_height` — all cross-platform.
+**Distinctive fields.** `gap`, `justify` (justify-content), `align` (align-items), `direction` (row/column), `wrap`, `shared_width`, `shared_height` — all cross-platform.
 
 **Children.** Yes.
 
@@ -80,7 +80,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Group>`. `web_group_grow` makes children share width equally; `web_group_wrap` toggles wrapping.
 
-**Distinctive fields.** `shared_gap`, `shared_justify`, `shared_align`, `shared_width`, `shared_height` (cross-platform); `web_group_wrap` (`0`/`1`), `web_group_grow` (`0`/`1`) stay web-only.
+**Distinctive fields.** `gap`, `justify`, `align`, `shared_width`, `shared_height` (cross-platform); `web_group_wrap` (`0`/`1`), `web_group_grow` (`0`/`1`) stay web-only.
 
 **Children.** Yes.
 
@@ -94,7 +94,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Stack>`.
 
-**Distinctive fields.** `shared_gap`, `shared_justify`, `shared_align`, `shared_width`, `shared_height` — all cross-platform.
+**Distinctive fields.** `gap`, `justify`, `align`, `shared_width`, `shared_height` — all cross-platform.
 
 **Children.** Yes.
 
@@ -106,9 +106,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use for galleries or card rows where every column is the same width. Set the column count and spacing; use breakpoints to change columns on small screens.
 
-**Developers.** Renders `<SimpleGrid>`. Base columns are `shared_cols` (read on both platforms); `web_cols_sm`/`web_cols_md`/`web_cols_lg` add web responsive overrides. Horizontal column spacing is `shared_gap`, row spacing is `shared_vertical_spacing`. On mobile the equal-width grid is emulated with flex-wrap + width percentages.
+**Developers.** Renders `<SimpleGrid>`. Base columns are `cols` (read on both platforms); `web_cols_sm`/`web_cols_md`/`web_cols_lg` add web responsive overrides. Horizontal column spacing is `gap`, row spacing is `vertical_spacing`. On mobile the equal-width grid is emulated with flex-wrap + width percentages.
 
-**Distinctive fields.** `shared_cols` (base column count), `shared_gap` (horizontal column spacing), `shared_vertical_spacing` (row spacing), `shared_width`, `shared_height` (all cross-platform); `web_cols_sm` / `web_cols_md` / `web_cols_lg` (web-only responsive column overrides; clear to inherit `shared_cols`).
+**Distinctive fields.** `cols` (base column count), `gap` (horizontal column spacing), `vertical_spacing` (row spacing), `shared_width`, `shared_height` (all cross-platform); `web_cols_sm` / `web_cols_md` / `web_cols_lg` (web-only responsive column overrides; clear to inherit `cols`).
 
 **Children.** Yes.
 
@@ -122,7 +122,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Grid>`; direct children are `grid-column` sections. Grid is intentionally **restricted to `grid-column` children** through `rel_styles_allowed_relationships` (`styles.can_have_children = 0` **plus** a `grid → grid-column` whitelist row). That `0 + whitelist` combination is the catalog's "restricted children" model — it is **not** a missing-children bug; flipping `can_have_children` to `1` would let grid accept any child.
 
-**Distinctive fields.** `shared_cols`, `shared_gap`, `shared_justify`, `shared_align`, `shared_width`, `shared_height` (cross-platform); `web_grid_overflow` (web-only).
+**Distinctive fields.** `cols`, `gap`, `justify`, `align`, `shared_width`, `shared_height` (cross-platform); `web_grid_overflow` (web-only).
 
 **Children.** Restricted to `grid-column` (see Developers).
 
@@ -134,9 +134,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Place inside a `grid`. Set how many of the 12 columns it spans, and optionally an offset or order.
 
-**Developers.** Renders `<Grid.Col>`. `shared_grid_span` accepts a number (1–12), `auto`, or `content`; on mobile the grid is emulated with flex-basis percentages from the span.
+**Developers.** Renders `<Grid.Col>`. `grid_span` accepts a number (1–12), `auto`, or `content`; on mobile the grid is emulated with flex-basis percentages from the span.
 
-**Distinctive fields.** `shared_grid_span` (width), `shared_grid_offset`, `shared_grid_order`, `shared_grid_grow`, `shared_width`, `shared_height` — all cross-platform.
+**Distinctive fields.** `grid_span` (width), `grid_offset`, `grid_order`, `grid_grow`, `shared_width`, `shared_height` — all cross-platform.
 
 **Children.** Yes.
 
@@ -150,7 +150,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Space>` on web and a sized `View` on mobile. Leaf node.
 
-**Distinctive fields.** `shared_size`, `shared_orientation` (horizontal/vertical) — both cross-platform.
+**Distinctive fields.** `size`, `orientation` (horizontal/vertical) — both cross-platform.
 
 **Children.** No.
 
@@ -162,9 +162,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Visually split content into groups. Add an optional centred label ("OR", section names) and choose the line style.
 
-**Developers.** Renders `<Divider>` on web and a themed `View` border on mobile. `shared_divider_variant` maps to Mantine `variant` and to RN `borderStyle` (solid/dashed/dotted).
+**Developers.** Renders `<Divider>` on web and a themed `View` border on mobile. `divider_variant` maps to Mantine `variant` and to RN `borderStyle` (solid/dashed/dotted).
 
-**Distinctive fields.** `shared_divider_variant` (solid/dashed/dotted), `shared_size` (thickness), `divider_label` (content), `shared_divider_label_position`, `shared_orientation`, `shared_color` — all cross-platform.
+**Distinctive fields.** `divider_variant` (solid/dashed/dotted), `size` (thickness), `divider_label` (content), `divider_label_position`, `orientation`, `color` — all cross-platform.
 
 **Children.** No.
 
@@ -176,9 +176,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Lift content onto a "sheet" with a drop shadow and rounded corners. Good for panels and call-outs. Fill in the optional **Title** for an automatic heading above the content (leave it empty for a plain surface); turn **Border** on/off and pick a radius. Padding is the shared **Spacing** control.
 
-**Developers.** Renders `<Paper>`. `title` (translatable) renders as an automatic `<Text fw>` heading when non-empty (it never adds a child section). `shared_border` maps to Mantine `withBorder` (a themed border on mobile), exactly like `card`. Shadow (`web_paper_shadow`) stays web-only because `react-native-web` shadows are unreliable.
+**Developers.** Renders `<Paper>`. `title` (translatable) renders as an automatic `<Text fw>` heading when non-empty (it never adds a child section). `border` maps to Mantine `withBorder` (a themed border on mobile), exactly like `card`. Shadow (`web_paper_shadow`) stays web-only because `react-native-web` shadows are unreliable.
 
-**Distinctive fields.** `title` (optional auto-styled heading, content), `shared_border` (`0`/`1`), `shared_radius`, `web_paper_shadow` (web-only). Padding is the portable `shared_spacing` — the old web-only `web_px`/`web_py` were removed.
+**Distinctive fields.** `title` (optional auto-styled heading, content), `border` (`0`/`1`), `radius`, `web_paper_shadow` (web-only). Padding is the portable `spacing` — the old web-only `web_px`/`web_py` were removed.
 
 **Children.** Yes.
 
@@ -192,7 +192,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Center>`. `web_center_inline` switches to inline centering (web-only). The size constraints map to flexbox on mobile.
 
-**Distinctive fields.** `shared_width` / `shared_height`, `shared_miw` / `shared_mih` (min), `shared_maw` / `shared_mah` (max) — all cross-platform; `web_center_inline` stays web-only.
+**Distinctive fields.** `shared_width` / `shared_height`, `miw` / `mih` (min), `maw` / `mah` (max) — all cross-platform; `web_center_inline` stays web-only.
 
 **Children.** Yes.
 
@@ -229,12 +229,12 @@ draws. Turn **Border** on/off and pick a radius/shadow; padding is the shared
 **Developers.** Renders `<Card>`. `title` (translatable) renders as an automatic
 `<Text fw>` heading when non-empty; `img_src` renders as a top
 `<Card.Section><Image></Card.Section>` when non-empty. Border is the
-cross-platform `shared_border` (Mantine `withBorder`; themed border on mobile).
+cross-platform `border` (Mantine `withBorder`; themed border on mobile).
 
 **Distinctive fields.** `title` (optional auto-styled heading, content),
-`img_src` (optional top image via the asset picker, content), `shared_border`
-(`0`/`1`), `shared_radius`, `web_card_shadow`. Padding is the portable
-`shared_spacing` (`pt`/`pb`/`ps`/`pe`) — there is no web-only card-padding field;
+`img_src` (optional top image via the asset picker, content), `border`
+(`0`/`1`), `radius`, `web_card_shadow`. Padding is the portable
+`spacing` (`pt`/`pb`/`ps`/`pe`) — there is no web-only card-padding field;
 the renderer keeps a fixed Mantine `padding="md"` inner default (also the
 `Card.Section` image-bleed reference).
 
@@ -251,10 +251,10 @@ Turn **Border** on to separate the segment with a divider line; turn **Inherit
 padding** on (web) to align the segment with the card's horizontal padding.
 
 **Developers.** Renders `<Card.Section>`. Only meaningful as a `card` child.
-`shared_border` maps to Mantine `withBorder` (a themed divider on mobile);
+`border` maps to Mantine `withBorder` (a themed divider on mobile);
 `web_segment_inherit_padding` maps to Mantine `inheritPadding` (web only).
 
-**Distinctive fields.** `shared_border` (`0`/`1`), `web_segment_inherit_padding`
+**Distinctive fields.** `border` (`0`/`1`), `web_segment_inherit_padding`
 (`0`/`1`, web only).
 
 **Children.** Yes.

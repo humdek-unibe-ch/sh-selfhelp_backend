@@ -3,7 +3,7 @@
 Audience: Developers and maintainers.
 Status: active (living audit — regenerate the data after catalog/renderer changes).
 Applies to: the 90 core CMS styles and their 430 distinct in-use fields.
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: the live DB catalog (`admin/styles/schema`), `@selfhelp/shared` (registry + types + mapper), the web + mobile dispatch maps. Machine-readable companion: [`style-field-audit.generated.json`](./style-field-audit.generated.json), produced by `scripts/build-style-audit.php`.
 
 > A deep, evidence-based comparison of what exists in the **database** (the truth)
@@ -31,24 +31,23 @@ sections degrade gracefully when a repo is absent.
 | Styles in DB | 90 |
 | Styles in shared registry / web renderer / mobile renderer | 90 / 90 / 90 |
 | Distinct fields in use | 430 |
-| Field instances by scope: `content` | 254 |
-| `common` | 165 |
-| `shared` | 226 |
-| `web` | 258 |
-| `mobile` | **0** |
+| Field instances by scope: `content` | 276 |
+| `common` | 453 |
+| `web` | 232 |
+| `mobile` | 12 |
 | Styles currently `render_target = both` | 90 (all) |
 
 Reading: the catalog is **perfectly reconciled at the style level** — no missing
 or extra styles on any platform. Everything below is **field-level**.
 
-The scope split is the core finding: **258 `web_` field instances vs 0 `mobile_`
-and 226 `shared_`.** After the `web_*` → `shared_*` rename slices (color, spacing,
-layout, variant, button knobs) `shared_*` is now nearly at parity with `web_*` —
-the catalog grew out of Mantine but the portable contract has caught up. The
-mobile contract is entirely `shared_*` + unprefixed content/behaviour, and (since
-the v1.15.0 mapper/renderer slice) the mobile renderers actually read those
-`shared_*` layout/typography/appearance fields instead of the old phantom `web_*`
-aliases.
+The scope split is the core finding. **The `shared` scope no longer exists**:
+migration `Version20260622165615` dropped the redundant `shared_` prefix from 47
+fields, folding portable presentation (`size`, `radius`, `color`, `spacing`,
+layout enums, …) into the single unprefixed `common` scope — "no prefix = both
+platforms". Three names stay prefixed as reserved-name exceptions
+(`shared_height`, `shared_width`, `shared_icon`) but still count as `common`. The
+mobile contract is `common` (unprefixed presentation + behaviour) + content, plus
+a small set of `mobile_*` native-only knobs.
 
 ## 2. Catalog parity — clean
 
@@ -65,17 +64,17 @@ was reconciled to 90 — see `mobile.md` §4.6.)
 
 This was the highest-impact cleanup; it is now **done**. The catalog previously
 carried two competing spacing fields (`web_spacing_margin`, 39 styles, margin-only
-web-only; and `shared_spacing`, 37 styles, portable box-model). Migration
+web-only; and `spacing`, 37 styles, portable box-model). Migration
 `Version20260619100642` (paired with `@selfhelp/shared` v1.14.4) merged the
 margin-only field and its authored section values into the portable box-model
 field and dropped `web_spacing_margin` + its `spacing-margin` field type.
 
 | Field | Styles using it | Meaning |
 |-------|----------------:|---------|
-| `shared_spacing` | 76 | portable box-model (margin + padding), both platforms |
-| ~~`web_spacing_margin`~~ | 0 | **removed** — merged into `shared_spacing` |
+| `spacing` | 76 | portable box-model (margin + padding), both platforms |
+| ~~`web_spacing_margin`~~ | 0 | **removed** — merged into `spacing` |
 
-The web renderer now always reads `shared_spacing` (the `?? web_spacing_margin`
+The web renderer now always reads `spacing` (the `?? web_spacing_margin`
 fallback is gone); mobile reads the same field. **Spacing is now one
 cross-platform field** — all 76 spacing-capable styles get portable spacing on
 both platforms.
@@ -83,7 +82,7 @@ both platforms.
 ## 4. DB ↔ shared-type drift
 
 34 styles have DB fields **missing from** their `@selfhelp/shared` interface; 32
-styles declare type fields **absent from** the DB. (Base-inherited `shared_spacing`
+styles declare type fields **absent from** the DB. (Base-inherited `spacing`
 is excluded as a false positive.) The shared types are partly **stale or
 aspirational** — the DB is the truth. High-signal cases:
 
@@ -95,8 +94,8 @@ aspirational** — the DB is the truth. High-signal cases:
 > different counts (~65 DB fields missing from types across ~30 styles; ~41 type
 > fields absent from the DB across ~26 styles). Replacing the parser is
 > [refactor §5](./style-refactoring-recommendations.md). The snapshot also
-> **predates the landed `web_color` → `shared_color` (RF-13) and
-> `web_spacing_margin` → `shared_spacing` (RF-15) renames**, so any cell still
+> **predates the landed `web_color` → `color` (RF-13) and
+> `web_spacing_margin` → `spacing` (RF-15) renames**, so any cell still
 > naming `web_color` / `web_spacing_margin` is historical — those fields no longer
 > exist in the catalog (see §3 and the generated JSON, the authoritative source).
 
@@ -106,9 +105,9 @@ aspirational** — the DB is the truth. High-signal cases:
 |-------|--------------------------------|
 | `register` | `anonymous_users_registration`, `label_security_question_1`, `label_security_question_2`, `group`, `web_color` |
 | `form-log` / `form-record` | `alert_error`, `alert_success`, `btn_save_label`, `btn_cancel_label`, `btn_cancel_url`, `is_log`, `name`, `redirect_at_end`, `web_buttons_*`, `web_btn_*` |
-| `input` | `label`, `locked_after_submit`, `shared_size`, `shared_radius`, `web_variant`, `web_left_icon`, `web_right_icon` |
-| `select` | `label`, `web_multi_select_data`, `locked_after_submit`, `shared_size`, `shared_radius`, `web_select_clearable`, `web_select_searchable` |
-| `alert` | `value`, `web_alert_with_close_button`, `shared_size` |
+| `input` | `label`, `locked_after_submit`, `size`, `radius`, `web_variant`, `web_left_icon`, `web_right_icon` |
+| `select` | `label`, `web_multi_select_data`, `locked_after_submit`, `size`, `radius`, `web_select_clearable`, `web_select_searchable` |
+| `alert` | `value`, `web_alert_with_close_button`, `size` |
 | `image` | `web_image_alt`, `web_image_src` |
 | `video` | `video_src` |
 | `entry-list` | `data_table`, `filter`, `load_as_table`, `own_entries_only`, `scope` |
@@ -128,7 +127,7 @@ aspirational** — the DB is the truth. High-signal cases:
 | `carousel` | `id_prefix`, `has_crossfade`, `sources` |
 | `alert` | `close_button_label` |
 | `chip` | `web_chip_checked`, `web_chip_multiple`, `web_chip_on_value`, `web_chip_off_value`, `tooltip` |
-| `datepicker` | `web_datepicker_allow_deselect` (see §5 typo), `shared_size`, `shared_radius`, `use_web_style` |
+| `datepicker` | `web_datepicker_allow_deselect` (see §5 typo), `size`, `radius`, `use_web_style` |
 
 These are the cross-repo contract bugs the shared `@selfhelp/shared` types must be
 reconciled to the DB (or the DB extended) to fix. The current frontend docs page
@@ -157,10 +156,10 @@ widest:
 
 | Field | # styles | Scope |
 |-------|---------:|-------|
-| `shared_spacing` | 76 | shared |
-| `shared_radius` | 33 | shared |
-| `shared_color` | 32 | shared |
-| `shared_size` | 31 | shared |
+| `spacing` | 76 | common |
+| `radius` | 33 | common |
+| `color` | 32 | common |
+| `size` | 31 | common |
 | `label` | 28 | content |
 | `name` | 22 | common |
 | `disabled` | 22 | common |
@@ -171,14 +170,15 @@ widest:
 | `web_height` | 13 | web |
 | `web_width` | 10 | web |
 
-The most-shared field is now `shared_spacing` (76 styles) after the spacing
+The most-shared field is now `spacing` (76 styles) after the spacing
 consolidation (§3) — the single widest-rippling contract in the catalog, portable
-to both platforms. The next three (`shared_radius`, `shared_color`, `shared_size`)
-are all `shared_*` appearance fields, so the de-facto common library is now
-genuinely cross-platform. The earlier near-universal `use_web_style` "Mantine vs
-raw element" toggle has been **removed** (RF-01) — it was meaningless on mobile.
-The only `web_*` fields still in the top tier are the genuinely web-only box
-metrics `web_left_icon` / `web_height` / `web_width`.
+to both platforms. The next three (`radius`, `color`, `size`)
+are all unprefixed cross-platform appearance fields (`common` scope since the
+`shared_` prefix was dropped in `Version20260622165615`), so the de-facto common
+library is genuinely cross-platform. The earlier near-universal `use_web_style`
+"Mantine vs raw element" toggle has been **removed** (RF-01) — it was meaningless
+on mobile. The only `web_*` fields still in the top tier are the genuinely
+web-only box metrics `web_left_icon` / `web_height` / `web_width`.
 
 ## 7. Per-field "where used / how loaded" — the contract
 
@@ -214,8 +214,8 @@ field-by-field worked example in this format.
 Every style evaluated the way the 2026-06-19 review evaluated the samples: *is it
 configurable? are the props shared or platform-specific? what is dead / mis-scoped
 / needs a mobile path?* **Universal rules (assumed for every style, not repeated
-per row):** `use_web_style` removed (RF-01); `web_color` → `shared_color` (RF-13);
-`web_spacing_margin` → `shared_spacing` (RF-15); any **translatable** `web_*`
+per row):** `use_web_style` removed (RF-01); `web_color` → `color` (RF-13);
+`web_spacing_margin` → `spacing` (RF-15); any **translatable** `web_*`
 field un-prefixed (RF-35); Pro override where one exists (RF-25…RF-34). Rows list
 only the **style-specific** notes on top of those.
 
@@ -224,12 +224,12 @@ only the **style-specific** notes on top of those.
 | Style | Verdict + specific actions |
 |-------|----------------------------|
 | `login` | Mostly content + `web_color` (login button colour). RF-13 makes the button colour work on mobile. Drop stale type field `type` (RF-02). |
-| `register` | Remove `label_security_question_1/2` (RF-03, landed). Keep `group` backend-only (RF-24). `web_color` → `shared_color` (RF-13). |
+| `register` | Remove `label_security_question_1/2` (RF-03, landed). Keep `group` backend-only (RF-24). `web_color` → `color` (RF-13). |
 | `validate` | Custom multi-step; many `web_buttons_*`/`web_btn_*`/`web_card_*` → promote button order/position/variant + colours to `shared_*` so mobile builds the same form (RF-21). Reconcile content drift (RF-12). |
 | `reset-password` | Remove `subject_user`,`is_html` (RF-06, landed). Legacy single-field copies (`label_pw_reset`,`alert_success`,`placeholder`) likely superseded by the `reset_*` set — verify + remove (RF-09). |
 | `two-factor-auth` | No `use_web_style`. Add `label_code`,`label_submit`,`title` to DB (RF-23). OTP UI uses HeroUI `input-otp` internally. |
 | `profile` | 64 content fields + an accordion config block (`profile_accordion_*`,`profile_columns`,`profile_gap`…). Add the `profile_timezone_change_*` + `alert_*` fields the type expects (RF-22). The bespoke `profile_*` accordion knobs should reuse `shared_*` semantics, not a parallel set. |
-| `no-access`/`missing`/`not-found` | Surface styles: `web_button_variant` → `shared_variant` (RF-14), `web_color` → `shared_color` (RF-13) so mobile colours/variants work; `web_shadow` stays web-only (RF-16). |
+| `no-access`/`missing`/`not-found` | Surface styles: `web_button_variant` → `variant` (RF-14), `web_color` → `color` (RF-13) so mobile colours/variants work; `web_shadow` stays web-only (RF-16). |
 | `version` | **0 author fields** → target `web` or remove after a zero-reference check (RF, platform-matrix). |
 
 ### Layout (all map to RN flexbox wrappers, not HeroUI components — mapping §6)
@@ -238,12 +238,12 @@ only the **style-specific** notes on top of those.
 |-------|----------------------------|
 | `flex`/`group`/`stack` | Already mostly `shared_*` (`align`/`justify`/`gap`/`direction`/`wrap`) — good shared contract. `web_height`/`web_width` stay web-only. Mobile = RN `View` flexbox. |
 | `grid`/`simple-grid`/`grid-column` | `web_cols`/`web_breakpoints`/`web_grid_*` stay web-only; mobile emulates with flex-wrap. Layout, not 1:1. |
-| `container` | `shared_size`; `web_px`/`web_py`/`web_fluid` web-only. Mobile `View` maxWidth. |
+| `container` | `size`; `web_px`/`web_py`/`web_fluid` web-only. Mobile `View` maxWidth. |
 | `box` | Has a `content` field + spacing; thin wrapper. |
-| `space` | `shared_size` + `web_space_direction` (web-only). |
-| `divider` | `web_divider_label` is translatable → un-prefix (RF-35). `shared_orientation`/`shared_size` good. Mobile → HeroUI `separator`. |
-| `paper`/`card` | `shared_radius`; `web_*shadow`/`web_*padding`/`web_border` web-only → consider `shared_elevation` later (RF-16). Mobile → HeroUI `surface`/`card`. |
-| `card-segment` | Minimal (only `shared_spacing`) — fine. |
+| `space` | `size` + `web_space_direction` (web-only). |
+| `divider` | `web_divider_label` is translatable → un-prefix (RF-35). `orientation`/`size` good. Mobile → HeroUI `separator`. |
+| `paper`/`card` | `radius`; `web_*shadow`/`web_*padding`/`web_border` web-only → consider `shared_elevation` later (RF-16). Mobile → HeroUI `surface`/`card`. |
+| `card-segment` | Minimal (only `spacing`) — fine. |
 | `center`/`scroll-area`/`aspect-ratio`/`background-image` | Layout wrappers; `web_*` sizing stays web-only; mobile RN equivalents (mapping §6). |
 | `ref-container`/`data-container` | Structural (0 / scope-only). Same behaviour both platforms; verify `data-container` actually does something on both (mobile.md §11.2). |
 
@@ -251,9 +251,9 @@ only the **style-specific** notes on top of those.
 
 | Style | Verdict + specific actions |
 |-------|----------------------------|
-| `title`/`text` | `shared_size`/`shared_text_align` good; `web_text_*` (gradient, line-clamp, transform…) web-only — fine. |
+| `title`/`text` | `size`/`text_align` good; `web_text_*` (gradient, line-clamp, transform…) web-only — fine. |
 | `highlight` | `web_highlight_highlight` (the terms) is translatable → un-prefix (RF-35). |
-| `blockquote` | `cite`/`content` shared; `web_color` → `shared_color`. |
+| `blockquote` | `cite`/`content` shared; `web_color` → `color`. |
 | `code`/`kbd` | Simple; `web_code_block` web-only. Mobile mono `Text`. |
 | `html-tag` | `html_tag_content` + `html_tag`; document the **mobile-supported HTML subset** (web-first). |
 | `fieldset` | `label` + `web_fieldset_variant`; mobile `View`+legend. |
@@ -264,36 +264,36 @@ only the **style-specific** notes on top of those.
 
 | Style | Verdict + specific actions |
 |-------|----------------------------|
-| `image` | **Duplicate fields**: `img_src`+`web_image_src`, `alt`+`web_image_alt` → drop the `web_image_*` twins (RF-36). `shared_radius`; mobile `expo-image`. |
+| `image` | **Duplicate fields**: `img_src`+`web_image_src`, `alt`+`web_image_alt` → drop the `web_image_*` twins (RF-36). `radius`; mobile `expo-image`. |
 | `video`/`audio` | `*_src`/`sources` content; mobile `expo-video`/`expo-audio`. Reconcile `video_src` vs type `sources`. |
 | `figure` | caption content; mobile `View`+`Image`+`Text`. |
-| `carousel` | Many `web_carousel_*` (Embla) web-only; `shared_orientation` + behaviour (`has_controls`,`loop`,`drag_free`) shared; mobile `reanimated-carousel`. Reconcile `sources`/`id_prefix`/`has_crossfade` drift. |
+| `carousel` | Many `web_carousel_*` (Embla) web-only; `orientation` + behaviour (`has_controls`,`loop`,`drag_free`) shared; mobile `reanimated-carousel`. Reconcile `sources`/`id_prefix`/`has_crossfade` drift. |
 
 ### Interactive / feedback
 
 | Style | Verdict + specific actions |
 |-------|----------------------------|
-| `button` | `shared_size`/`shared_radius`/`shared_full_width` good; `web_color`→`shared_color`, `web_variant`→`shared_variant`; `web_compact`/`web_auto_contrast` web-only. `open_in_new_tab` → mobile modal (RF-20). Pro: ProgressButton/SlideButton/SocialAuth/Toggle (RF-32). |
+| `button` | `size`/`radius`/`full_width` good; `web_color`→`color`, `web_variant`→`variant`; `web_compact`/`web_auto_contrast` web-only. `open_in_new_tab` → mobile modal (RF-20). Pro: ProgressButton/SlideButton/SocialAuth/Toggle (RF-32). |
 | `link` | `open_in_new_tab` → mobile in-app browser/modal (RF-20). |
-| `action-icon` | `web_color`→`shared_color`, `web_variant`→`shared_variant`; mobile HeroUI icon `button`. |
-| `alert` | Landed: removed `value`, `web_alert_with_close_button`; `web_alert_title`→`alert_title` (RF-07/08/10). `web_color`→`shared_color` so mobile status colour is authorable. |
-| `badge`/`chip` | `web_color`→`shared_color`, `web_variant`→`shared_variant`. Mobile OSS `chip`/`tag-group`; **Pro `Badge`** (RF-25). |
-| `avatar` | `shared_radius`/`shared_size`; `web_variant`→`shared_variant`; mobile HeroUI `avatar`. |
-| `indicator` | mostly `web_indicator_*` (web-only positioning) + `web_color`→`shared_color`; mobile overlay `View`. |
-| `theme-icon` | `web_color`→`shared_color`, `web_variant`→`shared_variant`. |
-| `notification` | `web_color`→`shared_color`; mobile HeroUI `toast`/`alert`. |
-| `accordion`/`accordion-item` | Add `shared_variant`+`shared_multiple` so mobile configures it (RF-19); `web_accordion_*` chevron/transition web-only. Mobile HeroUI `accordion`. |
-| `tabs`/`tab` | `shared_orientation`/`shared_radius`; `web_tabs_variant`/`web_color`→shared where semantic; mobile HeroUI `tabs`. |
+| `action-icon` | `web_color`→`color`, `web_variant`→`variant`; mobile HeroUI icon `button`. |
+| `alert` | Landed: removed `value`, `web_alert_with_close_button`; `web_alert_title`→`alert_title` (RF-07/08/10). `web_color`→`color` so mobile status colour is authorable. |
+| `badge`/`chip` | `web_color`→`color`, `web_variant`→`variant`. Mobile OSS `chip`/`tag-group`; **Pro `Badge`** (RF-25). |
+| `avatar` | `radius`/`size`; `web_variant`→`variant`; mobile HeroUI `avatar`. |
+| `indicator` | mostly `web_indicator_*` (web-only positioning) + `web_color`→`color`; mobile overlay `View`. |
+| `theme-icon` | `web_color`→`color`, `web_variant`→`variant`. |
+| `notification` | `web_color`→`color`; mobile HeroUI `toast`/`alert`. |
+| `accordion`/`accordion-item` | Add `variant`+`multiple` so mobile configures it (RF-19); `web_accordion_*` chevron/transition web-only. Mobile HeroUI `accordion`. |
+| `tabs`/`tab` | `orientation`/`radius`; `web_tabs_variant`/`web_color`→shared where semantic; mobile HeroUI `tabs`. |
 
 ### Forms / input
 
 | Style | Verdict + specific actions |
 |-------|----------------------------|
 | `form-log`/`form-record` | Remove `is_log` (RF-04/05, landed). Custom forms: promote `web_buttons_*`/`web_btn_*` knobs (order/position/variant/colour) to `shared_*` so mobile renders the same form (RF-21). |
-| `input`/`text-input` | `shared_size`/`shared_radius`; `web_variant`→`shared_variant`; `web_left/right_icon` web-only (mobile uses HeroUI `text-field` slots → consider shared). Add `mobile_keyboard_type`/`mobile_secure_entry` (RF-04 family / mobile.md). |
+| `input`/`text-input` | `size`/`radius`; `web_variant`→`variant`; `web_left/right_icon` web-only (mobile uses HeroUI `text-field` slots → consider shared). Add `mobile_keyboard_type`/`mobile_secure_entry` (RF-04 family / mobile.md). |
 | `textarea` | `web_textarea_rows`/`autosize` → portable (RN `numberOfLines`); `resize`/`variant` web-only (RF-18). |
 | `select` | `web_select_searchable`/`clearable` → `shared_*` (RF-17, mobile-capable). `web_multi_select_data` is translatable options → un-prefix (RF-35). Mobile HeroUI `select`/`search-field`. |
-| `radio` | `web_radio_options` translatable → un-prefix (RF-35); `shared_orientation`/`shared_size`; `web_radio_card`/`label_position` web-only. Mobile HeroUI `radio-group`; Pro `RadioButtonGroup`. |
+| `radio` | `web_radio_options` translatable → un-prefix (RF-35); `orientation`/`size`; `web_radio_card`/`label_position` web-only. Mobile HeroUI `radio-group`; Pro `RadioButtonGroup`. |
 | `checkbox` | `web_checkbox_labelPosition` is **camelCase** → `web_checkbox_label_position` (RF-37). Review `checkbox_value` vs `value`, `toggle_switch` vs the `switch` style. |
 | `switch` | `web_switch_on_label`/`off_label` translatable → un-prefix (RF-35); `web_switch_on_value` behaviour → consider `common`. Mobile HeroUI `switch`. |
 | `slider`/`range-slider` | `*_marks_values` translatable → un-prefix (RF-35); numeric min/max/step web-only-ish (could be `common`). Mobile HeroUI `slider`. |
@@ -303,8 +303,8 @@ only the **style-specific** notes on top of those.
 | `file-input` | `web_file_input_*` web-only; mobile `expo-document-picker`; keep size/ext validation. |
 | `number-input` | numeric config web-only-ish; mobile HeroUI numeric `text-field`; **Pro NumberField/Stepper/Pad** (RF-29). |
 | `segmented-control` | `web_segmented_control_data` translatable → un-prefix (RF-35); mobile HeroUI `tabs`; **Pro `Segment`** (RF-30). |
-| `rating` | `web_color`→`shared_color`; `web_rating_*` web-only; mobile custom stars; **Pro `Rating`** (RF-27). |
-| `progress`/`progress-root`/`progress-section` | `web_tooltip_label` translatable → un-prefix (RF-35); `web_color`→`shared_color`; mobile RN bar; **Pro ProgressBar/Circle** (RF-28). |
+| `rating` | `web_color`→`color`; `web_rating_*` web-only; mobile custom stars; **Pro `Rating`** (RF-27). |
+| `progress`/`progress-root`/`progress-section` | `web_tooltip_label` translatable → un-prefix (RF-35); `web_color`→`color`; mobile RN bar; **Pro ProgressBar/Circle** (RF-28). |
 | `rich-text-editor` | `web_rich_text_editor_placeholder` translatable → un-prefix (RF-35); web-first (Tiptap); mobile read-only viewer v1. |
 | `show-user-input` | `web_table_*` web-only; **mobile must render list/cards, not a table** (mobile.md §11.6); Pro `EmptyState` for the empty case. |
 
@@ -312,8 +312,8 @@ only the **style-specific** notes on top of those.
 
 | Style | Verdict + specific actions |
 |-------|----------------------------|
-| `timeline`/`timeline-item` | `web_color`→`shared_color`; `web_timeline_*` web-only; mobile custom RN; **Pro `Stepper`** vertical (RF-31). |
-| `list`/`list-item` | `web_list_item_content` translatable → un-prefix (RF-35); `shared_size`; `web_list_*` web-only; mobile HeroUI `list-group`. |
+| `timeline`/`timeline-item` | `web_color`→`color`; `web_timeline_*` web-only; mobile custom RN; **Pro `Stepper`** vertical (RF-31). |
+| `list`/`list-item` | `web_list_item_content` translatable → un-prefix (RF-35); `size`; `web_list_*` web-only; mobile HeroUI `list-group`. |
 | `entry-list`/`entry-record`/`entry-record-delete` | Data-scope styles (`data_table`,`filter`,`scope`,`own_entries_only`). Add these to the shared types (audit §4). `entry-record-delete` confirm dialog → mobile HeroUI `dialog`; preserve delete permission. |
 | `loop` | Structural repeater (`loop`,`scope`); same behaviour both platforms. |
 

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, shared types, frontend/mobile renderers).
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 A **style** is a reusable CMS building block. Each style:

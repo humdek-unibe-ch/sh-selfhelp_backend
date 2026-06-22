@@ -15,9 +15,9 @@ Mantine cosmetic props are not repeated below.
 - A **form container** (`form-log` or `form-record`) wraps a set of input
   styles and a submit button. On submit it gathers each input by its `name`
   and persists the values.
-- `form-record` keeps **one record per user**, updated on each submit
-  (`is_log = 0`). `form-log` is **append-only** — every submit adds a new row
-  (`is_log = 1`).
+- `form-record` keeps **one record per user**, updated on each submit. `form-log`
+  is **append-only** — every submit adds a new row. Which behaviour applies is
+  decided by the **style** itself, not by a field.
 - Each input's `name` is the data column; `value` seeds an initial value;
   `is_required` enforces presence client- and server-side.
 - The `translatable` flag on text inputs marks whether the **submitted value**
@@ -39,11 +39,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Append-only form: each submit stores a **new** row.
 
-**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Set the save label, success message, and (optionally) a cancel URL/label.
+**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Optionally show an auto-styled heading (`title` + `description`) above the form; set the save label, the success/error messages **and their alert headings** (`alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`); turn on a confirm-before-submit dialog (`confirm_submit` + `confirm_message`); and optionally a cancel URL/label.
 
-**Developers.** `is_log = 1`. Renders a `<form>` over its input children; persists a new data row per submit.
+**Developers.** Renders a `<form>` over its input children (mobile: a custom composite); persists a new data row per submit. The heading, alert titles and confirm dialog render on **both** web (Mantine) and mobile.
 
-**Distinctive fields.** `name` (form/table identifier), `is_log`, `btn_save_label`, `alert_success`, `alert_error`, `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, button styling (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `btn_save_color`, `btn_cancel_color`).
+**Distinctive fields.** `title` / `description` (optional heading, content), `name` (form/table identifier), `btn_save_label`, `alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`, `confirm_submit` + `confirm_message` (optional confirm dialog), `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, and the shared button knobs (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `buttons_order`, `btn_save_color`, `btn_cancel_color`, `spacing`).
 
 **Children.** Yes (input styles + a submit).
 
@@ -53,9 +53,9 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Per-user record form: keeps a **single** record, updated on each submit.
 
-**Administrators.** Use for editable profiles/settings where the latest values replace the previous ones. Same fields as `form-log` plus a separate "update" button label/colour.
+**Administrators.** Use for editable profiles/settings where the latest values replace the previous ones. Same fields as `form-log` plus a separate **update** button label/colour (`btn_update_label` / `btn_update_color`) used once a record already exists.
 
-**Developers.** `is_log = 0`. On submit, updates the user's existing record (or creates it the first time).
+**Developers.** On submit, updates the user's existing record (or creates it the first time). Once a record exists the submit button uses `btn_update_label` + `btn_update_color`; button order honours `buttons_order` (`save-cancel` = primary first, the default). All three were previously inert in the web renderer and are now wired on both platforms.
 
 **Distinctive fields.** All `form-log` fields, plus `btn_update_label` and `btn_update_color`.
 
@@ -83,9 +83,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** The standard one-line text question. Set `label`, `name`, `placeholder`, `description` (helper text), and required.
 
-**Developers.** Renders `<TextInput>`. Supports left/right icons and a variant. `shared_max_length` caps characters on both platforms (HTML / RN `maxLength`); the `mobile_*` knobs map to the native keyboard (`keyboardType` / `autoCapitalize` / `secureTextEntry`) and are mobile-only.
+**Developers.** Renders `<TextInput>`. Supports left/right icons and a variant. `max_length` caps characters on both platforms (HTML / RN `maxLength`); the `mobile_*` knobs map to the native keyboard (`keyboardType` / `autoCapitalize` / `secureTextEntry`) and are mobile-only.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `shared_max_length` (web + mobile), `mobile_keyboard_type` / `mobile_auto_capitalize` / `mobile_secure_entry` (mobile-only keyboard knobs), `mobile_input_variant` (mobile-only HeroUI Native primary/secondary field style), `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `max_length` (web + mobile), `mobile_keyboard_type` / `mobile_auto_capitalize` / `mobile_secure_entry` (mobile-only keyboard knobs), `mobile_input_variant` (mobile-only HeroUI Native primary/secondary field style), `translatable`.
 
 **Children.** No.
 
@@ -99,7 +99,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Textarea>` (or a Markdown editor when `markdown_editor` is set). Autosize via `web_textarea_autosize` + min/max rows.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `shared_max_length` (web + mobile), `mobile_auto_capitalize` / `mobile_textarea_variant` (mobile-only), `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `max_length` (web + mobile), `mobile_auto_capitalize` / `mobile_textarea_variant` (mobile-only), `translatable`.
 
 **Children.** No.
 
@@ -153,9 +153,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A yes/no or opt-in checkbox. Set `name`, the checked value (`checkbox_value`), label position, and required.
 
-**Developers.** Renders `<Checkbox>`. `shared_label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
+**Developers.** Renders `<Checkbox>`. `label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
 
-**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `shared_label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`, `mobile_checkbox_variant` (mobile-only HeroUI Native primary/secondary).
+**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`, `mobile_checkbox_variant` (mobile-only HeroUI Native primary/secondary).
 
 **Children.** No.
 
@@ -335,9 +335,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** Use when one bar must show several coloured segments. Add `progress-section` children.
 
-**Developers.** Renders `<Progress.Root>`; children are `progress-section`. `shared_radius` rounds the bar on both platforms (web `radius`, mobile `borderRadius`).
+**Developers.** Renders `<Progress.Root>`; children are `progress-section`. `radius` rounds the bar on both platforms (web `radius`, mobile `borderRadius`).
 
-**Distinctive fields.** `web_progress_auto_contrast`, `shared_size`, `shared_radius` (web + mobile).
+**Distinctive fields.** `web_progress_auto_contrast`, `size`, `radius` (web + mobile).
 
 **Children.** Yes (`progress-section`).
 
@@ -361,16 +361,16 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Read-only **display** companion to `form-log` / `form-record`: renders a user's previously submitted entries from a data table as a Mantine Table.
 
-**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table and use `fields_map` to choose which columns appear and how they are labelled. Two switches control *whose* data is shown and *what* can be deleted:
+**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table and use `fields_map` to choose which columns appear and how they are labelled. Optionally show an auto-styled heading above the list (`title`) and customise the empty-state message (`empty_text`, default "No entries found."). Two switches control *whose* data is shown and *what* can be deleted:
 
 - **Own Entries Only** (`own_entries_only`, default on) — each user sees only their **own** submissions. Turn it **off** to show **all** users' entries (only do this where viewing everyone's data is allowed; it is still subject to data-access permissions).
 - **Delete** (`delete_entry`, default on) — shows a per-row delete button. A user may always delete **their own** record; deleting **another user's** record additionally requires the table's delete data-access permission. The confirmation dialog copy is set by the translatable `delete_modal_title` / `delete_modal_body`.
 
 Optional table behaviour: search (`dt_searching`), sorting (`dt_sortable` + `dt_default_order_column` / `dt_default_order_dir`), pagination (`dt_paginate`), the row-count footer (`dt_info`), a CSV export button (`csv_export`), and a leading timestamp column (`show_timestamp`).
 
-**Developers.** Renders as a Mantine Table (the style always uses the Mantine renderer). Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
+**Developers.** Web renders as a Mantine Table; **mobile renders the entries as a list of cards** (`components/styles/forms/ShowUserInput.tsx`, theme-aware via `useAppColors`) — the desktop-only DataTable options (`dt_*`, `web_table_*`) are intentionally ignored on mobile, while `title` and `empty_text` render on both. Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
 
-**Distinctive fields.** `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
+**Distinctive fields.** `title` (optional heading, content), `empty_text` (empty-state message, content), `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
 
 **Children.** No.
 

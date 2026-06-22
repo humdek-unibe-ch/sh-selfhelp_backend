@@ -168,7 +168,7 @@ class StyleRepository extends ServiceEntityRepository
      *       'fields' => [
      *         'fieldName' => [
      *           'type' => string,
-     *           'scope' => string,         // 'content' | 'common' | 'shared' | 'web' | 'mobile' (display + prefix)
+     *           'scope' => string,         // 'content' | 'common' | 'web' | 'mobile' (display + prefix)
      *           'display' => int,          // 0 = internal/property (locale "all"), 1 = translatable/content (real locale)
      *           'default_value' => string|null,
      *           'help' => string|null,
@@ -312,12 +312,15 @@ class StyleRepository extends ServiceEntityRepository
      * by platform prefix:
      *
      *   `display === 1`            -> content (translatable, locale-scoped copy)
-     *   `display === 0`, `shared_*`-> shared  (portable visual semantics)
      *   `display === 0`, `web_*`   -> web     (Mantine / browser presentation)
      *   `display === 0`, `mobile_*`-> mobile  (HeroUI Native / native presentation)
-     *   `display === 0`, otherwise -> common  (cross-platform behavior/data)
+     *   `display === 0`, otherwise -> common  (cross-platform behavior/data/visuals)
      *
-     * @return 'content'|'common'|'shared'|'web'|'mobile'
+     * The `shared_*` prefix was retired (migration Version20260622165615): an
+     * unprefixed property field already means "applies to both platforms", so the
+     * prefix was redundant. Ex-`shared_*` fields are now plain `common` scope.
+     *
+     * @return 'content'|'common'|'web'|'mobile'
      */
     public static function deriveFieldScope(string $fieldName, int $display): string
     {
@@ -325,10 +328,8 @@ class StyleRepository extends ServiceEntityRepository
         if ($display === 1) {
             return 'content';
         }
-        // Dimension 2 — property platform scope by canonical prefix.
-        if (str_starts_with($fieldName, 'shared_')) {
-            return 'shared';
-        }
+        // Dimension 2 — property platform scope by canonical prefix. No prefix =
+        // both platforms (`common`); only `web_`/`mobile_` are platform-specific.
         if (str_starts_with($fieldName, 'web_')) {
             return 'web';
         }

@@ -3,7 +3,7 @@
 Audience: Developers and maintainers (backend, `@selfhelp/shared`, frontend, mobile).
 Status: active (architecture contract — drives the planned field refactor).
 Applies to: SelfHelp2 CMS style catalog (`styles` / `fields` / `rel_fields_styles`), `@selfhelp/shared` style types + semantic mapper, the web (Mantine) renderer, and the mobile (HeroUI Native / React Native) renderer.
-Last verified: 2026-06-19.
+Last verified: 2026-06-22.
 Source of truth: the live DB catalog (`GET /cms-api/v1/admin/styles/schema`), `StyleRepository::deriveFieldScope()`, `@selfhelp/shared` (`theme/semantic.ts`, `registry/styles.registry.ts`, `types/styles/*`), the frontend `BasicStyle` dispatcher, and the mobile `BasicStyle` + `mobileStyleProps`.
 
 > This is the **field naming contract** for the style system. It is the rulebook
@@ -19,7 +19,7 @@ Do **not** map Mantine props directly to HeroUI Native props. The CMS owns its o
 
 ```
 DB style + fields                 ← source of truth (this repo)
-  → shared semantic style contract  (@selfhelp/shared: scope + shared_* + mapper)
+  → shared semantic style contract  (@selfhelp/shared: scope + unprefixed common fields + mapper)
       → Web renderer adapter         (Mantine)
       → Mobile renderer adapter      (HeroUI Native / React Native)
 ```
@@ -30,9 +30,10 @@ Consequences of this layering:
   library happens to expose a prop. There are no `mantine_*` or `heroui_*`
   fields (the legacy `mantine_*` names were migrated away in
   `Version20260618143216`).
-- When a property is portable, it lives once as `shared_*` and the
-  `@selfhelp/shared` mapper (`theme/semantic.ts`) translates it to each platform.
-  Replacing Mantine or HeroUI Native later is an adapter change, not a DB change.
+- When a property is portable, it lives once as a single **unprefixed**
+  `common`-scope field and the `@selfhelp/shared` mapper (`theme/semantic.ts`)
+  translates it to each platform. Replacing Mantine or HeroUI Native later is an
+  adapter change, not a DB change.
 - Genuinely platform-specific presentation lives under `web_*` / `mobile_*` and is
   read only by that platform's renderer.
 
@@ -51,19 +52,24 @@ emitted `scope` and must never re-derive it from the name or `display`.
 | Category | Naming | `display` | `scope` | Examples | Read by |
 |----------|--------|-----------|---------|----------|---------|
 | Translatable content | unprefixed | `1` | `content` | `label`, `title`, `content`, `placeholder`, `alert_*` copy | both platforms |
-| Cross-platform behaviour / data | unprefixed | `0` | `common` | `value`, `is_required`, `disabled`, `url`, `name`, `own_entries_only` | both platforms |
-| Portable visual semantics | `shared_` | `0` | `shared` | `shared_size`, `shared_radius`, `shared_color`, `shared_intent`, `shared_spacing`, `shared_gap` | both (via mapper) |
-| Web-only presentation | `web_` | `0` | `web` | `web_variant`, `web_shadow` | web only |
+| Cross-platform behaviour, data **and** presentation | unprefixed | `0` | `common` | `value`, `is_required`, `url`, `name`, `size`, `radius`, `color`, `spacing`, `gap`, `variant` | both platforms |
+| Web-only presentation | `web_` | `0` | `web` | `web_variant`, `web_shadow`, `web_size` | web only |
 | Mobile-only presentation | `mobile_` | `0` | `mobile` | `mobile_variant`, `mobile_keyboard_type`, `mobile_haptic` | mobile only |
+
+**No prefix = both platforms.** Cross-platform *presentation* (`size`, `radius`,
+`color`, `spacing`, …) and cross-platform *behaviour/data* (`value`, `name`, …)
+share the single `common` scope. The redundant `shared_` prefix was dropped from
+47 fields by migration `Version20260622165615`. Three fields keep the prefix as
+**reserved-name exceptions** — `shared_height`, `shared_width`, `shared_icon` —
+because the bare names already exist as page-type fields (`common`-scope still).
 
 Derivation (the backend's single source of truth):
 
 ```text
 display === 1               -> content   (translatable copy, any prefix)
-display === 0 & shared_*     -> shared
 display === 0 & web_*        -> web
 display === 0 & mobile_*     -> mobile
-display === 0 & (unprefixed) -> common
+display === 0 & (unprefixed) -> common    (behaviour, data, AND cross-platform presentation)
 ```
 
 ### 2.1 Rules
@@ -73,44 +79,52 @@ display === 0 & (unprefixed) -> common
   `label`). Do *not* prefix copy with `web_`/`mobile_`. (Today `alert.web_alert_title`
   violates this — see the audit.) Only add a `mobile_*` copy field when mobile
   genuinely needs *different wording*, which should be rare.
-- **A property is `shared_` only when it has a precise, tested mapping on both
-  platforms.** Promotion from `web_*` to `shared_*` requires a mapper entry in
-  `theme/semantic.ts` plus tests on both renderers. Do not bulk-promote.
-- **A field must not exist under both an unprefixed name and a `shared_*` name.**
-  (`alert.value` + `alert.content` violates this — see the audit.)
+- **A property is unprefixed (cross-platform) only when it has a precise, tested
+  mapping on both platforms.** Promotion from `web_*` to unprefixed requires a
+  mapper entry in `theme/semantic.ts` plus tests on both renderers. Do not
+  bulk-promote.
+- **A concept must exist under exactly one field name.** Do not duplicate a field
+  across two names (`alert.value` + `alert.content` violates this — see the audit).
 - **No library-named fields.** Never `mantine_radius`, `heroui_variant`,
-  `web_mantine_color`. Use `shared_radius` / `shared_intent` and let the adapter
+  `web_mantine_color`. Use the unprefixed `radius` / `color` and let the adapter
   decide.
 - **Renderer precedence is fixed:** current-platform `web_*`/`mobile_*` override →
-  `shared_*` semantic → component default. The mobile renderer must never fall
-  back to `web_*`; the web renderer must never fall back to `mobile_*`.
+  unprefixed cross-platform semantic → component default. The mobile renderer must
+  never fall back to `web_*`; the web renderer must never fall back to `mobile_*`.
 - **Field type is the editor control, not the platform.** Types are
   renderer-neutral (`spacing`, `select`, `color-picker`); they were de-Mantine-d
   in `Version20260618143216` (`mantine_spacing_margin_padding` → `spacing`).
-- **Colour is `shared_`, not `web_`.** Authors set colour once and it applies on
-  both platforms; `web_color` was promoted to `shared_color` (RF-13, shipped
-  slice 2). A bare `web_color` survives only as a web-only escape hatch for an
-  exact Mantine palette value with no semantic meaning.
+- **Colour is unprefixed, not `web_`.** Authors set `color` once and it applies on
+  both platforms. A bare `web_color` survives only as a web-only escape hatch for
+  an exact Mantine palette value with no semantic meaning.
+- **No prefix means both platforms.** Never reintroduce a `shared_` prefix; an
+  unprefixed property field already applies to both. The only `shared_*` names
+  that remain (`shared_height`, `shared_width`, `shared_icon`) are reserved-name
+  exceptions kept to avoid colliding with page-type fields.
 - **`use_web_style` is retired (RF-01).** Web always renders the Mantine
   component, so the toggle is removed catalog-wide rather than kept as dead
   `common` data.
 
-## 3. The `shared_*` semantic scales
+## 3. The cross-platform semantic scales
 
-`shared_*` values are the **true cross-platform common denominator**. HeroUI Native
-has no `xs`/`xl`, so the shared scales are intentionally narrower than the Mantine
-`web_*` scales and map 1:1 with no clamping (`Version20260618195450`,
-`@selfhelp/shared` `theme/semantic.ts`):
+These unprefixed `common`-scope values are the **true cross-platform common
+denominator**. HeroUI Native has no `xs`/`xl`, so the scales are intentionally
+narrower than the Mantine `web_*` scales and map 1:1 with no clamping
+(`@selfhelp/shared` `theme/semantic.ts`). They were unprefixed from `shared_*` in
+`Version20260622165615`:
 
 | Field | Allowed values | Web (Mantine) | Mobile (HeroUI Native / RN) |
 |-------|----------------|---------------|------------------------------|
-| `shared_size` | `sm` `md` `lg` | size token (subset of `xs..xl`) | HeroUI size `sm/md/lg` |
-| `shared_radius` | `none` `sm` `md` `lg` `full` | token / number (`full` → pill px) | px (`none`→0, `full`→9999) |
-| `shared_intent` | `neutral` `primary` `secondary` `success` `warning` `danger` | `{color, variant}` | Button variant + status color |
-| `shared_color` | `neutral` `primary` `secondary` `success` `warning` `danger` | Mantine `color` name | HeroUI Native / theme color |
-| `shared_variant` | `default` `filled` `light` `outline` `subtle` `transparent` | Mantine `variant` | HeroUI variant |
-| `shared_spacing` | box-model JSON object | margin+padding props | px padding/margin via theme |
-| `shared_gap` `shared_align` `shared_justify` `shared_direction` `shared_wrap` `shared_orientation` `shared_text_align` `shared_full_width` | canonical layout enums | Mantine layout props | RN flexbox |
+| `size` | `sm` `md` `lg` | size token (subset of `xs..xl`) | HeroUI size `sm/md/lg` |
+| `radius` | `none` `sm` `md` `lg` `full` | token / number (`full` → pill px) | px (`none`→0, `full`→9999) |
+| `color` | `neutral` `primary` `secondary` `success` `warning` `danger` | Mantine `color` name | HeroUI Native / theme color |
+| `variant` | `default` `filled` `light` `outline` `subtle` `transparent` | Mantine `variant` | HeroUI variant |
+| `spacing` | box-model JSON object | margin+padding props | px padding/margin via theme |
+| `gap` `align` `justify` `direction` `wrap` `orientation` `text_align` `full_width` | canonical layout enums | Mantine layout props | RN flexbox |
+
+> `intent` (`neutral`/`primary`/…) is a *legacy* semantic the mapper still reads
+> as a fallback but is **not** in the live catalog; real sections drive
+> appearance through `color` / `variant`.
 
 Full mapping tables are in [`style-mobile-mapping.md`](./style-mobile-mapping.md).
 
@@ -123,10 +137,9 @@ classification (they are not stored in the DB; they live in the audit + this doc
 | Status | Meaning | Action |
 |--------|---------|--------|
 | `active` | Used by ≥1 renderer; correctly scoped. | Keep. |
-| `shared` | Portable, mapped on both platforms. | Keep. |
 | `web-only` | Correctly `web_`, read only by web. | Keep. |
 | `mobile-only` | Correctly `mobile_`, read only by mobile. | Keep (none exist yet). |
-| `common` | Unprefixed behaviour/data, both platforms. | Keep. |
+| `common` | Unprefixed behaviour, data, **and** cross-platform presentation (the old `shared` status folded in here when `shared_*` was unprefixed in `Version20260622165615`). | Keep. |
 | `legacy` | Old shape kept only for migration/compat. | Migrate, then retire. |
 | `duplicate` | Two fields carry the same concept. | Merge to one; drop the other. |
 | `deprecated` | Superseded; scheduled for removal. | Stop reading; remove after migration. |
@@ -149,16 +162,16 @@ Every field documented in this reference should be describable by this template
 `style-field-audit.generated.json`):
 
 ```text
-field:          shared_radius
-db column/key:  fields.name = 'shared_radius' (display 0), rel_fields_styles default
+field:          radius
+db column/key:  fields.name = 'radius' (display 0), rel_fields_styles default
 type (editor):  slider  (options none|sm|md|lg|full)
-scope:          shared
+scope:          common   (unprefixed = both platforms)
 translatable:   no
 used by web:    yes  → Mantine `radius` (token / px for pill)
 used by mobile: yes  → HeroUI Native radius px (none→0, full→9999)
 fallback:       component default when unset
-status:         shared
-notes:          narrowed from xs..xl by Version20260618195450
+status:         common
+notes:          unprefixed from radius by Version20260622165615
 ```
 
 For a content field the same template reads, e.g. for `alert.content`:

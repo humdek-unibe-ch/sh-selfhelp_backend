@@ -11,6 +11,16 @@ Source of truth: [`style-field-audit.md`](./style-field-audit.md) + [`style-fiel
 > type update + renderer update + tests + this-doc update together (AGENTS.md
 > style + cross-repo rules). Ordered by impact ÷ risk.
 
+> **Update 2026-06-22 — `shared_` prefix retired.** This page predates the
+> field-naming unification. The `shared_*` property prefix was dropped from 47
+> fields (migration `Version20260622165615`): "no prefix = both platforms", so
+> the cross-platform presentation fields are now plain unprefixed `common`-scope
+> names (`size`, `radius`, `color`, `spacing`, …). Read every `shared_X` below as
+> the unprefixed `X`. Three names stay prefixed as reserved-name exceptions
+> (`shared_height`, `shared_width`, `shared_icon`) because the bare names already
+> exist as page-type fields. See [`_conventions.md`](./_conventions.md) and
+> [`style-field-naming-rules.md`](./style-field-naming-rules.md).
+
 ## 0. Guiding decision: contract first, not Mantine→HeroUI
 
 Confirmed direction (the architecture the rest of this builds on):

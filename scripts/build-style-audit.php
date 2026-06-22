@@ -160,19 +160,22 @@ $mobileSet = array_fill_keys($mobileKeys, true);
 
 // Fields contributed by base interfaces (IBaseStyle / IStyleWithSpacing) — not
 // per-style drift when absent from a per-style interface body.
-$baseInherited = ['web_spacing_margin', 'shared_spacing', 'css', 'css_mobile', 'condition', 'debug', 'data_config'];
+$baseInherited = ['web_spacing_margin', 'spacing', 'css', 'css_mobile', 'condition', 'debug', 'data_config'];
 
 // ---------------------------------------------------------------------------
 // Fuse.
 // ---------------------------------------------------------------------------
 $report = [];
-$scopeTotals = ['content' => 0, 'common' => 0, 'shared' => 0, 'web' => 0, 'mobile' => 0];
+$scopeTotals = ['content' => 0, 'common' => 0, 'web' => 0, 'mobile' => 0];
 $fieldUse = [];
+// Mirrors StyleRepository::deriveFieldScope: no prefix = `common` (both
+// platforms); the `shared_` prefix was retired in Version20260622165615, so the
+// three reserved-name fields (shared_height/width/icon) classify as `common`.
 $deriveScope = static function (string $name, int $display): string {
     if ($display === 1) {
         return 'content';
     }
-    foreach (['shared_' => 'shared', 'web_' => 'web', 'mobile_' => 'mobile'] as $prefix => $scope) {
+    foreach (['web_' => 'web', 'mobile_' => 'mobile'] as $prefix => $scope) {
         if (str_starts_with($name, $prefix)) {
             return $scope;
         }
@@ -182,7 +185,7 @@ $deriveScope = static function (string $name, int $display): string {
 
 foreach ($styles as $s) {
     $fields = [];
-    $scopes = ['content' => 0, 'common' => 0, 'shared' => 0, 'web' => 0, 'mobile' => 0];
+    $scopes = ['content' => 0, 'common' => 0, 'web' => 0, 'mobile' => 0];
     foreach ($fieldsByStyle[$s['id']] ?? [] as $f) {
         $scope = $deriveScope($f['field_name'], (int) $f['display']);
         $scopes[$scope]++;

@@ -58,11 +58,10 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
         $data = $this->assertEnvelopeSuccess($envelope);
 
-        $validScopes = ['content', 'common', 'shared', 'web', 'mobile'];
+        $validScopes = ['content', 'common', 'web', 'mobile'];
         $checked = 0;
         $sawContent = false;
         $sawCommon = false;
-        $sawShared = false;
         $sawWeb = false;
         foreach ($data as $styleName => $styleMeta) {
             if (!is_array($styleMeta) || !isset($styleMeta['fields']) || !is_array($styleMeta['fields'])) {
@@ -84,7 +83,6 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
 
                 $sawContent = $sawContent || $scope === 'content';
                 $sawCommon = $sawCommon || $scope === 'common';
-                $sawShared = $sawShared || $scope === 'shared';
                 $sawWeb = $sawWeb || $scope === 'web';
                 $checked++;
             }
@@ -92,8 +90,7 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
 
         self::assertGreaterThan(0, $checked, 'The style schema must expose fields with a scope.');
         self::assertTrue($sawContent, 'The catalog must expose translatable content fields (display=1).');
-        self::assertTrue($sawCommon, 'The catalog must expose unprefixed common properties (display=0).');
-        self::assertTrue($sawShared, 'The catalog must expose shared_* fields after the rename migration.');
+        self::assertTrue($sawCommon, 'The catalog must expose unprefixed common properties (behaviour, data, and cross-platform presentation; display=0).');
         self::assertTrue($sawWeb, 'The catalog must expose web_* fields.');
     }
 
@@ -107,15 +104,15 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
         $data = $this->assertEnvelopeSuccess($envelope);
 
-        // alert: dead shared_size removed; close toggle is now cross-platform common.
+        // alert: dead size removed; close toggle is now cross-platform common.
         $alert = $this->fieldsOf($data, 'alert');
-        self::assertArrayNotHasKey('shared_size', $alert, 'alert.shared_size must be removed (dead field).');
+        self::assertArrayNotHasKey('size', $alert, 'alert.size must be removed (dead field).');
         self::assertArrayNotHasKey('web_with_close_button', $alert, 'alert.web_with_close_button must be renamed to closable.');
         self::assertSame('common', $alert['closable']['scope'] ?? null, 'alert.closable must be a common (cross-platform) field.');
 
-        // badge: primary cross-platform shared_variant + circle; web_variant escape hatch.
+        // badge: primary cross-platform variant + circle; web_variant escape hatch.
         $badge = $this->fieldsOf($data, 'badge');
-        self::assertSame('shared', $badge['shared_variant']['scope'] ?? null, 'badge.shared_variant must be shared.');
+        self::assertSame('common', $badge['variant']['scope'] ?? null, 'badge.variant must be common.');
         self::assertSame('common', $badge['circle']['scope'] ?? null, 'badge.circle must be common.');
         self::assertSame('web', $badge['web_variant']['scope'] ?? null, 'badge.web_variant remains a web-only escape hatch.');
 
@@ -123,16 +120,16 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         $avatar = $this->fieldsOf($data, 'avatar');
         self::assertSame('common', $avatar['name']['scope'] ?? null, 'avatar.name must be linked as a common field.');
 
-        // button: web_variant -> shared_variant (clean promotion) + url.
+        // button: web_variant -> variant (clean promotion) + url.
         $button = $this->fieldsOf($data, 'button');
-        self::assertSame('shared', $button['shared_variant']['scope'] ?? null, 'button.shared_variant must be shared.');
-        self::assertArrayNotHasKey('web_variant', $button, 'button.web_variant must be unlinked (promoted to shared_variant).');
+        self::assertSame('common', $button['variant']['scope'] ?? null, 'button.variant must be common.');
+        self::assertArrayNotHasKey('web_variant', $button, 'button.web_variant must be unlinked (promoted to variant).');
         self::assertSame('common', $button['url']['scope'] ?? null, 'button.url must be linked as a common field.');
 
-        // login: optional subtitle + the already-present shared_color.
+        // login: optional subtitle + the already-present color.
         $login = $this->fieldsOf($data, 'login');
         self::assertSame('content', $login['subtitle']['scope'] ?? null, 'login.subtitle must be translatable content.');
-        self::assertSame('shared', $login['shared_color']['scope'] ?? null, 'login.shared_color must be shared.');
+        self::assertSame('common', $login['color']['scope'] ?? null, 'login.color must be common.');
     }
 
     public function testAccordionPolishWaveFieldsAndScopes(): void
@@ -140,10 +137,10 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
         $data = $this->assertEnvelopeSuccess($envelope);
 
-        // accordion: web_accordion_variant promoted to the cross-platform shared_accordion_variant.
+        // accordion: web_accordion_variant promoted to the cross-platform accordion_variant.
         $accordion = $this->fieldsOf($data, 'accordion');
-        self::assertArrayNotHasKey('web_accordion_variant', $accordion, 'accordion.web_accordion_variant must be renamed to shared_accordion_variant.');
-        self::assertSame('shared', $accordion['shared_accordion_variant']['scope'] ?? null, 'accordion.shared_accordion_variant must be shared (cross-platform).');
+        self::assertArrayNotHasKey('web_accordion_variant', $accordion, 'accordion.web_accordion_variant must be renamed to accordion_variant.');
+        self::assertSame('common', $accordion['accordion_variant']['scope'] ?? null, 'accordion.accordion_variant must be common (cross-platform).');
 
         // accordion-item: optional translatable description subtitle.
         $accordionItem = $this->fieldsOf($data, 'accordion-item');
@@ -164,35 +161,35 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         $card = $this->fieldsOf($data, 'card');
         self::assertSame('content', $card['title']['scope'] ?? null, 'card.title must be translatable content.');
         self::assertSame('content', $card['img_src']['scope'] ?? null, 'card.img_src must be translatable content (asset picker).');
-        self::assertSame('shared', $card['shared_border']['scope'] ?? null, 'card.shared_border must be shared (cross-platform).');
-        self::assertArrayNotHasKey('web_border', $card, 'card.web_border must be unlinked (replaced by shared_border).');
+        self::assertSame('common', $card['border']['scope'] ?? null, 'card.border must be common (cross-platform).');
+        self::assertArrayNotHasKey('web_border', $card, 'card.web_border must be unlinked (replaced by border).');
 
         // card-segment: shared border + web-only inherit padding.
         $cardSegment = $this->fieldsOf($data, 'card-segment');
-        self::assertSame('shared', $cardSegment['shared_border']['scope'] ?? null, 'card-segment.shared_border must be shared.');
+        self::assertSame('common', $cardSegment['border']['scope'] ?? null, 'card-segment.border must be common.');
         self::assertSame('web', $cardSegment['web_segment_inherit_padding']['scope'] ?? null, 'card-segment.web_segment_inherit_padding must remain web-only.');
 
         // checkbox: label position promoted to shared.
         $checkbox = $this->fieldsOf($data, 'checkbox');
-        self::assertSame('shared', $checkbox['shared_label_position']['scope'] ?? null, 'checkbox.shared_label_position must be shared.');
+        self::assertSame('common', $checkbox['label_position']['scope'] ?? null, 'checkbox.label_position must be common.');
         self::assertArrayNotHasKey('web_checkbox_label_position', $checkbox, 'checkbox.web_checkbox_label_position must be renamed.');
 
-        // chip: dedicated shared_chip_variant (distinct from generic shared_variant).
+        // chip: dedicated chip_variant (distinct from generic variant).
         $chip = $this->fieldsOf($data, 'chip');
-        self::assertSame('shared', $chip['shared_chip_variant']['scope'] ?? null, 'chip.shared_chip_variant must be shared.');
-        self::assertArrayNotHasKey('web_chip_variant', $chip, 'chip.web_chip_variant must be renamed to shared_chip_variant.');
+        self::assertSame('common', $chip['chip_variant']['scope'] ?? null, 'chip.chip_variant must be common.');
+        self::assertArrayNotHasKey('web_chip_variant', $chip, 'chip.web_chip_variant must be renamed to chip_variant.');
 
         // code: block toggle promoted to common behaviour + shared radius.
         $code = $this->fieldsOf($data, 'code');
         self::assertSame('common', $code['code_block']['scope'] ?? null, 'code.code_block must be a common (cross-platform) behaviour field.');
-        self::assertSame('shared', $code['shared_radius']['scope'] ?? null, 'code.shared_radius must be shared.');
+        self::assertSame('common', $code['radius']['scope'] ?? null, 'code.radius must be common.');
         self::assertArrayNotHasKey('web_code_block', $code, 'code.web_code_block must be renamed to code_block.');
 
         // title: colourable + semantic order/line-clamp promoted; text wrap stays web.
         $title = $this->fieldsOf($data, 'title');
-        self::assertSame('shared', $title['shared_color']['scope'] ?? null, 'title.shared_color must be shared.');
+        self::assertSame('common', $title['color']['scope'] ?? null, 'title.color must be common.');
         self::assertSame('common', $title['title_order']['scope'] ?? null, 'title.title_order must be a common semantic field.');
-        self::assertSame('shared', $title['shared_line_clamp']['scope'] ?? null, 'title.shared_line_clamp must be shared.');
+        self::assertSame('common', $title['line_clamp']['scope'] ?? null, 'title.line_clamp must be common.');
         self::assertSame('web', $title['web_title_text_wrap']['scope'] ?? null, 'title.web_title_text_wrap must remain web-only.');
         self::assertArrayNotHasKey('web_title_order', $title, 'title.web_title_order must be renamed.');
         self::assertArrayNotHasKey('web_title_line_clamp', $title, 'title.web_title_line_clamp must be renamed.');
@@ -211,77 +208,77 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
 
         // flex: every flexbox prop + size is cross-platform now.
         $flex = $this->fieldsOf($data, 'flex');
-        self::assertSame('shared', $flex['shared_width']['scope'] ?? null, 'flex.shared_width must be shared.');
-        self::assertSame('shared', $flex['shared_height']['scope'] ?? null, 'flex.shared_height must be shared.');
-        self::assertSame('shared', $flex['shared_direction']['scope'] ?? null, 'flex.shared_direction must be shared.');
-        self::assertSame('shared', $flex['shared_wrap']['scope'] ?? null, 'flex.shared_wrap must be shared.');
+        self::assertSame('common', $flex['shared_width']['scope'] ?? null, 'flex.shared_width must be common.');
+        self::assertSame('common', $flex['shared_height']['scope'] ?? null, 'flex.shared_height must be common.');
+        self::assertSame('common', $flex['direction']['scope'] ?? null, 'flex.direction must be common.');
+        self::assertSame('common', $flex['wrap']['scope'] ?? null, 'flex.wrap must be common.');
         self::assertArrayNotHasKey('web_width', $flex, 'flex.web_width must be relinked to shared_width.');
         self::assertArrayNotHasKey('web_height', $flex, 'flex.web_height must be relinked to shared_height.');
 
         // group: size shared; wrap/grow stay web-only.
         $group = $this->fieldsOf($data, 'group');
-        self::assertSame('shared', $group['shared_width']['scope'] ?? null, 'group.shared_width must be shared.');
+        self::assertSame('common', $group['shared_width']['scope'] ?? null, 'group.shared_width must be common.');
         self::assertSame('web', $group['web_group_wrap']['scope'] ?? null, 'group.web_group_wrap stays web-only.');
 
         // grid: cols promoted; restricted children unchanged.
         $grid = $this->fieldsOf($data, 'grid');
-        self::assertSame('shared', $grid['shared_cols']['scope'] ?? null, 'grid.shared_cols must be shared.');
-        self::assertArrayNotHasKey('web_cols', $grid, 'grid.web_cols must be renamed to shared_cols.');
+        self::assertSame('common', $grid['cols']['scope'] ?? null, 'grid.cols must be common.');
+        self::assertArrayNotHasKey('web_cols', $grid, 'grid.web_cols must be renamed to cols.');
 
         // grid-column: span/offset/order/grow all cross-platform.
         $gridColumn = $this->fieldsOf($data, 'grid-column');
-        self::assertSame('shared', $gridColumn['shared_grid_span']['scope'] ?? null, 'grid-column.shared_grid_span must be shared.');
-        self::assertSame('shared', $gridColumn['shared_grid_offset']['scope'] ?? null, 'grid-column.shared_grid_offset must be shared.');
-        self::assertSame('shared', $gridColumn['shared_grid_order']['scope'] ?? null, 'grid-column.shared_grid_order must be shared.');
-        self::assertSame('shared', $gridColumn['shared_grid_grow']['scope'] ?? null, 'grid-column.shared_grid_grow must be shared.');
+        self::assertSame('common', $gridColumn['grid_span']['scope'] ?? null, 'grid-column.grid_span must be common.');
+        self::assertSame('common', $gridColumn['grid_offset']['scope'] ?? null, 'grid-column.grid_offset must be common.');
+        self::assertSame('common', $gridColumn['grid_order']['scope'] ?? null, 'grid-column.grid_order must be common.');
+        self::assertSame('common', $gridColumn['grid_grow']['scope'] ?? null, 'grid-column.grid_grow must be common.');
         self::assertArrayNotHasKey('web_grid_span', $gridColumn, 'grid-column.web_grid_span must be renamed.');
 
         // simple-grid: shared cols/gap + new web responsive overrides; old breakpoints gone.
         $simpleGrid = $this->fieldsOf($data, 'simple-grid');
-        self::assertSame('shared', $simpleGrid['shared_cols']['scope'] ?? null, 'simple-grid.shared_cols must be shared.');
-        self::assertSame('shared', $simpleGrid['shared_gap']['scope'] ?? null, 'simple-grid.shared_gap must be shared.');
-        self::assertSame('shared', $simpleGrid['shared_vertical_spacing']['scope'] ?? null, 'simple-grid.shared_vertical_spacing must be shared.');
+        self::assertSame('common', $simpleGrid['cols']['scope'] ?? null, 'simple-grid.cols must be common.');
+        self::assertSame('common', $simpleGrid['gap']['scope'] ?? null, 'simple-grid.gap must be common.');
+        self::assertSame('common', $simpleGrid['vertical_spacing']['scope'] ?? null, 'simple-grid.vertical_spacing must be common.');
         self::assertSame('web', $simpleGrid['web_cols_sm']['scope'] ?? null, 'simple-grid.web_cols_sm must be a web-only responsive override.');
         self::assertSame('web', $simpleGrid['web_cols_md']['scope'] ?? null, 'simple-grid.web_cols_md must be web-only.');
         self::assertSame('web', $simpleGrid['web_cols_lg']['scope'] ?? null, 'simple-grid.web_cols_lg must be web-only.');
         self::assertArrayNotHasKey('web_breakpoints', $simpleGrid, 'simple-grid.web_breakpoints must be removed.');
-        self::assertArrayNotHasKey('web_cols', $simpleGrid, 'simple-grid.web_cols must be renamed to shared_cols.');
+        self::assertArrayNotHasKey('web_cols', $simpleGrid, 'simple-grid.web_cols must be renamed to cols.');
 
-        // container: shared size; web padding removed in favour of shared_spacing.
+        // container: shared size; web padding removed in favour of spacing.
         $container = $this->fieldsOf($data, 'container');
-        self::assertSame('shared', $container['shared_size']['scope'] ?? null, 'container.shared_size must be shared.');
+        self::assertSame('common', $container['size']['scope'] ?? null, 'container.size must be common.');
         self::assertArrayNotHasKey('web_px', $container, 'container.web_px must be removed.');
         self::assertArrayNotHasKey('web_py', $container, 'container.web_py must be removed.');
 
         // paper: optional title content + shared border; web padding removed.
         $paper = $this->fieldsOf($data, 'paper');
         self::assertSame('content', $paper['title']['scope'] ?? null, 'paper.title must be translatable content.');
-        self::assertSame('shared', $paper['shared_border']['scope'] ?? null, 'paper.shared_border must be shared.');
-        self::assertArrayNotHasKey('web_border', $paper, 'paper.web_border must be replaced by shared_border.');
+        self::assertSame('common', $paper['border']['scope'] ?? null, 'paper.border must be common.');
+        self::assertArrayNotHasKey('web_border', $paper, 'paper.web_border must be replaced by border.');
         self::assertArrayNotHasKey('web_px', $paper, 'paper.web_px must be removed.');
         self::assertArrayNotHasKey('web_py', $paper, 'paper.web_py must be removed.');
 
         // center: size constraints cross-platform; inline stays web.
         $center = $this->fieldsOf($data, 'center');
-        self::assertSame('shared', $center['shared_maw']['scope'] ?? null, 'center.shared_maw must be shared.');
-        self::assertSame('shared', $center['shared_width']['scope'] ?? null, 'center.shared_width must be shared.');
+        self::assertSame('common', $center['maw']['scope'] ?? null, 'center.maw must be common.');
+        self::assertSame('common', $center['shared_width']['scope'] ?? null, 'center.shared_width must be common.');
         self::assertSame('web', $center['web_center_inline']['scope'] ?? null, 'center.web_center_inline stays web-only.');
 
-        // space: direction folded into shared_orientation.
+        // space: direction folded into orientation.
         $space = $this->fieldsOf($data, 'space');
-        self::assertSame('shared', $space['shared_orientation']['scope'] ?? null, 'space.shared_orientation must be shared.');
+        self::assertSame('common', $space['orientation']['scope'] ?? null, 'space.orientation must be common.');
         self::assertArrayNotHasKey('web_space_direction', $space, 'space.web_space_direction must be removed.');
 
         // divider: variant/label-position/orientation all cross-platform.
         $divider = $this->fieldsOf($data, 'divider');
-        self::assertSame('shared', $divider['shared_divider_variant']['scope'] ?? null, 'divider.shared_divider_variant must be shared.');
-        self::assertSame('shared', $divider['shared_divider_label_position']['scope'] ?? null, 'divider.shared_divider_label_position must be shared.');
-        self::assertSame('shared', $divider['shared_orientation']['scope'] ?? null, 'divider.shared_orientation must be shared.');
+        self::assertSame('common', $divider['divider_variant']['scope'] ?? null, 'divider.divider_variant must be common.');
+        self::assertSame('common', $divider['divider_label_position']['scope'] ?? null, 'divider.divider_label_position must be common.');
+        self::assertSame('common', $divider['orientation']['scope'] ?? null, 'divider.orientation must be common.');
         self::assertArrayNotHasKey('web_divider_variant', $divider, 'divider.web_divider_variant must be renamed.');
 
         // scroll-area: height shared so mobile ScrollView can scroll.
         $scrollArea = $this->fieldsOf($data, 'scroll-area');
-        self::assertSame('shared', $scrollArea['shared_height']['scope'] ?? null, 'scroll-area.shared_height must be shared.');
+        self::assertSame('common', $scrollArea['shared_height']['scope'] ?? null, 'scroll-area.shared_height must be common.');
         self::assertSame('web', $scrollArea['web_scroll_area_type']['scope'] ?? null, 'scroll-area.web_scroll_area_type stays web-only.');
     }
 

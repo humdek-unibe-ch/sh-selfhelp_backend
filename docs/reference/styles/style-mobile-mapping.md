@@ -33,7 +33,7 @@ ISharedStyleProps  { size, radius, intent, spacing, states, fullWidth }
 
 ## 2. Semantic mapper tables (verbatim from `theme/semantic.ts`)
 
-### size — `shared_size` (`sm | md | lg`)
+### size — `size` (`sm | md | lg`)
 
 | shared | Mantine `size` | HeroUI Native `size` |
 |--------|----------------|----------------------|
@@ -43,7 +43,7 @@ ISharedStyleProps  { size, radius, intent, spacing, states, fullWidth }
 
 `web_size` keeps the full Mantine `xs..xl`; it is web-only and not mapped to mobile.
 
-### radius — `shared_radius` (`none | sm | md | lg | full`)
+### radius — `radius` (`none | sm | md | lg | full`)
 
 | shared | Mantine `radius` | HeroUI Native (px) |
 |--------|------------------|--------------------|
@@ -68,15 +68,15 @@ map to a prominent `primary` button while the status color carries the meaning):
 | `danger` | `red` / `filled` | `danger` | `danger` |
 | `neutral` | `gray` / `default` | `secondary` | `default` |
 
-### colour — `shared_color` (semantic palette token)
+### colour — `color` (semantic palette token)
 
 Colour must be settable on **both** platforms (the login button colour applies on
 mobile too), so the web-only `web_color` is being promoted to a semantic
-`shared_color` (RF-13). The token set is the intent palette; the adapter resolves
+`color` (RF-13). The token set is the intent palette; the adapter resolves
 it to a Mantine palette name (web) and a HeroUI Native / theme colour (mobile).
 Legacy Mantine palette values migrate onto the nearest token:
 
-| `shared_color` | Web (Mantine `color`) | Mobile (HeroUI Native / theme) | Legacy `web_color` mapped from |
+| `color` | Web (Mantine `color`) | Mobile (HeroUI Native / theme) | Legacy `web_color` mapped from |
 |----------------|-----------------------|--------------------------------|--------------------------------|
 | `primary` | `blue` | accent / primary | `blue` |
 | `secondary` | `gray` | default | — |
@@ -88,7 +88,7 @@ Legacy Mantine palette values migrate onto the nearest token:
 `web_color` survives only as an escape hatch where an exact non-semantic Mantine
 palette value is genuinely required (web-only); it is never read by mobile.
 
-### spacing — `shared_spacing` (box-model token object)
+### spacing — `spacing` (box-model token object)
 
 `{"mt","mb","ms","me","pt","pb","ps","pe"}` of spacing tokens (`none|xs|sm|md|lg|xl`).
 Web maps each side to Mantine margin/padding props; mobile resolves each to px
@@ -154,9 +154,9 @@ The user-flagged canonical case. Mantine `Alert` (web) vs HeroUI Native `Alert`
 |-------|-------|------------------------|--------------------------------|--------|
 | `content` | content | body / `children` | `Alert.Description` | **active** (canonical message) |
 | `web_alert_title` | web | `title` prop | read as legacy `titleLegacy` fallback for `Alert.Title` | mis-scoped — title is copy; should be unprefixed `alert_title` |
-| `shared_radius` | shared | `radius` token | radius px | active |
-| `shared_size` | shared | `size` | HeroUI size | active |
-| `shared_spacing` | shared | margin+padding | px box model | active |
+| `radius` | shared | `radius` token | radius px | active |
+| `size` | shared | `size` | HeroUI size | active |
+| `spacing` | shared | margin+padding | px box model | active |
 | `web_color` | web | `color` | — (mobile uses `shared_intent` status) | web-only |
 | `web_variant` | web | `variant` | — | web-only |
 | `web_left_icon` | web | `icon` | — (HeroUI `Alert.Indicator`) | web-only |
@@ -179,8 +179,8 @@ Key facts proven from the code:
   `web_color`.
 
 Target shape for `alert` (see [refactoring](./style-refactoring-recommendations.md)):
-`content`, `alert_title` (unprefixed copy), `shared_intent`, `shared_radius`,
-`shared_size`, `shared_spacing`, `closable` (unprefixed bool), `web_variant`,
+`content`, `alert_title` (unprefixed copy), `shared_intent`, `radius`,
+`size`, `spacing`, `closable` (unprefixed bool), `web_variant`,
 `web_color`, `web_left_icon`, `use_web_style`. Removed: `value`,
 `web_alert_with_close_button`, and the `web_` prefix on the title.
 
@@ -191,7 +191,7 @@ explicitly rather than assuming parity:
 
 | Concept | Web (Mantine/CSS) | Mobile (React Native) | Caveat |
 |---------|-------------------|------------------------|--------|
-| `flex`/`group`/`stack` | CSS flexbox (default `row`, wrapping, `gap`) | RN flexbox (default `column`, no wrap, `gap` supported) | RN's default axis and wrap differ; `shared_direction`/`shared_wrap` must be explicit |
+| `flex`/`group`/`stack` | CSS flexbox (default `row`, wrapping, `gap`) | RN flexbox (default `column`, no wrap, `gap` supported) | RN's default axis and wrap differ; `direction`/`wrap` must be explicit |
 | `grid`/`simple-grid` | CSS grid | RN has **no** grid; emulate with flex-wrap + width % | column counts → flex basis; responsive breakpoints differ |
 | `container` | max-width centring | RN `View` with `maxWidth` + `alignSelf:center` | viewport-relative widths need care |
 | `scroll-area` | `ScrollArea` overlay scrollbars | RN `ScrollView` (+ HeroUI `scroll-shadow`) | nested scroll/gesture conflicts |
@@ -201,7 +201,7 @@ explicitly rather than assuming parity:
 Layout styles therefore map to **adapted** RN wrappers, not HeroUI components.
 This is why "tons of layout components that make sense on web" still render on
 mobile — but as semantic flex wrappers, and authors should lean on
-`shared_gap`/`shared_align`/`shared_justify`/`shared_direction` (which map cleanly)
+`gap`/`align`/`justify`/`direction` (which map cleanly)
 rather than web-only CSS.
 
 ## 7. Per-style mobile target (summary)
@@ -263,7 +263,7 @@ first**, then register the Pro override where it exists.
 | `timeline` / `timeline-item` | custom RN | `Stepper` (vertical) |
 | `radio` | `radio-group` | `RadioButtonGroup` |
 | `range-slider` | `slider` (range) | `WheelPicker` family where it fits |
-| `button` (variants) | `button` | `ProgressButton` / `SlideButton` / `SocialAuthButton` / `ToggleButton(+Group)` (opt-in via `shared_variant` or dedicated styles) |
+| `button` (variants) | `button` | `ProgressButton` / `SlideButton` / `SocialAuthButton` / `ToggleButton(+Group)` (opt-in via `variant` or dedicated styles) |
 | `show-user-input` empty state | RN text | `EmptyState` |
 | future data/chart styles | — | `AreaChart` / `BarChart` / `LineChart` / `PieChart` / `RadarChart` / `RadialChart` / `ComposedChart` (+ `ChartCrosshair` / `ChartIndicator` / `ChartTooltip`) |
 | future KPI/dashboard styles | — | `Widget` / `NumberValue` / `TrendChip` |

@@ -22,17 +22,19 @@ use App\Tests\Support\QaKernelTestCase;
  *
  * Proves:
  *   - translatable fields (display=1) are always `content`, even when prefixed;
- *   - property fields (display=0) split into common/shared/web/mobile by prefix,
- *     matching only at the start of the name;
+ *   - property fields (display=0) split into common/web/mobile by prefix,
+ *     matching only at the start of the name (no `shared` scope: the redundant
+ *     `shared_` prefix was retired in Version20260622165615, so cross-platform
+ *     presentation is plain `common`, incl. the reserved shared_height/width/icon);
  *   - every field in the established catalog emits a valid scope equal to the
  *     central derivation for its (name, display) pair;
- *   - the catalog actually contains content, common, shared and web fields
- *     (representative coverage of every non-mobile bucket present today).
+ *   - the catalog actually contains content, common and web fields
+ *     (representative coverage of the non-mobile buckets present today).
  */
 final class StyleFieldScopeTest extends QaKernelTestCase
 {
     /** @var list<string> */
-    private const VALID_SCOPES = ['content', 'common', 'shared', 'web', 'mobile'];
+    private const VALID_SCOPES = ['content', 'common', 'web', 'mobile'];
 
     public function testDeriveFieldScopeClassifiesBothDimensions(): void
     {
@@ -41,7 +43,7 @@ final class StyleFieldScopeTest extends QaKernelTestCase
         self::assertSame('content', StyleRepository::deriveFieldScope('label', 1));
         self::assertSame('content', StyleRepository::deriveFieldScope('title', 1));
         self::assertSame('content', StyleRepository::deriveFieldScope('text', 1));
-        self::assertSame('content', StyleRepository::deriveFieldScope('shared_placeholder', 1));
+        self::assertSame('content', StyleRepository::deriveFieldScope('placeholder', 1));
         self::assertSame('content', StyleRepository::deriveFieldScope('web_html', 1));
 
         // Dimension 2 — property fields (display=0) split by prefix.
@@ -49,10 +51,16 @@ final class StyleFieldScopeTest extends QaKernelTestCase
         self::assertSame('common', StyleRepository::deriveFieldScope('is_required', 0));
         self::assertSame('common', StyleRepository::deriveFieldScope('value', 0));
         self::assertSame('common', StyleRepository::deriveFieldScope('name', 0));
-        // shared portable semantics
-        self::assertSame('shared', StyleRepository::deriveFieldScope('shared_size', 0));
-        self::assertSame('shared', StyleRepository::deriveFieldScope('shared_spacing', 0));
-        self::assertSame('shared', StyleRepository::deriveFieldScope('shared_text_align', 0));
+        // unprefixed cross-platform presentation -> common (the redundant shared_
+        // prefix was retired in Version20260622165615: no prefix = both platforms)
+        self::assertSame('common', StyleRepository::deriveFieldScope('size', 0));
+        self::assertSame('common', StyleRepository::deriveFieldScope('spacing', 0));
+        self::assertSame('common', StyleRepository::deriveFieldScope('text_align', 0));
+        // reserved-name exceptions keep the shared_ prefix (collide with page-type
+        // fields) but are still common-scope, not a separate scope
+        self::assertSame('common', StyleRepository::deriveFieldScope('shared_height', 0));
+        self::assertSame('common', StyleRepository::deriveFieldScope('shared_width', 0));
+        self::assertSame('common', StyleRepository::deriveFieldScope('shared_icon', 0));
         // web-only presentation
         self::assertSame('web', StyleRepository::deriveFieldScope('web_variant', 0));
         self::assertSame('web', StyleRepository::deriveFieldScope('web_spacing_margin', 0));
@@ -74,7 +82,6 @@ final class StyleFieldScopeTest extends QaKernelTestCase
         $checked = 0;
         $sawContent = false;
         $sawCommon = false;
-        $sawShared = false;
         $sawWeb = false;
 
         foreach ($schema as $styleName => $styleMeta) {
@@ -94,7 +101,6 @@ final class StyleFieldScopeTest extends QaKernelTestCase
 
                 $sawContent = $sawContent || $scope === 'content';
                 $sawCommon = $sawCommon || $scope === 'common';
-                $sawShared = $sawShared || $scope === 'shared';
                 $sawWeb = $sawWeb || $scope === 'web';
                 $checked++;
             }
@@ -102,8 +108,7 @@ final class StyleFieldScopeTest extends QaKernelTestCase
 
         self::assertGreaterThan(0, $checked, 'The catalog must expose fields with a scope.');
         self::assertTrue($sawContent, 'The catalog must contain translatable content fields (display=1).');
-        self::assertTrue($sawCommon, 'The catalog must contain unprefixed common behavior/data properties (display=0).');
-        self::assertTrue($sawShared, 'The catalog must contain shared_* fields after the rename migration.');
+        self::assertTrue($sawCommon, 'The catalog must contain unprefixed common properties (behaviour, data, and cross-platform presentation; display=0).');
         self::assertTrue($sawWeb, 'The catalog must contain web_* fields.');
     }
 }

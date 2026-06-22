@@ -29,7 +29,7 @@ relationships.
       "renderTarget": "both",          // 'web' | 'mobile' | 'both' (NULL id_render_target => 'both')
       "fields": {
         "web_size":      { "type": "slider",   "scope": "web",     "display": 0, "default_value": null, "help": "…", "title": "Size" },
-        "shared_spacing":{ "type": "spacing",  "scope": "shared",  "display": 0, "default_value": null },
+        "spacing":{ "type": "spacing",  "scope": "shared",  "display": 0, "default_value": null },
         "title":         { "type": "text",     "scope": "content", "display": 1, "default_value": null },
         "use_web_style": { "type": "checkbox", "scope": "common",  "display": 0, "default_value": "1", "hidden": 1 }
       },

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (account-activation API, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-04.
+Last verified: 2026-06-22.
 Source of truth: `IValidateStyle` in `@selfhelp/shared`, `ValidateStyle.tsx`, the token-validation endpoints, and `migrations/Version20260604111011.php` (for the lifecycle status fields).
 
 ## Summary
@@ -60,6 +60,7 @@ de-CH translations are seeded for all seven fields.
 | `subtitle` | 1 | — | Card subtitle (hidden when empty). |
 | `label_name` / `name_placeholder` / `name_description` | 1 | `Name` / — / — | Name input. |
 | `anonymous_user_name_description` | 1 | — | Alternate name description for anonymous users. |
+| `label_timezone` | 1 | `Timezone` | Label for the timezone select (anonymous-user activation form). |
 | `label_pw` / `pw_placeholder` | 1 | `Password` / — | Password input. |
 | `label_pw_confirm` | 1 | `Confirm Password` | Confirm-password input. |
 | `label_activate` | 1 | `Activate` | Submit button label. |
@@ -68,11 +69,19 @@ de-CH translations are seeded for all seven fields.
 
 ### Form behaviour / styling config
 
-`name`, `redirect_at_end`, `cancel_url`, `page_keyword`, `value_name`,
-`label_save`, `label_update`, `label_cancel`, plus the `web_buttons_*`,
-`web_btn_*_color`, `web_card_*`, `web_radius`, and `web_border`
-appearance fields. See the live `admin/styles/schema` endpoint for their exact
-defaults.
+`name`, `redirect_at_end`, `btn_cancel_url` (cancel-button target page),
+`label_save`, `label_update`, `label_cancel`, plus the **shared** button knobs
+`buttons_size` / `buttons_radius` / `buttons_variant` /
+`buttons_position` / `buttons_order` and the button colours
+`btn_save_color` / `btn_cancel_color` (all portable to mobile via
+the shared mapper — RF-21), the card radius `radius`, and the web-only
+`web_card_padding` / `web_card_shadow` / `web_border`. See the live
+`admin/styles/schema` endpoint for their exact defaults.
+
+> Verified against the live schema 2026-06-22: the button knobs are `shared_*`
+> (promoted from the old `web_buttons_*` / `web_btn_*` by RF-21), the cancel
+> target is `btn_cancel_url`, and the card radius is `radius`. The earlier
+> `cancel_url` / `page_keyword` / `value_name` / `web_radius` names are gone.
 
 ## Behaviour
 

@@ -163,7 +163,7 @@ Markdown fences):
       via the standard `web_spacing_margin_padding` field if needed.
     - `card` does **not** carry a `web_card_padding` field. Its inner
       padding is the fixed Mantine default; tune it with the shared
-      `Spacing` field (`shared_spacing` padding side), or use a
+      `Spacing` field (`spacing` padding side), or use a
       `card-segment` child for full-bleed content.
     - Native form-record/log fields are `name`, `alert_success`,
       `btn_save_label`, etc. Always read the catalog entry for the
@@ -311,7 +311,7 @@ Notes on the snippet above:
   (1 col on mobile, 2 on tablet, 3 on desktop).
 - Each card carries `min-w-0 overflow-hidden` so long text can break instead
   of pushing the grid sideways.
-- Padding is responsive (`p-4 sm:p-6`) via `css` / `shared_spacing`
+- Padding is responsive (`p-4 sm:p-6`) via `css` / `spacing`
   instead of a single fixed value.
 - The text body has `break-words` so unbroken words/URLs do not overflow on
   narrow screens.
