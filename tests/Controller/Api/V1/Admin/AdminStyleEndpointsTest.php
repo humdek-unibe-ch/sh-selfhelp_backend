@@ -283,6 +283,216 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
     }
 
     /**
+     * Wave F — inline rich-text on the shared `text` content field (migration
+     * Version20260622100253). The `text` and `highlight` styles read the shared
+     * `text` field, which switched `textarea` -> `markdown-inline` so an author can
+     * apply inline bold/italic/underline/link that renders on web AND mobile.
+     */
+    public function testTextWaveInlineRichTextFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        $text = $this->fieldsOf($data, 'text');
+        self::assertSame('content', $text['text']['scope'] ?? null, 'text.text must be translatable content.');
+        self::assertSame('markdown-inline', $text['text']['type'] ?? null, 'text.text must use the inline rich-text editor.');
+
+        $highlight = $this->fieldsOf($data, 'highlight');
+        self::assertSame('content', $highlight['text']['scope'] ?? null, 'highlight.text must be translatable content.');
+        self::assertSame('markdown-inline', $highlight['text']['type'] ?? null, 'highlight.text must use the inline rich-text editor.');
+    }
+
+    /**
+     * Wave G — typography / media / interactive field pass (migration
+     * Version20260622110041): inline rich-text on list-item, a dedicated
+     * blockquote_content (the generic `content` is unlinked), media playback
+     * toggles, link/spoiler colour + link underline/icons, action-icon aria_label.
+     * Ex-`shared_color` is now the unprefixed common `color`.
+     */
+    public function testTypographyMediaInteractiveWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // list-item: inline rich-text content.
+        $listItem = $this->fieldsOf($data, 'list-item');
+        self::assertSame('content', $listItem['list_item_content']['scope'] ?? null, 'list-item.list_item_content must be translatable content.');
+        self::assertSame('markdown-inline', $listItem['list_item_content']['type'] ?? null, 'list-item.list_item_content must use the inline rich-text editor.');
+
+        // blockquote: dedicated inline content field; the generic `content` is unlinked.
+        $blockquote = $this->fieldsOf($data, 'blockquote');
+        self::assertSame('content', $blockquote['blockquote_content']['scope'] ?? null, 'blockquote.blockquote_content must be translatable content.');
+        self::assertSame('markdown-inline', $blockquote['blockquote_content']['type'] ?? null, 'blockquote.blockquote_content must use the inline rich-text editor.');
+        self::assertArrayNotHasKey('content', $blockquote, 'blockquote.content must be unlinked in favour of blockquote_content.');
+
+        // image: fallback source (translatable asset picker).
+        $image = $this->fieldsOf($data, 'image');
+        self::assertSame('content', $image['fallback_src']['scope'] ?? null, 'image.fallback_src must be a translatable asset field.');
+
+        // figure: optional built-in image + alt.
+        $figure = $this->fieldsOf($data, 'figure');
+        self::assertSame('content', $figure['img_src']['scope'] ?? null, 'figure.img_src must be a translatable asset field.');
+        self::assertSame('content', $figure['alt']['scope'] ?? null, 'figure.alt must be translatable content.');
+
+        // link: cross-platform colour + web underline/icons.
+        $link = $this->fieldsOf($data, 'link');
+        self::assertSame('common', $link['color']['scope'] ?? null, 'link.color must be common (ex-shared_color, unprefixed).');
+        self::assertSame('web', $link['web_link_underline']['scope'] ?? null, 'link.web_link_underline must stay web-only.');
+        self::assertSame('web', $link['web_left_icon']['scope'] ?? null, 'link.web_left_icon must stay web-only.');
+        self::assertSame('web', $link['web_right_icon']['scope'] ?? null, 'link.web_right_icon must stay web-only.');
+
+        // action-icon: accessible name for the icon-only control.
+        $actionIcon = $this->fieldsOf($data, 'action-icon');
+        self::assertSame('content', $actionIcon['aria_label']['scope'] ?? null, 'action-icon.aria_label must be translatable content.');
+
+        // spoiler: show/hide control colour.
+        $spoiler = $this->fieldsOf($data, 'spoiler');
+        self::assertSame('common', $spoiler['color']['scope'] ?? null, 'spoiler.color must be common (ex-shared_color, unprefixed).');
+
+        // video: poster (content) + cross-platform playback toggles.
+        $video = $this->fieldsOf($data, 'video');
+        self::assertSame('content', $video['poster_src']['scope'] ?? null, 'video.poster_src must be a translatable asset field.');
+        self::assertSame('common', $video['has_controls']['scope'] ?? null, 'video.has_controls must be common.');
+        self::assertSame('common', $video['media_loop']['scope'] ?? null, 'video.media_loop must be common.');
+        self::assertSame('common', $video['media_autoplay']['scope'] ?? null, 'video.media_autoplay must be common.');
+        self::assertSame('common', $video['media_muted']['scope'] ?? null, 'video.media_muted must be common.');
+
+        // audio: cross-platform playback toggles.
+        $audio = $this->fieldsOf($data, 'audio');
+        self::assertSame('common', $audio['has_controls']['scope'] ?? null, 'audio.has_controls must be common.');
+        self::assertSame('common', $audio['media_loop']['scope'] ?? null, 'audio.media_loop must be common.');
+        self::assertSame('common', $audio['media_autoplay']['scope'] ?? null, 'audio.media_autoplay must be common.');
+    }
+
+    /**
+     * Wave H — form / interactive capability pass (migration
+     * Version20260622132034): new web_* Mantine knobs on number-input/color-input/
+     * tabs/switch, the cross-platform `max_length` (ex-shared_max_length) + mobile
+     * keyboard knobs on text-input/textarea, and progress-root `radius`
+     * (ex-shared_radius). NB: `mobile_keyboard_type` is text-input only.
+     */
+    public function testFormInteractiveCapabilityWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // number-input: currency / format affixes (web-only).
+        $numberInput = $this->fieldsOf($data, 'number-input');
+        self::assertSame('web', $numberInput['web_number_input_prefix']['scope'] ?? null, 'number-input.web_number_input_prefix must be web-only.');
+        self::assertSame('web', $numberInput['web_number_input_suffix']['scope'] ?? null, 'number-input.web_number_input_suffix must be web-only.');
+        self::assertSame('web', $numberInput['web_number_input_thousand_separator']['scope'] ?? null, 'number-input.web_number_input_thousand_separator must be web-only.');
+        self::assertSame('web', $numberInput['web_number_input_allow_negative']['scope'] ?? null, 'number-input.web_number_input_allow_negative must be web-only.');
+        self::assertSame('web', $numberInput['web_number_input_hide_controls']['scope'] ?? null, 'number-input.web_number_input_hide_controls must be web-only.');
+
+        // color-input: picker affordances (web-only).
+        $colorInput = $this->fieldsOf($data, 'color-input');
+        self::assertSame('web', $colorInput['web_color_input_with_eye_dropper']['scope'] ?? null, 'color-input.web_color_input_with_eye_dropper must be web-only.');
+        self::assertSame('web', $colorInput['web_color_input_disallow_input']['scope'] ?? null, 'color-input.web_color_input_disallow_input must be web-only.');
+        self::assertSame('web', $colorInput['web_color_input_with_preview']['scope'] ?? null, 'color-input.web_color_input_with_preview must be web-only.');
+
+        // tabs: tab-list layout knobs (web-only).
+        $tabs = $this->fieldsOf($data, 'tabs');
+        self::assertSame('web', $tabs['web_tabs_grow']['scope'] ?? null, 'tabs.web_tabs_grow must be web-only.');
+        self::assertSame('web', $tabs['web_tabs_justify']['scope'] ?? null, 'tabs.web_tabs_justify must be web-only.');
+        self::assertSame('web', $tabs['web_tabs_keep_mounted']['scope'] ?? null, 'tabs.web_tabs_keep_mounted must be web-only.');
+        self::assertSame('web', $tabs['web_tabs_placement']['scope'] ?? null, 'tabs.web_tabs_placement must be web-only.');
+
+        // switch: thumb knobs (web-only).
+        $switch = $this->fieldsOf($data, 'switch');
+        self::assertSame('web', $switch['web_switch_with_thumb_indicator']['scope'] ?? null, 'switch.web_switch_with_thumb_indicator must be web-only.');
+        self::assertSame('web', $switch['web_switch_thumb_icon']['scope'] ?? null, 'switch.web_switch_thumb_icon must be web-only.');
+
+        // text-input: cross-platform max length + mobile keyboard knobs.
+        $textInput = $this->fieldsOf($data, 'text-input');
+        self::assertSame('common', $textInput['max_length']['scope'] ?? null, 'text-input.max_length must be common (ex-shared_max_length, unprefixed).');
+        self::assertSame('mobile', $textInput['mobile_keyboard_type']['scope'] ?? null, 'text-input.mobile_keyboard_type must be mobile-only.');
+        self::assertSame('mobile', $textInput['mobile_auto_capitalize']['scope'] ?? null, 'text-input.mobile_auto_capitalize must be mobile-only.');
+        self::assertSame('mobile', $textInput['mobile_secure_entry']['scope'] ?? null, 'text-input.mobile_secure_entry must be mobile-only.');
+
+        // textarea: cross-platform max length + mobile auto-capitalize (no keyboard_type).
+        $textarea = $this->fieldsOf($data, 'textarea');
+        self::assertSame('common', $textarea['max_length']['scope'] ?? null, 'textarea.max_length must be common (ex-shared_max_length, unprefixed).');
+        self::assertSame('mobile', $textarea['mobile_auto_capitalize']['scope'] ?? null, 'textarea.mobile_auto_capitalize must be mobile-only.');
+
+        // progress-root: rounder bar via the cross-platform radius.
+        $progressRoot = $this->fieldsOf($data, 'progress-root');
+        self::assertSame('common', $progressRoot['radius']['scope'] ?? null, 'progress-root.radius must be common (ex-shared_radius, unprefixed).');
+    }
+
+    /**
+     * Wave I — mobile-only HeroUI Native capability pass (migration
+     * Version20260622145334): 7 mobile_* fields with no web/Mantine equivalent, so
+     * they must be scoped `mobile` (the web renderer ignores them). Only the
+     * mobile-only additions of this wave are asserted here.
+     */
+    public function testMobileOnlyCapabilityWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        // select + combobox share the native presentation field.
+        $select = $this->fieldsOf($data, 'select');
+        self::assertSame('mobile', $select['mobile_select_presentation']['scope'] ?? null, 'select.mobile_select_presentation must be mobile-only.');
+        $combobox = $this->fieldsOf($data, 'combobox');
+        self::assertSame('mobile', $combobox['mobile_select_presentation']['scope'] ?? null, 'combobox.mobile_select_presentation must be mobile-only.');
+
+        // button native press feedback.
+        $button = $this->fieldsOf($data, 'button');
+        self::assertSame('mobile', $button['mobile_button_feedback']['scope'] ?? null, 'button.mobile_button_feedback must be mobile-only.');
+
+        // slider / range-slider native value bubble.
+        $slider = $this->fieldsOf($data, 'slider');
+        self::assertSame('mobile', $slider['mobile_slider_show_value']['scope'] ?? null, 'slider.mobile_slider_show_value must be mobile-only.');
+        $rangeSlider = $this->fieldsOf($data, 'range-slider');
+        self::assertSame('mobile', $rangeSlider['mobile_range_slider_show_value']['scope'] ?? null, 'range-slider.mobile_range_slider_show_value must be mobile-only.');
+
+        // text-input / textarea / checkbox native field variant.
+        $textInput = $this->fieldsOf($data, 'text-input');
+        self::assertSame('mobile', $textInput['mobile_input_variant']['scope'] ?? null, 'text-input.mobile_input_variant must be mobile-only.');
+        $textarea = $this->fieldsOf($data, 'textarea');
+        self::assertSame('mobile', $textarea['mobile_textarea_variant']['scope'] ?? null, 'textarea.mobile_textarea_variant must be mobile-only.');
+        $checkbox = $this->fieldsOf($data, 'checkbox');
+        self::assertSame('mobile', $checkbox['mobile_checkbox_variant']['scope'] ?? null, 'checkbox.mobile_checkbox_variant must be mobile-only.');
+    }
+
+    /**
+     * Wave J — form / notification / show-user-input authoring upgrade (migration
+     * Version20260622161717): form-record/form-log gain title + description + alert
+     * titles + confirm dialog; notification promotes its icon (`shared_icon`, a
+     * reserved-name exception that stays prefixed but is common scope) + close
+     * button (`with_close_button`, unprefixed) to common; show-user-input gains
+     * title + empty_text.
+     */
+    public function testFormNotificationAuthoringWaveFieldsAndScopes(): void
+    {
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/styles/schema', null, $this->loginAsQaAdmin());
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        foreach (['form-record', 'form-log'] as $formStyle) {
+            $form = $this->fieldsOf($data, $formStyle);
+            self::assertSame('content', $form['title']['scope'] ?? null, "{$formStyle}.title must be translatable content.");
+            self::assertSame('content', $form['description']['scope'] ?? null, "{$formStyle}.description must be translatable content.");
+            self::assertSame('content', $form['alert_success_title']['scope'] ?? null, "{$formStyle}.alert_success_title must be translatable content.");
+            self::assertSame('content', $form['alert_error_title']['scope'] ?? null, "{$formStyle}.alert_error_title must be translatable content.");
+            self::assertSame('content', $form['confirm_message']['scope'] ?? null, "{$formStyle}.confirm_message must be translatable content.");
+            self::assertSame('common', $form['confirm_submit']['scope'] ?? null, "{$formStyle}.confirm_submit must be a common toggle.");
+        }
+
+        // notification: icon + close button promoted to cross-platform (common).
+        // `shared_icon` keeps its prefix as a documented reserved-name exception
+        // but is common scope; `with_close_button` dropped its shared_ prefix.
+        $notification = $this->fieldsOf($data, 'notification');
+        self::assertSame('common', $notification['shared_icon']['scope'] ?? null, 'notification.shared_icon must be common (reserved-name exception keeps its prefix).');
+        self::assertSame('common', $notification['with_close_button']['scope'] ?? null, 'notification.with_close_button must be common (ex-shared_with_close_button, unprefixed).');
+        self::assertArrayNotHasKey('web_notification_with_close_button', $notification, 'notification.web_notification_with_close_button must be promoted away.');
+
+        // show-user-input: optional heading + empty-state copy.
+        $showUserInput = $this->fieldsOf($data, 'show-user-input');
+        self::assertSame('content', $showUserInput['title']['scope'] ?? null, 'show-user-input.title must be translatable content.');
+        self::assertSame('content', $showUserInput['empty_text']['scope'] ?? null, 'show-user-input.empty_text must be translatable content.');
+    }
+
+    /**
      * @param array<string, mixed> $schema
      * @return array<string, array<string, mixed>>
      */
