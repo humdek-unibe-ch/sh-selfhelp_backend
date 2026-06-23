@@ -165,7 +165,7 @@ final class SectionImportLocalizationWorkflowTest extends QaWebTestCase
         $user = $this->loginAsQaUser();
 
         // 4a. Render in en-GB (id 3).
-        $en = $this->renderPage($pageId, self::LANG_EN, $user);
+        $en = $this->renderPage(self::LANG_EN, $user);
         $enTop = $this->topLevelSections($en);
 
         self::assertSame('Hello from the import', $this->textOf($this->styleNamed($enTop, 'text', 0)), 'Bilingual section renders en-GB for an en-GB viewer.');
@@ -177,7 +177,7 @@ final class SectionImportLocalizationWorkflowTest extends QaWebTestCase
         self::assertSame('Nested card body', $this->textOf($enCardText), 'Nested bilingual content renders en-GB for an en-GB viewer.');
 
         // 4b. Render in de-CH (id 2, the default).
-        $de = $this->renderPage($pageId, self::LANG_DE, $user);
+        $de = $this->renderPage(self::LANG_DE, $user);
         $deTop = $this->topLevelSections($de);
 
         self::assertSame('Hallo aus dem Import', $this->textOf($this->styleNamed($deTop, 'text', 0)), 'Bilingual section renders de-CH for a de-CH viewer.');
@@ -192,13 +192,12 @@ final class SectionImportLocalizationWorkflowTest extends QaWebTestCase
     // -- helpers ------------------------------------------------------------
 
     /**
-     * @param string $token
      * @return array<string, mixed>
      */
-    private function renderPage(int $pageId, int $languageId, string $token): array
+    private function renderPage(int $languageId, string $token): array
     {
         return $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/%d?language_id=%d', $pageId, $languageId), null, $token)
+            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/by-keyword/%s?language_id=%d', self::KEYWORD, $languageId), null, $token)
         );
     }
 

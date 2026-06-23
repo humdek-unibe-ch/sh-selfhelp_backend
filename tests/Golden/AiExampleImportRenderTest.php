@@ -165,7 +165,7 @@ final class AiExampleImportRenderTest extends QaWebTestCase
         $user = $this->loginAsQaUser();
 
         foreach (self::LOCALES as $locale => $languageId) {
-            $rendered = $this->renderPage($pageId, $languageId, $user);
+            $rendered = $this->renderPage($languageId, $user);
             $blob = (string) json_encode($rendered, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
             $expectedValues = $this->uniqueValues($expected[$locale]);
@@ -277,10 +277,10 @@ final class AiExampleImportRenderTest extends QaWebTestCase
     /**
      * @return array<string, mixed>
      */
-    private function renderPage(int $pageId, int $languageId, string $token): array
+    private function renderPage(int $languageId, string $token): array
     {
         return $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/%d?language_id=%d', $pageId, $languageId), null, $token)
+            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/by-keyword/%s?language_id=%d', self::KEYWORD, $languageId), null, $token)
         );
     }
 }
