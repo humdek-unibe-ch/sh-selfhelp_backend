@@ -84,6 +84,27 @@ final class FormControllerTest extends QaWebTestCase
         self::assertNotNull($row, 'A data row must be persisted for the guest submission.');
     }
 
+    public function testGuestSubmissionStoresNullOwnerNotAdmin(): void
+    {
+        // Regression for the "anonymous == user id 1 (admin)" bug: anonymous
+        // submissions were attributed to the admin (id 1). A guest write must now
+        // persist a NULL owner (the column is nullable, carries no FK), never a
+        // real user id.
+        [$page, $section] = $this->pages->createFormPage('qa_form_anon_owner', openAccess: true);
+
+        $envelope = $this->jsonRequest('POST', self::SUBMIT, [
+            'page_id' => (int) $page->getId(),
+            'section_id' => (int) $section->getId(),
+            'form_data' => ['qa_answer' => 'anon owner value'],
+        ]);
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertIsInt($data['record_id'] ?? null);
+
+        $row = $this->em->getRepository(DataRow::class)->find((int) $data['record_id']);
+        self::assertInstanceOf(DataRow::class, $row);
+        self::assertNull($row->getIdUsers(), 'Anonymous submission must store a NULL owner, not user id 1.');
+    }
+
     public function testGuestMultipartSubmitToOpenAccessFormCreatesRecord(): void
     {
         [$page, $section] = $this->pages->createFormPage('qa_form_open_multipart', openAccess: true);

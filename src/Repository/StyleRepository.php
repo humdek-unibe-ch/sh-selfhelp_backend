@@ -34,16 +34,18 @@ class StyleRepository extends ServiceEntityRepository
                 's.name AS style_name',
                 's.description AS style_description',
                 's.canHaveChildren AS can_have_children',
+                'lp.lookupCode AS render_target',
                 'sg.id AS style_group_id',
                 'sg.name AS style_group',
                 'sg.description AS style_group_description',
                 'sg.position AS style_group_position'
             )
             ->leftJoin('s.group', 'sg')
+            ->leftJoin('s.renderTarget', 'lp')
             ->orderBy('sg.position', 'ASC')
             ->addOrderBy('s.name', 'ASC');
 
-        /** @var list<array{style_id: int, style_name: mixed, style_description: mixed, can_have_children: mixed, style_group_id: int, style_group: mixed, style_group_description: mixed, style_group_position: mixed}> $styles */
+        /** @var list<array{style_id: int, style_name: mixed, style_description: mixed, can_have_children: mixed, render_target: string|null, style_group_id: int, style_group: mixed, style_group_description: mixed, style_group_position: mixed}> $styles */
         $styles = $qb->getQuery()->getArrayResult();
 
         // Get relationship information for all styles
@@ -69,6 +71,8 @@ class StyleRepository extends ServiceEntityRepository
                 'id' => $style['style_id'],
                 'name' => $style['style_name'],
                 'description' => $style['style_description'],
+                // NULL render target = legacy/core row that targets every platform.
+                'renderTarget' => $style['render_target'] ?? 'both',
                 'relationships' => [
                     // If can_have_children is 1 (true), return empty array (can have all children)
                     // If can_have_children is 0 (false), return custom allowed children from relationships
@@ -160,9 +164,11 @@ class StyleRepository extends ServiceEntityRepository
      *       'group' => string,
      *       'can_have_children' => bool,
      *       'description' => string|null,
+     *       'renderTarget' => string,    // 'web' | 'mobile' | 'both' ('both' when id_render_target is NULL)
      *       'fields' => [
      *         'fieldName' => [
      *           'type' => string,
+     *           'scope' => string,         // 'content' | 'common' | 'web' | 'mobile' (display + prefix)
      *           'display' => int,          // 0 = internal/property (locale "all"), 1 = translatable/content (real locale)
      *           'default_value' => string|null,
      *           'help' => string|null,
@@ -192,6 +198,7 @@ class StyleRepository extends ServiceEntityRepository
                 s.name             AS style_name,
                 s.description      AS style_description,
                 s.can_have_children AS can_have_children,
+                lp.lookup_code     AS render_target,
                 sg.name            AS style_group,
                 f.id               AS field_id,
                 f.name             AS field_name,
@@ -205,12 +212,13 @@ class StyleRepository extends ServiceEntityRepository
                 sf.hidden          AS hidden
             FROM styles s
             INNER JOIN style_groups sg ON sg.id = s.id_style_groups
+            LEFT JOIN lookups lp ON lp.id = s.id_render_target
             LEFT JOIN rel_fields_styles sf ON sf.id_styles = s.id
             LEFT JOIN fields f ON f.id = sf.id_fields
             LEFT JOIN field_types ft ON ft.id = f.id_field_types
             ORDER BY s.name ASC, f.name ASC
         ')->fetchAllAssociative();
-        /** @var list<array{style_id: int|string, style_name: string, style_description: string|null, can_have_children: int|string, style_group: string, field_id: int|string|null, field_name: string|null, field_display: int|string|null, field_config: string|null, field_type: string|null, default_value: string|null, help: string|null, title: string|null, disabled: int|string|null, hidden: int|string|null}> $rows */
+        /** @var list<array{style_id: int|string, style_name: string, style_description: string|null, can_have_children: int|string, render_target: string|null, style_group: string, field_id: int|string|null, field_name: string|null, field_display: int|string|null, field_config: string|null, field_type: string|null, default_value: string|null, help: string|null, title: string|null, disabled: int|string|null, hidden: int|string|null}> $rows */
 
         // Group into styleName => { ...meta, fields: { fieldName => fieldMeta } }
         $schema = [];
@@ -222,6 +230,8 @@ class StyleRepository extends ServiceEntityRepository
                     'group' => $row['style_group'],
                     'can_have_children' => (bool) $row['can_have_children'],
                     'description' => $row['style_description'],
+                    // NULL render target = legacy/core row that targets every platform.
+                    'renderTarget' => $row['render_target'] ?? 'both',
                     'fields' => [],
                     'allowed_children' => [],
                     'allowed_parents' => [],
@@ -232,6 +242,7 @@ class StyleRepository extends ServiceEntityRepository
                 [$options, $placeholder] = $this->parseFieldConfig($row['field_config']);
                 $schema[$styleName]['fields'][$row['field_name']] = [
                     'type' => $row['field_type'],
+                    'scope' => self::deriveFieldScope($row['field_name'], (int) $row['field_display']),
                     'display' => (int) $row['field_display'],
                     'default_value' => $row['default_value'],
                     'help' => $row['help'],
@@ -286,6 +297,46 @@ class StyleRepository extends ServiceEntityRepository
 
         ksort($schema);
         return $schema;
+    }
+
+    /**
+     * Derive a field's scope from its two independent dimensions — translatability
+     * (`display`) and platform prefix. This is the single backend source of truth
+     * for field scope (mobile rendering plan, section 6.4); the CMS frontend must
+     * consume the emitted `scope` and must not re-derive it from the field name,
+     * `display`, or a prefix.
+     *
+     * Translatability wins first: a translatable field (`display === 1`) is always
+     * authored content, regardless of any prefix, so it is grouped in the
+     * Content/Translations card. Property fields (`display === 0`) are then split
+     * by platform prefix:
+     *
+     *   `display === 1`            -> content (translatable, locale-scoped copy)
+     *   `display === 0`, `web_*`   -> web     (Mantine / browser presentation)
+     *   `display === 0`, `mobile_*`-> mobile  (HeroUI Native / native presentation)
+     *   `display === 0`, otherwise -> common  (cross-platform behavior/data/visuals)
+     *
+     * The `shared_*` prefix was retired (migration Version20260622165615): an
+     * unprefixed property field already means "applies to both platforms", so the
+     * prefix was redundant. Ex-`shared_*` fields are now plain `common` scope.
+     *
+     * @return 'content'|'common'|'web'|'mobile'
+     */
+    public static function deriveFieldScope(string $fieldName, int $display): string
+    {
+        // Dimension 1 — translatable content always groups as content.
+        if ($display === 1) {
+            return 'content';
+        }
+        // Dimension 2 — property platform scope by canonical prefix. No prefix =
+        // both platforms (`common`); only `web_`/`mobile_` are platform-specific.
+        if (str_starts_with($fieldName, 'web_')) {
+            return 'web';
+        }
+        if (str_starts_with($fieldName, 'mobile_')) {
+            return 'mobile';
+        }
+        return 'common';
     }
 
     /**

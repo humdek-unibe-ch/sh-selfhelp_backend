@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (auth password-reset flow, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-08.
+Last verified: 2026-06-22.
 Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, and `MailTemplateService`.
 
 ## Summary
@@ -72,10 +72,10 @@ live in the DB / `admin/styles/schema` endpoint.
 
 | Field | Type | `display` | Purpose |
 |-------|------|-----------|---------|
-| `placeholder` | text | 1 | Placeholder for the email input. |
-| `label_pw_reset` | text | 1 | Submit button label. |
-| `alert_success` | text | 1 | Confirmation shown after submitting the email form. |
-| `type` | text | 0 | Visual type/variant of the success alert. |
+| `placeholder` | text | 1 | Placeholder for the email input (request mode). |
+| `label_pw_reset` | text | 1 | Submit button label (request mode). |
+| `alert_success` | text | 1 | Confirmation shown after submitting the email form (request mode). |
+| `color` | color-picker | 0 | Submit/link-button accent colour (cross-platform via the shared mapper; default `blue`). |
 | `reset_title` | text | 1 | Heading shown above the set-password form when the reset token is present in the URL. |
 | `reset_label_pw` | text | 1 | Label for the new-password input on the set-password form. |
 | `reset_pw_placeholder` | text | 1 | Placeholder for the new-password input. |
@@ -88,9 +88,14 @@ live in the DB / `admin/styles/schema` endpoint.
 | `reset_error_invalid_token` | text | 1 | Fallback message for an invalid or expired reset link. |
 | `reset_error_pw_short` | text | 1 | Validation message when the new password is shorter than 8 characters. |
 | `reset_error_pw_mismatch` | text | 1 | Validation message when the two entered passwords do not match. |
-| `subject_user` | text | 1 | Legacy: not used. The reset email subject comes from `mail_recovery_subject` on the `sh-mail-config` page. |
-| `is_html` | checkbox | 0 | Whether the reset email body is sent as HTML. |
-| spacing fields | various | 0 | Inherited from `IStyleWithSpacing`. |
+| `spacing` | spacing | 0 | Inherited from `IStyleWithSpacing`. |
+
+> Verified against the live `admin/styles/schema` on 2026-06-22: the legacy
+> `type` / `subject_user` / `is_html` fields are **not** in the DB catalog and the
+> earlier doc rows for them were removed. The request-mode copy fields
+> (`placeholder`, `label_pw_reset`, `alert_success`) **are** live and read by the
+> renderer's "request a reset link" screen — they are not superseded by the
+> `reset_*` set, which drives the separate "set a new password" screen.
 
 ## Related files
 

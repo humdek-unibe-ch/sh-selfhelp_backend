@@ -103,11 +103,11 @@ final class UserManagementLifecycleTest extends QaWebTestCase
         self::assertContains('qa_lifecycle_group', $groupNames, 'Identity payload must reflect the membership.');
 
         // 4. ACL gating through the public API: granted page reads, ungranted 403.
-        $allowed = $this->jsonRequest('GET', '/cms-api/v1/pages/' . $grantedId, null, $userToken);
+        $allowed = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . self::PAGE_KEYWORD . '_granted', null, $userToken);
         $pageData = $this->assertEnvelopeSuccess($allowed);
         self::assertSame($grantedId, $this->asArray($pageData['page'] ?? [])['id'] ?? null, 'Granted user must read the page.');
 
-        $denied = $this->jsonRequest('GET', '/cms-api/v1/pages/' . $deniedId, null, $userToken);
+        $denied = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . self::PAGE_KEYWORD . '_denied', null, $userToken);
         self::assertSame(
             Response::HTTP_FORBIDDEN,
             $denied['status'] ?? null,

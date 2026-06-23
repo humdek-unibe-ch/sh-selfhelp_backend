@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-23.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -67,16 +67,27 @@ Get all pages filtered by a specific language.
 
 **Response:** Pages in the specified language
 
-### Get Single Page
+### Get Single Page (by keyword)
 
-Retrieve content for a specific published page.
+Retrieve content for a specific published page. This is the single
+page-content endpoint: the web/mobile BFF resolves a slug directly to full
+page content without first fetching the navigation to discover a numeric id.
+(The legacy numeric `GET /cms-api/v1/pages/{page_id}` route was removed.)
 
-**Endpoint:** `GET /cms-api/v1/pages/{page_id}`
+**Endpoint:** `GET /cms-api/v1/pages/by-keyword/{keyword}`
 
-**Authentication:** None (public endpoint)
+**Authentication:** None (public endpoint). Open-access pages and pages the
+caller's groups are ACL-granted are returned; otherwise the response is `403`.
+Anonymous callers are treated as a guest (they inherit no group ACLs).
 
 **Path Parameters:**
-- `page_id`: Page ID
+- `keyword`: Page keyword (slug), matching `[a-zA-Z0-9_\-]+`
+
+**Query Parameters:**
+- `language_id`: Language ID (defaults to the CMS default language)
+- `preview`: `true` serves the unpublished draft. **Requires authentication**
+  (an anonymous `preview=true` request is rejected with `401`) plus page ACL
+  select; preview responses are sent with no-store/no-cache headers.
 
 **Response:** Complete page content including sections and translations
 

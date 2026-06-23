@@ -42,6 +42,12 @@ class StyleSchemaService
     /**
      * Get the full style schema keyed by style name.
      *
+     * Each field entry carries a derived `scope` (`content` | `common` | `web`
+     * | `mobile`) — the single backend source of truth for field scope
+     * (mobile rendering plan, section 6.4). The CMS frontend groups fields by this
+     * value and must not re-derive scope from the field name or display flag. Scope
+     * is computed once in {@see StyleRepository::deriveFieldScope()}.
+     *
      * @return array<string, array<string, mixed>>
      */
     public function getSchema(): array

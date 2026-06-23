@@ -52,8 +52,13 @@ class PageController extends AbstractController
     }
 
     /**
-     * @Route("/cms-api/v1/pages", name="pages", methods={"GET"})
-     * @Route("/cms-api/v1/pages/language/{language_id}", name="pages_with_language", methods={"GET"})
+     * Return the ACL-filtered page tree for the current caller.
+     *
+     * Routes are DB-defined (loaded by {@see \App\Routing\ApiRouteLoader}),
+     * not PHP attributes — see the `pages_get_all` / `pages_get_all_with_language`
+     * rows seeded in migration `Version20260501000300`:
+     *   - GET /cms-api/v1/pages
+     *   - GET /cms-api/v1/pages/language/{language_id}
      */
     public function getPages(Request $request, ?int $language_id = null): JsonResponse
     {
@@ -75,12 +80,16 @@ class PageController extends AbstractController
     }
 
     /**
-     * @Route("/cms-api/v1/pages/by-keyword/{keyword}", name="get_page_by_keyword", methods={"GET"}, requirements={"keyword"="[a-zA-Z0-9_\-]+"})
+     * Get a page by its unique keyword. This is the single public page-content
+     * endpoint, used by the web/mobile BFF to resolve a slug directly to full
+     * page content without the nav->id waterfall.
      *
-     * Get a page by its unique keyword. Used by the frontend BFF to resolve a
-     * slug directly to full page content without the nav->id waterfall.
+     * Route is DB-defined (loaded by {@see \App\Routing\ApiRouteLoader}), not a
+     * PHP attribute — see the `pages_get_by_keyword` row seeded in migration
+     * `Version20260501000300` (GET /cms-api/v1/pages/by-keyword/{keyword},
+     * keyword requirement `[a-zA-Z0-9_\-]+`).
      *
-     * Accepts the same query params as getPage: language_id, preview.
+     * Query params: language_id, preview. `preview=true` requires authentication.
      */
     public function getPageByKeyword(Request $request, string $keyword): JsonResponse
     {
@@ -90,51 +99,6 @@ class PageController extends AbstractController
             $mode = $this->resolvePageAccessMode($request);
 
             $page = $this->pageService->getPageByKeyword($keyword, $language_id, $preview, $mode);
-
-            $response = $this->responseFormatter->formatSuccess(
-                $page,
-                'responses/frontend/get_page',
-                Response::HTTP_OK
-            );
-
-            if ($preview) {
-                $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-                $response->headers->set('Pragma', 'no-cache');
-                $response->headers->set('Expires', '0');
-                $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
-            }
-
-            return $response;
-        } catch (\Throwable $e) {
-            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
-            return $this->responseFormatter->formatError(
-                $e->getMessage(),
-                $statusCode
-            );
-        }
-    }
-
-    /**
-     * @Route("/cms-api/v1/pages/{page_id}", name="get_page", methods={"GET"}, requirements={"page_id"="\d+"})
-     *
-     * Get a page by ID.
-     *
-     * Hybrid Versioning Support:
-     * - Default (preview=false): Serves published version if it exists, otherwise returns 404
-     * - With preview=true: Serves current draft version (requires authentication)
-     *
-     * Security:
-     * - Draft/preview mode requires proper page ACL permissions
-     * - Published pages use standard page ACL
-     */
-    public function getPage(Request $request, int $page_id): JsonResponse
-    {
-        try {
-            $language_id = $request->query->get('language_id') ? (int) $request->query->get('language_id') : null;
-            $preview = $request->query->getBoolean('preview', false);
-            $mode = $this->resolvePageAccessMode($request);
-
-            $page = $this->pageService->getPage($page_id, $language_id, $preview, $mode);
 
             $response = $this->responseFormatter->formatSuccess(
                 $page,

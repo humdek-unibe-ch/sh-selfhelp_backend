@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-16.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
@@ -15,9 +15,9 @@ Mantine cosmetic props are not repeated below.
 - A **form container** (`form-log` or `form-record`) wraps a set of input
   styles and a submit button. On submit it gathers each input by its `name`
   and persists the values.
-- `form-record` keeps **one record per user**, updated on each submit
-  (`is_log = 0`). `form-log` is **append-only** — every submit adds a new row
-  (`is_log = 1`).
+- `form-record` keeps **one record per user**, updated on each submit. `form-log`
+  is **append-only** — every submit adds a new row. Which behaviour applies is
+  decided by the **style** itself, not by a field.
 - Each input's `name` is the data column; `value` seeds an initial value;
   `is_required` enforces presence client- and server-side.
 - The `translatable` flag on text inputs marks whether the **submitted value**
@@ -39,11 +39,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Append-only form: each submit stores a **new** row.
 
-**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Set the save label, success message, and (optionally) a cancel URL/label.
+**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Optionally show an auto-styled heading (`title` + `description`) above the form; set the save label, the success/error messages **and their alert headings** (`alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`); turn on a confirm-before-submit dialog (`confirm_submit` + `confirm_message`); and optionally a cancel URL/label.
 
-**Developers.** `is_log = 1`. Renders a `<form>` over its input children; persists a new data row per submit.
+**Developers.** Renders a `<form>` over its input children (mobile: a custom composite); persists a new data row per submit. The heading, alert titles and confirm dialog render on **both** web (Mantine) and mobile.
 
-**Distinctive fields.** `name` (form/table identifier), `is_log`, `btn_save_label`, `alert_success`, `alert_error`, `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, button styling (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `btn_save_color`, `btn_cancel_color`).
+**Distinctive fields.** `title` / `description` (optional heading, content), `name` (form/table identifier), `btn_save_label`, `alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`, `confirm_submit` + `confirm_message` (optional confirm dialog), `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, and the shared button knobs (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `buttons_order`, `btn_save_color`, `btn_cancel_color`, `spacing`).
 
 **Children.** Yes (input styles + a submit).
 
@@ -53,9 +53,9 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Per-user record form: keeps a **single** record, updated on each submit.
 
-**Administrators.** Use for editable profiles/settings where the latest values replace the previous ones. Same fields as `form-log` plus a separate "update" button label/colour.
+**Administrators.** Use for editable profiles/settings where the latest values replace the previous ones. Same fields as `form-log` plus a separate **update** button label/colour (`btn_update_label` / `btn_update_color`) used once a record already exists.
 
-**Developers.** `is_log = 0`. On submit, updates the user's existing record (or creates it the first time).
+**Developers.** On submit, updates the user's existing record (or creates it the first time). Once a record exists the submit button uses `btn_update_label` + `btn_update_color`; button order honours `buttons_order` (`save-cancel` = primary first, the default). All three were previously inert in the web renderer and are now wired on both platforms.
 
 **Distinctive fields.** All `form-log` fields, plus `btn_update_label` and `btn_update_color`.
 
@@ -83,9 +83,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** The standard one-line text question. Set `label`, `name`, `placeholder`, `description` (helper text), and required.
 
-**Developers.** Renders `<TextInput>`. Supports left/right icons and a variant.
+**Developers.** Renders `<TextInput>`. Supports left/right icons and a variant. `max_length` caps characters on both platforms (HTML / RN `maxLength`); the `mobile_*` knobs map to the native keyboard (`keyboardType` / `autoCapitalize` / `secureTextEntry`) and are mobile-only.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `mantine_left_icon` / `mantine_right_icon`, `mantine_text_input_variant`, `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `disabled`, `web_left_icon` / `web_right_icon`, `web_text_input_variant`, `max_length` (web + mobile), `mobile_keyboard_type` / `mobile_auto_capitalize` / `mobile_secure_entry` (mobile-only keyboard knobs), `mobile_input_variant` (mobile-only HeroUI Native primary/secondary field style), `translatable`.
 
 **Children.** No.
 
@@ -97,9 +97,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** For longer free-text answers. Control the visible rows (min/max), autosize, and resize behaviour. Turn on `markdown_editor` for a Markdown-aware editor.
 
-**Developers.** Renders `<Textarea>` (or a Markdown editor when `markdown_editor` is set). Autosize via `mantine_textarea_autosize` + min/max rows.
+**Developers.** Renders `<Textarea>` (or a Markdown editor when `markdown_editor` is set). Autosize via `web_textarea_autosize` + min/max rows.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `mantine_textarea_autosize`, `mantine_textarea_min_rows` / `mantine_textarea_max_rows`, `mantine_textarea_resize`, `mantine_textarea_variant`, `mantine_left_icon` / `mantine_right_icon`, `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `min` / `max`, `markdown_editor`, `web_textarea_autosize`, `web_textarea_min_rows` / `web_textarea_max_rows`, `web_textarea_resize`, `web_textarea_variant`, `web_left_icon` / `web_right_icon`, `max_length` (web + mobile), `mobile_auto_capitalize` / `mobile_textarea_variant` (mobile-only), `translatable`.
 
 **Children.** No.
 
@@ -107,13 +107,13 @@ Mantine cosmetic props are not repeated below.
 
 ## rich-text-editor
 
-**Purpose.** Tiptap rich-text editor on web; a **read-only** viewer on mobile (v1).
+**Purpose.** Tiptap rich-text editor on web; a documented-subset source editor with a live preview on mobile.
 
 **Administrators.** For formatted long-form content (bold, lists, links). Set `label`, `name`, placeholder, and description.
 
-**Developers.** Renders a Tiptap editor (`mantine_rich_text_editor_*` toggle bubble menu, task lists, text colour). On mobile it renders read-only.
+**Developers.** Renders a Tiptap editor on web (`web_rich_text_editor_*` toggle bubble menu, task lists, text colour). On mobile (`components/styles/forms/RichTextEditor.tsx`) full WYSIWYG is out of scope; it edits the rich-text **source** (HTML/markdown markup) in a multiline field with a live `react-native-render-html` preview, preserving the exact submitted string so a richer editor can replace it later without a data migration.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `mantine_rich_text_editor_variant`, `mantine_rich_text_editor_placeholder`, `mantine_rich_text_editor_bubble_menu`, `mantine_rich_text_editor_text_color`, `mantine_rich_text_editor_task_list`, `translatable`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_rich_text_editor_variant`, `rich_text_editor_placeholder`, `web_rich_text_editor_bubble_menu`, `web_rich_text_editor_text_color`, `web_rich_text_editor_task_list`, `translatable`.
 
 **Children.** No.
 
@@ -127,7 +127,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders a select; `options` is a serialized option list. `max` caps multi-select count.
 
-**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`, `alt`.
+**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`, `mobile_select_presentation` (mobile-only: how the option list opens — bottom-sheet / dialog / popover). *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
 
 **Children.** No.
 
@@ -137,11 +137,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `Radio` / `RadioGroup` — pick exactly one option.
 
-**Administrators.** A single-choice question. Provide the options (`mantine_radio_options`), choose inline/orientation, and optionally render them as selectable cards.
+**Administrators.** A single-choice question. Provide the options (`radio_options`), choose inline/orientation, and optionally render them as selectable cards.
 
-**Developers.** Renders a `<Radio.Group>`. `mantine_radio_card` switches to card style; `mantine_use_input_wrapper` adds a label/description wrapper.
+**Developers.** Renders a `<Radio.Group>`. `web_radio_card` switches to card style; `web_use_input_wrapper` adds a label/description wrapper.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `items`, `mantine_radio_options`, `is_inline`, `mantine_orientation`, `mantine_radio_label_position`, `mantine_radio_variant`, `mantine_radio_card`, `mantine_tooltip_label` / `mantine_tooltip_position`, `mantine_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `items`, `radio_options`, `is_inline`, `web_orientation`, `web_radio_label_position`, `web_radio_variant`, `web_radio_card`, `tooltip_label` / `web_tooltip_position`, `web_use_input_wrapper`.
 
 **Children.** No.
 
@@ -153,9 +153,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A yes/no or opt-in checkbox. Set `name`, the checked value (`checkbox_value`), label position, and required.
 
-**Developers.** Renders `<Checkbox>`. `mantine_checkbox_labelPosition` puts the label left/right; `mantine_use_input_wrapper` adds description support.
+**Developers.** Renders `<Checkbox>`. `label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
 
-**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `mantine_checkbox_icon`, `mantine_checkbox_labelPosition`, `mantine_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`, `mobile_checkbox_variant` (mobile-only HeroUI Native primary/secondary).
 
 **Children.** No.
 
@@ -167,9 +167,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A draggable scale (e.g. 0–10 rating). Set min/max/step, marks, and whether the value label is always shown.
 
-**Developers.** Renders `<Slider>`. Marks come from `mantine_slider_marks_values`.
+**Developers.** Renders `<Slider>` on web. Marks come from `slider_marks_values`. On mobile (`components/styles/forms/Slider.tsx`) it renders the HeroUI Native `Slider` compound (draggable single thumb + tap-to-position) bound to the form value through `web_numeric_min` / `web_numeric_max` / `web_numeric_step`.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `mantine_numeric_min` / `mantine_numeric_max` / `mantine_numeric_step`, `mantine_slider_marks_values`, `mantine_slider_show_label`, `mantine_slider_labels_always_on`, `mantine_slider_inverted`, `mantine_slider_thumb_size`, `mantine_slider_required`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `slider_marks_values`, `web_slider_show_label`, `web_slider_labels_always_on`, `web_slider_inverted`, `web_slider_thumb_size`, `web_slider_required`, `mobile_slider_show_value` (mobile-only: toggle the HeroUI Native value bubble).
 
 **Children.** No.
 
@@ -181,9 +181,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** For "from–to" numeric ranges. Same options as `slider`, applied to two thumbs.
 
-**Developers.** Renders `<RangeSlider>`.
+**Developers.** Renders `<RangeSlider>` on web. On mobile (`components/styles/forms/RangeSlider.tsx`) it renders the HeroUI Native `Slider` compound in two-thumb mode (its value supports `number[]`), serialising the pair to the canonical `"lo,hi"` form value.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `mantine_numeric_min` / `mantine_numeric_max` / `mantine_numeric_step`, `mantine_range_slider_marks_values`, `mantine_range_slider_show_label`, `mantine_range_slider_labels_always_on`, `mantine_range_slider_inverted`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `range_slider_marks_values`, `web_range_slider_show_label`, `web_range_slider_labels_always_on`, `web_range_slider_inverted`, `mobile_range_slider_show_value` (mobile-only: toggle the HeroUI Native value bubble).
 
 **Children.** No.
 
@@ -195,9 +195,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** Collect a date, date-range, or date+time. Choose the picker `type`, display format, min/max dates, locale, first day of week, time grid, and more.
 
-**Developers.** Renders the appropriate Mantine date input from `mantine_datepicker_type`. The many `mantine_datepicker_*` fields map to Mantine `@mantine/dates` props.
+**Developers.** Renders the appropriate Mantine date input from `web_datepicker_type`. The many `web_datepicker_*` fields map to Mantine `@mantine/dates` props.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `mantine_datepicker_type`, `mantine_datepicker_format`, `mantine_datepicker_locale`, `mantine_datepicker_placeholder`, `mantine_datepicker_min_date` / `mantine_datepicker_max_date`, `mantine_datepicker_first_day_of_week`, `mantine_datepicker_weekend_days`, `mantine_datepicker_clearable`, `mantine_datepicker_allow_deselect`, `mantine_datepicker_readonly`, `mantine_datepicker_with_time_grid`, `mantine_datepicker_consistent_weeks`, `mantine_datepicker_hide_outside_dates`, `mantine_datepicker_hide_weekends`, `mantine_datepicker_time_step`, `mantine_datepicker_time_format`, `mantine_datepicker_date_format`, `mantine_datepicker_time_grid_config`, `mantine_datepicker_with_seconds`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `web_datepicker_type`, `web_datepicker_format`, `web_datepicker_locale`, `datepicker_placeholder`, `web_datepicker_min_date` / `web_datepicker_max_date`, `web_datepicker_first_day_of_week`, `web_datepicker_weekend_days`, `web_datepicker_clearable`, `web_datepicker_allow_deselect`, `web_datepicker_readonly`, `web_datepicker_with_time_grid`, `web_datepicker_consistent_weeks`, `web_datepicker_hide_outside_dates`, `web_datepicker_hide_weekends`, `web_datepicker_time_step`, `web_datepicker_time_format`, `web_datepicker_date_format`, `web_datepicker_time_grid_config`, `web_datepicker_with_seconds`.
 
 **Children.** No.
 
@@ -209,9 +209,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** An on/off toggle (a friendlier checkbox). Set on/off labels and the values stored for each state.
 
-**Developers.** Renders `<Switch>`. `mantine_switch_on_value` / `mantine_switch_off_value` define the persisted values.
+**Developers.** Renders `<Switch>`. `web_switch_on_value` / `web_switch_off_value` define the persisted values. `web_switch_with_thumb_indicator` shows a coloured dot in the thumb; `web_switch_thumb_icon` renders an optional icon inside the thumb (both web-only).
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `mantine_switch_on_label` / `mantine_switch_off_label`, `mantine_switch_on_value` / `mantine_switch_off_value`, `mantine_label_position`, `mantine_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `switch_on_label` / `switch_off_label`, `web_switch_on_value` / `web_switch_off_value`, `web_label_position`, `web_use_input_wrapper`, `web_switch_with_thumb_indicator`, `web_switch_thumb_icon`.
 
 **Children.** No.
 
@@ -223,9 +223,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A power dropdown for long option lists: searchable, can allow creating new entries, multi-select, and clearable.
 
-**Developers.** Renders a Combobox over `mantine_combobox_options`. `mantine_combobox_multi_select`, `_searchable`, `_creatable`, `_clearable` toggle behaviours.
+**Developers.** Renders a Combobox over `combobox_options`. `web_combobox_multi_select`, `_searchable`, `_creatable`, `_clearable` toggle behaviours.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `mantine_combobox_options`, `mantine_combobox_multi_select`, `mantine_combobox_searchable`, `mantine_combobox_creatable`, `mantine_combobox_clearable`, `mantine_combobox_separator`, `mantine_multi_select_max_values`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`, `mobile_select_presentation` (mobile-only: reuses the select renderer; bottom-sheet / dialog / popover).
 
 **Children.** No.
 
@@ -237,9 +237,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** Let users enter or pick a colour. Set the format (hex/rgb/hsl) and preset swatches.
 
-**Developers.** Renders `<ColorInput>`. `mantine_color_input_swatches` is the preset list.
+**Developers.** Renders `<ColorInput>`. `web_color_input_swatches` is the preset list. `web_color_input_with_eye_dropper` shows the screen eye-dropper, `web_color_input_disallow_input` makes it pick-only, `web_color_input_with_preview` shows the selected-colour swatch in the field (all web-only).
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `mantine_color_format`, `mantine_color_input_swatches`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_color_format`, `web_color_input_swatches`, `web_color_input_with_eye_dropper`, `web_color_input_disallow_input`, `web_color_input_with_preview`.
 
 **Children.** No.
 
@@ -251,9 +251,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A full colour picker (saturation/hue/alpha) shown inline or behind a button. Configure swatches per row and which sub-controls show.
 
-**Developers.** Renders `<ColorPicker>`; `mantine_color_picker_as_button` collapses it behind a button.
+**Developers.** Renders `<ColorPicker>`; `web_color_picker_as_button` collapses it behind a button.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `mantine_color_format`, `mantine_color_picker_swatches`, `mantine_color_picker_swatches_per_row`, `mantine_color_picker_with_picker`, `mantine_color_picker_saturation_label` / `_hue_label` / `_alpha_label`, `mantine_color_picker_as_button`, `mantine_color_picker_button_label`, `mantine_fullwidth`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `web_color_format`, `web_color_picker_swatches`, `web_color_picker_swatches_per_row`, `web_color_picker_with_picker`, `color_picker_saturation_label` / `_hue_label` / `_alpha_label`, `web_color_picker_as_button`, `web_color_picker_button_label`, `web_fullwidth`.
 
 **Children.** No.
 
@@ -261,13 +261,13 @@ Mantine cosmetic props are not repeated below.
 
 ## file-input
 
-**Purpose.** Mantine `FileInput` (web) / DocumentPicker (mobile) — upload files.
+**Purpose.** Mantine `FileInput` (web) / media picker (mobile) — upload files.
 
 **Administrators.** Let users attach files. Set accepted types, max size, max count, multiple, and (web) drag-and-drop.
 
-**Developers.** Renders `<FileInput>`. Enforce server-side size/type/path validation on upload (see the assets reference).
+**Developers.** Renders `<FileInput>` on web. On mobile (`components/styles/forms/FileInput.tsx`) it uses `expo-image-picker` and enforces the `web_file_input_accept` / `web_file_input_max_size` constraints client-side before accepting the file (`_fileValidation.ts`). Always enforce server-side size/type/path validation on upload too (see the assets reference); generic non-image documents on mobile are a follow-up once `expo-document-picker` is added.
 
-**Distinctive fields.** `label`, `name`, `description`, `placeholder`, `is_required`, `disabled`, `mantine_file_input_multiple`, `mantine_file_input_accept`, `mantine_file_input_clearable`, `mantine_file_input_max_size`, `mantine_file_input_max_files`, `mantine_file_input_drag_drop`, `mantine_left_icon` / `mantine_right_icon`.
+**Distinctive fields.** `label`, `name`, `description`, `placeholder`, `is_required`, `disabled`, `web_file_input_multiple`, `web_file_input_accept`, `web_file_input_clearable`, `web_file_input_max_size`, `web_file_input_max_files`, `web_file_input_drag_drop`, `web_left_icon` / `web_right_icon`.
 
 **Children.** No.
 
@@ -279,9 +279,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** For numbers. Set min/max/step, decimal places, and clamp behaviour.
 
-**Developers.** Renders `<NumberInput>`.
+**Developers.** Renders `<NumberInput>`. `web_number_input_prefix` / `_suffix` add currency/unit affixes; `_thousand_separator` groups thousands; `_allow_negative` permits negatives; `_hide_controls` hides the steppers (all web-only).
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `mantine_numeric_min` / `mantine_numeric_max` / `mantine_numeric_step`, `mantine_number_input_decimal_scale`, `mantine_number_input_clamp_behavior`.
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `web_numeric_min` / `web_numeric_max` / `web_numeric_step`, `web_number_input_decimal_scale`, `web_number_input_clamp_behavior`, `web_number_input_prefix`, `web_number_input_suffix`, `web_number_input_thousand_separator`, `web_number_input_allow_negative`, `web_number_input_hide_controls`.
 
 **Children.** No.
 
@@ -291,11 +291,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `SegmentedControl` — a horizontal set of mutually exclusive buttons.
 
-**Administrators.** A compact single-choice toggle (e.g. Day/Week/Month). Provide the options in `mantine_segmented_control_data`.
+**Administrators.** A compact single-choice toggle (e.g. Day/Week/Month). Provide the options in `segmented_control_data`.
 
 **Developers.** Renders `<SegmentedControl data>`; `fullwidth` stretches across the container.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `mantine_segmented_control_data`, `mantine_orientation`, `fullwidth`, `readonly`, `mantine_segmented_control_item_border`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `segmented_control_data`, `web_orientation`, `fullwidth`, `readonly`, `web_segmented_control_item_border`.
 
 **Children.** No.
 
@@ -307,9 +307,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** A star-rating question. Set the number of stars, fractional steps, and optionally smiley icons; can be read-only for display.
 
-**Developers.** Renders `<Rating>`. `mantine_rating_use_smiles` switches to smiley icons.
+**Developers.** Renders `<Rating>`. `web_rating_use_smiles` switches to smiley icons.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `readonly`, `mantine_rating_count`, `mantine_rating_fractions`, `mantine_rating_use_smiles`, `mantine_rating_empty_icon` / `mantine_rating_full_icon`, `mantine_rating_highlight_selected_only`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `readonly`, `web_rating_count`, `web_rating_fractions`, `web_rating_use_smiles`, `web_rating_empty_icon` / `web_rating_full_icon`, `web_rating_highlight_selected_only`.
 
 **Children.** No.
 
@@ -323,7 +323,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Progress value>`.
 
-**Distinctive fields.** `value`, `mantine_progress_striped`, `mantine_progress_animated`, `mantine_progress_transition_duration`.
+**Distinctive fields.** `value`, `web_progress_striped`, `web_progress_animated`, `web_progress_transition_duration`.
 
 **Children.** No.
 
@@ -335,9 +335,9 @@ Mantine cosmetic props are not repeated below.
 
 **Administrators.** Use when one bar must show several coloured segments. Add `progress-section` children.
 
-**Developers.** Renders `<Progress.Root>`; children are `progress-section`.
+**Developers.** Renders `<Progress.Root>`; children are `progress-section`. `radius` rounds the bar on both platforms (web `radius`, mobile `borderRadius`).
 
-**Distinctive fields.** `mantine_progress_auto_contrast`.
+**Distinctive fields.** `web_progress_auto_contrast`, `size`, `radius` (web + mobile).
 
 **Children.** Yes (`progress-section`).
 
@@ -351,7 +351,7 @@ Mantine cosmetic props are not repeated below.
 
 **Developers.** Renders `<Progress.Section value>`.
 
-**Distinctive fields.** `value`, `label`, `mantine_progress_striped`, `mantine_progress_animated`, `mantine_tooltip_label` / `mantine_tooltip_position`.
+**Distinctive fields.** `value`, `label`, `web_progress_striped`, `web_progress_animated`, `tooltip_label` / `web_tooltip_position`.
 
 **Children.** No.
 
@@ -361,16 +361,16 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Read-only **display** companion to `form-log` / `form-record`: renders a user's previously submitted entries from a data table as a Mantine Table.
 
-**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table and use `fields_map` to choose which columns appear and how they are labelled. Two switches control *whose* data is shown and *what* can be deleted:
+**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table and use `fields_map` to choose which columns appear and how they are labelled. Optionally show an auto-styled heading above the list (`title`) and customise the empty-state message (`empty_text`, default "No entries found."). Two switches control *whose* data is shown and *what* can be deleted:
 
 - **Own Entries Only** (`own_entries_only`, default on) — each user sees only their **own** submissions. Turn it **off** to show **all** users' entries (only do this where viewing everyone's data is allowed; it is still subject to data-access permissions).
 - **Delete** (`delete_entry`, default on) — shows a per-row delete button. A user may always delete **their own** record; deleting **another user's** record additionally requires the table's delete data-access permission. The confirmation dialog copy is set by the translatable `delete_modal_title` / `delete_modal_body`.
 
 Optional table behaviour: search (`dt_searching`), sorting (`dt_sortable` + `dt_default_order_column` / `dt_default_order_dir`), pagination (`dt_paginate`), the row-count footer (`dt_info`), a CSV export button (`csv_export`), and a leading timestamp column (`show_timestamp`).
 
-**Developers.** Renders as a Mantine Table (the style always uses the Mantine renderer). Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
+**Developers.** Web renders as a Mantine Table; **mobile renders the entries as a list of cards** (`components/styles/forms/ShowUserInput.tsx`, theme-aware via `useAppColors`) — the desktop-only DataTable options (`dt_*`, `web_table_*`) are intentionally ignored on mobile, while `title` and `empty_text` render on both. Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
 
-**Distinctive fields.** `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `mantine_table_striped`, `mantine_table_highlight_on_hover`, `mantine_table_with_table_border`, `mantine_table_with_column_borders`, `mantine_table_with_row_borders`, `mantine_table_sticky_header`, `mantine_table_caption_side`.
+**Distinctive fields.** `title` (optional heading, content), `empty_text` (empty-state message, content), `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
 
 **Children.** No.
 

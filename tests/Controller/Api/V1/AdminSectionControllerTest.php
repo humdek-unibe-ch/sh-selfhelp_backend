@@ -8,6 +8,7 @@
 namespace App\Tests\Controller\Api\V1;
 
 use Symfony\Component\HttpFoundation\Response;
+use App\Repository\StyleRepository;
 use App\Tests\Controller\Api\V1\Traits\ManagesTestPagesTrait; // Add the trait
 
 /**
@@ -27,8 +28,8 @@ class AdminSectionControllerTest extends BaseControllerTest
     private const DEFAULT_STYLE_ID_1 = 112; // alert style (has content + property fields)
     private const DEFAULT_STYLE_ID_2 = 134; // card style
     private const TITLE_FIELD_ID = 287; // content field (display=1, belongs to alert)
-    private const CSS_FIELD_ID = 265; // mantine_radius property field (display=0, belongs to alert)
-    private const IS_EXPANDED_FIELD_ID = 284; // use_mantine_style property field (display=0, belongs to alert)
+    private const CSS_FIELD_ID = 265; // radius property field (display=0, belongs to alert)
+    private const IS_EXPANDED_FIELD_ID = 284; // use_web_style property field (display=0, belongs to alert)
 
     private ?int $testSectionId = null; // Will store the ID of a test section for child section tests
 
@@ -542,7 +543,20 @@ class AdminSectionControllerTest extends BaseControllerTest
         
         // Validate fields array (may be empty depending on the style)
         $this->assertIsArray($dataData->fields, 'Fields is not an array');
-        
+
+        // Mobile rendering plan 6.4: every section field carries a backend-derived
+        // `scope` that the CMS groups by; it is computed from translatability
+        // (display) and the platform prefix via the single backend derivation.
+        foreach ($dataData->fields as $field) {
+            $fieldObj = $this->asObject($field);
+            $this->assertTrue(property_exists($fieldObj, 'scope'), 'Section field is missing the scope property');
+            $this->assertTrue(property_exists($fieldObj, 'display'), 'Section field is missing the display property');
+            $name = $this->asString($fieldObj->name, 'Section field name must be a string');
+            $display = $fieldObj->display ? 1 : 0;
+            $expectedScope = StyleRepository::deriveFieldScope($name, $display);
+            $this->assertSame($expectedScope, $fieldObj->scope, "Scope for section field '{$name}' (display={$display}) must match the central derivation");
+        }
+
         // Validate languages array (may be empty if no translations exist)
         $this->assertIsArray($dataData->languages, 'Languages is not an array');
         

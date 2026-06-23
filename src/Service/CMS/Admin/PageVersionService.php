@@ -11,7 +11,6 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Page;
 use App\Entity\PageVersion;
 use App\Entity\User;
-use App\Repository\PageRepository;
 use App\Repository\PageVersionRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
@@ -45,7 +44,6 @@ class PageVersionService extends BaseService
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly PageRepository $pageRepository,
         private readonly PageVersionRepository $pageVersionRepository,
         private readonly TransactionService $transactionService,
         private readonly UserContextService $userContextService,
@@ -53,7 +51,8 @@ class PageVersionService extends BaseService
         private readonly SectionsFieldsTranslationRepository $translationRepository,
         private readonly SectionUtilityService $sectionUtilityService,
         private readonly CmsPreferenceService $cmsPreferenceService,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly PagePublishedVersionRepairService $pagePublishedVersionRepairService,
     ) {
     }
 
@@ -81,7 +80,7 @@ class PageVersionService extends BaseService
             $this->entityManager->beginTransaction();
 
             // Get the page entity
-            $page = $this->pageRepository->find($pageId);
+            $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
             if (!$page) {
                 $this->throwNotFound("Page with ID {$pageId} not found");
             }
@@ -149,7 +148,7 @@ class PageVersionService extends BaseService
             $this->entityManager->beginTransaction();
 
             // Get the page entity
-            $page = $this->pageRepository->find($pageId);
+            $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
             if (!$page) {
                 $this->throwNotFound("Page with ID {$pageId} not found");
             }
@@ -232,7 +231,7 @@ class PageVersionService extends BaseService
             $this->entityManager->beginTransaction();
 
             // Get the page entity
-            $page = $this->pageRepository->find($pageId);
+            $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
             if (!$page) {
                 $this->throwNotFound("Page with ID {$pageId} not found");
             }
@@ -271,7 +270,7 @@ class PageVersionService extends BaseService
      */
     public function getPublishedVersion(int $pageId): ?PageVersion
     {
-        $page = $this->pageRepository->find($pageId);
+        $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
         if (!$page) {
             $this->throwNotFound("Page with ID {$pageId} not found");
         }
@@ -746,7 +745,7 @@ class PageVersionService extends BaseService
     private function getRawPageStructure(int $pageId): array
     {
         // Get the page entity
-        $page = $this->pageRepository->find($pageId);
+        $page = $this->pagePublishedVersionRepairService->loadPageRepairingDanglingPublishedVersion($pageId);
         if (!$page) {
             $this->throwNotFound("Page with ID {$pageId} not found");
         }
@@ -880,5 +879,6 @@ class PageVersionService extends BaseService
         }
         unset($section);
     }
+
 }
 

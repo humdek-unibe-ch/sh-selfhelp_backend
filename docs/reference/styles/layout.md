@@ -3,14 +3,25 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 layout styles (`@selfhelp/shared` `layout` category).
-Last verified: 2026-06-16.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/layout.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Layout styles arrange other sections on the page. They are almost all
 [Mantine](https://mantine.dev) layout primitives. Read
 [`_conventions.md`](./_conventions.md) first — the common fields (`css`,
-`css_mobile`, `condition`, spacing, `use_mantine_style`) are documented there and
-are not repeated below.
+`css_mobile`, `condition`, spacing) are documented there and are not repeated
+below.
+
+> **Cross-platform pass (2026-06-22).** The layout styles used to keep most of
+> their sizing/behaviour under `web_*`, so on mobile they were barely
+> configurable. The portable properties — width/height (and min/max),
+> column count, grid-column span/offset/order/grow, divider variant + label
+> position, and the space direction — were promoted to `shared_*`, so the same
+> field now drives both the web (Mantine) and the mobile (React Native flexbox)
+> renderer. `web_px`/`web_py` (paper, container) were removed in favour of the
+> portable `spacing` padding, and `simple-grid` gained `gap` plus
+> `web_cols_sm`/`md`/`lg` responsive overrides (replacing the old
+> `web_breakpoints`). See migration `Version20260622063129`.
 
 **When to reach for which layout (administrators):** use `stack` for a vertical
 column, `group` for a horizontal row, `grid`/`simple-grid` for multi-column
@@ -25,9 +36,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Wrap a page's main content in a container so it stays readable on wide screens. Pick a `size` for the max width, or turn on `fluid` to span the full width.
 
-**Developers.** Renders `<Container>`; children render inside. Honors horizontal/vertical padding via `mantine_px` / `mantine_py`.
+**Developers.** Renders `<Container>`; children render inside. Padding comes from the cross-platform `spacing`. `web_fluid` (web only) switches to full width; on mobile a container is full-width by default.
 
-**Distinctive fields.** `mantine_size` (max-width preset), `mantine_fluid` (full-width toggle), `mantine_px` / `mantine_py` (inner horizontal/vertical padding).
+**Distinctive fields.** `size` (max-width preset), `web_fluid` (full-width toggle, web-only). Inner padding is the portable `spacing` — the old web-only `web_px`/`web_py` were removed.
 
 **Children.** Yes.
 
@@ -39,7 +50,7 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** A neutral container when no other layout fits. Style it with `css` / spacing. Use it to group sections without imposing flex/grid behaviour.
 
-**Developers.** Renders `<Box>` (or a plain element when `use_mantine_style = 0`). `content` is an optional inline text/HTML payload for simple cases.
+**Developers.** Renders `<Box>` (or a plain element when `use_web_style = 0`). `content` is an optional inline text/HTML payload for simple cases.
 
 **Distinctive fields.** `content` (optional inline content).
 
@@ -53,9 +64,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use when you need precise control over how children line up: direction (row/column), spacing, alignment, justification, and wrapping.
 
-**Developers.** Renders `<Flex>` mapping each `mantine_*` prop directly to the flexbox CSS property.
+**Developers.** Renders `<Flex>`; the `shared_*` flexbox props map to Mantine on web and to React Native flexbox on mobile (RN defaults to `column`/no-wrap, so `direction`/`wrap` should be set explicitly).
 
-**Distinctive fields.** `mantine_gap`, `mantine_justify` (justify-content), `mantine_align` (align-items), `mantine_direction` (row/column), `mantine_wrap`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `gap`, `justify` (justify-content), `align` (align-items), `direction` (row/column), `wrap`, `shared_width`, `shared_height` — all cross-platform.
 
 **Children.** Yes.
 
@@ -67,9 +78,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** The quickest way to put items in a row (e.g. buttons side by side). Set the gap, and optionally let items grow to fill the row or wrap to the next line.
 
-**Developers.** Renders `<Group>`. `mantine_group_grow` makes children share width equally; `mantine_group_wrap` toggles wrapping.
+**Developers.** Renders `<Group>`. `web_group_grow` makes children share width equally; `web_group_wrap` toggles wrapping.
 
-**Distinctive fields.** `mantine_gap`, `mantine_justify`, `mantine_align`, `mantine_group_wrap` (`0`/`1`), `mantine_group_grow` (`0`/`1`), `mantine_width`, `mantine_height`.
+**Distinctive fields.** `gap`, `justify`, `align`, `shared_width`, `shared_height` (cross-platform); `web_group_wrap` (`0`/`1`), `web_group_grow` (`0`/`1`) stay web-only.
 
 **Children.** Yes.
 
@@ -83,7 +94,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<Stack>`.
 
-**Distinctive fields.** `mantine_gap`, `mantine_justify`, `mantine_align`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `gap`, `justify`, `align`, `shared_width`, `shared_height` — all cross-platform.
 
 **Children.** Yes.
 
@@ -95,9 +106,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use for galleries or card rows where every column is the same width. Set the column count and spacing; use breakpoints to change columns on small screens.
 
-**Developers.** Renders `<SimpleGrid>`. `mantine_breakpoints` is a JSON string of responsive column overrides.
+**Developers.** Renders `<SimpleGrid>`. Base columns are `cols` (read on both platforms); `web_cols_sm`/`web_cols_md`/`web_cols_lg` add web responsive overrides. Horizontal column spacing is `gap`, row spacing is `vertical_spacing`. On mobile the equal-width grid is emulated with flex-wrap + width percentages.
 
-**Distinctive fields.** `mantine_cols` (column count), `mantine_spacing` (horizontal), `mantine_vertical_spacing`, `mantine_breakpoints` (responsive JSON), `mantine_width`, `mantine_height`.
+**Distinctive fields.** `cols` (base column count), `gap` (horizontal column spacing), `vertical_spacing` (row spacing), `shared_width`, `shared_height` (all cross-platform); `web_cols_sm` / `web_cols_md` / `web_cols_lg` (web-only responsive column overrides; clear to inherit `cols`).
 
 **Children.** Yes.
 
@@ -109,11 +120,11 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use for asymmetric layouts (e.g. a wide main column + a narrow sidebar). Add `grid-column` children and set each one's span.
 
-**Developers.** Renders `<Grid>`; direct children should be `grid-column` sections.
+**Developers.** Renders `<Grid>`; direct children are `grid-column` sections. Grid is intentionally **restricted to `grid-column` children** through `rel_styles_allowed_relationships` (`styles.can_have_children = 0` **plus** a `grid → grid-column` whitelist row). That `0 + whitelist` combination is the catalog's "restricted children" model — it is **not** a missing-children bug; flipping `can_have_children` to `1` would let grid accept any child.
 
-**Distinctive fields.** `mantine_cols`, `mantine_gap`, `mantine_justify`, `mantine_align`, `mantine_grid_overflow`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `cols`, `gap`, `justify`, `align`, `shared_width`, `shared_height` (cross-platform); `web_grid_overflow` (web-only).
 
-**Children.** Yes (typically `grid-column`).
+**Children.** Restricted to `grid-column` (see Developers).
 
 ---
 
@@ -123,9 +134,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Place inside a `grid`. Set how many of the 12 columns it spans, and optionally an offset or order.
 
-**Developers.** Renders `<Grid.Col>`. `mantine_grid_span` accepts a number, `auto`, or `content`.
+**Developers.** Renders `<Grid.Col>`. `grid_span` accepts a number (1–12), `auto`, or `content`; on mobile the grid is emulated with flex-basis percentages from the span.
 
-**Distinctive fields.** `mantine_grid_span` (width), `mantine_grid_offset`, `mantine_grid_order`, `mantine_grid_grow`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `grid_span` (width), `grid_offset`, `grid_order`, `grid_grow`, `shared_width`, `shared_height` — all cross-platform.
 
 **Children.** Yes.
 
@@ -137,9 +148,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Drop between sections to add a gap without using margins. Pick a size and direction.
 
-**Developers.** Renders `<Space>`. Leaf node.
+**Developers.** Renders `<Space>` on web and a sized `View` on mobile. Leaf node.
 
-**Distinctive fields.** `mantine_size`, `mantine_space_direction` (horizontal/vertical).
+**Distinctive fields.** `size`, `orientation` (horizontal/vertical) — both cross-platform.
 
 **Children.** No.
 
@@ -151,9 +162,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Visually split content into groups. Add an optional centred label ("OR", section names) and choose the line style.
 
-**Developers.** Renders `<Divider>`.
+**Developers.** Renders `<Divider>` on web and a themed `View` border on mobile. `divider_variant` maps to Mantine `variant` and to RN `borderStyle` (solid/dashed/dotted).
 
-**Distinctive fields.** `mantine_divider_variant` (solid/dashed/dotted), `mantine_size` (thickness), `mantine_divider_label`, `mantine_divider_label_position`, `mantine_orientation`, `mantine_color`.
+**Distinctive fields.** `divider_variant` (solid/dashed/dotted), `size` (thickness), `divider_label` (content), `divider_label_position`, `orientation`, `color` — all cross-platform.
 
 **Children.** No.
 
@@ -163,11 +174,11 @@ and `box`/`flex` when you need full control.
 
 **Purpose.** Mantine `Paper` — a surface with optional shadow, radius, and border.
 
-**Administrators.** Lift content onto a "sheet" with a drop shadow and rounded corners. Good for panels and call-outs.
+**Administrators.** Lift content onto a "sheet" with a drop shadow and rounded corners. Good for panels and call-outs. Fill in the optional **Title** for an automatic heading above the content (leave it empty for a plain surface); turn **Border** on/off and pick a radius. Padding is the shared **Spacing** control.
 
-**Developers.** Renders `<Paper>`.
+**Developers.** Renders `<Paper>`. `title` (translatable) renders as an automatic `<Text fw>` heading when non-empty (it never adds a child section). `border` maps to Mantine `withBorder` (a themed border on mobile), exactly like `card`. Shadow (`web_paper_shadow`) stays web-only because `react-native-web` shadows are unreliable.
 
-**Distinctive fields.** `mantine_paper_shadow`, `mantine_radius`, `mantine_px` / `mantine_py` (padding), `mantine_border` (`0`/`1`).
+**Distinctive fields.** `title` (optional auto-styled heading, content), `border` (`0`/`1`), `radius`, `web_paper_shadow` (web-only). Padding is the portable `spacing` — the old web-only `web_px`/`web_py` were removed.
 
 **Children.** Yes.
 
@@ -179,9 +190,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Use to centre a logo, spinner, or message. Optionally constrain min/max width and height.
 
-**Developers.** Renders `<Center>`. `mantine_center_inline` switches to inline centering.
+**Developers.** Renders `<Center>`. `web_center_inline` switches to inline centering (web-only). The size constraints map to flexbox on mobile.
 
-**Distinctive fields.** `mantine_center_inline`, `mantine_width` / `mantine_height`, `mantine_miw` / `mantine_mih` (min), `mantine_maw` / `mantine_mah` (max).
+**Distinctive fields.** `shared_width` / `shared_height`, `miw` / `mih` (min), `maw` / `mah` (max) — all cross-platform; `web_center_inline` stays web-only.
 
 **Children.** Yes.
 
@@ -193,9 +204,9 @@ and `box`/`flex` when you need full control.
 
 **Administrators.** Wrap tall content (long lists, tables) in a fixed-height box that scrolls internally. Set the height and when scrollbars appear.
 
-**Developers.** Renders `<ScrollArea>`.
+**Developers.** Renders `<ScrollArea>` on web and a fixed-height `ScrollView` on mobile (RN needs a bounded height to scroll). The custom-scrollbar props are web-only.
 
-**Distinctive fields.** `mantine_scroll_area_type` (hover/always/never/scroll), `mantine_scroll_area_scrollbar_size`, `mantine_scroll_area_offset_scrollbars`, `mantine_scroll_area_scroll_hide_delay`, `mantine_height`, `mantine_width`.
+**Distinctive fields.** `shared_height` (cross-platform — required for the mobile `ScrollView` to scroll), `web_scroll_area_type` (hover/always/auto/scroll/never), `web_scroll_area_scrollbar_size`, `web_scroll_area_offset_scrollbars`, `web_scroll_area_scroll_hide_delay` (web-only custom-scrollbar props).
 
 **Children.** Yes.
 
@@ -205,11 +216,27 @@ and `box`/`flex` when you need full control.
 
 **Purpose.** Mantine `Card` — a bordered, rounded content card.
 
-**Administrators.** Group related content (image + title + text + button) into a card. Combine with `card-segment` for full-bleed sections inside the card.
+**Administrators.** Group related content into a card. For a quick good-looking
+result you can fill in the optional **Title** and **Image** fields — when set,
+the renderer draws a styled heading and a top image automatically; leave them
+empty and the card renders exactly as before (a plain container). These fields
+are a convenience layered on top of manual composition: you can still build the
+same thing with child sections (and combine with `card-segment` for full-bleed
+sections). Filling a field never adds a section — it only changes how this card
+draws. Turn **Border** on/off and pick a radius/shadow; padding is the shared
+**Spacing** control (there is no separate card-padding field).
 
-**Developers.** Renders `<Card>`.
+**Developers.** Renders `<Card>`. `title` (translatable) renders as an automatic
+`<Text fw>` heading when non-empty; `img_src` renders as a top
+`<Card.Section><Image></Card.Section>` when non-empty. Border is the
+cross-platform `border` (Mantine `withBorder`; themed border on mobile).
 
-**Distinctive fields.** `mantine_card_shadow`, `mantine_border` (`0`/`1`), `mantine_radius`.
+**Distinctive fields.** `title` (optional auto-styled heading, content),
+`img_src` (optional top image via the asset picker, content), `border`
+(`0`/`1`), `radius`, `web_card_shadow`. Padding is the portable
+`spacing` (`pt`/`pb`/`ps`/`pe`) — there is no web-only card-padding field;
+the renderer keeps a fixed Mantine `padding="md"` inner default (also the
+`Card.Section` image-bleed reference).
 
 **Children.** Yes (often `card-segment`).
 
@@ -220,10 +247,15 @@ and `box`/`flex` when you need full control.
 **Purpose.** Mantine `Card.Section` — a full-width segment inside a `card` (e.g. an image that bleeds to the card edges).
 
 **Administrators.** Place inside a `card` to make a part of it span edge to edge.
+Turn **Border** on to separate the segment with a divider line; turn **Inherit
+padding** on (web) to align the segment with the card's horizontal padding.
 
 **Developers.** Renders `<Card.Section>`. Only meaningful as a `card` child.
+`border` maps to Mantine `withBorder` (a themed divider on mobile);
+`web_segment_inherit_padding` maps to Mantine `inheritPadding` (web only).
 
-**Distinctive fields.** None beyond the common/spacing fields.
+**Distinctive fields.** `border` (`0`/`1`), `web_segment_inherit_padding`
+(`0`/`1`, web only).
 
 **Children.** Yes.
 
@@ -237,7 +269,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<AspectRatio>`.
 
-**Distinctive fields.** `mantine_aspect_ratio` (e.g. `16/9`).
+**Distinctive fields.** `web_aspect_ratio` (e.g. `16/9`).
 
 **Children.** Yes.
 
@@ -251,7 +283,7 @@ and `box`/`flex` when you need full control.
 
 **Developers.** Renders `<BackgroundImage>` with `img_src` as the source.
 
-**Distinctive fields.** `img_src` (image URL/asset), `mantine_radius`.
+**Distinctive fields.** `img_src` (image URL/asset), `web_radius`.
 
 **Children.** Yes.
 
@@ -271,6 +303,20 @@ and `box`/`flex` when you need full control.
 **Distinctive fields.** None — `ref-container` has no own fields; all rendering comes from its children.
 
 **Children.** Yes (required — the children *are* the reusable block).
+
+---
+
+## data-container
+
+**Purpose.** A **data-scoped** structural container: it renders its child subtree against a backend-resolved data scope (so the children can interpolate `{{field}}` values from that scope) without adding any visual chrome.
+
+**Administrators.** Wrap a block of sections that should read from a specific data source. Bind the scope via the section's data config; the children then interpolate the scoped values. Like `ref-container`, it is transparent — it adds no visual styling of its own.
+
+**Developers.** The backend resolves the `scope` data context and interpolates the subtree server-side, so both renderers render the already-resolved children through the normal recursive dispatcher (no second renderer): web `DataContainerStyle`, mobile `components/styles/layout/DataContainer.tsx`. Binding is via `data_config` (see [_conventions.md](./_conventions.md)).
+
+**Distinctive fields.** None beyond the common fields; data binding via `data_config`.
+
+**Children.** Yes (the scoped subtree).
 
 ---
 

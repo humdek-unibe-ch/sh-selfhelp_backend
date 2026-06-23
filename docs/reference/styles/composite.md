@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 composite styles (`@selfhelp/shared` `composite` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/composite.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Composite styles combine child sections into a richer widget (accordions, tabs,
@@ -18,13 +18,18 @@ the matching item children inside it.
 
 ## accordion
 
-**Purpose.** Mantine `Accordion` — a stack of collapsible panels.
+**Purpose.** Mantine `Accordion` (web) / HeroUI Native `Accordion` compound (mobile) — a stack of collapsible panels.
 
-**Administrators.** Use for FAQs or grouped content where only some panels are open at a time. Add `accordion-item` children. Allow multiple open panels via `mantine_accordion_multiple`, and set the default-open item.
+**Administrators.** Use for FAQs or grouped content where only some panels are open at a time. Add `accordion-item` children. Allow multiple open panels via **Multiple** (`multiple`), pick the **Variant**, and (web) set the default-open item.
 
-**Developers.** Renders `<Accordion>`; children are `accordion-item`. `mantine_accordion_default_value` selects the initially open item value(s).
+**Developers.** Web renders `<Accordion>`; mobile renders the HeroUI Native `Accordion` compound (themed + animated) and each child `accordion-item` consults the HeroUI accordion context automatically (no custom context). The mobile renderer reads `shared_*` only. Precedence is shared → component default.
 
-**Distinctive fields.** `mantine_accordion_variant`, `mantine_accordion_multiple`, `mantine_accordion_chevron_position`, `mantine_accordion_chevron_size`, `mantine_accordion_disable_chevron_rotation`, `mantine_accordion_loop`, `mantine_accordion_transition_duration`, `mantine_accordion_default_value`, `mantine_radius`.
+**Distinctive fields.**
+
+- `accordion_variant` (shared, select: `default`/`contained`/`filled`/`separated`) — web → Mantine `variant`; mobile → HeroUI `variant` (`default`, or `surface` for the boxed variants), via `mapAccordionVariantToHeroUiVariant`. *Renamed from the web-only `web_accordion_variant` in `Version20260619183601`; clearable.*
+- `multiple` (shared, checkbox) — single vs multiple open; read by both platforms.
+- `radius` (shared, slider) — web → Mantine `radius`; mobile → surface container border radius.
+- `web_accordion_chevron_position`, `web_accordion_chevron_size`, `web_accordion_disable_chevron_rotation`, `web_accordion_loop`, `web_accordion_transition_duration`, `web_accordion_default_value` (web-only Mantine presentation; the mobile chevron is HeroUI's animated `Accordion.Indicator`).
 
 **Children.** Yes (`accordion-item`).
 
@@ -32,13 +37,19 @@ the matching item children inside it.
 
 ## accordion-item
 
-**Purpose.** Mantine `Accordion.Item` — one collapsible panel.
+**Purpose.** Mantine `Accordion.Item` (web) / HeroUI Native `Accordion.Item` (mobile) — one collapsible panel.
 
-**Administrators.** Place inside an `accordion`. Set the panel `label` (the clickable header) and a unique `mantine_accordion_item_value`. Put the panel body as children.
+**Administrators.** Place inside an `accordion`. Set the panel `label` (the clickable header) and an optional `description` subtitle shown under it. Put the panel body as children. (Web also offers a unique `web_accordion_item_value` and an optional header icon.)
 
-**Developers.** Renders `<Accordion.Item value>` with a control + panel; body comes from child sections.
+**Developers.** Web renders `<Accordion.Item value>` with a control (label + optional dimmed `description` + icon) and a panel. Mobile renders `Accordion.Item` / `.Trigger` / `.Indicator` / `.Content` with theme-aware text from `useAppColors()`; the mobile item value is the section id (the web-only `web_accordion_item_value` / icon are not read on mobile). Plain-text slots are sanitized (web `stripHtmlTags`, mobile `stripHtmlToText`). Body comes from child sections.
 
-**Distinctive fields.** `label` (header), `mantine_accordion_item_value` (unique key), `mantine_accordion_item_icon`, `disabled`.
+**Distinctive fields.**
+
+- `label` (content, markdown-inline) — the clickable header text.
+- `description` (content, textarea) — optional subtitle under the label; empty = hidden. *Added in `Version20260619183601`.*
+- `disabled` (common, checkbox) — disables the panel.
+- `web_accordion_item_value` (web, text) — unique key used by the accordion's web default-open feature.
+- `web_accordion_item_icon` (web, select-icon) — header icon (web only).
 
 **Children.** Yes (the panel body).
 
@@ -50,9 +61,9 @@ the matching item children inside it.
 
 **Administrators.** Split content across tabs. Add `tab` children; choose orientation (horizontal/vertical) and variant.
 
-**Developers.** Renders `<Tabs>`; children are `tab` (each contributing a `Tabs.Tab` + `Tabs.Panel`).
+**Developers.** Renders `<Tabs>`; children are `tab` (each contributing a `Tabs.Tab` + `Tabs.Panel`). `web_tabs_grow` / `web_tabs_justify` apply to the `Tabs.List` (stretch / alignment); `web_tabs_keep_mounted` keeps inactive panels mounted; `web_tabs_placement` sets the list side when the orientation is vertical (all web-only).
 
-**Distinctive fields.** `mantine_tabs_variant`, `mantine_tabs_orientation`, `mantine_tabs_radius`, `mantine_color`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `web_tabs_variant`, `web_tabs_orientation`, `web_tabs_radius`, `color`, `web_tabs_grow`, `web_tabs_justify`, `web_tabs_keep_mounted`, `web_tabs_placement`, `web_width`, `web_height`.
 
 **Children.** Yes (`tab`).
 
@@ -66,7 +77,7 @@ the matching item children inside it.
 
 **Developers.** Renders the `Tabs.Tab` + `Tabs.Panel` pair; panel content comes from children.
 
-**Distinctive fields.** `label`, `mantine_left_icon` / `mantine_right_icon`, `mantine_tab_disabled`, `mantine_width`, `mantine_height`.
+**Distinctive fields.** `label`, `web_left_icon` / `web_right_icon`, `web_tab_disabled`, `web_width`, `web_height`.
 
 **Children.** Yes (the panel content).
 
@@ -78,11 +89,25 @@ the matching item children inside it.
 
 **Administrators.** Show steps or a history. Add `list-item`-style children as events; set how many leading items are "active" and the bullet/line styling.
 
-**Developers.** Renders `<Timeline active>`. `mantine_timeline_active` marks completed items.
+**Developers.** Renders `<Timeline active>`. `web_timeline_active` marks completed items.
 
-**Distinctive fields.** `mantine_timeline_bullet_size`, `mantine_timeline_line_width`, `mantine_timeline_active`, `mantine_timeline_align`, `mantine_timeline_line_variant`, `mantine_color`.
+**Distinctive fields.** `web_timeline_bullet_size`, `web_timeline_line_width`, `web_timeline_active`, `web_timeline_align`, `web_timeline_line_variant`, `color`.
 
 **Children.** Yes.
+
+---
+
+## timeline-item
+
+**Purpose.** A single event inside a `timeline` (the child style of `timeline`).
+
+**Administrators.** Place inside a `timeline`. Each `timeline-item` is one dot on the line; put the event content in child sections. Use the parent `timeline`'s `web_timeline_active` to mark how many leading items are completed.
+
+**Developers.** Child-only style (placement is enforced by the timeline parent). The web renderer (`TimelineItemStyle`) renders the item's children inside the parent `<Timeline>`; the mobile renderer (`components/styles/composite/TimelineItem.tsx`) renders the event row in the React Native timeline. It carries no presentation fields of its own — bullet/line styling lives on the parent `timeline`.
+
+**Distinctive fields.** None beyond the common fields; styling is inherited from the parent `timeline`.
+
+**Children.** Yes (the event content).
 
 ---
 
@@ -94,7 +119,7 @@ the matching item children inside it.
 
 **Developers.** Renders `<List type listStyleType>`; children are `list-item`.
 
-**Distinctive fields.** `mantine_list_type` (ordered/unordered), `mantine_list_list_style_type` (marker), `mantine_spacing`, `mantine_size`, `mantine_list_with_padding`, `mantine_list_center`, `mantine_list_icon`.
+**Distinctive fields.** `web_list_type` (ordered/unordered), `web_list_list_style_type` (marker), `web_spacing`, `web_size`, `web_list_with_padding`, `web_list_center`, `web_list_icon`.
 
 **Children.** Yes (`list-item`).
 
@@ -104,11 +129,11 @@ the matching item children inside it.
 
 **Purpose.** Mantine `List.Item` — one list entry.
 
-**Administrators.** Place inside a `list`. Set the item text (`mantine_list_item_content`) and an optional per-item icon.
+**Administrators.** Place inside a `list`. Set the item text (`list_item_content`) and an optional per-item icon. `list_item_content` is a **rich-text** field (`markdown-inline`): select a word and press **Ctrl/⌘ + B / I / U** or add a link — it renders the same on web and mobile.
 
-**Developers.** Renders `<List.Item>`.
+**Developers.** Renders `<List.Item>`. `list_item_content` is `markdown-inline`; web renders it via `sanitizeHtmlForParsing` + `html-react-parser`, mobile via `parseInlineRich` + `<InlineText>` (plain strings pass straight through).
 
-**Distinctive fields.** `mantine_list_item_content` (text), `mantine_list_item_icon`.
+**Distinctive fields.** `list_item_content` (text, `markdown-inline`), `web_list_item_icon`.
 
 **Children.** Yes.
 

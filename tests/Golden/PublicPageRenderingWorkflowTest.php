@@ -106,8 +106,8 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
         $pageId = (int) $page->getId();
         $token = $this->loginAsQaUser();
 
-        // 3. Load by id through the public API.
-        $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/' . $pageId, null, $token);
+        // 3. Load by keyword through the public API (the single page-content path).
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . self::KEYWORD, null, $token);
         $data = $this->assertEnvelopeSuccess($envelope);
 
         self::assertResponseSchema('responses/frontend/get_page');
@@ -123,15 +123,9 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
             'Sections must render in ascending position order.'
         );
 
-        // 4. The same page resolves by keyword.
-        $byKeyword = $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . self::KEYWORD, null, $token)
-        );
-        self::assertSame($pageId, $this->asArray($byKeyword['page'])['id'] ?? null);
-
-        // 5. A second load is consistent (cache-stable, no drift).
+        // 4. A second load is consistent (cache-stable, no drift).
         $again = $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', '/cms-api/v1/pages/' . $pageId, null, $token)
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . self::KEYWORD, null, $token)
         );
         self::assertSame($expectedOrder, $this->topLevelSectionIds($again), 'Repeat render must be stable.');
     }
@@ -143,9 +137,57 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
         $section = $this->pages->createSection('qa_render_denied_s', 'form-record');
         $this->pages->linkSectionToPage($page, $section, 10);
 
-        $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/' . (int) $page->getId(), null, $this->loginAsQaUser());
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/qa_public_render_denied', null, $this->loginAsQaUser());
 
         self::assertSame(Response::HTTP_FORBIDDEN, $envelope['status'] ?? null, 'No ACL grant must be forbidden.');
+    }
+
+    /**
+     * Regression for the "anonymous == user id 1 (admin)" ACL bug: a genuinely
+     * anonymous caller (no JWT) must NOT inherit the admin group's ACL. The page
+     * is non-open and granted ACL select to the *admin* group only. Before the
+     * fix the guest fallback resolved to user id 1 — an admin-group member — so
+     * `get_user_acl` returned the group grant and leaked the page (200). The
+     * guest sentinel (id 0) is in no group, so branch 1 of `get_user_acl` is
+     * empty and the read is forbidden.
+     */
+    public function testAnonymousVisitorCannotInheritAdminGroupAcl(): void
+    {
+        $page = $this->pages->createPage('qa_public_render_anon_admin', openAccess: false);
+        $this->pages->linkSectionToPage($page, $this->pages->createSection('qa_render_anon_admin_s'), 10);
+        $this->pages->grantGroupAcl(
+            $page,
+            $this->adminGroup(),
+            select: true,
+            insert: false,
+            update: false,
+            delete: false,
+        );
+
+        // No token => genuinely anonymous request (the route is permission-less).
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/qa_public_render_anon_admin');
+
+        self::assertSame(
+            Response::HTTP_FORBIDDEN,
+            $envelope['status'] ?? null,
+            'Anonymous callers must not inherit the admin group ACL.',
+        );
+    }
+
+    /**
+     * The flip side: an open-access page carries no ACL requirement (branch 2 of
+     * `get_user_acl` grants select to any caller), so an anonymous visitor reads
+     * it. Open-access is the only anonymous entry point after the sentinel fix.
+     */
+    public function testAnonymousVisitorReadsOpenAccessPage(): void
+    {
+        $page = $this->pages->createPage('qa_public_render_anon_open', openAccess: true);
+        $this->pages->linkSectionToPage($page, $this->pages->createSection('qa_render_anon_open_s'), 10);
+
+        $envelope = $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/qa_public_render_anon_open');
+
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertSame('qa_public_render_anon_open', $this->asArray($data['page'] ?? [])['keyword'] ?? null);
     }
 
     // -- helpers ------------------------------------------------------------
@@ -181,6 +223,14 @@ final class PublicPageRenderingWorkflowTest extends QaWebTestCase
     {
         $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'subject']);
         self::assertInstanceOf(Group::class, $group, 'The seeded "subject" group must exist.');
+
+        return $group;
+    }
+
+    private function adminGroup(): Group
+    {
+        $group = $this->em->getRepository(Group::class)->findOneBy(['name' => 'admin']);
+        self::assertInstanceOf(Group::class, $group, 'The seeded "admin" group must exist.');
 
         return $group;
     }

@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 typography styles (`@selfhelp/shared` `typography` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/typography.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Typography styles render text — headings, paragraphs, quotes, code, and rich
@@ -20,11 +20,14 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Title` — a semantic heading (`h1`–`h6`).
 
-**Administrators.** Use for page and section headings. Set the heading level with `mantine_title_order` (1 = biggest). The text is translatable.
+**Administrators.** Use for page and section headings. Set the heading level with `title_order` (1 = biggest), pick a size and a theme colour, and optionally clamp to N lines. The text is translatable.
 
-**Developers.** Renders `<Title order={…}>`. `mantine_title_line_clamp` truncates after N lines.
+**Developers.** Renders `<Title order={…}>`. `title_order` (common) is the
+semantic heading level on both platforms; `color` tints the heading;
+`line_clamp` truncates after N lines (web `lineClamp` / mobile
+`numberOfLines`). `web_title_text_wrap` stays web-only.
 
-**Distinctive fields.** `content` (heading text), `mantine_title_order` (1–6), `mantine_size`, `mantine_title_text_wrap` (wrap/balance/nowrap), `mantine_title_line_clamp`.
+**Distinctive fields.** `content` (heading text), `title_order` (1–6, common), `size`, `color`, `line_clamp`, `web_title_text_wrap` (wrap/balance/nowrap, web only).
 
 **Children.** No.
 
@@ -34,11 +37,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Text` — a styled paragraph or inline run of text.
 
-**Administrators.** The workhorse for body copy. Set size, colour, weight, alignment, and decoration. Use the gradient variant for accent text. Text is translatable.
+**Administrators.** The workhorse for body copy. Set size, colour, weight, alignment, and decoration. Use the gradient variant for accent text. Text is translatable. The `text` field is a **rich-text** field (`markdown-inline`): you can select a word and press **Ctrl/⌘ + B** (bold), **+ I** (italic) or **+ U** (underline), or add a link — the inspector shows a `Rich text:` hint where this is allowed. The formatting renders the same on the web frontend **and** the mobile app.
 
-**Developers.** Renders `<Text>`. `mantine_text_span` renders it inline (`<span>`); `mantine_text_inherit` inherits parent typography; gradient needs `mantine_text_gradient`.
+**Developers.** Renders `<Text>`. The `text` field is `markdown-inline`, so it can carry the safe inline subset (`<strong>`/`<em>`/`<u>`/`<a>`). Web renders it via `sanitizeHtmlForParsing` + `html-react-parser` (XSS-stripped, block tags flattened to inline); mobile parses it with `parseInlineRich` and renders nested `<Text>` runs through `<InlineText>` (RN cannot render HTML). A plain string still passes straight through. `web_text_span` renders it inline (`<span>`); `web_text_inherit` inherits parent typography; gradient needs `web_text_gradient`.
 
-**Distinctive fields.** `text` (the copy), `mantine_text_font_weight`, `mantine_text_font_style`, `mantine_text_text_decoration`, `mantine_text_text_transform`, `mantine_text_align`, `mantine_text_variant` (default/gradient), `mantine_text_gradient`, `mantine_text_truncate`, `mantine_text_line_clamp`, `mantine_text_inherit`, `mantine_text_span`, `mantine_size`, `mantine_color`.
+**Distinctive fields.** `text` (the copy, `markdown-inline` — inline bold/italic/underline/link allowed), `web_text_font_weight`, `web_text_font_style`, `web_text_text_decoration`, `web_text_text_transform`, `web_text_align`, `web_text_variant` (default/gradient), `web_text_gradient`, `web_text_truncate`, `web_text_line_clamp`, `web_text_inherit`, `web_text_span`, `web_size`, `color`.
 
 **Children.** No.
 
@@ -48,11 +51,13 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Code` — inline or block monospaced code.
 
-**Administrators.** Show code snippets or technical values. Turn on `mantine_code_block` for a multi-line block; leave off for inline code. Content is translatable.
+**Administrators.** Show code snippets or technical values. Turn on `code_block` for a multi-line block; leave off for inline code. Pick a colour and corner radius. Content is translatable.
 
-**Developers.** Renders `<Code block={…}>`.
+**Developers.** Renders `<Code block={…}>`. `code_block` (common) selects block
+vs inline on both platforms; `radius` rounds the block corners per
+platform.
 
-**Distinctive fields.** `content` (the code), `mantine_code_block` (block vs inline), `mantine_color`.
+**Distinctive fields.** `content` (the code), `code_block` (block vs inline, common), `color`, `radius`.
 
 **Children.** No.
 
@@ -62,11 +67,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Highlight` — text with one or more substrings highlighted.
 
-**Administrators.** Draw attention to keywords inside a sentence. Put the full sentence in `text` and the word(s) to highlight in `mantine_highlight_highlight`.
+**Administrators.** Draw attention to keywords inside a sentence. Put the full sentence in `text` and the word(s) to highlight in `highlight_highlight`. The shared `text` field is `markdown-inline`, but `highlight` needs plain text for substring matching, so any inline bold/italic/underline tags are **stripped to plain text** on both platforms (use the `text` style if you need inline formatting).
 
-**Developers.** Renders `<Highlight highlight={…}>`.
+**Developers.** Renders `<Highlight highlight={…}>`. The `text` field is the shared `markdown-inline` field (same one the `text` style uses); because Mantine `Highlight` matches a plain substring, the renderer runs `stripHtmlTags` (web) / `stripHtmlToText` (mobile) so literal tags never leak and the highlight match works.
 
-**Distinctive fields.** `text` (full text), `mantine_highlight_highlight` (substring(s) to highlight), `mantine_color`.
+**Distinctive fields.** `text` (full text, shared `markdown-inline` field), `highlight_highlight` (substring(s) to highlight), `color`.
 
 **Children.** No.
 
@@ -76,11 +81,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Blockquote` — a quotation with an optional citation and icon.
 
-**Administrators.** Use for testimonials or quotes. Add the quote in `content`, the source in `cite`, and optionally an icon.
+**Administrators.** Use for testimonials or quotes. Add the quote in `blockquote_content`, the source in `cite`, and optionally an icon. The quote body is a **rich-text** field (`markdown-inline`): select a word and press **Ctrl/⌘ + B / I / U** or add a link — it renders the same on web and mobile.
 
-**Developers.** Renders `<Blockquote cite icon>`.
+**Developers.** Renders `<Blockquote cite icon>`. The quote body is a dedicated `blockquote_content` (`markdown-inline`) field — **not** the generic shared `content` — so authors can format inside the quote without affecting the `code` style (which keeps the plain `content`). Web renders it via `sanitizeHtmlForParsing` + `html-react-parser`; mobile via `parseInlineRich` + `<InlineText>`.
 
-**Distinctive fields.** `content` (quote), `cite` (attribution), `mantine_left_icon`, `mantine_icon_size`, `mantine_color`.
+**Distinctive fields.** `blockquote_content` (quote, `markdown-inline`), `cite` (attribution), `web_left_icon`, `web_icon_size`, `color`.
 
 **Children.** No.
 
@@ -108,7 +113,7 @@ language and the visitor sees their locale's version.
 
 **Developers.** Renders `<Kbd>{label}</Kbd>`.
 
-**Distinctive fields.** `label` (key text), `mantine_size`.
+**Distinctive fields.** `label` (key text), `web_size`.
 
 **Children.** No.
 
@@ -136,7 +141,7 @@ language and the visitor sees their locale's version.
 
 **Developers.** Renders `<Fieldset legend disabled>`; `disabled` cascades to nested inputs.
 
-**Distinctive fields.** `legend` (group title), `label`, `mantine_fieldset_variant`, `mantine_radius`, `disabled`.
+**Distinctive fields.** `legend` (group title), `label`, `web_fieldset_variant`, `web_radius`, `disabled`.
 
 **Children.** Yes.
 
@@ -146,11 +151,11 @@ language and the visitor sees their locale's version.
 
 **Purpose.** Mantine `Spoiler` — collapses long content behind a show/hide toggle.
 
-**Administrators.** Hide long text behind "Show more". Set the collapsed height and the show/hide labels.
+**Administrators.** Hide long text behind "Show more". Set the collapsed height, the show/hide labels, and the control colour (`color`).
 
-**Developers.** Renders `<Spoiler maxHeight showLabel hideLabel>`.
+**Developers.** Renders `<Spoiler maxHeight showLabel hideLabel>`; `color` colours the show/hide control (`controlRef`/anchor) and resolves through the semantic mapper on mobile.
 
-**Distinctive fields.** `mantine_height` (collapsed max-height), `mantine_spoiler_show_label`, `mantine_spoiler_hide_label`.
+**Distinctive fields.** `web_height` (collapsed max-height), `spoiler_show_label`, `spoiler_hide_label`, `color` (show/hide control colour).
 
 **Children.** Yes.
 

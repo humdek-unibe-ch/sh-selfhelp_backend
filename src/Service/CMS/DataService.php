@@ -80,9 +80,11 @@ class DataService extends BaseService
         $currentUser = $this->userContextAwareService->getCurrentUser();
 
         try {
-            // Ensure user ID is set
+            // Ensure user ID is set. Anonymous submissions store NULL (the
+            // column is nullable and carries no FK) instead of the admin's
+            // id 1 — attributing guest data to the admin was a security bug.
             if (!isset($data['id_users'])) {
-                $data['id_users'] = $currentUser ? $currentUser->getId() : 1; // Guest user fallback
+                $data['id_users'] = $currentUser ? $currentUser->getId() : null;
             }
 
             // Get or create data table

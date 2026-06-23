@@ -152,11 +152,12 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
 
         $user = $this->loginAsQaUser();
 
-        // 6a. Render by id; the public top-level order must match the CMS's own
+        // 6a. Render through the public API by keyword (the single page-content
+        //     path); the public top-level order must match the CMS's own
         //     authoritative section order (different code path: admin uses the
         //     hierarchical stored procedure, the frontend uses PageService).
-        $byId = $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/%d?language_id=%d', $pageId, self::LANG_DE), null, $user)
+        $rendered = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/by-keyword/%s?language_id=%d', self::KEYWORD, self::LANG_DE), null, $user)
         );
         $this->assertMatchesSchema('responses/frontend/get_page');
 
@@ -164,7 +165,7 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
         self::assertContains($containerA, $adminOrder, 'Container A must be a top-level section.');
         self::assertContains($containerB, $adminOrder, 'Container B must be a top-level section.');
 
-        $top = $this->topLevelSections($byId);
+        $top = $this->topLevelSections($rendered);
         $renderOrder = array_map(fn(array $s): int => $this->asInt($s['id'] ?? null), $top);
         self::assertSame($adminOrder, $renderOrder, 'Public render order must match the CMS authoritative section order.');
 
@@ -183,7 +184,8 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
         self::assertSame('text', $renderedChild['style_name'] ?? null, 'Child must render as the text style.');
         self::assertSame($firstContent, $this->textContent($renderedChild), 'Rendered child must carry the de-CH content we authored.');
 
-        // 6b. The same page resolves by keyword with identical structure/order.
+        // 6b. A second keyword render is stable — it resolves to the same page id
+        //     with identical structure/order (cache-stable, no drift).
         $byKeyword = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/by-keyword/%s?language_id=%d', self::KEYWORD, self::LANG_DE), null, $user)
         );
@@ -191,7 +193,7 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
         self::assertSame(
             $renderOrder,
             array_map(fn(array $s): int => $this->asInt($s['id'] ?? null), $this->topLevelSections($byKeyword)),
-            'Keyword render must match the id render ordering.'
+            'Repeat keyword render must match the first render ordering.'
         );
 
         // 7. Mutate the content again, then re-render: the render must be FRESH
@@ -213,7 +215,7 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
         );
 
         $afterMutation = $this->assertEnvelopeSuccess(
-            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/%d?language_id=%d', $pageId, self::LANG_DE), null, $user)
+            $this->jsonRequest('GET', sprintf('/cms-api/v1/pages/by-keyword/%s?language_id=%d', self::KEYWORD, self::LANG_DE), null, $user)
         );
         $freshB = $this->findSection($this->topLevelSections($afterMutation), $containerB);
         $freshChild = $this->childSections($freshB)[0];

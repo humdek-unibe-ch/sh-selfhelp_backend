@@ -27,6 +27,7 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Auth\UserContextService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -655,9 +656,11 @@ class AdminPageService extends BaseService
      */
     public function getAllPagesForAdmin(): array
     {
-        // Get current user for caching
+        // Get current user for caching. This endpoint is admin-only (the
+        // firewall requires authentication), so the guest branch is never
+        // reached in practice; we use the shared sentinel for consistency.
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? (int) $user->getId() : 1; // guest user
+        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
 
         // Cache key for admin pages (no ACL filtering)
         $cacheKey = "admin_pages";

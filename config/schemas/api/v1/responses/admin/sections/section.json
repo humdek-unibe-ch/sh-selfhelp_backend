@@ -18,6 +18,11 @@
                         "properties": {
                             "id": { "type": "integer", "description": "Unique identifier for the field" },
                             "name": { "type": "string", "description": "Name of the field" },
+                            "scope": {
+                                "type": "string",
+                                "enum": ["content", "common", "web", "mobile"],
+                                "description": "Field scope (mobile rendering plan, section 6.4), derived centrally by the backend from translatability (display) and platform prefix: display=1 -> content; otherwise web_*/mobile_* -> web/mobile and unprefixed -> common. The CMS section inspector groups by this value and must not re-derive scope from the field name or display flag."
+                            },
                             "title": { "type": "string", "description": "Title of the field" },
                             "type": { "type": ["string", "null"], "description": "Type of the field" },
                             "default_value": { "type": ["string", "null"], "description": "Default value for the field" },
@@ -40,7 +45,7 @@
                                 }
                             }
                         },
-                        "required": ["id", "name", "title", "type", "display", "translations"]
+                        "required": ["id", "name", "scope", "title", "type", "display", "translations"]
                     }
                 },
                 "languages": {

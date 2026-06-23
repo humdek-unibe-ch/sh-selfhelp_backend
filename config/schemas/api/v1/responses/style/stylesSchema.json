@@ -20,6 +20,11 @@
                             "group": { "type": "string" },
                             "can_have_children": { "type": "boolean" },
                             "description": { "type": ["string", "null"] },
+                            "renderTarget": {
+                                "type": "string",
+                                "enum": ["web", "mobile", "both"],
+                                "description": "Where this style is intentionally renderable. 'both' when id_render_target is NULL. Distinct from page access target and request client."
+                            },
                             "fields": {
                                 "type": "object",
                                 "description": "Map of fieldName → field metadata",
@@ -27,6 +32,11 @@
                                     "type": "object",
                                     "properties": {
                                         "type": { "type": ["string", "null"] },
+                                        "scope": {
+                                            "type": "string",
+                                            "enum": ["content", "common", "web", "mobile"],
+                                            "description": "Field scope (mobile rendering plan, section 6.4). Derived centrally by the backend from translatability (display) and platform prefix; the CMS must group by this value and must not re-derive scope from the field name or display flag. content=translatable copy (display=1), common=unprefixed cross-platform behavior/data/visual property, web=web_* Mantine/browser-specific, mobile=mobile_* native-only."
+                                        },
                                         "display": { "type": "integer" },
                                         "default_value": { "type": ["string", "null"] },
                                         "help": { "type": ["string", "null"] },
@@ -47,7 +57,7 @@
                                             }
                                         }
                                     },
-                                    "required": ["type", "display", "default_value", "options"]
+                                    "required": ["type", "scope", "display", "default_value", "options"]
                                 }
                             },
                             "allowed_children": {
@@ -60,7 +70,7 @@
                                 "items": { "type": "string" }
                             }
                         },
-                        "required": ["id", "group", "can_have_children", "fields", "allowed_children", "allowed_parents"]
+                        "required": ["id", "group", "can_have_children", "renderTarget", "fields", "allowed_children", "allowed_parents"]
                     }
                 }
             },

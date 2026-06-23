@@ -79,7 +79,6 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'languages_get_all_v1',
         'system_lookups_v1',
         'pages_get_all_v1',
-        'pages_get_one_v1',
         'pages_get_by_keyword_v1',
         'pages_get_all_with_language_v1',
         'plugins_manifest_v1',

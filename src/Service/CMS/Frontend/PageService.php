@@ -22,6 +22,7 @@ use App\Service\Core\BaseService;
 use App\Service\Core\ConditionService;
 use App\Service\Core\InterpolationService;
 use App\Service\Core\UserContextAwareService;
+use App\Service\Auth\UserContextService;
 
 class PageService extends BaseService
 {
@@ -110,10 +111,7 @@ class PageService extends BaseService
     public function getAllAccessiblePagesForUser(string $mode, bool $admin, ?int $language_id = null): array
     {
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = 1; // guest user
-        if ($user) {
-            $userId = (int) $user->getId();
-        }
+        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
 
         // Determine which language ID to use for translations
         $languageId = $this->determineLanguageId($language_id);
@@ -235,39 +233,14 @@ class PageService extends BaseService
     }
 
     /**
-     * Get page by ID with translated sections
-     * 
+     * Resolve a page by its unique keyword. This is the single public
+     * page-content entry point (the legacy numeric-id route was removed —
+     * every client resolves pages by keyword). Throws 404 if no page with
+     * this keyword exists.
+     *
      * This method supports hybrid versioning:
      * - If a published version exists and preview=false: serves published version with refreshed dynamic elements
      * - If no published version or preview=true: serves fresh draft from database
-     * 
-     * @param int $page_id The page ID
-     * @param int|null $language_id Optional language ID for translations
-     * @param bool $preview Force draft serving (bypasses published version)
-     * @return array<string, mixed> The page object with translated sections
-     * @throws \App\Exception\ServiceException If page not found or access denied
-     */
-    public function getPage(int $page_id, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
-    {
-        // Determine which language ID to use for translations
-        $languageId = $this->determineLanguageId($language_id);
-
-        // Get current user for caching
-        $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? $user->getId() : 1; // guest user
-
-        // First get the page to get its ID for entity scope
-        $page = $this->pageRepository->find($page_id);
-        if (!$page) {
-            $this->throwNotFound('Page not found');
-        }
-        return $this->resolvePageResponse($page, $page_id, $languageId, $preview, $mode);
-    }
-
-    /**
-     * Resolve a page by its unique keyword. Used by the BFF to eliminate the
-     * keyword -> id waterfall on page loads. Returns the same payload as
-     * getPage(). Throws 404 if no page with this keyword exists.
      *
      * `$mode` is the page-access type the caller is requesting (web, mobile,
      * mobile_and_web). If supplied, the page's own access type must be
@@ -289,7 +262,7 @@ class PageService extends BaseService
     }
 
     /**
-     * Shared resolution path used by getPage() and getPageByKeyword().
+     * Shared resolution path used by getPageByKeyword().
      *
      * Page-access enforcement:
      * - Pages flagged `mobile_and_web` are universal and always pass.
@@ -300,12 +273,23 @@ class PageService extends BaseService
      * - Pages with no `id_page_access_types` are treated as `web` (legacy
      *   default).
      *
+     * Preview enforcement:
+     * - `preview=true` serves the unpublished draft, so it requires an
+     *   authenticated caller (anonymous => 401). The page ACL is still
+     *   enforced on top, so a logged-in user can only preview pages they
+     *   already have `select` access to.
+     *
      * @return array<string, mixed>
      */
     private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array
     {
         if ($mode !== null) {
             $this->assertPageAccessForMode($page, $mode);
+        }
+
+        // Drafts are never served anonymously: preview requires authentication.
+        if ($preview && $this->userContextAwareService->getCurrentUser() === null) {
+            $this->throwUnauthorized('Authentication required to preview unpublished drafts');
         }
 
         // Check if user has access to the page
@@ -494,7 +478,7 @@ class PageService extends BaseService
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? (int) $user->getId() : 1; // guest user
+        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
         // Try to get from cache first
         $cacheKey = "page_draft_{$page_id}_{$languageId}";
@@ -748,7 +732,7 @@ class PageService extends BaseService
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? (int) $user->getId() : 1; // guest user
+        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
         $cacheKey = "page_sections_{$page_id}_{$languageId}";
 

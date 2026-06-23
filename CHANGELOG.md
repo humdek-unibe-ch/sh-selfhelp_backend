@@ -1,4 +1,218 @@
+# v0.1.18
+
+## Security — anonymous access hardening + frontend page route cleanup
+
+- **Anonymous callers are no longer treated as user id 1 (admin).** The guest
+  fallback in `ACLService`, `UserContextAwareService`, and `PageService` resolved
+  an unauthenticated request to user id `1` — which belongs to the admin group —
+  so anonymous visitors inherited admin page ACLs and could read restricted
+  pages (and collided with the admin's page/section cache namespace). A dedicated
+  guest sentinel `UserContextService::GUEST_USER_ID = 0` now represents
+  anonymous callers; it is a member of no group, so branch 1 of the `get_user_acl`
+  stored procedure returns nothing and only `is_open_access = 1` pages (branch 2)
+  are reachable without authentication.
+- **Anonymous form submissions store a `NULL` owner**, not admin id 1
+  (`DataService::saveData` + `FormController`). `data_rows.id_users` is nullable
+  and carries no FK, so an unauthenticated submission is correctly un-owned.
+- **`preview=true` now requires authentication.** `PageService` rejects an
+  anonymous draft request with `401` before any draft is rendered (the page ACL
+  check still applies on top of that for authenticated callers).
+- **Migration `Version20260623082726`** marks the public global pages
+  `sh-global-css` and `sh-global-values` as `is_open_access = 1` so anonymous
+  visitors keep loading global CSS/values after the sentinel fix (these were only
+  reachable before *because* of the admin-id-1 bug). `sh-cms-preferences` stays
+  private. The same migration removes the duplicate `pages_get_one` API route
+  (see below).
+- **Removed the duplicate `GET /cms-api/v1/pages/{page_id}` route.** Single page
+  content is now resolved exclusively by keyword
+  (`GET /cms-api/v1/pages/by-keyword/{keyword}`), which the web/mobile BFF already
+  used exclusively — the numeric-id route was an unused legacy duplicate that
+  shared the identical ACL/serving path. `PageController::getPage` and
+  `PageService::getPage` are deleted; misleading `@Route` docblocks on
+  `PageController`/`FormController` (routes are DB-defined, loaded by
+  `ApiRouteLoader`) were replaced with accurate comments.
+- **Tests:** anonymous-can't-inherit-admin-ACL (`403`) and anonymous-reads-open-access
+  (`200`) golden cases (`PublicPageRenderingWorkflowTest`), anonymous `preview=true`
+  → `401` (`PageControllerModeTest`), anonymous form submission → `NULL` owner
+  (`FormControllerTest`), and a round-trip test for `Version20260623082726`.
+- **Cross-repo impact:** this is a breaking backend change, but it is
+  **client-transparent** — no frontend/mobile/shared code referenced the by-id
+  route (all use by-keyword), and the anonymous-access hardening requires no
+  client adoption. The frontend ⇄ backend `supports.*` floors are therefore
+  unchanged (frontend `>=0.1.29` ⇄ core `>=0.1.17`); core `0.1.18` is within the
+  frontend's existing `supports.core` range.
+
+# v0.1.17
+
+## CMS Styles — mobile-only (HeroUI Native) capability pass
+
+- **Migration `Version20260622145334`** adds 7 `mobile_*` fields (all additive /
+  id-stable) for HeroUI Native props that have **no web/Mantine equivalent**, so
+  authors can tune the native look from the CMS without affecting the web
+  renderer (which ignores `mobile_*`):
+  - **`select` + `combobox`**: `mobile_select_presentation` (`select`) — how the
+    HeroUI Native option list opens: `bottom-sheet` (default), `dialog`, or
+    `popover`. Left empty → the renderer's `bottom-sheet` default. Combobox reuses
+    the mobile select renderer, so it links the same field.
+  - **`button`**: `mobile_button_feedback` (`select`) — native press feedback:
+    `scale-highlight` (default), `scale-ripple`, `scale`, `none`.
+  - **`slider` / `range-slider`**: `mobile_slider_show_value` /
+    `mobile_range_slider_show_value` (`checkbox`, default `1`) — toggle the HeroUI
+    Native `Slider.Output` value bubble.
+  - **`text-input` / `textarea` / `checkbox`**: `mobile_input_variant` /
+    `mobile_textarea_variant` / `mobile_checkbox_variant` (`segment`, default
+    `primary`) — HeroUI Native `primary`/`secondary` field variant.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622145334RoundTripTest.php`
+  (`#[Group('migration')]`) proves `up()`/`down()` reversibility.
+- The new author fields are consumed only by the mobile renderer (backend `src/`
+  reads none of them; the web renderer ignores `mobile_*`); requires
+  `@selfhelp/shared` ≥ 1.14.18. No `/cms-api` route, response-shape, or
+  permission change, so the frontend ⇄ backend `supports.*` floors are unchanged.
+
+# v0.1.16
+
+## CMS Styles — form / interactive capability pass
+
+- **Migration `Version20260622132034`** exposes Mantine props these styles could
+  already render but had no CMS field for (all additive / id-stable), plus one
+  cleanup unlink:
+  - **`number-input`**: `web_number_input_prefix`, `web_number_input_suffix`
+    (currency / unit affixes), `web_number_input_thousand_separator`,
+    `web_number_input_allow_negative`, `web_number_input_hide_controls`.
+  - **`color-input`**: `web_color_input_with_eye_dropper`,
+    `web_color_input_disallow_input`, `web_color_input_with_preview`.
+  - **`tabs`**: `web_tabs_grow`, `web_tabs_justify` (Mantine `JustifyContent`
+    lookup), `web_tabs_keep_mounted`, `web_tabs_placement` (vertical list side).
+  - **`switch`**: `web_switch_with_thumb_indicator`, `web_switch_thumb_icon`
+    (`select-icon` picker).
+  - **`text-input` + `textarea`**: `shared_max_length` (web + mobile max chars)
+    and the mobile native keyboard knobs `mobile_keyboard_type`,
+    `mobile_auto_capitalize`, plus `mobile_secure_entry` (text-input only).
+  - **`progress-root`**: links the existing `shared_radius` field (rounder bar).
+  - **Cleanup**: unlinks the unused `alt` field from `select` (the field row
+    stays — avatar / image still use it); authored `alt` values on `select`
+    sections are dropped. `down()` is a best-effort structural inverse.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622132034RoundTripTest.php`
+  (`#[Group('migration')]`) proves `up()`/`down()` reversibility.
+- The new author fields are consumed only by the web / mobile renderers (backend
+  `src/` reads none of them); requires `@selfhelp/shared` ≥ 1.14.17.
+
+# v0.1.15
+
+## CMS Styles — typography / media / interactive field pass
+
+- **Migration `Version20260622110041`** rounds out the styles in the
+  `typography, media, interactive` groups with author-requested fields (all
+  additive / id-stable, so authored content survives):
+  - **`list-item`**: `list_item_content` converted `textarea` → `markdown-inline`
+    (inline bold/italic/underline/link, same cross-platform contract as `text`).
+  - **`blockquote`**: new dedicated `blockquote_content` (`markdown-inline`)
+    field; existing `blockquote` content rows are migrated from the shared
+    `content` field to it and the generic `content` field is unlinked from
+    `blockquote` (so the `code` style keeps a plain `content`). `down()` restores
+    the old link and moves the data back.
+  - **`image`**: `fallback_src` (Mantine `Image.fallbackSrc`).
+  - **`figure`**: optional built-in `img_src` + `alt` (render-only convenience —
+    never auto-creates a child section).
+  - **`link`**: `shared_color`, `web_link_underline` (always/hover/never),
+    `web_left_icon`, `web_right_icon`.
+  - **`action-icon`**: `aria_label` (accessible name for the icon-only control).
+  - **`spoiler`**: `shared_color` (show/hide control colour).
+  - **`video`**: `poster_src`, `has_controls`, `media_loop`, `media_autoplay`,
+    `media_muted` (new `'0'|'1'` playback toggles + poster).
+  - **`audio`**: `has_controls`, `media_loop`, `media_autoplay`.
+  - New reusable field rows: `web_link_underline` (segment), `aria_label` (text),
+    `poster_src` / `fallback_src` (select-image), `media_loop` / `media_autoplay`
+    / `media_muted` (checkbox); existing `shared_color`, `img_src`, `alt`,
+    `has_controls`, `web_left_icon`, `web_right_icon` are reused via
+    `rel_fields_styles`.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622110041RoundTripTest.php`
+  (`#[Group('migration')]`) — `up()`/`down()` verified against an isolated
+  throwaway DB.
+- **Shared** `@selfhelp/shared@1.14.15` carries the matching `I<Name>Style`
+  additions (`IBlockquoteStyle.blockquote_content`, `IImageStyle.fallback_src`,
+  `IFigureStyle.img_src/alt`, `ILinkStyle.shared_color/web_link_underline/
+  web_left_icon/web_right_icon`, `IActionIconStyle.aria_label`,
+  `ISpoilerStyle.shared_color`, `IVideoStyle.*`, `IAudioStyle.*`).
+- **Docs** `docs/reference/styles/{typography,media,interactive,composite}.md`
+  updated for every changed style (fields, behaviour, web/mobile mapping).
+- **Activate:** `php bin/console doctrine:migrations:migrate` then invalidate the
+  styles cache (`/cms-api/v1/admin/cache/clear/all` or restart Redis) and
+  regenerate the audit with `php scripts/build-style-audit.php`.
+
+## CMS Styles — inline rich-text on the `text` field (text + highlight)
+
+- **Migration `Version20260622100253`** switches the shared `text` content field
+  (used by the `text` and `highlight` styles) from the plain multi-line
+  `textarea` editor to `markdown-inline`, so an author can select a word and
+  apply inline **bold / italic / underline / link** (Ctrl/⌘ + B/I/U). The web
+  and mobile `text` renderers preserve that safe inline subset, so a bold label
+  authored on the web also renders bold on the mobile app — the cross-platform
+  goal. Existing stored values are untouched (only the editor changes);
+  `down()` restores the `textarea` editor.
+- **Round-trip test** `tests/Integration/Migrations/Version20260622100253RoundTripTest.php`
+  (`#[Group('migration')]`) — verified locally against an isolated throwaway DB
+  (1 test, 7 assertions).
+- **Docs** `docs/reference/styles/typography.md` (`text` + `highlight` sections)
+  updated to describe the inline-formatting behaviour and the web/mobile render
+  contract.
+- **Activate:** run `php bin/console doctrine:migrations:migrate` (not auto-run),
+  then regenerate the audit with `php scripts/build-style-audit.php`.
+
 # v0.1.14
+
+## CMS Styles — layout cross-platform pass
+
+- **The 13 layout styles (`box`, `container`, `paper`, `center`, `group`,
+  `stack`, `flex`, `grid`, `grid-column`, `simple-grid`, `space`, `divider`,
+  `scroll-area`) became configurable on mobile, not just web** (migration
+  `Version20260622063129`). The portable sizing/behaviour properties that were
+  trapped under `web_*` were promoted to `shared_*` so the same field now drives
+  both the Mantine (web) and the React-Native (mobile) renderer through the
+  `@selfhelp/shared` semantic mapper:
+  - **id-stable renames** (field used only by layout styles): `web_cols`→
+    `shared_cols` (grid, simple-grid), `web_divider_variant`→
+    `shared_divider_variant`, `web_divider_label_position`→
+    `shared_divider_label_position`, `web_grid_span|offset|order|grow`→`shared_*`
+    (grid-column), `web_miw|mih|maw|mah`→`shared_*` (center),
+    `web_vertical_spacing`→`shared_vertical_spacing` (simple-grid). Authored
+    values + relationships survive (the field id is unchanged).
+  - **re-links** (field still used by non-layout styles): `web_width`/
+    `web_height` → new `shared_width`/`shared_height` on the layout styles only
+    (the `web_*` fields stay for the non-layout styles that still need them);
+    `paper.web_border`→`shared_border` (the existing field that already powers
+    `card`); `space.web_space_direction`→`shared_orientation`. Authored content
+    is repointed in `sections_fields_translation` so values are preserved across
+    the scope change.
+  - **additions:** `paper.title` (optional auto-styled heading — renders a
+    heading above the content when filled, a plain surface when empty; never
+    creates a child section); `simple-grid.shared_gap` (the horizontal column
+    spacing that was missing) plus `web_cols_sm`/`web_cols_md`/`web_cols_lg`
+    (web responsive overrides, clearable to inherit `shared_cols`).
+  - **removals (FK-safe):** `web_px`/`web_py` (container, paper — padding now
+    comes from the portable `shared_spacing`), `web_breakpoints` (simple-grid —
+    replaced by the responsive `web_cols_*`), and `web_space_direction` (folded
+    into `shared_orientation`).
+  - `grid.can_have_children` is intentionally left at `0`: grid stays
+    **restricted to `grid-column` children** through
+    `rel_styles_allowed_relationships` (the `0 + whitelist` "restricted children"
+    model), which is correct, not a missing-children bug.
+  - Coupled with `@selfhelp/shared` (the `shared_*` layout types + mapper) and
+    the frontend/mobile layout renderers. Reversible `down()`; round-trip test
+    `Version20260622063129RoundTripTest`; `AdminStyleEndpointsTest`
+    `testLayoutCrossPlatformPassFieldsAndScopes`; docs
+    (`docs/reference/styles/layout.md`) + regenerated style-field audit updated
+    to match. (migration `Version20260622063129`)
+- **The new layout fields show proper labels in the section inspector.** The
+  inspector renders a field's `rel_fields_styles.title` and falls back to the
+  raw `fields.name` when it is empty, so the freshly-linked layout fields read
+  "shared_width"/"shared_height" instead of "Width"/"Height". Backfilled the
+  missing per-style labels (`shared_width`→Width, `shared_height`→Height,
+  `paper.title`→Title, `paper.shared_border`→Border, `space.shared_orientation`→
+  Orientation, `simple-grid.shared_gap`→Gap, `web_cols_sm|md|lg`→Columns
+  (SM|MD|LG)) to match the convention used by the established links. Reversible
+  `down()`; round-trip test `Version20260622080852RoundTripTest`. (migration
+  `Version20260622080852`)
 
 ## API — Security & robustness audit
 
@@ -7,6 +221,22 @@
 - **User-supplied date filters are validated instead of crashing the request.** The audit-log and scheduled-job list endpoints fed `date_from` / `date_to` straight into `new \DateTime(...)`, so an unparseable value surfaced as an uncaught `500`; both now reject a bad filter with a `400`. The user block toggle now requires an explicit boolean `blocked` in the body rather than silently defaulting to "block". (`AdminAuditService`, `AdminScheduledJobService`, `AdminUserController`)
 - **Interpolation, page-version and data-record errors are written to the PSR logger.** `error_log()` calls were replaced with the injected `LoggerInterface` (with the throwable attached), and the non-autowired `InterpolationService` now receives `$logger` explicitly. (`InterpolationService`, `PageVersionService`, `DataService`, `config/services.yaml`)
 - **Smaller correctness fixes:** strict (`true`) `in_array()` permission comparison in `ApiSecurityListener`; `User::isTwoFactorRequired()` is now a pure getter (it no longer mutates `twoFactorRequired` as a side effect of reading it); and the dead, unreferenced `ApiRouteVoter` was removed (route-level permissions are enforced by `ApiSecurityListener`).
+
+## CMS Styles — card padding cleanup
+
+- **The `card` style dropped the redundant web-only `web_card_padding` field**
+  (migration `Version20260619205908`). `card` already extends the portable
+  spacing contract (`shared_spacing`), whose padding side (`pt`/`pb`/`ps`/`pe`)
+  renders on web AND mobile, so a second Mantine-`padding` control was a
+  duplicate that confused authors. The migration unlinks the field from `card`
+  only (it stays on `validate`, which is intentionally web-only) and removes any
+  authored card-section values for it; the web `CardStyle` renderer keeps a fixed
+  Mantine `padding="md"` inner default (also the `Card.Section` image-bleed
+  reference) and authors now tune padding through the shared **Spacing** control.
+  Coupled with `@selfhelp/shared` `1.14.11` (`ICardStyle.web_card_padding`
+  removed) and the frontend `card` renderer. Docs (`docs/reference/styles/
+  layout.md`, the AI prompt template, the regenerated style-field audit) updated
+  to match. (migration `Version20260619205908`)
 
 ## CMS Styles — kebab-case style names
 
@@ -32,6 +262,102 @@
   layout/composite/forms pages) plus the affected developer/API docs were
   updated to match. (migration `Version20260618120000`; `StyleNames`,
   `PageService`, `AdminSectionUtilityService`)
+
+## CMS Styles — accordion/accordion-item authoring polish
+
+- **The `accordion` and `accordion-item` styles got a cross-platform field
+  clean-up and a mobile rebuild** (migration `Version20260619183601`). The
+  accordion variant is no longer web-only: `web_accordion_variant` was renamed
+  (id-stable, options + authored values preserved) to the shared
+  `shared_accordion_variant`, so it flips from the Web card to the Shared card
+  (`StyleRepository::deriveFieldScope`) and is read by both platforms — web maps
+  it to the Mantine `variant` (default/contained/filled/separated), mobile maps
+  it through `@selfhelp/shared` `mapAccordionVariantToHeroUiVariant` onto the
+  HeroUI Native Accordion `variant` (`default`/`surface`). The field is now
+  `clearable`. `accordion-item` gains the existing translatable `description`
+  field as an optional subtitle under the item label (empty = hidden). The
+  mobile renderers were rebuilt on the HeroUI Native `Accordion` compound
+  (themed + animated, theme-aware text via `useAppColors`), fixing the previous
+  hard-coded `#e9ecef` border + uncoloured `<Text>` dark-mode bugs. This is a
+  **coordinated change** paired with `@selfhelp/shared` `>=1.14.8` and the
+  coupled web + mobile renderers. (migration `Version20260619183601`;
+  `AdminStyleEndpointsTest::testAccordionPolishWaveFieldsAndScopes`,
+  `Version20260619183601RoundTripTest`; docs `docs/reference/styles/composite.md`)
+
+## CMS Styles — card/card-segment/checkbox/chip/code/title authoring polish
+
+- **Seven core styles got a cross-platform field clean-up and an authoring-UX
+  upgrade** (migration `Version20260619191224`), continuing the style polish
+  wave. Highlights:
+  - **`card`** gains two optional auto-styled **content** fields — `title` (an
+    automatic heading) and `img_src` (an asset-picker top image). They render
+    only when filled (empty = a plain card, exactly as before) and **never**
+    auto-create a child section — authors keep full manual control with child
+    sections. Border becomes cross-platform: `card` drops the web-only
+    `web_border` and gains the new shared `shared_border` (Mantine `withBorder`
+    on web, a themed border on mobile). The global `web_border` field stays for
+    `indicator`/`notification`/`paper`/`validate`, which remain web-only for now.
+  - **`card-segment`** gains the new shared `shared_border` (Mantine
+    `Card.Section withBorder`; a themed divider on mobile) and the new web-only
+    `web_segment_inherit_padding` (Mantine `inheritPadding`).
+  - **`checkbox`** promotes `web_checkbox_label_position` → `shared_label_position`
+    (label side is honoured on both platforms).
+  - **`chip`** promotes `web_chip_variant` → `shared_chip_variant` (id-stable;
+    keeps the `filled`/`outline`/`light` enum — distinct from the wider generic
+    `shared_variant` — and is now clearable).
+  - **`code`** promotes `web_code_block` → `code_block` (cross-platform
+    block-vs-inline behaviour, unprefixed) and links `shared_radius`.
+  - **`title`** links `shared_color`, and promotes `web_title_order` →
+    `title_order` (semantic heading level on both platforms) and
+    `web_title_line_clamp` → `shared_line_clamp` (mobile `numberOfLines`);
+    `web_title_text_wrap` stays web-only.
+  - Field scope is derived from the name prefix
+    (`StyleRepository::deriveFieldScope`), so each rename flips the field from the
+    Web card to the Shared/Properties card and makes it readable by the mobile
+    renderer. Relationships and authored content reference fields by id, so the
+    id-stable renames never break a link. This is a **coordinated change** paired
+    with `@selfhelp/shared` and the coupled web + mobile renderers.
+    (`AdminStyleEndpointsTest::testCardFamilyAndTypographyPolishWaveFieldsAndScopes`,
+    `Version20260619191224RoundTripTest`; docs `docs/reference/styles/layout.md`,
+    `typography.md`, `forms.md`, `interactive.md`)
+
+## CMS Styles — alert/badge/avatar/button/login authoring polish
+
+- **The `alert`, `badge`, `avatar`, `button` and `login` styles got a field
+  clean-up so their cross-platform visual semantics live in `shared_*`/`common`
+  fields and the catalog drops dead/mis-scoped fields** (migration
+  `Version20260619131830`, FK-safe + reversible):
+  - **alert** — removed the dead `shared_size` link (Mantine `Alert` has no
+    `size`) and renamed the web-only `web_with_close_button` to the
+    cross-platform `closable` (`common` scope) so mobile can honour the dismiss
+    control.
+  - **badge** — added the cross-platform `shared_variant` (default `filled`;
+    existing `web_variant` values migrated onto it) and a `circle` toggle
+    (`common`) for round count chips; `web_variant` is kept as a web-only escape
+    hatch (default empty) for web-specific variants such as `dot`.
+  - **avatar** — linked the existing `name` field (`common`) so authors get
+    auto-initials + a stable auto colour without filling `web_avatar_initials`.
+  - **button** — promoted the variant to the cross-platform `shared_variant`
+    (default `filled`; existing `web_variant` values migrated onto it) and
+    removed the button-only `web_variant` link; linked the existing `url` field
+    so external links work without an internal `page_keyword`.
+  - **login** — linked the optional translatable `subtitle` content field
+    (shown under the title; hidden when empty); `shared_color` (already present)
+    is now documented as the submit-button colour.
+  - The `admin/styles/schema` contract, the regenerated
+    `docs/reference/styles/style-field-audit.generated.json`, the
+    `interactive.md` / `auth/login.md` reference pages, a migration round-trip
+    test and an `AdminStyleEndpointsTest` regression covering the new
+    fields/scopes all ship in the same change. The coupled `@selfhelp/shared`
+    type + web/mobile renderer reads (incl. correcting the shared type's stale
+    `web_avatar_variant`/`type`) land in the renderer wave.
+  - **Compatibility:** the field renames finalise the (still-unreleased) `0.1.15`
+    style-schema contract, so `release-manifest.json` `supports.frontend` rose to
+    `>=0.1.23 <0.2.0` (the frontend that reads the renamed `closable` /
+    `shared_variant` names); `selfhelp.cms_version` stays `0.1.15` (unreleased —
+    the changes fold into it) and `docs/developer/cross-repo-compatibility-matrix.md`
+    was updated to the `frontend >=0.1.23 ⇄ core >=0.1.15`, shared `1.14.6`,
+    mobile `0.1.2` snapshot.
 
 # v0.1.13
 

@@ -38,6 +38,7 @@ final class LookupService
     public const TRANSACTION_BY = 'transactionBy';
     public const JOB_TYPES = 'jobTypes';
     public const PAGE_ACCESS_TYPES = 'pageAccessTypes';
+    public const STYLE_RENDER_TARGETS = 'styleRenderTargets';
     public const HOOK_TYPES = 'hookTypes';
     public const ASSET_TYPES = 'assetTypes';
     public const GROUP_TYPES = 'groupTypes';

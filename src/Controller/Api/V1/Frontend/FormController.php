@@ -22,10 +22,13 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
 
 /**
- * Controller for public form data submissions
+ * Controller for public form data submissions.
+ *
+ * Routes are DB-defined (loaded by {@see \App\Routing\ApiRouteLoader}), not PHP
+ * attributes — see the `form_submit` / `form_update` / `form_delete` rows in
+ * the seeded `api_routes` table (POST/PUT/DELETE /cms-api/v1/forms/*).
  */
 class FormController extends AbstractController
 {
@@ -80,7 +83,9 @@ class FormController extends AbstractController
             // Determine if user is authenticated
             $currentUser = $this->userContextService->getCurrentUser();
             $isAuthenticated = $currentUser !== null;
-            $userId = $currentUser ? (int) $currentUser->getId() : 1; // Guest user fallback
+            // Anonymous uploads are namespaced under the guest sentinel, never
+            // the admin id 1. The saved record's owner is set to NULL by DataService.
+            $userId = $currentUser ? (int) $currentUser->getId() : UserContextService::GUEST_USER_ID;
 
             // Validate form submission
             if ($isAuthenticated) {

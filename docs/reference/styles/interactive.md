@@ -3,13 +3,13 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 interactive styles (`@selfhelp/shared` `interactive` category).
-Last verified: 2026-06-04.
+Last verified: 2026-06-22.
 Source of truth: `src/types/styles/interactive.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Interactive styles are buttons, links, badges, and status chrome. Read
 [`_conventions.md`](./_conventions.md) first; common fields and standard Mantine
-cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
-`mantine_variant`, icons) are not repeated below.
+cosmetic props (`web_size`, `color`, `web_radius`,
+`web_variant`, icons) are not repeated below.
 
 ---
 
@@ -17,11 +17,18 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Purpose.** Mantine `Button` — the primary call-to-action. Can act as a link and can ask for confirmation before navigating.
 
-**Administrators.** Set the `label`. To make it navigate, turn on `is_link` and set either `page_keyword` (an internal page) or `url` (external); `open_in_new_tab` opens a new tab. For destructive/important actions, fill the `confirmation_*` fields to pop a confirm dialog first.
+**Administrators.** Set the `label`. To make it navigate, turn on `is_link` and set either `page_keyword` (an internal page) or `url` (external); `open_in_new_tab` opens a new tab. Pick the cross-platform `variant` (filled / light / outline / subtle / transparent / white) so the button looks the same on web and mobile. For destructive/important actions, fill the `confirmation_*` fields to pop a confirm dialog first.
 
-**Developers.** Renders `<Button>`; when `is_link` it wraps navigation. When `confirmation_title`/`confirmation_message` are set, a confirmation modal gates the action (with `confirmation_continue` / `label_cancel` buttons). `mantine_fullwidth`, `mantine_compact`, and `mantine_auto_contrast` tune layout/contrast.
+**Developers.** Renders `<Button>`; when `is_link` it wraps navigation (internal `page_keyword` takes precedence over the external `url`). When `confirmation_title`/`confirmation_message` are set, a confirmation modal gates the action (with `confirmation_continue` / `label_cancel` buttons). The visual variant comes from `variant` (mapped to the Mantine variant on web and HeroUI on mobile); `full_width`, `web_compact`, and `web_auto_contrast` tune layout/contrast.
 
-**Distinctive fields.** `label`, `is_link`, `page_keyword`, `url`, `open_in_new_tab`, `disabled`, `mantine_left_icon` / `mantine_right_icon`, `mantine_fullwidth`, `mantine_compact`, `mantine_auto_contrast`, `confirmation_title`, `confirmation_message`, `confirmation_continue`, `label_cancel`.
+**Distinctive fields.** `label`, `is_link`, `page_keyword`, `url`, `open_in_new_tab`, `disabled`, `variant`, `full_width`, `web_left_icon` / `web_right_icon`, `web_compact`, `web_auto_contrast`, `confirmation_title`, `confirmation_message`, `confirmation_continue`, `label_cancel`, `mobile_button_feedback` (mobile-only HeroUI Native press feedback: scale-highlight / scale-ripple / scale / none).
+
+> **Audit note (see [style-field-audit.md](./style-field-audit.md) §5).**
+> **Landed (backend `Version20260619131830`):** the visual variant is now the
+> cross-platform `variant` (default `filled`); existing `web_variant`
+> values were migrated onto it and the button-only `web_variant` link was
+> removed. The `url` field is now linked so external links work without an
+> internal `page_keyword`.
 
 **Children.** No.
 
@@ -31,11 +38,11 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Purpose.** A plain anchor / pressable navigation element.
 
-**Administrators.** A text link. Set the `label` and `url`, and whether it opens in a new tab.
+**Administrators.** A text link. Set the `label` and `url`, whether it opens in a new tab, the link `color`, when the underline shows (`web_link_underline`: always / hover / never), and optional leading/trailing icons (`web_left_icon` / `web_right_icon`, e.g. an external-link arrow).
 
-**Developers.** Renders `<a>` (web) / `Pressable` (mobile).
+**Developers.** Renders Mantine `<Anchor c={color} underline={web_link_underline}>` (web) / themed `Pressable`+`Text` (mobile). `web_left_icon` / `web_right_icon` render `<IconRenderer>` before/after the label. `color` resolves through the semantic mapper so the same colour applies on mobile.
 
-**Distinctive fields.** `label`, `url`, `open_in_new_tab`.
+**Distinctive fields.** `label`, `url`, `open_in_new_tab`, `color`, `web_link_underline` (`always` | `hover` | `never`), `web_left_icon`, `web_right_icon`.
 
 **Children.** No.
 
@@ -45,11 +52,11 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Purpose.** Mantine `ActionIcon` — an icon-only button.
 
-**Administrators.** A compact button showing just an icon (e.g. a settings cog). Pick the icon (`mantine_left_icon`); optionally make it a link to a page.
+**Administrators.** A compact button showing just an icon (e.g. a settings cog). Pick the icon (`web_left_icon`); set an `aria_label` so screen readers announce what it does; optionally make it a link to a page.
 
-**Developers.** Renders `<ActionIcon>`; `mantine_action_icon_loading` shows a spinner. Supports `is_link` + `page_keyword` navigation.
+**Developers.** Renders `<ActionIcon aria-label={aria_label}>`; `web_action_icon_loading` shows a spinner. Supports `is_link` + `page_keyword` navigation. `aria_label` is the accessible name for the icon-only control.
 
-**Distinctive fields.** `mantine_left_icon` (the icon), `mantine_action_icon_loading`, `is_link`, `page_keyword`, `open_in_new_tab`, `disabled`.
+**Distinctive fields.** `web_left_icon` (the icon), `aria_label` (accessible name), `web_action_icon_loading`, `is_link`, `page_keyword`, `open_in_new_tab`, `disabled`.
 
 **Children.** No.
 
@@ -57,13 +64,37 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 ## alert
 
-**Purpose.** Mantine `Alert` — a coloured call-out box for important messages.
+**Purpose.** A coloured call-out box for important messages. Web → Mantine
+`Alert`; mobile → HeroUI Native `Alert` (`Indicator` + `Content` + `Title` +
+`Description`). See the field-by-field mapping in
+[style-mobile-mapping.md](./style-mobile-mapping.md) §5.
 
-**Administrators.** Surface a notice, warning, or success message. Set the `mantine_alert_title` and `content`, pick a colour, and optionally allow it to be dismissed.
+**Administrators.** Surface a notice, warning, or success message. Set the title
+and `content`, pick a colour (and a web `web_variant`), and optionally allow it
+to be dismissed with the `closable` toggle.
 
-**Developers.** Renders `<Alert>`; `mantine_with_close_button` adds a dismiss control with `close_button_label`. Can also contain child sections.
+**Developers.** The message comes from `content` (read by both platforms; mobile
+maps it to `Alert.Description`). `closable` (a cross-platform `common` toggle)
+adds a dismiss control on both web and mobile. The colour comes from
+`color` via the shared mapper; `web_variant` and `web_left_icon` are
+web-only. Can also contain child sections.
 
-**Distinctive fields.** `mantine_alert_title`, `content`, `mantine_with_close_button`, `close_button_label`, `mantine_left_icon`.
+**Distinctive fields.** `content` (the message), `alert_title`, `closable`,
+`color`, `radius`, `web_variant`, `web_left_icon`.
+
+> **Audit note (see [style-field-audit.md](./style-field-audit.md) §5).**
+> **Landed (backend `Version20260619090609`):** `value` (duplicated `content`) and
+> `web_alert_with_close_button` (duplicated `web_with_close_button`) were removed,
+> and `web_alert_title` was renamed to the unprefixed `alert_title` both platforms
+> read (RF-07/08/10). The `@selfhelp/shared` type + web/mobile reads follow in the
+> coupled renderer wave (the shared type's stale `close_button_label` is dropped
+> there). Tracked in
+> [style-refactoring-recommendations.md](./style-refactoring-recommendations.md).
+>
+> **Landed (backend `Version20260619131830`):** the dead `size` link
+> (Mantine `Alert` has no `size`) was removed, and `web_with_close_button` was
+> renamed to the cross-platform `closable` (`common` scope) so mobile can honour
+> the dismiss control too.
 
 **Children.** Yes.
 
@@ -73,11 +104,16 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Purpose.** Mantine `Badge` — a small status pill/label.
 
-**Administrators.** Tag content with a short label (e.g. "New", a count, a status). Set the `label`, colour, and variant.
+**Administrators.** Tag content with a short label (e.g. "New", a count, a status). Set the `label`, colour, and the cross-platform `variant` (filled / light / outline / dot …). Turn on `circle` for a round count chip. `web_variant` is an optional web-only override for web-specific looks.
 
-**Developers.** Renders `<Badge>`. Supports left/right icons and `mantine_auto_contrast`.
+**Developers.** Renders `<Badge>`. The visual variant comes from `variant` (mapped to the Mantine variant on web and HeroUI on mobile); the optional `web_variant` overrides it on web only when set. `circle` is a cross-platform `common` toggle that makes the badge a circle (equal width/height, no horizontal padding). Supports left/right icons and `web_auto_contrast`.
 
-**Distinctive fields.** `label`, `mantine_left_icon` / `mantine_right_icon`, `mantine_auto_contrast`.
+**Distinctive fields.** `label`, `variant`, `circle`, `web_left_icon` / `web_right_icon`, `web_auto_contrast`, `web_variant` (web-only override).
+
+> **Audit note.** **Landed (backend `Version20260619131830`):** added the
+> cross-platform `variant` (default `filled`; existing `web_variant`
+> values migrated onto it) and the `circle` toggle. `web_variant` is kept as a
+> web-only escape hatch (default empty) for web-specific variants such as `dot`.
 
 **Children.** No.
 
@@ -87,11 +123,17 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Purpose.** Mantine `Avatar` — a user/profile image, initials, or icon placeholder.
 
-**Administrators.** Show a profile picture. Provide `img_src`, or fall back to `mantine_avatar_initials` / an icon when there is no image.
+**Administrators.** Show a profile picture. Provide `img_src`; when there is no image, set `name` to auto-generate initials and a stable colour, or fall back to explicit `web_avatar_initials` / an icon.
 
-**Developers.** Renders `<Avatar src>`; falls back to initials/icon.
+**Developers.** Renders `<Avatar src>`; when `img_src` is empty it falls back to initials derived from `name` (cross-platform `common`, also seeds Mantine's auto colour), then `web_avatar_initials`, then `web_left_icon`. The visual variant is the web-only `web_variant`.
 
-**Distinctive fields.** `img_src`, `alt`, `mantine_avatar_initials`, `mantine_left_icon`, `mantine_avatar_variant`.
+**Distinctive fields.** `img_src`, `alt`, `name`, `web_avatar_initials`, `web_left_icon`, `web_variant`.
+
+> **Audit note.** **Landed (backend `Version20260619131830`):** the existing
+> `name` field is now linked so authors get auto-initials/colour without manual
+> `web_avatar_initials`. The variant field on web is `web_variant` (the
+> `@selfhelp/shared` type's stale `web_avatar_variant` is corrected in the
+> coupled shared/renderer wave).
 
 **Children.** No.
 
@@ -101,11 +143,11 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Purpose.** Mantine `Chip` — a selectable pill, often used as a checkbox/radio alternative in forms.
 
-**Administrators.** A toggleable tag. As a form input, set `name`, the on/off values (`chip_on_value` / `chip_off_value`), and whether it is required. `mantine_chip_multiple` allows multi-select within a group.
+**Administrators.** A toggleable tag. As a form input, set `name`, the on/off values (`chip_on_value` / `chip_off_value`), and whether it is required. `web_chip_multiple` allows multi-select within a group.
 
-**Developers.** Renders `<Chip>`; participates in form submission via `name`/`value`. `mantine_chip_checked` sets the initial state; tooltip fields add a hover hint.
+**Developers.** Renders `<Chip>`; participates in form submission via `name`/`value`. `chip_checked` sets the initial state; tooltip fields add a hover hint. The visual variant is the cross-platform `chip_variant` (Mantine `filled`/`outline`/`light` on web; the HeroUI Native chip variant on mobile) and is clearable.
 
-**Distinctive fields.** `label`, `name`, `value`, `chip_on_value` / `chip_off_value` (and the `mantine_chip_on_value`/`mantine_chip_off_value` mirrors), `chip_checked` / `mantine_chip_checked`, `mantine_chip_multiple`, `is_required`, `disabled`, `mantine_chip_variant`, `tooltip`, `mantine_tooltip_position`, `mantine_left_icon`, `mantine_icon_size`.
+**Distinctive fields.** `label`, `name`, `value`, `chip_on_value` / `chip_off_value`, `chip_checked`, `is_required`, `disabled`, `chip_variant` (filled/outline/light, shared, clearable), `web_tooltip_position`, `web_left_icon`, `web_icon_size`.
 
 **Children.** No.
 
@@ -117,9 +159,9 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Administrators.** Add a status dot or count to another element. Place the target as a child; set position, size, and an optional `label` (count).
 
-**Developers.** Renders `<Indicator>` around its child. `mantine_indicator_processing` animates it; `mantine_indicator_disabled` hides it.
+**Developers.** Renders `<Indicator>` around its child. `web_indicator_processing` animates it; `web_indicator_disabled` hides it.
 
-**Distinctive fields.** `label` (count), `mantine_indicator_position`, `mantine_indicator_size`, `mantine_indicator_offset`, `mantine_indicator_inline`, `mantine_indicator_processing`, `mantine_indicator_disabled`, `mantine_border`, `mantine_radius`, `mantine_color`.
+**Distinctive fields.** `label` (count), `web_indicator_position`, `web_indicator_size`, `web_indicator_offset`, `web_indicator_inline`, `web_indicator_processing`, `web_indicator_disabled`, `web_border`, `web_radius`, `color`.
 
 **Children.** Yes.
 
@@ -131,9 +173,9 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 **Administrators.** Show an icon with a coloured background (e.g. feature bullets). Pick the icon and colour.
 
-**Developers.** Renders `<ThemeIcon>` containing `mantine_left_icon`.
+**Developers.** Renders `<ThemeIcon>` containing `web_left_icon`.
 
-**Distinctive fields.** `mantine_left_icon` (the icon), `mantine_variant`.
+**Distinctive fields.** `web_left_icon` (the icon), `web_variant`.
 
 **Children.** No.
 
@@ -141,13 +183,18 @@ cosmetic props (`mantine_size`, `mantine_color`, `mantine_radius`,
 
 ## notification
 
-**Purpose.** Mantine `Notification` — a toast-style notification block.
+**Purpose.** A toast-style notification block — Mantine `Notification` on web, HeroUI Native `Alert` on mobile.
 
-**Administrators.** Render an inline notification with a title, body, icon, and optional loading state / close button.
+**Administrators.** Render an inline notification with a title, body, icon, colour and an optional dismiss button. The icon and close button are **portable** — they show on web **and** mobile.
 
-**Developers.** Renders `<Notification>`; `mantine_notification_loading` shows a spinner; `mantine_notification_with_close_button` adds dismiss.
+**Developers.** Web renders `<Notification>` (`src/app/components/frontend/styles/mantine/NotificationStyle.tsx`); mobile renders HeroUI Native `<Alert>` + `<CloseButton>` (`components/styles/interactive/Notification.tsx`, theme-aware). The icon and dismiss toggle were promoted from `web_*` to `shared_*` so both renderers honour them:
 
-**Distinctive fields.** `title`, `content`, `mantine_left_icon`, `mantine_notification_loading`, `mantine_notification_with_close_button`, `mantine_border`, `mantine_radius`, `mantine_color`.
+- `shared_icon` (`select-icon`) — web shows the exact chosen glyph; mobile has no icon font, so it shows the status-appropriate `Alert.Indicator` when an icon is set (documented platform remap).
+- `with_close_button` — both platforms render a dismiss button that hides the notification.
+- `color` — web uses the exact Mantine colour; mobile maps it to the nearest HeroUI Alert `status` (`success` / `danger` / `warning` / `accent` / `default`).
+- `web_notification_loading` (web spinner) and `web_border` stay web-only.
+
+**Distinctive fields.** `title`, `content`, `shared_icon`, `with_close_button`, `color`, `radius`, `web_notification_loading`, `web_border`.
 
 **Children.** No.
 

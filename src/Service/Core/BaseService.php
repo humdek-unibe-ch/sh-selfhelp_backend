@@ -27,6 +27,14 @@ abstract class BaseService
     }
     
     /**
+     * Throw an unauthorized (401) exception
+     */
+    protected function throwUnauthorized(string $message = 'Authentication required'): never
+    {
+        throw new ServiceException($message, Response::HTTP_UNAUTHORIZED);
+    }
+
+    /**
      * Throw a forbidden exception
      */
     protected function throwForbidden(string $message = 'Access denied'): never
