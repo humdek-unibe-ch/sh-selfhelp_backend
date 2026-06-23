@@ -1,3 +1,47 @@
+# v0.1.18
+
+## Security — anonymous access hardening + frontend page route cleanup
+
+- **Anonymous callers are no longer treated as user id 1 (admin).** The guest
+  fallback in `ACLService`, `UserContextAwareService`, and `PageService` resolved
+  an unauthenticated request to user id `1` — which belongs to the admin group —
+  so anonymous visitors inherited admin page ACLs and could read restricted
+  pages (and collided with the admin's page/section cache namespace). A dedicated
+  guest sentinel `UserContextService::GUEST_USER_ID = 0` now represents
+  anonymous callers; it is a member of no group, so branch 1 of the `get_user_acl`
+  stored procedure returns nothing and only `is_open_access = 1` pages (branch 2)
+  are reachable without authentication.
+- **Anonymous form submissions store a `NULL` owner**, not admin id 1
+  (`DataService::saveData` + `FormController`). `data_rows.id_users` is nullable
+  and carries no FK, so an unauthenticated submission is correctly un-owned.
+- **`preview=true` now requires authentication.** `PageService` rejects an
+  anonymous draft request with `401` before any draft is rendered (the page ACL
+  check still applies on top of that for authenticated callers).
+- **Migration `Version20260623082726`** marks the public global pages
+  `sh-global-css` and `sh-global-values` as `is_open_access = 1` so anonymous
+  visitors keep loading global CSS/values after the sentinel fix (these were only
+  reachable before *because* of the admin-id-1 bug). `sh-cms-preferences` stays
+  private. The same migration removes the duplicate `pages_get_one` API route
+  (see below).
+- **Removed the duplicate `GET /cms-api/v1/pages/{page_id}` route.** Single page
+  content is now resolved exclusively by keyword
+  (`GET /cms-api/v1/pages/by-keyword/{keyword}`), which the web/mobile BFF already
+  used exclusively — the numeric-id route was an unused legacy duplicate that
+  shared the identical ACL/serving path. `PageController::getPage` and
+  `PageService::getPage` are deleted; misleading `@Route` docblocks on
+  `PageController`/`FormController` (routes are DB-defined, loaded by
+  `ApiRouteLoader`) were replaced with accurate comments.
+- **Tests:** anonymous-can't-inherit-admin-ACL (`403`) and anonymous-reads-open-access
+  (`200`) golden cases (`PublicPageRenderingWorkflowTest`), anonymous `preview=true`
+  → `401` (`PageControllerModeTest`), anonymous form submission → `NULL` owner
+  (`FormControllerTest`), and a round-trip test for `Version20260623082726`.
+- **Cross-repo impact:** this is a breaking backend change, but it is
+  **client-transparent** — no frontend/mobile/shared code referenced the by-id
+  route (all use by-keyword), and the anonymous-access hardening requires no
+  client adoption. The frontend ⇄ backend `supports.*` floors are therefore
+  unchanged (frontend `>=0.1.29` ⇄ core `>=0.1.17`); core `0.1.18` is within the
+  frontend's existing `supports.core` range.
+
 # v0.1.17
 
 ## CMS Styles — mobile-only (HeroUI Native) capability pass

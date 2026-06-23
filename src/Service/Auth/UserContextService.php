@@ -36,6 +36,20 @@ use Symfony\Component\HttpFoundation\RequestStack;
  */
 class UserContextService
 {
+    /**
+     * Sentinel id used for anonymous (unauthenticated) visitors at the ACL
+     * and cache boundary. It is deliberately NOT a real user row: the
+     * `get_user_acl` stored procedure joins `rel_groups_users` on this id,
+     * finds no group memberships, and therefore returns ONLY pages flagged
+     * `is_open_access = 1`. Using a dedicated id (not the admin's id 1) also
+     * keeps anonymous page/section render caches in their own entity scope so
+     * they can never collide with a real user's personalised content.
+     *
+     * It must never be written to `*.id_users` columns — anonymous-owned
+     * rows store `NULL` there (the columns are nullable and carry no FK).
+     */
+    public const GUEST_USER_ID = 0;
+
     private ?User $cachedUser = null;
     private bool $userResolved = false;
 

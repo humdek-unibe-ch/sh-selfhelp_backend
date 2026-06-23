@@ -21,13 +21,14 @@ use Symfony\Component\HttpFoundation\Response;
  * Service-level coverage for {@see PageService} rendering of the stable,
  * guest-accessible seeded `home` page (the baseline reset grants the guest
  * group ACL select on it, so it renders with no security context):
- *   - keyword lookup matches id lookup (same hydrated page),
+ *   - keyword lookup resolves the seeded page,
  *   - the hydrated draft payload shape (page + sections),
  *   - language resolution falls back to the CMS default when none is given,
  *   - the cross-platform mode guard 404s a `web`-only page for a mobile caller.
  *
- * Recursive section ordering / data_config hydration on a *controlled* page
- * graph is covered by the golden workflow
+ * Page content is resolved exclusively by keyword (the legacy numeric-id
+ * lookup was removed). Recursive section ordering / data_config hydration on a
+ * *controlled* page graph is covered by the golden workflow
  * {@see \App\Tests\Golden\PublicPageRenderingWorkflowTest} (which grants ACL and
  * renders through HTTP).
  */
@@ -41,24 +42,19 @@ final class PageServiceRenderingTest extends QaKernelTestCase
         $this->pageService = $this->service(PageService::class);
     }
 
-    public function testKeywordLookupMatchesIdLookup(): void
+    public function testKeywordLookupResolvesSeededHomePage(): void
     {
         $homeId = $this->pageIdByKeyword('home');
 
-        $byId = $this->pageService->getPage($homeId, null, false, LookupService::PAGE_ACCESS_TYPES_WEB);
         $byKeyword = $this->pageService->getPageByKeyword('home', null, false, LookupService::PAGE_ACCESS_TYPES_WEB);
 
-        self::assertSame($homeId, $this->pageId($byId));
         self::assertSame($homeId, $this->pageId($byKeyword));
-        self::assertSame('home', $this->pageKeyword($byId));
-        self::assertSame($this->pageId($byId), $this->pageId($byKeyword), 'keyword and id lookups must resolve the same page.');
+        self::assertSame('home', $this->pageKeyword($byKeyword));
     }
 
     public function testHydratedPagePayloadHasPageAndSections(): void
     {
-        $homeId = $this->pageIdByKeyword('home');
-
-        $payload = $this->pageService->getPage($homeId, null, false, LookupService::PAGE_ACCESS_TYPES_WEB);
+        $payload = $this->pageService->getPageByKeyword('home', null, false, LookupService::PAGE_ACCESS_TYPES_WEB);
 
         self::assertArrayHasKey('page', $payload);
         self::assertIsArray($payload['page']);
@@ -74,18 +70,16 @@ final class PageServiceRenderingTest extends QaKernelTestCase
 
         // Passing null language must resolve to the CMS default (no exception)
         // and produce the same page as the explicit web mode call above.
-        $payload = $this->pageService->getPage($homeId, null, false, LookupService::PAGE_ACCESS_TYPES_WEB);
+        $payload = $this->pageService->getPageByKeyword('home', null, false, LookupService::PAGE_ACCESS_TYPES_WEB);
 
         self::assertSame($homeId, $this->pageId($payload));
     }
 
     public function testWebOnlyPageRejectedForMobileMode(): void
     {
-        $webOnlyId = $this->pageIdByKeyword('sh-global-css');
-
         $this->expectException(ServiceException::class);
         $this->expectExceptionCode(Response::HTTP_NOT_FOUND);
-        $this->pageService->getPage($webOnlyId, null, false, LookupService::PAGE_ACCESS_TYPES_MOBILE);
+        $this->pageService->getPageByKeyword('sh-global-css', null, false, LookupService::PAGE_ACCESS_TYPES_MOBILE);
     }
 
     // -- helpers ------------------------------------------------------------

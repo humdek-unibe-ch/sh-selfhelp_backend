@@ -154,12 +154,10 @@ class UserContextAwareService extends BaseService
      */
     private function checkAdminPermission(int $resourceId, string $permission): void
     {
-        // Get current user ID
+        // Get current user ID (anonymous callers resolve to the guest sentinel,
+        // which holds no data-access permissions, so admin checks deny by default).
         $user = $this->getCurrentUser();
-        $userId = 1; // guest user
-        if ($user) {
-            $userId = $user->getId();
-        }
+        $userId = $user ? $user->getId() : UserContextService::GUEST_USER_ID;
 
         // Convert permission string to DataAccessSecurityService bit flags
         $permissionBit = match ($permission) {
@@ -209,12 +207,11 @@ class UserContextAwareService extends BaseService
      */
     private function checkAclPermission(int $resourceId, string $permission): void
     {
-        // Get current user ID
+        // Get current user ID. Anonymous callers resolve to the guest sentinel,
+        // which has no group memberships, so ACLService only grants open-access
+        // pages — never the admin group's pages (the old `1` fallback leaked them).
         $user = $this->getCurrentUser();
-        $userId = 1; // guest user
-        if ($user) {
-            $userId = $user->getId();
-        }
+        $userId = $user ? $user->getId() : UserContextService::GUEST_USER_ID;
 
         // Check ACL permission for the resource
         if (!$this->aclService->hasAccess($userId, $resourceId, $permission)) {

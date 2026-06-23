@@ -43,8 +43,8 @@ class PageTranslationTest extends BaseControllerTest
     public function testGetPagesWithLanguageId(): void
     {
         // English is language id 3 (en-GB). Pages filtered by language use the
-        // dedicated /pages/language/{language_id} route ( /pages/{page_id} is
-        // a single page by numeric id).
+        // dedicated /pages/language/{language_id} route (single page content is
+        // resolved by keyword via /pages/by-keyword/{keyword}).
         $this->client->request('GET', '/cms-api/v1/pages/language/3');
         
         $response = $this->client->getResponse();

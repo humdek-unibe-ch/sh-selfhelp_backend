@@ -12,6 +12,7 @@ use App\Entity\PageAclGroup;
 use App\Entity\Group;
 use App\Entity\Page;
 use App\Entity\User;
+use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Repository\AclRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,8 +43,10 @@ class ACLService
      */
     public function hasAccess(int|string|null $userId, int $pageId, string $accessType = 'select'): bool
     {
-        // Normalize userId: null becomes the guest user, strings are coerced to int.
-        $userId = $userId === null ? 1 : (is_int($userId) ? $userId : (int) $userId);
+        // Normalize userId: null becomes the anonymous guest sentinel (which
+        // has no group memberships, so only open-access pages resolve), strings
+        // are coerced to int.
+        $userId = $userId === null ? UserContextService::GUEST_USER_ID : (is_int($userId) ? $userId : (int) $userId);
 
         $cacheKey = "user_acl_{$pageId}";
         return $this->cache
@@ -100,7 +103,7 @@ class ACLService
     {
         // Handle null or non-integer userId
         if ($userId === null) {
-            $userId = 1; // Guest user ID
+            $userId = UserContextService::GUEST_USER_ID; // anonymous guest sentinel
         } elseif (!is_int($userId)) {
             // Convert string user ID to int if needed
             $userId = (int) $userId;

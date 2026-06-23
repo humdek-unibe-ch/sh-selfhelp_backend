@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-23.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 ## Overview
@@ -467,15 +467,20 @@ GET /cms-api/v1/admin/pages/{page_id}/versions/has-changes
 
 #### Get Page (with Versioning Support)
 ```http
-GET /cms-api/v1/pages/{page_id}?preview=false&language_id=1
+GET /cms-api/v1/pages/by-keyword/{keyword}?preview=false&language_id=1
 ```
+
+Page content is resolved exclusively by keyword (the legacy numeric
+`GET /cms-api/v1/pages/{page_id}` route was removed).
 
 **Serving Logic Implementation:**
 ```php
-// PageService::getPage()
-public function getPage(int $page_id, ?int $language_id = null, bool $preview = false): array
+// PageService::getPageByKeyword()
+public function getPageByKeyword(string $keyword, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
 {
-    // Determine serving mode based on parameters and published version availability
+    // Drafts are never served anonymously: preview requires authentication.
+    // Then the page ACL is enforced; finally the serving mode is chosen based
+    // on the preview flag and published-version availability:
     if (!$preview && $page->getPublishedVersionId()) {
         return $this->servePublishedVersion($page_id, $languageId);  // Published mode
     } else {
@@ -485,7 +490,8 @@ public function getPage(int $page_id, ?int $language_id = null, bool $preview = 
 ```
 
 #### Parameters
-- `preview`: Set to `true` to force draft serving (requires authentication)
+- `preview`: Set to `true` to force draft serving. Requires authentication — an
+  anonymous `preview=true` request is rejected with `401`.
 - `language_id`: Optional language ID for translations
 
 #### Serving Modes
@@ -568,11 +574,11 @@ $deletedCount = $pageVersionService->applyRetentionPolicy($pageId, $keepCount = 
 ```php
 use App\Service\CMS\Frontend\PageService;
 
-// Get page (respects published version)
-$page = $pageService->getPage($pageId, $languageId, $preview = false);
+// Get page by keyword (respects published version)
+$page = $pageService->getPageByKeyword($keyword, $languageId, $preview = false);
 
-// Force draft serving
-$draft = $pageService->getPage($pageId, $languageId, $preview = true);
+// Force draft serving (requires an authenticated caller with page ACL select)
+$draft = $pageService->getPageByKeyword($keyword, $languageId, $preview = true);
 ```
 
 ## Utilities
@@ -874,10 +880,10 @@ $publishedVersion = $pageVersionService->getPublishedVersion($pageId);
 assert($publishedVersion->getId() === $version->getId());
 
 // 3. Users now see published version
-$page = $pageService->getPage($pageId); // Serves published version
+$page = $pageService->getPageByKeyword($keyword); // Serves published version
 
-// 4. Developers can preview changes
-$draft = $pageService->getPage($pageId, null, true); // Serves draft
+// 4. Authenticated editors can preview changes
+$draft = $pageService->getPageByKeyword($keyword, null, true); // Serves draft
 
 // 5. Compare with previous version
 $comparison = $pageVersionService->compareVersions(

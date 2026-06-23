@@ -553,6 +553,15 @@ class CacheService
             );
         }
 
+        // The anonymous guest sentinel (user id 0 — UserContextService::GUEST_USER_ID)
+        // is a legitimate "no specific user" scope: anonymous callers are
+        // indistinguishable, so their cache entries are intentionally shared and
+        // simply carry no user scope. Skip it instead of failing; every other
+        // entity id must still be a positive primary key.
+        if ($entityType === self::ENTITY_SCOPE_USER && $entityId === 0) {
+            return $this;
+        }
+
         // Validate entity ID is positive
         if ($entityId <= 0) {
             throw new \InvalidArgumentException("Entity ID must be positive, got: {$entityId}");
@@ -634,6 +643,13 @@ class CacheService
                 "Unsupported entity scope type: {$entityType}. " .
                 "Supported types: " . implode(', ', self::ALL_ENTITY_SCOPES)
             );
+        }
+
+        // The anonymous guest sentinel (user id 0) carries no user scope and has
+        // no per-user cache generation to bump; mirror withEntityScope() and
+        // treat it as a no-op instead of failing.
+        if ($entityType === self::ENTITY_SCOPE_USER && $entityId === 0) {
+            return;
         }
 
         // Validate entity ID is positive

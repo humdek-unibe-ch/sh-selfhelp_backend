@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-22.
+Last verified: 2026-06-23.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -117,6 +117,18 @@ the same change wave:
 > (the prefix drop landed in `1.14.22`; this branch resolves the caret to `1.14.23`,
 > carrying the unprefixed `I*Style` field contracts) stays the type anchor on top
 > of this version gate.
+>
+> **Core 0.1.18 (anonymous-access hardening + page-route cleanup):** core `0.1.18`
+> fixes the anonymous-as-admin ACL bug (guest sentinel id 0), requires auth for
+> `preview=true`, stores anonymous form submissions un-owned, and **removes the
+> duplicate `GET /cms-api/v1/pages/{page_id}` route** (single page content is
+> resolved only by `GET /cms-api/v1/pages/by-keyword/{keyword}`). This is a
+> breaking backend change but **client-transparent**: no frontend/mobile/shared
+> code referenced the by-id route (the frontend `api.config.ts` only defines
+> `/pages`, `/pages/language/{id}`, `/pages/by-keyword/{keyword}`), and the
+> anonymous-access hardening needs no client adoption. The `supports.*` floors are
+> therefore **unchanged** — frontend `>=0.1.29` already satisfies core `>=0.1.17`,
+> which includes `0.1.18`.
 
 ## Current matrix (snapshot)
 
@@ -125,15 +137,15 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.17` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.18` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.14.23` | npm (1.14.22 dropped the `shared_` field-name prefix — "no prefix = both platforms" — paired with backend migration `Version20260622165615`; 1.14.23 follows up: removes the orphan `IImageStyle.height`/`width`, corrects the rich-text-editor registry description, tidies `media.ts`) |
 | `sh-selfhelp_frontend` | `0.1.29` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.22` | shared `1.x` line (field-naming unification) |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.23` | shared `1.x` line (field-naming unification) |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.17 <0.2.0` | first core that emits the unprefixed field names (field-naming unification, `Version20260622165615`) on top of the render-target + field-scope style schema + polish wave |
 | `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.29 <0.2.0` | frontend that adopted the field-naming unification (unprefixed common names from `Version20260622165615`) on top of the full 0.1.15 → 0.1.17 style schema + polish wave |
 | `sh-selfhelp_mobile` | `0.1.9` | — |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.22` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.23` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |
@@ -190,7 +202,7 @@ consumer.
 | **A `/cms-api` endpoint or behavior a client depends on** (added / changed / removed route, permission, or contract) | raise the `release-manifest.json` floors on BOTH sides — `supports.core` (frontend) and `supports.frontend` (backend) — to the new compatible pair, in the same change wave; update this matrix's "Current floor" note | `resolve-core-candidate.mjs` reports the intended pair as compatible (not `incompatible`) |
 | **Shared DTO / exported type** | bump `@selfhelp/shared` (minor if additive, major if breaking); adapt frontend + mobile; update the CHANGELOG | `npm run typecheck && npm test` (shared) + `ecosystem-compat` |
 | **Frontend renderer contract** (style impl map vs registry) | the shared style registry if a style was added/removed | frontend `npm run tsc` + Vitest |
-| **Mobile renderer contract** (`components/renderer/**`) | the shared registry/types it reads; keep `frontendOnly` styles renderable | mobile `npm run typecheck && npm test` |
+| **Mobile renderer contract** (`components/renderer/**`) | the shared registry/types it reads; keep every registry style renderable | mobile `npm run typecheck && npm test` |
 | **Plugin manifest compatibility** (`plugin.json`) | bump plugin `version`; align `compatibility.selfhelp` / `pluginApiVersion`; ship a migration on a MINOR | `selfhelp:plugin:doctor` + plugin certification |
 | **Host CMS major or plugin API** (`config/services.yaml`) | every plugin's `compatibility` range; this matrix; the shared SDK if the SDK surface changed | `selfhelp:plugin:doctor` |
 

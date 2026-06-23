@@ -9,22 +9,21 @@ declare(strict_types=1);
 
 namespace App\Tests\Controller\Api\V1\Frontend;
 
-use App\Entity\Page;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Tests\Support\QaWebTestCase;
-use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * HTTP coverage for {@see \App\Controller\Api\V1\Frontend\PageController}:
- * the public page list / by-id / by-keyword endpoints, platform-mode resolution
+ * the public page list / by-keyword endpoints, platform-mode resolution
  * (header > query > legacy flag), published-page rendering, the cross-platform
- * 404 guard, and the preview no-cache headers.
+ * 404 guard, and the preview no-cache headers + preview auth gate.
  *
- * All four routes are seeded permission-less (public), so the success paths run
- * as a guest; preview runs as qa.admin (it needs page ACL select). Pages used
- * are the stable legacy-seeded ones (`home`, `sh-global-css`) loaded by the
- * baseline reset, addressed by keyword so the test never hard-codes ids.
+ * Page content is resolved exclusively by keyword (the legacy numeric-id route
+ * was removed). The routes are seeded permission-less (public), so the read
+ * paths run as a guest; preview runs as qa.admin (it needs auth + page ACL
+ * select). Pages used are the stable legacy-seeded ones (`home`, `sh-global-css`)
+ * loaded by the baseline reset, addressed by keyword.
  */
 final class PageControllerModeTest extends QaWebTestCase
 {
@@ -68,17 +67,7 @@ final class PageControllerModeTest extends QaWebTestCase
         $this->assertEnvelopeSuccess($envelope);
     }
 
-    // -- single page (by id / keyword) -------------------------------------
-
-    public function testGetOpenPageByIdReturnsPageEnvelope(): void
-    {
-        $homeId = $this->pageIdByKeyword('home');
-
-        $envelope = $this->jsonRequest('GET', self::BASE . '/' . $homeId);
-
-        $this->assertEnvelopeSuccess($envelope);
-        $this->assertResponseMatchesSchema('responses/frontend/get_page');
-    }
+    // -- single page (by keyword) ------------------------------------------
 
     public function testGetPageByKeywordReturnsPageEnvelope(): void
     {
@@ -92,16 +81,9 @@ final class PageControllerModeTest extends QaWebTestCase
     {
         // sh-global-css is a `web`-only page; the mode guard rejects a mobile
         // caller with 404 (no metadata leak) before any ACL check.
-        $webOnlyId = $this->pageIdByKeyword('sh-global-css');
-
-        $this->guestRequest('GET', self::BASE . '/' . $webOnlyId, ['HTTP_X_CLIENT_TYPE' => 'mobile']);
+        $this->guestRequest('GET', self::BASE . '/by-keyword/sh-global-css', ['HTTP_X_CLIENT_TYPE' => 'mobile']);
 
         self::assertSame(Response::HTTP_NOT_FOUND, $this->client->getResponse()->getStatusCode());
-    }
-
-    public function testUnknownPageIdReturns404(): void
-    {
-        $this->assertEnvelope404($this->jsonRequest('GET', self::BASE . '/99000111'));
     }
 
     public function testUnknownKeywordReturns404(): void
@@ -109,16 +91,15 @@ final class PageControllerModeTest extends QaWebTestCase
         $this->assertEnvelope404($this->jsonRequest('GET', self::BASE . '/by-keyword/qa_missing_keyword'));
     }
 
-    // -- preview no-cache headers ------------------------------------------
+    // -- preview no-cache headers + auth gate ------------------------------
 
     public function testPreviewSetsNoCacheHeaders(): void
     {
         $token = $this->loginAsQaAdmin();
-        $homeId = $this->pageIdByKeyword('home');
 
         $this->client->request(
             'GET',
-            self::BASE . '/' . $homeId . '?preview=true',
+            self::BASE . '/by-keyword/home?preview=true',
             [],
             [],
             ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'],
@@ -129,6 +110,15 @@ final class PageControllerModeTest extends QaWebTestCase
         self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
         self::assertSame('no-cache', $response->headers->get('Pragma'));
         self::assertSame('noindex, nofollow', $response->headers->get('X-Robots-Tag'));
+    }
+
+    public function testPreviewRequiresAuthentication(): void
+    {
+        // Drafts must never be served anonymously: an unauthenticated preview
+        // request is rejected with 401 before any draft is rendered.
+        $envelope = $this->jsonRequest('GET', self::BASE . '/by-keyword/home?preview=true');
+
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $envelope['status'] ?? null, 'Anonymous preview must be unauthorized.');
     }
 
     // -- helpers ------------------------------------------------------------
@@ -146,15 +136,5 @@ final class PageControllerModeTest extends QaWebTestCase
         $decoded = json_decode((string) $this->client->getResponse()->getContent());
         $errors = $this->schema->validate($this->asObject($decoded), $schemaName);
         self::assertSame([], $errors, "Response failed schema {$schemaName}:\n" . implode("\n", $errors));
-    }
-
-    private function pageIdByKeyword(string $keyword): int
-    {
-        /** @var EntityManagerInterface $em */
-        $em = self::getContainer()->get(EntityManagerInterface::class);
-        $page = $em->getRepository(Page::class)->findOneBy(['keyword' => $keyword]);
-        self::assertInstanceOf(Page::class, $page, "Seeded page '{$keyword}' missing. Run: composer test:reset-db");
-
-        return (int) $page->getId();
     }
 }
