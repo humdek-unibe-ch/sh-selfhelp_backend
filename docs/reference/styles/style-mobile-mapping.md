@@ -3,7 +3,7 @@
 Audience: Developers (shared package, web renderer, mobile renderer).
 Status: active (architecture reference; mobile renderer adoption in progress).
 Applies to: the shared semantic contract and its two renderer adapters.
-Last verified: 2026-06-19.
+Last verified: 2026-06-23.
 Source of truth: `@selfhelp/shared` `theme/semantic.ts` (mapper), `BASE_STYLE_REGISTRY` (web Mantine targets), the installed `heroui-native@1.0.2` export list, the mobile `mobileStyleProps` + per-style renderers, and `mobile.md` (repo root).
 
 > How a SelfHelp style and its fields turn into pixels on each platform. The
@@ -15,21 +15,21 @@ Source of truth: `@selfhelp/shared` `theme/semantic.ts` (mapper), `BASE_STYLE_RE
 
 ```
 section.fields (DB)
-   │  resolveSharedStyleProps(fields)         // reads shared_* only
+   │  resolveSharedStyleProps(fields)         // reads unprefixed portable fields
    ▼
-ISharedStyleProps  { size, radius, intent, spacing, states, fullWidth }
+ISharedStyleProps  { size, radius, color, variant, spacing, states, fullWidth }
    ├── toMantineSemanticProps(props)  ──► Mantine props      (web renderer)
    └── toHeroUiSemanticProps(props)   ──► HeroUI Native props (mobile renderer)
                                        └─ toReactNativeSemanticStyle(props, theme)  // styles with no HeroUI component
 ```
 
-- **Web** reads `shared_*` + `web_*` (never `mobile_*`).
-- **Mobile** reads `shared_*` + `mobile_*` (never `web_*`).
-- Precedence on each side: platform override (`web_*`/`mobile_*`) → `shared_*`
-  semantic → component default.
+- **Web** reads unprefixed portable fields + `web_*` (never `mobile_*`).
+- **Mobile** reads unprefixed portable fields + `mobile_*` (never `web_*`).
+- Precedence on each side: platform override (`web_*`/`mobile_*`) → unprefixed
+  portable semantic → component default.
 - The mapper does **no clamping** and has **no implicit cross-platform fallback**
   (mobile.md §8.2). Today there are **0 `mobile_*` fields** in the DB, so mobile
-  currently runs purely off `shared_*` + unprefixed content/behaviour.
+  currently runs purely off the unprefixed portable + content/behaviour fields.
 
 ## 2. Semantic mapper tables (verbatim from `theme/semantic.ts`)
 
@@ -53,40 +53,31 @@ ISharedStyleProps  { size, radius, intent, spacing, states, fullWidth }
 | `lg` | `'lg'` | `RADIUS_PX.lg` |
 | `full` | `9999` (`FULL_RADIUS_PX`) | `9999` (pill) |
 
-### intent — `shared_intent` (`neutral | primary | secondary | success | warning | danger`)
+### colour — `color` (`neutral | primary | secondary | success | warning | danger`)
 
-Mantine gets a `{color, variant}`; HeroUI Native splits into a **Button variant**
-and a **status color** (HeroUI buttons have no success/warning variant, so those
-map to a prominent `primary` button while the status color carries the meaning):
+Colour is settable on **both** platforms (the login button colour applies on
+mobile too) through the single unprefixed `color` field. The adapter resolves it
+to a Mantine palette name (web) and a HeroUI Native / theme colour (mobile):
 
-| shared_intent | Mantine `{color, variant}` | HeroUI button variant | HeroUI status color |
-|---------------|----------------------------|------------------------|----------------------|
-| `primary` | `blue` / `filled` | `primary` | `accent` |
-| `secondary` | `gray` / `light` | `secondary` | `default` |
-| `success` | `green` / `filled` | `primary` | `success` |
-| `warning` | `yellow` / `filled` | `primary` | `warning` |
-| `danger` | `red` / `filled` | `danger` | `danger` |
-| `neutral` | `gray` / `default` | `secondary` | `default` |
+| `color` | Web (Mantine `color`) | Mobile (HeroUI Native / theme) |
+|----------------|-----------------------|--------------------------------|
+| `primary` | `blue` | accent / primary |
+| `secondary` | `gray` | default |
+| `success` | `green` | success |
+| `warning` | `yellow` | warning |
+| `danger` | `red` | danger |
+| `neutral` | `gray` / `dark` | foreground / default |
 
-### colour — `color` (semantic palette token)
+`color` is the single portable colour field read by both platforms; there is no
+`web_color` field (it was unprefixed to `color`). The only `web_color_*` fields
+that remain are the colour-picker widget config (`web_color_format`,
+`web_color_input_*`), which configure the web widget, not a semantic colour.
 
-Colour must be settable on **both** platforms (the login button colour applies on
-mobile too), so the web-only `web_color` is being promoted to a semantic
-`color` (RF-13). The token set is the intent palette; the adapter resolves
-it to a Mantine palette name (web) and a HeroUI Native / theme colour (mobile).
-Legacy Mantine palette values migrate onto the nearest token:
+### variant — `variant` (`default | filled | light | outline | subtle | transparent`)
 
-| `color` | Web (Mantine `color`) | Mobile (HeroUI Native / theme) | Legacy `web_color` mapped from |
-|----------------|-----------------------|--------------------------------|--------------------------------|
-| `primary` | `blue` | accent / primary | `blue` |
-| `secondary` | `gray` | default | — |
-| `success` | `green` | success | `green`, `success` |
-| `warning` | `yellow` | warning | `yellow`, `orange` |
-| `danger` | `red` | danger | `red` |
-| `neutral` | `gray` / `dark` | foreground / default | `gray`, `dark` |
-
-`web_color` survives only as an escape hatch where an exact non-semantic Mantine
-palette value is genuinely required (web-only); it is never read by mobile.
+The unprefixed `variant` field maps straight through: Mantine consumes it as its
+`variant` prop (web); HeroUI Native resolves it to the nearest HeroUI variant
+(mobile). There is no `intent` field — appearance is driven by `color` + `variant`.
 
 ### spacing — `spacing` (box-model token object)
 
@@ -154,11 +145,11 @@ The user-flagged canonical case. Mantine `Alert` (web) vs HeroUI Native `Alert`
 |-------|-------|------------------------|--------------------------------|--------|
 | `content` | content | body / `children` | `Alert.Description` | **active** (canonical message) |
 | `web_alert_title` | web | `title` prop | read as legacy `titleLegacy` fallback for `Alert.Title` | mis-scoped — title is copy; should be unprefixed `alert_title` |
-| `radius` | shared | `radius` token | radius px | active |
-| `size` | shared | `size` | HeroUI size | active |
-| `spacing` | shared | margin+padding | px box model | active |
-| `web_color` | web | `color` | — (mobile uses `shared_intent` status) | web-only |
-| `web_variant` | web | `variant` | — | web-only |
+| `radius` | common | `radius` token | radius px | active |
+| `size` | common | `size` | HeroUI size | active |
+| `spacing` | common | margin+padding | px box model | active |
+| `color` | common | `color` | `color` (via mapper) | active (unprefixed semantic colour, both platforms) |
+| `variant` | common | `variant` | `variant` (via mapper) | active (unprefixed, both platforms) |
 | `web_left_icon` | web | `icon` | — (HeroUI `Alert.Indicator`) | web-only |
 | `web_with_close_button` | web | `withCloseButton` | — | web-only |
 | `web_alert_with_close_button` | web | (unused twin) | — | **duplicate** of `web_with_close_button` |
@@ -175,14 +166,14 @@ Key facts proven from the code:
 - The mobile renderer reading `web_alert_title` is a **web→mobile leak** that
   violates the precedence rule (mobile.md §6.3); the fix is to make the title an
   unprefixed `alert_title` content field that both platforms read.
-- The status color on mobile comes from `shared_intent` via the mapper, not from
-  `web_color`.
+- The status color on mobile comes from the unprefixed `color` field via the
+  mapper (there is no `web_color` field; it was unprefixed to `color`).
 
 Target shape for `alert` (see [refactoring](./style-refactoring-recommendations.md)):
-`content`, `alert_title` (unprefixed copy), `shared_intent`, `radius`,
-`size`, `spacing`, `closable` (unprefixed bool), `web_variant`,
-`web_color`, `web_left_icon`, `use_web_style`. Removed: `value`,
-`web_alert_with_close_button`, and the `web_` prefix on the title.
+`content`, `alert_title` (unprefixed copy), `color`, `variant`, `radius`,
+`size`, `spacing`, `closable` (unprefixed bool), `web_left_icon`,
+`use_web_style`. Removed: `value`, `web_alert_with_close_button`, and the
+`web_` prefix on the title.
 
 ## 6. Layout mapping caveats (CSS web ≠ RN flexbox)
 

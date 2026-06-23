@@ -404,7 +404,7 @@
                         },
                         "required": ["content"]
                     },
-                    "shared_spacing": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -417,7 +417,7 @@
                             }
                         }
                     },
-                    "web_color": {
+                    "color": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -430,7 +430,7 @@
                             }
                         }
                     },
-                    "shared_size": {
+                    "size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -509,7 +509,7 @@
                             }
                         }
                     },
-                    "shared_text_align": {
+                    "text_align": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -637,7 +637,7 @@
                         },
                         "required": ["content"]
                     },
-                    "shared_spacing": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -869,7 +869,7 @@
                         },
                         "required": ["content"]
                     },
-                    "shared_spacing": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1152,16 +1152,16 @@
                             }
                         }
                     },
-                    "web_spacing_margin": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
                                 "type": "string",
-                                "description": "Mantine margin configuration"
+                                "description": "Mantine spacing configuration"
                             },
                             "meta": {
                                 "type": ["string", "null"],
-                                "description": "Margin metadata"
+                                "description": "Spacing metadata"
                             }
                         }
                     },
@@ -1178,7 +1178,7 @@
                             }
                         }
                     },
-                    "shared_size": {
+                    "size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1191,7 +1191,7 @@
                             }
                         }
                     },
-                    "shared_radius": {
+                    "radius": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1370,16 +1370,16 @@
                             }
                         }
                     },
-                    "web_spacing_margin": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
                                 "type": "string",
-                                "description": "Mantine margin configuration"
+                                "description": "Mantine spacing configuration"
                             },
                             "meta": {
                                 "type": ["string", "null"],
-                                "description": "Margin metadata"
+                                "description": "Spacing metadata"
                             }
                         }
                     },
@@ -1409,7 +1409,7 @@
                             }
                         }
                     },
-                    "shared_size": {
+                    "size": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1422,7 +1422,7 @@
                             }
                         }
                     },
-                    "shared_radius": {
+                    "radius": {
                         "type": "object",
                         "properties": {
                             "content": {
@@ -1653,16 +1653,16 @@
                             }
                         }
                     },
-                    "web_spacing_margin": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
                                 "type": "string",
-                                "description": "Mantine margin configuration"
+                                "description": "Mantine spacing configuration"
                             },
                             "meta": {
                                 "type": ["string", "null"],
-                                "description": "Margin metadata"
+                                "description": "Spacing metadata"
                             }
                         }
                     },
@@ -2014,16 +2014,16 @@
                             }
                         }
                     },
-                    "web_spacing_margin": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {
                                 "type": "string",
-                                "description": "Mantine margin configuration"
+                                "description": "Mantine spacing configuration"
                             },
                             "meta": {
                                 "type": ["string", "null"],
-                                "description": "Margin metadata"
+                                "description": "Spacing metadata"
                             }
                         }
                     },
@@ -2166,7 +2166,7 @@
                             }
                         }
                     },
-                    "shared_spacing": {
+                    "spacing": {
                         "type": "object",
                         "properties": {
                             "content": {

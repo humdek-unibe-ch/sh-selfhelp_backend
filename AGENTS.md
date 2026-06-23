@@ -191,10 +191,10 @@ When making changes, explain:
 
 ## Database Rules
 
-- The canonical schema lives in the Doctrine migrations under `migrations/`. The `Version20260501000000` baseline plus the four `Version20260501000100..000400` seed migrations are the **only** install source — fresh installs do not load `db/legacy/new_create_db.sql` or any other SQL dump.
+- The canonical schema lives in the Doctrine migrations under `migrations/`. Fresh installs run the `Version20260501000000` baseline, the `Version20260501000100..000900` seed/system-page migrations, and every later follow-up migration. They do not load `db/legacy/new_create_db.sql` or any other SQL dump.
 - `db/legacy/` is deprecated reference / history (`new_create_db.sql`, `structure_db.sql`, `update_scripts/*.sql`). Do not treat it as authoritative; do not edit it for new features. See `db/legacy/README.md`.
 - Symfony/Doctrine migration classes in `migrations` are the primary and only migration mechanism. Schema changes require a new Doctrine migration generated after the canonical baseline. Never modify baseline or seed migrations for new work.
-- For new API routes, add the route row to `migrations/Version20260501000300.php` only if you are still iterating on the baseline; otherwise add a new follow-up migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do not rely on `db/legacy/update_scripts/api_routes.sql` to populate fresh installs.
+- For new API routes, add a generated follow-up migration that inserts into `api_routes` and `rel_api_routes_permissions`. Do not edit the baseline/seed migrations or rely on `db/legacy/update_scripts/api_routes.sql`.
 - Existing editor rules say not to run Doctrine migrations automatically; generate migration files and let the team execute them manually.
 - Store datetimes in UTC. Convert output times to the CMS preference timezone where the existing API does this.
 - Be careful with legacy table naming and casing.
@@ -245,8 +245,10 @@ mobile renderers, so a rename must land in every repo at once.
   names were renamed to kebab-case in v0.1.14 (migration
   `Version20260618120000`). New styles must be seeded kebab-case from the start.
 - **Field names (`fields.name`) are `snake_case`** (e.g. `own_entries_only`,
-  `data_table`, `mantine_color`), matching the JSON content keys the renderers
-  read. Do not introduce camelCase field names.
+  `data_table`, `color`, `web_variant`, `mobile_keyboard_type`), matching the
+  JSON content keys the renderers read. Unprefixed fields apply to both
+  platforms; only `web_` / `mobile_` mark platform-specific fields. Do not
+  introduce camelCase or library-prefixed names such as `mantine_*`.
 - **Field types (`fieldType.name`) are `kebab-case`** (e.g. `markdown-inline`,
   `select-group`, `color-picker`). The catalog is already kebab-case; keep new
   field types kebab-case.

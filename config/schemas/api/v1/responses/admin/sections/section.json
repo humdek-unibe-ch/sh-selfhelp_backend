@@ -20,8 +20,8 @@
                             "name": { "type": "string", "description": "Name of the field" },
                             "scope": {
                                 "type": "string",
-                                "enum": ["content", "common", "shared", "web", "mobile"],
-                                "description": "Field scope (mobile rendering plan, section 6.4), derived centrally by the backend from translatability (display) and platform prefix: display=1 -> content; otherwise shared_*/web_*/mobile_* -> shared/web/mobile and unprefixed -> common. The CMS section inspector groups by this value and must not re-derive scope from the field name or display flag."
+                                "enum": ["content", "common", "web", "mobile"],
+                                "description": "Field scope (mobile rendering plan, section 6.4), derived centrally by the backend from translatability (display) and platform prefix: display=1 -> content; otherwise web_*/mobile_* -> web/mobile and unprefixed -> common. The CMS section inspector groups by this value and must not re-derive scope from the field name or display flag."
                             },
                             "title": { "type": "string", "description": "Title of the field" },
                             "type": { "type": ["string", "null"], "description": "Type of the field" },

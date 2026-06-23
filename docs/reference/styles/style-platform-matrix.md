@@ -3,7 +3,7 @@
 Audience: Developers and maintainers (backend, shared, frontend, mobile).
 Status: active (architecture reference).
 Applies to: the 90 core CMS styles (no plugin styles).
-Last verified: 2026-06-19.
+Last verified: 2026-06-23.
 Source of truth: live DB catalog (`admin/styles/schema`), `@selfhelp/shared` `BASE_STYLE_REGISTRY` (web Mantine targets), the installed `heroui-native@1.0.2` export list (mobile targets), the frontend `BasicStyle` + mobile `styleImpls` dispatch maps. The machine-readable form is [`style-field-audit.generated.json`](./style-field-audit.generated.json).
 
 > One row per style: where it renders, what it maps to on each platform, and how
@@ -28,7 +28,11 @@ There is deliberately **no** `pages.id_platform`; page targeting stays on
 ## Current state
 
 - **All 90 styles are `render_target = both`** (backfilled by
-  `Version20260618143215`; no style has been individually targeted yet).
+  `Version20260618143215`; no style has been individually targeted yet). **No
+  current core style is intentionally web-only or mobile-only** — in particular
+  the auth-flow styles (`login`, `register`, `reset-password`, `two-factor-auth`,
+  `validate`, `profile`) render on **both** platforms and must not be marked
+  web-only.
 - **Catalog parity is perfect**: every style exists in the DB, the shared
   registry, the web renderer, and the mobile renderer (90 / 90 / 90 / 90).
 - So the open work is *field-level* (scope, drift, `mobile_*`, spacing

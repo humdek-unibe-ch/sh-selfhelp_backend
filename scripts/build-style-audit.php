@@ -165,7 +165,7 @@ $mobileSet = array_fill_keys($mobileKeys, true);
 
 // Fields contributed by base interfaces (IBaseStyle / IStyleWithSpacing) — not
 // per-style drift when absent from a per-style interface body.
-$baseInherited = ['web_spacing_margin', 'spacing', 'css', 'css_mobile', 'condition', 'debug', 'data_config'];
+$baseInherited = ['spacing', 'css', 'css_mobile', 'condition', 'debug', 'data_config'];
 
 // ---------------------------------------------------------------------------
 // Fuse.

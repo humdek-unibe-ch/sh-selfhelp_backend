@@ -114,7 +114,7 @@ Most visual styles also expose:
 
 | Field | Type | Scope | Purpose |
 |-------|------|-------|---------|
-| `spacing` | spacing | common | Portable box-model control for the section's margin **and** padding. Mapped to both platforms (the cross-platform spacing field). RF-15 (slice 9) merged the legacy margin-only `web_spacing_margin` into this, so every spacing-capable style now uses it. |
+| `spacing` | spacing | common | Portable box-model control for the section's margin **and** padding. Mapped to both platforms (the single cross-platform spacing field every spacing-capable style uses). |
 
 ## Standard Mantine cosmetic props
 

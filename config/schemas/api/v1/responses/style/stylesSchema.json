@@ -34,8 +34,8 @@
                                         "type": { "type": ["string", "null"] },
                                         "scope": {
                                             "type": "string",
-                                            "enum": ["content", "common", "shared", "web", "mobile"],
-                                            "description": "Field scope (mobile rendering plan, section 6.4). Derived centrally by the backend from translatability (display) and platform prefix; the CMS must group by this value and must not re-derive scope from the field name or display flag. content=translatable copy (display=1), common=unprefixed behavior/data property, shared=shared_* portable semantics, web=web_* Mantine/browser-specific, mobile=mobile_* native-only."
+                                            "enum": ["content", "common", "web", "mobile"],
+                                            "description": "Field scope (mobile rendering plan, section 6.4). Derived centrally by the backend from translatability (display) and platform prefix; the CMS must group by this value and must not re-derive scope from the field name or display flag. content=translatable copy (display=1), common=unprefixed cross-platform behavior/data/visual property, web=web_* Mantine/browser-specific, mobile=mobile_* native-only."
                                         },
                                         "display": { "type": "integer" },
                                         "default_value": { "type": ["string", "null"] },

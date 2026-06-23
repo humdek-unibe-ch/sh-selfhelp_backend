@@ -63,7 +63,7 @@ final class StyleFieldScopeTest extends QaKernelTestCase
         self::assertSame('common', StyleRepository::deriveFieldScope('shared_icon', 0));
         // web-only presentation
         self::assertSame('web', StyleRepository::deriveFieldScope('web_variant', 0));
-        self::assertSame('web', StyleRepository::deriveFieldScope('web_spacing_margin', 0));
+        self::assertSame('web', StyleRepository::deriveFieldScope('web_card_shadow', 0));
         // mobile-only presentation
         self::assertSame('mobile', StyleRepository::deriveFieldScope('mobile_keyboard_type', 0));
         self::assertSame('mobile', StyleRepository::deriveFieldScope('mobile_haptic_feedback', 0));

@@ -28,7 +28,7 @@ class AdminSectionControllerTest extends BaseControllerTest
     private const DEFAULT_STYLE_ID_1 = 112; // alert style (has content + property fields)
     private const DEFAULT_STYLE_ID_2 = 134; // card style
     private const TITLE_FIELD_ID = 287; // content field (display=1, belongs to alert)
-    private const CSS_FIELD_ID = 265; // shared_radius property field (display=0, belongs to alert)
+    private const CSS_FIELD_ID = 265; // radius property field (display=0, belongs to alert)
     private const IS_EXPANDED_FIELD_ID = 284; // use_web_style property field (display=0, belongs to alert)
 
     private ?int $testSectionId = null; // Will store the ID of a test section for child section tests

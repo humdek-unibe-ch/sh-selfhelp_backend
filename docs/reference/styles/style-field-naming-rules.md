@@ -95,8 +95,10 @@ display === 0 & (unprefixed) -> common    (behaviour, data, AND cross-platform p
   renderer-neutral (`spacing`, `select`, `color-picker`); they were de-Mantine-d
   in `Version20260618143216` (`mantine_spacing_margin_padding` → `spacing`).
 - **Colour is unprefixed, not `web_`.** Authors set `color` once and it applies on
-  both platforms. A bare `web_color` survives only as a web-only escape hatch for
-  an exact Mantine palette value with no semantic meaning.
+  both platforms. There is no bare `web_color` field — it was unprefixed to
+  `color`. The only `web_color_*` fields are the colour-picker widget config
+  (`web_color_format`, `web_color_input_*`), which configure the web control, not
+  a semantic colour.
 - **No prefix means both platforms.** Never reintroduce a `shared_` prefix; an
   unprefixed property field already applies to both. The only `shared_*` names
   that remain (`shared_height`, `shared_width`, `shared_icon`) are reserved-name
@@ -122,9 +124,9 @@ narrower than the Mantine `web_*` scales and map 1:1 with no clamping
 | `spacing` | box-model JSON object | margin+padding props | px padding/margin via theme |
 | `gap` `align` `justify` `direction` `wrap` `orientation` `text_align` `full_width` | canonical layout enums | Mantine layout props | RN flexbox |
 
-> `intent` (`neutral`/`primary`/…) is a *legacy* semantic the mapper still reads
-> as a fallback but is **not** in the live catalog; real sections drive
-> appearance through `color` / `variant`.
+> Sections drive appearance through the unprefixed `color` / `variant` fields.
+> There is no `intent` field: it is not in the catalog and the mapper does not
+> read it.
 
 Full mapping tables are in [`style-mobile-mapping.md`](./style-mobile-mapping.md).
 
