@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-23.
 Source of truth: Plugin layer code and the schemas under this folder.
 
 The SelfHelp mobile app (Expo / React Native) consumes plugins
@@ -18,19 +18,36 @@ web frontend. Mobile plugins are **opt-in** per plugin via the
   "id": "sh2-shp-survey-js",
   "version": "1.0.0",
   "frontend": { "package": "@humdek/sh2-shp-survey-js" },
+  "compatibility": {
+    "core": ">=0.1.19 <0.2.0",
+    "pluginApi": ">=0.1.0 <0.2.0",
+    "reactNative": "^0.83",
+    "expoSdk": "^55",
+    "mobile": ">=0.1.0 <0.2.0"
+  },
   "mobile": {
     "package": "@humdek/sh2-shp-survey-js-mobile",
-    "entryPoint": "register",
-    "supportsOffline": true,
-    "minExpoSdk": "52.0.0"
+    "version": "1.0.0",
+    "readonly": true
   }
 }
 ```
 
 When `mobile` is **absent**, the plugin is web-only and the mobile
-app silently ignores it. When `mobile.package` is set, the mobile app
-loads it on startup through the same `definePlugin()` flow used by
-the frontend.
+app renders plugin-owned styles through the web fallback. When
+`mobile.package` is set, the package is bundled into the mobile build
+by `sh-selfhelp_mobile/scripts/plugins-sync.mjs`, which generates the
+mobile style registry used by the renderer. The package exports the
+mobile SDK registration (`registerMobile` / `defineMobilePlugin`) from
+its normal package entrypoint; there is no manifest `entryPoint`,
+`supportsOffline`, or `minExpoSdk` field.
+
+The `compatibility.mobile` range declares which mobile renderer
+contract versions the plugin supports. The mobile app and the
+`selfhelp-mobile-preview` image advertise their renderer contract as
+`mobileRendererVersion`; the SelfHelp Manager blocks a preview image
+when a plugin's `compatibility.mobile`, `compatibility.reactNative`, or
+`compatibility.expoSdk` range is not satisfied.
 
 ## Mobile-only constraints
 
@@ -89,17 +106,19 @@ Metro reads `node_modules/@humdek/sh2-shp-survey-js-mobile/dist/index.js`,
 calls its exported `register(api)` factory, and registers the plugin
 the same way the web does.
 
-## Offline support
+## Preview image compatibility
 
-When `mobile.supportsOffline` is `true`, the plugin is bundled into
-the OTA update so it works without a network connection. The plugin
-SDK exposes `host.queryClient` (a TanStack Query client preconfigured
-with persistence to MMKV) for plugins to cache their own data
-locally.
+The shared `selfhelp-mobile-preview` image bundles a curated set of
+official mobile plugin packages and publishes that set as
+`bundledPlugins` together with `mobileRendererVersion`. During
+install/update preflight the Manager reports:
 
-When `mobile.supportsOffline` is `false`, the plugin's UI shows the
-`OfflineUnavailable` placeholder when the device is offline. The
-shared SDK provides this placeholder.
+- **block** when `compatibility.mobile`, `compatibility.reactNative`,
+  or `compatibility.expoSdk` does not match the selected preview image;
+- **warn** when a compatible mobile package is not bundled, or the
+  bundled plugin version differs from the installed plugin version;
+- **info** when a plugin has no `mobile.package`, because open-on-web
+  fallback is expected.
 
 ## Health probe
 

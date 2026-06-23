@@ -1,6 +1,8 @@
 # config/packages/test/framework.yaml
 framework:
     test: true
+    cache:
+        app: cache.adapter.filesystem
     session:
         storage_factory_id: session.storage.factory.mock_file
     profiler:

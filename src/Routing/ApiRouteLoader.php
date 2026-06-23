@@ -161,7 +161,7 @@ class ApiRouteLoader extends Loader
                 [],                    // schemes
                 $methods               // methods
             );
-            $routes->add($routeName . '_' . $version, $route);
+            $routes->add($this->normalizeStoredRouteName($routeName, $version) . '_' . $version, $route);
         }
 
         return $routes;
@@ -220,6 +220,20 @@ class ApiRouteLoader extends Loader
         );
         
         return $versionedClass . '::' . $method;
+    }
+
+    /**
+     * Route rows store the logical route name; the loader appends the API
+     * version exactly once when registering the Symfony route.
+     */
+    private function normalizeStoredRouteName(string $routeName, string $version): string
+    {
+        $suffix = '_' . $version;
+        if ($version !== '' && str_ends_with($routeName, $suffix)) {
+            return substr($routeName, 0, -strlen($suffix));
+        }
+
+        return $routeName;
     }
 
     public function supports(mixed $resource, ?string $type = null): bool

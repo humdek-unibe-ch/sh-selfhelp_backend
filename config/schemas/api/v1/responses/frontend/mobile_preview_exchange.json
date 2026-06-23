@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mobile Preview Session Exchange Response",
+  "description": "Scoped preview credential returned after consuming a one-time code (mirrors @selfhelp/shared IMobilePreviewExchangeData). The access_token is a short-lived JWT with purpose 'mobile_preview' held in memory only by the preview app; it is restricted to read-only preview routes by MobilePreviewAccessGuard.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "access_token": { "type": "string", "description": "Short-lived scoped preview JWT." },
+        "expires_in": { "type": "integer", "description": "Seconds until the scoped token expires." },
+        "user": { "type": "object", "description": "The previewed user (the minting admin)." }
+      },
+      "required": ["access_token", "expires_in", "user"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["data"]
+}

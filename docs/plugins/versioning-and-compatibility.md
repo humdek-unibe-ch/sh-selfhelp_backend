@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-09.
+Last verified: 2026-06-23.
 Source of truth: Plugin layer code and the schemas under this folder.
 
 Every plugin declares two version fields in `plugin.json`:
@@ -14,7 +14,8 @@ Every plugin declares two version fields in `plugin.json`:
   "pluginApiVersion": "0.1.0",
   "compatibility": {
     "selfhelp": ">=0.1.0 <0.2.0",
-    "pluginApi": "0.1.0"
+    "pluginApi": "0.1.0",
+    "mobile": "^0.1.0"          // optional: mobile renderer contract axis
   }
 }
 ```
@@ -31,6 +32,21 @@ Every plugin declares two version fields in `plugin.json`:
 | `pluginApiVersion`          | The plugin SDK version the plugin was built against. |
 | `compatibility.selfhelp`    | Acceptable host CMS version range (SemVer).   |
 | `compatibility.pluginApi`   | Acceptable host plugin-API range (SemVer).    |
+| `compatibility.reactNative` | React Native runtime the plugin's native bundle targets (client build axis). |
+| `compatibility.expoSdk`     | Expo SDK the plugin's native bundle targets (client build axis). |
+| `compatibility.mobile`      | **Optional.** SelfHelp mobile *renderer contract* the plugin's native components target (SemVer range vs the `selfhelp-mobile-preview` image's advertised `mobileRendererVersion`). Omit for web-only plugins. |
+
+> **Dual-axis mobile gate.** `reactNative` / `expoSdk` describe the *runtime* a
+> plugin's native bundle needs; `compatibility.mobile` describes the SelfHelp
+> *renderer contract* (mirrors `@selfhelp/shared` `MOBILE_RENDERER_VERSION`). The
+> manager checks an installed plugin's `compatibility.mobile` against the mobile
+> preview image's `mobileRendererVersion` and **blocks** an incompatible plugin,
+> **warns** when the plugin is not in the image's bundled set (the preview then
+> falls back to an "open on web" deep-link for that plugin), and **informs** for
+> web-only plugins that declare no `mobile` axis. The host CMS itself does not
+> enforce `compatibility.mobile` (it is a manager/preview-side axis); the schema
+> only validates its shape. See
+> [`../developer/cross-repo-compatibility-matrix.md`](../developer/cross-repo-compatibility-matrix.md).
 
 ## How compatibility is enforced
 

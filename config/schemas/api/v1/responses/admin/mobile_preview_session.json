@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Mobile Preview Session Response",
+  "description": "One-time preview code minted for the current admin (mirrors @selfhelp/shared IMobilePreviewSessionData). The code is safe in the iframe URL: short-lived, scoped, single-use, invalid after exchange.",
+  "allOf": [
+    { "$ref": "../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Opaque one-time preview code." },
+        "expires_at": { "type": "string", "description": "ISO-8601 expiry of the one-time code." }
+      },
+      "required": ["code", "expires_at"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

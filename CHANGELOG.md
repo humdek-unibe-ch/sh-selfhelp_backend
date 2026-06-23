@@ -1,3 +1,36 @@
+# v0.1.19
+
+## Mobile preview session API + plugin mobile-compatibility axis
+
+- **Mobile preview session endpoints.** New admin-only mint endpoint
+  `POST /cms-api/v1/admin/mobile-preview/session` (`AdminMobilePreviewController`,
+  gated by the `admin.mobile_preview.create` permission) returns a SHORT-LIVED,
+  single-use code bound to the calling admin (derived server-side from the JWT)
+  and an optional preview scope (keyword / page / language / draft). The public
+  `POST /cms-api/v1/mobile-preview/session/exchange`
+  (`MobilePreviewController`) consumes the one-time code and mints a short-lived,
+  scoped `purpose: 'mobile_preview'` JWT for read-only `/cms-api` use by the
+  `selfhelp-mobile-preview` image. Logic lives in
+  `Service/MobilePreview/MobilePreviewSessionService`; request/response contracts
+  are JSON-schema validated (`config/schemas/api/v1/{requests,responses}/...
+  mobile_preview_*.json`) and mirror `@selfhelp/shared` >= 1.15.0.
+- **`MobilePreviewAccessGuard`.** A request listener inspects the JWT payload and
+  confines a `purpose: 'mobile_preview'` token to a read-only `/cms-api`
+  allowlist (page/section render + lookups), so a leaked preview token cannot
+  mutate data or reach admin endpoints.
+- **API routes migration.** A generated Doctrine migration inserts the two routes
+  into `api_routes` + links the admin mint route in `rel_api_routes_permissions`
+  (with an up/down round-trip test); the public exchange route is permission-less
+  (the one-time code is the credential).
+- **Plugin manifest `compatibility.mobile`.** `docs/plugins/plugin-manifest.schema.json`
+  gains an optional `compatibility.mobile` semver range (the mobile-renderer
+  contract axis, mirroring `@selfhelp/shared` `MOBILE_RENDERER_VERSION`) — the
+  second axis of the manager's dual-axis mobile plugin gate. Kept byte-identical
+  with the registry's copy.
+- Security tests cover the admin/permission matrix on mint, the one-time/scoped
+  nature of exchange, and the access-guard allowlist. `composer phpstan` stays at
+  0 errors.
+
 # v0.1.18
 
 ## Security — anonymous access hardening + frontend page route cleanup

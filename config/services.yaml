@@ -16,6 +16,11 @@ parameters:
     # (older deployments) — the var ALWAYS resolves to a positive integer.
     jwt_impersonation_token_ttl: '%env(default:jwt_impersonation_token_ttl_default:int:IMPERSONATION_TOKEN_TTL)%'
     jwt_impersonation_token_ttl_default: 900
+    # Mobile-preview scoped JWT lifetime (seconds). Default 900 s / 15 min.
+    # Override with the MOBILE_PREVIEW_TOKEN_TTL env var (same default-prefix
+    # pattern as the impersonation TTL so the container boots without the var).
+    jwt_mobile_preview_token_ttl: '%env(default:jwt_mobile_preview_token_ttl_default:int:MOBILE_PREVIEW_TOKEN_TTL)%'
+    jwt_mobile_preview_token_ttl_default: 900
     # Response-schema validation (expensive). Opt in via env; defaults to false.
     # See docs/developer/05-api-patterns.md.
     validate_response_schema: '%env(bool:default::VALIDATE_RESPONSE_SCHEMA)%'
@@ -62,7 +67,7 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '0.1.18'
+    selfhelp_cms_version_default: '0.1.19'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.

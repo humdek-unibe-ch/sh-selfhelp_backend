@@ -142,6 +142,26 @@ the same change wave:
 > `release-manifest.json`), so its coupling to core `0.1.18` is enforced by
 > shipping `0.1.10` together, not by an automated gate — see "Mobile ⇄ core
 > coupling" below.
+>
+> **Core 0.1.19 (mobile preview service):** core `0.1.19` adds the mobile-preview
+> session API — admin mint `POST /cms-api/v1/admin/mobile-preview/session`
+> (permission `admin.mobile_preview.create`) + public exchange
+> `POST /cms-api/v1/mobile-preview/session/exchange` + the
+> `MobilePreviewAccessGuard` read allowlist for `purpose: 'mobile_preview'`
+> tokens — plus an additive `compatibility.mobile` axis in the plugin manifest
+> schema. **Frontend 0.1.31** adopts it: the page-editor Mobile Preview panel
+> mints a one-time code through the protected BFF route and embeds the
+> `selfhelp-mobile-preview` image, so the frontend `supports.core` floor rises
+> `0.1.17` → `0.1.19`. The backend `supports.frontend` floor is **unchanged**
+> (`>=0.1.30`): the endpoints are additive and the panel is optional, so the core
+> does not require the panel-bearing frontend. The `selfhelp-mobile-preview`
+> image (`sh-selfhelp_mobile` `0.2.0`) carries its own `release-manifest.json`
+> with `supports.core >=0.1.19` and advertises a `mobileRendererVersion` (`0.1.0`)
+> that the manager's dual-axis plugin gate checks each installed plugin's
+> `compatibility.mobile` range against. Like mobile↔core, the preview image is not
+> yet in the registry resolver's frontend⇄core pairing, so its core coupling is
+> enforced by shipping it in the same wave (and by the manager's own resolver),
+> not by the auto-release gate.
 
 ## Current matrix (snapshot)
 
@@ -150,17 +170,21 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.18` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.19` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.14.24` | npm (1.14.22 dropped the `shared_` field-name prefix — "no prefix = both platforms" — paired with backend migration `Version20260622165615`; 1.14.23 removed the orphan `IImageStyle.height`/`width` + tidied `media.ts`; 1.14.24 removed `frontendOnly` from registry entries and refreshed the registry/AGENTS docs) |
-| `sh-selfhelp_frontend` | `0.1.30` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.24` | shared `1.x` line (field-naming unification) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.17 <0.2.0` | first core that emits the unprefixed field names (field-naming unification, `Version20260622165615`) on top of the render-target + field-scope style schema + polish wave; the 0.1.30 anonymous-preview guard is backward-safe on older cores so this floor is unchanged |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | frontend that handles the core 0.1.18 anonymous-preview 401 (preview gated on a live session; `sh_preview` cleared on logout) on top of the field-naming unification + full 0.1.15 → 0.1.17 style schema/polish wave |
-| `sh-selfhelp_mobile` | `0.1.10` | — |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.24` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
+| `@selfhelp/shared` | `1.15.0` | npm (1.15.0 adds the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()` + the `mobile-preview-release` types; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`; 1.14.24 removed `frontendOnly` from registry entries) |
+| `sh-selfhelp_frontend` | `0.1.31` | — |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.0` | shared `1.x` line (mobile preview-session types) |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | raised `0.1.17` → `0.1.19`: the page-editor Mobile Preview panel mints via the core mobile-preview session endpoint, first shipped in core `0.1.19` (the panel degrades gracefully on older cores, but the version contract tracks the dependency) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | unchanged: the mobile preview endpoints are additive and do NOT require the frontend panel; still tracks the 0.1.18 anonymous-preview adaptation |
+| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.2.0` | — |
+| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`) |
+| `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.15.0` | shared `1.x` line (mobile UI adapter + preview contracts) |
+| `sh-manager` (tool) | `1.7.0` | installs/routes/updates the mobile-preview service; runs the dual-axis plugin mobile gate |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
+| `sh2-shp-survey-js` (`compatibility.mobile`) | `^0.1.0` | mobile renderer contract axis (gated vs the preview image's `mobileRendererVersion`) |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |
 
 > **Pre-1.0 SemVer.** SelfHelp core, the plugin API, and plugins are in the `0.x`
@@ -191,8 +215,9 @@ the same change wave:
   "php": "^8.4",
   "node": "^22",
   "react": "^19",
-  "reactNative": "^0.83",
-  "expoSdk": "^55"
+  "reactNative": "^0.83",         // RN runtime the native bundle targets
+  "expoSdk": "^55",               // Expo SDK the native bundle targets
+  "mobile": "^0.1.0"              // mobile RENDERER contract (vs the preview image's mobileRendererVersion)
 }
 ```
 
@@ -201,7 +226,14 @@ The host enforces `selfhelp` and `pluginApi` ranges at install, at boot, and in
 [`versioning-and-compatibility.md`](../plugins/versioning-and-compatibility.md).
 The remaining runtime targets (`node`, `react`, `reactNative`, `expoSdk`) tell
 the frontend/mobile build whether the plugin's ESM/native bundle is loadable in
-the current client.
+the current client. **`compatibility.mobile`** is the **dual-axis mobile gate**:
+`reactNative` / `expoSdk` describe the *runtime* the native bundle needs, while
+`mobile` is the SelfHelp *renderer contract* the plugin's native components
+target. The manager checks an installed plugin's `compatibility.mobile` range
+against the `selfhelp-mobile-preview` image's advertised `mobileRendererVersion`
+and **blocks** an incompatible plugin, **warns** when a plugin is not in the
+image's bundled set (it then falls back to the in-preview "open on web"
+deep-link), and **informs** for web-only plugins that declare no `mobile` axis.
 
 ## What `ecosystem-compat` checks
 
@@ -230,7 +262,8 @@ consumer.
 | **Shared DTO / exported type** | bump `@selfhelp/shared` (minor if additive, major if breaking); adapt frontend + mobile; update the CHANGELOG | `npm run typecheck && npm test` (shared) + `ecosystem-compat` |
 | **Frontend renderer contract** (style impl map vs registry) | the shared style registry if a style was added/removed | frontend `npm run tsc` + Vitest |
 | **Mobile renderer contract** (`components/renderer/**`) | the shared registry/types it reads; keep every registry style renderable | mobile `npm run typecheck && npm test` |
-| **Plugin manifest compatibility** (`plugin.json`) | bump plugin `version`; align `compatibility.selfhelp` / `pluginApiVersion`; ship a migration on a MINOR | `selfhelp:plugin:doctor` + plugin certification |
+| **Mobile plugin-rendering contract** (a plugin's native components / the bundled-plugin set in `selfhelp-mobile-preview`) | bump `@selfhelp/shared` `MOBILE_RENDERER_VERSION` (minor if additive, major if breaking); re-snapshot `web-preview/preview-plugins.json` + the image's `bundledPlugins` / `mobileRendererVersion`; bump each affected plugin's `compatibility.mobile` | manager dual-axis plugin gate dry-run + `npm run typecheck && npm test` (shared) |
+| **Plugin manifest compatibility** (`plugin.json`) | bump plugin `version`; align `compatibility.selfhelp` / `pluginApiVersion` (and `compatibility.mobile` if its native bundle changed); ship a migration on a MINOR | `selfhelp:plugin:doctor` + plugin certification |
 | **Host CMS major or plugin API** (`config/services.yaml`) | every plugin's `compatibility` range; this matrix; the shared SDK if the SDK surface changed | `selfhelp:plugin:doctor` |
 
 ## Release process expectations

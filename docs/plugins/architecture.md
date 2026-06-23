@@ -3,7 +3,7 @@
 Audience: Plugin authors and backend developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-16.
+Last verified: 2026-06-23.
 Source of truth: Plugin layer code and the schemas under this folder.
 
 This document is the system-level overview of the SelfHelp plugin
@@ -213,10 +213,19 @@ sh-selfhelp_mobile/
 └── scripts/plugins-sync.mjs   Generates registered.ts + package.json + lock
 ```
 
-The mobile build is **per EAS profile**. Plugins explicitly opt their
-mobile package into a profile via the manifest's `mobile.profiles`
-array (omit to mean "all"). Missing plugins gracefully fall back to
-the web app.
+Mobile plugins opt in through `plugin.json#mobile`:
+`{ "package": "@vendor/plugin-mobile", "version": "x.y.z",
+"readonly": true }`. The mobile app/preview build runs
+`sh-selfhelp_mobile/scripts/plugins-sync.mjs` against the backend
+plugin manifest, bundles the selected packages, and writes the
+generated `registered.ts` style map. Missing or unbundled plugin
+styles gracefully fall back to the web app.
+
+The Manager gates mobile preview compatibility on two axes: the
+plugin's `compatibility.mobile` renderer-contract range against the
+preview image's `mobileRendererVersion`, and the plugin's
+`compatibility.reactNative` / `compatibility.expoSdk` ranges against
+the preview image build metadata.
 
 ## 7. Plugin operation lifecycle
 
