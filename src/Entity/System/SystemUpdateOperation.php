@@ -37,11 +37,17 @@ class SystemUpdateOperation
     /**
      * What the operation updates. `core` (default, back-compat) updates the core
      * stack and its compatible frontend; `frontend` is the lightweight,
-     * stateless frontend-only swap performed by the SelfHelp Manager. A row
-     * without an explicit kind is a `core` operation.
+     * stateless frontend-only swap; `mobile-preview` is the equally lightweight,
+     * stateless swap of the optional `selfhelp-mobile-preview` web image. Both
+     * lightweight kinds are performed by the SelfHelp Manager. A row without an
+     * explicit kind is a `core` operation.
      */
     public const KIND_CORE = 'core';
     public const KIND_FRONTEND = 'frontend';
+    public const KIND_MOBILE_PREVIEW = 'mobile-preview';
+
+    /** @var list<string> */
+    public const KINDS = [self::KIND_CORE, self::KIND_FRONTEND, self::KIND_MOBILE_PREVIEW];
 
     public const STATUS_REQUESTED = 'requested';
     public const STATUS_APPROVED = 'approved';
@@ -118,9 +124,9 @@ class SystemUpdateOperation
 
     /**
      * Operation kind. Defaults to `core` so existing rows (and any backend that
-     * never requests a frontend-only update) keep their original meaning.
+     * never requests a lightweight update) keep their original meaning.
      */
-    #[ORM\Column(name: 'kind', type: Types::STRING, length: 16, options: ['default' => self::KIND_CORE, 'comment' => 'What the operation updates: core (default) or frontend (stateless frontend-only swap)'])]
+    #[ORM\Column(name: 'kind', type: Types::STRING, length: 16, options: ['default' => self::KIND_CORE, 'comment' => 'What the operation updates: core (default), frontend (stateless frontend-only swap) or mobile-preview (stateless preview-only swap)'])]
     private string $kind = self::KIND_CORE;
 
     /**
@@ -129,6 +135,14 @@ class SystemUpdateOperation
      */
     #[ORM\Column(name: 'target_frontend_version', type: Types::STRING, length: 50, nullable: true)]
     private ?string $targetFrontendVersion = null;
+
+    /**
+     * The mobile-preview version a `mobile-preview`-kind operation targets. Null
+     * for `core`/`frontend` operations. Doubles as the enable/bootstrap target
+     * when the instance has no preview yet (the manager provisions it).
+     */
+    #[ORM\Column(name: 'target_mobile_preview_version', type: Types::STRING, length: 50, nullable: true)]
+    private ?string $targetMobilePreviewVersion = null;
 
     #[ORM\Column(name: 'preflight_id', type: Types::STRING, length: 64, nullable: true)]
     private ?string $preflightId = null;
@@ -196,13 +210,28 @@ class SystemUpdateOperation
 
     public function setKind(string $kind): self
     {
-        $this->kind = $kind === self::KIND_FRONTEND ? self::KIND_FRONTEND : self::KIND_CORE;
+        $this->kind = in_array($kind, self::KINDS, true) ? $kind : self::KIND_CORE;
         return $this;
     }
 
     public function isFrontendUpdate(): bool
     {
         return $this->kind === self::KIND_FRONTEND;
+    }
+
+    public function isMobilePreviewUpdate(): bool
+    {
+        return $this->kind === self::KIND_MOBILE_PREVIEW;
+    }
+
+    /**
+     * Whether this operation is one of the lightweight, stateless swaps
+     * (frontend or mobile-preview): no destructive migration, no backup, no
+     * maintenance window. Used to skip the core-only registry recomputation.
+     */
+    public function isLightweightUpdate(): bool
+    {
+        return $this->kind === self::KIND_FRONTEND || $this->kind === self::KIND_MOBILE_PREVIEW;
     }
 
     public function getTargetFrontendVersion(): ?string
@@ -213,6 +242,17 @@ class SystemUpdateOperation
     public function setTargetFrontendVersion(?string $targetFrontendVersion): self
     {
         $this->targetFrontendVersion = $targetFrontendVersion;
+        return $this;
+    }
+
+    public function getTargetMobilePreviewVersion(): ?string
+    {
+        return $this->targetMobilePreviewVersion;
+    }
+
+    public function setTargetMobilePreviewVersion(?string $targetMobilePreviewVersion): self
+    {
+        $this->targetMobilePreviewVersion = $targetMobilePreviewVersion;
         return $this;
     }
 

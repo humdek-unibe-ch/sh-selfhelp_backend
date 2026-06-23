@@ -54,11 +54,12 @@ final class SystemControllerTest extends QaWebTestCase
 
         foreach ([
             'instance_id', 'selfhelp_version', 'backend_version', 'frontend_version',
-            'plugin_api_version', 'database_migration_version', 'deployment', 'safe_mode',
-            'maintenance_mode', 'installed_plugins',
+            'mobile_preview_version', 'plugin_api_version', 'database_migration_version',
+            'deployment', 'safe_mode', 'maintenance_mode', 'installed_plugins',
         ] as $key) {
             self::assertArrayHasKey($key, $data, "Version summary must expose '{$key}'.");
         }
+        self::assertIsString($data['mobile_preview_version']);
         self::assertIsString($data['instance_id']);
         self::assertNotSame('', $data['instance_id'], 'Instance id is server-derived and never empty.');
         self::assertIsArray($data['installed_plugins']);
@@ -285,6 +286,91 @@ final class SystemControllerTest extends QaWebTestCase
         self::assertSame($accepted['operation_id'], $status['operation_id']);
         self::assertSame('frontend', $status['kind'], 'Status must report the operation kind.');
         self::assertSame(self::TARGET, $status['target_frontend_version']);
+    }
+
+    public function testMobilePreviewUpdateReleasesIsAdminOnlyAndDegradesGracefullyOffline(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/update/mobile-preview/releases');
+
+        // Registry pinned to a closed local port in the test env: the preview
+        // picker degrades to "manual entry" deterministically.
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/mobile-preview/releases', null, $this->loginAsQaAdmin())
+        );
+
+        self::assertArrayHasKey('available', $data);
+        self::assertArrayHasKey('current_version', $data);
+        self::assertArrayHasKey('releases', $data);
+        self::assertFalse($data['available'], 'Offline registry must degrade the mobile-preview release list to unavailable.');
+        self::assertSame([], $data['releases']);
+        self::assertIsString($data['current_version']);
+    }
+
+    public function testMobilePreviewPreflightIsAdminOnlyAndReturnsStatelessVerdict(): void
+    {
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/update/mobile-preview/preflight?target=' . self::TARGET);
+
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/mobile-preview/preflight?target=' . self::TARGET, null, $this->loginAsQaAdmin())
+        );
+
+        self::assertContains($data['status'], ['ok', 'warning', 'blocked']);
+        self::assertSame(self::TARGET, $data['target_version']);
+        self::assertIsArray($data['database']);
+        // The preview is stateless: never destructive, never requires a backup.
+        self::assertFalse($data['database']['destructive']);
+        self::assertFalse($data['database']['requires_backup']);
+    }
+
+    public function testMobilePreviewPreflightRequiresTargetQueryParam(): void
+    {
+        $this->assertEnvelope400(
+            $this->jsonRequest('GET', self::BASE . '/update/mobile-preview/preflight', null, $this->loginAsQaAdmin())
+        );
+    }
+
+    public function testMobilePreviewUpdateRequestIsForbiddenForNonAdmins(): void
+    {
+        $this->assertForbiddenForNonAdmins('POST', self::BASE . '/update/mobile-preview/request', [
+            'target_version' => self::TARGET,
+            'preflight_id' => 'pfm_test',
+        ]);
+    }
+
+    public function testMobilePreviewUpdateRequestDeniesClientSuppliedInstanceId(): void
+    {
+        $envelope = $this->jsonRequest('POST', self::BASE . '/update/mobile-preview/request', [
+            'target_version' => self::TARGET,
+            'preflight_id' => 'pfm_test',
+            'instance_id' => 'some-other-instance',
+        ], $this->loginAsQaAdmin());
+
+        $this->assertEnvelope403($envelope);
+    }
+
+    public function testMobilePreviewUpdateRequestAcceptsAndStatusReflectsTheMobilePreviewKind(): void
+    {
+        $token = $this->loginAsQaAdmin();
+
+        $accepted = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', self::BASE . '/update/mobile-preview/request', [
+                'target_version' => self::TARGET,
+                'preflight_id' => 'pfm_test',
+            ], $token),
+            Response::HTTP_ACCEPTED
+        );
+
+        self::assertNotSame('', $accepted['operation_id']);
+        self::assertSame('requested', $accepted['status']);
+        self::assertSame('mobile-preview', $accepted['kind']);
+        self::assertSame(self::TARGET, $accepted['target_mobile_preview_version']);
+
+        $status = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '/update/status', null, $token)
+        );
+        self::assertSame($accepted['operation_id'], $status['operation_id']);
+        self::assertSame('mobile-preview', $status['kind'], 'Status must report the operation kind.');
+        self::assertSame(self::TARGET, $status['target_mobile_preview_version']);
     }
 
     public function testMaintenanceReadIsAdminOnlyAndDefaultsToDisabled(): void

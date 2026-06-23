@@ -53,7 +53,7 @@ final class SystemHealthServiceTest extends TestCase
     ): SystemHealthService {
         // env-forced maintenance mirrors the parameter; no file is touched.
         $maintenance = new MaintenanceModeService(sys_get_temp_dir() . '/shqa-health-no-maint', $maintenanceMode);
-        $instance = new SystemInstanceService('inst-qa-health', '0.1.0', '0.1.0', '0.1.0', 'source', $safeMode, $maintenance);
+        $instance = new SystemInstanceService('inst-qa-health', '0.1.0', '0.1.0', '0.1.0', '0.1.0', 'source', $safeMode, $maintenance);
 
         $versionService = $this->createStub(SystemVersionService::class);
         $versionService->method('getVersion')->willReturn([

@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend (SelfHelp Manager / Docker Distribution MVP).
-Last verified: 2026-06-15.
-Source of truth: `src/Controller/Api/V1/Admin/SystemController.php`, `src/Service/System/*`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/`, and the `api_routes` rows seeded by `migrations/Version20260608160348.php` (plus `migrations/Version20260610124237.php` for `update/releases` and `migrations/Version20260615130915.php` for the `update/frontend/*` routes; the `kind` + `target_frontend_version` columns come from `migrations/Version20260615130842.php`).
+Last verified: 2026-06-23.
+Source of truth: `src/Controller/Api/V1/Admin/SystemController.php`, `src/Service/System/*`, the JSON schemas under `config/schemas/api/v1/{requests,responses}/admin/`, and the `api_routes` rows seeded by `migrations/Version20260608160348.php` (plus `migrations/Version20260610124237.php` for `update/releases`, `migrations/Version20260615130915.php` for the `update/frontend/*` routes, and `migrations/Version20260623180726.php` for the `update/mobile-preview/*` routes; the `kind` + `target_frontend_version` columns come from `migrations/Version20260615130842.php`, and `target_mobile_preview_version` from `migrations/Version20260623180726.php`).
 
 ## Overview
 
@@ -31,8 +31,8 @@ Hard rules (enforced server-side):
 
 | Permission            | Granted to | Used by                                                                 |
 |-----------------------|------------|-------------------------------------------------------------------------|
-| `admin.system.read`   | `admin`    | `version`, `update/preflight`, `update/status`, `update/releases`, `update/frontend/releases`, `update/frontend/preflight` |
-| `admin.system.update` | `admin`    | `update/request`, `update/frontend/request`                             |
+| `admin.system.read`   | `admin`    | `version`, `update/preflight`, `update/status`, `update/releases`, `update/frontend/releases`, `update/frontend/preflight`, `update/mobile-preview/releases`, `update/mobile-preview/preflight` |
+| `admin.system.update` | `admin`    | `update/request`, `update/frontend/request`, `update/mobile-preview/request` |
 
 Both are seeded and granted to the `admin` role by
 `migrations/Version20260608160348.php`. Non-admins receive `403`; unauthenticated
@@ -50,6 +50,9 @@ callers receive `401`.
 | GET    | `/admin/system/update/frontend/releases`  | `admin.system.read`   | Frontend versions published in the registry |
 | GET    | `/admin/system/update/frontend/preflight` | `admin.system.read`   | Frontend-only compatibility verdict      |
 | POST   | `/admin/system/update/frontend/request`   | `admin.system.update` | Record a frontend-only update request    |
+| GET    | `/admin/system/update/mobile-preview/releases`  | `admin.system.read`   | Mobile-preview versions published in the registry |
+| GET    | `/admin/system/update/mobile-preview/preflight` | `admin.system.read`   | Mobile-preview compatibility verdict (incl. enable/bootstrap) |
+| POST   | `/admin/system/update/mobile-preview/request`   | `admin.system.update` | Record a mobile-preview install/update request |
 
 ### GET /admin/system/version
 
@@ -65,6 +68,7 @@ Response `data` (schema: `responses/admin/system_version.json`):
   "selfhelp_version": "0.1.0",
   "backend_version": "0.1.0",
   "frontend_version": "0.1.0",
+  "mobile_preview_version": "0.1.0",
   "plugin_api_version": "0.1.0",
   "database_migration_version": "Version20260608160348",
   "deployment": "docker",
@@ -83,6 +87,11 @@ Version sources (why dev setups show `unknown`/`source`):
   no way to know which frontend build is running, so it reports `unknown` and
   the admin UI falls back to the frontend's own build-time package version
   (labelled "self-reported").
+- `mobile_preview_version` comes from the `SELFHELP_MOBILE_PREVIEW_VERSION` env
+  var, injected by the SelfHelp Manager exactly like `SELFHELP_FRONTEND_VERSION`.
+  The mobile preview is an **optional** image, so an instance without it (or a
+  source/dev backend) reports `unknown`, which the admin UI renders as
+  "Not installed". New installs provision it by default.
 - `deployment` comes from `SELFHELP_DEPLOYMENT`: the production Docker images
   bake `docker` (see `docker/Dockerfile`); anything else (composer dev,
   bare-metal checkout) defaults to `source`.
@@ -191,6 +200,7 @@ Response `data` (schema: `responses/admin/update_status.json`):
   "kind": "core",
   "target_version": "0.1.1",
   "target_frontend_version": null,
+  "target_mobile_preview_version": null,
   "progress_percent": 40,
   "steps": [
     { "name": "pull", "status": "succeeded" },
@@ -202,11 +212,15 @@ Response `data` (schema: `responses/admin/update_status.json`):
 }
 ```
 
-`kind` is `core` (default, full-stack update) or `frontend` (a frontend-only
-swap requested via `update/frontend/request`); `target_frontend_version` is the
-targeted frontend version for a `frontend`-kind operation and `null` otherwise
-(including the synthetic `idle` status). The same two fields are emitted on the
-manager-claim payload so the SelfHelp Manager runs the right kind of update.
+`kind` is `core` (default, full-stack update), `frontend` (a frontend-only swap
+requested via `update/frontend/request`), or `mobile-preview` (a preview-only
+swap/enable requested via `update/mobile-preview/request`).
+`target_frontend_version` / `target_mobile_preview_version` carry the targeted
+version for a `frontend` / `mobile-preview` operation respectively and are `null`
+otherwise (including the synthetic `idle` status). These fields are emitted on the
+manager-claim payload too, so the SelfHelp Manager runs the right kind of update.
+A `frontend` or `mobile-preview` claim skips the core registry recomputation
+(both are stateless swaps — never destructive, never a backup).
 
 ## Frontend-only updates
 
@@ -286,16 +300,94 @@ Response `data` (schema: `responses/admin/frontend_update_request.json`):
 { "operation_id": "op_5c6d7e8f", "instance_id": "selfhelp-prod-01", "status": "requested", "kind": "frontend", "target_frontend_version": "0.1.7" }
 ```
 
+## Mobile-preview updates
+
+The `selfhelp-mobile-preview` web image (embedded in the CMS page editor's
+**Mobile preview** panel) ships **independently** of the core and is **optional**.
+These three endpoints let an admin **install/enable** it on an instance that does
+not have it yet, and **update** it to a newer compatible version — mirroring the
+frontend-only flow. Like the frontend, a preview swap is **stateless** (no
+database migration, no backup); the CMS validates the version locally and applies
+the preview ⇄ core compatibility gate against the SAME signed registry metadata
+the manager uses, then the SelfHelp Manager re-resolves the signed preview release
+and swaps only the preview container (rolling it back on a failed health check).
+
+### GET /admin/system/update/mobile-preview/releases
+
+Lists the mobile-preview versions published in the official registry index
+(newest first). Same shape and fail-soft behaviour as `update/releases`
+(`available: false` + empty list when the registry is unreachable);
+`current_version` is the instance's installed preview version, or `unknown` when
+the preview is not installed. Response schema:
+`responses/admin/update_releases.json` (reused).
+
+### GET /admin/system/update/mobile-preview/preflight
+
+Query parameter: `target` (required) — the target mobile-preview version. A
+missing `target` returns `400`.
+
+Returns the same verdict shape as `update/preflight`, always non-destructive
+(`database.destructive` / `database.requires_backup` always `false`). Blocking
+checks are:
+
+- an **invalid version** (`version_invalid`);
+- a **downgrade** (`downgrade`) — only evaluated when the installed preview is a
+  real, parseable version. When the preview is **not installed** the current
+  version is `unknown`, which is treated as the **enable/bootstrap** path: it
+  stays `ok` (never a false downgrade block) so the manager can provision the
+  container;
+- a **preview ⇄ core incompatibility** (`mobile_preview_compatibility`) — the
+  target preview's `backendCompatibility.requiredCoreRange` must admit the
+  running core, otherwise the request is blocked ("this preview needs a newer
+  core; update the core first"). The check carries the standardized
+  `CompatibilityError` fields (`component: "mobile-preview"`, `component_id:
+  "selfhelp-mobile-preview"`, `current_version`, `target_version`,
+  `required_range`, `blocking`). When the signed preview release document cannot
+  be read (registry offline, version not yet published, or signature failure)
+  the CMS does **not** fabricate a block — it degrades to the
+  `registry_unreachable` **warning** and lets the manager re-resolve + enforce
+  at execution.
+
+A target not listed in the registry is a `warning`, not a block — the manager
+re-validates availability authoritatively. Response schema:
+`responses/admin/update_preflight.json` (reused).
+
+### POST /admin/system/update/mobile-preview/request
+
+Records a mobile-preview install/update request and returns `202 Accepted`. Like
+the frontend request it carries **no `instance_id`** (sending it returns `403`)
+and omits `accepted_migration_risk`/`typed_confirmation` (a preview swap has no
+destructive migration to confirm).
+
+Request body (schema: `requests/admin/mobile_preview_update_request.json`,
+`additionalProperties: false`):
+
+```json
+{ "target_version": "0.2.3", "preflight_id": "mp_pf_0a1b2c3d" }
+```
+
+- A `blocked` preflight (incl. a `mobile_preview_compatibility` block) returns
+  `422`.
+
+Response `data` (schema: `responses/admin/mobile_preview_update_request.json`):
+
+```json
+{ "operation_id": "op_7a8b9c0d", "instance_id": "selfhelp-prod-01", "status": "requested", "kind": "mobile-preview", "target_mobile_preview_version": "0.2.3" }
+```
+
 ## Audit trail
 
 Every request is persisted to `system_update_operations` (entity
 `App\Entity\System\SystemUpdateOperation`) with the requesting user, target
 version, preflight id, status, progress, and step log. A frontend-only request
-additionally sets `kind = frontend` and `target_frontend_version`. The manager
-updates the row as it executes; the `status` endpoint reads it back.
+additionally sets `kind = frontend` and `target_frontend_version`; a
+mobile-preview request sets `kind = mobile-preview` and
+`target_mobile_preview_version` (with `target_version` mirroring it so the
+manager's approval verification stays consistent). The manager updates the row as
+it executes; the `status` endpoint reads it back.
 
 ## Related
 
 - Cross-repo version alignment: [../../developer/cross-repo-compatibility-matrix.md](../../developer/cross-repo-compatibility-matrix.md).
-- Shared contracts: `@selfhelp/shared` `src/types/api/system.ts` (`ISystemVersion`, `IUpdatePreflight`, `IUpdateStatus`, `IUpdateRequest`, `IUpdateReleases`, and the frontend-only `TUpdateKind`, `IFrontendUpdateRequest`, `IFrontendUpdateRequestResponse`, `IFrontendUpdateReleases`, `IFrontendUpdatePreflight`).
+- Shared contracts: `@selfhelp/shared` `src/types/api/system.ts` (`ISystemVersion` incl. `mobile_preview_version`, `IUpdatePreflight`, `IUpdateStatus` incl. `target_mobile_preview_version`, `IUpdateRequest`, `IUpdateReleases`, the `TUpdateKind` union `core | frontend | mobile-preview`, the frontend-only `IFrontendUpdateRequest`/`IFrontendUpdateReleases`/`IFrontendUpdatePreflight`, and the mobile-preview `IMobilePreviewUpdateRequest`/`IMobilePreviewUpdateRequestResponse`/`IMobilePreviewUpdateReleases`/`IMobilePreviewUpdatePreflight`).
 - SelfHelp Manager (owns Docker, performs the operation): the `sh-manager` repository.

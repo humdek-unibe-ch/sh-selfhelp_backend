@@ -1,3 +1,40 @@
+# v0.1.20
+
+## CMS-driven mobile-preview install / update
+
+- **Mobile-preview version in the system summary.** `GET /admin/system/version`
+  now reports `mobile_preview_version` (from the manager-injected
+  `SELFHELP_MOBILE_PREVIEW_VERSION` env, mirroring `SELFHELP_FRONTEND_VERSION`,
+  with `unknown` when the optional preview image is not installed).
+  `SystemInstanceService` carries the value; `system_version.json` requires it and
+  it is mirrored in `@selfhelp/shared` `ISystemVersion`.
+- **Mobile-preview update endpoints.** Three new admin routes mirror the
+  frontend-only flow: `GET /admin/system/update/mobile-preview/releases`
+  (registry versions, fail-soft), `GET /admin/system/update/mobile-preview/preflight`
+  (stateless compatibility verdict — never destructive), and
+  `POST /admin/system/update/mobile-preview/request` (records an instance-scoped
+  install/update, `202`). Reads reuse `admin.system.read`, the request reuses
+  `admin.system.update`; the request body carries **no `instance_id`** (`403` if
+  sent). Routes + permission links are added by migration
+  `Version20260623180726.php` (with an up/down round-trip test).
+- **`mobile-preview` operation kind.** `SystemUpdateOperation` gains
+  `kind = mobile-preview` and a `target_mobile_preview_version` column (same
+  migration). The status + manager-claim payloads expose
+  `target_mobile_preview_version`, and a preview claim — like a frontend claim —
+  is treated as a stateless swap that skips core registry recomputation.
+- **Preview ⇄ core compatibility gate.** The preflight blocks
+  (`mobile_preview_compatibility`, standardized `CompatibilityError` with
+  `component: mobile-preview`) when the target preview's
+  `backendCompatibility.requiredCoreRange` does not admit the running core, so the
+  CMS verdict matches what the SelfHelp Manager enforces. An unreadable signed
+  release degrades to a warning (no fabricated block). A **not-installed** instance
+  reports current `unknown`, which is the **enable/bootstrap** path (stays `ok`,
+  never a false downgrade) so the manager can provision the container.
+- Service + controller + permission-matrix tests cover the releases picker,
+  preflight (ok / downgrade / invalid / compatibility / bootstrap), the
+  instance-scoped request, the claim DTO, and the status payload.
+  `composer phpstan` stays at 0 errors.
+
 # v0.1.19
 
 ## Mobile preview session API + plugin mobile-compatibility axis
@@ -13,7 +50,7 @@
   `selfhelp-mobile-preview` image. Logic lives in
   `Service/MobilePreview/MobilePreviewSessionService`; request/response contracts
   are JSON-schema validated (`config/schemas/api/v1/{requests,responses}/...
-  mobile_preview_*.json`) and mirror `@selfhelp/shared` >= 1.15.0.
+  mobile_preview_*.json`) and mirror `@selfhelp/shared` >= 1.14.25.
 - **`MobilePreviewAccessGuard`.** A request listener inspects the JWT payload and
   confines a `purpose: 'mobile_preview'` token to a read-only `/cms-api`
   allowlist (page/section render + lookups), so a leaked preview token cannot

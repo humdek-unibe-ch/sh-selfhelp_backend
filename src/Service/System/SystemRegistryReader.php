@@ -12,6 +12,7 @@ namespace App\Service\System;
 
 use App\Plugin\Registry\Unified\CoreRelease;
 use App\Plugin\Registry\Unified\FrontendRelease;
+use App\Plugin\Registry\Unified\MobilePreviewRelease;
 use App\Plugin\Registry\Unified\UnifiedRegistryClient;
 use Psr\Log\LoggerInterface;
 
@@ -148,6 +149,66 @@ class SystemRegistryReader
             return $releases;
         } catch (\Throwable $e) {
             $this->logger->info('System registry frontend-release listing failed; releases degrade to offline mode.', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * Fetch the signed, signature-verified mobile-preview release document for a
+     * version, or null when the registry is unreachable, the version is not
+     * published, or the signature does not verify. Used by the mobile-preview
+     * update preflight to read the preview's `backendCompatibility.requiredCoreRange`
+     * so the CMS can apply the SAME preview ⇄ core compatibility rule the SelfHelp
+     * Manager enforces at execution time.
+     */
+    public function getMobilePreviewRelease(string $version): ?MobilePreviewRelease
+    {
+        try {
+            $index = $this->client->fetchIndex($this->registryUrl);
+            foreach ($index->mobilePreviewRefsSorted() as $ref) {
+                if ($ref->version === $version) {
+                    return $this->client->fetchMobilePreviewRelease($index->resolveUrl($ref->releaseUrl), [], $ref);
+                }
+            }
+
+            return null;
+        } catch (\Throwable $e) {
+            $this->logger->info('System registry mobile-preview-release fetch failed; preflight degrades to offline mode.', [
+                'version' => $version,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    /**
+     * The mobile-preview release refs published in the registry index (newest
+     * first), or null when the registry is unreachable. Feeds the CMS
+     * mobile-preview update version picker; only refs are read here — the
+     * optional preview ships independently of the core, so a newer compatible
+     * preview can exist for an instance already on the newest core. The SelfHelp
+     * Manager remains the trusted verifier that re-resolves compatibility + the
+     * per-plugin RN/Expo gate before any image is pulled.
+     *
+     * @return list<array{version: string, channel: string, blocked: bool}>|null
+     */
+    public function listMobilePreviewReleases(): ?array
+    {
+        try {
+            $index = $this->client->fetchIndex($this->registryUrl);
+
+            $releases = [];
+            foreach ($index->mobilePreviewRefsSorted() as $ref) {
+                $releases[] = ['version' => $ref->version, 'channel' => $ref->channel, 'blocked' => $ref->blocked];
+            }
+
+            return $releases;
+        } catch (\Throwable $e) {
+            $this->logger->info('System registry mobile-preview-release listing failed; releases degrade to offline mode.', [
                 'error' => $e->getMessage(),
             ]);
 

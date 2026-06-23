@@ -17,8 +17,9 @@
         "approved_by_user_id": { "type": "integer" },
         "accepted_migration_risk": { "type": "boolean" },
         "destructive_migration": { "type": "boolean" },
-        "kind": { "type": "string", "enum": ["core", "frontend"], "description": "What the operation updates: core (default) or a stateless frontend-only swap. A manager that predates this field treats its absence as 'core'." },
-        "target_frontend_version": { "type": ["string", "null"], "description": "The frontend version a 'frontend'-kind operation targets; null for a core operation (the manager resolves the compatible frontend itself)." }
+        "kind": { "type": "string", "enum": ["core", "frontend", "mobile-preview"], "description": "What the operation updates: core (default), a stateless frontend-only swap, or a stateless mobile-preview-only swap. A manager that predates this field treats its absence as 'core'." },
+        "target_frontend_version": { "type": ["string", "null"], "description": "The frontend version a 'frontend'-kind operation targets; null for a core operation (the manager resolves the compatible frontend itself)." },
+        "target_mobile_preview_version": { "type": ["string", "null"], "description": "The mobile-preview version a 'mobile-preview'-kind operation targets; null for core/frontend operations." }
       },
       "required": [
         "operation_id",
