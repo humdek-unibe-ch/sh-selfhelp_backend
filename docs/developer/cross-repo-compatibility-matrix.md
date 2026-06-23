@@ -196,6 +196,26 @@ the same change wave:
 > `instanceMobilePreviewUpdate`), so a CMS-requested preview install/update is
 > executed and rolled-back (on a failed health check) exactly like the CLI path.
 
+> **Core 0.1.21 (CMS Live Preview entitlement):** core `0.1.21` seeds the
+> `admin.mobile_preview.view` permission (migration `Version20260623193630`,
+> granted to the `admin` role). It is the dedicated entitlement for the
+> frontend's full-screen **Live Preview** surface — a new-tab, free-navigation
+> mobile/web preview to test the real flow — kept SEPARATE from
+> `admin.mobile_preview.create` (the one-time-code mint). The change is
+> **additive**: no new `api_route` and no schema change (the live preview reuses
+> the existing admin mint + public exchange routes); the permission only surfaces
+> in the admin user-data `permissions[]`. The free-navigation behaviour needs no
+> backend change either — the mint request schema has no required fields and
+> `MobilePreviewAccessGuard` only pins to one keyword when a `keyword`/`page_id`
+> scope is bound, so a keyword-less mint already renders any page (GET-only,
+> read-only allowlist). **Frontend 0.1.33** adopts the live preview and gates it
+> on the new permission, so the frontend `supports.core` floor rises
+> `0.1.20` → `0.1.21`. The backend `supports.frontend` floor is **unchanged**
+> (`>=0.1.30`): the permission is additive and the UI is optional, so the core
+> does not require the newer frontend. No `@selfhelp/shared` change (the
+> permission string is a frontend constant; the mobile off-menu modal flag is a
+> local embed-contract param).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -203,15 +223,15 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.20` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.21` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.14.26` | npm (1.14.26 adds the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*` types, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promotes `reactNativeVersion`/`expoSdkVersion` to **top-level** on `MobilePreviewRelease` + `PluginRelease.compatibility.reactNative`/`expoSdk`; all additive, `^1.14.25` consumers unaffected; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()` + the `mobile-preview-release` types; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`; 1.14.24 removed `frontendOnly` from registry entries) |
-| `sh-selfhelp_frontend` | `0.1.32` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.25` | shared `1.x` line (mobile preview-session + preview-update types) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.20 <0.2.0` | raised `0.1.19` → `0.1.20`: the System Maintenance "Update / enable mobile preview" lane calls the `update/mobile-preview/*` endpoints and reads `mobile_preview_version`, first shipped in core `0.1.20` (the UI degrades gracefully on older cores, but the version contract tracks the dependency) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | unchanged: the mobile-preview session **and** update endpoints are additive and do NOT require the frontend panel/UI; still tracks the 0.1.18 anonymous-preview adaptation |
-| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.11` | — |
-| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`) |
+| `sh-selfhelp_frontend` | `0.1.33` | — |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.1` | shared `1.x` line (mobile preview-session + preview-update types) |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.21 <0.2.0` | raised `0.1.20` → `0.1.21`: the full-screen Live Preview surface gates on the `admin.mobile_preview.view` permission first seeded in core `0.1.21` (the UI hides for users without it, but the version contract tracks the dependency) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | unchanged: the mobile-preview session, update endpoints **and** the `admin.mobile_preview.view` permission are additive and do NOT require the frontend panel/UI; still tracks the 0.1.18 anonymous-preview adaptation |
+| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.12` | — |
+| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
 | `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.25` | shared `1.x` line (mobile UI adapter + preview contracts) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |

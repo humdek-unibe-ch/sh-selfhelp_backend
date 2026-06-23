@@ -1,3 +1,29 @@
+# v0.1.21
+
+## CMS Live Preview entitlement (`admin.mobile_preview.view`)
+
+- **New `admin.mobile_preview.view` permission** (migration
+  `Version20260623193630`, granted to the `admin` role, with an up/down
+  round-trip test). It is the dedicated entitlement for the frontend's new
+  full-screen **Live Preview** surface (a new-tab, free-navigation mobile/web
+  preview to test the real flow), kept SEPARATE from
+  `admin.mobile_preview.create` (which gates minting one-time preview codes) so
+  a role can be granted the two independently. No new `api_route` — the live
+  preview reuses the existing admin mint + public exchange routes; the
+  permission only surfaces in the admin user-data `permissions[]` so the
+  frontend can gate the `/admin/preview` route and the editor "Open live
+  preview" entry on it.
+- **Free-navigation mint is already supported by the existing contract.** The
+  mint request schema (`requests/admin/mobile_preview_session`) has no required
+  fields, and `MobilePreviewAccessGuard` only pins navigation to one keyword
+  when the mint binds a `keyword`/`page_id` scope — so a keyword-less mint
+  yields a scoped token that may render ANY page (still GET-only, still the
+  read-only render allowlist). The full-screen preview relies on this; no guard
+  change was needed.
+- Bumps the core default version to `0.1.21`. Additive only: `supports.frontend`
+  stays `>=0.1.30` (the core does not require the live-preview UI; frontend
+  `0.1.33` adopts it and raises ITS `supports.core` floor to `0.1.21`).
+
 # v0.1.20
 
 ## CMS-driven mobile-preview install / update
