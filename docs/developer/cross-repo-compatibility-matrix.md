@@ -95,7 +95,7 @@ the same change wave:
 - raise `sh-selfhelp_backend` → `supports.frontend` to the first frontend version that
   adopts it.
 
-> **Current floor (2026-06-22):** the **core 0.1.17** style-schema contract
+> **Current floor (2026-06-23):** the **core 0.1.17** style-schema contract
 > (built up across the 0.1.15 → 0.1.17 style waves; `selfhelp.cms_version` was
 > caught up from `0.1.15` to the changelog's latest `0.1.17` in this change) — the
 > mobile-rendering taxonomy (style `renderTarget`, a required field `scope` on
@@ -107,28 +107,41 @@ the same change wave:
 > prefix is dropped from 47 style props (`shared_color` → `color`,
 > `shared_variant` → `variant`, `shared_radius` → `radius`, …;
 > `shared_height`/`shared_width`/`shared_icon` are kept as reserved-name
-> exceptions). All of this is part of the current **core 0.1.17** and is
+> exceptions). All of this is part of the current **core 0.1.17** and was first
 > adopted by **frontend 0.1.29**. Because this core emits the unprefixed names, a
 > 0.1.23–0.1.28 frontend (which still reads `shared_*`) is an incompatible mix —
 > an **old frontend that still reads `shared_*` must not be paired with this
-> backend** — so the frontend floor moved up from 0.1.23 to 0.1.29. The live
-> pairing is now **frontend `>=0.1.29` ⇄ core `>=0.1.17`** (both still `<0.2.0`);
-> anything older on the frontend side is an incompatible mix. `@selfhelp/shared`
-> (the prefix drop landed in `1.14.22`; this branch resolves the caret to `1.14.23`,
-> carrying the unprefixed `I*Style` field contracts) stays the type anchor on top
-> of this version gate.
+> backend** — so the frontend floor moved up from 0.1.23 to 0.1.29, then to
+> **0.1.30** for the core 0.1.18 anonymous-preview adaptation (see the next
+> note). The live pairing is now **frontend `>=0.1.30` ⇄ core `>=0.1.17`** (both
+> still `<0.2.0`); anything older on the frontend side is an incompatible mix.
+> `@selfhelp/shared` (the prefix drop landed in `1.14.22`; this branch resolves
+> the caret to `1.14.24`, carrying the unprefixed `I*Style` field contracts)
+> stays the type anchor on top of this version gate.
 >
 > **Core 0.1.18 (anonymous-access hardening + page-route cleanup):** core `0.1.18`
-> fixes the anonymous-as-admin ACL bug (guest sentinel id 0), requires auth for
-> `preview=true`, stores anonymous form submissions un-owned, and **removes the
-> duplicate `GET /cms-api/v1/pages/{page_id}` route** (single page content is
-> resolved only by `GET /cms-api/v1/pages/by-keyword/{keyword}`). This is a
-> breaking backend change but **client-transparent**: no frontend/mobile/shared
-> code referenced the by-id route (the frontend `api.config.ts` only defines
-> `/pages`, `/pages/language/{id}`, `/pages/by-keyword/{keyword}`), and the
-> anonymous-access hardening needs no client adoption. The `supports.*` floors are
-> therefore **unchanged** — frontend `>=0.1.29` already satisfies core `>=0.1.17`,
-> which includes `0.1.18`.
+> fixes the anonymous-as-admin ACL bug (guest sentinel id 0), **requires auth for
+> `preview=true`** (an anonymous draft request is now `401`), stores anonymous
+> form submissions un-owned, and **removes the duplicate
+> `GET /cms-api/v1/pages/{page_id}` route** (single page content is resolved only
+> by `GET /cms-api/v1/pages/by-keyword/{keyword}`).
+>
+> The page-route cleanup is client-transparent (no frontend/mobile/shared code
+> referenced the by-id route — the frontend `api.config.ts` only defines
+> `/pages`, `/pages/language/{id}`, `/pages/by-keyword/{keyword}`). **The
+> anonymous-preview 401 is NOT client-transparent**, contrary to an earlier note
+> here: the long-lived, admin-set preview flag (`sh_preview` on web, the dev
+> preview toggle on mobile) can outlive a session, so an anonymous render kept
+> requesting the draft and 401-looped the public site. Both clients adapt —
+> **frontend 0.1.30** gates SSR preview on a live session cookie and clears
+> `sh_preview` on logout/expiry (`resolvePreviewSSR` + `clearAuthCookies`), and
+> **mobile 0.1.10** ships the matching `services/previewPolicy.ts` gate. The
+> backend therefore raised **`supports.frontend` from `>=0.1.29` to `>=0.1.30`**
+> (frontend `supports.core` stays `>=0.1.17`: the guard is backward-safe on older
+> cores). Mobile is not in the registry resolver's pairing (it has no
+> `release-manifest.json`), so its coupling to core `0.1.18` is enforced by
+> shipping `0.1.10` together, not by an automated gate — see "Mobile ⇄ core
+> coupling" below.
 
 ## Current matrix (snapshot)
 
@@ -139,13 +152,13 @@ the same change wave:
 |-----------|---------|-------------|
 | Host CMS (`selfhelp.cms_version`) | `0.1.18` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.14.23` | npm (1.14.22 dropped the `shared_` field-name prefix — "no prefix = both platforms" — paired with backend migration `Version20260622165615`; 1.14.23 follows up: removes the orphan `IImageStyle.height`/`width`, corrects the rich-text-editor registry description, tidies `media.ts`) |
-| `sh-selfhelp_frontend` | `0.1.29` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.23` | shared `1.x` line (field-naming unification) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.17 <0.2.0` | first core that emits the unprefixed field names (field-naming unification, `Version20260622165615`) on top of the render-target + field-scope style schema + polish wave |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.29 <0.2.0` | frontend that adopted the field-naming unification (unprefixed common names from `Version20260622165615`) on top of the full 0.1.15 → 0.1.17 style schema + polish wave |
-| `sh-selfhelp_mobile` | `0.1.9` | — |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.23` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
+| `@selfhelp/shared` | `1.14.24` | npm (1.14.22 dropped the `shared_` field-name prefix — "no prefix = both platforms" — paired with backend migration `Version20260622165615`; 1.14.23 removed the orphan `IImageStyle.height`/`width` + tidied `media.ts`; 1.14.24 removed `frontendOnly` from registry entries and refreshed the registry/AGENTS docs) |
+| `sh-selfhelp_frontend` | `0.1.30` | — |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.14.24` | shared `1.x` line (field-naming unification) |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.17 <0.2.0` | first core that emits the unprefixed field names (field-naming unification, `Version20260622165615`) on top of the render-target + field-scope style schema + polish wave; the 0.1.30 anonymous-preview guard is backward-safe on older cores so this floor is unchanged |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | frontend that handles the core 0.1.18 anonymous-preview 401 (preview gated on a live session; `sh_preview` cleared on logout) on top of the field-naming unification + full 0.1.15 → 0.1.17 style schema/polish wave |
+| `sh-selfhelp_mobile` | `0.1.10` | — |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.24` | shared `1.x` line (mobile UI adapter contract; field-naming unification) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
 | `sh2-shp-survey-js` runtime targets | `react ^19`, `node ^22`, `reactNative ^0.83`, `expoSdk ^55` | client runtimes |
@@ -155,6 +168,20 @@ the same change wave:
 > therefore tracks one core MINOR (`>=0.1.0 <0.2.0`), not one MAJOR. `@selfhelp/shared`
 > is the exception: it is a published SDK already on the `1.x` line, so the standard
 > "MAJOR = breaking" SemVer applies to it.
+
+> **Mobile ⇄ core coupling (no automated gate).** The registry resolver's
+> bidirectional `release-manifest.json` gate pairs **only frontend ⇄ core** — the
+> mobile app ships no `release-manifest.json` and is not assembled by the resolver,
+> so the `@selfhelp/shared` caret range is currently mobile's only machine-checked
+> compatibility anchor. That anchor catches *typed response-shape* drift, **not
+> version pairing or behavioral coupling**: e.g. the core 0.1.18 anonymous-preview
+> 401 needed mobile 0.1.10 (`services/previewPolicy.ts`) even though no shared type
+> changed. Until a mobile manifest + resolver support exist, **a mobile↔core
+> behavioral coupling MUST be shipped as a coordinated release** (bump mobile in the
+> same wave as the core change and note it here), and an old mobile build against a
+> newer core is not blocked automatically. Adding `supports.core` to a mobile
+> `release-manifest.json` (and teaching the resolver to read it) is the tracked
+> follow-up that would turn this convention into a gate.
 
 ## What the plugin `compatibility` block means
 
