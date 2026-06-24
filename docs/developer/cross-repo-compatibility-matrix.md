@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-23.
+Last verified: 2026-06-24.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -216,6 +216,25 @@ the same change wave:
 > permission string is a frontend constant; the mobile off-menu modal flag is a
 > local embed-contract param).
 
+> **Live Preview shared theme + language (`@selfhelp/shared 1.15.3`, frontend
+> `0.1.39` ⇄ mobile `0.1.17`):** the CMS Live Preview now shares the colour
+> scheme **and** language between its web pane and the embedded mobile frame,
+> both ways and with no reload. This is a **frontend ⇄ mobile shared-contract
+> change, NOT a `/cms-api` change**: `@selfhelp/shared 1.15.3` extends the
+> preview-bridge protocol (`src/types/preview-bridge.ts`) with two additive
+> messages — `selfhelp-preview:set-preferences` (shell → frame) and
+> `selfhelp-preview:preferences-changed` (frame → shell) — plus the
+> `IPreviewPreferences` / `TPreviewColorScheme` payload types and their runtime
+> guard. The frontend shell (`LivePreview.tsx`) relays its Mantine
+> `colorScheme` + `LanguageContext` locale down and applies the mobile frame's
+> reported change; the mobile bridge (`PreviewSyncBridge.tsx`) applies the push
+> to `useThemeStore` / `setLanguage` and reports a local profile change back, a
+> per-frame guard stopping ping-pong. **No backend, schema, route, or
+> permission change**, so both `release-manifest.json` floors are **unchanged**
+> (`supports.core >=0.1.21`, `supports.frontend >=0.1.30`); the only anchor that
+> moves is `@selfhelp/shared` (additive minor → `1.15.3`, safe within both
+> consumers' caret ranges).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -225,15 +244,15 @@ the same change wave:
 |-----------|---------|-------------|
 | Host CMS (`selfhelp.cms_version`) | `0.1.21` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.14.26` | npm (1.14.26 adds the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*` types, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promotes `reactNativeVersion`/`expoSdkVersion` to **top-level** on `MobilePreviewRelease` + `PluginRelease.compatibility.reactNative`/`expoSdk`; all additive, `^1.14.25` consumers unaffected; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()` + the `mobile-preview-release` types; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`; 1.14.24 removed `frontendOnly` from registry entries) |
-| `sh-selfhelp_frontend` | `0.1.33` | — |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.1` | shared `1.x` line (mobile preview-session + preview-update types) |
+| `@selfhelp/shared` | `1.15.3` | npm (1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
+| `sh-selfhelp_frontend` | `0.1.39` | — |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (Live Preview theme+language sync, on top of the mobile preview-session + preview-update types) |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.21 <0.2.0` | raised `0.1.20` → `0.1.21`: the full-screen Live Preview surface gates on the `admin.mobile_preview.view` permission first seeded in core `0.1.21` (the UI hides for users without it, but the version contract tracks the dependency) |
 | `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | unchanged: the mobile-preview session, update endpoints **and** the `admin.mobile_preview.view` permission are additive and do NOT require the frontend panel/UI; still tracks the 0.1.18 anonymous-preview adaptation |
-| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.12` | — |
+| `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.17` | — |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.14.25` | shared `1.x` line (mobile UI adapter + preview contracts) |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (mobile UI adapter + preview contracts incl. Live Preview theme+language sync) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
