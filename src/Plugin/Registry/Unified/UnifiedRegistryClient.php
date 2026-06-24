@@ -184,6 +184,41 @@ final class UnifiedRegistryClient
     }
 
     /**
+     * Fetch + parse + signature-verify ONE mobile-preview release document.
+     *
+     * ADVISORY ONLY at the CMS boundary (mirrors {@see fetchFrontendRelease()}):
+     * the backend reads this to compute the mobile-preview update compatibility
+     * verdict ({@see \App\Service\System\SystemUpdateService::getMobilePreviewPreflight()})
+     * — specifically the preview's `backendCompatibility.requiredCoreRange`. The
+     * SelfHelp Manager remains the trusted verifier that re-resolves this
+     * document, verifies the image digest, re-runs the per-plugin RN/Expo gate,
+     * and swaps the container. The Ed25519 signature is still verified here so a
+     * tampered advisory cannot mislead the operator.
+     *
+     * @param array<string,string> $headers
+     */
+    public function fetchMobilePreviewRelease(string $releaseUrl, array $headers = [], ?RegistryReleaseRef $ref = null): MobilePreviewRelease
+    {
+        $decoded = $this->fetchJson($releaseUrl, $headers);
+        $release = MobilePreviewRelease::fromArray($decoded, sprintf('mobile-preview release (%s)', $releaseUrl));
+
+        if ($ref !== null && ($release->id !== $ref->id || $release->version !== $ref->version)) {
+            throw new MalformedRegistryException(sprintf(
+                'Registry ref "%s@%s" points at a mobile-preview release document for "%s@%s" (%s).',
+                $ref->id,
+                $ref->version,
+                $release->id,
+                $release->version,
+                $releaseUrl,
+            ));
+        }
+
+        // Mobile-preview releases are Manager-signed and always treated as "official".
+        $this->verifySignedDocument('mobile-preview release', $release->id, $release->version, $release->security, $release->raw, true);
+        return $release;
+    }
+
+    /**
      * Fetch the security-advisory feed referenced by the index `advisoriesUrl`.
      *
      * The advisory feed is an INFORMATIONAL document, not a signed release: it

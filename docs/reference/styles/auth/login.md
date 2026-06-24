@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (auth API, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-19.
+Last verified: 2026-06-24.
 Source of truth: `ILoginStyle` in `@selfhelp/shared`, `LoginStyle.tsx`, the auth login endpoint, `migrations/Version20260604111011.php` (for `label_register`), and `migrations/Version20260619131830.php` (for `subtitle`).
 
 ## Summary
@@ -34,7 +34,7 @@ defaults are the frontend fallback used when the field is empty.
 | `label_pw_reset` | text | 1 | `Forgot password?` | Reset-password link label (→ `/reset`). |
 | `label_register` | text | 1 | `Create account` **(seeded)** | Registration link label (→ register page). |
 | `alert_fail` | text | 1 | `Invalid email or password.` | Failure notification message (overridden by the API error when present). |
-| `color` | color-picker | 0 | `dark` | Submit button colour (cross-platform, via the shared mapper). |
+| `color` | color-picker | 0 | `dark` | Submit button colour (cross-platform, via the shared mapper). Renderers treat the neutral `dark`/`black` accent **adaptively** so it stays readable in dark mode (see Frontend rendering). |
 | spacing fields | various | 0 | — | Inherited from `IStyleWithSpacing`. |
 
 de-CH translation seeded for `label_register`: `Konto erstellen`.
@@ -56,6 +56,26 @@ de-CH translation seeded for `label_register`: `Konto erstellen`.
 second `Anchor` below the submit button. All other labels use the
 `style.<field>?.content || '<fallback>'` pattern.
 
+### Adaptive neutral accent (dark mode)
+
+The seeded `color` default is `dark`, which the shared colour mapper renders as a
+near-black accent. Applied literally that makes the submit button (and the
+reset/register links) blend into a **dark-mode** background. So when the resolved
+accent is the neutral `dark` or `black`, both renderers adapt instead of using it
+verbatim:
+
+- **Web** (`LoginStyle.tsx`): the submit `Button` drops the Mantine `color` and
+  uses theme tokens (`var(--mantine-color-text)` background, `var(--mantine-color-body)`
+  text) so it inverts correctly per scheme; the `Anchor` links drop the accent and
+  fall back to the default theme link colour.
+- **Mobile** (`components/styles/auth/Login.tsx`): the accent falls back to the
+  theme primary in dark mode (the button label is a fixed light colour), keeping
+  the button and links legible.
+
+Any **non-neutral** accent (an explicit brand colour) is honoured as-is on both
+platforms, and **light mode is unchanged**. This is a renderer-only concern — the
+backend seed default stays `dark`.
+
 ## Related files
 
 | File | Purpose |
@@ -66,6 +86,10 @@ second `Anchor` below the submit button. All other labels use the
 
 ## Change history
 
+- `2026-06-24` — Documented the **adaptive neutral accent**: both renderers now
+  treat a `dark`/`black` `color` adaptively so the submit button and links stay
+  readable in dark mode (frontend `>= 0.1.34`, mobile `>= 0.1.13`). Renderer-only;
+  the seeded `color` default is unchanged.
 - `2026-06-19` — Linked the optional translatable `subtitle` content field
   (`Version20260619131830`) and documented the existing `color` submit
   colour. Removed the stale `type` field row (no such DB field; the dead `type`

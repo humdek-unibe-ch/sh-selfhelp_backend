@@ -1,3 +1,99 @@
+# v0.1.21
+
+## CMS Live Preview entitlement (`admin.mobile_preview.view`)
+
+- **New `admin.mobile_preview.view` permission** (migration
+  `Version20260623193630`, granted to the `admin` role, with an up/down
+  round-trip test). It is the dedicated entitlement for the frontend's new
+  full-screen **Live Preview** surface (a new-tab, free-navigation mobile/web
+  preview to test the real flow), kept SEPARATE from
+  `admin.mobile_preview.create` (which gates minting one-time preview codes) so
+  a role can be granted the two independently. No new `api_route` — the live
+  preview reuses the existing admin mint + public exchange routes; the
+  permission only surfaces in the admin user-data `permissions[]` so the
+  frontend can gate the `/admin/preview` route and the editor "Open live
+  preview" entry on it.
+- **Free-navigation mint is already supported by the existing contract.** The
+  mint request schema (`requests/admin/mobile_preview_session`) has no required
+  fields, and `MobilePreviewAccessGuard` only pins navigation to one keyword
+  when the mint binds a `keyword`/`page_id` scope — so a keyword-less mint
+  yields a scoped token that may render ANY page (still GET-only, still the
+  read-only render allowlist). The full-screen preview relies on this; no guard
+  change was needed.
+- Bumps the core default version to `0.1.21`. Additive only: `supports.frontend`
+  stays `>=0.1.30` (the core does not require the live-preview UI; frontend
+  `0.1.33` adopts it and raises ITS `supports.core` floor to `0.1.21`).
+
+# v0.1.20
+
+## CMS-driven mobile-preview install / update
+
+- **Mobile-preview version in the system summary.** `GET /admin/system/version`
+  now reports `mobile_preview_version` (from the manager-injected
+  `SELFHELP_MOBILE_PREVIEW_VERSION` env, mirroring `SELFHELP_FRONTEND_VERSION`,
+  with `unknown` when the optional preview image is not installed).
+  `SystemInstanceService` carries the value; `system_version.json` requires it and
+  it is mirrored in `@selfhelp/shared` `ISystemVersion`.
+- **Mobile-preview update endpoints.** Three new admin routes mirror the
+  frontend-only flow: `GET /admin/system/update/mobile-preview/releases`
+  (registry versions, fail-soft), `GET /admin/system/update/mobile-preview/preflight`
+  (stateless compatibility verdict — never destructive), and
+  `POST /admin/system/update/mobile-preview/request` (records an instance-scoped
+  install/update, `202`). Reads reuse `admin.system.read`, the request reuses
+  `admin.system.update`; the request body carries **no `instance_id`** (`403` if
+  sent). Routes + permission links are added by migration
+  `Version20260623180726.php` (with an up/down round-trip test).
+- **`mobile-preview` operation kind.** `SystemUpdateOperation` gains
+  `kind = mobile-preview` and a `target_mobile_preview_version` column (same
+  migration). The status + manager-claim payloads expose
+  `target_mobile_preview_version`, and a preview claim — like a frontend claim —
+  is treated as a stateless swap that skips core registry recomputation.
+- **Preview ⇄ core compatibility gate.** The preflight blocks
+  (`mobile_preview_compatibility`, standardized `CompatibilityError` with
+  `component: mobile-preview`) when the target preview's
+  `backendCompatibility.requiredCoreRange` does not admit the running core, so the
+  CMS verdict matches what the SelfHelp Manager enforces. An unreadable signed
+  release degrades to a warning (no fabricated block). A **not-installed** instance
+  reports current `unknown`, which is the **enable/bootstrap** path (stays `ok`,
+  never a false downgrade) so the manager can provision the container.
+- Service + controller + permission-matrix tests cover the releases picker,
+  preflight (ok / downgrade / invalid / compatibility / bootstrap), the
+  instance-scoped request, the claim DTO, and the status payload.
+  `composer phpstan` stays at 0 errors.
+
+# v0.1.19
+
+## Mobile preview session API + plugin mobile-compatibility axis
+
+- **Mobile preview session endpoints.** New admin-only mint endpoint
+  `POST /cms-api/v1/admin/mobile-preview/session` (`AdminMobilePreviewController`,
+  gated by the `admin.mobile_preview.create` permission) returns a SHORT-LIVED,
+  single-use code bound to the calling admin (derived server-side from the JWT)
+  and an optional preview scope (keyword / page / language / draft). The public
+  `POST /cms-api/v1/mobile-preview/session/exchange`
+  (`MobilePreviewController`) consumes the one-time code and mints a short-lived,
+  scoped `purpose: 'mobile_preview'` JWT for read-only `/cms-api` use by the
+  `selfhelp-mobile-preview` image. Logic lives in
+  `Service/MobilePreview/MobilePreviewSessionService`; request/response contracts
+  are JSON-schema validated (`config/schemas/api/v1/{requests,responses}/...
+  mobile_preview_*.json`) and mirror `@selfhelp/shared` >= 1.14.25.
+- **`MobilePreviewAccessGuard`.** A request listener inspects the JWT payload and
+  confines a `purpose: 'mobile_preview'` token to a read-only `/cms-api`
+  allowlist (page/section render + lookups), so a leaked preview token cannot
+  mutate data or reach admin endpoints.
+- **API routes migration.** A generated Doctrine migration inserts the two routes
+  into `api_routes` + links the admin mint route in `rel_api_routes_permissions`
+  (with an up/down round-trip test); the public exchange route is permission-less
+  (the one-time code is the credential).
+- **Plugin manifest `compatibility.mobile`.** `docs/plugins/plugin-manifest.schema.json`
+  gains an optional `compatibility.mobile` semver range (the mobile-renderer
+  contract axis, mirroring `@selfhelp/shared` `MOBILE_RENDERER_VERSION`) — the
+  second axis of the manager's dual-axis mobile plugin gate. Kept byte-identical
+  with the registry's copy.
+- Security tests cover the admin/permission matrix on mint, the one-time/scoped
+  nature of exchange, and the access-guard allowlist. `composer phpstan` stays at
+  0 errors.
+
 # v0.1.18
 
 ## Security — anonymous access hardening + frontend page route cleanup

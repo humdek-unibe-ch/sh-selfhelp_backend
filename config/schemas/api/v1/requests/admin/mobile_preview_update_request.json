@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin System Mobile Preview Update Request",
+  "description": "Request a MOBILE-PREVIEW-only update (or enable/bootstrap) for the CURRENT instance. The selfhelp-mobile-preview web image ships independently of the core and is stateless, so there is no migration-risk field. Requesting it onto an instance that has none yet is the enable/bootstrap path (the SelfHelp Manager provisions the container). Intentionally has NO instance_id: the backend derives and verifies the instance identity server-side, so the browser can never target a different instance. additionalProperties:false rejects any instance_id (or other unknown field).",
+  "type": "object",
+  "properties": {
+    "target_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Mobile-preview version to update this instance to (or provision)."
+    },
+    "preflight_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Id of the mobile-preview preflight the operator reviewed. The backend recomputes the preflight server-side regardless."
+    }
+  },
+  "required": [
+    "target_version",
+    "preflight_id"
+  ],
+  "additionalProperties": false
+}

@@ -35,6 +35,7 @@ final class CompatibilityError
     public const COMPONENT_CORE = 'core';
     public const COMPONENT_PLUGIN = 'plugin';
     public const COMPONENT_FRONTEND = 'frontend';
+    public const COMPONENT_MOBILE_PREVIEW = 'mobile-preview';
 
     public function __construct(
         public readonly string $component,
@@ -202,6 +203,43 @@ final class CompatibilityError
             message: sprintf(
                 'SelfHelp frontend %s requires core %s, but this instance runs core %s. Update the core to a compatible version first, then update the frontend.',
                 $targetFrontendVersion,
+                $requiredCoreRange,
+                $coreVersion,
+            ),
+        );
+    }
+
+    /**
+     * Build the canonical compatibility error for a MOBILE-PREVIEW update that is
+     * blocked because the target preview's `backendCompatibility.requiredCoreRange`
+     * does not admit the running core version (the new preview needs a different
+     * core). The optional `selfhelp-mobile-preview` image talks to the private
+     * backend, so it is core-coupled; the operator must upgrade the core first.
+     *
+     * `component` is the mobile preview, `current_version`/`target_version` are
+     * the PREVIEW versions, and `required_range` is the preview's required core
+     * range. Mirrors the SelfHelp Manager's resolver verdict so the operator sees
+     * the same shape regardless of which side raised it. (There is no opposite
+     * direction: the core declares no required mobile-preview range — the preview
+     * is optional and auxiliary.)
+     */
+    public static function mobilePreviewUpdateRequiresCore(
+        string $currentMobilePreviewVersion,
+        string $targetMobilePreviewVersion,
+        string $coreVersion,
+        string $requiredCoreRange,
+        bool $blocking = true,
+    ): self {
+        return new self(
+            component: self::COMPONENT_MOBILE_PREVIEW,
+            componentId: 'selfhelp-mobile-preview',
+            currentVersion: $currentMobilePreviewVersion,
+            targetVersion: $targetMobilePreviewVersion,
+            requiredRange: $requiredCoreRange,
+            blocking: $blocking,
+            message: sprintf(
+                'SelfHelp mobile preview %s requires core %s, but this instance runs core %s. Update the core to a compatible version first, then update the mobile preview.',
+                $targetMobilePreviewVersion,
                 $requiredCoreRange,
                 $coreVersion,
             ),

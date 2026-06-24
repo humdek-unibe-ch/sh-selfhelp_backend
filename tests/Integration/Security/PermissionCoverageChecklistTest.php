@@ -63,6 +63,7 @@ final class PermissionCoverageChecklistTest extends QaKernelTestCase
         'admin cms-preferences' => ['prefix' => '/admin/cms-preferences', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminCmsPreferenceControllerTest::class],
         'admin groups' => ['prefix' => '/admin/groups', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminGroupPermissionTest::class],
         'admin languages' => ['prefix' => '/admin/languages', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminLanguagePermissionTest::class],
+        'admin mobile-preview' => ['prefix' => '/admin/mobile-preview', 'test' => \App\Tests\Controller\Api\V1\Admin\MobilePreviewSessionPermissionTest::class],
         'admin page-keywords' => ['prefix' => '/admin/page-keywords', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminPageKeywordPermissionTest::class],
         'admin permissions' => ['prefix' => '/admin/permissions', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminPermissionsPermissionTest::class],
         'admin registration-codes' => ['prefix' => '/admin/registration-codes', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminRegistrationCodePermissionTest::class],

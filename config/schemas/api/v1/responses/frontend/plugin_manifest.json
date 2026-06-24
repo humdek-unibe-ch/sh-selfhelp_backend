@@ -30,7 +30,21 @@
                             "frontendRuntimeIntegrity": { "type": ["string", "null"] },
                             "frontendRuntimeFormat": { "type": ["string", "null"] },
                             "mobilePackage": { "type": ["string", "null"] },
-                            "mobilePackageVersion": { "type": ["string", "null"] }
+                            "mobilePackageVersion": { "type": ["string", "null"] },
+                            "compatibility": {
+                                "type": "object",
+                                "description": "Echo of the plugin manifest compatibility ranges the host/manager preflight consumes. `mobile` is the mobile-renderer axis gated against the selected mobile-preview image's mobileRendererVersion.",
+                                "properties": {
+                                    "selfhelp": { "type": "string" },
+                                    "php": { "type": "string" },
+                                    "node": { "type": "string" },
+                                    "react": { "type": "string" },
+                                    "reactNative": { "type": "string" },
+                                    "expoSdk": { "type": "string" },
+                                    "mobile": { "type": "string" }
+                                },
+                                "additionalProperties": false
+                            }
                         },
                         "required": ["pluginId", "name", "version", "pluginApiVersion", "enabled"],
                         "additionalProperties": false

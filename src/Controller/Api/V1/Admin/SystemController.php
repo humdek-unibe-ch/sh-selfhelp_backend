@@ -204,6 +204,65 @@ class SystemController extends AbstractController
     }
 
     /**
+     * GET /admin/system/update/mobile-preview/releases — mobile-preview image
+     * versions published in the official registry (newest first) for the
+     * mobile-preview update version picker. Fails soft to `available: false`
+     * when offline.
+     */
+    public function getUpdateMobilePreviewReleases(): JsonResponse
+    {
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->getAvailableMobilePreviewReleases(),
+            'responses/admin/update_releases'
+        );
+    }
+
+    /**
+     * GET /admin/system/update/mobile-preview/preflight?target=<version> —
+     * lightweight compatibility preflight for a mobile-preview update. The
+     * preview is stateless (no migrations / backup); the manager re-validates
+     * preview ⇄ core compatibility, the per-plugin RN/Expo gate + signatures at
+     * execution.
+     */
+    public function getUpdateMobilePreviewPreflight(Request $request): JsonResponse
+    {
+        $target = $request->query->get('target');
+        if (!is_string($target) || $target === '') {
+            throw new ServiceException('Query parameter "target" (target mobile-preview version) is required.', Response::HTTP_BAD_REQUEST);
+        }
+
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->getMobilePreviewPreflight($target),
+            'responses/admin/update_preflight'
+        );
+    }
+
+    /**
+     * POST /admin/system/update/mobile-preview/request — request a
+     * mobile-preview-only update (or enable/bootstrap) for the current instance.
+     * Returns 202 Accepted; the SelfHelp Manager performs the stateless preview
+     * swap (provisioning the container when the instance has none yet).
+     */
+    public function requestMobilePreviewUpdate(Request $request): JsonResponse
+    {
+        // Cross-instance guard FIRST (same hard rule as the core/frontend
+        // request): any client-supplied instance id is denied and logged before
+        // validation.
+        $raw = json_decode($request->getContent(), true);
+        if (is_array($raw) && array_key_exists('instance_id', $raw)) {
+            $this->systemUpdateService->denyCrossInstance($raw['instance_id']);
+        }
+
+        $data = $this->validateRequest($request, 'requests/admin/mobile_preview_update_request', $this->jsonSchemaValidationService);
+
+        return $this->responseFormatter->formatSuccess(
+            $this->systemUpdateService->requestMobilePreviewUpdate($data),
+            'responses/admin/mobile_preview_update_request',
+            Response::HTTP_ACCEPTED
+        );
+    }
+
+    /**
      * GET /admin/system/maintenance — current maintenance-mode state for THIS
      * instance (under `admin.system.read`).
      */

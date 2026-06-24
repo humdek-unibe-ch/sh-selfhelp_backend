@@ -78,7 +78,21 @@ final class PluginManifestController extends AbstractController
                         }
                     }
                 }
-                $plugins[] = [
+                // Echo the compatibility ranges so the SelfHelp Manager preflight
+                // can gate the plugin's mobile package against the selected
+                // mobile-preview image's `mobileRendererVersion` (compatibility.mobile),
+                // alongside the existing reactNative/expoSdk axes.
+                $compatibility = [];
+                $rawCompatibility = $manifestArray['compatibility'] ?? null;
+                if (is_array($rawCompatibility)) {
+                    foreach (['selfhelp', 'php', 'node', 'react', 'reactNative', 'expoSdk', 'mobile'] as $key) {
+                        $value = $rawCompatibility[$key] ?? null;
+                        if (is_string($value) && $value !== '') {
+                            $compatibility[$key] = $value;
+                        }
+                    }
+                }
+                $entry = [
                     // Plugin id is shipped under `pluginId` only — it
                     // matches the frontend `IPluginManifestEntry`
                     // contract (`PluginRuntime.ts`) and the admin
@@ -99,6 +113,12 @@ final class PluginManifestController extends AbstractController
                     'mobilePackage' => $plugin->getMobilePackage(),
                     'mobilePackageVersion' => $plugin->getMobilePackageVersion(),
                 ];
+                // Only emit `compatibility` when non-empty: an empty PHP array
+                // would JSON-encode as `[]` and fail the schema's `type: object`.
+                if ($compatibility !== []) {
+                    $entry['compatibility'] = $compatibility;
+                }
+                $plugins[] = $entry;
             }
 
             return $this->responseFormatter->formatSuccess(

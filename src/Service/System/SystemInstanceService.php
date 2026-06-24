@@ -27,6 +27,7 @@ class SystemInstanceService
         private readonly string $cmsVersion,
         private readonly string $pluginApiVersion,
         private readonly string $frontendVersion,
+        private readonly string $mobilePreviewVersion,
         private readonly string $deployment,
         private readonly bool $safeMode,
         private readonly MaintenanceModeService $maintenance,
@@ -52,6 +53,19 @@ class SystemInstanceService
     public function getFrontendVersion(): string
     {
         return $this->frontendVersion;
+    }
+
+    /**
+     * The provisioned `selfhelp-mobile-preview` web image version. The SelfHelp
+     * Manager sets `SELFHELP_MOBILE_PREVIEW_VERSION` to the preview image version
+     * it provisioned for this instance; 'unknown' until it does (e.g. a dev
+     * source checkout, or an instance that predates default provisioning — the
+     * page-editor preview panel then probes the running image / falls back to a
+     * local Expo dev server). Mirrors {@see getFrontendVersion()}.
+     */
+    public function getMobilePreviewVersion(): string
+    {
+        return $this->mobilePreviewVersion;
     }
 
     /**

@@ -402,6 +402,70 @@ class JWTService
     }
 
     /**
+     * Create a short-lived, scoped JWT for the CMS mobile preview.
+     *
+     * Mirrors {@see createImpersonationToken()} (custom `purpose` claim + short
+     * TTL + no refresh token), but the subject is the admin themselves — the
+     * preview renders as the admin, it is NOT an impersonation. The token is
+     * minted only after a one-time preview code is consumed
+     * ({@see \App\Service\MobilePreview\MobilePreviewSessionService}) and is
+     * held in memory by the preview app, never persisted. The
+     * {@see \App\EventListener\MobilePreviewAccessGuard} restricts tokens
+     * carrying this claim to GET + an allowlist of read/preview routes.
+     *
+     * Claims:
+     *   - `sub` / `id_users` : the admin user id (effective + in-house alias)
+     *   - `purpose`          : the literal string "mobile_preview"
+     *   - `mobile_preview`   : `true` (fast-path boolean for the guard)
+     *   - `exp`              : absolute expiry (seconds since epoch)
+     *
+     * @param array<string, mixed> $scope
+     *
+     * @return array{access_token: string, expires_in: int}
+     */
+    public function createMobilePreviewToken(User $user, array $scope = []): array
+    {
+        $ttl = (int) $this->params->get('jwt_mobile_preview_token_ttl');
+        if ($ttl <= 0) {
+            $ttl = 900; // defensive: never issue a token with a non-positive lifetime
+        }
+
+        $payload = [
+            'sub'            => (string) $user->getId(),
+            'id_users'       => $user->getId(),
+            'purpose'        => 'mobile_preview',
+            'mobile_preview' => true,
+            'mobile_preview_scope' => $scope,
+            'exp'            => time() + $ttl,
+        ];
+
+        $user->setUserName($user->getEmail());
+        $token = $this->jwtManager->createFromPayload($user, $payload);
+
+        $this->logger->info('[JWTService] Mobile preview token created.', [
+            'user_id'    => $user->getId(),
+            'expires_in' => $ttl,
+        ]);
+
+        return [
+            'access_token' => $token,
+            'expires_in'   => $ttl,
+        ];
+    }
+
+    /**
+     * Whether a decoded JWT payload represents a mobile-preview session.
+     * Cheap O(1) flag check — safe to call on every request.
+     *
+     * @param array<string, mixed> $payload
+     */
+    public function isMobilePreviewPayload(array $payload): bool
+    {
+        return !empty($payload['mobile_preview'])
+            || (($payload['purpose'] ?? null) === 'mobile_preview');
+    }
+
+    /**
      * Extract the *original* admin user id from an impersonation payload.
      * Returns `null` for regular tokens.
      *

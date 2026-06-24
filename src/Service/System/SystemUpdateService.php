@@ -55,6 +55,14 @@ class SystemUpdateService
      * verdict so the CMS preflight is consistent with what the manager enforces.
      */
     public const CHECK_FRONTEND_COMPATIBILITY = 'frontend_compatibility';
+    /**
+     * A MOBILE-PREVIEW update target that the registry-known preview ⇄ core
+     * compatibility rule rejects (the target preview requires a different core).
+     * Carries the standardized {@see CompatibilityError} shape. Mirrors the
+     * SelfHelp Manager's resolver verdict so the CMS preflight is consistent with
+     * what the manager enforces.
+     */
+    public const CHECK_MOBILE_PREVIEW_COMPATIBILITY = 'mobile_preview_compatibility';
     public const CHECK_VERSION_INVALID = 'version_invalid';
 
     public const STATUS_OK = 'ok';
@@ -159,6 +167,27 @@ class SystemUpdateService
         return [
             'available' => $releases !== null,
             'current_version' => $this->instance->getFrontendVersion(),
+            'releases' => $releases ?? [],
+        ];
+    }
+
+    /**
+     * Mobile-preview image versions published in the official registry, for the
+     * admin "Update mobile preview" version picker. The optional
+     * `selfhelp-mobile-preview` web image ships independently of the core, so
+     * this is a separate list from {@see getAvailableReleases()} and reports the
+     * current PREVIEW version (or `unknown` when the manager has not stamped one,
+     * which the UI presents as "install/enable"). Fail-soft like the core list.
+     *
+     * @return array{available: bool, current_version: string, releases: list<array{version: string, channel: string, blocked: bool}>}
+     */
+    public function getAvailableMobilePreviewReleases(): array
+    {
+        $releases = $this->registry->listMobilePreviewReleases();
+
+        return [
+            'available' => $releases !== null,
+            'current_version' => $this->instance->getMobilePreviewVersion(),
             'releases' => $releases ?? [],
         ];
     }
@@ -276,6 +305,128 @@ class SystemUpdateService
                 'manual_confirmation_required' => false,
             ],
             // The manager recreates only the frontend container and rolls it back
+            // on a failed health check — rollback is always safe (no migrations).
+            'rollback' => [
+                'automatic_before_migrations' => true,
+                'automatic_after_destructive_migrations' => true,
+            ],
+        ];
+    }
+
+    /**
+     * Compute the compatibility preflight for a MOBILE-PREVIEW update to
+     * $targetVersion. Mirrors {@see getFrontendPreflight()}: the optional
+     * `selfhelp-mobile-preview` web image is stateless, so there are no
+     * destructive-migration, backup-required, or plugin-compatibility (core-axis)
+     * checks — the manager swaps only the preview container, re-runs the
+     * per-plugin RN/Expo twin-axis gate, and rolls it back on failure.
+     *
+     * Preview ⇄ core compatibility IS checked here, against the SAME signed
+     * registry metadata the SelfHelp Manager resolves, so the CMS verdict is
+     * consistent (no "preflight OK" for a preview the running core cannot back).
+     * Only ONE direction exists (the core declares no required-preview range, the
+     * preview being optional/auxiliary): the target preview's
+     * `backendCompatibility.requiredCoreRange` must admit the running core. When
+     * the release document is unavailable that check degrades to a warning, never
+     * a silent pass — the manager re-resolves the signed release as the FINAL
+     * authority.
+     *
+     * The current preview version may be `unknown` (the manager has not stamped
+     * one) — requesting an update then doubles as the enable/bootstrap path. A
+     * non-version current is never treated as a downgrade.
+     *
+     * @return array<string,mixed>
+     */
+    public function getMobilePreviewPreflight(string $targetVersion): array
+    {
+        $currentVersion = $this->instance->getMobilePreviewVersion();
+        $coreVersion = $this->instance->getCmsVersion();
+        $instanceId = $this->instance->getInstanceId();
+
+        /** @var list<array<string,scalar|null>> $checks */
+        $checks = [];
+        /** @var list<array{type:string,version?:string,label:string}> $options */
+        $options = [];
+
+        // The manager performs Docker/resource checks, re-verifies the signed
+        // preview release + image digest, and re-runs the per-plugin RN/Expo gate
+        // at execution. The preview ⇄ core verdict below is computed from the same
+        // signed registry metadata the manager resolves, so the two agree.
+        $checks[] = [
+            'code' => self::CHECK_RESOURCE,
+            'severity' => 'info',
+            'message' => 'Signature re-verification, image-digest checks, the per-plugin React Native/Expo gate and Docker checks are performed by the SelfHelp Manager at execution time.',
+        ];
+
+        if (SemverHelper::parse($targetVersion) === null) {
+            $checks[] = [
+                'code' => self::CHECK_VERSION_INVALID,
+                'severity' => 'error',
+                'message' => sprintf('Target mobile-preview version "%s" is not a valid version.', $targetVersion),
+            ];
+        }
+
+        // Downgrade only when BOTH versions are real, parseable versions. A
+        // preview stamped 'unknown' (never provisioned) must not masquerade as a
+        // downgrade and block the enable/bootstrap.
+        if (
+            SemverHelper::parse($currentVersion) !== null
+            && SemverHelper::parse($targetVersion) !== null
+            && SemverHelper::diffKind($currentVersion, $targetVersion) === 'downgrade'
+        ) {
+            $checks[] = [
+                'code' => self::CHECK_DOWNGRADE,
+                'severity' => 'error',
+                'message' => sprintf('Mobile-preview downgrades are not supported (current %s, target %s).', $currentVersion, $targetVersion),
+            ];
+        }
+
+        // Preview ⇄ core compatibility (keeps the CMS preflight consistent with
+        // the SelfHelp Manager): a preview that needs a different core must BLOCK
+        // here, not sail through as "OK" only to be rejected at execution.
+        foreach ($this->mobilePreviewCompatibilityChecks($coreVersion, $currentVersion, $targetVersion) as $compatCheck) {
+            $checks[] = $compatCheck;
+        }
+
+        // Advisory: is the requested preview version published in the registry? A
+        // miss is a warning (not a block) — the manager re-resolves the signed
+        // release and is the final authority on availability + compatibility.
+        $published = $this->registry->listMobilePreviewReleases();
+        if ($published === null) {
+            $checks[] = [
+                'code' => self::CHECK_REGISTRY_UNREACHABLE,
+                'severity' => 'warning',
+                'message' => 'Registry metadata for the mobile preview is unavailable; the SelfHelp Manager will re-validate availability and compatibility before applying.',
+            ];
+        } elseif (!$this->mobilePreviewVersionPublished($published, $targetVersion)) {
+            $checks[] = [
+                'code' => self::CHECK_REGISTRY_UNREACHABLE,
+                'severity' => 'warning',
+                'message' => sprintf('Mobile preview %s is not listed on the registry; the SelfHelp Manager will re-validate it before applying.', $targetVersion),
+            ];
+        } else {
+            $options[] = [
+                'type' => 'mobile-preview',
+                'version' => $targetVersion,
+                'label' => sprintf('SelfHelp mobile preview %s', $targetVersion),
+            ];
+        }
+
+        return [
+            'preflight_id' => $this->makeMobilePreviewPreflightId($instanceId, $currentVersion, $targetVersion),
+            'status' => $this->deriveStatus($checks),
+            'instance_id' => $instanceId,
+            'current_version' => $currentVersion,
+            'target_version' => $targetVersion,
+            'checks' => $checks,
+            'options' => $options,
+            // The preview is stateless: no database migration, no backup needed.
+            'database' => [
+                'destructive' => false,
+                'requires_backup' => false,
+                'manual_confirmation_required' => false,
+            ],
+            // The manager recreates only the preview container and rolls it back
             // on a failed health check — rollback is always safe (no migrations).
             'rollback' => [
                 'automatic_before_migrations' => true,
@@ -548,6 +699,77 @@ class SystemUpdateService
     }
 
     /**
+     * Persist an instance-scoped MOBILE-PREVIEW update request. Mirrors
+     * {@see requestFrontendUpdate()} for the stateless preview swap: the
+     * preflight is recomputed server-side (a blocked preview cannot be
+     * requested), and the operation is stored with `kind = mobile-preview` and
+     * the target preview version. `target_version` is set to the preview version
+     * too so the manager's approval verification (keyed on the operation's target
+     * version) stays consistent with the core flow.
+     *
+     * Requesting a preview onto an instance that has none yet (current version
+     * `unknown`) is also the ENABLE/BOOTSTRAP path: the SelfHelp Manager
+     * provisions the `selfhelp-mobile-preview` container from the rewritten
+     * compose.
+     *
+     * @param array<array-key,mixed> $data validated request body
+     * @return array{operation_id:string, instance_id:string, status:string, kind:string, target_mobile_preview_version:string}
+     */
+    public function requestMobilePreviewUpdate(array $data): array
+    {
+        $targetVersion = is_scalar($data['target_version'] ?? null) ? (string) $data['target_version'] : '';
+        $preflightId = is_scalar($data['preflight_id'] ?? null) ? (string) $data['preflight_id'] : null;
+
+        $preflight = $this->getMobilePreviewPreflight($targetVersion);
+        if ($preflight['status'] === self::STATUS_BLOCKED) {
+            throw new ServiceException(
+                'Mobile-preview update is blocked by preflight checks: ' . $this->firstErrorMessage($preflight),
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        }
+
+        $operation = new SystemUpdateOperation(
+            $this->instance->getInstanceId(),
+            $this->makeOperationId(),
+            $targetVersion
+        );
+        $requesterId = $this->userContext->getCurrentUser()?->getId();
+        $requestedBy = $requesterId !== null
+            ? $this->entityManager->getReference(User::class, $requesterId)
+            : null;
+        $operation
+            ->setKind(SystemUpdateOperation::KIND_MOBILE_PREVIEW)
+            ->setTargetMobilePreviewVersion($targetVersion)
+            ->setPreflightId($preflightId)
+            // Preview swaps carry no destructive migrations, so risk is never accepted.
+            ->setAcceptedMigrationRisk(false)
+            ->setRequestedBy($requestedBy)
+            ->setStatus(SystemUpdateOperation::STATUS_REQUESTED)
+            ->setProgressPercent(0)
+            ->setStepsJson([
+                ['name' => 'requested', 'status' => 'succeeded', 'detail' => 'Mobile-preview update requested from the CMS; awaiting the SelfHelp Manager.'],
+            ]);
+
+        $this->entityManager->persist($operation);
+        $this->entityManager->flush();
+
+        $this->logger->info('System mobile-preview update requested (instance-scoped).', [
+            'instance_id' => $operation->getInstanceId(),
+            'operation_id' => $operation->getOperationId(),
+            'target_mobile_preview_version' => $targetVersion,
+            'actual_user_id' => $this->userContext->getActualUserId(),
+        ]);
+
+        return [
+            'operation_id' => $operation->getOperationId(),
+            'instance_id' => $operation->getInstanceId(),
+            'status' => $operation->getStatus(),
+            'kind' => $operation->getKind(),
+            'target_mobile_preview_version' => $targetVersion,
+        ];
+    }
+
+    /**
      * Status of the latest update operation for THIS instance. When no operation
      * has ever existed, returns the synthetic {@see STATUS_IDLE} state (progress
      * 0, current version) so the polling UI has a stable shape WITHOUT pretending
@@ -570,6 +792,7 @@ class SystemUpdateService
                 'target_version' => $this->instance->getCmsVersion(),
                 'kind' => SystemUpdateOperation::KIND_CORE,
                 'target_frontend_version' => null,
+                'target_mobile_preview_version' => null,
                 'progress_percent' => 0,
                 'steps' => [],
                 'requested_at' => $now,
@@ -586,6 +809,7 @@ class SystemUpdateService
             'target_version' => $operation->getTargetVersion(),
             'kind' => $operation->getKind(),
             'target_frontend_version' => $operation->getTargetFrontendVersion(),
+            'target_mobile_preview_version' => $operation->getTargetMobilePreviewVersion(),
             'progress_percent' => $operation->getProgressPercent(),
             'steps' => $operation->getStepsJson() ?? [],
             'requested_at' => $operation->getRequestedAt()->format(\DateTimeInterface::ATOM),
@@ -682,13 +906,14 @@ class SystemUpdateService
             return null;
         }
 
-        // A frontend-only swap is stateless: it never carries destructive
-        // migrations, so skip the (core-only) registry recomputation entirely.
-        // For a core update, recompute whether the target carries destructive
-        // migrations so the manager-side approval guard has accurate input
-        // (defense-in-depth on top of the check already enforced at request time).
+        // A lightweight swap (frontend or mobile-preview) is stateless: it never
+        // carries destructive migrations, so skip the (core-only) registry
+        // recomputation entirely. For a core update, recompute whether the target
+        // carries destructive migrations so the manager-side approval guard has
+        // accurate input (defense-in-depth on top of the check already enforced
+        // at request time).
         $destructive = false;
-        if (!$operation->isFrontendUpdate()) {
+        if (!$operation->isLightweightUpdate()) {
             $database = $this->getPreflight($operation->getTargetVersion())['database'] ?? null;
             $destructive = is_array($database) && ($database['destructive'] ?? false) === true;
         }
@@ -707,9 +932,11 @@ class SystemUpdateService
             'accepted_migration_risk' => $operation->isAcceptedMigrationRisk(),
             'destructive_migration' => $destructive,
             // Tell the manager which update path to take. A core operation omits
-            // the frontend target (the manager resolves the compatible frontend).
+            // the frontend/preview target (the manager resolves the compatible
+            // one); the lightweight kinds carry their explicit target version.
             'kind' => $operation->getKind(),
             'target_frontend_version' => $operation->getTargetFrontendVersion(),
+            'target_mobile_preview_version' => $operation->getTargetMobilePreviewVersion(),
         ];
     }
 
@@ -935,6 +1162,73 @@ class SystemUpdateService
      * @param list<array{version: string, channel: string, blocked: bool}> $published
      */
     private function frontendVersionPublished(array $published, string $version): bool
+    {
+        foreach ($published as $release) {
+            if ($release['version'] === $version) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Registry-backed preview ⇄ core compatibility check for a mobile-preview
+     * update, mirroring the SelfHelp Manager's resolver rule against the SAME
+     * signed registry metadata so the CMS preflight and the manager agree. Only
+     * ONE direction exists (the core declares no required-preview range, the
+     * preview being optional/auxiliary): the target preview's
+     * `backendCompatibility.requiredCoreRange` MUST admit the running core.
+     *
+     * A violation is a BLOCKING error carrying the standardized
+     * {@see CompatibilityError} shape. When the release document is unavailable
+     * (offline registry / unpublished version / signature failure) the check is
+     * skipped — the existing registry-unreachable warning plus the manager's
+     * execution-time check remain the final authority, so a missing document
+     * never produces a silent false "compatible".
+     *
+     * @return list<array<string,scalar|null>>
+     */
+    private function mobilePreviewCompatibilityChecks(string $coreVersion, string $currentMobilePreviewVersion, string $targetMobilePreviewVersion): array
+    {
+        /** @var list<array<string,scalar|null>> $checks */
+        $checks = [];
+
+        // A range check against a non-version is meaningless; the invalid-version
+        // error already blocks that case.
+        if (SemverHelper::parse($targetMobilePreviewVersion) === null) {
+            return $checks;
+        }
+
+        // Does this PREVIEW accept the running core?
+        $preview = $this->registry->getMobilePreviewRelease($targetMobilePreviewVersion);
+        if ($preview !== null && !SemverHelper::satisfies($coreVersion, $preview->requiredCoreRange)) {
+            $checks[] = array_merge(
+                ['code' => self::CHECK_MOBILE_PREVIEW_COMPATIBILITY, 'severity' => 'error'],
+                CompatibilityError::mobilePreviewUpdateRequiresCore(
+                    currentMobilePreviewVersion: $currentMobilePreviewVersion,
+                    targetMobilePreviewVersion: $targetMobilePreviewVersion,
+                    coreVersion: $coreVersion,
+                    requiredCoreRange: $preview->requiredCoreRange,
+                )->toArray(),
+            );
+        }
+
+        return $checks;
+    }
+
+    /** Mobile-preview preflight ids carry a distinct prefix from core/frontend ones. */
+    private function makeMobilePreviewPreflightId(string $instanceId, string $current, string $target): string
+    {
+        return 'pfm_' . substr(hash('sha256', 'mobile-preview|' . $instanceId . '|' . $current . '->' . $target), 0, 16);
+    }
+
+    /**
+     * Whether $version appears in the registry's published mobile-preview list.
+     *
+     * @param list<array{version: string, channel: string, blocked: bool}> $published
+     */
+    private function mobilePreviewVersionPublished(array $published, string $version): bool
     {
         foreach ($published as $release) {
             if ($release['version'] === $version) {

@@ -18,7 +18,10 @@
             "additionalProperties": false,
             "properties": {
                 "core": {"type": "string", "minLength": 1, "description": "Semver range of SelfHelp core versions this plugin runs on."},
-                "pluginApi": {"type": "string", "minLength": 1, "description": "Semver range of host plugin-API versions this plugin runs on."}
+                "pluginApi": {"type": "string", "minLength": 1, "description": "Semver range of host plugin-API versions this plugin runs on."},
+                "mobile": {"type": "string", "minLength": 1, "description": "Semver range of the host mobile renderer contract (mobileRendererVersion) this plugin's mobile package supports. Additive; absent for web-only plugins."},
+                "reactNative": {"type": "string", "minLength": 1, "description": "Semver range of React Native versions this plugin's mobile package supports."},
+                "expoSdk": {"type": "string", "minLength": 1, "description": "Semver range of Expo SDK versions this plugin's mobile package supports."}
             }
         },
         "dependencies": {

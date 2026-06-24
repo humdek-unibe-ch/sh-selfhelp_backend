@@ -52,7 +52,8 @@
                 "node": {"type": "string"},
                 "react": {"type": "string"},
                 "reactNative": {"type": "string"},
-                "expoSdk": {"type": "string"}
+                "expoSdk": {"type": "string"},
+                "mobile": {"type": "string"}
             }
         },
         "dependencies": {
