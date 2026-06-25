@@ -100,6 +100,13 @@ When implementing features that affect multiple repositories:
 - Keep changes isolated to the repository being modified.
 - Do not apply conventions from one repository to another unless explicitly documented.
 
+## Version Bump Synchronization (update the version EVERYWHERE, in one change)
+A version bump is a SINGLE atomic change that updates **every** place the version appears in the repo. Bumping one location and leaving another stale ships a self-inconsistent artifact and breaks a CI version gate — never do a partial bump.
+
+- **This repo (core):** when you change the core version, update — to the identical value, in the same change — `selfhelp_cms_version_default` in `config/services.yaml`, the `CHANGELOG.md` entry, and the released `v<version>` git tag; keep `release-manifest.json` `pluginApiVersion` in sync with `config/services.yaml` (CI enforces this) and raise `release-manifest.json` `supports.frontend` whenever the change alters a contract the frontend depends on (see the next section).
+- **Every other repo follows the same discipline** (apply the rule in the repo you are editing, per its own `AGENTS.md`): `package.json` + `package-lock.json` version, any compiled-in version constant (`MANAGER_VERSION`, `MOBILE_RENDERER_VERSION`, `PLUGIN_VERSION`), plugin manifests (`plugin.json` `version` / `backend.composer.version` / `mobile.version` / `compatibility.*`, `composer.json` `version`), bundled-version snapshots/lockfiles (`web-preview/preview-plugins.json`, `selfhelp.plugins.mobile.lock.json`, `selfhelp.plugins.lock.json`), the `CHANGELOG.md`, and any docs "Applies to" / example version — plus the `supports.*` compatibility floors below.
+- After a bump, run the repo's version gate (`composer …` / `npm run version:check`) and grep the old version string to prove nothing stale remains.
+
 ## Cross-Repo Version Compatibility (frontend ⇄ backend)
 Frontend and backend are released and deployed independently, so a feature that couples them can land an **incompatible pair** on an instance unless the version contract is updated. **Whenever a change makes the frontend depend on a backend feature (or makes the backend require frontend behavior) — a new / changed / removed `/cms-api` route, response field, permission, or behavior — you MUST update the compatibility declarations in the SAME change:**
 - `sh-selfhelp_frontend/release-manifest.json` → `supports.core`: raise the floor to the first backend (`core`) version that ships the feature.
