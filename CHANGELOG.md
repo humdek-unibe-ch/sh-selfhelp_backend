@@ -1,3 +1,33 @@
+# v0.1.22
+
+## Mobile live preview renders plugin styles (e.g. SurveyJS)
+
+- **Fix: a plugin style embedded in a page failed to load in the CMS mobile live
+  preview while working in the standalone app.** The live preview authenticates
+  with a scoped `purpose: mobile_preview` JWT, and `MobilePreviewAccessGuard`
+  hard-blocked every route outside its core read-only allowlist — including the
+  plugin PUBLIC runtime routes (`/cms-api/v{n}/plugins/...`) the SurveyJS runtime
+  calls. The guard threw *"This action is not permitted for a mobile preview
+  session."*, so the survey showed "Survey not available". The standalone app
+  uses a normal user JWT (the guard ignores it), which is why it worked.
+- **The guard now also permits plugin PUBLIC runtime routes for preview tokens,
+  with any method** (`isPluginPublicRoute()` — path prefix
+  `^/cms-api/v\d+/plugins/`), so an embedded plugin style loads, autosaves and
+  submits in the preview exactly as on the live page (a preview submit creates a
+  real run as the previewed admin, mirroring the web preview). The
+  permission-gated plugin ADMIN surface (`/cms-api/v{n}/admin/plugins/...`) and
+  all non-listed core routes stay blocked. Plugin public routes carry no route
+  permission and enforce their own per-response ownership checks, so the preview
+  token stays confined to the same public surface the iframe already shows.
+- **Additive only — no API contract change.** No route, response field, schema
+  or permission was added/changed; only an authorization guard was relaxed, so
+  `supports.frontend` stays `>=0.1.30` and no frontend/mobile change is required.
+  Regression coverage extended in
+  `tests/Unit/EventListener/MobilePreviewAccessGuardTest.php` (preview token
+  reaches a plugin public route with GET/POST/PUT; still denied on the plugin
+  admin route). Bumps the core default version to `0.1.22`. Deploying requires a
+  Symfony cache clear so the recompiled listener takes effect.
+
 # v0.1.21
 
 ## CMS Live Preview entitlement (`admin.mobile_preview.view`)

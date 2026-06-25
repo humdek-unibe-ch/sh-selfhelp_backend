@@ -23,9 +23,11 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
  * Unit coverage for the mobile-preview scope guard.
  *
  * Asserts the observable contract of the scoped `purpose: mobile_preview` token:
- * it may ONLY hit the read-only render allowlist with GET. Every mutation, admin
- * route, non-listed read, or non-GET method is denied — while a normal (non
- * preview) token is never touched by this guard.
+ * it may hit the read-only core render allowlist with GET, plus any plugin
+ * PUBLIC runtime route (`/cms-api/v{n}/plugins/...`) with any method so embedded
+ * plugin styles work like on the live page. Every core mutation, every admin
+ * route (core or plugin), and every non-listed core read is denied — while a
+ * normal (non preview) token is never touched by this guard.
  */
 final class MobilePreviewAccessGuardTest extends TestCase
 {
@@ -94,6 +96,37 @@ final class MobilePreviewAccessGuardTest extends TestCase
         // Even an allowlisted route name is denied when the method is not GET.
         $this->assertDenied(
             $this->event('/cms-api/v1/languages', 'languages_get_all_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+    }
+
+    /**
+     * A plugin style embedded in the previewed page (e.g. the SurveyJS runtime)
+     * must reach the plugin's PUBLIC api with the SAME methods it uses on the
+     * live page — load (GET), autosave (PUT) and submit (POST) — so the preview
+     * behaves exactly like the standalone app.
+     */
+    public function testAllowsPreviewTokenOnPluginPublicRouteForAnyMethod(): void
+    {
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/plugins/sh2-shp-survey-js/published/SV_TEST', 'surveyjs_public_published_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/plugins/sh2-shp-survey-js/published/SV_TEST/submit', 'surveyjs_public_submit_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/plugins/sh2-shp-survey-js/published/SV_TEST/progress', 'surveyjs_public_progress_put_v1', 'PUT', self::PREVIEW_PAYLOAD),
+        );
+        $this->expectNotToPerformAssertions();
+    }
+
+    /**
+     * The permission-gated plugin ADMIN surface stays off-limits to a preview
+     * token even though its public surface is now reachable.
+     */
+    public function testBlocksPreviewTokenOnPluginAdminRoute(): void
+    {
+        $this->assertDenied(
+            $this->event('/cms-api/v1/admin/plugins/sh2-shp-survey-js/surveys', 'surveyjs_admin_list_v1', 'GET', self::PREVIEW_PAYLOAD),
         );
     }
 

@@ -26,18 +26,23 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
  *
  * A token minted by {@see JWTService::createMobilePreviewToken()} carries the
  * admin's identity (so pages render exactly as the admin sees them) but is
- * restricted here to GET + an explicit allowlist of read-only render routes.
- * Anything else — every mutation, every admin route, every non-listed read —
- * is denied. This guarantees a leaked preview token cannot do more than re-read
- * the same public/admin-visible page data the iframe already shows.
+ * restricted here to a GET allowlist of read-only core render routes PLUS any
+ * plugin PUBLIC runtime route (`/cms-api/v{n}/plugins/...`). The latter lets a
+ * plugin style embedded in the previewed page (e.g. the SurveyJS runtime) load,
+ * autosave and submit exactly as on the live page. Everything else — every
+ * core mutation, every admin route (core or plugin), every non-listed core
+ * read — is denied. Plugin public routes carry no route permission and enforce
+ * their own per-response ownership checks, so this keeps a leaked preview token
+ * to the same public/admin-visible surface the iframe already shows.
  */
 class MobilePreviewAccessGuard implements EventSubscriberInterface
 {
     /**
-     * The ONLY routes a `purpose: mobile_preview` token may call. All are
-     * read-only GETs the preview renderer needs: resolve + render a page,
+     * The core routes a `purpose: mobile_preview` token may call with GET. All
+     * are read-only reads the preview renderer needs: resolve + render a page,
      * list languages, read the plugin manifest, and read the (admin) user
-     * data the shared renderer expects.
+     * data the shared renderer expects. Plugin PUBLIC runtime routes are
+     * allowed in addition to this list — see {@see isPluginPublicRoute()}.
      */
     private const ALLOWED_ROUTES = [
         'pages_get_by_keyword_v1',
@@ -87,6 +92,16 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
             && in_array($routeName, self::ALLOWED_ROUTES, true)
             && $this->scopeAllows($request, $routeName, $payload);
 
+        // A previewed page may embed plugin styles (e.g. the SurveyJS runtime)
+        // that load, autosave and submit through the plugin's PUBLIC api. Those
+        // routes live under `/cms-api/v{n}/plugins/...` — never the
+        // permission-gated `/cms-api/v{n}/admin/...` surface — carry no route
+        // permission, and enforce their own per-response ownership checks, so
+        // the previewed admin may use them exactly as on the live page.
+        if (!$allowed && $this->isPluginPublicRoute($request)) {
+            $allowed = true;
+        }
+
         if (!$allowed) {
             $this->logger->warning('[MobilePreviewAccessGuard] Blocked out-of-scope preview-token request.', [
                 'route'  => $routeName,
@@ -96,6 +111,18 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
 
             throw new AccessDeniedException('This action is not permitted for a mobile preview session.');
         }
+    }
+
+    /**
+     * A plugin's PUBLIC runtime route (`/cms-api/v{n}/plugins/...`) — the
+     * frontend/mobile surface a rendered page's plugin styles call to load and
+     * submit. The permission-gated admin surface
+     * (`/cms-api/v{n}/admin/plugins/...`) is intentionally NOT matched here:
+     * `admin/` follows the version segment, so it never satisfies this prefix.
+     */
+    private function isPluginPublicRoute(Request $request): bool
+    {
+        return preg_match('#^/cms-api/v\d+/plugins/#', $request->getPathInfo()) === 1;
     }
 
     /**
