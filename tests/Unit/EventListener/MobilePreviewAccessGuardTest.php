@@ -133,18 +133,18 @@ final class MobilePreviewAccessGuardTest extends TestCase
     public function testAllowsPreviewTokenWhenRouteMatchesMintedScope(): void
     {
         $event = $this->event(
-            '/cms-api/v1/pages/by-keyword/home?language_id=1&preview=true',
+            '/cms-api/v1/pages/by-keyword/qa_home?language_id=1&preview=true',
             'pages_get_by_keyword_v1',
             'GET',
             self::PREVIEW_PAYLOAD + [
                 'mobile_preview_scope' => [
-                    'keyword'     => 'home',
+                    'keyword'     => 'qa_home',
                     'language_id' => 1,
                     'draft'       => true,
                 ],
             ],
         );
-        $event->getRequest()->attributes->set('keyword', 'home');
+        $event->getRequest()->attributes->set('keyword', 'qa_home');
 
         $this->guard()->onKernelController($event);
         $this->expectNotToPerformAssertions();
@@ -153,18 +153,18 @@ final class MobilePreviewAccessGuardTest extends TestCase
     public function testBlocksPreviewTokenWhenRouteCrossesMintedScope(): void
     {
         $event = $this->event(
-            '/cms-api/v1/pages/by-keyword/other?language_id=1&preview=true',
+            '/cms-api/v1/pages/by-keyword/qa_other?language_id=1&preview=true',
             'pages_get_by_keyword_v1',
             'GET',
             self::PREVIEW_PAYLOAD + [
                 'mobile_preview_scope' => [
-                    'keyword'     => 'home',
+                    'keyword'     => 'qa_home',
                     'language_id' => 1,
                     'draft'       => true,
                 ],
             ],
         );
-        $event->getRequest()->attributes->set('keyword', 'other');
+        $event->getRequest()->attributes->set('keyword', 'qa_other');
 
         $this->assertDenied($event);
     }

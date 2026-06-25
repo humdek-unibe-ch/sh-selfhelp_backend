@@ -99,7 +99,7 @@ final class MobilePreviewSessionTest extends QaWebTestCase
         $this->client->disableReboot();
 
         $admin = $this->loginAsQaAdmin();
-        $mint = $this->jsonRequest('POST', self::MINT, ['keyword' => 'home', 'draft' => false], $admin);
+        $mint = $this->jsonRequest('POST', self::MINT, ['keyword' => 'qa_home', 'draft' => false], $admin);
         $mintData = $this->assertEnvelopeSuccess($mint);
         $code = $mintData['code'];
         self::assertIsString($code);
@@ -120,7 +120,7 @@ final class MobilePreviewSessionTest extends QaWebTestCase
         $this->client->disableReboot();
 
         $admin = $this->loginAsQaAdmin();
-        $mint = $this->jsonRequest('POST', self::MINT, ['keyword' => 'home', 'language_id' => 1, 'draft' => true], $admin);
+        $mint = $this->jsonRequest('POST', self::MINT, ['keyword' => 'qa_home', 'language_id' => 1, 'draft' => true], $admin);
         $mintData = $this->assertEnvelopeSuccess($mint);
         $code = $mintData['code'];
         self::assertIsString($code);
