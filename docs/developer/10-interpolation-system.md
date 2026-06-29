@@ -380,6 +380,63 @@ fresh when it opens (frontend `useSectionDataVariables`, REAL_TIME tier), so a
 new column/rename appears in the picker immediately without re-saving the
 section.
 
+### Standard projection columns (always present)
+
+Every data row has a fixed set of **standard columns** in addition to the
+form/SurveyJS columns, produced directly by the data stored procedure
+`get_data_table_filtered` (`r.id AS record_id`,
+`convert_entry_date_timezone(...) AS entry_date`, `r.id_users`,
+`u.name AS user_name`, `vc.code AS user_code`, `l.lookup_code AS triggerType`).
+They are **runtime-real**: a `{{scope.record_id}}` / `{{scope.user_name}}` token
+always resolves for any connected scope.
+
+`DataTableService::STANDARD_COLUMNS` is the single source for this list
+(`record_id`, `entry_date`, `user_code`, `id_users`, `user_name`, `triggerType`).
+`DataTableService::getColumns()` returns them **first**, flagged
+`standard: true` and `id: null` (and `locked: true`), then the table's dynamic
+`data_cols`. `getColumnsNames()` likewise prepends their keys. Consequences:
+
+- The **data-config builder / SQL filter** (`FilterBuilderInline`, `DataSourceForm`)
+  lists them like any other column, so admins can filter / order by
+  `record_id`, `entry_date`, etc.
+- The **Data browser editor** (`DataTableEditorModal`) **excludes**
+  `standard: true` columns from relabel/delete — they are platform-owned (no
+  `id`), and all six are in `DataColumnService::RESERVED_KEYS`, so a user field
+  can never collide with them.
+
+### CMS editor: field rendering modes and `{{` coverage
+
+Interpolation is offered in **every authored text surface**, not just `content`.
+The frontend `FieldRenderer` maps field types to mention/`{{`-aware editors:
+
+| Field type | Editor | Notes |
+| --- | --- | --- |
+| `text`, `markdown-inline` | mention input (`TextInputWithMentions`) | Short identifiers (`name`, `value`, `title`, `label`, `subtitle`, `placeholder`, `alt`, `caption`) render as a **plain** input. Other names render **single-line** by default and **auto-grow** (wrap + grow in height, Enter still blocked) for longer copy — `resolveTextFieldMode()` decides. `markdown-inline` keeps inline bold/italic/underline/link shortcuts; `text` disables them. |
+| `textarea` (rich text) | `RichTextField` → `MentionEditor` | Full toolbar. On the `sh-mail-config` page it also gets the email **Style** preset dropdown (`emailStyles`). |
+| `markdown`, `json`, `css`, raw SQL filter | Monaco (`MonacoEditorField`) | `{{` completion provider injects the same `token => label` suggestions. The data-config SQL filter is **locked (read-only) by default** and unlockable for manual editing. |
+
+The `token => label` map flows in as the `dataVariables` prop. The mention chip
+shows the label and stores the bare `{{token}}` (see the chip round-trip above);
+Monaco inserts the raw token.
+
+---
+
+## Mail rendering and email styles
+
+Transactional mail bodies (`sh-mail-config`) are authored as **rich-text
+fragments**, not full HTML documents. At send time
+`JobSchedulerService::sendEmail()` passes the HTML body through
+`App\Service\Auth\MailHtmlRenderer::render()`, which inlines email-safe CSS
+(base tag styles + the named `email-*` style presets) and wraps the content in
+the shared branded shell. Plain-text mails are sent verbatim; legacy full-HTML
+documents are passed through untouched.
+
+The interpolation pipeline is unchanged — `{{system.*}}` / `{{system.special.*}}`
+placeholders in the body are resolved before the HTML reaches the renderer. The
+full preset contract (frontend Tiptap mark ⇄ backend inline CSS) and the
+"adding a preset" checklist live in
+[../reference/email-styles.md](../reference/email-styles.md).
+
 ---
 
 ## Mustache Templating

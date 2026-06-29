@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, `@selfhelp/shared` types, frontend/mobile renderers).
-Last verified: 2026-06-22.
+Last verified: 2026-06-29.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 This page describes the fields and conventions **shared by every style**, so the
@@ -134,6 +134,29 @@ in the live `admin/styles/schema` endpoint:
 
 Icon fields (`web_left_icon`, `web_right_icon`, and similar) take an icon
 name from the bundled Tabler icon set, chosen through the admin icon picker.
+
+## Editing content fields in the section editor
+
+How a field is **edited** in the admin depends on its type and name, and every
+text surface supports `{{` variable interpolation (see
+[interpolation-system](../../developer/10-interpolation-system.md#cms-editor-field-rendering-modes-and--coverage)
+for the full table):
+
+- **Short identifiers** (`name`, `value`, `title`, `label`, `subtitle`,
+  `placeholder`, `alt`, `caption`) stay **single-line plain** inputs.
+- Other `text` / `markdown-inline` fields render as a mention input that
+  **auto-grows**: it starts at one line and wraps + grows vertically for longer
+  copy (alerts, descriptions), while still being one logical line. `markdown-inline`
+  keeps inline **bold / italic / underline / link**; plain `text` does not.
+- Rich-text (`textarea`) fields use the full toolbar. On the `sh-mail-config`
+  page they also expose the email **Style** preset dropdown — see
+  [email styles](../email-styles.md).
+- `markdown`, `json`, `css`, and the data-config SQL filter use the Monaco code
+  editor with `{{` completion. The SQL filter is **locked by default** and
+  unlockable for manual editing.
+
+For the non-technical version, see
+[user/interpolation-and-data-naming.md](../../user/interpolation-and-data-naming.md).
 
 ## Conventions used on the per-category pages
 
