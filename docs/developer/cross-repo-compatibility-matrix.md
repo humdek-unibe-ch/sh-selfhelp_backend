@@ -293,6 +293,27 @@ the same change wave:
 > the input key (unchanged). No data migration ships; pre-release `{{scope.name}}`
 > content is recreated against the new field_key picker.
 
+> **Core 0.1.26 (unified interpolation picker + mail namespacing ⇄ frontend
+> 0.1.53):** additive Interpolation v2 follow-up. A single context-aware endpoint
+> `GET /cms-api/v1/admin/interpolation/variables` (route
+> `admin_interpolation_variables_get`, permission `admin.page.read`, migration
+> `Version20260629110606`) serves the `{{ }}` picker catalog for any context
+> (`section` | `page` | `action` | `global`) via `InterpolationVariableService`
+> over `DataVariableResolver`'s per-context catalogs; the seeded auth mail
+> templates move onto the shared `system.*` namespace
+> (`{{system.user_name}}`/`{{system.user_code}}` + one-time
+> `{{system.special.activation_link|reset_link|platform_link}}`, with
+> `MailTemplateService` mapping the flat caller vars onto that nested context and
+> legacy flat tokens still resolving); the action picker offers
+> `recipient.*`/`record.<field_key>`/`system.*`. **Frontend 0.1.53** adopts the
+> unified endpoint across the page/config, action, data-config and custom-CSS/JSON
+> surfaces (and the section hook delegates to it), so it requires the new route and
+> raises its `supports.core` `0.1.25 → 0.1.26`. The route is additive and the
+> legacy section data-variables route still exists, so backend `supports.frontend`
+> stays `>=0.1.52`. The live pairing is now **frontend `>=0.1.53` ⇄ core
+> `>=0.1.26`** (both `<0.2.0`). **No `@selfhelp/shared` change** — the picker
+> wiring lives in the frontend. No data migration ships.
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -300,13 +321,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.25` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.26` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.15.3` | npm (1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
-| `sh-selfhelp_frontend` | `0.1.52` | `0.1.52` adopts Interpolation v2 (issue #56): mention label-chips that store `{{field_key}}`, `{{` in Monaco markdown, show-user-input headers from the `field_labels` map; `0.1.49` added the data-table lock UI (core 0.1.24); `0.1.50`/`0.1.51` were shared-SSE + modal/data-refresh polish |
+| `sh-selfhelp_frontend` | `0.1.53` | `0.1.53` completes Interpolation v2 (issue #56): the `{{ }}` picker is global (page/config, actions, data-config filter, custom CSS/JSON Monaco) via one `useInterpolationVariables(context)` hook over the unified core endpoint; `0.1.52` added the field_key chips + show-user-input `field_labels`; `0.1.49` added the data-table lock UI (core 0.1.24) |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (Live Preview preference bridge; runtime syncs theme live and applies language by mobile remount) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.25 <0.2.0` | raised `0.1.23` → `0.1.24` (data-table lock UI) → `0.1.25`: frontend consumes the Interpolation v2 contract — `data_variables` is now `{{scope.field_key}} => display_name` and show-user-input ships a `field_labels` header map (issue #56) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.52 <0.2.0` | raised `0.1.48` → `0.1.52`: core `0.1.25` switches interpolation tokens + show-user-input headers to the `field_key` contract (breaking render change), first adopted by frontend `0.1.52` |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.26 <0.2.0` | raised `0.1.24` → `0.1.25` (Interpolation v2 contract) → `0.1.26`: frontend now resolves every interpolation context (incl. section, via delegation) through the unified `GET /admin/interpolation/variables` endpoint that first ships in core `0.1.26` (issue #56) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.52 <0.2.0` | unchanged at `0.1.52`: core `0.1.26` only adds the unified interpolation route (additive) + an internal mail-content rewrite — the legacy section data-variables route still exists, so an older frontend keeps working |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

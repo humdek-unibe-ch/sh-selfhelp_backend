@@ -1,3 +1,41 @@
+# v0.1.26
+
+## Interpolation v2: unified context-aware variable picker + mail namespacing (issue #56)
+
+A single, modular interpolation `{{ }}` system now powers **every** CMS text
+surface. One context-aware endpoint serves the variable catalog, the seeded mail
+templates move onto the shared `system.*` namespace, and the picker reaches the
+page/config, action, data-config and custom-CSS/JSON editors. This is an
+**additive** core change (a new read-only route + internal mail-content rewrite),
+coordinated with frontend `0.1.53`; older frontends keep working via the existing
+section data-variables route.
+
+- **One unified picker endpoint.** New `GET /cms-api/v1/admin/interpolation/variables`
+  (route `admin_interpolation_variables_get`, permission `admin.page.read`,
+  migration `Version20260629110606`) returns the `token => display_name` catalog
+  for a `context` (`section` | `page` | `action` | `global`) + optional `id`.
+  `InterpolationVariableService` orchestrates it over `DataVariableResolver`, which
+  gained context catalogs: `getSectionContextVariables` (data_config columns +
+  system + globals), `getPageContextVariables` (system + globals — and the
+  mail-config page gets `getMailContextVariables`), `getActionContextVariables`
+  (`recipient.*` + `record.<field_key>` from the action's data table + `system.*`),
+  and `getGlobalContextVariables`.
+- **Mail templates use the shared `system.*` namespace.** The seeded auth mail
+  bodies now interpolate `{{system.user_name}}`, `{{system.user_code}}` and the
+  one-time links `{{system.special.activation_link}}` /
+  `{{system.special.reset_link}}` / `{{system.special.platform_link}}` so the
+  mail-config picker offers exactly what renders. `MailTemplateService` maps the
+  flat caller vars (`user_name`, `code`, `validation_url`, …) onto that nested
+  context (and exposes `globals.*`), keeping the auth flow working; the legacy
+  flat tokens still resolve as a safety net. `MailTemplateDefaults` placeholders +
+  help text and the `templates/emails/*.html` files were rewritten to match.
+- **Action picker mirrors the action template scopes.** The action subject/body
+  editors offer `recipient.*`, `record.<field_key>` (from the action's selected
+  data table) and `system.*` — the exact namespaces `ActionTemplateContextBuilder`
+  documents — and intentionally not globals.
+
+No data migration ships; pre-release content is recreated against the new picker.
+
 # v0.1.25
 
 ## Interpolation v2: field_key tokens + display_name labels (issue #56)
