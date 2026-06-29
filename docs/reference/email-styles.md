@@ -142,7 +142,10 @@ text is never the default blue-on-blue.
 (`MailTemplateDefaults::getBody()` reads them; the seed migration copies them
 into `pages_fields_translation`). They are the canonical examples of the
 fragment + preset style — e.g. `mail_2fa.en-GB.html` uses `email-code` +
-`email-muted`, `mail_recovery.en-GB.html` uses `email-button` + `email-callout`.
+`email-muted`, `mail_recovery.en-GB.html` uses an `email-button` CTA + `email-muted`
+footer. The action link is carried by the button only; the bodies deliberately do
+**not** repeat the raw `{{system.special.*_link}}` token in a callout (it would
+show the unresolved token to admins in the editor and a bare URL to recipients).
 
 ### Related
 
