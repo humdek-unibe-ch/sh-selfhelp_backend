@@ -366,9 +366,11 @@ Standard projection columns (`record_id`, `entry_date`, …) are not in
 `DataService::getColumnDisplayLabels()` (cached per table under the `DATA_TABLE`
 scope, busted on column changes).
 
-**Picker delivery (`GET /admin/sections/{section_id}/data-variables`).** The map
-is served by its **own endpoint** (`AdminSectionController::getSectionDataVariables`
-→ `AdminSectionService::getSectionDataVariables`), not bundled into the cached
+**Picker delivery (`GET /admin/interpolation/variables?context=section&id={section_id}`).**
+The map is served by the **unified context-aware endpoint**
+(`AdminInterpolationController::getVariables` →
+`InterpolationVariableService::getVariablesForContext` →
+`DataVariableResolver::getSectionContextVariables`), not bundled into the cached
 `getSection` payload. The variables depend on the referenced data tables' live
 columns, and a column added by a later form submission only invalidates the
 `DATA_TABLE` cache scope — not the section's `SECTION` scope — so a payload-baked
@@ -376,9 +378,12 @@ picker would go stale until the section was re-saved. Instead the resolver
 assembles the map from its **granular caches** (section hierarchy/data under
 `SECTION` scope, table columns under `DATA_TABLE` scope), so adding a column
 **or** editing `data_config` both refresh it. The section inspector fetches this
-fresh when it opens (frontend `useSectionDataVariables`, REAL_TIME tier), so a
-new column/rename appears in the picker immediately without re-saving the
-section.
+fresh when it opens (frontend `useSectionDataVariables`, which delegates to the
+unified `useInterpolationVariables('section', …)`, REAL_TIME tier), so a new
+column/rename appears in the picker immediately without re-saving the section.
+(The former per-section `GET /admin/sections/{section_id}/data-variables` route
+was removed in core 0.1.29 once every supported frontend had moved to the
+unified endpoint — migration `Version20260629170535`.)
 
 ### Standard projection columns (always present)
 

@@ -44,25 +44,6 @@ class AdminSectionController extends AbstractController
     }
 
     /**
-     * Get the interpolation variable picker for a section as a `token => label`
-     * map. Served fresh (not from the cached section payload) so a data column
-     * added by a later form submission shows up immediately (issue #56).
-     *
-     * @route /admin/sections/{section_id}/data-variables
-     * @method GET
-     */
-    public function getSectionDataVariables(int $section_id): Response
-    {
-        $dataVariables = $this->adminSectionService->getSectionDataVariables($section_id);
-
-        return $this->apiResponseFormatter->formatSuccess(
-            ['data_variables' => $dataVariables],
-            'responses/admin/sections/section_data_variables',
-            Response::HTTP_OK
-        );
-    }
-
-    /**
      * Get all children sections for a parent section
      */
     public function getChildrenSections(int $page_id, int $parent_section_id): Response

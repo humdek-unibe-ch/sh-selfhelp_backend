@@ -1,3 +1,27 @@
+# v0.1.29
+
+## Remove the superseded per-section interpolation-picker endpoint (issue #56 v2)
+
+Interpolation v2 (core `0.1.26`) replaced every per-surface variable picker with
+the single context-aware endpoint
+`GET /cms-api/v1/admin/interpolation/variables`. The frontend's
+`useSectionDataVariables` has delegated to it since frontend `0.1.53`, so the
+older per-section route had no remaining consumer.
+
+- **Removed `GET /cms-api/v1/admin/sections/{section_id}/data-variables`.** The
+  controller action (`AdminSectionController::getSectionDataVariables`), the thin
+  service wrapper (`AdminSectionService::getSectionDataVariables`, plus its now
+  unused `DataVariableResolver` dependency), and the
+  `responses/admin/sections/section_data_variables` schema are gone. Migration
+  `Version20260629170535` drops the `admin_sections_data_variables_get`
+  `api_routes` row and its `admin.page.read` link (reversible: `down()` restores
+  the route + permission as `Version20260629063147` seeded them). The unified
+  endpoint still serves the section catalog via
+  `InterpolationVariableService` → `DataVariableResolver::getSectionContextVariables`.
+- **Floor-neutral.** `supports.frontend` stays `>=0.1.55`: every frontend in the
+  supported window already fetches the unified endpoint, so no supported client
+  breaks. No `@selfhelp/shared` change.
+
 # v0.1.28
 
 ## Rich-text content fields, field-catalog cleanup, and cleaner auth mails (issue #56)

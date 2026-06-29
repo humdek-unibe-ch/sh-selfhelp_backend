@@ -161,6 +161,26 @@ for the full table):
 For the non-technical version, see
 [user/interpolation-and-data-naming.md](../../user/interpolation-and-data-naming.md).
 
+## Cross-platform rendering parity (tracked gaps)
+
+Web and mobile render the same CMS payload through separate renderers, so a few
+contracts are **intentionally asymmetric today**. These are tracked here as
+explicit gaps (not implicit drift) so they are visible when planning mobile work:
+
+- **Rich-text block content — tracked mobile gap.** The `text` (used by the
+  `text` + `highlight` styles) and `blockquote_content` fields are `textarea`
+  rich-text, so they can carry **block** HTML (headings, lists, paragraphs,
+  alignment). The **web** renderer preserves that block structure
+  (`renderRichBlock` / `sanitizeHtmlForBlock`); the **mobile** renderer currently
+  parses only the **inline subset** (`parseInlineRich` + `<InlineText>`, block
+  tags degrade to inline via `sanitizeContent`). Authored headings/lists therefore
+  appear flattened on mobile. Closing this needs a mobile block renderer — until
+  then keep critical structure out of mobile-facing copy.
+- **show-user-input headers — parity restored (mobile `0.1.30`).** Rows are keyed
+  by the immutable `field_key`; both platforms now resolve human labels through
+  the section's `field_labels` (`field_key => display_name`) map, so default
+  headers and `fields_map` mappings behave the same on web and mobile.
+
 ## Conventions used on the per-category pages
 
 Each style entry on a category page has:

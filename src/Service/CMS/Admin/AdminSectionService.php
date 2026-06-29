@@ -23,7 +23,6 @@ use App\Service\CMS\Admin\SectionFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\SectionCreationService;
 use App\Service\CMS\DataTableService;
-use App\Service\CMS\DataVariableResolver;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -46,7 +45,6 @@ class AdminSectionService extends BaseService
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly SectionCreationService $sectionCreationService,
         private readonly SectionExportImportService $sectionExportImportService,
-        private readonly DataVariableResolver $dataVariableResolver,
         private readonly DataTableService $dataTableService,
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
@@ -69,9 +67,10 @@ class AdminSectionService extends BaseService
         // The section payload (section + fields + languages) is cached under this
         // SECTION scope; updateSection() invalidates the scope after edits. The
         // interpolation variable picker is NOT part of this payload — it is served
-        // fresh by getSectionDataVariables() (its own endpoint) so a column added
+        // fresh by the unified interpolation endpoint
+        // (GET /admin/interpolation/variables?context=section) so a column added
         // by a later form submission appears immediately without re-saving the
-        // section. See getSectionDataVariables().
+        // section.
         return $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id)
@@ -79,29 +78,6 @@ class AdminSectionService extends BaseService
                 $cacheKey,
                 fn() => $this->fetchSectionFromDatabase($page_id, $section_id)
             );
-    }
-
-    /**
-     * Resolve the interpolation variable picker for a section as a
-     * `token => label` map (issue #56).
-     *
-     * Kept OUT of the cached getSection() payload on purpose: the variables
-     * depend on the referenced data tables' live columns, and a column created
-     * by a form submission only invalidates the DATA_TABLE scope (not the
-     * section's SECTION scope). DataVariableResolver assembles the map from its
-     * own granular caches — section hierarchy/data under SECTION scope and table
-     * columns under DATA_TABLE scope — so adding a column (DATA_TABLE
-     * invalidation) or editing the section's data_config (SECTION invalidation)
-     * both refresh it, while repeat reads stay served from those inner caches.
-     * The frontend fetches this when the section inspector opens.
-     *
-     * @return array<string, string> token => human label
-     */
-    public function getSectionDataVariables(int $section_id): array
-    {
-        // Delegate to the central catalog so the section/condition/data-filter/CSS
-        // pickers stay byte-identical to every other interpolation surface (#56 v2).
-        return $this->dataVariableResolver->getSectionContextVariables($section_id);
     }
 
     /**

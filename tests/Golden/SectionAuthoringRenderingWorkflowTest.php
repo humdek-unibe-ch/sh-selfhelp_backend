@@ -134,10 +134,10 @@ final class SectionAuthoringRenderingWorkflowTest extends QaWebTestCase
         );
         $updatedData = $this->assertEnvelopeSuccess($updated);
         // NOTE: both updateSection and getSection return {section, fields,
-        // languages}; the interpolation picker (data_variables) has its own
-        // endpoint now (GET /admin/sections/{id}/data-variables, issue #56) and
-        // is no longer part of this shared schema (validated on the getSection
-        // read in step 8).
+        // languages}; the interpolation picker (data_variables) is served by the
+        // unified endpoint now (GET /admin/interpolation/variables, issue #56 v2)
+        // and is no longer part of this shared schema (validated on the
+        // getSection read in step 8).
         self::assertSame(
             'qa_sec_text_child_renamed',
             $this->asArray($updatedData['section'] ?? null)['name'] ?? null,
