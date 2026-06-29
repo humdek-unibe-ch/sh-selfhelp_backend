@@ -1,3 +1,33 @@
+# v0.1.28
+
+## Rich-text content fields, field-catalog cleanup, and cleaner auth mails (issue #56)
+
+A follow-up on the type-driven editor wave that turns the free-form display-copy
+fields into full rich text, removes duplicate/dead field definitions, and tidies
+the seeded transactional mails. Coordinated with frontend `0.1.55`;
+`supports.frontend` is raised to `>=0.1.55` because that frontend renders the
+block structure of the retyped fields.
+
+- **Free-form content fields become rich text.** Migration
+  `Version20260629153921` retypes the `text` field (shared by the `text` and
+  `highlight` styles) and `blockquote_content` from `markdown-inline` →
+  `textarea`, so they open in the full WYSIWYG editor (Enter for multiline plus
+  headings, lists, links, alignment) with `{{ }}` interpolation. Data-only change
+  (no content touched, fully reversible); `highlight` renders its content as
+  plain text so the richer editor degrades gracefully there.
+- **Field-catalog cleanup.** Migration `Version20260629150730` unlinks the
+  duplicate `multi_select_data` field from the `select` style (the renderer reads
+  `options`) and deletes it plus the unused `web_combobox_data`, `items` and
+  `labels` fields, and enriches the help/examples for `fields_map`, `loop` and
+  `web_carousel_embla_options`.
+- **Cleaner seeded auth mails.** The confirmation and recovery bodies drop the
+  duplicated "copy this URL" callout that exposed the raw
+  `{{system.special.*_link}}` token, and the password-changed body now links via a
+  labelled button instead of showing the raw token as the link text — the action
+  link is carried by the styled button only. Templates-only change
+  (`templates/emails/*.html`), reapplied on the next reseed; no API contract
+  change. See `docs/reference/email-styles.md`.
+
 # v0.1.27
 
 ## Type-driven CMS editors, WYSIWYG email rendering, and data-config standard columns (issue #56)
