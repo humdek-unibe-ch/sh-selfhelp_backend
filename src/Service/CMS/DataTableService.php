@@ -34,7 +34,26 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class DataTableService extends BaseService
 {
-
+    /**
+     * Always-present projection columns every data row implicitly carries (from
+     * the read stored procedure), as immutable `field_key => default human label`.
+     *
+     * They are surfaced by {@see self::getColumns()} flagged `standard:true` with
+     * `id:null` so the data-config builder / SQL filter can reference them
+     * (e.g. `{{scope.record_id}}`) while the Data browser keeps them read-only
+     * (no rename, no delete). All of them are reserved keys, so a user field can
+     * never collide with them ({@see DataColumnService::RESERVED_KEYS}).
+     *
+     * @var array<string, string>
+     */
+    public const STANDARD_COLUMNS = [
+        'record_id' => 'Record ID',
+        'entry_date' => 'Entry date',
+        'user_code' => 'User code',
+        'id_users' => 'User ID',
+        'user_name' => 'User name',
+        'triggerType' => 'Trigger type',
+    ];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -452,10 +471,14 @@ class DataTableService extends BaseService
     }
 
     /**
-     * Get columns for a data table by name
-     * Returns an array of column definitions [{ id, fieldKey, displayName }] or
-     * false if not found. `fieldKey` is the immutable storage key; `displayName`
-     * is the mutable human label (null when never curated).
+     * Get columns for a data table by name.
+     *
+     * Returns the always-present {@see self::STANDARD_COLUMNS} projection columns
+     * first (`id:null`, `standard:true`, `locked:true` — read-only, not editable
+     * in the Data browser) followed by the table's dynamic data columns
+     * (`standard:false`). `fieldKey` is the immutable storage key; `displayName`
+     * is the mutable human label (null when never curated). Returns false if the
+     * table is not found.
      *
      * @return list<array<string, mixed>>|false
      */
@@ -466,14 +489,23 @@ class DataTableService extends BaseService
             return false;
         }
 
-        $columns = $dataTable->getDataCols();
         $result = [];
-        foreach ($columns as $col) {
+        foreach (self::STANDARD_COLUMNS as $fieldKey => $label) {
+            $result[] = [
+                'id' => null,
+                'fieldKey' => $fieldKey,
+                'displayName' => $label,
+                'locked' => true,
+                'standard' => true,
+            ];
+        }
+        foreach ($dataTable->getDataCols() as $col) {
             $result[] = [
                 'id' => $col->getId(),
                 'fieldKey' => $col->getFieldKey(),
                 'displayName' => $col->getDisplayName(),
                 'locked' => $col->isDisplayNameManual(),
+                'standard' => false,
             ];
         }
         return $result;
@@ -492,9 +524,8 @@ class DataTableService extends BaseService
             return false;
         }
 
-        $columns = $dataTable->getDataCols();
-        $result = ['record_id', 'entry_date', 'user_code', 'id_users', 'user_name', 'triggerType'];
-        foreach ($columns as $col) {
+        $result = array_keys(self::STANDARD_COLUMNS);
+        foreach ($dataTable->getDataCols() as $col) {
             $result[] = $col->getFieldKey();
         }
         return $result;

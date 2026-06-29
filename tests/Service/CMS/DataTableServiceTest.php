@@ -90,6 +90,50 @@ final class DataTableServiceTest extends QaKernelTestCase
         self::assertContains('qa_extra', $this->flattenColumnNames($names));
     }
 
+    /**
+     * Issue #56 data-config builder: getColumns() must surface the always-present
+     * standard projection columns every row carries (record_id, user_name, …) so
+     * the builder / SQL filter can reference them, flagged `standard:true` +
+     * `id:null` so the Data browser keeps them read-only, ahead of the table's
+     * own dynamic columns (`standard:false`).
+     */
+    public function testGetColumnsIncludesReadOnlyStandardProjectionColumns(): void
+    {
+        $this->tables->addRow('qa_dts_stdcols', ['qa_field' => 'v'], $this->userId());
+        $this->em->clear();
+
+        $columns = $this->service->getColumns('qa_dts_stdcols');
+        self::assertIsArray($columns);
+
+        $byKey = [];
+        foreach ($columns as $col) {
+            self::assertArrayHasKey('standard', $col, 'Every column row must carry the standard flag.');
+            $fieldKey = $col['fieldKey'];
+            self::assertIsString($fieldKey, 'Every column must expose a string field key.');
+            $byKey[$fieldKey] = $col;
+        }
+
+        // Every standard projection column is present, read-only, and not a real
+        // editable data_cols row (id === null).
+        foreach (array_keys(DataTableService::STANDARD_COLUMNS) as $standardKey) {
+            self::assertArrayHasKey($standardKey, $byKey, "Standard column {$standardKey} must be offered.");
+            self::assertTrue($byKey[$standardKey]['standard'], "{$standardKey} must be flagged standard.");
+            self::assertTrue($byKey[$standardKey]['locked'], "{$standardKey} must be read-only.");
+            self::assertNull($byKey[$standardKey]['id'], "{$standardKey} must not be an editable column (id null).");
+        }
+
+        // The dynamic column created by the submission is a normal editable column.
+        self::assertArrayHasKey('qa_field', $byKey);
+        self::assertFalse($byKey['qa_field']['standard'], 'A dynamic column is not standard.');
+        self::assertNotNull($byKey['qa_field']['id'], 'A dynamic column has a real data_cols id.');
+
+        // Standard columns come first (stable ordering for the builder dropdown).
+        $firstSix = array_slice($columns, 0, count(DataTableService::STANDARD_COLUMNS));
+        foreach ($firstSix as $col) {
+            self::assertTrue($col['standard'], 'Standard projection columns must lead the list.');
+        }
+    }
+
     public function testDeleteColumnsReturnsFalseForUnknownTable(): void
     {
         self::assertFalse($this->service->deleteColumns('qa_dts_no_such_table', ['qa_field']));
