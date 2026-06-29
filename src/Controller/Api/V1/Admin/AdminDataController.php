@@ -306,6 +306,55 @@ class AdminDataController extends AbstractController
     }
 
     /**
+     * Curate a column's human-facing display name (addressed by immutable field key).
+     * The storage key never changes; this only updates the mutable label and marks
+     * it as manually curated so future submissions never overwrite it.
+     * Expects JSON body: { "fieldKey": "mood_score", "displayName": "Daily mood" }
+     * Requires UPDATE permission on the data table.
+     */
+    public function updateColumnDisplayName(Request $request, string $tableName): JsonResponse
+    {
+        try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+
+            // Curating a label changes table structure metadata -> require UPDATE.
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
+            $data = $this->validateRequest($request, 'requests/admin/update_data_column_display_name', $this->jsonSchemaValidationService);
+
+            $fieldKey = is_string($data['fieldKey'] ?? null) ? $data['fieldKey'] : '';
+            $displayNameRaw = $data['displayName'] ?? null;
+            $displayName = is_string($displayNameRaw) ? $displayNameRaw : null;
+
+            $updated = $this->dataTableService->updateColumnDisplayName($tableName, $fieldKey, $displayName);
+            if ($updated === false) {
+                return $this->responseFormatter->formatError('Data table or column not found', Response::HTTP_NOT_FOUND);
+            }
+
+            return $this->responseFormatter->formatSuccess(['updated' => true]);
+        } catch (RequestValidationException $e) {
+            throw $e;
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError(
+                'Failed to update column display name',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    /**
      * Export a single data table as CSV or JSON (raw, no envelope).
      * Query params: format=csv|json, user_id (optional), language_id (optional, default 1), exclude_deleted (optional, default true)
      */
@@ -341,6 +390,9 @@ class AdminDataController extends AbstractController
             } else {
                 $rows = $this->dataService->getDataWithUserGroupFilter((int) $dataTable->getId(), $currentUserId, '', $excludeDeleted, $languageId);
             }
+            // Export with the current human input name as the column header
+            // instead of the immutable section_<id> key (issue #56).
+            $rows = $this->dataService->remapEntriesToInputNames((int) $dataTable->getId(), $rows);
 
             $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? $tableName;
             $filename = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;
@@ -426,6 +478,9 @@ class AdminDataController extends AbstractController
                 } else {
                     $rows = $this->dataService->getDataWithUserGroupFilter((int) $dataTable->getId(), $currentUserId, '', $excludeDeleted, $languageId);
                 }
+                // Export with the current human input name as the column header
+                // instead of the immutable section_<id> key (issue #56).
+                $rows = $this->dataService->remapEntriesToInputNames((int) $dataTable->getId(), $rows);
 
                 $label = $dataTable->getDisplayName() ?? $dataTable->getName() ?? '';
                 $entryName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', (string) $label) . '.' . $format;

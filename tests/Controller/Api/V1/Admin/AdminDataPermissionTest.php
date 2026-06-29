@@ -76,5 +76,11 @@ final class AdminDataPermissionTest extends QaWebTestCase
             self::BASE . '/tables/qa_perm_data_table/columns',
             ['columns' => ['qa_field']],
         );
+        // Issue #56: relabeling a column is gated by admin.data.update_columns.
+        $this->assertForbiddenForNonAdmins(
+            'PATCH',
+            self::BASE . '/tables/qa_perm_data_table/columns/display-name',
+            ['fieldKey' => 'qa_field', 'displayName' => 'Renamed'],
+        );
     }
 }

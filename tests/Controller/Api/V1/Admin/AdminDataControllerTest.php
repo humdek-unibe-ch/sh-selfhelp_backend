@@ -123,8 +123,15 @@ final class AdminDataControllerTest extends QaWebTestCase
 
         self::assertArrayHasKey('columns', $data);
         self::assertIsArray($data['columns']);
-        $columnNames = array_column($data['columns'], 'name');
-        self::assertContains('qa_field', $columnNames, 'The field written by the factory must be a column.');
+        // Issue #56: each column exposes the immutable storage key (`fieldKey`)
+        // and the mutable label (`displayName`), no longer a single `name`.
+        $first = $data['columns'][0] ?? null;
+        self::assertIsArray($first);
+        self::assertArrayHasKey('id', $first);
+        self::assertArrayHasKey('fieldKey', $first);
+        self::assertArrayHasKey('displayName', $first);
+        $fieldKeys = array_column($data['columns'], 'fieldKey');
+        self::assertContains('qa_field', $fieldKeys, 'The field written by the factory must be a column (keyed by field_key).');
     }
 
     public function testGetColumnNamesIncludesSystemAndCustomColumns(): void
@@ -334,7 +341,67 @@ final class AdminDataControllerTest extends QaWebTestCase
         $columns = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', self::BASE . '/tables/' . $table->getName() . '/columns', null, $token)
         );
-        self::assertNotContains('qa_field', array_column($this->asList($columns['columns']), 'name'), 'Deleted column must not reappear.');
+        self::assertNotContains('qa_field', array_column($this->asList($columns['columns']), 'fieldKey'), 'Deleted column must not reappear.');
+    }
+
+    /**
+     * Issue #56: relabeling a column changes ONLY the human label
+     * (`display_name`); the immutable `field_key` and the stored cells stay put,
+     * so renaming never forks a column or splits historical data.
+     */
+    public function testUpdateColumnDisplayNameRenamesLabelButKeepsStorageKeyAndData(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_relabel_table', $this->qaUserId(), 'qa-original')[0];
+        $token = $this->loginAsQaAdmin();
+        $columnsUrl = self::BASE . '/tables/' . $table->getName() . '/columns';
+
+        // Capture the column id before relabeling.
+        $before = $this->assertEnvelopeSuccess($this->jsonRequest('GET', $columnsUrl, null, $token));
+        $beforeCols = $this->asList($before['columns']);
+        $qaCol = null;
+        foreach ($beforeCols as $col) {
+            if (is_array($col) && ($col['fieldKey'] ?? null) === 'qa_field') {
+                $qaCol = $col;
+                break;
+            }
+        }
+        self::assertIsArray($qaCol, 'The seeded qa_field column must exist.');
+        $originalId = $qaCol['id'] ?? null;
+
+        // Relabel qa_field -> "Daily mood".
+        $envelope = $this->jsonRequest(
+            'PATCH',
+            $columnsUrl . '/display-name',
+            ['fieldKey' => 'qa_field', 'displayName' => 'Daily mood'],
+            $token,
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+        self::assertTrue((bool) ($data['updated'] ?? false), 'The relabel must report updated=true.');
+
+        // The field_key + id are unchanged; only displayName moved.
+        $after = $this->assertEnvelopeSuccess($this->jsonRequest('GET', $columnsUrl, null, $token));
+        $afterCols = $this->asList($after['columns']);
+        $relabeled = null;
+        foreach ($afterCols as $col) {
+            if (is_array($col) && ($col['fieldKey'] ?? null) === 'qa_field') {
+                $relabeled = $col;
+                break;
+            }
+        }
+        self::assertIsArray($relabeled, 'field_key qa_field must still exist after relabel.');
+        self::assertSame($originalId, $relabeled['id'] ?? null, 'Relabeling must not create a new column id.');
+        self::assertSame('Daily mood', $relabeled['displayName'] ?? null, 'displayName must reflect the new label.');
+        self::assertSameSize($beforeCols, $afterCols, 'Relabeling must not add or remove columns.');
+
+        // The stored cell is still readable by the stable key (data not split).
+        $rows = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', self::BASE . '?table_name=' . $table->getName(), null, $token)
+        );
+        $rowList = $this->asList($rows['rows']);
+        self::assertCount(1, $rowList, 'The original row must still be present after relabel.');
+        $firstRow = $rowList[0] ?? null;
+        self::assertIsArray($firstRow);
+        self::assertSame('qa-original', $firstRow['qa_field'] ?? null, 'The value must still be keyed by field_key qa_field.');
     }
 
     public function testDeleteDataTableRemovesTable(): void
