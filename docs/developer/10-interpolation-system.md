@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-26.
+Last verified: 2026-06-29.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 **Date:** 2025-10-24  
@@ -342,11 +342,29 @@ always line up.
 **Variable picker contract (`token => label`).** `DataVariableResolver`
 (consumed by the section editor's variable picker) returns a **map of token to
 human label**, e.g.
-`{ "parent.mood_score": "Daily mood", "parent.email": "Email address" }`
-(label = `display_name ?? field_key`). The CMS editor **shows the label** so the
-admin picks a readable name, but **inserts the stable token** (`{{parent.mood_score}}`)
-into the content. This keeps content authored against immutable keys while
-staying human-friendly.
+`{ "parent.section_456": "Daily mood", "parent.email": "Email address" }`
+(token = `scope.field_key`, label = `scope.(display_name ?? field_key)`). The CMS
+editor **shows the label** so the admin picks a readable name, but **inserts the
+stable token** (`{{parent.section_456}}`) into the content. This keeps content
+authored against immutable keys while staying human-friendly.
+
+**Frontend chip round-trip (v2, issue #56).** The mention editor renders each
+inserted token as a **label chip** showing the live `display_name` (spaces
+allowed) while persisting the bare `{{scope.field_key}}` token to the database.
+On load it parses `{{scope.field_key}}` back into chips by looking the token up
+in the live `token => label` map. Because the chip is token-agnostic (it renders
+whatever label the map provides for the stored token), a later input/display
+rename only changes the chip text — the stored token is unchanged.
+
+**show-user-input headers (v2, issue #56).** A `show-user-input` section's render
+payload carries a `field_labels` map (`field_key => display_name`) alongside
+`entries` (rows kept keyed by `field_key`). The renderer defaults each column
+header to the curated `display_name` and reads cells by the stable `field_key`,
+with the style's `fields_map` available as an explicit per-column override.
+Standard projection columns (`record_id`, `entry_date`, …) are not in
+`field_labels` and render under their own key. The map is produced by
+`DataService::getColumnDisplayLabels()` (cached per table under the `DATA_TABLE`
+scope, busted on column changes).
 
 **Picker delivery (`GET /admin/sections/{section_id}/data-variables`).** The map
 is served by its **own endpoint** (`AdminSectionController::getSectionDataVariables`

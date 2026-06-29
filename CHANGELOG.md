@@ -1,3 +1,41 @@
+# v0.1.25
+
+## Interpolation v2: field_key tokens + display_name labels (issue #56)
+
+The platform's `{{ }}` interpolation now resolves data variables by the
+immutable `field_key` instead of the mutable input *name*, so renaming a form
+input (or curating a column's `display_name`) never breaks authored content. The
+editor shows the human `display_name`; the stored token is the rename-safe
+`{{scope.<field_key>}}`. This is a **breaking render/contract change** consumed
+by the frontend (token map + show-user-input headers), coordinated with frontend
+`0.1.52`.
+
+- **Picker tokens are the immutable `field_key`.** `DataVariableResolver` now
+  emits `scope.<field_key>` tokens (core forms: `section_<input id>`; SurveyJS:
+  `question.name`) with the curated `display_name` as the label (falling back to
+  the field_key). It no longer remaps tokens to the current input name, so the
+  `data-variables` map a section returns is `{{scope.field_key}} => display_name`.
+- **Render scope keys by `field_key`.** `SectionUtilityService::fetchData` keeps
+  the interpolation `retrieved_data` scope keyed by the storage `field_key`
+  (the name remap was removed). `{{scope.<field_key>}}` in `content`, `css`,
+  conditions and data-config projections now resolves directly — a later rename
+  only moves the label. data_config `fields[].field_name` is the `field_key`.
+- **show-user-input ships a header map.** A show-user-input section's payload now
+  carries `field_labels` (`field_key => display_name`) alongside `entries`
+  (kept keyed by `field_key`). The renderer defaults column headers to the
+  curated `display_name` while reading cells by the stable key. Backed by the new
+  `DataService::getColumnDisplayLabels()` (cached per table, busted on column
+  changes). Standard projection columns (`record_id`, `entry_date`, …) keep
+  their own key as the header.
+- **Form submit/prefill and the Data browser are unchanged.** Form save still
+  maps submitted input names to `section_<id>` storage keys; prefill still maps
+  back to input names (the renderer binds inputs by name); the admin Data browser
+  keeps its existing display. Only the interpolation scope, picker tokens and
+  show-user-input headers switched to the `field_key` contract.
+
+No data migration is shipped — pre-release content that used `{{scope.<name>}}`
+tokens is recreated against the new `{{scope.<field_key>}}` picker.
+
 # v0.1.24
 
 ## Data-column / data-table display-name propagation + admin lock (issue #56)
