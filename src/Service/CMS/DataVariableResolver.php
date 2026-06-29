@@ -26,8 +26,7 @@ class DataVariableResolver extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly DataService $dataService,
         private readonly CacheService $cache,
-        private readonly GlobalVariableService $globalVariableService,
-        private readonly FormFieldKeyResolver $formFieldKeyResolver
+        private readonly GlobalVariableService $globalVariableService
     ) {
     }
 
@@ -35,13 +34,14 @@ class DataVariableResolver extends BaseService
      * Get all available data variables for a section as a `token => label` map.
      *
      * The TOKEN (map key) is the interpolation key inserted into content
-     * (`{{scope.token}}`). For core CMS forms it is the current human input
-     * NAME (issue #56): the storage key is the opaque, stable
-     * `section_<input id>`, but it is remapped here so authors only ever see and
-     * insert readable names — the opaque key never leaks into the editor, the
-     * picker, or the rendered `retrieved_data` debug scope. The LABEL (map value)
-     * is the human-facing text shown in the picker — the curated `display_name`
-     * when present, otherwise the input name.
+     * (`{{scope.token}}`). For data columns it is the immutable, opaque
+     * `field_key` (issue #56 v2): core CMS forms use `section_<input id>`,
+     * SurveyJS uses `question.name`. The token is rename-safe — renaming an
+     * input or curating a display name only moves the LABEL, never the token, so
+     * authored content never breaks. The LABEL (map value) is the human-facing
+     * text shown in the editor/picker — the curated `display_name` when present,
+     * otherwise the field_key. The frontend renders the label as a chip while
+     * persisting the `{{scope.field_key}}` token.
      *
      * The result is cached by the caller as part of the SECTION-scoped section
      * payload ({@see \App\Service\CMS\Admin\AdminSectionService::getSection}):
@@ -208,21 +208,24 @@ class DataVariableResolver extends BaseService
 
             $scope = $this->asString($config['scope']);
 
-            // Check if custom fields are defined. These are explicit field keys
-            // chosen in the data-config UI; we have no display name for them, so
-            // the token doubles as its own label. A field_name that is an opaque
-            // core-form storage key (`section_<input id>`) is remapped to the
-            // current human input name so the editor never shows the opaque key.
+            // Custom fields are explicit columns chosen in the data-config UI;
+            // `field_name` holds the immutable `field_key`. The token is the
+            // rename-safe `scope.field_key`; the picker label is the column's
+            // curated `display_name` (resolved from the table) when present, else
+            // the field_key itself (issue #56 v2).
             if (isset($config['fields']) && is_array($config['fields'])) {
-                $keyToName = isset($config['table'])
-                    ? $this->formFieldKeyResolver->getFieldKeyToName($this->asString($config['table']))
-                    : [];
+                $displayMap = [];
+                if (isset($config['table'])) {
+                    $dataTable = $this->dataService->getDataTableByName($this->asString($config['table']));
+                    if ($dataTable) {
+                        $displayMap = $this->getTableColumnNames((int) $dataTable->getId());
+                    }
+                }
                 foreach ($config['fields'] as $field) {
                     if (is_array($field) && isset($field['field_name'])) {
-                        $fieldName = $this->asString($field['field_name']);
-                        $fieldName = $keyToName[$fieldName] ?? $fieldName;
-                        $token = $scope . '.' . $fieldName;
-                        $variables[$token] = $token;
+                        $fieldKey = $this->asString($field['field_name']);
+                        $label = $displayMap[$fieldKey] ?? $fieldKey;
+                        $variables[$scope . '.' . $fieldKey] = $scope . '.' . $label;
                     }
                 }
             }
@@ -258,18 +261,12 @@ class DataVariableResolver extends BaseService
             if ($dataTable) {
                 $tableId = (int) $dataTable->getId();
                 $columns = $this->getTableColumnNames($tableId);
-                // For core CMS form tables this maps the opaque storage key
-                // (`section_<input id>`) to the current human input name; other
-                // sources (SurveyJS, …) return an empty map so their keys pass
-                // through unchanged.
-                $keyToName = $this->formFieldKeyResolver->getFieldKeyToName($tableName);
 
                 foreach ($columns as $fieldKey => $columnLabel) {
-                    // Token is the readable input name (never the opaque key); the
-                    // label is the curated display_name when present, else the name.
-                    $inputName = $keyToName[$fieldKey] ?? $fieldKey;
-                    $label = ($columnLabel !== $fieldKey) ? $columnLabel : $inputName;
-                    $variables[$scope . '.' . $inputName] = $scope . '.' . $label;
+                    // Token is the immutable, rename-safe field_key (never the
+                    // mutable input name); the label is the curated display_name
+                    // when present, else the field_key itself (issue #56 v2).
+                    $variables[$scope . '.' . $fieldKey] = $scope . '.' . $columnLabel;
                 }
             }
         } catch (\Exception $e) {

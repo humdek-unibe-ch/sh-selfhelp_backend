@@ -776,6 +776,46 @@ class DataService extends BaseService
     }
 
     /**
+     * `field_key => display_name` for a data table's curated columns, so
+     * renderers (e.g. show-user-input) can show human labels as headers while
+     * keying cells by the immutable `field_key` (issue #56 v2). `display_name`
+     * falls back to the `field_key` when not curated. Standard projection
+     * columns (record_id, entry_date, …) are not included — they render under
+     * their own key. Cached per table and invalidated on column changes.
+     *
+     * @return array<string, string>
+     */
+    public function getColumnDisplayLabels(int $dataTableId): array
+    {
+        if ($dataTableId <= 0) {
+            return [];
+        }
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+            ->getList("column_display_labels_{$dataTableId}", function () use ($dataTableId) {
+                $rows = $this->entityManager->getConnection()->executeQuery(
+                    'SELECT field_key, display_name FROM data_cols WHERE id_data_tables = :id ORDER BY field_key',
+                    ['id' => $dataTableId],
+                    ['id' => \Doctrine\DBAL\ParameterType::INTEGER]
+                )->fetchAllAssociative();
+
+                $labels = [];
+                foreach ($rows as $row) {
+                    $fieldKey = isset($row['field_key']) && is_scalar($row['field_key']) ? (string) $row['field_key'] : '';
+                    if ($fieldKey === '') {
+                        continue;
+                    }
+                    $displayName = isset($row['display_name']) && is_scalar($row['display_name']) ? (string) $row['display_name'] : '';
+                    $labels[$fieldKey] = $displayName !== '' ? $displayName : $fieldKey;
+                }
+
+                return $labels;
+            });
+    }
+
+    /**
      * Get the last record of a data table
      *
      * @param string $dataTableName Data table name

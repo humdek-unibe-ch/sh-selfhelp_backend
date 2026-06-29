@@ -404,13 +404,11 @@ class SectionUtilityService
             $languageId
         );
 
-        // Core CMS form rows are stored under the opaque, stable
-        // `section_<input id>` key; rename them back to the current human input
-        // name so the interpolation `retrieved_data` scope and the {{scope.name}}
-        // tokens authors pick both use readable names (issue #56). No-op for
-        // non-form data tables (SurveyJS etc. keep their own keys).
-        /** @var list<array<string, mixed>> $data */
-        $data = $this->dataService->remapEntriesToInputNames($dataTableId, $data);
+        // The interpolation `retrieved_data` scope is keyed by the immutable
+        // `field_key` (issue #56 v2): authors insert rename-safe
+        // `{{scope.<field_key>}}` tokens (core forms: `section_<input id>`;
+        // SurveyJS: `question.name`) and the editor shows the display_name label.
+        // No name remap here — a later rename only moves the label, not the key.
 
         // Post-process based on retrieve type
         switch ($retrieve) {
@@ -742,12 +740,12 @@ class SectionUtilityService
                     $languageId
                 );
 
-                // Entries are keyed by the immutable section-id field_key; for a
-                // core form data table rename them back to the current human
-                // input name so the renderer shows one logical column with the
-                // current label instead of section ids (issue #56). No-op for
-                // non-form tables (e.g. SurveyJS keeps question.name headers).
-                $entries = $this->dataService->remapEntriesToInputNames($dataTableId, $entries);
+                // Entries stay keyed by the immutable `field_key` (issue #56 v2).
+                // The renderer resolves column headers from the `field_labels`
+                // map (field_key => display_name) set below, so a renamed input
+                // or curated display name only moves the label, never the cell
+                // key. Standard projection columns (record_id, entry_date, …) are
+                // not in the map and render under their own key as before.
 
                 $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
                     && ($section['delete_entry']['content'] ?? '0') === '1';
@@ -787,6 +785,10 @@ class SectionUtilityService
                 }
 
                 $section['entries'] = $entries;
+                // field_key => display_name for this table's curated columns, so
+                // the show-user-input renderer shows human headers while keying
+                // cells by the stable field_key (issue #56 v2).
+                $section['field_labels'] = $this->dataService->getColumnDisplayLabels($dataTableId);
             }
         }
 

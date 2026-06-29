@@ -9,7 +9,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\CMS;
 
+use App\Entity\DataTable;
+use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\DataService;
 use App\Service\CMS\DataVariableResolver;
+use App\Service\CMS\GlobalVariableService;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -55,5 +60,92 @@ final class DataVariableResolverTest extends TestCase
         foreach (['system.project_name', 'system.current_datetime', 'system.user_email'] as $expected) {
             self::assertContains($expected, $vars);
         }
+    }
+
+    /**
+     * Issue #56 v2: the picker token is the immutable `field_key`, never the
+     * mutable input name, and the label is the curated `display_name`. This is
+     * the rename-safety guarantee — renaming an input only moves the label.
+     *
+     * @param array<string, string> $columns field_key => display label
+     */
+    private function resolverWithColumns(string $tableName, int $tableId, array $columns): DataVariableResolver
+    {
+        // Pure stubs (no call expectations) — they only feed canned return
+        // values so the resolver's token-building logic can be asserted.
+        $em = $this->createStub(EntityManagerInterface::class);
+        $dataService = $this->createStub(DataService::class);
+        $cache = $this->createStub(CacheService::class);
+        $globals = $this->createStub(GlobalVariableService::class);
+
+        $dataTable = $this->createStub(DataTable::class);
+        $dataTable->method('getId')->willReturn($tableId);
+        $dataService->method('getDataTableByName')->willReturn($dataTable);
+
+        // Bypass the real cache: return the column map directly for getList,
+        // and make the fluent scope builders return the same mock.
+        $cache->method('withCategory')->willReturnSelf();
+        $cache->method('withEntityScope')->willReturnSelf();
+        $cache->method('getList')->willReturn($columns);
+
+        return new DataVariableResolver($em, $dataService, $cache, $globals);
+    }
+
+    public function testTableTokensUseImmutableFieldKeyNotInputName(): void
+    {
+        // A core form column whose input is currently named "changed" but whose
+        // stable key is section_230 and whose curated label is "Daily mood".
+        $columns = ['section_230' => 'Daily mood', 'record_id' => 'record_id'];
+        $resolver = $this->resolverWithColumns('230', 5, $columns);
+
+        $method = new \ReflectionMethod(DataVariableResolver::class, 'getTableVariablesFromConfig');
+        $method->setAccessible(true);
+        /** @var array<string, string> $vars */
+        $vars = $method->invoke($resolver, ['scope' => 'd', 'table' => '230']);
+
+        self::assertSame(
+            'd.Daily mood',
+            $vars['d.section_230'] ?? null,
+            'Token must be scope.field_key; label must be scope.display_name.',
+        );
+        self::assertArrayNotHasKey(
+            'd.changed',
+            $vars,
+            'A renamed input must never leak its mutable name into the interpolation token.',
+        );
+        // Standard projection columns keep their own key as token and label.
+        self::assertSame('d.record_id', $vars['d.record_id'] ?? null);
+    }
+
+    public function testCustomFieldTokensUseFieldKeyWithCuratedLabel(): void
+    {
+        $columns = ['section_230' => 'Daily mood'];
+        $resolver = $this->resolverWithColumns('230', 5, $columns);
+
+        // data_config custom fields store the immutable field_key in field_name.
+        $section = ['global_fields' => ['data_config' => json_encode([
+            ['scope' => 'd', 'table' => '230', 'fields' => [['field_name' => 'section_230']]],
+        ])]];
+
+        $method = new \ReflectionMethod(DataVariableResolver::class, 'parseDataConfig');
+        $method->setAccessible(true);
+        /** @var array<string, string> $vars */
+        $vars = $method->invoke($resolver, $section);
+
+        self::assertSame('d.Daily mood', $vars['d.section_230'] ?? null);
+    }
+
+    public function testTokenLabelFallsBackToFieldKeyForUncuratedColumn(): void
+    {
+        // SurveyJS-style key with no curated display_name (label == key).
+        $columns = ['question.q1' => 'question.q1'];
+        $resolver = $this->resolverWithColumns('sh2_surveyjs_9', 9, $columns);
+
+        $method = new \ReflectionMethod(DataVariableResolver::class, 'getTableVariablesFromConfig');
+        $method->setAccessible(true);
+        /** @var array<string, string> $vars */
+        $vars = $method->invoke($resolver, ['scope' => 'e', 'table' => 'sh2_surveyjs_9']);
+
+        self::assertSame('e.question.q1', $vars['e.question.q1'] ?? null);
     }
 }
