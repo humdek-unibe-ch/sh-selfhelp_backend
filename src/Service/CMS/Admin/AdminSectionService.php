@@ -64,17 +64,43 @@ class AdminSectionService extends BaseService
     {
         $cacheKey = "section_{$section_id}_" . ($page_id ?? 'auto');
 
-        $result = $this->cache
+        // The section payload (section + fields + languages) is cached under this
+        // SECTION scope; updateSection() invalidates the scope after edits. The
+        // interpolation variable picker is NOT part of this payload — it is served
+        // fresh by getSectionDataVariables() (its own endpoint) so a column added
+        // by a later form submission appears immediately without re-saving the
+        // section. See getSectionDataVariables().
+        return $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id)
             ->getItem(
                 $cacheKey,
                 fn() => $this->fetchSectionFromDatabase($page_id, $section_id)
             );
-        
+    }
+
+    /**
+     * Resolve the interpolation variable picker for a section as a
+     * `token => label` map (issue #56).
+     *
+     * Kept OUT of the cached getSection() payload on purpose: the variables
+     * depend on the referenced data tables' live columns, and a column created
+     * by a form submission only invalidates the DATA_TABLE scope (not the
+     * section's SECTION scope). DataVariableResolver assembles the map from its
+     * own granular caches — section hierarchy/data under SECTION scope and table
+     * columns under DATA_TABLE scope — so adding a column (DATA_TABLE
+     * invalidation) or editing the section's data_config (SECTION invalidation)
+     * both refresh it, while repeat reads stay served from those inner caches.
+     * The frontend fetches this when the section inspector opens.
+     *
+     * @return array<string, string> token => human label
+     */
+    public function getSectionDataVariables(int $section_id): array
+    {
+        $dataVariables = $this->dataVariableResolver->getDataVariables(['id' => $section_id]);
         $globalVariables = $this->dataVariableResolver->getGlobalVariables();
-        $result['data_variables'] = array_merge($this->asArray($result['data_variables'] ?? []), $globalVariables);
-        return $result;
+
+        return array_merge($dataVariables, $globalVariables);
     }
 
     /**
@@ -141,7 +167,6 @@ class AdminSectionService extends BaseService
             'section' => $normalizedSection,
             'fields' => $formattedFields,
             'languages' => $languages,
-            'data_variables' => $this->dataVariableResolver->getDataVariables($normalizedSection),
         ];
     }
 

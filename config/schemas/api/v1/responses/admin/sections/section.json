@@ -59,17 +59,9 @@
                         },
                         "required": ["id"]
                     }
-                },
-                "data_variables": {
-                    "type": "array",
-                    "description": "List of available data variables for use in templates and dropdowns",
-                    "items": {
-                        "type": "string",
-                        "description": "Variable name (e.g., 'scope.field_name', 'global.var_name', or 'user_name')"
-                    }
                 }
             },
-            "required": ["section", "fields", "languages", "data_variables"]
+            "required": ["section", "fields", "languages"]
         }
     },
     "required": ["data"]

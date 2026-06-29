@@ -82,12 +82,13 @@ class GlobalVariableService extends BaseService
     }
 
     /**
-     * Get global variable NAMES across all languages
+     * Get global variable NAMES across all languages as a `token => label` map.
      *
-     * Returns unique variable names that exist in any language, prefixed with 'global.'
-     * Used for admin UI dropdowns and autocomplete.
+     * Returns unique variable tokens that exist in any language, prefixed with
+     * 'globals.'. The token doubles as its own label (global values carry no
+     * separate display name). Used for the CMS variable picker.
      *
-     * @return array<int, string> List of global variable names with 'global.' prefix (e.g., ['global.my_var'])
+     * @return array<string, string> token => label (e.g., ['globals.my_var' => 'globals.my_var'])
      */
     public function getGlobalVariableNames(): array
     {
@@ -121,14 +122,15 @@ class GlobalVariableService extends BaseService
                     $globalValues = json_decode($globalValuesJson, true);
                     if (is_array($globalValues)) {
                         foreach (array_keys($globalValues) as $key) {
-                            $variables[] = 'globals.' . $key;
+                            $token = 'globals.' . $key;
+                            // Token doubles as its own label; map keys dedupe.
+                            $variables[$token] = $token;
                         }
                     }
                 }
             }
 
-            // Remove duplicates while preserving order
-            return array_unique($variables);
+            return $variables;
         });
     }
 

@@ -26,15 +26,32 @@ class DataVariableResolver extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly DataService $dataService,
         private readonly CacheService $cache,
-        private readonly GlobalVariableService $globalVariableService
+        private readonly GlobalVariableService $globalVariableService,
+        private readonly FormFieldKeyResolver $formFieldKeyResolver
     ) {
     }
 
     /**
-     * Get all available data variables for a section
+     * Get all available data variables for a section as a `token => label` map.
+     *
+     * The TOKEN (map key) is the interpolation key inserted into content
+     * (`{{scope.token}}`). For core CMS forms it is the current human input
+     * NAME (issue #56): the storage key is the opaque, stable
+     * `section_<input id>`, but it is remapped here so authors only ever see and
+     * insert readable names — the opaque key never leaks into the editor, the
+     * picker, or the rendered `retrieved_data` debug scope. The LABEL (map value)
+     * is the human-facing text shown in the picker — the curated `display_name`
+     * when present, otherwise the input name.
+     *
+     * The result is cached by the caller as part of the SECTION-scoped section
+     * payload ({@see \App\Service\CMS\Admin\AdminSectionService::getSection}):
+     * editing a section's data_config goes through updateSection(), which
+     * invalidates that SECTION scope (and this resolver's own SECTION-scoped
+     * hierarchy/section-data caches), so the picker refreshes on the next load
+     * after a data_config change instead of requerying on every read.
      *
      * @param array<string, mixed> $section The section data array
-     * @return array<int, string> List of variable names
+     * @return array<string, string> token => human label
      */
     public function getDataVariables(array $section): array
     {
@@ -44,87 +61,29 @@ class DataVariableResolver extends BaseService
         }
         $sectionId = $this->asInt($sectionIdRaw);
 
-        $cacheKey = "section_data_variables_{$sectionId}";
-
-        // Get all sections in hierarchy first to extract dependencies
         $allSections = $this->getSectionHierarchy($sectionId);
-        $dataTableIds = $this->extractDataTableDependencies($allSections);
 
-        // Build cache service with all dependencies
-        $cacheService = $this->cache
-            ->withCategory(CacheService::CATEGORY_SECTIONS)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $sectionId);
+        $variables = [];
 
-        // Add data table dependencies to cache scope
-        foreach ($dataTableIds as $dataTableId) {
-            $cacheService = $cacheService->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId);
-        }
-
-        // Note: Global variable dependencies are handled by GlobalVariableService
-
-        return $cacheService->getList($cacheKey, function () use ($allSections) {
-            $variables = [];
-
-            // Process variables from all sections in hierarchy (parent to child order)
-            foreach ($allSections as $sectionData) {
-                // Get custom variables from data_config if available
-                $customVariables = $this->parseDataConfig($sectionData);
-                if (!empty($customVariables)) {
-                    $variables = array_merge($variables, $customVariables);
-                } else {
-                    // Get table variables if no custom variables defined
-                    $tableVariables = $this->getTableVariables($sectionData);
-                    $variables = array_merge($variables, $tableVariables);
-                }
-            }
-
-            // Add system variables
-            $systemVariables = $this->getSystemVariables();
-            $variables = array_merge($variables, $systemVariables);
-
-            // Remove duplicates while preserving order
-            return array_unique($variables);
-        });
-    }
-
-    /**
-     * Extract all data table IDs that sections in the hierarchy depend on
-     *
-     * @param list<array<string, mixed>> $sections Array of section data arrays
-     * @return array<int, int> Array of unique data table IDs
-     */
-    private function extractDataTableDependencies(array $sections): array
-    {
-        $dataTableIds = [];
-
-        foreach ($sections as $section) {
-            $globalFields = $section['global_fields'] ?? null;
-            if (!is_array($globalFields) || !isset($globalFields['data_config'])) {
-                continue;
-            }
-
-            $dataConfig = json_decode($this->asString($globalFields['data_config']), true);
-
-            if (!is_array($dataConfig)) {
-                continue;
-            }
-
-            // Process each config entry
-            foreach ($dataConfig as $config) {
-                if (is_array($config) && isset($config['table'])) {
-                    try {
-                        $dataTable = $this->dataService->getDataTableByName($this->asString($config['table']));
-                        if ($dataTable) {
-                            $dataTableIds[] = (int) $dataTable->getId();
-                        }
-                    } catch (\Exception $e) {
-                        // Continue if data table not found
-                    }
-                }
+        // Process variables from all sections in hierarchy (parent to child order)
+        foreach ($allSections as $sectionData) {
+            // Get custom variables from data_config if available
+            $customVariables = $this->parseDataConfig($sectionData);
+            if (!empty($customVariables)) {
+                $variables = array_merge($variables, $customVariables);
+            } else {
+                // Get table variables if no custom variables defined
+                $tableVariables = $this->getTableVariables($sectionData);
+                $variables = array_merge($variables, $tableVariables);
             }
         }
 
-        return array_unique($dataTableIds);
+        // Add system variables
+        $variables = array_merge($variables, $this->getSystemVariables());
+
+        // Map keys (tokens) are inherently unique; the merge keeps the last
+        // label seen for a token. No array_unique needed for a token=>label map.
+        return $variables;
     }
 
     /**
@@ -220,10 +179,10 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Parse data_config to extract custom variables
+     * Parse data_config to extract custom variables as a `token => label` map.
      *
      * @param array<string, mixed> $section The section data array
-     * @return list<string> List of custom variable names
+     * @return array<string, string> token => label
      */
     private function parseDataConfig(array $section): array
     {
@@ -249,18 +208,27 @@ class DataVariableResolver extends BaseService
 
             $scope = $this->asString($config['scope']);
 
-            // Check if custom fields are defined
+            // Check if custom fields are defined. These are explicit field keys
+            // chosen in the data-config UI; we have no display name for them, so
+            // the token doubles as its own label. A field_name that is an opaque
+            // core-form storage key (`section_<input id>`) is remapped to the
+            // current human input name so the editor never shows the opaque key.
             if (isset($config['fields']) && is_array($config['fields'])) {
+                $keyToName = isset($config['table'])
+                    ? $this->formFieldKeyResolver->getFieldKeyToName($this->asString($config['table']))
+                    : [];
                 foreach ($config['fields'] as $field) {
                     if (is_array($field) && isset($field['field_name'])) {
-                        $variables[] = $scope . '.' . $this->asString($field['field_name']);
+                        $fieldName = $this->asString($field['field_name']);
+                        $fieldName = $keyToName[$fieldName] ?? $fieldName;
+                        $token = $scope . '.' . $fieldName;
+                        $variables[$token] = $token;
                     }
                 }
             }
             if (isset($config['table'])) {
                 // If no custom fields but table is specified, get table variables
-                $tableVariables = $this->getTableVariablesFromConfig($config);
-                $variables = array_merge($variables, $tableVariables);
+                $variables = array_merge($variables, $this->getTableVariablesFromConfig($config));
             }
         }
 
@@ -268,10 +236,10 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Get table variables from a specific data config entry
+     * Get table variables from a specific data config entry as `token => label`.
      *
      * @param array<array-key, mixed> $config Single data config entry
-     * @return list<string> List of variable names with scope prefix
+     * @return array<string, string> token => label (scope-qualified)
      */
     private function getTableVariablesFromConfig(array $config): array
     {
@@ -289,10 +257,19 @@ class DataVariableResolver extends BaseService
             $dataTable = $this->dataService->getDataTableByName($tableName);
             if ($dataTable) {
                 $tableId = (int) $dataTable->getId();
-                $columnNames = $this->getTableColumnNames($tableId);
+                $columns = $this->getTableColumnNames($tableId);
+                // For core CMS form tables this maps the opaque storage key
+                // (`section_<input id>`) to the current human input name; other
+                // sources (SurveyJS, …) return an empty map so their keys pass
+                // through unchanged.
+                $keyToName = $this->formFieldKeyResolver->getFieldKeyToName($tableName);
 
-                foreach ($columnNames as $columnName) {
-                    $variables[] = $scope . '.' . $columnName;
+                foreach ($columns as $fieldKey => $columnLabel) {
+                    // Token is the readable input name (never the opaque key); the
+                    // label is the curated display_name when present, else the name.
+                    $inputName = $keyToName[$fieldKey] ?? $fieldKey;
+                    $label = ($columnLabel !== $fieldKey) ? $columnLabel : $inputName;
+                    $variables[$scope . '.' . $inputName] = $scope . '.' . $label;
                 }
             }
         } catch (\Exception $e) {
@@ -303,10 +280,10 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Get table variables for a section (fallback when no custom variables)
+     * Get table variables for a section (fallback when no custom variables).
      *
      * @param array<string, mixed> $section The section data array
-     * @return list<string> List of variable names with scope prefix
+     * @return array<string, string> token => label
      */
     private function getTableVariables(array $section): array
     {
@@ -329,18 +306,21 @@ class DataVariableResolver extends BaseService
             if (!is_array($config)) {
                 continue;
             }
-            $tableVariables = $this->getTableVariablesFromConfig($config);
-            $variables = array_merge($variables, $tableVariables);
+            $variables = array_merge($variables, $this->getTableVariablesFromConfig($config));
         }
 
         return $variables;
     }
 
     /**
-     * Get column names for a data table
+     * Get columns for a data table as `field_key => display label`.
+     *
+     * The map key is the immutable, opaque field key (used to build stable
+     * tokens); the value is the curated `display_name` when present, else the
+     * field key itself. Standard projection columns map to themselves.
      *
      * @param int $tableId Data table ID
-     * @return list<string> List of column names
+     * @return array<string, string> field_key => display label
      */
     private function getTableColumnNames(int $tableId): array
     {
@@ -352,25 +332,30 @@ class DataVariableResolver extends BaseService
             ->getList($cacheKey, function () use ($tableId) {
                 try {
                     $conn = $this->entityManager->getConnection();
-                    $sql = 'SELECT DISTINCT `name` FROM data_cols WHERE id_data_tables = :tableId ORDER BY `name`';
+                    $sql = 'SELECT `field_key`, `display_name` FROM data_cols WHERE id_data_tables = :tableId ORDER BY `field_key`';
                     $stmt = $conn->prepare($sql);
                     $stmt->bindValue('tableId', $tableId, \Doctrine\DBAL\ParameterType::INTEGER);
                     $result = $stmt->executeQuery();
 
-                    $columnNames = [];
+                    $columns = [];
                     foreach ($result->fetchAllAssociative() as $row) {
-                        $columnNames[] = $this->asString($row['name']);
+                        $fieldKey = $this->asString($row['field_key'] ?? '');
+                        if ($fieldKey === '') {
+                            continue;
+                        }
+                        $displayName = isset($row['display_name']) ? $this->asStringOrNull($row['display_name']) : null;
+                        $columns[$fieldKey] = ($displayName !== null && $displayName !== '') ? $displayName : $fieldKey;
                     }
 
-                    // Add the standard columns that always exist as variables
+                    // Add the standard columns that always exist as variables.
                     $standardColumns = ['id_users', 'record_id', 'user_name', 'id_action_trigger_types', 'triggerType', 'entry_date', 'user_code'];
                     foreach ($standardColumns as $column) {
-                        if (!in_array($column, $columnNames)) {
-                            $columnNames[] = $column;
+                        if (!array_key_exists($column, $columns)) {
+                            $columns[$column] = $column;
                         }
                     }
 
-                    return $columnNames;
+                    return $columns;
                 } catch (\Exception $e) {
                     return [];
                 }
@@ -378,9 +363,9 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Get global variables from sh_global_values page for all languages
+     * Get global variables from sh_global_values page for all languages.
      *
-     * @return array<int, string> List of global variable names with 'global.' prefix
+     * @return array<string, string> token => label (token doubles as label)
      */
     public function getGlobalVariables(): array
     {
@@ -389,9 +374,9 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Get hardcoded system variables
+     * Get hardcoded system variables as a `token => label` map (token == label).
      *
-     * @return list<string> List of system variable names with 'system.' prefix
+     * @return array<string, string> token => label
      */
     private function getSystemVariables(): array
     {
@@ -415,7 +400,13 @@ class DataVariableResolver extends BaseService
             'maintenance_message'
         ];
 
-        // Add system. prefix to all variables
-        return array_map(fn($var) => 'system.' . $var, $systemVars);
+        // Add system. prefix; token doubles as label (no curated display name).
+        $variables = [];
+        foreach ($systemVars as $var) {
+            $token = 'system.' . $var;
+            $variables[$token] = $token;
+        }
+
+        return $variables;
     }
 }

@@ -93,4 +93,36 @@ class AdminSectionServiceTest extends QaWebTestCase
         $envelope = $this->jsonRequest('GET', '/cms-api/v1/admin/pages/999999/sections/999999', null, $token);
         $this->assertEnvelopeError($envelope, Response::HTTP_NOT_FOUND);
     }
+
+    /**
+     * The interpolation variable picker is served by its own endpoint (issue
+     * #56) so a data column added by a later submission shows up immediately,
+     * instead of riding along in the cached section payload. It always includes
+     * the hardcoded system variables, so even a section with no data_config
+     * returns a non-empty token => label map containing `system.user_name`.
+     */
+    public function testGetSectionDataVariablesReturnsTokenLabelMap(): void
+    {
+        $token = $this->loginAsQaAdmin();
+        $pageId = $this->homePageId();
+
+        $list = $this->jsonRequest('GET', "/cms-api/v1/admin/pages/{$pageId}/sections", null, $token);
+        $data = $this->assertEnvelopeSuccess($list);
+
+        if (empty($data['sections'])) {
+            $this->markTestSkipped('Seeded home page has no sections to read.');
+        }
+
+        $sections = $this->asList($data['sections']);
+        $firstSection = $this->asArray($sections[0] ?? null);
+        $sectionId = $this->asInt($firstSection['id'] ?? null);
+
+        $envelope = $this->jsonRequest('GET', "/cms-api/v1/admin/sections/{$sectionId}/data-variables", null, $token);
+        $payload = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertArrayHasKey('data_variables', $payload);
+        $variables = $this->asArray($payload['data_variables']);
+        self::assertArrayHasKey('system.user_name', $variables, 'System variables must always be offered.');
+        self::assertSame('system.user_name', $variables['system.user_name']);
+    }
 }
