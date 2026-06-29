@@ -8,12 +8,12 @@
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #2c3e50;">Willkommen bei der SelfHelp-Plattform!</h2>
 
-        <p>Hallo {{user_name}},</p>
+        <p>Hallo {{system.user_name}},</p>
 
         <p>Vielen Dank für Ihre Registrierung. Um Ihre Registrierung abzuschliessen und Ihr Konto zu aktivieren, klicken Sie bitte auf den folgenden Bestätigungslink:</p>
 
         <div style="text-align: center; margin: 30px 0;">
-            <a href="{{validation_url}}"
+            <a href="{{system.special.activation_link}}"
                style="background-color: #3498db; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
                 Konto bestätigen
             </a>
@@ -21,7 +21,7 @@
 
         <p>Alternativ können Sie diese URL in Ihren Browser kopieren:</p>
         <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 3px;">
-            {{validation_url}}
+            {{system.special.activation_link}}
         </p>
 
         <p><strong>Wichtig:</strong> Dieser Bestätigungslink läuft aus Sicherheitsgründen in 24 Stunden ab.</p>
