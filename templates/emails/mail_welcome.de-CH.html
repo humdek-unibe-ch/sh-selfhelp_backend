@@ -1,42 +1,15 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <title>Willkommen bei der SelfHelp-Plattform</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2c3e50;">Willkommen bei der SelfHelp-Plattform!</h2>
-
-        <p>Hallo {{system.user_name}},</p>
-
-        <p><strong>Herzlichen Glückwunsch!</strong> Ihr Konto wurde erfolgreich bestätigt und ist nun aktiv.</p>
-
-        <p>Sie haben jetzt Zugriff auf alle Funktionen unserer Plattform:</p>
-
-        <ul style="margin: 20px 0; padding-left: 30px;">
-            <li>Zugriff auf Ihr persönliches Dashboard</li>
-            <li>Austausch mit unserer Community</li>
-            <li>Verfügbare Ressourcen und Tools entdecken</li>
-            <li>Teilnahme an Diskussionen und Aktivitäten</li>
-        </ul>
-
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{system.special.platform_link}}"
-               style="background-color: #27ae60; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Loslegen
-            </a>
-        </div>
-
-        <p>Bei Fragen oder Anliegen wenden Sie sich bitte an unser Support-Team.</p>
-
-        <p>Vielen Dank für Ihre Anmeldung – herzlich willkommen!</p>
-
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-
-        <p style="font-size: 12px; color: #666;">
-            Dies ist eine automatisch generierte Nachricht der SelfHelp-Plattform.
-        </p>
-    </div>
-</body>
-</html>
+<h2>Willkommen bei der SelfHelp-Plattform!</h2>
+<p>Hallo {{system.user_name}},</p>
+<p><strong>Herzlichen Glückwunsch!</strong> Ihr Konto wurde erfolgreich bestätigt und ist nun aktiv.</p>
+<p>Sie haben jetzt Zugriff auf alle Funktionen unserer Plattform:</p>
+<ul>
+    <li>Zugriff auf Ihr persönliches Dashboard</li>
+    <li>Austausch mit unserer Community</li>
+    <li>Verfügbare Ressourcen und Tools entdecken</li>
+    <li>Teilnahme an Diskussionen und Aktivitäten</li>
+</ul>
+<p style="text-align: center"><a href="{{system.special.platform_link}}" class="email-button">Loslegen</a></p>
+<p>Bei Fragen oder Anliegen wenden Sie sich bitte an unser Support-Team.</p>
+<p>Vielen Dank für Ihre Anmeldung – herzlich willkommen!</p>
+<hr>
+<p class="email-muted">Dies ist eine automatisch generierte Nachricht der SelfHelp-Plattform.</p>
