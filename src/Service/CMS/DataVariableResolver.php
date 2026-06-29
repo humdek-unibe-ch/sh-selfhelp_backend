@@ -404,10 +404,14 @@ class DataVariableResolver extends BaseService
     }
 
     /**
-     * Page / config-page context catalog: `system.*` + `globals.*`. Both resolve
-     * on every page render (see
-     * {@see \App\Service\CMS\Common\SectionUtilityService} namespacing), so the
-     * page-inspector picker only offers variables that actually interpolate.
+     * `system.*` + `globals.*` catalog — the variables that resolve on every
+     * render regardless of section/data scope.
+     *
+     * NOTE: generic page metadata fields are NOT interpolated at render (only
+     * sections and the mail-config page are), so the page-inspector picker does
+     * not use this set; see {@see InterpolationVariableService::getVariablesForContext()}
+     * which returns an empty catalog for ordinary pages. This method backs the
+     * `global` context below.
      *
      * @return array<string, string> token => human label
      */
@@ -418,7 +422,7 @@ class DataVariableResolver extends BaseService
 
     /**
      * Global context catalog (e.g. global-values editing): `system.*` +
-     * `globals.*`. Same set as the page context today.
+     * `globals.*`.
      *
      * @return array<string, string> token => human label
      */

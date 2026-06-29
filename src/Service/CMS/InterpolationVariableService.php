@@ -73,10 +73,18 @@ class InterpolationVariableService
     }
 
     /**
-     * Page-context catalog. The mail-config page is special: its fields hold
-     * email templates rendered by the mail subsystem, so it gets the mail
-     * catalog (`system.*` + `system.special.*` links) instead of the generic
-     * page catalog.
+     * Page-context catalog (issue #56 v2, "honest picker" rule).
+     *
+     * The mail-config page is the ONE page whose fields interpolate: they hold
+     * email templates rendered by the mail subsystem, so it gets the mail catalog
+     * (`system.*` + `system.special.*` links).
+     *
+     * Every other page exposes only metadata fields (title, description, url,
+     * nav/footer position, …) that {@see \App\Service\CMS\Frontend\PageService}
+     * returns verbatim — they are NOT passed through `InterpolationService` at
+     * render time (only sections are). Offering a `{{ }}` token there would never
+     * resolve, so the generic page catalog is intentionally empty; the picker
+     * lives on the page's sections instead, where interpolation actually runs.
      *
      * @return array<string, string> token => human label
      */
@@ -89,6 +97,6 @@ class InterpolationVariableService
             }
         }
 
-        return $this->dataVariableResolver->getPageContextVariables();
+        return [];
     }
 }
