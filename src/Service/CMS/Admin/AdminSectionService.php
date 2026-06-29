@@ -99,10 +99,9 @@ class AdminSectionService extends BaseService
      */
     public function getSectionDataVariables(int $section_id): array
     {
-        $dataVariables = $this->dataVariableResolver->getDataVariables(['id' => $section_id]);
-        $globalVariables = $this->dataVariableResolver->getGlobalVariables();
-
-        return array_merge($dataVariables, $globalVariables);
+        // Delegate to the central catalog so the section/condition/data-filter/CSS
+        // pickers stay byte-identical to every other interpolation surface (#56 v2).
+        return $this->dataVariableResolver->getSectionContextVariables($section_id);
     }
 
     /**

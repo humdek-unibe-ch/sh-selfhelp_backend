@@ -148,4 +148,74 @@ final class DataVariableResolverTest extends TestCase
 
         self::assertSame('e.question.q1', $vars['e.question.q1'] ?? null);
     }
+
+    /**
+     * Issue #56 v2 unified picker: the mail-config context offers the system
+     * scope plus the one-time `system.special.*` links, and never data columns.
+     */
+    public function testMailContextOffersSystemAndSpecialLinkTokens(): void
+    {
+        $resolver = $this->resolverWithColumns('irrelevant', 1, []);
+
+        $vars = $resolver->getMailContextVariables();
+
+        self::assertArrayHasKey('system.user_name', $vars);
+        self::assertArrayHasKey('system.user_code', $vars);
+        self::assertArrayHasKey('system.special.activation_link', $vars);
+        self::assertArrayHasKey('system.special.reset_link', $vars);
+        self::assertArrayHasKey('system.special.platform_link', $vars);
+    }
+
+    /**
+     * Issue #56 v2: the action context mirrors the three scopes the action
+     * template context builder documents — recipient.*, record.<field_key> from
+     * the chosen data table, and system.* — and intentionally omits globals.
+     */
+    public function testActionContextOffersRecipientRecordAndSystemNotGlobals(): void
+    {
+        $columns = ['section_230' => 'Daily mood'];
+        $resolver = $this->resolverWithColumns('230', 5, $columns);
+
+        $vars = $resolver->getActionContextVariables(5);
+
+        self::assertSame('recipient.email', $vars['recipient.email'] ?? null);
+        // record token is the immutable field_key; label is the curated display_name.
+        self::assertSame('record.Daily mood', $vars['record.section_230'] ?? null);
+        self::assertArrayHasKey('system.user_name', $vars);
+        self::assertArrayNotHasKey('globals.section_230', $vars);
+    }
+
+    /**
+     * Issue #56 v2: action context without a chosen data table still offers
+     * recipient.* + system.*, so the picker is useful before a table is picked.
+     */
+    public function testActionContextWithoutDataTableStillOffersRecipientAndSystem(): void
+    {
+        $resolver = $this->resolverWithColumns('irrelevant', 1, []);
+
+        $vars = $resolver->getActionContextVariables(null);
+
+        self::assertArrayHasKey('recipient.email', $vars);
+        self::assertArrayHasKey('system.user_name', $vars);
+        // No data table → no record.* tokens.
+        self::assertSame([], array_filter(
+            array_keys($vars),
+            static fn (string $token): bool => str_starts_with($token, 'record.'),
+        ));
+    }
+
+    /**
+     * Issue #56 v2: the page/config context offers system.* (+ globals.*) but
+     * never section data columns, since page fields render through the
+     * page/global pipeline, not a section's data_config.
+     */
+    public function testPageContextOffersSystemNotDataColumns(): void
+    {
+        $resolver = $this->resolverWithColumns('230', 5, ['section_230' => 'Daily mood']);
+
+        $vars = $resolver->getPageContextVariables();
+
+        self::assertArrayHasKey('system.user_name', $vars);
+        self::assertArrayNotHasKey('d.section_230', $vars);
+    }
 }

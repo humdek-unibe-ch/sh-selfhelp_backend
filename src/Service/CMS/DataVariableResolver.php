@@ -371,6 +371,111 @@ class DataVariableResolver extends BaseService
     }
 
     /**
+     * Recipient scope keys available to action email/notification templates.
+     * Mirrors {@see \App\Service\Action\ActionTemplateContextBuilder::buildContext()}.
+     *
+     * @var list<string>
+     */
+    private const RECIPIENT_KEYS = ['email', 'name', 'user_name', 'code', 'timezone'];
+
+    /**
+     * Special link tokens for the mail/auth flow, grouped under `system.special.*`
+     * (issue #56 v2). These are resolved ONLY by the mail subsystem
+     * ({@see \App\Service\Auth\MailTemplateService}); a normal page render leaves
+     * them empty, so they are offered only in the mail-config picker context.
+     *
+     * @var list<string>
+     */
+    public const SPECIAL_LINK_TOKENS = ['activation_link', 'reset_link', 'platform_link'];
+
+    /**
+     * Section context catalog: data_config columns (rename-safe `field_key`
+     * tokens) + system + globals. This is the single source the section
+     * inspector / condition builder / data-filter / CSS pickers consume.
+     *
+     * @return array<string, string> token => human label
+     */
+    public function getSectionContextVariables(int $sectionId): array
+    {
+        return array_merge(
+            $this->getDataVariables(['id' => $sectionId]),
+            $this->getGlobalVariables()
+        );
+    }
+
+    /**
+     * Page / config-page context catalog: `system.*` + `globals.*`. Both resolve
+     * on every page render (see
+     * {@see \App\Service\CMS\Common\SectionUtilityService} namespacing), so the
+     * page-inspector picker only offers variables that actually interpolate.
+     *
+     * @return array<string, string> token => human label
+     */
+    public function getPageContextVariables(): array
+    {
+        return array_merge($this->getSystemVariables(), $this->getGlobalVariables());
+    }
+
+    /**
+     * Global context catalog (e.g. global-values editing): `system.*` +
+     * `globals.*`. Same set as the page context today.
+     *
+     * @return array<string, string> token => human label
+     */
+    public function getGlobalContextVariables(): array
+    {
+        return $this->getPageContextVariables();
+    }
+
+    /**
+     * Action context catalog: the three scopes
+     * {@see \App\Service\Action\ActionTemplateContextBuilder} documents as the
+     * canonical action template namespaces — `recipient.*` (always),
+     * `record.<field_key>` from the action's selected data table (when known),
+     * and `system.*`. Globals are intentionally NOT offered here: action
+     * templates render through the action context builder, not the page/global
+     * pipeline.
+     *
+     * @param int|null $dataTableId The action's source data table, or null
+     * @return array<string, string> token => human label
+     */
+    public function getActionContextVariables(?int $dataTableId): array
+    {
+        $variables = [];
+        foreach (self::RECIPIENT_KEYS as $key) {
+            $variables['recipient.' . $key] = 'recipient.' . $key;
+        }
+
+        if ($dataTableId !== null && $dataTableId > 0) {
+            foreach ($this->getTableColumnNames($dataTableId) as $fieldKey => $label) {
+                // Token is the immutable field_key; label is the curated
+                // display_name when present (issue #56 v2).
+                $variables['record.' . $fieldKey] = 'record.' . $label;
+            }
+        }
+
+        return array_merge($variables, $this->getSystemVariables());
+    }
+
+    /**
+     * Mail/auth-config context catalog: `system.*` (user_name, user_code, ...) +
+     * `system.special.*` one-time links + `globals.*`. The mail subsystem nests
+     * its context the same way, so a `{{system.user_name}}` / `{{system.special.
+     * activation_link}}` picked here resolves at send time (issue #56 v2).
+     *
+     * @return array<string, string> token => human label
+     */
+    public function getMailContextVariables(): array
+    {
+        $variables = $this->getSystemVariables();
+        foreach (self::SPECIAL_LINK_TOKENS as $token) {
+            $variables['system.special.' . $token] = 'system.special.' . $token;
+        }
+
+        return array_merge($variables, $this->getGlobalVariables());
+    }
+
+    /**
      * Get hardcoded system variables as a `token => label` map (token == label).
      *
      * @return array<string, string> token => label
