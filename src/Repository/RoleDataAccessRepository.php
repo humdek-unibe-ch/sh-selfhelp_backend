@@ -218,6 +218,9 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'dt.id',
                 'dt.name',
                 'dt.displayName',
+                // Provenance FK (NULL => auto, non-null => admin-locked `manual`),
+                // surfaced as `locked` to the Data browser (issue #56).
+                'IDENTITY(dt.displayNameSource) as displayNameSourceId',
                 'dt.timestamp as created',
                 'rda.crudPermissions as crud'
             ])

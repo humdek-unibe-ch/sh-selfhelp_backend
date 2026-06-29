@@ -253,6 +253,50 @@ class DataColumnService extends BaseService
     }
 
     /**
+     * Propagate a renamed core form input to its data column label: refresh the
+     * auto-curated display_name of the column addressed by the immutable
+     * field_key (`section_<input id>`). A no-op when the column does not exist
+     * yet (no submission has created it) or when an admin has manually locked the
+     * label (`display_name_source = manual`) (issue #56).
+     *
+     * Returns the affected data table ids so the caller can bust the
+     * variable-picker / column caches for those tables.
+     *
+     * @return list<int>
+     */
+    public function renameAutoColumnByFieldKey(string $fieldKey, ?string $displayName): array
+    {
+        $label = is_string($displayName) && $displayName !== '' ? $displayName : null;
+        if ($label === null) {
+            return [];
+        }
+
+        /** @var list<DataCol> $columns */
+        $columns = $this->entityManager->getRepository(DataCol::class)
+            ->findBy(['fieldKey' => $fieldKey]);
+
+        $affected = [];
+        foreach ($columns as $column) {
+            if ($column->isDisplayNameManual()) {
+                continue;
+            }
+            if ($column->getDisplayName() !== $label) {
+                $column->setDisplayName($label);
+            }
+            $table = $column->getDataTable();
+            if ($table !== null && $table->getId() !== null) {
+                $affected[(int) $table->getId()] = true;
+            }
+        }
+
+        if ($affected !== []) {
+            $this->entityManager->flush();
+        }
+
+        return array_keys($affected);
+    }
+
+    /**
      * @throws ServiceException when the key is malformed or reserved.
      */
     private function assertValidFieldKey(string $key): void

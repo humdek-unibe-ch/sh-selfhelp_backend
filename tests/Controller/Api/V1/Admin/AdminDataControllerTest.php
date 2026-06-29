@@ -404,6 +404,56 @@ final class AdminDataControllerTest extends QaWebTestCase
         self::assertSame('qa-original', $firstRow['qa_field'] ?? null, 'The value must still be keyed by field_key qa_field.');
     }
 
+    /**
+     * Issue #56 table lock: PATCH .../display-name sets the table's human label,
+     * marks it locked, and the lock + label surface through the GET /tables list
+     * (so the Data browser can show a badge); clearing it resets to auto.
+     */
+    public function testUpdateDataTableDisplayNameLocksAndResetsLabel(): void
+    {
+        $table = $this->dataTables->createTableWithRow('qa_data_tbl_relabel', $this->qaUserId(), 'qa-v')[0];
+        $token = $this->loginAsQaAdmin();
+        $name = (string) $table->getName();
+
+        $data = $this->assertEnvelopeSuccess($this->jsonRequest(
+            'PATCH',
+            self::BASE . '/tables/' . $name . '/display-name',
+            ['displayName' => 'Daily Mood Table'],
+            $token,
+        ));
+        self::assertTrue((bool) ($data['updated'] ?? false), 'The table relabel must report updated=true.');
+
+        $row = $this->tableListRow($name, $token);
+        self::assertSame('Daily Mood Table', $row['displayName'] ?? null);
+        self::assertTrue((bool) ($row['locked'] ?? false), 'A curated table label must report locked=true.');
+
+        // Reset to auto -> unlocked.
+        $this->assertEnvelopeSuccess($this->jsonRequest(
+            'PATCH',
+            self::BASE . '/tables/' . $name . '/display-name',
+            ['displayName' => null],
+            $token,
+        ));
+        $row = $this->tableListRow($name, $token);
+        self::assertFalse((bool) ($row['locked'] ?? false), 'Resetting the table label must clear the lock.');
+    }
+
+    /**
+     * Fetch a single table's row from the admin GET /tables list by storage name.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function tableListRow(string $name, string $token): array
+    {
+        $tables = $this->assertEnvelopeSuccess($this->jsonRequest('GET', self::BASE . '/tables', null, $token));
+        foreach ($this->asList($tables['dataTables'] ?? []) as $row) {
+            if (is_array($row) && ($row['name'] ?? null) === $name) {
+                return $row;
+            }
+        }
+        self::fail('Data table "' . $name . '" not found in the admin tables list.');
+    }
+
     public function testDeleteDataTableRemovesTable(): void
     {
         $table = $this->dataTables->createTable('qa_data_drop_table');

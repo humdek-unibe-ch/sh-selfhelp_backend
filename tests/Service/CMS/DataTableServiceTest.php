@@ -12,9 +12,11 @@ namespace App\Tests\Service\CMS;
 use App\DataFixtures\Test\QaBaselineFixture;
 use App\Entity\DataCol;
 use App\Entity\DataTable;
+use App\Entity\Section;
 use App\Entity\User;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\DataColumnService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\LookupService;
@@ -32,6 +34,7 @@ final class DataTableServiceTest extends QaKernelTestCase
 {
     private DataTableService $service;
     private DataService $dataService;
+    private DataColumnService $columns;
     private DataTableFactory $tables;
     private PageSectionFactory $pages;
 
@@ -41,6 +44,7 @@ final class DataTableServiceTest extends QaKernelTestCase
 
         $this->service = $this->service(DataTableService::class);
         $this->dataService = $this->service(DataService::class);
+        $this->columns = $this->service(DataColumnService::class);
         $this->tables = new DataTableFactory($this->em, $this->dataService);
         $this->pages = new PageSectionFactory(
             $this->em,
@@ -170,6 +174,105 @@ final class DataTableServiceTest extends QaKernelTestCase
         self::assertNull($column->getDisplayName());
         self::assertFalse($column->isDisplayNameManual(), 'Clearing the label must revert provenance to auto.');
         self::assertSame(LookupService::DATA_COL_DISPLAY_NAME_SOURCE_AUTO, $column->getDisplayNameSourceCode());
+    }
+
+    /**
+     * Issue #56 table lock: curating a data table's label from the Data browser
+     * marks it `manual` and the form section's `name` field can no longer
+     * overwrite it on save (the auto sync becomes a no-op). The lock state is
+     * exposed through getDataTableStats() and getFormSectionTableInfo().
+     */
+    public function testCuratingTableLabelLocksItAndBlocksFormSectionSync(): void
+    {
+        $section = $this->pages->createSection('qa_dts_locktbl', 'form-record');
+        $table = $this->service->createDataTableForFormSection($section);
+        self::assertInstanceOf(DataTable::class, $table);
+        $tableName = (string) $section->getId();
+
+        // An auto table is not locked and the form-section sync applies.
+        self::assertFalse($this->service->getDataTableStats($tableName)['locked']);
+        self::assertTrue($this->service->updateDataTableDisplayName($section, 'Auto Name'));
+        $this->em->clear();
+        self::assertSame('Auto Name', $this->dataService->getDataTableByName($tableName)?->getDisplayName());
+
+        // Curate manually -> locked.
+        self::assertTrue($this->service->setDataTableDisplayNameCurated($tableName, 'Manual Name'));
+        $this->em->clear();
+
+        $stats = $this->service->getDataTableStats($tableName);
+        self::assertSame('Manual Name', $stats['displayName']);
+        self::assertTrue($stats['locked'], 'A curated table label must be marked locked.');
+
+        // A later form-section save must NOT overwrite the manual label.
+        $section = $this->em->getRepository(Section::class)->find((int) $tableName);
+        self::assertInstanceOf(Section::class, $section);
+        self::assertFalse(
+            $this->service->updateDataTableDisplayName($section, 'Auto Push'),
+            'A locked table rejects the auto form-section sync.',
+        );
+        $this->em->clear();
+        self::assertSame('Manual Name', $this->dataService->getDataTableByName($tableName)?->getDisplayName());
+
+        // Reset to auto -> unlocked again.
+        self::assertTrue($this->service->setDataTableDisplayNameCurated($tableName, null));
+        $this->em->clear();
+        self::assertFalse(
+            $this->service->getDataTableStats($tableName)['locked'],
+            'Resetting a table label must clear the lock.',
+        );
+    }
+
+    /**
+     * Issue #56 CMS surface: a form section exposes its underlying data table
+     * (storage name == section id, current label, lock state) so the inspector
+     * can warn + deep link; a section with no data table returns null.
+     */
+    public function testGetFormSectionTableInfoExposesLockState(): void
+    {
+        $section = $this->pages->createSection('qa_dts_info', 'form-record');
+        $sectionId = (int) $section->getId();
+
+        $beforeTable = $this->service->getFormSectionTableInfo($sectionId);
+        self::assertNull($beforeTable, 'No data table yet -> null.');
+
+        $this->service->createDataTableForFormSection($section);
+        $this->service->setDataTableDisplayNameCurated((string) $sectionId, 'Inspector Label');
+        $this->em->clear();
+
+        $info = $this->service->getFormSectionTableInfo($sectionId);
+        self::assertNotNull($info);
+        self::assertSame((string) $sectionId, $info['name']);
+        self::assertSame('Inspector Label', $info['display_name']);
+        self::assertTrue($info['locked']);
+    }
+
+    /**
+     * Issue #56 input-rename-on-save: renaming a form input propagates its new
+     * name to the auto display_name of the immutable `section_<id>` column, but
+     * a manually-locked column is never touched.
+     */
+    public function testRenameAutoColumnByFieldKeyUpdatesAutoButSkipsManual(): void
+    {
+        // Seed two columns via a submission; both start auto.
+        $this->tables->addRow('qa_dts_colrename', ['section_910' => 'v', 'section_911' => 'w'], $this->userId());
+        $this->em->clear();
+
+        // Auto column: the rename propagates.
+        $affected = $this->columns->renameAutoColumnByFieldKey('section_910', 'Renamed Auto');
+        self::assertNotSame([], $affected, 'An auto column rename must report its table.');
+        $this->em->clear();
+        self::assertSame('Renamed Auto', $this->columnFor('qa_dts_colrename', 'section_910')->getDisplayName());
+
+        // Lock the second column, then attempt a rename: it must be ignored.
+        self::assertTrue($this->service->updateColumnDisplayName('qa_dts_colrename', 'section_911', 'Locked Label'));
+        $this->em->clear();
+        $this->columns->renameAutoColumnByFieldKey('section_911', 'Should Not Apply');
+        $this->em->clear();
+        self::assertSame(
+            'Locked Label',
+            $this->columnFor('qa_dts_colrename', 'section_911')->getDisplayName(),
+            'A manually locked column must never be overwritten by an input rename.',
+        );
     }
 
     public function testFilteredDataTablesIncludeAdminGrantedTable(): void

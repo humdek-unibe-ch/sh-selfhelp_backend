@@ -16,6 +16,18 @@ use Doctrine\ORM\Mapping as ORM;
 class DataTable
 {
     /**
+     * Auto-curated label provenance: the table display name tracks the form
+     * section's `displayName` field on every save.
+     */
+    public const DISPLAY_NAME_SOURCE_AUTO = 'auto';
+
+    /**
+     * Admin-curated label provenance: a human renamed the table in the Data
+     * browser, so the form section's `displayName` field must never overwrite it.
+     */
+    public const DISPLAY_NAME_SOURCE_MANUAL = 'manual';
+
+    /**
      * @var \Doctrine\Common\Collections\Collection<int, DataRow>
      */
     #[ORM\OneToMany(mappedBy: 'dataTable', targetEntity: DataRow::class, cascade: ['persist', 'remove'])]
@@ -46,6 +58,18 @@ class DataTable
 
     #[ORM\Column(name: 'display_name', type: 'string', length: 1000, nullable: true)]
     private ?string $displayName = null;
+
+    /**
+     * Label provenance, modelled as a `lookups` row (it reuses the column
+     * provenance lookup, type `dataColDisplayNameSource`, codes `auto` |
+     * `manual`). A NULL FK means the default `auto`: the form section's
+     * `displayName` field keeps syncing the table label only while the source is
+     * `auto`; once an admin renames the table in the Data browser the FK points
+     * at the `manual` lookup and section saves never overwrite it again (#56).
+     */
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_display_name_source', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Lookup $displayNameSource = null;
 
     /**
      * Plugin that owns this data_tables row. NULL = core-owned.
@@ -153,6 +177,36 @@ class DataTable
         $this->displayName = $displayName;
 
         return $this;
+    }
+
+    public function getDisplayNameSource(): ?Lookup
+    {
+        return $this->displayNameSource;
+    }
+
+    public function setDisplayNameSource(?Lookup $displayNameSource): static
+    {
+        $this->displayNameSource = $displayNameSource;
+
+        return $this;
+    }
+
+    /**
+     * Provenance code, resolved from the lookup FK. A NULL FK is the default
+     * `auto`, so callers get a stable code without joining/null-checking.
+     */
+    public function getDisplayNameSourceCode(): string
+    {
+        return $this->displayNameSource?->getLookupCode() ?? self::DISPLAY_NAME_SOURCE_AUTO;
+    }
+
+    /**
+     * True only when an admin has manually renamed the table (so the form
+     * section's `displayName` field must never overwrite it).
+     */
+    public function isDisplayNameManual(): bool
+    {
+        return $this->getDisplayNameSourceCode() === self::DISPLAY_NAME_SOURCE_MANUAL;
     }
 
     public function getPlugin(): ?\App\Entity\Plugin\Plugin

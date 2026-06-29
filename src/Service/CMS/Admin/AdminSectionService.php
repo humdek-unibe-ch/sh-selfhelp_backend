@@ -22,6 +22,7 @@ use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\CMS\Admin\SectionFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\SectionCreationService;
+use App\Service\CMS\DataTableService;
 use App\Service\CMS\DataVariableResolver;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -46,6 +47,7 @@ class AdminSectionService extends BaseService
         private readonly SectionCreationService $sectionCreationService,
         private readonly SectionExportImportService $sectionExportImportService,
         private readonly DataVariableResolver $dataVariableResolver,
+        private readonly DataTableService $dataTableService,
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
@@ -163,11 +165,24 @@ class AdminSectionService extends BaseService
 
         $normalizedSection = $this->normalizeSection($section);
 
-        return [
+        $result = [
             'section' => $normalizedSection,
             'fields' => $formattedFields,
             'languages' => $languages,
         ];
+
+        // For a form section, surface the underlying data table (storage name +
+        // current label + lock state) so the inspector can show where
+        // submissions are stored, warn when the label is admin-locked, and deep
+        // link to the Data browser (issue #56).
+        if ($this->dataTableService->isFormSection($section)) {
+            $tableInfo = $this->dataTableService->getFormSectionTableInfo((int) $section->getId());
+            if ($tableInfo !== null) {
+                $result['data_table'] = $tableInfo;
+            }
+        }
+
+        return $result;
     }
 
     /**

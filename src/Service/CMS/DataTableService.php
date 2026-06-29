@@ -137,6 +137,13 @@ class DataTableService extends BaseService
             throw new ServiceException('Data table not found', Response::HTTP_NOT_FOUND);
         }
 
+        // Respect a manual lock: once an admin renames the table in the Data
+        // browser its provenance becomes `manual`, so the form section's
+        // `displayName` field must not overwrite it on save (issue #56).
+        if ($dataTable->isDisplayNameManual()) {
+            return false;
+        }
+
         $this->entityManager->beginTransaction();
         
         try {
@@ -212,6 +219,50 @@ class DataTableService extends BaseService
         $translation = $qb->getQuery()->getOneOrNullResult();
         
         return $translation ? $translation->getContent() : null;
+    }
+
+    /**
+     * Content of a section's style field named `name` — the human label that
+     * drives the AUTO display name of the form's data table and of its input
+     * columns (the same field the Save path reads). Null when the section has no
+     * such field/translation or it is empty (issue #56).
+     */
+    private function getNameFieldContentFromSection(Section $section): ?string
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('sft')
+           ->from(SectionsFieldsTranslation::class, 'sft')
+           ->join('sft.field', 'f')
+           ->where('sft.section = :section')
+           ->andWhere('f.name = :fieldName')
+           ->setParameter('section', $section)
+           ->setParameter('fieldName', 'name')
+           ->setMaxResults(1);
+
+        /** @var SectionsFieldsTranslation|null $translation */
+        $translation = $qb->getQuery()->getOneOrNullResult();
+
+        $content = $translation?->getContent();
+
+        return is_string($content) && $content !== '' ? $content : null;
+    }
+
+    /**
+     * Re-derive the AUTO display label for a column addressed by its immutable
+     * field key. Core CMS columns use `section_<id>` -> the input section's
+     * `name` field; external keys (e.g. SurveyJS `question.name`) have no CMS
+     * section, so they fall back to null and the next write re-applies the
+     * incoming label (issue #56).
+     */
+    private function deriveAutoColumnLabel(string $fieldKey): ?string
+    {
+        if (preg_match('/^section_(\d+)$/', $fieldKey, $matches) !== 1) {
+            return null;
+        }
+
+        $section = $this->entityManager->getRepository(Section::class)->find((int) $matches[1]);
+
+        return $section !== null ? $this->getNameFieldContentFromSection($section) : null;
     }
 
     /**
@@ -308,9 +359,33 @@ class DataTableService extends BaseService
         return [
             'tableName' => $tableName,
             'displayName' => $dataTable->getDisplayName(),
+            'locked' => $dataTable->isDisplayNameManual(),
             'totalRows' => $totalRows,
             'totalColumns' => $totalColumns,
             'created' => $dataTable->getTimestamp()
+        ];
+    }
+
+    /**
+     * Compact table info for the CMS form section inspector: the underlying data
+     * table id, its storage name (== form section id, used for the Data browser
+     * deep link), the current display label and whether it is manually locked.
+     * Returns null when the form section has no data table yet (issue #56).
+     *
+     * @return array{id: int, name: string, display_name: string|null, locked: bool}|null
+     */
+    public function getFormSectionTableInfo(int $sectionId): ?array
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => (string) $sectionId]);
+        if (!$dataTable) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $dataTable->getId(),
+            'name' => (string) $dataTable->getName(),
+            'display_name' => $dataTable->getDisplayName(),
+            'locked' => $dataTable->isDisplayNameManual(),
         ];
     }
 
@@ -398,6 +473,7 @@ class DataTableService extends BaseService
                 'id' => $col->getId(),
                 'fieldKey' => $col->getFieldKey(),
                 'displayName' => $col->getDisplayName(),
+                'locked' => $col->isDisplayNameManual(),
             ];
         }
         return $result;
@@ -450,21 +526,26 @@ class DataTableService extends BaseService
 
         try {
             $normalized = is_string($displayName) && $displayName !== '' ? $displayName : null;
-            $column->setDisplayName($normalized);
-            // Setting a label marks it admin-curated (the `manual` lookup row, type
-            // dataColDisplayNameSource) so future auto pushes from submissions never
-            // overwrite it (issue #56). CLEARING it reverts to `auto` (NULL FK) so a
-            // later submission re-derives the human label — otherwise the column
-            // would keep a NULL display_name and the read would fall back to the
-            // opaque section_<id> key.
-            $column->setDisplayNameSource(
-                $normalized === null
-                    ? null
-                    : $this->lookupService->findByTypeAndCode(
+            if ($normalized === null) {
+                // Reset to auto: clear the manual lock (NULL FK = auto) and
+                // immediately re-derive the label from the input section's `name`
+                // field so the column header is not left as the opaque section_<id>
+                // key. External (SurveyJS) keys re-derive to null and pick the
+                // label back up on the next write (issue #56).
+                $column->setDisplayName($this->deriveAutoColumnLabel($fieldKey));
+                $column->setDisplayNameSource(null);
+            } else {
+                // Setting a label marks it admin-curated (the `manual` lookup row,
+                // type dataColDisplayNameSource) so future auto pushes from
+                // submissions never overwrite it.
+                $column->setDisplayName($normalized);
+                $column->setDisplayNameSource(
+                    $this->lookupService->findByTypeAndCode(
                         LookupService::DATA_COL_DISPLAY_NAME_SOURCE,
                         LookupService::DATA_COL_DISPLAY_NAME_SOURCE_MANUAL
                     )
-            );
+                );
+            }
 
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
@@ -492,6 +573,88 @@ class DataTableService extends BaseService
                 'Failed to update column display name: ' . $e->getMessage(),
                 Response::HTTP_INTERNAL_SERVER_ERROR,
                 ['previous' => $e, 'tableName' => $tableName, 'fieldKey' => $fieldKey]
+            );
+        }
+    }
+
+    /**
+     * Manually curate a data table's human label from the Data browser. Sets
+     * display_name and marks provenance `manual` so the form section's
+     * `displayName` field never overwrites it again. Clearing the label
+     * (null/empty) reverts to `auto` and re-derives the label from the owning
+     * form section so the table is not left blank (issue #56).
+     *
+     * Returns true on success, false when the table is unknown.
+     *
+     * @throws ServiceException
+     */
+    public function setDataTableDisplayNameCurated(string $tableName, ?string $displayName): bool
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => $tableName]);
+        if (!$dataTable) {
+            return false;
+        }
+
+        $this->entityManager->beginTransaction();
+
+        try {
+            $normalized = is_string($displayName) && $displayName !== '' ? $displayName : null;
+
+            if ($normalized === null) {
+                // Reset to auto: re-derive from the owning form section's `name`
+                // field (the table name is the form section id), matching the live
+                // Save path so the label stays readable and consistent.
+                $section = $this->entityManager->getRepository(Section::class)
+                    ->find((int) $dataTable->getName());
+                $dataTable->setDisplayName($section !== null ? $this->getNameFieldContentFromSection($section) : null);
+                $dataTable->setDisplayNameSource(null);
+            } else {
+                $dataTable->setDisplayName($normalized);
+                $dataTable->setDisplayNameSource(
+                    $this->lookupService->findByTypeAndCode(
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE,
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE_MANUAL
+                    )
+                );
+            }
+
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'data_tables',
+                $dataTable->getId()
+            );
+
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateAllListsInCategory();
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
+            // The form section inspector embeds this table's name + lock state.
+            // Only form-section tables are named after a numeric section id, so
+            // bust the SECTION scope only for those (standalone/SurveyJS tables
+            // have no owning section and a 0 id would be rejected by the cache).
+            $tableNameStr = (string) $dataTable->getName();
+            if (ctype_digit($tableNameStr) && (int) $tableNameStr > 0) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $tableNameStr);
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateAllListsInCategory();
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw new ServiceException(
+                'Failed to update data table display name: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'tableName' => $tableName]
             );
         }
     }
@@ -571,6 +734,9 @@ class DataTableService extends BaseService
                 'id' => $table['id'],
                 'name' => $table['name'],
                 'displayName' => $table['displayName'] ?? $table['display_name'] ?? null,
+                // NULL provenance FK == auto; any non-null value is the `manual`
+                // lock (issue #56).
+                'locked' => ($table['displayNameSourceId'] ?? null) !== null,
                 'created' => $created,
                 'crud' => $table['crud']
             ];

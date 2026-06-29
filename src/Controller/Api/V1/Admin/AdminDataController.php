@@ -63,6 +63,9 @@ class AdminDataController extends AbstractController
                     'id' => $table['id'] ?? null,
                     'name' => $table['name'] ?? null,
                     'displayName' => $table['displayName'] ?? null,
+                    // Provenance lock so the Data browser can flag admin-renamed
+                    // tables (issue #56).
+                    'locked' => (bool) ($table['locked'] ?? false),
                     'created' => $created instanceof \DateTimeInterface ? $created->format(DATE_ATOM) : $created,
                     'crud' => $table['crud'] ?? null
                 ];
@@ -349,6 +352,55 @@ class AdminDataController extends AbstractController
         } catch (\Throwable $e) {
             return $this->responseFormatter->formatError(
                 'Failed to update column display name',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    /**
+     * Curate a data table's human-facing display name from the Data browser.
+     * Sets the label and marks it manually locked so the form section's
+     * `displayName` field never overwrites it on save; an empty/null value resets
+     * it to the auto label derived from the form section (issue #56).
+     * Expects JSON body: { "displayName": "Daily mood" | null }
+     * Requires UPDATE permission on the data table.
+     */
+    public function updateDataTableDisplayName(Request $request, string $tableName): JsonResponse
+    {
+        try {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if (!$dataTable) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError('User not authenticated', Response::HTTP_UNAUTHORIZED);
+            }
+
+            // Renaming the table changes its metadata -> require UPDATE.
+            if (!$this->dataTableService->canAccessDataTable($currentUserId, (int) $dataTable->getId(), DataAccessSecurityService::PERMISSION_UPDATE)) {
+                return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+            }
+
+            $data = $this->validateRequest($request, 'requests/admin/update_data_table_display_name', $this->jsonSchemaValidationService);
+
+            $displayNameRaw = $data['displayName'] ?? null;
+            $displayName = is_string($displayNameRaw) ? $displayNameRaw : null;
+
+            $updated = $this->dataTableService->setDataTableDisplayNameCurated($tableName, $displayName);
+            if ($updated === false) {
+                return $this->responseFormatter->formatError('Data table not found', Response::HTTP_NOT_FOUND);
+            }
+
+            return $this->responseFormatter->formatSuccess(['updated' => true]);
+        } catch (RequestValidationException $e) {
+            throw $e;
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError(
+                'Failed to update data table display name',
                 Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
