@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-24.
+Last verified: 2026-06-26.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -237,6 +237,35 @@ the same change wave:
 > `@selfhelp/shared 1.15.3` remains the additive protocol anchor within both
 > consumers' caret ranges.
 
+> **Core 0.1.23 (immutable data-column `field_key` ⇄ frontend 0.1.48):** core
+> `0.1.23` resolves host issue #56 — `data_cols` now stores an **immutable**
+> `field_key` (the storage key, derived per data source — `section_<input id>`
+> for core forms, `question.name` for SurveyJS — inheriting the table default
+> collation) plus a **mutable** `display_name`, with a label-provenance FK
+> `id_display_name_source` → `lookups` (`auto` | `manual`; NULL = `auto`) that
+> prevents the next submission from overwriting an admin-curated label, all
+> behind `UNIQUE (id_data_tables, field_key)`. This is a **breaking
+> response-shape change the frontend consumes**: the admin columns endpoint
+> returns `{ id, fieldKey, displayName }` (was `{ id, name }`), and the
+> interpolation `data_variables` `token => label` map (the CMS variable picker
+> shows and inserts the readable input name, never the opaque key) moved out of
+> the cached `getSection` payload into its own `GET
+> /cms-api/v1/admin/sections/{section_id}/data-variables` endpoint (permission
+> `admin.page.read`, migration `Version20260629063147`) so a column added by a
+> later submission appears without re-saving the section. A new
+> `PATCH /cms-api/v1/admin/data/tables/{tableName}/columns/display-name`
+> (permission `admin.data.update_columns`, migration `Version20260626121351`)
+> curates labels without touching the storage key. **Frontend 0.1.48** reads the
+> new column shape and fetches the token/label picker endpoint, so **both floors move in
+> lockstep**: frontend `supports.core` `0.1.21 → 0.1.23` and backend
+> `supports.frontend` `0.1.30 → 0.1.48`. The live pairing is now **frontend
+> `>=0.1.48` ⇄ core `>=0.1.23`** (both `<0.2.0`). **No `@selfhelp/shared`
+> change** — the affected admin-column + `data_variables` types live in the
+> frontend, not the shared package, and **mobile does not consume them** (the
+> mobile renderer submits by the field input key, which is unchanged), so neither
+> is bumped. The matching SurveyJS plugin guard (block renaming/removing an
+> answered `question.name` once responses exist) ships in plugin `0.3.4`.
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -244,13 +273,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.21` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.23` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.15.3` | npm (1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
-| `sh-selfhelp_frontend` | `0.1.43` | live-preview UI iterated `0.1.40` → `0.1.43` (device-frame bezel + header-controls polish); all floor-neutral |
+| `sh-selfhelp_frontend` | `0.1.48` | `0.1.48` adopts the issue #56 data-column contract (admin columns `{id, fieldKey, displayName}`, `data_variables` token→label picker, column display-name edit UI); `0.1.40`→`0.1.47` were floor-neutral live-preview polish |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (Live Preview preference bridge; runtime syncs theme live and applies language by mobile remount) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.21 <0.2.0` | raised `0.1.20` → `0.1.21`: the full-screen Live Preview surface gates on the `admin.mobile_preview.view` permission first seeded in core `0.1.21` (the UI hides for users without it, but the version contract tracks the dependency) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | unchanged: the mobile-preview session, update endpoints **and** the `admin.mobile_preview.view` permission are additive and do NOT require the frontend panel/UI; still tracks the 0.1.18 anonymous-preview adaptation |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.23 <0.2.0` | raised `0.1.21` → `0.1.23`: the data browser reads the new `{id, fieldKey, displayName}` column shape and the `data_variables` token→label map first shipped in core `0.1.23` (issue #56) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.48 <0.2.0` | raised `0.1.30` → `0.1.48`: core `0.1.23` changes the admin-column response shape + `data_variables` payload (breaking), first adopted by frontend `0.1.48` |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

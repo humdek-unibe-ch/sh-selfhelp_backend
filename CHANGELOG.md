@@ -1,3 +1,70 @@
+# v0.1.23
+
+## Immutable data-column `field_key` + mutable `display_name` (issue #56)
+
+- **Core form/SurveyJS data is now stored by an immutable key, not a mutable
+  label.** `data_cols.name` was both the storage identity and the admin label,
+  so renaming a column forked one logical field into two `data_cols` rows and
+  split historical from new submissions. `data_cols` now has an immutable
+  `field_key` (the storage key, an opaque ASCII identifier **derived per data
+  source** — `section_<input section id>` for core CMS forms, `question.name`
+  for SurveyJS — so a renamed input keeps writing into the SAME column; it
+  inherits the table default collation, no per-column override), a mutable
+  `display_name` (the human label), and a label-provenance FK
+  `id_display_name_source` → `lookups` (group `dataColDisplayNameSource`, codes
+  `auto` | `manual`; a NULL FK is the default `auto`) so an admin-curated label
+  is never silently overwritten by the next submission. A `UNIQUE
+  (id_data_tables, field_key)` makes the write-time lookup safe and fast.
+  Migration `Version20260626120120` renames `name -> field_key` preserving data,
+  **pre-merges any pre-existing duplicate columns** (re-pointing their
+  `data_cells` onto a canonical column before adding the unique key), adds the
+  new columns, and rebuilds `build_dynamic_columns` to pivot on `field_key`
+  with backtick-safe aliases (dotted survey keys are treated as opaque
+  literals); migration `Version20260626143127` then converts the provenance
+  flag from a VARCHAR to the `id_display_name_source` lookups FK.
+- **`DataService::saveData()` resolves columns by `field_key` via the new
+  `DataColumnService`** — core form submissions (keyed by the human input name)
+  are first remapped to their `section_<input id>` key by the new
+  `FormFieldKeyResolver` (the human name travels along as the auto
+  `display_name`), then a batch `field_key IN (...)` fetch + concurrency-safe
+  `INSERT IGNORE` for missing columns, strict key validation
+  (`^[A-Za-z][A-Za-z0-9_.]{0,254}$`, dotted survey segments allowed), and an
+  expanded reserved-key guard (`id`, `id_users`, `trigger_type`, `record_id`,
+  `__*`, …) so metadata never becomes a dynamic column. Row metadata
+  (`id_users`, `trigger_type`) is split out from field values.
+- **Reads, exports, interpolation variables and action contexts use the stable
+  key but show readable names.** Core-form reads (prefill, `showUserInput`,
+  `retrieve_data` interpolation scope, CSV/JSON export) remap each
+  `section_<id>` key back to the current human input name, and
+  `DataVariableResolver` returns a `token => label` map whose **token is the
+  current input name** (never the opaque key) so the CMS variable picker both
+  shows and inserts readable names.
+- **The interpolation variable picker has its own endpoint** `GET
+  /cms-api/v1/admin/sections/{section_id}/data-variables` (permission
+  `admin.page.read`, seeded by migration `Version20260629063147`), returning the
+  `token => label` map. It is **no longer part of the cached `getSection`
+  payload** (that response is now `{ section, fields, languages }`): the
+  variables depend on the referenced data tables' live columns, and a column
+  added by a later form submission only invalidates the DATA_TABLE scope, not
+  the section's SECTION scope. `DataVariableResolver` assembles the map from its
+  granular caches (section hierarchy/data under SECTION scope, table columns
+  under DATA_TABLE scope), so adding a column **or** editing `data_config` both
+  refresh it; the CMS section inspector fetches it fresh when it opens, so a new
+  column/rename appears in the picker without re-saving the section.
+- **New admin endpoint** `PATCH /cms-api/v1/admin/data/tables/{tableName}/columns/display-name`
+  (permission `admin.data.update_columns`, seeded by migration
+  `Version20260626121351`) curates a column label without touching its storage
+  key. The admin columns endpoint response is now
+  `{ id, fieldKey, displayName }` (was `{ id, name }`).
+- **API contract change consumed by the frontend** (column response shape, the
+  `data_variables` move to its own `GET /admin/sections/{id}/data-variables`
+  endpoint, and the slimmer `getSection` payload), so `supports.frontend` is
+  raised `>=0.1.30 -> >=0.1.48` and the core default version bumps to `0.1.23`.
+  The matching
+  SurveyJS plugin guard (block renaming/removing an answered `question.name`)
+  ships in plugin `0.3.4`. Deploying requires running the new migrations and a
+  Symfony cache clear.
+
 # v0.1.22
 
 ## Mobile live preview renders plugin styles (e.g. SurveyJS)

@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-26.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 **Date:** 2025-10-24  
@@ -318,13 +318,49 @@ Global variables are defined in the `sh-global-values` page and are language-spe
 ### **3. Data Variables (`scope.*`)**
 Data variables are retrieved from database tables based on `data_config` settings.
 
-**Access Pattern:** `{{scope.field_name}}`
+**Access Pattern:** `{{scope.field_key}}`
 
 The scope name is defined in your `data_config`. Common scopes:
 - `parent` - Parent record data
 - `test` - Test data
 - `user_data` - User-specific data
 - Any custom scope name
+
+The field part of the token is the column's **immutable `field_key`** (the
+storage key in `data_cols`), not the display label — so renaming a column's
+label never breaks an existing `{{scope.field_key}}` token (issue #56). The
+`field_key` is derived per data source (see
+[Database Design](./04-database-design.md#field_key-derivation-contract-per-data-source)):
+for a **core CMS form** it is `section_<input section id>` (e.g.
+`{{parent.section_456}}`), and for **SurveyJS** it is `question.name`. Core-form
+tokens are therefore opaque section ids — always pick them from the CMS variable
+picker (which shows the readable label) rather than typing them by hand. The
+render-time scope resolver (`SectionUtilityService::retrieveData()` →
+`PageService`) returns rows keyed by the same `field_key`, so token and value
+always line up.
+
+**Variable picker contract (`token => label`).** `DataVariableResolver`
+(consumed by the section editor's variable picker) returns a **map of token to
+human label**, e.g.
+`{ "parent.mood_score": "Daily mood", "parent.email": "Email address" }`
+(label = `display_name ?? field_key`). The CMS editor **shows the label** so the
+admin picks a readable name, but **inserts the stable token** (`{{parent.mood_score}}`)
+into the content. This keeps content authored against immutable keys while
+staying human-friendly.
+
+**Picker delivery (`GET /admin/sections/{section_id}/data-variables`).** The map
+is served by its **own endpoint** (`AdminSectionController::getSectionDataVariables`
+→ `AdminSectionService::getSectionDataVariables`), not bundled into the cached
+`getSection` payload. The variables depend on the referenced data tables' live
+columns, and a column added by a later form submission only invalidates the
+`DATA_TABLE` cache scope — not the section's `SECTION` scope — so a payload-baked
+picker would go stale until the section was re-saved. Instead the resolver
+assembles the map from its **granular caches** (section hierarchy/data under
+`SECTION` scope, table columns under `DATA_TABLE` scope), so adding a column
+**or** editing `data_config` both refresh it. The section inspector fetches this
+fresh when it opens (frontend `useSectionDataVariables`, REAL_TIME tier), so a
+new column/rename appears in the picker immediately without re-saving the
+section.
 
 ---
 

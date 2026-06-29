@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
-Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
+Last verified: 2026-06-26.
+Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository (form storage keys resolved by `App\Service\CMS\DataColumnService`).
 
 ## Overview
 
@@ -141,6 +141,25 @@ Remove a form submission from the system.
   "files": ["file1.jpg", "document.pdf"]
 }
 ```
+
+> **`form_data` keys are the human input names; the backend maps them to a
+> stable storage key.** Core CMS forms (frontend + mobile) submit each value
+> keyed by the input's **`name`** field, exactly as authored — no client change
+> is needed. On write, `DataService` remaps every name to the immutable
+> **`field_key`** of the input that owns it (`section_<input section id>`) and
+> carries the name along as the auto `display_name`. Because the key is tied to
+> the input **section id** (which never changes), renaming an input only updates
+> its `display_name` and **never** forks the column or splits old and new
+> submissions (issue #56). On read, prefill / `show-user-input` / export remap
+> `field_key → current name`, so every human-facing surface shows the current
+> label. SurveyJS submits its own stable key (`question.name`) with the question
+> `title` as the label; see the per-source `field_key` derivation contract in
+> [Database Design](../../developer/04-database-design.md#field_key-derivation-contract-per-data-source).
+> Reserved metadata keys (`id`, `id_users`, `trigger_type`, `record_id`,
+> anything starting with `__`, …) are never remapped and are stripped before
+> write. Labels can also be curated manually via
+> `PATCH /admin/data/tables/{tableName}/columns/display-name` (a `manual` label
+> is never overwritten by a later submission).
 
 ## Frontend Integration Examples
 

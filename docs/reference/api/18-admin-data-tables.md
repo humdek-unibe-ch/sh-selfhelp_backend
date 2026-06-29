@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-08.
-Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schema `config/schemas/api/v1/requests/admin/data_export_bulk.json`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php`.
+Last verified: 2026-06-26.
+Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schemas under `config/schemas/api/v1/requests/admin/`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php` and `migrations/Version20260626121351.php`.
 
 ## Overview
 
@@ -21,7 +21,17 @@ metadata, read rows, delete records/tables/columns, and export table contents.
 ### Data table structure
 - **`data_tables`** — one row per table (`id`, `name`, `display_name`, `timestamp`).
 - **`data_rows`** — one row per record, attributed to a user.
-- **`data_cols`** — column definitions.
+- **`data_cols`** — column definitions. Each column has an **immutable
+  `field_key`** (the storage key, unique per table, derived from the data source —
+  `section_<input section id>` for core forms, `question.name` for SurveyJS)
+  and a **mutable `display_name`** (the human label). Renaming the label never
+  changes the storage key, so stored cells, exports and interpolation tokens stay
+  stable. The label provenance is the nullable FK `id_display_name_source` →
+  `lookups` (group `dataColDisplayNameSource`, codes `auto` | `manual`; a NULL FK
+  means the default `auto`): it records whether the label was auto-derived from a
+  submission or curated by an admin (a manual label is never overwritten by a
+  later submission). See issue #56 and
+  [Database Design](../../developer/04-database-design.md).
 - **`data_cells`** — cell values, language-scoped (`id_languages`).
 
 ### Permissions
@@ -57,6 +67,7 @@ output, consistent with the rest of the API.
 | DELETE | `/cms-api/v1/admin/data/records/{recordId}` | `admin.data.delete` |
 | DELETE | `/cms-api/v1/admin/data/tables/{tableName}` | `admin.data.delete` |
 | DELETE | `/cms-api/v1/admin/data/tables/{tableName}/columns` | `admin.data.delete_columns` |
+| PATCH | `/cms-api/v1/admin/data/tables/{tableName}/columns/display-name` | `admin.data.update_columns` |
 
 ### List data tables
 
@@ -101,9 +112,28 @@ columns; each row also carries record metadata (e.g. `record_id`).
 ### Get columns / column names
 
 - `GET /cms-api/v1/admin/data/tables/{tableName}/columns`
-  → `{ "data": { "columns": [ { "id": 1, "name": "email" }, ... ] } }`
+  → `{ "data": { "columns": [ { "id": 1, "fieldKey": "email", "displayName": "Email address" }, ... ] } }`.
+  `fieldKey` is the immutable storage key (always present for a real column);
+  `displayName` is the curated label and may be `null` (clients fall back to
+  `fieldKey`). Treat `fieldKey` as an **opaque literal** — never split it on `.`
+  (a dotted survey key like `household.member_name` is one key, not a path).
 - `GET /cms-api/v1/admin/data/tables/{tableName}/column-names`
-  → `{ "data": { "columnNames": ["email", "name", ...] } }`
+  → `{ "data": { "columnNames": ["email", "name", ...] } }`. These are
+  **field keys** (the stable storage identities), not display labels.
+
+### Update a column display name
+
+**Endpoint:** `PATCH /cms-api/v1/admin/data/tables/{tableName}/columns/display-name`
+
+**Request body:** `{ "fieldKey": "email", "displayName": "Email address" }`
+([schema](../../config/schemas/api/v1/requests/admin/update_data_column_display_name.json))
+
+Renames the **human label only** — the immutable `field_key` is unchanged, so
+stored cells, exports and interpolation tokens keep working. Sending
+`"displayName": null` (or an empty string) clears the curated label. Setting a
+label points the column's `id_display_name_source` FK at the `manual` lookup, so
+later submissions no longer auto-overwrite it. Returns `{ "data": { "updated": true } }` (or
+`updated: false` when no matching column exists).
 
 ### Delete a record
 
@@ -129,7 +159,8 @@ Cascade-deletes the table and all its rows, columns, and cells.
 
 **Endpoint:** `DELETE /cms-api/v1/admin/data/tables/{tableName}/columns`
 
-**Request body:** `{ "columns": ["colA", "colB"] }`
+**Request body:** `{ "columns": ["colA", "colB"] }` — the values are column
+**field keys** (storage identities), not display labels.
 ([schema](../../config/schemas/api/v1/requests/admin/delete_data_columns.json))
 
 Returns `{ "data": { "deleted_column_count": 2 } }`.
