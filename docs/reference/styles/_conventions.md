@@ -137,23 +137,26 @@ name from the bundled Tabler icon set, chosen through the admin icon picker.
 
 ## Editing content fields in the section editor
 
-How a field is **edited** in the admin depends on its type and name, and every
-text surface supports `{{` variable interpolation (see
+How a field is **edited** in the admin is driven by its **type** (the editor is
+chosen from the field type, not a per-name allowlist), and every text surface
+supports `{{` variable interpolation (see
 [interpolation-system](../../developer/10-interpolation-system.md#cms-editor-field-rendering-modes-and--coverage)
 for the full table):
 
-- **Short identifiers** (`name`, `value`, `title`, `label`, `subtitle`,
-  `placeholder`, `alt`, `caption`) stay **single-line plain** inputs.
-- Other `text` / `markdown-inline` fields render as a mention input that
-  **auto-grows**: it starts at one line and wraps + grows vertically for longer
-  copy (alerts, descriptions), while still being one logical line. `markdown-inline`
-  keeps inline **bold / italic / underline / link**; plain `text` does not.
-- Rich-text (`textarea`) fields use the full toolbar. On the `sh-mail-config`
-  page they also expose the email **Style** preset dropdown — see
+- `text` fields render as a **single-line** mention input. The three structural
+  identifiers (`name`, `value`, `title`) stay **plain** inputs (no interpolation,
+  they are keys/values, not display copy); every other `text` field gets the
+  `{{` picker.
+- `markdown-inline` fields are the same single-line mention input plus inline
+  **bold / italic / underline / link** shortcuts.
+- `textarea` fields are the **rich-text WYSIWYG** editor (full toolbar:
+  headings, lists, alignment, links) — this is where **longer / multiline /
+  nicely-formatted copy** is authored (it accepts Enter). On the `sh-mail-config`
+  page these bodies also expose the email **Style** preset dropdown — see
   [email styles](../email-styles.md).
-- `markdown`, `json`, `css`, and the data-config SQL filter use the Monaco code
-  editor with `{{` completion. The SQL filter is **locked by default** and
-  unlockable for manual editing.
+- `markdown`, `json`, `code` (raw HTML markup), `css`, and the data-config SQL
+  filter use the Monaco code editor with `{{` completion. The SQL filter is
+  **locked by default** and unlockable for manual editing.
 
 For the non-technical version, see
 [user/interpolation-and-data-naming.md](../../user/interpolation-and-data-naming.md).

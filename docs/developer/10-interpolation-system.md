@@ -407,17 +407,31 @@ always resolves for any connected scope.
 ### CMS editor: field rendering modes and `{{` coverage
 
 Interpolation is offered in **every authored text surface**, not just `content`.
-The frontend `FieldRenderer` maps field types to mention/`{{`-aware editors:
+The editor is chosen **purely from the field type** (no per-name allowlist): the
+frontend `FieldRenderer` maps field types to mention/`{{`-aware editors:
 
 | Field type | Editor | Notes |
 | --- | --- | --- |
-| `text`, `markdown-inline` | mention input (`TextInputWithMentions`) | Short identifiers (`name`, `value`, `title`, `label`, `subtitle`, `placeholder`, `alt`, `caption`) render as a **plain** input. Other names render **single-line** by default and **auto-grow** (wrap + grow in height, Enter still blocked) for longer copy — `resolveTextFieldMode()` decides. `markdown-inline` keeps inline bold/italic/underline/link shortcuts; `text` disables them. |
-| `textarea` (rich text) | `RichTextField` → `MentionEditor` | Full toolbar. On the `sh-mail-config` page it also gets the email **Style** preset dropdown (`emailStyles`). |
-| `markdown`, `json`, `css`, raw SQL filter | Monaco (`MonacoEditorField`) | `{{` completion provider injects the same `token => label` suggestions. The data-config SQL filter is **locked (read-only) by default** and unlockable for manual editing. |
+| `text` | single-line mention input (`TextInputWithMentions`) | Gets the `{{` picker. The three structural identifiers `name` / `value` / `title` (`PLAIN_IDENTIFIER_FIELD_NAMES`) render as a **plain** input with no interpolation; everything else is a single-line mention input. |
+| `markdown-inline` | single-line mention input | Same as `text` plus inline **bold / italic / underline / link** shortcuts (those tags survive to the web/mobile renderers). |
+| `textarea` | `RichTextField` → `MentionEditor` (rich WYSIWYG) | Full toolbar (headings, lists, alignment, links) and **accepts Enter** — this is the home for longer / multiline / nicely-formatted copy. On the `sh-mail-config` page it also gets the email **Style** preset dropdown (`emailStyles`). |
+| `markdown`, `json`, `code`, `css`, raw SQL filter | Monaco (`MonacoEditorField`) | `{{` completion provider injects the same `token => label` suggestions. `code` opens in **HTML** mode for raw markup (e.g. `html_tag_content`) that must not pass through the WYSIWYG. The data-config SQL filter is **locked (read-only) by default** and unlockable for manual editing. |
 
 The `token => label` map flows in as the `dataVariables` prop. The mention chip
 shows the label and stores the bare `{{token}}` (see the chip round-trip above);
-Monaco inserts the raw token.
+Monaco inserts the raw token. Tokens are hydrated into chips **only inside
+visible text nodes** — a token inside an HTML attribute (e.g. a mail
+`<a href="{{system.special.reset_link}}">`) is left as the literal token so the
+markup stays valid and the URL resolves at send time.
+
+> **Field types are part of this contract.** Because the editor is type-driven,
+> a field's `fieldType` must match how it should be authored: prose →
+> `textarea`, short label → `text`, structured config blob → `json`, raw HTML →
+> `code`. Migration `Version20260629143116` retyped the previously
+> `textarea`-overloaded JSON config fields to `json`, `html_tag_content` to
+> `code`, and the short message fields (`error_text`, `empty_text`,
+> `loading_text`, `confirm_message`, `delete_modal_body`) to `textarea` so they
+> get the rich editor.
 
 ---
 
@@ -433,7 +447,7 @@ documents are passed through untouched.
 
 The interpolation pipeline is unchanged — `{{system.*}}` / `{{system.special.*}}`
 placeholders in the body are resolved before the HTML reaches the renderer. The
-full preset contract (frontend Tiptap mark ⇄ backend inline CSS) and the
+full preset contract (frontend Tiptap extension ⇄ backend inline CSS) and the
 "adding a preset" checklist live in
 [../reference/email-styles.md](../reference/email-styles.md).
 

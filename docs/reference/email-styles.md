@@ -9,7 +9,7 @@ Audience: CMS administrators and developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend (`sh-mail-config` page + transactional emails).
 Last verified: 2026-06-29.
-Source of truth: `src/Service/Auth/MailHtmlRenderer.php`, `templates/emails/*.html`, the frontend email-style mark (`sh-selfhelp_frontend/src/app/components/shared/mentions/EmailStyleExtension.ts`), and `src/Service/Core/JobSchedulerService.php`.
+Source of truth: `src/Service/Auth/MailHtmlRenderer.php`, `templates/emails/*.html`, the frontend email-style extension (`sh-selfhelp_frontend/src/app/components/shared/mentions/EmailStyleExtension.ts`), and `src/Service/Core/JobSchedulerService.php`.
 
 This page is the contract for the small, named set of **email style presets**
 that the mail-config editor offers, and for how a mail body is turned into a real
@@ -77,11 +77,18 @@ editor (fragment)           1. inline base tag + preset CSS            (HTML ema
   links, lists, `<hr>`, and `<span>`/`<a>` carrying an `email-*` preset class).
   It is **not** a full HTML document. Admins never see or write the `<html>` /
   `<head>` / inline CSS.
-- **Frontend**: the email "Style" presets are a Tiptap mark
-  (`EmailStyleMark` in `EmailStyleExtension.ts`). Applying a preset puts a single
-  `email-*` class on the selection; the class is stored verbatim in the saved
-  fragment. The editor CSS (`MentionEditor.module.css`) mirrors the inlined
-  styles so the WYSIWYG preview matches the delivered mail.
+- **Frontend**: the email "Style" presets are a Tiptap **extension**
+  (`EmailStyleExtension` in `EmailStyleExtension.ts`). It registers a global
+  `emailStyleClass` attribute on the `paragraph`, `heading` and `link` node
+  types, so applying a preset puts a single `email-*` class on the **real
+  element** — `email-button` / `email-button-secondary` / `email-link-strong` on
+  an `<a>`, and `email-callout` / `email-muted` / `email-code` on a `<p>` /
+  `<h*>` — and that class **round-trips** through load → edit → save. (An earlier
+  span-only mark never matched those elements, so the classes were silently
+  dropped when the editor re-parsed the body and reseeded mails lost their
+  styling; the global-attribute approach fixes that.) The class is stored
+  verbatim in the saved fragment, and the editor CSS (`MentionEditor.module.css`)
+  mirrors the inlined styles so the WYSIWYG preview matches the delivered mail.
 - **Backend**: `App\Service\Auth\MailHtmlRenderer::render()` is called from
   `JobSchedulerService::sendEmail()` for every **HTML** mail (plain-text mails
   are sent verbatim). It:
