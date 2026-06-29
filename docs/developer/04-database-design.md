@@ -380,6 +380,17 @@ migrations `Version20260626120120` + `Version20260626143127`):
   the stored helper `build_dynamic_columns` pivots on `field_key` with
   backtick-safe aliases.
 
+`data_tables` carries the **same label provenance** on the table itself:
+**`data_tables.id_display_name_source`** is a nullable FK to `lookups` (reusing
+the `dataColDisplayNameSource` `auto` | `manual` group; migration
+`Version20260629074004`). NULL = `auto`, so the owning form section's `name`
+field keeps the table `display_name` in sync on save; it points at the `manual`
+lookup once an admin renames the table through
+`PATCH /admin/data/tables/{tableName}/display-name`, after which section saves no
+longer overwrite it (the table is `locked`). Renaming a form input likewise
+propagates its `name` to the auto `display_name` of the immutable `section_<id>`
+column on save (issue #56).
+
 ##### `field_key` derivation contract (per data source)
 
 `field_key` must be **stable across label/name edits** so a renamed input keeps

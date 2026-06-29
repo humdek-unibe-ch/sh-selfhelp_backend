@@ -1,3 +1,43 @@
+# v0.1.24
+
+## Data-column / data-table display-name propagation + admin lock (issue #56)
+
+Follow-up to the immutable `field_key` work (v0.1.23). Renaming a CMS form input
+now keeps its stored column label in sync, an admin can manually rename + lock
+both columns and whole data tables so submissions/saves never overwrite the
+curated label, and the lock state is surfaced everywhere it matters.
+
+- **Renaming a form input updates its column label on Save.** When a form input
+  section is saved, its `name` field now propagates to the auto `display_name`
+  of the immutable `section_<id>` column — the same way renaming a form
+  propagates to its data table. Wired through `SectionFieldService` →
+  `DataColumnService::renameAutoColumnByFieldKey()`; a no-op when no column
+  exists yet (no submission) or the label is manually locked. The affected
+  table's `DATA_TABLES` caches (column list + variable picker) are busted so the
+  new label shows immediately.
+- **Data tables get the same auto/manual provenance as columns.** New nullable
+  FK `data_tables.id_display_name_source` → `lookups` (reusing the
+  `dataColDisplayNameSource` `auto` | `manual` group; NULL = `auto`), added by
+  migration `Version20260629074004`. While `auto`, the form section's `name`
+  keeps syncing the table label; once an admin renames the table it flips to
+  `manual` and section saves never overwrite it again
+  (`DataTableService::updateDataTableDisplayName()` is now gated on the source).
+- **Manual table rename + reset-to-auto.** New
+  `PATCH /cms-api/v1/admin/data/tables/{tableName}/display-name` (permission
+  `admin.data.update_tables`, seeded by migration `Version20260629074552`):
+  a non-empty `displayName` sets the label and locks it (`manual`); `null`/empty
+  resets to `auto` and re-derives the label from the owning form section's
+  `name`. Columns gained the symmetric behaviour: clearing a column label now
+  re-derives the auto label from the input section's `name` instead of leaving
+  the opaque `section_<id>` key.
+- **Lock state is exposed everywhere.** `locked` is added to the admin tables
+  list (`GET /admin/data/tables`), the columns list
+  (`GET /admin/data/tables/{tableName}/columns`) and `getDataTableStats()`; and
+  a form section's `getSection` payload now carries a `data_table`
+  `{ id, name, display_name, locked }` block (only for form sections, only when
+  a table exists) so the CMS section inspector can show the effective table
+  name, a "locked" badge, and a deep link to the Data browser.
+
 # v0.1.23
 
 ## Immutable data-column `field_key` + mutable `display_name` (issue #56)

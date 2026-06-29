@@ -3,8 +3,8 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-26.
-Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schemas under `config/schemas/api/v1/requests/admin/`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php` and `migrations/Version20260626121351.php`.
+Last verified: 2026-06-29.
+Source of truth: `App\Controller\Api\V1\Admin\AdminDataController`, the request schemas under `config/schemas/api/v1/requests/admin/`, and the `api_routes` rows seeded by `migrations/Version20260603092955.php`, `migrations/Version20260626121351.php` and `migrations/Version20260629074552.php`.
 
 ## Overview
 
@@ -20,6 +20,11 @@ metadata, read rows, delete records/tables/columns, and export table contents.
 
 ### Data table structure
 - **`data_tables`** — one row per table (`id`, `name`, `display_name`, `timestamp`).
+  Like a column, a table label has a provenance FK `id_display_name_source` →
+  `lookups` (same `dataColDisplayNameSource` `auto` | `manual` group; NULL =
+  `auto`): while `auto` the owning form section's `name` keeps the label in sync,
+  and once an admin renames the table in the Data browser it becomes `manual`
+  (`locked`) and section saves never overwrite it again (issue #56).
 - **`data_rows`** — one row per record, attributed to a user.
 - **`data_cols`** — column definitions. Each column has an **immutable
   `field_key`** (the storage key, unique per table, derived from the data source —
@@ -68,6 +73,7 @@ output, consistent with the rest of the API.
 | DELETE | `/cms-api/v1/admin/data/tables/{tableName}` | `admin.data.delete` |
 | DELETE | `/cms-api/v1/admin/data/tables/{tableName}/columns` | `admin.data.delete_columns` |
 | PATCH | `/cms-api/v1/admin/data/tables/{tableName}/columns/display-name` | `admin.data.update_columns` |
+| PATCH | `/cms-api/v1/admin/data/tables/{tableName}/display-name` | `admin.data.update_tables` |
 
 ### List data tables
 
@@ -83,6 +89,7 @@ Returns every table the caller can access (cached, permission-filtered).
         "id": 12,
         "name": "213",
         "displayName": "Contact form",
+        "locked": false,
         "created": "2026-06-01T09:30:00+00:00",
         "crud": "1111"
       }
@@ -91,7 +98,9 @@ Returns every table the caller can access (cached, permission-filtered).
 }
 ```
 
-`crud` is the caller's CRUD bit string for that table.
+`crud` is the caller's CRUD bit string for that table. `locked` is `true` when an
+admin manually renamed the table (provenance `manual`), so the Data browser can
+show a lock badge and the CMS form inspector can warn that the label is curated.
 
 ### Get rows
 
@@ -112,11 +121,13 @@ columns; each row also carries record metadata (e.g. `record_id`).
 ### Get columns / column names
 
 - `GET /cms-api/v1/admin/data/tables/{tableName}/columns`
-  → `{ "data": { "columns": [ { "id": 1, "fieldKey": "email", "displayName": "Email address" }, ... ] } }`.
+  → `{ "data": { "columns": [ { "id": 1, "fieldKey": "email", "displayName": "Email address", "locked": false }, ... ] } }`.
   `fieldKey` is the immutable storage key (always present for a real column);
   `displayName` is the curated label and may be `null` (clients fall back to
-  `fieldKey`). Treat `fieldKey` as an **opaque literal** — never split it on `.`
-  (a dotted survey key like `household.member_name` is one key, not a path).
+  `fieldKey`); `locked` is `true` when the label was manually curated
+  (provenance `manual`). Treat `fieldKey` as an **opaque literal** — never split
+  it on `.` (a dotted survey key like `household.member_name` is one key, not a
+  path).
 - `GET /cms-api/v1/admin/data/tables/{tableName}/column-names`
   → `{ "data": { "columnNames": ["email", "name", ...] } }`. These are
   **field keys** (the stable storage identities), not display labels.
@@ -132,8 +143,32 @@ Renames the **human label only** — the immutable `field_key` is unchanged, so
 stored cells, exports and interpolation tokens keep working. Sending
 `"displayName": null` (or an empty string) clears the curated label. Setting a
 label points the column's `id_display_name_source` FK at the `manual` lookup, so
-later submissions no longer auto-overwrite it. Returns `{ "data": { "updated": true } }` (or
-`updated: false` when no matching column exists).
+later submissions no longer auto-overwrite it. Clearing it (`null`) reverts to
+`auto` and **re-derives** the label from the input section's `name` (for a core
+`section_<id>` column) instead of leaving the opaque key. Returns
+`{ "data": { "updated": true } }` (or `updated: false` when no matching column
+exists).
+
+> Renaming a CMS form input also updates its column's `auto` label automatically
+> on Save (it propagates the input `name` to the `section_<id>` column), so the
+> manual PATCH is only needed for non-CMS columns or to override the auto label.
+
+### Update a data table display name
+
+**Endpoint:** `PATCH /cms-api/v1/admin/data/tables/{tableName}/display-name`
+
+**Request body:** `{ "displayName": "Daily mood" }`
+([schema](../../config/schemas/api/v1/requests/admin/update_data_table_display_name.json))
+
+Curates the table's human label from the Data browser. A non-empty `displayName`
+sets the label and points `id_display_name_source` at the `manual` lookup, so the
+owning form section's `name` field no longer overwrites it on save (the table is
+`locked`). Sending `"displayName": null` (or an empty string) resets the
+provenance to `auto` and re-derives the label from the form section's `name`.
+Returns `{ "data": { "updated": true } }` (or `updated: false` when the table
+does not exist). For a form section, the same `{ id, name, display_name, locked }`
+table info is embedded in the section's `getSection` payload (`data_table` block)
+so the CMS inspector can show the label, a lock badge, and a deep link here.
 
 ### Delete a record
 
