@@ -1,3 +1,49 @@
+# v0.1.27
+
+## Type-driven CMS editors, WYSIWYG email rendering, and data-config standard columns (issue #56)
+
+A follow-up wave on top of Interpolation v2 that makes the CMS editor choice
+**type-driven**, renders transactional mail from rich-text fragments, and surfaces
+every projection column in the data-config builder. Coordinated with frontend
+`0.1.54`; `supports.frontend` is raised to `>=0.1.54` because the columns response
+and the new field types are consumed by that frontend.
+
+- **WYSIWYG email rendering.** Transactional mail bodies (`sh-mail-config`) are now
+  authored as rich-text **fragments**, not full HTML documents. At send time
+  `JobSchedulerService::sendEmail()` passes the HTML body through the new
+  `App\Service\Auth\MailHtmlRenderer`, which inlines email-safe CSS (base tag
+  styles + the named `email-*` style presets, forcing link colour inside
+  button/strong-link presets) and wraps the content in the shared branded shell.
+  Plain-text mails and legacy full-HTML documents are passed through untouched.
+  Migration `Version20260629131426` backfills the seeded full-document bodies to
+  the fragment form. See `docs/reference/email-styles.md`.
+- **Field-type cleanup for the type-driven editor.** Migration
+  `Version20260629143116` retypes overloaded fields so the editor (chosen purely
+  from the field type) matches how each field is authored: 7 structured-config
+  blobs (`web_combobox_data`, `multi_select_data`, `segmented_control_data`,
+  `slider_marks_values`, `range_slider_marks_values`, `web_color_picker_swatches`,
+  `web_datepicker_time_grid_config`) `textarea → json`; `html_tag_content`
+  `textarea → code` (raw-HTML Monaco editor); and the short message fields
+  (`error_text`, `empty_text`, `loading_text`, `confirm_message`,
+  `delete_modal_body`) `text → textarea` so they get the rich multiline editor.
+- **Data-config surfaces the standard projection columns.** The admin columns
+  endpoint now prepends the always-present row columns (`id`, `id_users`,
+  `user_name`, `record_id`, `entry_date`, `id_users_deleted`) flagged
+  `standard: true` / `id: null` / `locked: true`, so the data-config builder lists
+  them like any other column (filter/order by `record_id`, `entry_date`, …) while
+  the Data browser editor excludes them from relabel/delete.
+- **Scheduled action emails interpolate `record.*` and `system.*`.** Action email
+  subject/body now resolve `recipient.*`, `record.<field_key>` (from the action's
+  data table) and `system.*` tokens at execution time.
+- **Mobile-preview sessions can submit core forms.** Form submission is no longer
+  blocked for an authenticated mobile-preview session, so previewing an admin can
+  exercise forms (record + log) end to end.
+- **Page interpolation picker is honest.** The page/config picker only offers
+  variables for fields that actually render interpolation.
+- **Tests / docs.** Added migration round-trip tests for the recent migrations and
+  documented the type-driven editor mapping, email styles, interpolation, and data
+  naming (developer + non-technical user guides).
+
 # v0.1.26
 
 ## Interpolation v2: unified context-aware variable picker + mail namespacing (issue #56)

@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-26.
+Last verified: 2026-06-29.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -314,6 +314,24 @@ the same change wave:
 > `>=0.1.26`** (both `<0.2.0`). **No `@selfhelp/shared` change** — the picker
 > wiring lives in the frontend. No data migration ships.
 
+> **Core 0.1.27 (type-driven editors + standard columns ⇄ frontend 0.1.54):**
+> the admin columns endpoint now **prepends** the always-present projection
+> columns (`id`/`id_users`/`user_name`/`record_id`/`entry_date`/`id_users_deleted`,
+> flagged `standard:true`/`id:null`/`locked:true`), and migration
+> `Version20260629143116` retypes overloaded fields so the frontend editor is
+> chosen purely from the field type (7 structured-config blobs `textarea → json`;
+> `html_tag_content` `textarea → code`; the short message fields
+> `error_text`/`empty_text`/`loading_text`/`confirm_message`/`delete_modal_body`
+> `text → textarea`). Mail bodies also become WYSIWYG fragments rendered at send
+> time by `MailHtmlRenderer` (internal; no API contract change). **Frontend
+> 0.1.54** renders the standard columns + the type-driven editors (incl. the new
+> `code` type) and raises its `supports.core` `0.1.26 → 0.1.27`; because a
+> pre-0.1.54 frontend would mis-render the standard columns and the `code` type,
+> backend `supports.frontend` is raised **in lockstep** `0.1.52 → 0.1.54`. The
+> live pairing is now **frontend `>=0.1.54` ⇄ core `>=0.1.27`** (both `<0.2.0`).
+> **No `@selfhelp/shared` change** — the field-type → editor mapping lives in the
+> frontend.
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -321,13 +339,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.26` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.27` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.15.3` | npm (1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
-| `sh-selfhelp_frontend` | `0.1.53` | `0.1.53` completes Interpolation v2 (issue #56): the `{{ }}` picker is global (page/config, actions, data-config filter, custom CSS/JSON Monaco) via one `useInterpolationVariables(context)` hook over the unified core endpoint; `0.1.52` added the field_key chips + show-user-input `field_labels`; `0.1.49` added the data-table lock UI (core 0.1.24) |
+| `sh-selfhelp_frontend` | `0.1.54` | `0.1.54` makes the CMS editor type-driven (issue #56): `textarea` = rich WYSIWYG (accepts Enter), new `code` type = Monaco HTML, data-config shows the standard projection columns + a lockable Monaco SQL filter, mail-config bodies persist `email-*` presets on real a/p/h elements, `{{token}}` hydration skips HTML attributes, and the condition-builder datetime picker portals above the modal; `0.1.53` completed the global `{{ }}` picker |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (Live Preview preference bridge; runtime syncs theme live and applies language by mobile remount) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.26 <0.2.0` | raised `0.1.24` → `0.1.25` (Interpolation v2 contract) → `0.1.26`: frontend now resolves every interpolation context (incl. section, via delegation) through the unified `GET /admin/interpolation/variables` endpoint that first ships in core `0.1.26` (issue #56) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.52 <0.2.0` | unchanged at `0.1.52`: core `0.1.26` only adds the unified interpolation route (additive) + an internal mail-content rewrite — the legacy section data-variables route still exists, so an older frontend keeps working |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.27 <0.2.0` | raised `0.1.26` → `0.1.27`: frontend `0.1.54` renders the standard projection columns + the retyped/`code` field types that first ship in core `0.1.27` (issue #56) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.54 <0.2.0` | raised `0.1.52` → `0.1.54`: core `0.1.27` changes the columns response shape (standard columns) + emits the new `code`/retyped field types, which a pre-`0.1.54` frontend would mis-render |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
