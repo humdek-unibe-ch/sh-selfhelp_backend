@@ -404,6 +404,14 @@ class SectionUtilityService
             $languageId
         );
 
+        // Core CMS form rows are stored under the opaque, stable
+        // `section_<input id>` key; rename them back to the current human input
+        // name so the interpolation `retrieved_data` scope and the {{scope.name}}
+        // tokens authors pick both use readable names (issue #56). No-op for
+        // non-form data tables (SurveyJS etc. keep their own keys).
+        /** @var list<array<string, mixed>> $data */
+        $data = $this->dataService->remapEntriesToInputNames($dataTableId, $data);
+
         // Post-process based on retrieve type
         switch ($retrieve) {
             case 'first':
@@ -733,6 +741,13 @@ class SectionUtilityService
                     true,
                     $languageId
                 );
+
+                // Entries are keyed by the immutable section-id field_key; for a
+                // core form data table rename them back to the current human
+                // input name so the renderer shows one logical column with the
+                // current label instead of section ids (issue #56). No-op for
+                // non-form tables (e.g. SurveyJS keeps question.name headers).
+                $entries = $this->dataService->remapEntriesToInputNames($dataTableId, $entries);
 
                 $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
                     && ($section['delete_entry']['content'] ?? '0') === '1';

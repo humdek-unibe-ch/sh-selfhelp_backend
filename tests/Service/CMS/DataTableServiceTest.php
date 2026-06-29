@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace App\Tests\Service\CMS;
 
 use App\DataFixtures\Test\QaBaselineFixture;
+use App\Entity\DataCol;
 use App\Entity\DataTable;
 use App\Entity\User;
 use App\Service\ACL\ACLService;
@@ -130,6 +131,47 @@ final class DataTableServiceTest extends QaKernelTestCase
         self::assertFalse($this->service->deleteDataTable('qa_dts_does_not_exist'));
     }
 
+    /**
+     * Regression for issue #56 label provenance (now the `id_display_name_source`
+     * lookups FK): curating a label marks the column `manual` so submissions can
+     * never overwrite it, and CLEARING the label must revert to `auto` (NULL FK)
+     * so a later submission re-derives the human label instead of the column
+     * keeping a NULL display_name and falling back to the opaque storage key.
+     */
+    public function testCuratingColumnLabelMarksManualThenClearingRevertsToAuto(): void
+    {
+        // Seed one column via a submission; a fresh column is `auto` (NULL FK).
+        $this->tables->addRow('qa_dts_label', ['qa_label_field' => 'v'], $this->userId());
+        $this->em->clear();
+
+        self::assertFalse(
+            $this->columnFor('qa_dts_label', 'qa_label_field')->isDisplayNameManual(),
+            'A freshly created column starts as auto provenance.',
+        );
+
+        // Curate the label -> manual provenance (FK -> the `manual` lookup row).
+        self::assertTrue(
+            $this->service->updateColumnDisplayName('qa_dts_label', 'qa_label_field', 'Custom Label'),
+        );
+        $this->em->clear();
+
+        $column = $this->columnFor('qa_dts_label', 'qa_label_field');
+        self::assertSame('Custom Label', $column->getDisplayName());
+        self::assertTrue($column->isDisplayNameManual(), 'A curated label must be marked manual.');
+        self::assertSame(LookupService::DATA_COL_DISPLAY_NAME_SOURCE_MANUAL, $column->getDisplayNameSourceCode());
+
+        // Clear the label -> back to auto (NULL FK).
+        self::assertTrue(
+            $this->service->updateColumnDisplayName('qa_dts_label', 'qa_label_field', null),
+        );
+        $this->em->clear();
+
+        $column = $this->columnFor('qa_dts_label', 'qa_label_field');
+        self::assertNull($column->getDisplayName());
+        self::assertFalse($column->isDisplayNameManual(), 'Clearing the label must revert provenance to auto.');
+        self::assertSame(LookupService::DATA_COL_DISPLAY_NAME_SOURCE_AUTO, $column->getDisplayNameSourceCode());
+    }
+
     public function testFilteredDataTablesIncludeAdminGrantedTable(): void
     {
         $table = $this->tables->createTable('qa_dts_filtered');
@@ -163,6 +205,18 @@ final class DataTableServiceTest extends QaKernelTestCase
         }
 
         return $flat;
+    }
+
+    private function columnFor(string $tableName, string $fieldKey): DataCol
+    {
+        $table = $this->dataService->getDataTableByName($tableName);
+        self::assertInstanceOf(DataTable::class, $table);
+
+        $column = $this->em->getRepository(DataCol::class)
+            ->findOneBy(['dataTable' => $table, 'fieldKey' => $fieldKey]);
+        self::assertInstanceOf(DataCol::class, $column);
+
+        return $column;
     }
 
     private function userId(string $email = QaBaselineFixture::QA_USER_EMAIL): int

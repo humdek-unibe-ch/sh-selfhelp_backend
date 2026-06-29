@@ -7,6 +7,7 @@
 
 namespace App\Service\CMS;
 
+use App\Entity\DataCol;
 use App\Entity\DataRow;
 use App\Entity\DataTable;
 use App\Entity\Section;
@@ -314,19 +315,19 @@ class DataTableService extends BaseService
     }
 
     /**
-     * Delete selected columns from a data table
+     * Delete selected columns from a data table, addressed by immutable field key.
      * Returns number of deleted columns, false if table not found
      *
-     * @param list<string> $columnNames
+     * @param list<string> $fieldKeys Immutable column keys (data_cols.field_key)
      */
-    public function deleteColumns(string $tableName, array $columnNames): int|false
+    public function deleteColumns(string $tableName, array $fieldKeys): int|false
     {
         $dataTable = $this->dataTableRepository->findOneBy(['name' => $tableName]);
         if (!$dataTable) {
             return false;
         }
 
-        if (count($columnNames) === 0) {
+        if (count($fieldKeys) === 0) {
             return 0;
         }
 
@@ -335,14 +336,14 @@ class DataTableService extends BaseService
         try {
             $deletedCount = 0;
 
-            // Fetch columns by names
+            // Fetch columns by immutable field key
             $qb = $this->entityManager->createQueryBuilder();
             $qb->select('dc')
-                ->from('App\\Entity\\DataCol', 'dc')
+                ->from(DataCol::class, 'dc')
                 ->where('dc.dataTable = :dataTable')
-                ->andWhere($qb->expr()->in('dc.name', ':names'))
+                ->andWhere($qb->expr()->in('dc.fieldKey', ':fieldKeys'))
                 ->setParameter('dataTable', $dataTable)
-                ->setParameter('names', $columnNames);
+                ->setParameter('fieldKeys', $fieldKeys);
 
             /** @var array<int, \App\Entity\DataCol> $columns */
             $columns = $qb->getQuery()->getResult();
@@ -377,7 +378,9 @@ class DataTableService extends BaseService
 
     /**
      * Get columns for a data table by name
-     * Returns an array of column definitions [{ id, name }] or false if not found
+     * Returns an array of column definitions [{ id, fieldKey, displayName }] or
+     * false if not found. `fieldKey` is the immutable storage key; `displayName`
+     * is the mutable human label (null when never curated).
      *
      * @return list<array<string, mixed>>|false
      */
@@ -393,15 +396,16 @@ class DataTableService extends BaseService
         foreach ($columns as $col) {
             $result[] = [
                 'id' => $col->getId(),
-                'name' => $col->getName(),
+                'fieldKey' => $col->getFieldKey(),
+                'displayName' => $col->getDisplayName(),
             ];
         }
         return $result;
     }
 
      /**
-     * Get columns for a data table by name
-     * Returns an array of column names or false if not found
+     * Get column keys for a data table by name (immutable field keys plus the
+     * always-present projection columns). Returns false if not found.
      *
      * @return list<string|null>|false
      */
@@ -415,9 +419,81 @@ class DataTableService extends BaseService
         $columns = $dataTable->getDataCols();
         $result = ['record_id', 'entry_date', 'user_code', 'id_users', 'user_name', 'triggerType'];
         foreach ($columns as $col) {
-            $result[] = $col->getName();
+            $result[] = $col->getFieldKey();
         }
         return $result;
+    }
+
+    /**
+     * Curate a column's human-facing label. Addressed by immutable field key;
+     * sets `display_name` and marks the label as manually curated so future
+     * auto label pushes from submissions never overwrite it.
+     *
+     * Returns true on success, false when the table or column is unknown.
+     *
+     * @throws ServiceException
+     */
+    public function updateColumnDisplayName(string $tableName, string $fieldKey, ?string $displayName): bool
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => $tableName]);
+        if (!$dataTable) {
+            return false;
+        }
+
+        $column = $this->entityManager->getRepository(DataCol::class)
+            ->findOneBy(['dataTable' => $dataTable, 'fieldKey' => $fieldKey]);
+        if (!$column) {
+            return false;
+        }
+
+        $this->entityManager->beginTransaction();
+
+        try {
+            $normalized = is_string($displayName) && $displayName !== '' ? $displayName : null;
+            $column->setDisplayName($normalized);
+            // Setting a label marks it admin-curated (the `manual` lookup row, type
+            // dataColDisplayNameSource) so future auto pushes from submissions never
+            // overwrite it (issue #56). CLEARING it reverts to `auto` (NULL FK) so a
+            // later submission re-derives the human label — otherwise the column
+            // would keep a NULL display_name and the read would fall back to the
+            // opaque section_<id> key.
+            $column->setDisplayNameSource(
+                $normalized === null
+                    ? null
+                    : $this->lookupService->findByTypeAndCode(
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE,
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE_MANUAL
+                    )
+            );
+
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'data_tables',
+                $dataTable->getId()
+            );
+
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+
+            // Bust the column list + variable-picker caches (the data-table
+            // entity-scope generation is folded into both).
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateAllListsInCategory();
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw new ServiceException(
+                'Failed to update column display name: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'tableName' => $tableName, 'fieldKey' => $fieldKey]
+            );
+        }
     }
 
     /**
