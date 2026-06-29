@@ -59,6 +59,19 @@ env:
   # Read-only token with access to the sibling ecosystem repos. Falls back to
   # the default job token, which only works when every repo is public.
   ECOSYSTEM_TOKEN: ${{ secrets.ECOSYSTEM_PAT || github.token }}
+  # npm registry resilience. The cross-repo jobs run several `npm ci` /
+  # `npm install` / `npm pack` calls back-to-back against the public registry;
+  # a transient reset there (`npm error code ECONNRESET` / "network aborted")
+  # was failing the whole job. npm only retries a fetch twice by default, so
+  # raise the retry budget + timeouts and cap socket concurrency (parallel
+  # sockets are the usual trigger for mid-download RST). npm reads these
+  # `NPM_CONFIG_*` vars as the matching `fetch-retries` / `maxsockets` config.
+  NPM_CONFIG_FETCH_RETRIES: '5'
+  NPM_CONFIG_FETCH_RETRY_FACTOR: '3'
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: '20000'
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: '180000'
+  NPM_CONFIG_FETCH_TIMEOUT: '600000'
+  NPM_CONFIG_MAXSOCKETS: '3'
 
 jobs:
   # 1) The primary cross-repo contract net: build @selfhelp/shared and prove
