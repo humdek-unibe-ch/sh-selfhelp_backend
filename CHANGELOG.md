@@ -1,3 +1,28 @@
+# v0.1.30
+
+## Fix: page render crash on array-valued interpolation tokens (issue #56 v2)
+
+Rendering a page whose content referenced a `{{ }}` token that resolves to a
+non-scalar value crashed the entire request with a fatal
+`TypeError: htmlspecialchars(): Argument #1 ($string) must be of type string,
+array given`. The most common trigger is `{{system.user_group}}` — the current
+user's groups are exposed under the `system` namespace as a list. Mustache
+compiles templates to `eval()`'d PHP that calls `htmlspecialchars()` on the
+resolved value, and that `TypeError` is an `\Error` (not an `\Exception`), so it
+bypassed `InterpolationService`'s catch and returned a 500.
+
+- **Array-safe escaper.** `InterpolationService` now configures the Mustache
+  engine with a guarded `escape` callback: scalar values keep the default HTML
+  escaping (`ENT_COMPAT` / UTF-8), while non-scalar values render as an empty
+  string instead of fataling. Arrays remain usable as Mustache sections
+  (`{{#system.user_group}}…{{/system.user_group}}`); only their scalar `{{ }}`
+  output is neutralised.
+- **Catch `\Throwable`.** `performInterpolation()` and `renderTemplate()` now
+  catch `\Throwable` (not just `\Exception`), so any future error in the eval'd
+  template degrades to the original content instead of a 500.
+- Internal robustness fix only — no API route, schema, or response-shape change.
+  `supports.frontend` is unchanged (`>=0.1.55`).
+
 # v0.1.29
 
 ## Remove the superseded per-section interpolation-picker endpoint (issue #56 v2)
