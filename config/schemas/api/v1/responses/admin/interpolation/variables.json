@@ -1,0 +1,27 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Interpolation Variables Response",
+    "description": "Context-aware interpolation variable picker (issue #56 v2): a token => human label map. The token is the value inserted as {{token}} (e.g. 'd.section_230', 'system.user_name', 'recipient.email', 'system.special.activation_link'); the label is the text shown in the CMS variable picker.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "context": {
+                    "type": "string",
+                    "description": "The resolved picker context.",
+                    "enum": ["section", "page", "action", "global"]
+                },
+                "data_variables": {
+                    "type": "object",
+                    "description": "Map of interpolation token => display label.",
+                    "additionalProperties": { "type": "string" }
+                }
+            },
+            "required": ["context", "data_variables"]
+        }
+    },
+    "required": ["data"]
+}

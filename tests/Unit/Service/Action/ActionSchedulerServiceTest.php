@@ -29,6 +29,7 @@ use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\InterpolationService;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
+use App\Service\Core\VariableResolverService;
 use App\Tests\Support\NarrowsJson;
 use Doctrine\Common\Collections\ArrayCollection;
 use PHPUnit\Framework\TestCase;
@@ -122,6 +123,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $cmsPreferences,
             $this->createStub(MailTemplateService::class),
             $this->createStub(ActionTranslationRepository::class),
+            $this->createStub(VariableResolverService::class),
         );
 
         $result = $scheduler->schedule($action, $runtimeConfig, $context, [42]);
@@ -218,6 +220,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $cmsPreferences,
             $this->createStub(MailTemplateService::class),
             $this->createStub(ActionTranslationRepository::class),
+            $this->createStub(VariableResolverService::class),
         );
 
         $result = $scheduler->schedule($action, $runtimeConfig, $context, [42, 43]);
@@ -279,6 +282,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $cmsPreferences,
             $this->createStub(MailTemplateService::class),
             $this->createStub(ActionTranslationRepository::class),
+            $this->createStub(VariableResolverService::class),
         );
 
         self::assertSame([], $scheduler->schedule($action, $runtimeConfig, $context, [999]));
@@ -368,6 +372,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $cmsPreferences,
             $this->createStub(MailTemplateService::class),
             $this->createStub(ActionTranslationRepository::class),
+            $this->createStub(VariableResolverService::class),
         );
 
         $result = $scheduler->schedule($action, $runtimeConfig, $context, [42]);
@@ -469,6 +474,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $cmsPreferences,
             $mailTemplate,
             $this->createStub(ActionTranslationRepository::class),
+            $this->createStub(VariableResolverService::class),
         );
 
         $scheduler->schedule($action, $runtimeConfig, $context, [42]);
@@ -571,6 +577,7 @@ final class ActionSchedulerServiceTest extends TestCase
             $cmsPreferences,
             $this->createStub(MailTemplateService::class),
             $translationRepo,
+            $this->createStub(VariableResolverService::class),
         );
 
         $scheduler->schedule($action, $runtimeConfig, $context, [42]);
@@ -580,5 +587,110 @@ final class ActionSchedulerServiceTest extends TestCase
         $emailConfig = self::asArray($captured);
         self::assertSame('Welcome to the clinic', $emailConfig['subject'] ?? null);
         self::assertSame('Your appointment is confirmed.', $emailConfig['body'] ?? null);
+    }
+
+    /**
+     * Issue #56 v2 golden test: an action email authored with the picker's
+     * `record.<field_key>` and `system.*` tokens must actually resolve at render
+     * time, not just `recipient.*`. `record.*` comes from the trigger's submitted
+     * values (keyed by the immutable field_key) and `system.*` from the shared
+     * VariableResolverService, so every token the action picker offers renders.
+     */
+    public function testEmailSubjectAndBodyResolveRecordAndSystemScopes(): void
+    {
+        $executionDate = new \DateTimeImmutable('2026-01-01 10:00:00', new \DateTimeZone('UTC'));
+
+        $job = [
+            ActionConfig::JOB_NAME => 'qa_email_job',
+            ActionConfig::NOTIFICATION => [
+                ActionConfig::NOTIFICATION_TYPES => LookupService::NOTIFICATION_TYPES_EMAIL,
+                ActionConfig::SUBJECT => 'Re: {{record.section_230}}',
+                ActionConfig::BODY => 'Hi {{recipient.name}}, you logged "{{record.section_230}}" on {{system.project_name}}.',
+                ActionConfig::RECIPIENT => '{{recipient.email}}',
+            ],
+        ];
+        $block = [ActionConfig::JOBS => [$job]];
+        $runtimeConfig = [ActionConfig::BLOCKS => [$block]];
+
+        // Submitted values are keyed by the immutable storage field_key, exactly
+        // matching the picker's `record.<field_key>` tokens.
+        $context = new ActionTriggerContext(
+            $this->createStub(DataTable::class),
+            $this->createStub(DataRow::class),
+            ['section_230' => 'Felt calm today', 'record_id' => 200],
+            LookupService::ACTION_TRIGGER_TYPES_FINISHED,
+            42,
+            LookupService::TRANSACTION_BY_BY_SYSTEM,
+        );
+        $action = $this->createStub(\App\Entity\Action::class);
+        $action->method('getId')->willReturn(1);
+        $action->method('getName')->willReturn('qa_action');
+
+        $conditionEvaluator = $this->createStub(ActionConditionEvaluatorService::class);
+        $conditionEvaluator->method('passes')->willReturn(true);
+
+        $scheduleCalculator = $this->createStub(ActionScheduleCalculatorService::class);
+        $scheduleCalculator->method('calculateDates')->willReturn([$executionDate]);
+
+        $configRuntime = $this->createStub(ActionConfigRuntimeService::class);
+        $configRuntime->method('getIterationCount')->willReturn(1);
+        $configRuntime->method('selectBlocksForIteration')->willReturn([$block]);
+
+        $user = $this->createStub(User::class);
+        $user->method('getId')->willReturn(42);
+        $user->method('getEmail')->willReturn('qa.recipient@selfhelp.test');
+        $user->method('getName')->willReturn('QA Recipient');
+        $user->method('getValidationCodes')->willReturn(new ArrayCollection());
+
+        $userRepository = $this->createStub(UserRepository::class);
+        $userRepository->method('find')->willReturn($user);
+
+        $captured = [];
+        $jobScheduler = $this->createMock(JobSchedulerService::class);
+        $jobScheduler->method('scheduleJob')
+            ->with(self::callback(function (array $jobData) use (&$captured): bool {
+                $captured = self::asArray($jobData['email_config'] ?? []);
+
+                return true;
+            }))
+            ->willReturn($this->createStub(ScheduledJob::class));
+
+        $cmsPreferences = $this->createStub(CmsPreferenceService::class);
+        $cmsPreferences->method('getDefaultTimezoneCode')->willReturn('UTC');
+
+        // system.* resolves through the same service a page/section render uses.
+        $variableResolver = $this->createStub(VariableResolverService::class);
+        $variableResolver->method('getAllVariables')->willReturn([
+            'project_name' => 'QA Clinic',
+            'current_datetime' => '2026-01-01 10:00:00',
+        ]);
+
+        $scheduler = new ActionSchedulerService(
+            $conditionEvaluator,
+            $scheduleCalculator,
+            $configRuntime,
+            $jobScheduler,
+            $userRepository,
+            $this->createStub(DataTableRepository::class),
+            new ActionTemplateContextBuilder(new InterpolationService()),
+            $cmsPreferences,
+            $this->createStub(MailTemplateService::class),
+            $this->createStub(ActionTranslationRepository::class),
+            $variableResolver,
+        );
+
+        $scheduler->schedule($action, $runtimeConfig, $context, [42]);
+
+        $emailConfig = self::asArray($captured);
+        self::assertSame(
+            'Re: Felt calm today',
+            $emailConfig['subject'] ?? null,
+            '{{record.<field_key>}} must resolve in the action email subject.',
+        );
+        self::assertSame(
+            'Hi QA Recipient, you logged "Felt calm today" on QA Clinic.',
+            $emailConfig['body'] ?? null,
+            'recipient.*, record.<field_key> and system.* must all resolve in the action email body.',
+        );
     }
 }

@@ -19,6 +19,7 @@ use App\Exception\ServiceException;
 use App\Repository\StyleRepository;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
+use App\Service\CMS\DataColumnService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
@@ -36,6 +37,7 @@ class SectionFieldService extends BaseService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly DataTableService $dataTableService,
+        private readonly DataColumnService $dataColumnService,
         private readonly CacheService $cache,
         private readonly AdminAssetService $adminAssetService
     ) {
@@ -404,19 +406,41 @@ class SectionFieldService extends BaseService
             $this->validateStyleFields($allFieldIds, (int) $style->getId(), $this->entityManager);
         }
 
-        // Check if displayName field is being updated for form sections
+        // The form input/section `name` field doubles as the human label. Capture
+        // its new value up-front so renaming an input on Save propagates to the
+        // stored data the same way renaming a form propagates to its data table
+        // (issue #56).
         $isFormSection = $this->dataTableService->isFormSection($section);
-        $displayNameUpdate = null;
-        if ($isFormSection) {
-            $displayNameUpdate = $this->extractDisplayNameUpdate($propertyFields);
-        }
+        $nameUpdate = $this->extractDisplayNameUpdate($propertyFields);
 
         // Update field translations using trait method
         $this->updateSectionFieldTranslations((int) $section->getId(), $contentFields, $propertyFields, $this->entityManager);
 
-        // Sync displayName to dataTable if this is a form section and displayName was updated
-        if ($isFormSection && $displayNameUpdate !== null) {
-            $this->dataTableService->updateDataTableDisplayName($section, $displayNameUpdate);
+        if ($nameUpdate !== null) {
+            if ($isFormSection) {
+                // Form section: its name drives the data table display name (auto
+                // source only; a manually-locked table is left untouched).
+                $this->dataTableService->updateDataTableDisplayName($section, $nameUpdate);
+            } else {
+                // Form input section: its name drives the auto display_name of the
+                // immutable section_<id> column. No-op when no column exists yet or
+                // the label is manually locked. Bust the affected tables' caches so
+                // the Data browser + variable picker reflect the new label.
+                $affectedTableIds = $this->dataColumnService->renameAutoColumnByFieldKey(
+                    'section_' . (int) $section->getId(),
+                    $nameUpdate
+                );
+                foreach ($affectedTableIds as $tableId) {
+                    $this->cache
+                        ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                        ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
+                }
+                if ($affectedTableIds !== []) {
+                    $this->cache
+                        ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                        ->invalidateAllListsInCategory();
+                }
+            }
         }
 
         // Invalidate section cache after updates

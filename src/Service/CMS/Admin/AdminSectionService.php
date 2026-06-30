@@ -22,7 +22,7 @@ use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\CMS\Admin\SectionFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\SectionCreationService;
-use App\Service\CMS\DataVariableResolver;
+use App\Service\CMS\DataTableService;
 use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -45,7 +45,7 @@ class AdminSectionService extends BaseService
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly SectionCreationService $sectionCreationService,
         private readonly SectionExportImportService $sectionExportImportService,
-        private readonly DataVariableResolver $dataVariableResolver,
+        private readonly DataTableService $dataTableService,
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
@@ -64,17 +64,20 @@ class AdminSectionService extends BaseService
     {
         $cacheKey = "section_{$section_id}_" . ($page_id ?? 'auto');
 
-        $result = $this->cache
+        // The section payload (section + fields + languages) is cached under this
+        // SECTION scope; updateSection() invalidates the scope after edits. The
+        // interpolation variable picker is NOT part of this payload — it is served
+        // fresh by the unified interpolation endpoint
+        // (GET /admin/interpolation/variables?context=section) so a column added
+        // by a later form submission appears immediately without re-saving the
+        // section.
+        return $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_SECTION, $section_id)
             ->getItem(
                 $cacheKey,
                 fn() => $this->fetchSectionFromDatabase($page_id, $section_id)
             );
-        
-        $globalVariables = $this->dataVariableResolver->getGlobalVariables();
-        $result['data_variables'] = array_merge($this->asArray($result['data_variables'] ?? []), $globalVariables);
-        return $result;
     }
 
     /**
@@ -137,12 +140,24 @@ class AdminSectionService extends BaseService
 
         $normalizedSection = $this->normalizeSection($section);
 
-        return [
+        $result = [
             'section' => $normalizedSection,
             'fields' => $formattedFields,
             'languages' => $languages,
-            'data_variables' => $this->dataVariableResolver->getDataVariables($normalizedSection),
         ];
+
+        // For a form section, surface the underlying data table (storage name +
+        // current label + lock state) so the inspector can show where
+        // submissions are stored, warn when the label is admin-locked, and deep
+        // link to the Data browser (issue #56).
+        if ($this->dataTableService->isFormSection($section)) {
+            $tableInfo = $this->dataTableService->getFormSectionTableInfo((int) $section->getId());
+            if ($tableInfo !== null) {
+                $result['data_table'] = $tableInfo;
+            }
+        }
+
+        return $result;
     }
 
     /**

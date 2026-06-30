@@ -11,6 +11,7 @@ namespace App\Service\Auth;
 
 use App\Repository\PageRepository;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\GlobalVariableService;
 use App\Service\Core\InterpolationService;
 use App\Service\Core\LookupService;
 use Doctrine\DBAL\Connection;
@@ -48,6 +49,7 @@ class MailTemplateService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly InterpolationService $interpolationService,
         private readonly LoggerInterface $logger,
+        private readonly GlobalVariableService $globalVariableService,
     ) {
     }
 
@@ -77,19 +79,101 @@ class MailTemplateService
         $fromName  = $global['from_name']  ?? MailTemplateDefaults::FROM_NAME;
         $replyTo   = $global['reply_to']   ?? MailTemplateDefaults::REPLY_TO;
 
+        $context = $this->buildMailContext($vars, $locale);
+
         $config = [
             'from_email' => $fromEmail,
             'from_name'  => $fromName,
             'reply_to'   => $replyTo,
             'is_html'    => $isHtml,
-            'subject'    => $this->interpolationService->interpolate((string) $subject, $vars),
-            'body'       => $this->interpolationService->interpolate((string) $body, $vars),
+            'subject'    => $this->interpolationService->interpolate((string) $subject, $context),
+            'body'       => $this->interpolationService->interpolate((string) $body, $context),
             // Account/security mail must reach the user even when they disabled
             // platform emails (issue #29). Welcome mail stays preference-controlled.
             'delivery_policy' => $this->resolveDeliveryPolicy($type),
         ];
 
         return array_merge($config, $overrides);
+    }
+
+    /**
+     * Build the interpolation context for a mail template (issue #56 v2).
+     *
+     * Callers still pass flat `$vars` (`user_name`, `code`, `validation_url`, …);
+     * this maps them to the unified CMS namespaces so the mail-config picker
+     * (`{{system.user_name}}`, `{{system.user_code}}`, `{{system.special.
+     * activation_link}}`, `{{globals.*}}`) resolves at send time. The original
+     * flat keys are kept at the top level as a safety net so any
+     * admin-customised template still using the old `{{user_name}}` form keeps
+     * working during the transition.
+     *
+     * @param array<string, mixed> $vars   Flat caller-provided placeholder values.
+     * @param string               $locale Resolved mail locale (for globals).
+     * @return array<string, mixed> Mustache context.
+     */
+    private function buildMailContext(array $vars, string $locale): array
+    {
+        // Map the flat auth/mail vars to the shared system / system.special scopes.
+        $flatToSystem = [
+            'user_name' => 'user_name',
+            'code'      => 'user_code',
+        ];
+        $flatToSpecial = [
+            'validation_url' => 'activation_link',
+            'reset_url'      => 'reset_link',
+            'platform_url'   => 'platform_link',
+        ];
+
+        $system = [];
+        $special = [];
+        foreach ($vars as $key => $value) {
+            if (isset($flatToSystem[$key])) {
+                $system[$flatToSystem[$key]] = $value;
+            } elseif (isset($flatToSpecial[$key])) {
+                $special[$flatToSpecial[$key]] = $value;
+            } else {
+                // Unknown caller var: still expose it under system.* for forward use.
+                $system[$key] = $value;
+            }
+        }
+        if ($special !== []) {
+            $system['special'] = $special;
+        }
+
+        // Keep the flat keys too (back-compat for any old `{{user_name}}` copy).
+        $context = $vars;
+        $context['system'] = $system;
+
+        $globals = $this->resolveGlobalValues($locale);
+        if ($globals !== []) {
+            $context['globals'] = $globals;
+        }
+
+        return $context;
+    }
+
+    /**
+     * Resolve global values (`sh-global-values`) for the mail locale so
+     * `{{globals.*}}` interpolates in mail templates too.
+     *
+     * @return array<array-key, mixed> global key => value
+     */
+    private function resolveGlobalValues(string $locale): array
+    {
+        $languageId = $this->getLanguageIdByLocale($locale);
+        if ($languageId === null) {
+            return [];
+        }
+
+        try {
+            return $this->globalVariableService->getGlobalVariableValues($languageId);
+        } catch (\Throwable $e) {
+            $this->logger->warning('MailTemplateService: failed to resolve global values for mail', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     /**

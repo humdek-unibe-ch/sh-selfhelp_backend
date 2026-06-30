@@ -20,6 +20,7 @@ use App\Service\CMS\CmsPreferenceService;
 use App\Service\Core\BaseService;
 use App\Service\Core\JobSchedulerService;
 use App\Service\Core\LookupService;
+use App\Service\Core\VariableResolverService;
 
 /**
  * Expands runtime action definitions into concrete scheduled jobs.
@@ -40,8 +41,50 @@ class ActionSchedulerService extends BaseService
         private readonly ActionTemplateContextBuilder $templateContextBuilder,
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly MailTemplateService $mailTemplateService,
-        private readonly ActionTranslationRepository $actionTranslationRepository
+        private readonly ActionTranslationRepository $actionTranslationRepository,
+        private readonly VariableResolverService $variableResolverService
     ) {
+    }
+
+    /**
+     * Build the structured action template context for one recipient, populating
+     * all three documented scopes so every token the picker offers actually
+     * resolves at render time (issue #56 v2):
+     *  - `recipient.*` from the recipient user + active validation code,
+     *  - `record.<field_key>` from the trigger's submitted values (already keyed
+     *    by the immutable storage field_key, so it matches the picker tokens),
+     *  - `system.*` (+ global values) from {@see VariableResolverService} — the
+     *    same source a page/section render uses, so `{{system.*}}` interpolates
+     *    identically everywhere.
+     *
+     * @return array<string, mixed>
+     *   The structured context keyed by scope (`recipient`, `record`, `system`).
+     */
+    private function buildTemplateContext(User $recipient, ActionTriggerContext $context): array
+    {
+        return $this->templateContextBuilder->buildContext(
+            $recipient,
+            $this->getActiveValidationCode($recipient),
+            $context->submittedValues,
+            $this->resolveSystemScope($recipient)
+        );
+    }
+
+    /**
+     * Resolve the `system.*` scope values (project name, date/time, user,
+     * platform, maintenance note + global values) via the shared resolver, so
+     * action templates interpolate the same `{{system.*}}` set as page/section
+     * content. Localised to the recipient's language for global-value
+     * translation, falling back to the CMS default language.
+     *
+     * @return array<string, mixed>
+     */
+    private function resolveSystemScope(User $recipient): array
+    {
+        $languageId = $recipient->getLanguage()?->getId() ?? $this->cmsPreferenceService->getDefaultLanguageId();
+        $languageId = (is_int($languageId) && $languageId > 0) ? $languageId : 1;
+
+        return $this->variableResolverService->getAllVariables(null, $languageId, true);
     }
 
     /**
@@ -264,7 +307,7 @@ class ActionSchedulerService extends BaseService
         ];
 
         if ($jobData['type'] === LookupService::JOB_TYPES_EMAIL) {
-            return $this->scheduleEmailJobs($action, $jobData, $runtimeConfig, $notificationConfig, $user, $recipientUserId, $context->transactionBy);
+            return $this->scheduleEmailJobs($action, $jobData, $runtimeConfig, $notificationConfig, $user, $recipientUserId, $context);
         }
 
         if ($jobData['type'] === LookupService::JOB_TYPES_TASK) {
@@ -274,7 +317,7 @@ class ActionSchedulerService extends BaseService
                 'reason' => $action->getName(),
             ];
         } else {
-            $jobData['notification_config'] = $this->buildNotificationConfig($action, $notificationConfig, $user);
+            $jobData['notification_config'] = $this->buildNotificationConfig($action, $notificationConfig, $user, $context);
         }
 
         $scheduledJob = $this->jobSchedulerService->scheduleJob($jobData, $context->transactionBy);
@@ -300,6 +343,8 @@ class ActionSchedulerService extends BaseService
      *   The action notification section for the email job.
      * @param int $recipientUserId
      *   The action recipient user id (owner of the `{{recipient.*}}` context).
+     * @param ActionTriggerContext $context
+     *   The trigger context, source of the `{{record.*}}` submitted values.
      *
      * @return ScheduledJob[]
      *   One scheduled job per resolved address (empty when none resolve).
@@ -311,10 +356,11 @@ class ActionSchedulerService extends BaseService
         array $notificationConfig,
         User $recipient,
         int $recipientUserId,
-        string $transactionBy
+        ActionTriggerContext $context
     ): array {
-        $emailConfig = $this->buildEmailConfig($action, $notificationConfig, $recipient);
-        $addresses = $this->resolveRecipientAddresses($runtimeConfig, $notificationConfig, $recipient);
+        $transactionBy = $context->transactionBy;
+        $emailConfig = $this->buildEmailConfig($action, $notificationConfig, $recipient, $context);
+        $addresses = $this->resolveRecipientAddresses($runtimeConfig, $notificationConfig, $recipient, $context);
         if ($addresses === []) {
             return [];
         }
@@ -379,16 +425,13 @@ class ActionSchedulerService extends BaseService
      * @return list<string>
      *   The trimmed, de-duplicated, non-empty recipient addresses.
      */
-    private function resolveRecipientAddresses(array $runtimeConfig, array $notificationConfig, User $recipient): array
+    private function resolveRecipientAddresses(array $runtimeConfig, array $notificationConfig, User $recipient, ActionTriggerContext $triggerContext): array
     {
         if (($runtimeConfig[ActionConfig::TARGET_GROUPS] ?? false) === true) {
             return $this->splitAddresses((string) ($recipient->getEmail() ?? ''));
         }
 
-        $context = $this->templateContextBuilder->buildContext(
-            $recipient,
-            $this->getActiveValidationCode($recipient)
-        );
+        $context = $this->buildTemplateContext($recipient, $triggerContext);
         $rendered = $this->templateContextBuilder->render(
             $this->asString($notificationConfig[ActionConfig::RECIPIENT] ?? ''),
             $context
@@ -554,12 +597,9 @@ class ActionSchedulerService extends BaseService
      *   The shared email configuration (without `recipient_emails`, which is set
      *   per address by {@see scheduleEmailJobs()}).
      */
-    private function buildEmailConfig(Action $action, array $notificationConfig, User $recipient): array
+    private function buildEmailConfig(Action $action, array $notificationConfig, User $recipient, ActionTriggerContext $triggerContext): array
     {
-        $context = $this->templateContextBuilder->buildContext(
-            $recipient,
-            $this->getActiveValidationCode($recipient)
-        );
+        $context = $this->buildTemplateContext($recipient, $triggerContext);
 
         // Sender identity defaults to the CMS mail config (sh-mail-config page)
         // so admins control From/Reply-To centrally; the action may still
@@ -627,12 +667,9 @@ class ActionSchedulerService extends BaseService
      * @return array<string, mixed>
      *   The normalized notification configuration stored on the scheduled job.
      */
-    private function buildNotificationConfig(Action $action, array $notificationConfig, User $recipient): array
+    private function buildNotificationConfig(Action $action, array $notificationConfig, User $recipient, ActionTriggerContext $triggerContext): array
     {
-        $context = $this->templateContextBuilder->buildContext(
-            $recipient,
-            $this->getActiveValidationCode($recipient)
-        );
+        $context = $this->buildTemplateContext($recipient, $triggerContext);
 
         return [
             'subject' => $this->templateContextBuilder->render(

@@ -1,42 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Welcome to SelfHelp Platform</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2c3e50;">Welcome to SelfHelp Platform!</h2>
-
-        <p>Hello {{user_name}},</p>
-
-        <p><strong>Congratulations!</strong> Your account has been successfully validated and is now active.</p>
-
-        <p>You can now access all the features of our platform:</p>
-
-        <ul style="margin: 20px 0; padding-left: 30px;">
-            <li>Access your personalized dashboard</li>
-            <li>Connect with our community</li>
-            <li>Explore available resources and tools</li>
-            <li>Participate in discussions and activities</li>
-        </ul>
-
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{platform_url}}"
-               style="background-color: #27ae60; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Get Started
-            </a>
-        </div>
-
-        <p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
-
-        <p>Thank you for joining us, and welcome aboard!</p>
-
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-
-        <p style="font-size: 12px; color: #666;">
-            This is an automated message from the SelfHelp Platform.
-        </p>
-    </div>
-</body>
-</html>
+<h2>Welcome to SelfHelp Platform!</h2>
+<p>Hello {{system.user_name}},</p>
+<p><strong>Congratulations!</strong> Your account has been successfully validated and is now active.</p>
+<p>You can now access all the features of our platform:</p>
+<ul>
+    <li>Access your personalized dashboard</li>
+    <li>Connect with our community</li>
+    <li>Explore available resources and tools</li>
+    <li>Participate in discussions and activities</li>
+</ul>
+<p style="text-align: center"><a href="{{system.special.platform_link}}" class="email-button">Get Started</a></p>
+<p>If you have any questions or need assistance, please don't hesitate to contact our support team.</p>
+<p>Thank you for joining us, and welcome aboard!</p>
+<hr>
+<p class="email-muted">This is an automated message from the SelfHelp Platform.</p>

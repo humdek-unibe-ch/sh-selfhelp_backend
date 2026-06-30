@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 typography styles (`@selfhelp/shared` `typography` category).
-Last verified: 2026-06-22.
+Last verified: 2026-06-29.
 Source of truth: `src/types/styles/typography.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Typography styles render text — headings, paragraphs, quotes, code, and rich
@@ -37,11 +37,11 @@ semantic heading level on both platforms; `color` tints the heading;
 
 **Purpose.** Mantine `Text` — a styled paragraph or inline run of text.
 
-**Administrators.** The workhorse for body copy. Set size, colour, weight, alignment, and decoration. Use the gradient variant for accent text. Text is translatable. The `text` field is a **rich-text** field (`markdown-inline`): you can select a word and press **Ctrl/⌘ + B** (bold), **+ I** (italic) or **+ U** (underline), or add a link — the inspector shows a `Rich text:` hint where this is allowed. The formatting renders the same on the web frontend **and** the mobile app.
+**Administrators.** The workhorse for body copy. Set size, colour, weight, alignment, and decoration. Use the gradient variant for accent text. Text is translatable. The `text` field is a **full rich-text** field (`textarea`): press **Enter** for multiple paragraphs and use the toolbar for headings, bullet/numbered lists, links, alignment and inline bold/italic/underline — plus `{{ }}` interpolation. The block formatting renders on the web frontend; the mobile app currently shows the inline subset.
 
-**Developers.** Renders `<Text>`. The `text` field is `markdown-inline`, so it can carry the safe inline subset (`<strong>`/`<em>`/`<u>`/`<a>`). Web renders it via `sanitizeHtmlForParsing` + `html-react-parser` (XSS-stripped, block tags flattened to inline); mobile parses it with `parseInlineRich` and renders nested `<Text>` runs through `<InlineText>` (RN cannot render HTML). A plain string still passes straight through. `web_text_span` renders it inline (`<span>`); `web_text_inherit` inherits parent typography; gradient needs `web_text_gradient`.
+**Developers.** Renders `<Text>`. The `text` field is `textarea`, so it carries full block HTML (headings, lists, paragraphs, alignment, links). Web renders the real block structure via `renderRichBlock` (`sanitizeHtmlForBlock` — DOMPurify-cleaned, block tags **kept**) inside a `<Text component="div">` when the content has markup, so nested blocks stay valid HTML; a plain string passes straight through inline. Mobile still parses the inline subset with `parseInlineRich` + `<InlineText>` (block tags degrade to inline there). `web_text_span` renders inline (`<span>`) only for plain content; `web_text_inherit` inherits parent typography; gradient needs `web_text_gradient`.
 
-**Distinctive fields.** `text` (the copy, `markdown-inline` — inline bold/italic/underline/link allowed), `web_text_font_weight`, `web_text_font_style`, `web_text_text_decoration`, `web_text_text_transform`, `web_text_align`, `web_text_variant` (default/gradient), `web_text_gradient`, `web_text_truncate`, `web_text_line_clamp`, `web_text_inherit`, `web_text_span`, `web_size`, `color`.
+**Distinctive fields.** `text` (the copy, `textarea` — full rich text: headings/lists/links/alignment + inline marks), `web_text_font_weight`, `web_text_font_style`, `web_text_text_decoration`, `web_text_text_transform`, `web_text_align`, `web_text_variant` (default/gradient), `web_text_gradient`, `web_text_truncate`, `web_text_line_clamp`, `web_text_inherit`, `web_text_span`, `web_size`, `color`.
 
 **Children.** No.
 
@@ -67,11 +67,11 @@ platform.
 
 **Purpose.** Mantine `Highlight` — text with one or more substrings highlighted.
 
-**Administrators.** Draw attention to keywords inside a sentence. Put the full sentence in `text` and the word(s) to highlight in `highlight_highlight`. The shared `text` field is `markdown-inline`, but `highlight` needs plain text for substring matching, so any inline bold/italic/underline tags are **stripped to plain text** on both platforms (use the `text` style if you need inline formatting).
+**Administrators.** Draw attention to keywords inside a sentence. Put the full sentence in `text` and the word(s) to highlight in `highlight_highlight`. The shared `text` field is now `textarea`, but `highlight` needs plain text for substring matching, so any formatting (inline marks **and** block tags) is **stripped to plain text** on both platforms — keep highlight content to a single styled sentence; use the `text` style if you need formatting.
 
-**Developers.** Renders `<Highlight highlight={…}>`. The `text` field is the shared `markdown-inline` field (same one the `text` style uses); because Mantine `Highlight` matches a plain substring, the renderer runs `stripHtmlTags` (web) / `stripHtmlToText` (mobile) so literal tags never leak and the highlight match works.
+**Developers.** Renders `<Highlight highlight={…}>`. The `text` field is the shared `textarea` field (same one the `text` style uses); because Mantine `Highlight` matches a plain substring, the renderer runs `stripHtmlTags` (web) / `stripHtmlToText` (mobile) so literal tags never leak and the highlight match works regardless of the richer editor.
 
-**Distinctive fields.** `text` (full text, shared `markdown-inline` field), `highlight_highlight` (substring(s) to highlight), `color`.
+**Distinctive fields.** `text` (full text, shared `textarea` field — rendered as plain text here), `highlight_highlight` (substring(s) to highlight), `color`.
 
 **Children.** No.
 
@@ -81,11 +81,11 @@ platform.
 
 **Purpose.** Mantine `Blockquote` — a quotation with an optional citation and icon.
 
-**Administrators.** Use for testimonials or quotes. Add the quote in `blockquote_content`, the source in `cite`, and optionally an icon. The quote body is a **rich-text** field (`markdown-inline`): select a word and press **Ctrl/⌘ + B / I / U** or add a link — it renders the same on web and mobile.
+**Administrators.** Use for testimonials or quotes. Add the quote in `blockquote_content`, the source in `cite`, and optionally an icon. The quote body is a **full rich-text** field (`textarea`): press **Enter** for multiple paragraphs and use the toolbar for headings, lists, links, alignment and inline marks. The block formatting renders on the web; the mobile app shows the inline subset.
 
-**Developers.** Renders `<Blockquote cite icon>`. The quote body is a dedicated `blockquote_content` (`markdown-inline`) field — **not** the generic shared `content` — so authors can format inside the quote without affecting the `code` style (which keeps the plain `content`). Web renders it via `sanitizeHtmlForParsing` + `html-react-parser`; mobile via `parseInlineRich` + `<InlineText>`.
+**Developers.** Renders `<Blockquote cite icon>`. The quote body is a dedicated `blockquote_content` (`textarea`) field — **not** the generic shared `content` — so authors can format inside the quote without affecting the `code` style (which keeps the plain `content`). `<Blockquote>` is itself a block element, so the web renderer emits the real block structure via `renderRichBlock` (`sanitizeHtmlForBlock`); mobile renders the inline subset via `parseInlineRich` + `<InlineText>`.
 
-**Distinctive fields.** `blockquote_content` (quote, `markdown-inline`), `cite` (attribution), `web_left_icon`, `web_icon_size`, `color`.
+**Distinctive fields.** `blockquote_content` (quote, `textarea` — full rich text), `cite` (attribution), `web_left_icon`, `web_icon_size`, `color`.
 
 **Children.** No.
 

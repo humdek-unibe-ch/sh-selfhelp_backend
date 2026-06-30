@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-26.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > ⚠️ **Document status.** This file describes the historical legacy schema
@@ -332,6 +332,100 @@ CREATE TABLE `sections_fields_translation` (
 The data tables translation system allows for multi-language support in dynamic data tables (`data_tables`, `data_rows`, `data_cols`, `data_cells`). This system enables storing and retrieving translated content for user-generated data in different languages.
 
 #### Core Tables Structure
+
+#### `data_cols` - Column Definitions (immutable key + mutable label)
+
+```sql
+CREATE TABLE `data_cols` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `id_data_tables` int NOT NULL,
+  `field_key` varchar(255) DEFAULT NULL,
+  `display_name` varchar(255) DEFAULT NULL,
+  `id_display_name_source` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_data_cols_id_data_tables_field_key` (`id_data_tables`,`field_key`),
+  KEY `IDX_F057C423BE6458B2` (`id_display_name_source`),
+  CONSTRAINT `fk_data_cols_id_data_tables` FOREIGN KEY (`id_data_tables`) REFERENCES `data_tables` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `FK_F057C423BE6458B2` FOREIGN KEY (`id_display_name_source`) REFERENCES `lookups` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+```
+
+Column identity is split into a stable key and a human label (issue #56,
+migrations `Version20260626120120` + `Version20260626143127`):
+
+- **`field_key`** — the **immutable** storage identity. `data_cells` link to a
+  column by `id_data_cols`, and the write path (`DataColumnService`)
+  resolves/creates a column by `(id_data_tables, field_key)`. It is an **opaque
+  ASCII identifier** treated as a literal everywhere — dotted survey keys
+  (`household.member_name`) are a single key, never an object path. It carries
+  **no special collation**: it inherits the table default
+  (`utf8mb3_general_ci`), so the `DataCol` entity declares no per-column
+  collation and `doctrine:schema:validate` stays in sync. (The earlier
+  `utf8mb3_bin` override was dropped — a case-sensitive key was unnecessary
+  because keys are now derived, not free-text, and the override produced a
+  phantom Doctrine diff.)
+- **`display_name`** — the **mutable** human label shown in the admin UI,
+  exports header fallback, and the interpolation variable picker. Changing it
+  never changes `field_key`, so it cannot fork a column or split historical from
+  new submissions.
+- **`id_display_name_source`** — label provenance modelled as a nullable FK to
+  `lookups` (group `dataColDisplayNameSource`, codes `auto` | `manual`; migration
+  `Version20260626143127`). A **NULL FK is the default `auto`** (label derived
+  from the first submission / survey title); it points at the `manual` lookup
+  only once a label is curated through
+  `PATCH /admin/data/tables/{tableName}/columns/display-name`. A `manual` label
+  is never overwritten by a later submission. The `DataCol` entity exposes the
+  resolved code via `getDisplayNameSourceCode()` / `isDisplayNameManual()`.
+- `UNIQUE (id_data_tables, field_key)` makes the write-time lookup safe and fast;
+  the stored helper `build_dynamic_columns` pivots on `field_key` with
+  backtick-safe aliases.
+
+`data_tables` carries the **same label provenance** on the table itself:
+**`data_tables.id_display_name_source`** is a nullable FK to `lookups` (reusing
+the `dataColDisplayNameSource` `auto` | `manual` group; migration
+`Version20260629074004`). NULL = `auto`, so the owning form section's `name`
+field keeps the table `display_name` in sync on save; it points at the `manual`
+lookup once an admin renames the table through
+`PATCH /admin/data/tables/{tableName}/display-name`, after which section saves no
+longer overwrite it (the table is `locked`). Renaming a form input likewise
+propagates its `name` to the auto `display_name` of the immutable `section_<id>`
+column on save (issue #56).
+
+##### `field_key` derivation contract (per data source)
+
+`field_key` must be **stable across label/name edits** so a renamed input keeps
+writing into the SAME column (issue #56: renaming a form input must only change
+`display_name`, never fork a second column). The key is **never the raw human
+name** — each data source owns how its key is derived, and the writer is
+responsible for passing a stable key plus the human label separately:
+
+| Data source | `data_tables.name` | `field_key` | `display_name` (auto) | Derived by |
+|-------------|--------------------|-------------|-----------------------|------------|
+| Core CMS forms (`form-record` / `form-log`) | the **form section id** (e.g. `"123"`) | **`section_<input section id>`** (e.g. `section_456`) | the input's current `name` field | `FormFieldKeyResolver` (remap in `DataService`) |
+| SurveyJS plugin | `sh2_surveyjs_<surveyId>` | **`question.name`** | the question `title` | `CoreDataTableWriter` (plugin) |
+| `UserValidationController` etc. | `user_validation_inputs` | the submitted key (unchanged) | — | direct |
+| Future sources | their own table name | their own **documented stable id** | their own label | their own writer |
+
+How the core-form contract is enforced (the part that fixes issue #56):
+
+- Every CMS form input **is a section**, and its section id never changes, so
+  `section_<id>` is a perfect stable key. Renaming the input only edits the
+  `name` field content (the label), not the section id.
+- The frontend and mobile renderers keep submitting `form_data` keyed by the
+  human input **name** (no client change needed). The backend owns the mapping:
+  - **write** — `DataService::saveData()` calls `mapFormFieldKeys()`, which uses
+    `FormFieldKeyResolver` to rewrite `name → section_<id>` and carries the name
+    along as the auto `display_name`;
+  - **read** — prefill (`getFormRecordDataWithAllLanguages`), `show-user-input`
+    (`SectionUtilityService::applySectionData`) and CSV/JSON export
+    (`AdminDataController`) rewrite `section_<id> → current name` via
+    `remapRecordKeysToInputNames()` / `remapEntriesToInputNames()`, so every
+    human-facing surface shows the current input name and binds prefill by name.
+- `FormFieldKeyResolver` returns an **empty map** for any non-numeric table name
+  (`sh2_surveyjs_*`, `user_validation_inputs`, …), so non-core sources flow
+  through untouched and keep their own keys. The `section_` prefix also keeps the
+  key a non-numeric string so it never collides with PHP/JSON numeric-array-key
+  coercion as it flows through the save/read pipeline.
 
 #### `data_cells` - Data Cell Values with Language Support
 ```sql

@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-24.
+Last verified: 2026-06-29.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -237,6 +237,135 @@ the same change wave:
 > `@selfhelp/shared 1.15.3` remains the additive protocol anchor within both
 > consumers' caret ranges.
 
+> **Core 0.1.23 (immutable data-column `field_key` ⇄ frontend 0.1.48):** core
+> `0.1.23` resolves host issue #56 — `data_cols` now stores an **immutable**
+> `field_key` (the storage key, derived per data source — `section_<input id>`
+> for core forms, `question.name` for SurveyJS — inheriting the table default
+> collation) plus a **mutable** `display_name`, with a label-provenance FK
+> `id_display_name_source` → `lookups` (`auto` | `manual`; NULL = `auto`) that
+> prevents the next submission from overwriting an admin-curated label, all
+> behind `UNIQUE (id_data_tables, field_key)`. This is a **breaking
+> response-shape change the frontend consumes**: the admin columns endpoint
+> returns `{ id, fieldKey, displayName }` (was `{ id, name }`), and the
+> interpolation `data_variables` `token => label` map (the CMS variable picker
+> shows and inserts the readable input name, never the opaque key) moved out of
+> the cached `getSection` payload into its own `GET
+> /cms-api/v1/admin/sections/{section_id}/data-variables` endpoint (permission
+> `admin.page.read`, migration `Version20260629063147`) so a column added by a
+> later submission appears without re-saving the section. A new
+> `PATCH /cms-api/v1/admin/data/tables/{tableName}/columns/display-name`
+> (permission `admin.data.update_columns`, migration `Version20260626121351`)
+> curates labels without touching the storage key. **Frontend 0.1.48** reads the
+> new column shape and fetches the token/label picker endpoint, so **both floors move in
+> lockstep**: frontend `supports.core` `0.1.21 → 0.1.23` and backend
+> `supports.frontend` `0.1.30 → 0.1.48`. The live pairing is now **frontend
+> `>=0.1.48` ⇄ core `>=0.1.23`** (both `<0.2.0`). **No `@selfhelp/shared`
+> change** — the affected admin-column + `data_variables` types live in the
+> frontend, not the shared package, and **mobile does not consume them** (the
+> mobile renderer submits by the field input key, which is unchanged), so neither
+> is bumped. The matching SurveyJS plugin guard (block renaming/removing an
+> answered `question.name` once responses exist) ships in plugin `0.3.4`.
+
+> **Core 0.1.24 (display-name propagation + admin lock):** additive issue #56
+> follow-up — renaming a form input propagates to its `section_<id>` column's
+> auto label on save, `data_tables` gains the same `auto|manual` provenance FK
+> (migration `Version20260629074004`) with a new
+> `PATCH /cms-api/v1/admin/data/tables/{tableName}/display-name` (permission
+> `admin.data.update_tables`, migration `Version20260629074552`), and a `locked`
+> flag + form-section `data_table` inspector block are exposed. All additive, so
+> backend `supports.frontend` stayed `>=0.1.48`; **frontend 0.1.49** adopted the
+> lock UI and raised its `supports.core` `0.1.23 → 0.1.24`.
+>
+> **Core 0.1.25 (Interpolation v2: field_key tokens ⇄ frontend 0.1.52):** the
+> `{{ }}` editor and the render-time `retrieved_data` scope now resolve data
+> variables by the **immutable `field_key`** instead of the mutable input name.
+> `DataVariableResolver` emits `scope.field_key => display_name` (the picker shows
+> the label, inserts the key token), `SectionUtilityService` keeps the scope keyed
+> by `field_key` (no name remap), and a `show-user-input` section's payload gains
+> a `field_labels` (`field_key => display_name`) header map with `entries` kept
+> keyed by `field_key`. This is a **breaking render/contract change the frontend
+> consumes** (label chips that store `{{field_key}}` + show-user-input headers
+> that default to `display_name`), so **both floors move in lockstep**: frontend
+> `supports.core` `0.1.24 → 0.1.25` and backend `supports.frontend`
+> `0.1.48 → 0.1.52`. The live pairing is now **frontend `>=0.1.52` ⇄ core
+> `>=0.1.25`** (both `<0.2.0`). **No `@selfhelp/shared` change** — the chip/label
+> round-trip + show-user-input header map live in the frontend; mobile submits by
+> the input key (unchanged). No data migration ships; pre-release `{{scope.name}}`
+> content is recreated against the new field_key picker.
+
+> **Core 0.1.26 (unified interpolation picker + mail namespacing ⇄ frontend
+> 0.1.53):** additive Interpolation v2 follow-up. A single context-aware endpoint
+> `GET /cms-api/v1/admin/interpolation/variables` (route
+> `admin_interpolation_variables_get`, permission `admin.page.read`, migration
+> `Version20260629110606`) serves the `{{ }}` picker catalog for any context
+> (`section` | `page` | `action` | `global`) via `InterpolationVariableService`
+> over `DataVariableResolver`'s per-context catalogs; the seeded auth mail
+> templates move onto the shared `system.*` namespace
+> (`{{system.user_name}}`/`{{system.user_code}}` + one-time
+> `{{system.special.activation_link|reset_link|platform_link}}`, with
+> `MailTemplateService` mapping the flat caller vars onto that nested context and
+> legacy flat tokens still resolving); the action picker offers
+> `recipient.*`/`record.<field_key>`/`system.*`. **Frontend 0.1.53** adopts the
+> unified endpoint across the page/config, action, data-config and custom-CSS/JSON
+> surfaces (and the section hook delegates to it), so it requires the new route and
+> raises its `supports.core` `0.1.25 → 0.1.26`. The route is additive and the
+> legacy section data-variables route still exists (removed later in core
+> `0.1.29` — see below), so backend `supports.frontend` stays `>=0.1.52`. The
+> live pairing is now **frontend `>=0.1.53` ⇄ core
+> `>=0.1.26`** (both `<0.2.0`). **No `@selfhelp/shared` change** — the picker
+> wiring lives in the frontend. No data migration ships.
+
+> **Core 0.1.27 (type-driven editors + standard columns ⇄ frontend 0.1.54):**
+> the admin columns endpoint now **prepends** the always-present projection
+> columns (`id`/`id_users`/`user_name`/`record_id`/`entry_date`/`id_users_deleted`,
+> flagged `standard:true`/`id:null`/`locked:true`), and migration
+> `Version20260629143116` retypes overloaded fields so the frontend editor is
+> chosen purely from the field type (7 structured-config blobs `textarea → json`;
+> `html_tag_content` `textarea → code`; the short message fields
+> `error_text`/`empty_text`/`loading_text`/`confirm_message`/`delete_modal_body`
+> `text → textarea`). Mail bodies also become WYSIWYG fragments rendered at send
+> time by `MailHtmlRenderer` (internal; no API contract change). **Frontend
+> 0.1.54** renders the standard columns + the type-driven editors (incl. the new
+> `code` type) and raises its `supports.core` `0.1.26 → 0.1.27`; because a
+> pre-0.1.54 frontend would mis-render the standard columns and the `code` type,
+> backend `supports.frontend` is raised **in lockstep** `0.1.52 → 0.1.54`. The
+> live pairing is now **frontend `>=0.1.54` ⇄ core `>=0.1.27`** (both `<0.2.0`).
+> **No `@selfhelp/shared` change** — the field-type → editor mapping lives in the
+> frontend.
+
+> **Core 0.1.28 (rich-text content fields + field-catalog cleanup ⇄ frontend
+> 0.1.55):** the free-form display fields `text` (shared by the `text` +
+> `highlight` styles) and `blockquote_content` are retyped `markdown-inline →
+> textarea` (migration `Version20260629153921`) so admins author them in the full
+> rich-text editor (Enter, headings, lists, links, alignment); the field catalog
+> is cleaned up (migration `Version20260629150730` unlinks the `multi_select_data`
+> duplicate from `select` and deletes the dead `web_combobox_data`/`items`/`labels`
+> fields, plus enriches structured-field help). **Frontend 0.1.55** renders the
+> **block** structure of those fields (`TextStyle`/`BlockquoteStyle` render the
+> authored headings/lists instead of flattening to inline) and ships the closable
+> field-help popover with copyable JSON examples, so **both floors move in
+> lockstep**: frontend `supports.core` `0.1.27 → 0.1.28` and backend
+> `supports.frontend` `0.1.54 → 0.1.55`. The live pairing is now **frontend
+> `>=0.1.55` ⇄ core `>=0.1.28`** (both `<0.2.0`). `@selfhelp/shared` `1.17.1` adds
+> the optional `IShowUserInputStyle.field_labels` type (additive; `^1.17.x`
+> consumers unaffected). The seeded auth mails also drop the duplicated raw-URL
+> callout + raw-token link text (templates only).
+
+> **Core 0.1.29 (remove the superseded per-section picker route — floor-neutral):**
+> the legacy `GET /cms-api/v1/admin/sections/{section_id}/data-variables` route
+> (added 0.1.23, permission `admin.page.read`) is removed — controller action,
+> `AdminSectionService` wrapper, and `section_data_variables` schema deleted;
+> migration `Version20260629170535` drops the `api_routes` row + its permission
+> link (reversible). It was fully superseded by the unified
+> `GET /cms-api/v1/admin/interpolation/variables` (0.1.26), which every frontend
+> `>=0.1.53` already uses, so **no floor moves**: backend `supports.frontend`
+> stays `>=0.1.55` and frontend `supports.core` stays `>=0.1.28`. The live pairing
+> remains **frontend `>=0.1.55` ⇄ core `>=0.1.29`** (both `<0.2.0`). Separately,
+> **mobile 0.1.30** adopts the show-user-input `field_labels` header contract
+> (display names instead of the raw `field_key`); it degrades gracefully on older
+> cores, so the `selfhelp-mobile-preview` `supports.core` stays `>=0.1.19`. **No
+> `@selfhelp/shared` change.**
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -244,17 +373,17 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.21` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.29` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.15.3` | npm (1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
-| `sh-selfhelp_frontend` | `0.1.43` | live-preview UI iterated `0.1.40` → `0.1.43` (device-frame bezel + header-controls polish); all floor-neutral |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (Live Preview preference bridge; runtime syncs theme live and applies language by mobile remount) |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.21 <0.2.0` | raised `0.1.20` → `0.1.21`: the full-screen Live Preview surface gates on the `admin.mobile_preview.view` permission first seeded in core `0.1.21` (the UI hides for users without it, but the version contract tracks the dependency) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.30 <0.2.0` | unchanged: the mobile-preview session, update endpoints **and** the `admin.mobile_preview.view` permission are additive and do NOT require the frontend panel/UI; still tracks the 0.1.18 anonymous-preview adaptation |
+| `@selfhelp/shared` | `1.17.1` | npm (1.17.1 adds the optional `IShowUserInputStyle.field_labels` `field_key => display_name` type — additive, `^1.17.x` consumers unaffected; 1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
+| `sh-selfhelp_frontend` | `0.1.55` | `0.1.55` renders the **block** structure of the rich-text `text`/`blockquote` fields (headings/lists instead of inline-flattening) + ships the closable field-help popover with copyable JSON examples (issue #56); `0.1.54` makes the CMS editor type-driven (`textarea` = rich WYSIWYG, new `code` = Monaco, standard projection columns + lockable SQL filter, condition-builder datetime portals above the modal) |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.17.1` | shared `1.x` line (Live Preview preference bridge; runtime syncs theme live and applies language by mobile remount); `1.17.1` consumes the optional `IShowUserInputStyle.field_labels` type |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.28 <0.2.0` | raised `0.1.27` → `0.1.28`: frontend `0.1.55` renders the rich-text/blockquote **block** content that first ships in core `0.1.28` (issue #56); core `0.1.29` (per-section route removal) is floor-neutral for the frontend |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.55 <0.2.0` | raised `0.1.54` → `0.1.55`: core `0.1.28` retypes `text`/`blockquote_content` to rich `textarea` whose block structure a pre-`0.1.55` frontend would flatten; core `0.1.29` removes the unused per-section data-variables route (floor-neutral — every supported frontend already uses the unified picker) |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.15.3` | shared `1.x` line (mobile UI adapter + preview contract; theme-only live sync, URL-bound language) |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.17.1` | shared `1.x` line (mobile UI adapter + preview contract; theme-only live sync, URL-bound language); mobile `0.1.30` reads the section `field_labels` header map for show-user-input |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |

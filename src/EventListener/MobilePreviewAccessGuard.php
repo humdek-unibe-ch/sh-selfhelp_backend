@@ -26,14 +26,17 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
  *
  * A token minted by {@see JWTService::createMobilePreviewToken()} carries the
  * admin's identity (so pages render exactly as the admin sees them) but is
- * restricted here to a GET allowlist of read-only core render routes PLUS any
- * plugin PUBLIC runtime route (`/cms-api/v{n}/plugins/...`). The latter lets a
- * plugin style embedded in the previewed page (e.g. the SurveyJS runtime) load,
- * autosave and submit exactly as on the live page. Everything else — every
- * core mutation, every admin route (core or plugin), every non-listed core
- * read — is denied. Plugin public routes carry no route permission and enforce
- * their own per-response ownership checks, so this keeps a leaked preview token
- * to the same public/admin-visible surface the iframe already shows.
+ * restricted here to a GET allowlist of read-only core render routes PLUS the
+ * core frontend form routes (`/cms-api/v{n}/forms/*`) PLUS any plugin PUBLIC
+ * runtime route (`/cms-api/v{n}/plugins/...`). The latter two let the previewed
+ * page's forms be exercised end-to-end — a plugin style (e.g. the SurveyJS
+ * runtime) loads, autosaves and submits, and a core form submits / updates /
+ * deletes — exactly as on the live page, which is the whole point of a preview.
+ * Everything else — every other core mutation, every admin route (core or
+ * plugin), every non-listed core read — is denied. The form and plugin public
+ * routes carry no route permission and enforce their own ACL / page-access /
+ * per-response ownership checks, so this keeps a leaked preview token to the
+ * same public/admin-visible surface the iframe already shows.
  */
 class MobilePreviewAccessGuard implements EventSubscriberInterface
 {
@@ -51,6 +54,22 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
         'languages_get_all_v1',
         'plugins_manifest_v1',
         'auth_user_data_get_v1',
+    ];
+
+    /**
+     * Core frontend form routes the previewed page's forms call to submit /
+     * update / delete their data (registered by
+     * {@see \DoctrineMigrations\Version20260602081706}). Like the plugin PUBLIC
+     * routes, these carry no `rel_api_routes_permissions` entry and enforce
+     * their own ACL / page-access checks inside {@see \App\Controller\Api\V1\Frontend\FormController},
+     * so a previewed admin (or impersonated user) may exercise a page's forms
+     * end-to-end exactly as on the live page. Allowed with their declared
+     * methods (POST/PUT/DELETE), not GET.
+     */
+    private const ALLOWED_FORM_ROUTES = [
+        'form_submit_v1',
+        'form_update_v1',
+        'form_delete_v1',
     ];
 
     public function __construct(
@@ -91,6 +110,15 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
         $allowed = $request->getMethod() === 'GET'
             && in_array($routeName, self::ALLOWED_ROUTES, true)
             && $this->scopeAllows($request, $routeName, $payload);
+
+        // Core frontend form routes (submit/update/delete) let the previewed
+        // page's forms be tested end-to-end. They mirror the plugin public
+        // routes below: no route permission, own ACL/page-access enforcement in
+        // FormController, and the preview runs as the admin's (or impersonated)
+        // identity — so submitting a form in preview behaves like the live page.
+        if (!$allowed && in_array($routeName, self::ALLOWED_FORM_ROUTES, true)) {
+            $allowed = true;
+        }
 
         // A previewed page may embed plugin styles (e.g. the SurveyJS runtime)
         // that load, autosave and submit through the plugin's PUBLIC api. Those

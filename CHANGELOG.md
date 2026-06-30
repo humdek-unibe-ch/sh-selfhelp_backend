@@ -1,3 +1,324 @@
+# v0.1.30
+
+## Fix: page render crash on array-valued interpolation tokens (issue #56 v2)
+
+Rendering a page whose content referenced a `{{ }}` token that resolves to a
+non-scalar value crashed the entire request with a fatal
+`TypeError: htmlspecialchars(): Argument #1 ($string) must be of type string,
+array given`. The most common trigger is `{{system.user_group}}` — the current
+user's groups are exposed under the `system` namespace as a list. Mustache
+compiles templates to `eval()`'d PHP that calls `htmlspecialchars()` on the
+resolved value, and that `TypeError` is an `\Error` (not an `\Exception`), so it
+bypassed `InterpolationService`'s catch and returned a 500.
+
+- **Array-safe escaper.** `InterpolationService` now configures the Mustache
+  engine with a guarded `escape` callback: scalar values keep the default HTML
+  escaping (`ENT_COMPAT` / UTF-8), while non-scalar values render as an empty
+  string instead of fataling. Arrays remain usable as Mustache sections
+  (`{{#system.user_group}}…{{/system.user_group}}`); only their scalar `{{ }}`
+  output is neutralised.
+- **Catch `\Throwable`.** `performInterpolation()` and `renderTemplate()` now
+  catch `\Throwable` (not just `\Exception`), so any future error in the eval'd
+  template degrades to the original content instead of a 500.
+- Internal robustness fix only — no API route, schema, or response-shape change.
+  `supports.frontend` is unchanged (`>=0.1.55`).
+
+## Chore: drop the redundant `_v1` suffix from two display-name route names
+
+The display-name admin routes added earlier in this cycle were seeded with a
+`_v1` suffix baked into `api_routes.route_name`
+(`admin_data_table_columns_display_name_patch_v1`,
+`admin_data_table_display_name_patch_v1`), duplicating the version that already
+lives in `api_routes.version`. Migration `Version20260630070202` renames them to
+`admin_data_table_columns_display_name_patch` /
+`admin_data_table_display_name_patch` (metadata only — path, controller, methods
+and the `rel_api_routes_permissions` links are untouched), so the route-inventory
+guard (`ApiRouteInventoryTest::testStoredRouteNamesDoNotDuplicateTheVersionSuffix`)
+passes. No API path, permission, or response-shape change.
+
+# v0.1.29
+
+## Remove the superseded per-section interpolation-picker endpoint (issue #56 v2)
+
+Interpolation v2 (core `0.1.26`) replaced every per-surface variable picker with
+the single context-aware endpoint
+`GET /cms-api/v1/admin/interpolation/variables`. The frontend's
+`useSectionDataVariables` has delegated to it since frontend `0.1.53`, so the
+older per-section route had no remaining consumer.
+
+- **Removed `GET /cms-api/v1/admin/sections/{section_id}/data-variables`.** The
+  controller action (`AdminSectionController::getSectionDataVariables`), the thin
+  service wrapper (`AdminSectionService::getSectionDataVariables`, plus its now
+  unused `DataVariableResolver` dependency), and the
+  `responses/admin/sections/section_data_variables` schema are gone. Migration
+  `Version20260629170535` drops the `admin_sections_data_variables_get`
+  `api_routes` row and its `admin.page.read` link (reversible: `down()` restores
+  the route + permission as `Version20260629063147` seeded them). The unified
+  endpoint still serves the section catalog via
+  `InterpolationVariableService` → `DataVariableResolver::getSectionContextVariables`.
+- **Floor-neutral.** `supports.frontend` stays `>=0.1.55`: every frontend in the
+  supported window already fetches the unified endpoint, so no supported client
+  breaks. No `@selfhelp/shared` change.
+
+# v0.1.28
+
+## Rich-text content fields, field-catalog cleanup, and cleaner auth mails (issue #56)
+
+A follow-up on the type-driven editor wave that turns the free-form display-copy
+fields into full rich text, removes duplicate/dead field definitions, and tidies
+the seeded transactional mails. Coordinated with frontend `0.1.55`;
+`supports.frontend` is raised to `>=0.1.55` because that frontend renders the
+block structure of the retyped fields.
+
+- **Free-form content fields become rich text.** Migration
+  `Version20260629153921` retypes the `text` field (shared by the `text` and
+  `highlight` styles) and `blockquote_content` from `markdown-inline` →
+  `textarea`, so they open in the full WYSIWYG editor (Enter for multiline plus
+  headings, lists, links, alignment) with `{{ }}` interpolation. Data-only change
+  (no content touched, fully reversible); `highlight` renders its content as
+  plain text so the richer editor degrades gracefully there.
+- **Field-catalog cleanup.** Migration `Version20260629150730` unlinks the
+  duplicate `multi_select_data` field from the `select` style (the renderer reads
+  `options`) and deletes it plus the unused `web_combobox_data`, `items` and
+  `labels` fields, and enriches the help/examples for `fields_map`, `loop` and
+  `web_carousel_embla_options`.
+- **Cleaner seeded auth mails.** The confirmation and recovery bodies drop the
+  duplicated "copy this URL" callout that exposed the raw
+  `{{system.special.*_link}}` token, and the password-changed body now links via a
+  labelled button instead of showing the raw token as the link text — the action
+  link is carried by the styled button only. Templates-only change
+  (`templates/emails/*.html`), reapplied on the next reseed; no API contract
+  change. See `docs/reference/email-styles.md`.
+
+# v0.1.27
+
+## Type-driven CMS editors, WYSIWYG email rendering, and data-config standard columns (issue #56)
+
+A follow-up wave on top of Interpolation v2 that makes the CMS editor choice
+**type-driven**, renders transactional mail from rich-text fragments, and surfaces
+every projection column in the data-config builder. Coordinated with frontend
+`0.1.54`; `supports.frontend` is raised to `>=0.1.54` because the columns response
+and the new field types are consumed by that frontend.
+
+- **WYSIWYG email rendering.** Transactional mail bodies (`sh-mail-config`) are now
+  authored as rich-text **fragments**, not full HTML documents. At send time
+  `JobSchedulerService::sendEmail()` passes the HTML body through the new
+  `App\Service\Auth\MailHtmlRenderer`, which inlines email-safe CSS (base tag
+  styles + the named `email-*` style presets, forcing link colour inside
+  button/strong-link presets) and wraps the content in the shared branded shell.
+  Plain-text mails and legacy full-HTML documents are passed through untouched.
+  Migration `Version20260629131426` backfills the seeded full-document bodies to
+  the fragment form. See `docs/reference/email-styles.md`.
+- **Field-type cleanup for the type-driven editor.** Migration
+  `Version20260629143116` retypes overloaded fields so the editor (chosen purely
+  from the field type) matches how each field is authored: 7 structured-config
+  blobs (`web_combobox_data`, `multi_select_data`, `segmented_control_data`,
+  `slider_marks_values`, `range_slider_marks_values`, `web_color_picker_swatches`,
+  `web_datepicker_time_grid_config`) `textarea → json`; `html_tag_content`
+  `textarea → code` (raw-HTML Monaco editor); and the short message fields
+  (`error_text`, `empty_text`, `loading_text`, `confirm_message`,
+  `delete_modal_body`) `text → textarea` so they get the rich multiline editor.
+- **Data-config surfaces the standard projection columns.** The admin columns
+  endpoint now prepends the always-present row columns (`id`, `id_users`,
+  `user_name`, `record_id`, `entry_date`, `id_users_deleted`) flagged
+  `standard: true` / `id: null` / `locked: true`, so the data-config builder lists
+  them like any other column (filter/order by `record_id`, `entry_date`, …) while
+  the Data browser editor excludes them from relabel/delete.
+- **Scheduled action emails interpolate `record.*` and `system.*`.** Action email
+  subject/body now resolve `recipient.*`, `record.<field_key>` (from the action's
+  data table) and `system.*` tokens at execution time.
+- **Mobile-preview sessions can submit core forms.** Form submission is no longer
+  blocked for an authenticated mobile-preview session, so previewing an admin can
+  exercise forms (record + log) end to end.
+- **Page interpolation picker is honest.** The page/config picker only offers
+  variables for fields that actually render interpolation.
+- **Tests / docs.** Added migration round-trip tests for the recent migrations and
+  documented the type-driven editor mapping, email styles, interpolation, and data
+  naming (developer + non-technical user guides).
+
+# v0.1.26
+
+## Interpolation v2: unified context-aware variable picker + mail namespacing (issue #56)
+
+A single, modular interpolation `{{ }}` system now powers **every** CMS text
+surface. One context-aware endpoint serves the variable catalog, the seeded mail
+templates move onto the shared `system.*` namespace, and the picker reaches the
+page/config, action, data-config and custom-CSS/JSON editors. This is an
+**additive** core change (a new read-only route + internal mail-content rewrite),
+coordinated with frontend `0.1.53`; older frontends keep working via the existing
+section data-variables route.
+
+- **One unified picker endpoint.** New `GET /cms-api/v1/admin/interpolation/variables`
+  (route `admin_interpolation_variables_get`, permission `admin.page.read`,
+  migration `Version20260629110606`) returns the `token => display_name` catalog
+  for a `context` (`section` | `page` | `action` | `global`) + optional `id`.
+  `InterpolationVariableService` orchestrates it over `DataVariableResolver`, which
+  gained context catalogs: `getSectionContextVariables` (data_config columns +
+  system + globals), `getPageContextVariables` (system + globals — and the
+  mail-config page gets `getMailContextVariables`), `getActionContextVariables`
+  (`recipient.*` + `record.<field_key>` from the action's data table + `system.*`),
+  and `getGlobalContextVariables`.
+- **Mail templates use the shared `system.*` namespace.** The seeded auth mail
+  bodies now interpolate `{{system.user_name}}`, `{{system.user_code}}` and the
+  one-time links `{{system.special.activation_link}}` /
+  `{{system.special.reset_link}}` / `{{system.special.platform_link}}` so the
+  mail-config picker offers exactly what renders. `MailTemplateService` maps the
+  flat caller vars (`user_name`, `code`, `validation_url`, …) onto that nested
+  context (and exposes `globals.*`), keeping the auth flow working; the legacy
+  flat tokens still resolve as a safety net. `MailTemplateDefaults` placeholders +
+  help text and the `templates/emails/*.html` files were rewritten to match.
+- **Action picker mirrors the action template scopes.** The action subject/body
+  editors offer `recipient.*`, `record.<field_key>` (from the action's selected
+  data table) and `system.*` — the exact namespaces `ActionTemplateContextBuilder`
+  documents — and intentionally not globals.
+
+No data migration ships; pre-release content is recreated against the new picker.
+
+# v0.1.25
+
+## Interpolation v2: field_key tokens + display_name labels (issue #56)
+
+The platform's `{{ }}` interpolation now resolves data variables by the
+immutable `field_key` instead of the mutable input *name*, so renaming a form
+input (or curating a column's `display_name`) never breaks authored content. The
+editor shows the human `display_name`; the stored token is the rename-safe
+`{{scope.<field_key>}}`. This is a **breaking render/contract change** consumed
+by the frontend (token map + show-user-input headers), coordinated with frontend
+`0.1.52`.
+
+- **Picker tokens are the immutable `field_key`.** `DataVariableResolver` now
+  emits `scope.<field_key>` tokens (core forms: `section_<input id>`; SurveyJS:
+  `question.name`) with the curated `display_name` as the label (falling back to
+  the field_key). It no longer remaps tokens to the current input name, so the
+  `data-variables` map a section returns is `{{scope.field_key}} => display_name`.
+- **Render scope keys by `field_key`.** `SectionUtilityService::fetchData` keeps
+  the interpolation `retrieved_data` scope keyed by the storage `field_key`
+  (the name remap was removed). `{{scope.<field_key>}}` in `content`, `css`,
+  conditions and data-config projections now resolves directly — a later rename
+  only moves the label. data_config `fields[].field_name` is the `field_key`.
+- **show-user-input ships a header map.** A show-user-input section's payload now
+  carries `field_labels` (`field_key => display_name`) alongside `entries`
+  (kept keyed by `field_key`). The renderer defaults column headers to the
+  curated `display_name` while reading cells by the stable key. Backed by the new
+  `DataService::getColumnDisplayLabels()` (cached per table, busted on column
+  changes). Standard projection columns (`record_id`, `entry_date`, …) keep
+  their own key as the header.
+- **Form submit/prefill and the Data browser are unchanged.** Form save still
+  maps submitted input names to `section_<id>` storage keys; prefill still maps
+  back to input names (the renderer binds inputs by name); the admin Data browser
+  keeps its existing display. Only the interpolation scope, picker tokens and
+  show-user-input headers switched to the `field_key` contract.
+
+No data migration is shipped — pre-release content that used `{{scope.<name>}}`
+tokens is recreated against the new `{{scope.<field_key>}}` picker.
+
+# v0.1.24
+
+## Data-column / data-table display-name propagation + admin lock (issue #56)
+
+Follow-up to the immutable `field_key` work (v0.1.23). Renaming a CMS form input
+now keeps its stored column label in sync, an admin can manually rename + lock
+both columns and whole data tables so submissions/saves never overwrite the
+curated label, and the lock state is surfaced everywhere it matters.
+
+- **Renaming a form input updates its column label on Save.** When a form input
+  section is saved, its `name` field now propagates to the auto `display_name`
+  of the immutable `section_<id>` column — the same way renaming a form
+  propagates to its data table. Wired through `SectionFieldService` →
+  `DataColumnService::renameAutoColumnByFieldKey()`; a no-op when no column
+  exists yet (no submission) or the label is manually locked. The affected
+  table's `DATA_TABLES` caches (column list + variable picker) are busted so the
+  new label shows immediately.
+- **Data tables get the same auto/manual provenance as columns.** New nullable
+  FK `data_tables.id_display_name_source` → `lookups` (reusing the
+  `dataColDisplayNameSource` `auto` | `manual` group; NULL = `auto`), added by
+  migration `Version20260629074004`. While `auto`, the form section's `name`
+  keeps syncing the table label; once an admin renames the table it flips to
+  `manual` and section saves never overwrite it again
+  (`DataTableService::updateDataTableDisplayName()` is now gated on the source).
+- **Manual table rename + reset-to-auto.** New
+  `PATCH /cms-api/v1/admin/data/tables/{tableName}/display-name` (permission
+  `admin.data.update_tables`, seeded by migration `Version20260629074552`):
+  a non-empty `displayName` sets the label and locks it (`manual`); `null`/empty
+  resets to `auto` and re-derives the label from the owning form section's
+  `name`. Columns gained the symmetric behaviour: clearing a column label now
+  re-derives the auto label from the input section's `name` instead of leaving
+  the opaque `section_<id>` key.
+- **Lock state is exposed everywhere.** `locked` is added to the admin tables
+  list (`GET /admin/data/tables`), the columns list
+  (`GET /admin/data/tables/{tableName}/columns`) and `getDataTableStats()`; and
+  a form section's `getSection` payload now carries a `data_table`
+  `{ id, name, display_name, locked }` block (only for form sections, only when
+  a table exists) so the CMS section inspector can show the effective table
+  name, a "locked" badge, and a deep link to the Data browser.
+
+# v0.1.23
+
+## Immutable data-column `field_key` + mutable `display_name` (issue #56)
+
+- **Core form/SurveyJS data is now stored by an immutable key, not a mutable
+  label.** `data_cols.name` was both the storage identity and the admin label,
+  so renaming a column forked one logical field into two `data_cols` rows and
+  split historical from new submissions. `data_cols` now has an immutable
+  `field_key` (the storage key, an opaque ASCII identifier **derived per data
+  source** — `section_<input section id>` for core CMS forms, `question.name`
+  for SurveyJS — so a renamed input keeps writing into the SAME column; it
+  inherits the table default collation, no per-column override), a mutable
+  `display_name` (the human label), and a label-provenance FK
+  `id_display_name_source` → `lookups` (group `dataColDisplayNameSource`, codes
+  `auto` | `manual`; a NULL FK is the default `auto`) so an admin-curated label
+  is never silently overwritten by the next submission. A `UNIQUE
+  (id_data_tables, field_key)` makes the write-time lookup safe and fast.
+  Migration `Version20260626120120` renames `name -> field_key` preserving data,
+  **pre-merges any pre-existing duplicate columns** (re-pointing their
+  `data_cells` onto a canonical column before adding the unique key), adds the
+  new columns, and rebuilds `build_dynamic_columns` to pivot on `field_key`
+  with backtick-safe aliases (dotted survey keys are treated as opaque
+  literals); migration `Version20260626143127` then converts the provenance
+  flag from a VARCHAR to the `id_display_name_source` lookups FK.
+- **`DataService::saveData()` resolves columns by `field_key` via the new
+  `DataColumnService`** — core form submissions (keyed by the human input name)
+  are first remapped to their `section_<input id>` key by the new
+  `FormFieldKeyResolver` (the human name travels along as the auto
+  `display_name`), then a batch `field_key IN (...)` fetch + concurrency-safe
+  `INSERT IGNORE` for missing columns, strict key validation
+  (`^[A-Za-z][A-Za-z0-9_.]{0,254}$`, dotted survey segments allowed), and an
+  expanded reserved-key guard (`id`, `id_users`, `trigger_type`, `record_id`,
+  `__*`, …) so metadata never becomes a dynamic column. Row metadata
+  (`id_users`, `trigger_type`) is split out from field values.
+- **Reads, exports, interpolation variables and action contexts use the stable
+  key but show readable names.** Core-form reads (prefill, `showUserInput`,
+  `retrieve_data` interpolation scope, CSV/JSON export) remap each
+  `section_<id>` key back to the current human input name, and
+  `DataVariableResolver` returns a `token => label` map whose **token is the
+  current input name** (never the opaque key) so the CMS variable picker both
+  shows and inserts readable names.
+- **The interpolation variable picker has its own endpoint** `GET
+  /cms-api/v1/admin/sections/{section_id}/data-variables` (permission
+  `admin.page.read`, seeded by migration `Version20260629063147`), returning the
+  `token => label` map. It is **no longer part of the cached `getSection`
+  payload** (that response is now `{ section, fields, languages }`): the
+  variables depend on the referenced data tables' live columns, and a column
+  added by a later form submission only invalidates the DATA_TABLE scope, not
+  the section's SECTION scope. `DataVariableResolver` assembles the map from its
+  granular caches (section hierarchy/data under SECTION scope, table columns
+  under DATA_TABLE scope), so adding a column **or** editing `data_config` both
+  refresh it; the CMS section inspector fetches it fresh when it opens, so a new
+  column/rename appears in the picker without re-saving the section.
+- **New admin endpoint** `PATCH /cms-api/v1/admin/data/tables/{tableName}/columns/display-name`
+  (permission `admin.data.update_columns`, seeded by migration
+  `Version20260626121351`) curates a column label without touching its storage
+  key. The admin columns endpoint response is now
+  `{ id, fieldKey, displayName }` (was `{ id, name }`).
+- **API contract change consumed by the frontend** (column response shape, the
+  `data_variables` move to its own `GET /admin/sections/{id}/data-variables`
+  endpoint, and the slimmer `getSection` payload), so `supports.frontend` is
+  raised `>=0.1.30 -> >=0.1.48` and the core default version bumps to `0.1.23`.
+  The matching
+  SurveyJS plugin guard (block renaming/removing an answered `question.name`)
+  ships in plugin `0.3.4`. Deploying requires running the new migrations and a
+  Symfony cache clear.
+
 # v0.1.22
 
 ## Mobile live preview renders plugin styles (e.g. SurveyJS)

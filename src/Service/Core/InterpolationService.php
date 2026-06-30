@@ -37,8 +37,27 @@ class InterpolationService extends BaseService
     {
         $this->logger = $logger;
 
-        // Create Mustache engine with explicit empty array
-        $this->mustache = new \Mustache\Engine([]);
+        // Route every `{{var}}` through a non-scalar-safe escaper. A content
+        // field can legitimately reference a token that resolves to an array
+        // (e.g. `{{system.user_group}}`, the list of the current user's
+        // groups). The default Mustache escaper passes the raw value straight
+        // to htmlspecialchars(), which on PHP 8 throws a TypeError
+        // ("Argument #1 must be of type string, array given") for non-strings.
+        // That TypeError is an \Error (not an \Exception), so it escaped the
+        // catch below and 500-ed the whole page render. Render non-scalar
+        // tokens as an empty string instead, while keeping the default HTML
+        // escaping (ENT_COMPAT / UTF-8) for scalar values. Arrays are still
+        // usable as Mustache sections ({{#system.user_group}}…{{/…}}); only
+        // their scalar `{{ }}` output is neutralised.
+        $this->mustache = new \Mustache\Engine([
+            'escape' => static function (mixed $value): string {
+                if (!is_scalar($value)) {
+                    return '';
+                }
+
+                return htmlspecialchars((string) $value, ENT_COMPAT, 'UTF-8');
+            },
+        ]);
 
         // Add custom helpers if provided
         if (!empty($config['custom_helpers']) && is_array($config['custom_helpers'])) {
@@ -64,8 +83,12 @@ class InterpolationService extends BaseService
             // Render the template with Mustache
             return $this->mustache->render($content, $context);
 
-        } catch (\Exception $e) {
-            // Log the error but return original content to maintain backward compatibility
+        } catch (\Throwable $e) {
+            // Catch \Throwable (not just \Exception): Mustache compiles the
+            // template to PHP that is eval()'d, so a malformed token surfaces
+            // as an \Error (e.g. a TypeError) rather than an \Exception.
+            // Log the error but return original content to maintain backward
+            // compatibility / avoid 500-ing the render.
             $this->logError('Mustache interpolation failed: ' . $e->getMessage());
             return $content;
         }
@@ -196,7 +219,9 @@ class InterpolationService extends BaseService
 
             return $this->mustache->render($template, $context);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // See performInterpolation(): Mustache eval()s compiled templates,
+            // so render failures can be \Error instances, not just \Exception.
             $this->logError('Mustache template rendering failed: ' . $e->getMessage());
             return $template;
         }

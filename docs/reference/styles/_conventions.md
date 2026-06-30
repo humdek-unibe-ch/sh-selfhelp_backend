@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, `@selfhelp/shared` types, frontend/mobile renderers).
-Last verified: 2026-06-22.
+Last verified: 2026-06-29.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 This page describes the fields and conventions **shared by every style**, so the
@@ -134,6 +134,52 @@ in the live `admin/styles/schema` endpoint:
 
 Icon fields (`web_left_icon`, `web_right_icon`, and similar) take an icon
 name from the bundled Tabler icon set, chosen through the admin icon picker.
+
+## Editing content fields in the section editor
+
+How a field is **edited** in the admin is driven by its **type** (the editor is
+chosen from the field type, not a per-name allowlist), and every text surface
+supports `{{` variable interpolation (see
+[interpolation-system](../../developer/10-interpolation-system.md#cms-editor-field-rendering-modes-and--coverage)
+for the full table):
+
+- `text` fields render as a **single-line** mention input. The three structural
+  identifiers (`name`, `value`, `title`) stay **plain** inputs (no interpolation,
+  they are keys/values, not display copy); every other `text` field gets the
+  `{{` picker.
+- `markdown-inline` fields are the same single-line mention input plus inline
+  **bold / italic / underline / link** shortcuts.
+- `textarea` fields are the **rich-text WYSIWYG** editor (full toolbar:
+  headings, lists, alignment, links) — this is where **longer / multiline /
+  nicely-formatted copy** is authored (it accepts Enter). On the `sh-mail-config`
+  page these bodies also expose the email **Style** preset dropdown — see
+  [email styles](../email-styles.md).
+- `markdown`, `json`, `code` (raw HTML markup), `css`, and the data-config SQL
+  filter use the Monaco code editor with `{{` completion. The SQL filter is
+  **locked by default** and unlockable for manual editing.
+
+For the non-technical version, see
+[user/interpolation-and-data-naming.md](../../user/interpolation-and-data-naming.md).
+
+## Cross-platform rendering parity (tracked gaps)
+
+Web and mobile render the same CMS payload through separate renderers, so a few
+contracts are **intentionally asymmetric today**. These are tracked here as
+explicit gaps (not implicit drift) so they are visible when planning mobile work:
+
+- **Rich-text block content — tracked mobile gap.** The `text` (used by the
+  `text` + `highlight` styles) and `blockquote_content` fields are `textarea`
+  rich-text, so they can carry **block** HTML (headings, lists, paragraphs,
+  alignment). The **web** renderer preserves that block structure
+  (`renderRichBlock` / `sanitizeHtmlForBlock`); the **mobile** renderer currently
+  parses only the **inline subset** (`parseInlineRich` + `<InlineText>`, block
+  tags degrade to inline via `sanitizeContent`). Authored headings/lists therefore
+  appear flattened on mobile. Closing this needs a mobile block renderer — until
+  then keep critical structure out of mobile-facing copy.
+- **show-user-input headers — parity restored (mobile `0.1.30`).** Rows are keyed
+  by the immutable `field_key`; both platforms now resolve human labels through
+  the section's `field_labels` (`field_key => display_name`) map, so default
+  headers and `fields_map` mappings behave the same on web and mobile.
 
 ## Conventions used on the per-category pages
 

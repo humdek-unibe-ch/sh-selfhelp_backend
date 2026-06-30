@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Update Data Column Display Name Request",
+  "description": "Schema for curating the human-facing display name of a data column (addressed by immutable field key).",
+  "required": ["fieldKey"],
+  "properties": {
+    "fieldKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Immutable storage key of the column (data_cols.field_key)."
+    },
+    "displayName": {
+      "type": ["string", "null"],
+      "maxLength": 255,
+      "description": "Human-facing label. Null or empty clears the curated label (falls back to field_key)."
+    }
+  },
+  "additionalProperties": false
+}

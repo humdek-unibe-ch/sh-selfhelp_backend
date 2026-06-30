@@ -283,10 +283,13 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
     }
 
     /**
-     * Wave F — inline rich-text on the shared `text` content field (migration
-     * Version20260622100253). The `text` and `highlight` styles read the shared
-     * `text` field, which switched `textarea` -> `markdown-inline` so an author can
-     * apply inline bold/italic/underline/link that renders on web AND mobile.
+     * Wave F — rich-text on the shared `text` content field. It first switched
+     * `textarea` -> `markdown-inline` (migration Version20260622100253) and was
+     * then promoted back to `textarea` — now a FULL rich-text editor (Enter,
+     * headings, lists, links, alignment) — by migration Version20260629153921 so
+     * admins can author nicely styled, interpolated content. The `text` and
+     * `highlight` styles read the shared `text` field (`highlight` strips tags, so
+     * the richer editor degrades gracefully there).
      */
     public function testTextWaveInlineRichTextFieldsAndScopes(): void
     {
@@ -295,11 +298,11 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
 
         $text = $this->fieldsOf($data, 'text');
         self::assertSame('content', $text['text']['scope'] ?? null, 'text.text must be translatable content.');
-        self::assertSame('markdown-inline', $text['text']['type'] ?? null, 'text.text must use the inline rich-text editor.');
+        self::assertSame('textarea', $text['text']['type'] ?? null, 'text.text must use the rich-text editor (textarea).');
 
         $highlight = $this->fieldsOf($data, 'highlight');
         self::assertSame('content', $highlight['text']['scope'] ?? null, 'highlight.text must be translatable content.');
-        self::assertSame('markdown-inline', $highlight['text']['type'] ?? null, 'highlight.text must use the inline rich-text editor.');
+        self::assertSame('textarea', $highlight['text']['type'] ?? null, 'highlight.text must use the rich-text editor (textarea).');
     }
 
     /**
@@ -319,10 +322,12 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         self::assertSame('content', $listItem['list_item_content']['scope'] ?? null, 'list-item.list_item_content must be translatable content.');
         self::assertSame('markdown-inline', $listItem['list_item_content']['type'] ?? null, 'list-item.list_item_content must use the inline rich-text editor.');
 
-        // blockquote: dedicated inline content field; the generic `content` is unlinked.
+        // blockquote: dedicated content field promoted to the full rich-text
+        // editor (textarea) by migration Version20260629153921; the generic
+        // `content` is unlinked.
         $blockquote = $this->fieldsOf($data, 'blockquote');
         self::assertSame('content', $blockquote['blockquote_content']['scope'] ?? null, 'blockquote.blockquote_content must be translatable content.');
-        self::assertSame('markdown-inline', $blockquote['blockquote_content']['type'] ?? null, 'blockquote.blockquote_content must use the inline rich-text editor.');
+        self::assertSame('textarea', $blockquote['blockquote_content']['type'] ?? null, 'blockquote.blockquote_content must use the rich-text editor (textarea).');
         self::assertArrayNotHasKey('content', $blockquote, 'blockquote.content must be unlinked in favour of blockquote_content.');
 
         // image: fallback source (translatable asset picker).

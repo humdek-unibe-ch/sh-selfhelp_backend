@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-29.
 Source of truth: Controllers, JSON schemas, and `api_routes` migrations in this repository.
 
 Exact contracts and lookups for the backend.
@@ -11,5 +11,6 @@ Exact contracts and lookups for the backend.
 - [api/index.md](api/index.md) - Endpoint-by-endpoint usage reference for the public and admin API.
 - [api-routes-table.md](api-routes-table.md) - The `api_routes` table columns and dynamic route loading.
 - [styles/index.md](styles/index.md) - Catalog of every CMS style with per-style field/behaviour reference pages.
+- [email-styles.md](email-styles.md) - Email style presets and the mail-body rendering contract (`MailHtmlRenderer`).
 
 JSON request/response schemas live under `config/schemas/api/v1/` and are the authoritative validation contracts.

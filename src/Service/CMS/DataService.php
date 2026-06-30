@@ -9,7 +9,6 @@ namespace App\Service\CMS;
 
 use App\Entity\DataTable;
 use App\Entity\DataRow;
-use App\Entity\DataCol;
 use App\Entity\DataCell;
 use App\Entity\Language;
 use App\Entity\Lookup;
@@ -51,6 +50,8 @@ class DataService extends BaseService
         private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly ActionContextBuilderService $actionContextBuilderService,
         private readonly ActionOrchestratorService $actionOrchestratorService,
+        private readonly DataColumnService $dataColumnService,
+        private readonly FormFieldKeyResolver $formFieldKeyResolver,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -63,6 +64,9 @@ class DataService extends BaseService
      * @param string $transactionBy Who initiated the transaction
      * @param array<string, mixed>|null $updateBasedOn Optional fields to update existing record
      * @param bool $ownEntriesOnly Whether to restrict updates to user's own entries
+     * @param array<string, string|null>|null $fieldLabels Optional field_key => human label
+     *   map. Used to auto-populate `data_cols.display_name` (never overwrites a
+     *   manually curated label). Form fields and SurveyJS question titles flow in here.
      * @return int|false The record ID on success or false on failure
      * @throws ServiceException
      *
@@ -74,8 +78,26 @@ class DataService extends BaseService
         array $data,
         string $transactionBy = LookupService::TRANSACTION_BY_BY_USER,
         ?array $updateBasedOn = null,
-        bool $ownEntriesOnly = true
+        bool $ownEntriesOnly = true,
+        ?array $fieldLabels = null
     ): int|false {
+        // Core CMS forms submit values keyed by the human input *name*. Remap
+        // those to the immutable storage key (`section_<input section id>`) so a
+        // later rename only updates the column's display_name instead of forking
+        // a new column (issue #56). The human name travels along as the auto
+        // display label. Non-form tables (SurveyJS `sh2_surveyjs_*`,
+        // `user_validation_inputs`) are left untouched and keep their own keys.
+        [$data, $derivedLabels] = $this->mapFormFieldKeys($tableName, $data);
+        if ($derivedLabels !== []) {
+            // An explicit caller-supplied label wins over the auto-derived one.
+            $fieldLabels = array_merge($derivedLabels, $fieldLabels ?? []);
+        }
+
+        // Validate submitted field keys up-front (before opening a transaction)
+        // so malformed/reserved keys surface as a clean 400 rather than a 500
+        // wrapped by the catch block below.
+        $this->dataColumnService->assertValidFieldData($data);
+
         $this->entityManager->beginTransaction();
         $currentUser = $this->userContextAwareService->getCurrentUser();
 
@@ -115,7 +137,7 @@ class DataService extends BaseService
                         }
 
                         // Update the existing record
-                        $updatedRecordId = $this->updateExistingRecord($recordId, $data, $transactionBy);
+                        $updatedRecordId = $this->updateExistingRecord($recordId, $data, $transactionBy, $fieldLabels);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -146,7 +168,7 @@ class DataService extends BaseService
                     $existingRecord = $this->getData((int) $dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
 
                     if ($existingRecord) {
-                        $recordId = $this->updateExistingRecord($this->asInt($existingRecord['record_id']), $data, $transactionBy);
+                        $recordId = $this->updateExistingRecord($this->asInt($existingRecord['record_id']), $data, $transactionBy, $fieldLabels);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -171,7 +193,7 @@ class DataService extends BaseService
             }
 
             // Create new record
-            $recordId = $this->createNewRecord($dataTable, $data, $transactionBy);
+            $recordId = $this->createNewRecord($dataTable, $data, $transactionBy, $fieldLabels);
 
             $this->entityManager->commit();
 
@@ -311,7 +333,7 @@ class DataService extends BaseService
         ]);
 
         foreach ($dataCells as $dataCell) {
-            $fieldName = $this->asString($dataCell->getDataCol()?->getName());
+            $fieldName = $this->asString($dataCell->getDataCol()?->getFieldKey());
             $fieldValue = $dataCell->getValue();
 
             // Check if this field contains file information
@@ -356,7 +378,7 @@ class DataService extends BaseService
         ]);
 
         foreach ($dataCells as $dataCell) {
-            $fieldName = $this->asString($dataCell->getDataCol()?->getName());
+            $fieldName = $this->asString($dataCell->getDataCol()?->getFieldKey());
             $language = $dataCell->getLanguage()?->getId();
 
             if ($language && $language !== 1) {
@@ -445,9 +467,10 @@ class DataService extends BaseService
      * @param int $recordId The ID of the record to update
      * @param array<string, mixed> $data New data
      * @param string $transactionBy Transaction initiator
+     * @param array<string, string|null>|null $fieldLabels Optional field_key => label map
      * @return int Record ID
      */
-    private function updateExistingRecord(int $recordId, array $data, string $transactionBy): int
+    private function updateExistingRecord(int $recordId, array $data, string $transactionBy, ?array $fieldLabels = null): int
     {
 
         $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
@@ -467,13 +490,12 @@ class DataService extends BaseService
         $triggerTypeId = $this->getTriggerTypeId($data);
         $dataRow->setIdActionTriggerTypes($triggerTypeId);
 
-        // Remove id_users from data as it's already set on the row
-        unset($data['id_users']);
+        // Strip reserved/row-metadata keys (id_users, trigger_type, ...) so they
+        // never become dynamic data columns, then resolve columns by immutable key.
+        $fieldData = $this->dataColumnService->filterFieldData($data);
+        $columns = $this->dataColumnService->resolveColumns($dataTable, array_keys($fieldData), $fieldLabels ?? []);
 
-        // Get or create columns and update cells
-        $columns = $this->getOrCreateColumns($dataTable, $data);
-
-        foreach ($data as $fieldName => $fieldValue) {
+        foreach ($fieldData as $fieldName => $fieldValue) {
             $column = $columns[$fieldName];
 
             // Handle language-specific data
@@ -543,9 +565,10 @@ class DataService extends BaseService
      * @param DataTable $dataTable The data table
      * @param array<string, mixed> $data Form data
      * @param string $transactionBy Transaction initiator
+     * @param array<string, string|null>|null $fieldLabels Optional field_key => label map
      * @return int Record ID
      */
-    private function createNewRecord(DataTable $dataTable, array $data, string $transactionBy): int
+    private function createNewRecord(DataTable $dataTable, array $data, string $transactionBy, ?array $fieldLabels = null): int
     {
         // Create data row
         $dataRow = new DataRow();
@@ -560,14 +583,13 @@ class DataService extends BaseService
         $this->entityManager->persist($dataRow);
         $this->entityManager->flush(); // Flush to get the ID
 
-        // Remove id_users from data as it's already set on the row
-        unset($data['id_users']);
-
-        // Get or create columns
-        $columns = $this->getOrCreateColumns($dataTable, $data);
+        // Strip reserved/row-metadata keys (id_users, trigger_type, ...) so they
+        // never become dynamic data columns, then resolve columns by immutable key.
+        $fieldData = $this->dataColumnService->filterFieldData($data);
+        $columns = $this->dataColumnService->resolveColumns($dataTable, array_keys($fieldData), $fieldLabels ?? []);
 
         // Create data cells
-        foreach ($data as $fieldName => $fieldValue) {
+        foreach ($fieldData as $fieldName => $fieldValue) {
             $column = $columns[$fieldName];
 
             // Handle language-specific data
@@ -618,35 +640,6 @@ class DataService extends BaseService
     }
 
     /**
-     * Get or create columns for data table
-     * 
-     * @param DataTable $dataTable The data table
-     * @param array<string, mixed> $data Form data to extract column names
-     * @return array<string, DataCol> Array of column name => DataCol
-     */
-    private function getOrCreateColumns(DataTable $dataTable, array $data): array
-    {
-        $columns = [];
-
-        foreach (array_keys($data) as $fieldName) {
-            $column = $this->entityManager->getRepository(DataCol::class)
-                ->findOneBy(['dataTable' => $dataTable, 'name' => $fieldName]);
-
-            if (!$column) {
-                $column = new DataCol();
-                $column->setDataTable($dataTable);
-                $column->setName($fieldName);
-                $this->entityManager->persist($column);
-                $this->entityManager->flush(); // Flush to get the ID
-            }
-
-            $columns[$fieldName] = $column;
-        }
-
-        return $columns;
-    }
-
-    /**
      * Get trigger type ID from form data
      * 
      * @param array<string, mixed> $data Form data
@@ -693,8 +686,138 @@ class DataService extends BaseService
     }
 
     /**
+     * Remap a core form submission from human input names to immutable
+     * `section_<id>` storage keys (issue #56). Reserved/metadata keys
+     * (`id_users`, `trigger_type`, ...) are never remapped. A submitted name with
+     * no matching input section is kept as-is so data is never dropped. Returns
+     * the remapped data plus the auto display labels (field key => human name) to
+     * merge into `fieldLabels`.
+     *
+     * @param array<string, mixed> $data
+     * @return array{0: array<string, mixed>, 1: array<string, string>}
+     */
+    private function mapFormFieldKeys(string $tableName, array $data): array
+    {
+        $nameToFieldKey = $this->formFieldKeyResolver->getNameToFieldKey($tableName);
+        if ($nameToFieldKey === []) {
+            return [$data, []];
+        }
+
+        $remapped = [];
+        $labels = [];
+        foreach ($data as $key => $value) {
+            $key = (string) $key;
+            if ($this->dataColumnService->isReservedKey($key)) {
+                $remapped[$key] = $value;
+                continue;
+            }
+            if (isset($nameToFieldKey[$key])) {
+                $fieldKey = $nameToFieldKey[$key];
+                $remapped[$fieldKey] = $value;
+                $labels[$fieldKey] = $key;
+            } else {
+                $remapped[$key] = $value;
+            }
+        }
+
+        return [$remapped, $labels];
+    }
+
+    /**
+     * Reverse of {@see mapFormFieldKeys} for reads: rename each record's
+     * `section_<id>` data keys back to the current human input name so the
+     * frontend/mobile (which bind by input name) prefill unchanged. Metadata
+     * keys pass through. No-op for non-form tables.
+     *
+     * @param array<array-key, mixed> $records
+     * @return array<array-key, mixed>
+     */
+    private function remapRecordKeysToInputNames(string $tableName, array $records): array
+    {
+        $keyToName = $this->formFieldKeyResolver->getFieldKeyToName($tableName);
+        if ($keyToName === []) {
+            return $records;
+        }
+
+        $out = [];
+        foreach ($records as $index => $record) {
+            if (!is_array($record)) {
+                $out[$index] = $record;
+                continue;
+            }
+            $mapped = [];
+            foreach ($record as $key => $value) {
+                $key = (string) $key;
+                $mapped[$keyToName[$key] ?? $key] = $value;
+            }
+            $out[$index] = $mapped;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Remap showUserInput entries (keyed by `field_key`) back to the current
+     * human input name for display, so a renamed input shows the new label and
+     * one logical column instead of section ids. No-op for non-form data tables
+     * (e.g. SurveyJS tables keep `question.name` headers).
+     *
+     * @param array<array-key, mixed> $entries
+     * @return array<array-key, mixed>
+     */
+    public function remapEntriesToInputNames(int $dataTableId, array $entries): array
+    {
+        $dataTable = $this->dataTableRepository->find($dataTableId);
+        if (!$dataTable) {
+            return $entries;
+        }
+
+        return $this->remapRecordKeysToInputNames((string) $dataTable->getName(), $entries);
+    }
+
+    /**
+     * `field_key => display_name` for a data table's curated columns, so
+     * renderers (e.g. show-user-input) can show human labels as headers while
+     * keying cells by the immutable `field_key` (issue #56 v2). `display_name`
+     * falls back to the `field_key` when not curated. Standard projection
+     * columns (record_id, entry_date, …) are not included — they render under
+     * their own key. Cached per table and invalidated on column changes.
+     *
+     * @return array<string, string>
+     */
+    public function getColumnDisplayLabels(int $dataTableId): array
+    {
+        if ($dataTableId <= 0) {
+            return [];
+        }
+
+        return $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+            ->getList("column_display_labels_{$dataTableId}", function () use ($dataTableId) {
+                $rows = $this->entityManager->getConnection()->executeQuery(
+                    'SELECT field_key, display_name FROM data_cols WHERE id_data_tables = :id ORDER BY field_key',
+                    ['id' => $dataTableId],
+                    ['id' => \Doctrine\DBAL\ParameterType::INTEGER]
+                )->fetchAllAssociative();
+
+                $labels = [];
+                foreach ($rows as $row) {
+                    $fieldKey = isset($row['field_key']) && is_scalar($row['field_key']) ? (string) $row['field_key'] : '';
+                    if ($fieldKey === '') {
+                        continue;
+                    }
+                    $displayName = isset($row['display_name']) && is_scalar($row['display_name']) ? (string) $row['display_name'] : '';
+                    $labels[$fieldKey] = $displayName !== '' ? $displayName : $fieldKey;
+                }
+
+                return $labels;
+            });
+    }
+
+    /**
      * Get the last record of a data table
-     * 
+     *
      * @param string $dataTableName Data table name
      * @return array<array-key, mixed>
      */
@@ -732,13 +855,18 @@ class DataService extends BaseService
 
         $cacheKey = "form_record_data_{$dataTableName}_{$userId}";
 
-        return $this->cache
+        $records = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
             ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
             ->getList($cacheKey, function () use ($dataTableId, $userId) {
                 return $this->getDataWithAllLanguages($dataTableId, 'ORDER BY record_id DESC LIMIT 1', true, $userId, false, true);
             });
+
+        // Records are stored keyed by the immutable section-id field_key; rename
+        // them back to the current human input name for prefill (issue #56).
+        // Applied after the cache read so a rename reflects immediately.
+        return $this->remapRecordKeysToInputNames($dataTableName, $records);
     }
 
     /**

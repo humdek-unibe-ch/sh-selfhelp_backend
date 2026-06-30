@@ -120,6 +120,37 @@ final class MobilePreviewAccessGuardTest extends TestCase
     }
 
     /**
+     * The previewed page's core forms must be testable end-to-end: submit
+     * (POST), update (PUT) and delete (DELETE) are permitted so a form embedded
+     * in the preview behaves exactly as on the live page. The preview runs as
+     * the admin's (or impersonated) identity; FormController enforces ACL.
+     */
+    public function testAllowsPreviewTokenOnCoreFormRoutes(): void
+    {
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/forms/submit', 'form_submit_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/forms/update', 'form_update_v1', 'PUT', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/forms/delete', 'form_delete_v1', 'DELETE', self::PREVIEW_PAYLOAD),
+        );
+        $this->expectNotToPerformAssertions();
+    }
+
+    /**
+     * The form allowlist is exact: a non-form core mutation that merely lives
+     * under a similar path is still denied.
+     */
+    public function testBlocksPreviewTokenOnNonFormCoreMutation(): void
+    {
+        $this->assertDenied(
+            $this->event('/cms-api/v1/admin/pages', 'admin_pages_create_v1', 'POST', self::PREVIEW_PAYLOAD),
+        );
+    }
+
+    /**
      * The permission-gated plugin ADMIN surface stays off-limits to a preview
      * token even though its public surface is now reachable.
      */

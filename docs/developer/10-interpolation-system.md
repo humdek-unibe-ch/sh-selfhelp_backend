@@ -3,7 +3,7 @@
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-06-29.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 **Date:** 2025-10-24  
@@ -318,13 +318,143 @@ Global variables are defined in the `sh-global-values` page and are language-spe
 ### **3. Data Variables (`scope.*`)**
 Data variables are retrieved from database tables based on `data_config` settings.
 
-**Access Pattern:** `{{scope.field_name}}`
+**Access Pattern:** `{{scope.field_key}}`
 
 The scope name is defined in your `data_config`. Common scopes:
 - `parent` - Parent record data
 - `test` - Test data
 - `user_data` - User-specific data
 - Any custom scope name
+
+The field part of the token is the column's **immutable `field_key`** (the
+storage key in `data_cols`), not the display label — so renaming a column's
+label never breaks an existing `{{scope.field_key}}` token (issue #56). The
+`field_key` is derived per data source (see
+[Database Design](./04-database-design.md#field_key-derivation-contract-per-data-source)):
+for a **core CMS form** it is `section_<input section id>` (e.g.
+`{{parent.section_456}}`), and for **SurveyJS** it is `question.name`. Core-form
+tokens are therefore opaque section ids — always pick them from the CMS variable
+picker (which shows the readable label) rather than typing them by hand. The
+render-time scope resolver (`SectionUtilityService::retrieveData()` →
+`PageService`) returns rows keyed by the same `field_key`, so token and value
+always line up.
+
+**Variable picker contract (`token => label`).** `DataVariableResolver`
+(consumed by the section editor's variable picker) returns a **map of token to
+human label**, e.g.
+`{ "parent.section_456": "Daily mood", "parent.email": "Email address" }`
+(token = `scope.field_key`, label = `scope.(display_name ?? field_key)`). The CMS
+editor **shows the label** so the admin picks a readable name, but **inserts the
+stable token** (`{{parent.section_456}}`) into the content. This keeps content
+authored against immutable keys while staying human-friendly.
+
+**Frontend chip round-trip (v2, issue #56).** The mention editor renders each
+inserted token as a **label chip** showing the live `display_name` (spaces
+allowed) while persisting the bare `{{scope.field_key}}` token to the database.
+On load it parses `{{scope.field_key}}` back into chips by looking the token up
+in the live `token => label` map. Because the chip is token-agnostic (it renders
+whatever label the map provides for the stored token), a later input/display
+rename only changes the chip text — the stored token is unchanged.
+
+**show-user-input headers (v2, issue #56).** A `show-user-input` section's render
+payload carries a `field_labels` map (`field_key => display_name`) alongside
+`entries` (rows kept keyed by `field_key`). The renderer defaults each column
+header to the curated `display_name` and reads cells by the stable `field_key`,
+with the style's `fields_map` available as an explicit per-column override.
+Standard projection columns (`record_id`, `entry_date`, …) are not in
+`field_labels` and render under their own key. The map is produced by
+`DataService::getColumnDisplayLabels()` (cached per table under the `DATA_TABLE`
+scope, busted on column changes).
+
+**Picker delivery (`GET /admin/interpolation/variables?context=section&id={section_id}`).**
+The map is served by the **unified context-aware endpoint**
+(`AdminInterpolationController::getVariables` →
+`InterpolationVariableService::getVariablesForContext` →
+`DataVariableResolver::getSectionContextVariables`), not bundled into the cached
+`getSection` payload. The variables depend on the referenced data tables' live
+columns, and a column added by a later form submission only invalidates the
+`DATA_TABLE` cache scope — not the section's `SECTION` scope — so a payload-baked
+picker would go stale until the section was re-saved. Instead the resolver
+assembles the map from its **granular caches** (section hierarchy/data under
+`SECTION` scope, table columns under `DATA_TABLE` scope), so adding a column
+**or** editing `data_config` both refresh it. The section inspector fetches this
+fresh when it opens (frontend `useSectionDataVariables`, which delegates to the
+unified `useInterpolationVariables('section', …)`, REAL_TIME tier), so a new
+column/rename appears in the picker immediately without re-saving the section.
+(The former per-section `GET /admin/sections/{section_id}/data-variables` route
+was removed in core 0.1.29 once every supported frontend had moved to the
+unified endpoint — migration `Version20260629170535`.)
+
+### Standard projection columns (always present)
+
+Every data row has a fixed set of **standard columns** in addition to the
+form/SurveyJS columns, produced directly by the data stored procedure
+`get_data_table_filtered` (`r.id AS record_id`,
+`convert_entry_date_timezone(...) AS entry_date`, `r.id_users`,
+`u.name AS user_name`, `vc.code AS user_code`, `l.lookup_code AS triggerType`).
+They are **runtime-real**: a `{{scope.record_id}}` / `{{scope.user_name}}` token
+always resolves for any connected scope.
+
+`DataTableService::STANDARD_COLUMNS` is the single source for this list
+(`record_id`, `entry_date`, `user_code`, `id_users`, `user_name`, `triggerType`).
+`DataTableService::getColumns()` returns them **first**, flagged
+`standard: true` and `id: null` (and `locked: true`), then the table's dynamic
+`data_cols`. `getColumnsNames()` likewise prepends their keys. Consequences:
+
+- The **data-config builder / SQL filter** (`FilterBuilderInline`, `DataSourceForm`)
+  lists them like any other column, so admins can filter / order by
+  `record_id`, `entry_date`, etc.
+- The **Data browser editor** (`DataTableEditorModal`) **excludes**
+  `standard: true` columns from relabel/delete — they are platform-owned (no
+  `id`), and all six are in `DataColumnService::RESERVED_KEYS`, so a user field
+  can never collide with them.
+
+### CMS editor: field rendering modes and `{{` coverage
+
+Interpolation is offered in **every authored text surface**, not just `content`.
+The editor is chosen **purely from the field type** (no per-name allowlist): the
+frontend `FieldRenderer` maps field types to mention/`{{`-aware editors:
+
+| Field type | Editor | Notes |
+| --- | --- | --- |
+| `text` | single-line mention input (`TextInputWithMentions`) | Gets the `{{` picker. The three structural identifiers `name` / `value` / `title` (`PLAIN_IDENTIFIER_FIELD_NAMES`) render as a **plain** input with no interpolation; everything else is a single-line mention input. |
+| `markdown-inline` | single-line mention input | Same as `text` plus inline **bold / italic / underline / link** shortcuts (those tags survive to the web/mobile renderers). |
+| `textarea` | `RichTextField` → `MentionEditor` (rich WYSIWYG) | Full toolbar (headings, lists, alignment, links) and **accepts Enter** — this is the home for longer / multiline / nicely-formatted copy. On the `sh-mail-config` page it also gets the email **Style** preset dropdown (`emailStyles`). |
+| `markdown`, `json`, `code`, `css`, raw SQL filter | Monaco (`MonacoEditorField`) | `{{` completion provider injects the same `token => label` suggestions. `code` opens in **HTML** mode for raw markup (e.g. `html_tag_content`) that must not pass through the WYSIWYG. The data-config SQL filter is **locked (read-only) by default** and unlockable for manual editing. |
+
+The `token => label` map flows in as the `dataVariables` prop. The mention chip
+shows the label and stores the bare `{{token}}` (see the chip round-trip above);
+Monaco inserts the raw token. Tokens are hydrated into chips **only inside
+visible text nodes** — a token inside an HTML attribute (e.g. a mail
+`<a href="{{system.special.reset_link}}">`) is left as the literal token so the
+markup stays valid and the URL resolves at send time.
+
+> **Field types are part of this contract.** Because the editor is type-driven,
+> a field's `fieldType` must match how it should be authored: prose →
+> `textarea`, short label → `text`, structured config blob → `json`, raw HTML →
+> `code`. Migration `Version20260629143116` retyped the previously
+> `textarea`-overloaded JSON config fields to `json`, `html_tag_content` to
+> `code`, and the short message fields (`error_text`, `empty_text`,
+> `loading_text`, `confirm_message`, `delete_modal_body`) to `textarea` so they
+> get the rich editor.
+
+---
+
+## Mail rendering and email styles
+
+Transactional mail bodies (`sh-mail-config`) are authored as **rich-text
+fragments**, not full HTML documents. At send time
+`JobSchedulerService::sendEmail()` passes the HTML body through
+`App\Service\Auth\MailHtmlRenderer::render()`, which inlines email-safe CSS
+(base tag styles + the named `email-*` style presets) and wraps the content in
+the shared branded shell. Plain-text mails are sent verbatim; legacy full-HTML
+documents are passed through untouched.
+
+The interpolation pipeline is unchanged — `{{system.*}}` / `{{system.special.*}}`
+placeholders in the body are resolved before the HTML reaches the renderer. The
+full preset contract (frontend Tiptap extension ⇄ backend inline CSS) and the
+"adding a preset" checklist live in
+[../reference/email-styles.md](../reference/email-styles.md).
 
 ---
 

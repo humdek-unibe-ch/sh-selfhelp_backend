@@ -62,11 +62,11 @@ final class MailTemplateDefaults
      * @var array<string, list<string>>
      */
     public const PLACEHOLDERS = [
-        self::TYPE_2FA => ['user_name', 'code'],
-        self::TYPE_CONFIRM => ['user_name', 'validation_url'],
-        self::TYPE_WELCOME => ['user_name', 'platform_url'],
-        self::TYPE_RECOVERY => ['user_name', 'reset_url'],
-        self::TYPE_PASSWORD_CHANGED => ['user_name', 'platform_url'],
+        self::TYPE_2FA => ['system.user_name', 'system.user_code'],
+        self::TYPE_CONFIRM => ['system.user_name', 'system.special.activation_link'],
+        self::TYPE_WELCOME => ['system.user_name', 'system.special.platform_link'],
+        self::TYPE_RECOVERY => ['system.user_name', 'system.special.reset_link'],
+        self::TYPE_PASSWORD_CHANGED => ['system.user_name', 'system.special.platform_link'],
     ];
 
     /**
@@ -117,43 +117,43 @@ final class MailTemplateDefaults
         ],
         'mail_2fa_subject' => [
             'title' => '2FA: Subject',
-            'help' => 'Subject line of the 2FA email. Available placeholders: {{user_name}}, {{code}}.',
+            'help' => 'Subject line of the 2FA email. Available placeholders: {{system.user_name}}, {{system.user_code}}.',
         ],
         'mail_2fa_body' => [
             'title' => '2FA: Body',
-            'help' => 'Body of the 2FA email. Available placeholders: {{user_name}} (full name or email fallback), {{code}} (6-digit verification code).',
+            'help' => 'Body of the 2FA email. Available placeholders: {{system.user_name}} (full name or email fallback), {{system.user_code}} (6-digit verification code).',
         ],
         'mail_confirm_subject' => [
             'title' => 'Confirmation: Subject',
-            'help' => 'Subject line of the account confirmation email. Available placeholders: {{user_name}}, {{validation_url}}.',
+            'help' => 'Subject line of the account confirmation email. Available placeholders: {{system.user_name}}, {{system.special.activation_link}}.',
         ],
         'mail_confirm_body' => [
             'title' => 'Confirmation: Body',
-            'help' => 'Body of the account confirmation email. Available placeholders: {{user_name}} (full name or email fallback), {{validation_url}} (one-time activation link, valid for 24 hours).',
+            'help' => 'Body of the account confirmation email. Available placeholders: {{system.user_name}} (full name or email fallback), {{system.special.activation_link}} (one-time activation link, valid for 24 hours).',
         ],
         'mail_welcome_subject' => [
             'title' => 'Welcome: Subject',
-            'help' => 'Subject line of the welcome email sent after account validation. Available placeholders: {{user_name}}, {{platform_url}}.',
+            'help' => 'Subject line of the welcome email sent after account validation. Available placeholders: {{system.user_name}}, {{system.special.platform_link}}.',
         ],
         'mail_welcome_body' => [
             'title' => 'Welcome: Body',
-            'help' => 'Body of the welcome email. Available placeholders: {{user_name}} (full name or email fallback), {{platform_url}} (link to the platform home).',
+            'help' => 'Body of the welcome email. Available placeholders: {{system.user_name}} (full name or email fallback), {{system.special.platform_link}} (link to the platform home).',
         ],
         'mail_recovery_subject' => [
             'title' => 'Recovery: Subject',
-            'help' => 'Subject line of the password recovery email. Available placeholders: {{user_name}}, {{reset_url}}.',
+            'help' => 'Subject line of the password recovery email. Available placeholders: {{system.user_name}}, {{system.special.reset_link}}.',
         ],
         'mail_recovery_body' => [
             'title' => 'Recovery: Body',
-            'help' => 'Body of the password recovery email. Available placeholders: {{user_name}} (full name or email fallback), {{reset_url}} (one-time reset link, valid for 1 hour).',
+            'help' => 'Body of the password recovery email. Available placeholders: {{system.user_name}} (full name or email fallback), {{system.special.reset_link}} (one-time reset link, valid for 1 hour).',
         ],
         'mail_password_changed_subject' => [
             'title' => 'Password Changed: Subject',
-            'help' => 'Subject line of the password-changed confirmation email. Available placeholders: {{user_name}}, {{platform_url}}.',
+            'help' => 'Subject line of the password-changed confirmation email. Available placeholders: {{system.user_name}}, {{system.special.platform_link}}.',
         ],
         'mail_password_changed_body' => [
             'title' => 'Password Changed: Body',
-            'help' => 'Body of the password-changed confirmation email. Available placeholders: {{user_name}} (full name or email fallback), {{platform_url}} (link to the platform home/login).',
+            'help' => 'Body of the password-changed confirmation email. Available placeholders: {{system.user_name}} (full name or email fallback), {{system.special.platform_link}} (link to the platform home/login).',
         ],
     ];
 

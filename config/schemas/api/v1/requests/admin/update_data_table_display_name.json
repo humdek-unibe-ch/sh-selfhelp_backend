@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Update Data Table Display Name Request",
+  "description": "Schema for curating the human-facing display name of a data table from the Data browser. Setting a value locks the label (provenance 'manual') so the form section's displayName field no longer overwrites it; null/empty resets it to the auto label derived from the form section.",
+  "properties": {
+    "displayName": {
+      "type": ["string", "null"],
+      "maxLength": 1000,
+      "description": "Human-facing label. Null or empty resets the label to auto (re-derived from the owning form section)."
+    }
+  },
+  "additionalProperties": false
+}

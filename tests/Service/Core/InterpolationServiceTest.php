@@ -305,6 +305,46 @@ class InterpolationServiceTest extends TestCase
     }
 
     /**
+     * Regression (issue #56 v2): a content field can reference a token that
+     * resolves to a non-scalar value — most commonly `{{system.user_group}}`,
+     * because the current user's groups are exposed as a list. The default
+     * Mustache escaper handed that array straight to htmlspecialchars(), which
+     * on PHP 8 throws a TypeError. Because that is an \Error (not an
+     * \Exception) it escaped the catch and 500-ed the whole page render. The
+     * guarded escaper must render the array token as an empty string while
+     * still interpolating the surrounding scalar tokens.
+     */
+    public function testNonScalarTokenRendersEmptyInsteadOfCrashing(): void
+    {
+        $content = '<p>Hi {{system.user_name}}, groups: {{system.user_group}}.</p>';
+        $data = [
+            'system' => [
+                'user_name' => 'Jane',
+                'user_group' => ['admin', 'editor'],
+            ],
+        ];
+
+        $result = $this->interpolationService->interpolate($content, $data);
+
+        $this->assertSame('<p>Hi Jane, groups: .</p>', $result);
+    }
+
+    /**
+     * The array value that is neutralised for scalar `{{ }}` output must still
+     * be iterable as a Mustache section, so authors can list group names with
+     * `{{#system.user_group}}…{{/system.user_group}}`.
+     */
+    public function testNonScalarTokenStillIterableAsSection(): void
+    {
+        $content = '{{#system.user_group}}[{{.}}]{{/system.user_group}}';
+        $data = ['system' => ['user_group' => ['admin', 'editor']]];
+
+        $result = $this->interpolationService->interpolate($content, $data);
+
+        $this->assertSame('[admin][editor]', $result);
+    }
+
+    /**
      * Test interpolation with boolean values
      */
     public function testBooleanValueInterpolation(): void

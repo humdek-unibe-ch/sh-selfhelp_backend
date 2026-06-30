@@ -7,6 +7,7 @@
 
 namespace App\Service\CMS;
 
+use App\Entity\DataCol;
 use App\Entity\DataRow;
 use App\Entity\DataTable;
 use App\Entity\Section;
@@ -33,7 +34,26 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class DataTableService extends BaseService
 {
-
+    /**
+     * Always-present projection columns every data row implicitly carries (from
+     * the read stored procedure), as immutable `field_key => default human label`.
+     *
+     * They are surfaced by {@see self::getColumns()} flagged `standard:true` with
+     * `id:null` so the data-config builder / SQL filter can reference them
+     * (e.g. `{{scope.record_id}}`) while the Data browser keeps them read-only
+     * (no rename, no delete). All of them are reserved keys, so a user field can
+     * never collide with them ({@see DataColumnService::RESERVED_KEYS}).
+     *
+     * @var array<string, string>
+     */
+    public const STANDARD_COLUMNS = [
+        'record_id' => 'Record ID',
+        'entry_date' => 'Entry date',
+        'user_code' => 'User code',
+        'id_users' => 'User ID',
+        'user_name' => 'User name',
+        'triggerType' => 'Trigger type',
+    ];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -136,6 +156,13 @@ class DataTableService extends BaseService
             throw new ServiceException('Data table not found', Response::HTTP_NOT_FOUND);
         }
 
+        // Respect a manual lock: once an admin renames the table in the Data
+        // browser its provenance becomes `manual`, so the form section's
+        // `displayName` field must not overwrite it on save (issue #56).
+        if ($dataTable->isDisplayNameManual()) {
+            return false;
+        }
+
         $this->entityManager->beginTransaction();
         
         try {
@@ -211,6 +238,50 @@ class DataTableService extends BaseService
         $translation = $qb->getQuery()->getOneOrNullResult();
         
         return $translation ? $translation->getContent() : null;
+    }
+
+    /**
+     * Content of a section's style field named `name` — the human label that
+     * drives the AUTO display name of the form's data table and of its input
+     * columns (the same field the Save path reads). Null when the section has no
+     * such field/translation or it is empty (issue #56).
+     */
+    private function getNameFieldContentFromSection(Section $section): ?string
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('sft')
+           ->from(SectionsFieldsTranslation::class, 'sft')
+           ->join('sft.field', 'f')
+           ->where('sft.section = :section')
+           ->andWhere('f.name = :fieldName')
+           ->setParameter('section', $section)
+           ->setParameter('fieldName', 'name')
+           ->setMaxResults(1);
+
+        /** @var SectionsFieldsTranslation|null $translation */
+        $translation = $qb->getQuery()->getOneOrNullResult();
+
+        $content = $translation?->getContent();
+
+        return is_string($content) && $content !== '' ? $content : null;
+    }
+
+    /**
+     * Re-derive the AUTO display label for a column addressed by its immutable
+     * field key. Core CMS columns use `section_<id>` -> the input section's
+     * `name` field; external keys (e.g. SurveyJS `question.name`) have no CMS
+     * section, so they fall back to null and the next write re-applies the
+     * incoming label (issue #56).
+     */
+    private function deriveAutoColumnLabel(string $fieldKey): ?string
+    {
+        if (preg_match('/^section_(\d+)$/', $fieldKey, $matches) !== 1) {
+            return null;
+        }
+
+        $section = $this->entityManager->getRepository(Section::class)->find((int) $matches[1]);
+
+        return $section !== null ? $this->getNameFieldContentFromSection($section) : null;
     }
 
     /**
@@ -307,6 +378,7 @@ class DataTableService extends BaseService
         return [
             'tableName' => $tableName,
             'displayName' => $dataTable->getDisplayName(),
+            'locked' => $dataTable->isDisplayNameManual(),
             'totalRows' => $totalRows,
             'totalColumns' => $totalColumns,
             'created' => $dataTable->getTimestamp()
@@ -314,19 +386,42 @@ class DataTableService extends BaseService
     }
 
     /**
-     * Delete selected columns from a data table
+     * Compact table info for the CMS form section inspector: the underlying data
+     * table id, its storage name (== form section id, used for the Data browser
+     * deep link), the current display label and whether it is manually locked.
+     * Returns null when the form section has no data table yet (issue #56).
+     *
+     * @return array{id: int, name: string, display_name: string|null, locked: bool}|null
+     */
+    public function getFormSectionTableInfo(int $sectionId): ?array
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => (string) $sectionId]);
+        if (!$dataTable) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $dataTable->getId(),
+            'name' => (string) $dataTable->getName(),
+            'display_name' => $dataTable->getDisplayName(),
+            'locked' => $dataTable->isDisplayNameManual(),
+        ];
+    }
+
+    /**
+     * Delete selected columns from a data table, addressed by immutable field key.
      * Returns number of deleted columns, false if table not found
      *
-     * @param list<string> $columnNames
+     * @param list<string> $fieldKeys Immutable column keys (data_cols.field_key)
      */
-    public function deleteColumns(string $tableName, array $columnNames): int|false
+    public function deleteColumns(string $tableName, array $fieldKeys): int|false
     {
         $dataTable = $this->dataTableRepository->findOneBy(['name' => $tableName]);
         if (!$dataTable) {
             return false;
         }
 
-        if (count($columnNames) === 0) {
+        if (count($fieldKeys) === 0) {
             return 0;
         }
 
@@ -335,14 +430,14 @@ class DataTableService extends BaseService
         try {
             $deletedCount = 0;
 
-            // Fetch columns by names
+            // Fetch columns by immutable field key
             $qb = $this->entityManager->createQueryBuilder();
             $qb->select('dc')
-                ->from('App\\Entity\\DataCol', 'dc')
+                ->from(DataCol::class, 'dc')
                 ->where('dc.dataTable = :dataTable')
-                ->andWhere($qb->expr()->in('dc.name', ':names'))
+                ->andWhere($qb->expr()->in('dc.fieldKey', ':fieldKeys'))
                 ->setParameter('dataTable', $dataTable)
-                ->setParameter('names', $columnNames);
+                ->setParameter('fieldKeys', $fieldKeys);
 
             /** @var array<int, \App\Entity\DataCol> $columns */
             $columns = $qb->getQuery()->getResult();
@@ -376,8 +471,14 @@ class DataTableService extends BaseService
     }
 
     /**
-     * Get columns for a data table by name
-     * Returns an array of column definitions [{ id, name }] or false if not found
+     * Get columns for a data table by name.
+     *
+     * Returns the always-present {@see self::STANDARD_COLUMNS} projection columns
+     * first (`id:null`, `standard:true`, `locked:true` — read-only, not editable
+     * in the Data browser) followed by the table's dynamic data columns
+     * (`standard:false`). `fieldKey` is the immutable storage key; `displayName`
+     * is the mutable human label (null when never curated). Returns false if the
+     * table is not found.
      *
      * @return list<array<string, mixed>>|false
      */
@@ -388,20 +489,31 @@ class DataTableService extends BaseService
             return false;
         }
 
-        $columns = $dataTable->getDataCols();
         $result = [];
-        foreach ($columns as $col) {
+        foreach (self::STANDARD_COLUMNS as $fieldKey => $label) {
+            $result[] = [
+                'id' => null,
+                'fieldKey' => $fieldKey,
+                'displayName' => $label,
+                'locked' => true,
+                'standard' => true,
+            ];
+        }
+        foreach ($dataTable->getDataCols() as $col) {
             $result[] = [
                 'id' => $col->getId(),
-                'name' => $col->getName(),
+                'fieldKey' => $col->getFieldKey(),
+                'displayName' => $col->getDisplayName(),
+                'locked' => $col->isDisplayNameManual(),
+                'standard' => false,
             ];
         }
         return $result;
     }
 
      /**
-     * Get columns for a data table by name
-     * Returns an array of column names or false if not found
+     * Get column keys for a data table by name (immutable field keys plus the
+     * always-present projection columns). Returns false if not found.
      *
      * @return list<string|null>|false
      */
@@ -412,12 +524,170 @@ class DataTableService extends BaseService
             return false;
         }
 
-        $columns = $dataTable->getDataCols();
-        $result = ['record_id', 'entry_date', 'user_code', 'id_users', 'user_name', 'triggerType'];
-        foreach ($columns as $col) {
-            $result[] = $col->getName();
+        $result = array_keys(self::STANDARD_COLUMNS);
+        foreach ($dataTable->getDataCols() as $col) {
+            $result[] = $col->getFieldKey();
         }
         return $result;
+    }
+
+    /**
+     * Curate a column's human-facing label. Addressed by immutable field key;
+     * sets `display_name` and marks the label as manually curated so future
+     * auto label pushes from submissions never overwrite it.
+     *
+     * Returns true on success, false when the table or column is unknown.
+     *
+     * @throws ServiceException
+     */
+    public function updateColumnDisplayName(string $tableName, string $fieldKey, ?string $displayName): bool
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => $tableName]);
+        if (!$dataTable) {
+            return false;
+        }
+
+        $column = $this->entityManager->getRepository(DataCol::class)
+            ->findOneBy(['dataTable' => $dataTable, 'fieldKey' => $fieldKey]);
+        if (!$column) {
+            return false;
+        }
+
+        $this->entityManager->beginTransaction();
+
+        try {
+            $normalized = is_string($displayName) && $displayName !== '' ? $displayName : null;
+            if ($normalized === null) {
+                // Reset to auto: clear the manual lock (NULL FK = auto) and
+                // immediately re-derive the label from the input section's `name`
+                // field so the column header is not left as the opaque section_<id>
+                // key. External (SurveyJS) keys re-derive to null and pick the
+                // label back up on the next write (issue #56).
+                $column->setDisplayName($this->deriveAutoColumnLabel($fieldKey));
+                $column->setDisplayNameSource(null);
+            } else {
+                // Setting a label marks it admin-curated (the `manual` lookup row,
+                // type dataColDisplayNameSource) so future auto pushes from
+                // submissions never overwrite it.
+                $column->setDisplayName($normalized);
+                $column->setDisplayNameSource(
+                    $this->lookupService->findByTypeAndCode(
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE,
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE_MANUAL
+                    )
+                );
+            }
+
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'data_tables',
+                $dataTable->getId()
+            );
+
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+
+            // Bust the column list + variable-picker caches (the data-table
+            // entity-scope generation is folded into both).
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateAllListsInCategory();
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw new ServiceException(
+                'Failed to update column display name: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'tableName' => $tableName, 'fieldKey' => $fieldKey]
+            );
+        }
+    }
+
+    /**
+     * Manually curate a data table's human label from the Data browser. Sets
+     * display_name and marks provenance `manual` so the form section's
+     * `displayName` field never overwrites it again. Clearing the label
+     * (null/empty) reverts to `auto` and re-derives the label from the owning
+     * form section so the table is not left blank (issue #56).
+     *
+     * Returns true on success, false when the table is unknown.
+     *
+     * @throws ServiceException
+     */
+    public function setDataTableDisplayNameCurated(string $tableName, ?string $displayName): bool
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => $tableName]);
+        if (!$dataTable) {
+            return false;
+        }
+
+        $this->entityManager->beginTransaction();
+
+        try {
+            $normalized = is_string($displayName) && $displayName !== '' ? $displayName : null;
+
+            if ($normalized === null) {
+                // Reset to auto: re-derive from the owning form section's `name`
+                // field (the table name is the form section id), matching the live
+                // Save path so the label stays readable and consistent.
+                $section = $this->entityManager->getRepository(Section::class)
+                    ->find((int) $dataTable->getName());
+                $dataTable->setDisplayName($section !== null ? $this->getNameFieldContentFromSection($section) : null);
+                $dataTable->setDisplayNameSource(null);
+            } else {
+                $dataTable->setDisplayName($normalized);
+                $dataTable->setDisplayNameSource(
+                    $this->lookupService->findByTypeAndCode(
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE,
+                        LookupService::DATA_COL_DISPLAY_NAME_SOURCE_MANUAL
+                    )
+                );
+            }
+
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'data_tables',
+                $dataTable->getId()
+            );
+
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateAllListsInCategory();
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+                ->invalidateEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, (int) $dataTable->getId());
+            // The form section inspector embeds this table's name + lock state.
+            // Only form-section tables are named after a numeric section id, so
+            // bust the SECTION scope only for those (standalone/SurveyJS tables
+            // have no owning section and a 0 id would be rejected by the cache).
+            $tableNameStr = (string) $dataTable->getName();
+            if (ctype_digit($tableNameStr) && (int) $tableNameStr > 0) {
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateEntityScope(CacheService::ENTITY_SCOPE_SECTION, (int) $tableNameStr);
+                $this->cache
+                    ->withCategory(CacheService::CATEGORY_SECTIONS)
+                    ->invalidateAllListsInCategory();
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw new ServiceException(
+                'Failed to update data table display name: ' . $e->getMessage(),
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+                ['previous' => $e, 'tableName' => $tableName]
+            );
+        }
     }
 
     /**
@@ -495,6 +765,9 @@ class DataTableService extends BaseService
                 'id' => $table['id'],
                 'name' => $table['name'],
                 'displayName' => $table['displayName'] ?? $table['display_name'] ?? null,
+                // NULL provenance FK == auto; any non-null value is the `manual`
+                // lock (issue #56).
+                'locked' => ($table['displayNameSourceId'] ?? null) !== null,
                 'created' => $created,
                 'crud' => $table['crud']
             ];

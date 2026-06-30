@@ -46,11 +46,16 @@ final class LookupService
     public const USER_STATUS = 'userStatus';
     public const STYLE_TYPE = 'styleType';
     public const PLUGINS = 'plugins';
+    public const DATA_COL_DISPLAY_NAME_SOURCE = 'dataColDisplayNameSource';
 
     // Lookup Codes
     // notificationTypes
     public const NOTIFICATION_TYPES_EMAIL = 'email';
     public const NOTIFICATION_TYPES_PUSH_NOTIFICATION = 'push_notification';
+
+    // dataColDisplayNameSource (data_cols.display_name provenance, issue #56)
+    public const DATA_COL_DISPLAY_NAME_SOURCE_AUTO = 'auto';
+    public const DATA_COL_DISPLAY_NAME_SOURCE_MANUAL = 'manual';
 
     // actionScheduleTypes
     public const ACTION_SCHEDULE_TYPES_IMMEDIATELY = 'immediately';

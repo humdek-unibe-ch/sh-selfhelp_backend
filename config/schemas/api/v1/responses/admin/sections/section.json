@@ -60,16 +60,19 @@
                         "required": ["id"]
                     }
                 },
-                "data_variables": {
-                    "type": "array",
-                    "description": "List of available data variables for use in templates and dropdowns",
-                    "items": {
-                        "type": "string",
-                        "description": "Variable name (e.g., 'scope.field_name', 'global.var_name', or 'user_name')"
-                    }
+                "data_table": {
+                    "type": "object",
+                    "description": "Present only for form sections: the data table submissions are stored in. Lets the inspector show the storage name, whether the label is admin-locked, and a deep link to the Data browser (issue #56).",
+                    "properties": {
+                        "id": { "type": "integer", "description": "data_tables.id" },
+                        "name": { "type": "string", "description": "Immutable storage name (== form section id), used as the Data browser deep-link target" },
+                        "display_name": { "type": ["string", "null"], "description": "Current human label of the data table" },
+                        "locked": { "type": "boolean", "description": "True when an admin manually renamed the table (provenance 'manual'); the form section's displayName field no longer overwrites it" }
+                    },
+                    "required": ["id", "name", "display_name", "locked"]
                 }
             },
-            "required": ["section", "fields", "languages", "data_variables"]
+            "required": ["section", "fields", "languages"]
         }
     },
     "required": ["data"]

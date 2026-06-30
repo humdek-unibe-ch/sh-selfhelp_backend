@@ -1,38 +1,8 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <title>Passwort zurücksetzen</title>
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2c3e50;">Passwort zurücksetzen</h2>
-
-        <p>Hallo {{user_name}},</p>
-
-        <p>Wir haben eine Anfrage zum Zurücksetzen des Passworts für Ihr SelfHelp-Konto erhalten. Klicken Sie auf die folgende Schaltfläche, um ein neues Passwort zu wählen:</p>
-
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{reset_url}}"
-               style="background-color: #e67e22; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                Passwort zurücksetzen
-            </a>
-        </div>
-
-        <p>Alternativ können Sie diese URL in Ihren Browser kopieren:</p>
-        <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 3px;">
-            {{reset_url}}
-        </p>
-
-        <p><strong>Wichtig:</strong> Dieser Link läuft aus Sicherheitsgründen in 1 Stunde ab.</p>
-
-        <p>Falls Sie kein Zurücksetzen Ihres Passworts angefordert haben, ignorieren Sie diese E-Mail bitte – Ihr Passwort bleibt unverändert.</p>
-
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-
-        <p style="font-size: 12px; color: #666;">
-            Dies ist eine automatisch generierte Nachricht der SelfHelp-Plattform. Bitte antworten Sie nicht auf diese E-Mail.
-        </p>
-    </div>
-</body>
-</html>
+<h2>Passwort zurücksetzen</h2>
+<p>Hallo {{system.user_name}},</p>
+<p>Wir haben eine Anfrage zum Zurücksetzen des Passworts für Ihr SelfHelp-Konto erhalten. Klicken Sie auf die folgende Schaltfläche, um ein neues Passwort zu wählen:</p>
+<p style="text-align: center"><a href="{{system.special.reset_link}}" class="email-button">Passwort zurücksetzen</a></p>
+<p><strong>Wichtig:</strong> Dieser Link läuft aus Sicherheitsgründen in 1 Stunde ab.</p>
+<p>Falls Sie kein Zurücksetzen Ihres Passworts angefordert haben, ignorieren Sie diese E-Mail bitte – Ihr Passwort bleibt unverändert.</p>
+<hr>
+<p class="email-muted">Dies ist eine automatisch generierte Nachricht der SelfHelp-Plattform. Bitte antworten Sie nicht auf diese E-Mail.</p>

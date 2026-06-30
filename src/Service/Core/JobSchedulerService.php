@@ -19,6 +19,7 @@ use App\Entity\User;
 use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryAwareInterface;
 use App\Plugin\ScheduledJob\PluginScheduledJobDeliveryGate;
 use App\Plugin\ScheduledJob\PluginScheduledJobRegistry;
+use App\Service\Auth\MailHtmlRenderer;
 use App\Service\Auth\MailTemplateDefaults;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\CmsPreferenceService;
@@ -50,6 +51,7 @@ class JobSchedulerService extends BaseService
         private readonly PluginScheduledJobRegistry $pluginScheduledJobs,
         private readonly PluginScheduledJobDeliveryGate $pluginDeliveryGate,
         private readonly ScheduledJobRepository $scheduledJobRepository,
+        private readonly MailHtmlRenderer $mailHtmlRenderer,
     ) {
     }
 
@@ -932,7 +934,10 @@ class JobSchedulerService extends BaseService
                 ->to($recipients)
                 ->subject($subject);
 
-            $isHtml ? $email->html($body) : $email->text($body);
+            // HTML mail is rendered into the branded, email-client-safe shell
+            // (inline styles + the named email-style presets); plain text is
+            // sent verbatim (issue #56 mail editor).
+            $isHtml ? $email->html($this->mailHtmlRenderer->render($body)) : $email->text($body);
 
             foreach ($attachments as $attachment) {
                 if (!is_array($attachment)) {
