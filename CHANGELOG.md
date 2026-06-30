@@ -23,6 +23,19 @@ bypassed `InterpolationService`'s catch and returned a 500.
 - Internal robustness fix only — no API route, schema, or response-shape change.
   `supports.frontend` is unchanged (`>=0.1.55`).
 
+## Chore: drop the redundant `_v1` suffix from two display-name route names
+
+The display-name admin routes added earlier in this cycle were seeded with a
+`_v1` suffix baked into `api_routes.route_name`
+(`admin_data_table_columns_display_name_patch_v1`,
+`admin_data_table_display_name_patch_v1`), duplicating the version that already
+lives in `api_routes.version`. Migration `Version20260630070202` renames them to
+`admin_data_table_columns_display_name_patch` /
+`admin_data_table_display_name_patch` (metadata only — path, controller, methods
+and the `rel_api_routes_permissions` links are untouched), so the route-inventory
+guard (`ApiRouteInventoryTest::testStoredRouteNamesDoNotDuplicateTheVersionSuffix`)
+passes. No API path, permission, or response-shape change.
+
 # v0.1.29
 
 ## Remove the superseded per-section interpolation-picker endpoint (issue #56 v2)
