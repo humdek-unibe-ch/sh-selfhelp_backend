@@ -104,12 +104,6 @@ class Page
     #[ORM\Column(name: 'is_headless', type: 'boolean', options: ['default' => 0])]
     private bool $is_headless = false;
 
-    #[ORM\Column(name: 'nav_position', type: 'integer', nullable: true)]
-    private ?int $nav_position = null;
-
-    #[ORM\Column(name: 'footer_position', type: 'integer', nullable: true)]
-    private ?int $footer_position = null;
-
     #[ORM\Column(name: 'is_open_access', type: 'boolean', options: ['default' => 0], nullable: true)]
     private ?bool $is_open_access = false;
 
@@ -594,12 +588,10 @@ class AdminPageService extends BaseService
         bool $headless = false,
         bool $openAccess = false,
         ?string $url = null,
-        ?int $navPosition = null,
-        ?int $footerPosition = null,
-        ?int $parent = null
+        ?int $parent = null,
+        ?array $navigationAssignments = null,
     ): Page {
-        // Implementation handles page creation with proper validation and ACL checks
-        // Includes transaction logging and cache invalidation
+        // Creates the page, syncs page_routes, and optionally assigns navigation menu items.
     }
 
     public function updatePage(int $pageId, array $pageData, array $fields): void

@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-16.
+Last verified: 2026-07-01.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -61,8 +61,9 @@ Retrieve a list of all pages accessible to the current user based on their permi
       "url": "/welcome",
       "headless": false,
       "openAccess": true,
-      "navPosition": 1,
-      "footerPosition": null,
+      "navigationMembership": [
+        { "menu_key": "web_header", "menu_item_id": 12, "explicit": true }
+      ],
       "parent": null,
       "pageAccessTypeCode": "public",
       "created_at": "2024-01-15T10:30:00Z",
@@ -117,8 +118,9 @@ Retrieve detailed information about a specific page including its fields and tra
     "url": "/welcome",
     "headless": false,
     "openAccess": true,
-    "navPosition": 1,
-    "footerPosition": null,
+    "navigationMembership": [
+      { "menu_key": "web_header", "menu_item_id": 12, "explicit": true }
+    ],
     "parent": null,
     "pageAccessTypeCode": "public",
     "pageFields": {
@@ -161,21 +163,26 @@ Create a new page with specified properties.
   "headless": false,
   "openAccess": true,
   "url": "/about",
-  "navPosition": 2,
-  "footerPosition": null,
-  "parent": null
+  "parent": null,
+  "navigationAssignments": [
+    {
+      "menuKey": "web_header",
+      "parentItemId": null,
+      "position": 20,
+      "childSource": "manual"
+    }
+  ]
 }
 ```
 
 **Field Descriptions:**
 - `keyword`: Unique identifier for the page (required)
 - `pageAccessTypeCode`: Access control type ('public', 'authenticated', 'role_based') (required)
-- `headless`: Whether page should be excluded from navigation (default: false)
+- `headless`: Whether page should be excluded from global shell chrome (default: false)
 - `openAccess`: Whether page allows public access (default: false)
 - `url`: Custom URL path for the page
-- `navPosition`: Position in navigation menu
-- `footerPosition`: Position in footer
-- `parent`: ID of parent page for hierarchical structure
+- `parent`: ID of parent page for hierarchical structure (page tree; separate from menu nesting)
+- `navigationAssignments`: Optional menu-builder placements (`menuKey` one of `web_header`, `web_footer`, `mobile_drawer`, `mobile_bottom_tabs`). Creates `navigation_menu_items` in the same transaction. Menu-only moves do not change page URLs.
 
 **Response:**
 ```json
@@ -194,8 +201,9 @@ Create a new page with specified properties.
     "url": "/about",
     "headless": false,
     "openAccess": true,
-    "navPosition": 2,
-    "footerPosition": null,
+    "navigationMembership": [
+      { "menu_key": "web_header", "menu_item_id": 15, "explicit": true }
+    ],
     "parent": null,
     "pageAccessTypeCode": "public",
     "created_at": "2025-01-23T10:30:00Z",
@@ -224,7 +232,6 @@ Update an existing page's properties and field translations.
   "pageData": {
     "keyword": "about-us-updated",
     "url": "/about-us",
-    "navPosition": 3,
     "openAccess": false
   },
   "fields": [

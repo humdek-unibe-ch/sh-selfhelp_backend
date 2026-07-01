@@ -271,7 +271,7 @@ Schemas are organized in the `/config/schemas/api/v1/` directory with the follow
    - Required fields in schemas should correspond to non-nullable entity fields
 
 2. **Naming Conventions**:
-   - Use camelCase for all property names in schemas (e.g., `navPosition` not `nav_position`)
+   - Use camelCase for all property names in schemas (e.g., `navigationMembership` not `navigation_membership`)
    - Use consistent names across entities and schemas (e.g., `headless` not `is_headless`)
    - Keep property names concise but descriptive
 
@@ -1883,8 +1883,6 @@ public function getUserAcl(int $userId, ?int $pageId = -1): array
 - `id_navigation_section`: int (nullable, FK to sections)
 - `id_parent_page`: int (nullable, self-FK to pages)
 - `is_headless`: bool
-- `nav_position`: int (nullable)
-- `footer_position`: int (nullable)
 - `id_page_types`: int (FK to page_types)
 - `id_page_access_types`: int (nullable, FK to lookups, `type_code='pageAccessTypes'`)
 - `is_open_access`: bool (nullable)
@@ -2430,7 +2428,7 @@ INSERT INTO `api_routes` (`route_name`,`version`,`path`,...) VALUES
 - Foreign keys are exposed via Doctrine ManyToOne associations using the canonical column names: `id_page_types`, `id_page_access_types`, `id_parent_page`, `id_actions`, `id_navigation_section`.
 - Ensured all ORM attributes match the canonical SQL table, including column types, nullability, and relationships:
   - ManyToOne relationships for `action` (Lookup), `navigationSection` (Section), `parentPage` (self-referencing Page), `pageType` (PageType), and `pageAccessType` (Lookup).
-  - All columns (`keyword`, `url`, `protocol`, `is_headless`, `nav_position`, `footer_position`, `is_open_access`, `is_system`) are present and use correct types.
+  - All columns (`keyword`, `url`, `protocol`, `is_headless`, `is_open_access`, `is_system`) are present and use correct types. Legacy `nav_position` / `footer_position` were removed in the menu-builder wave; public placement uses `navigation_*` tables instead.
 - All required getters and setters are present and up-to-date, following ENTITY RULE and Symfony best practice.
 - Ready for further use in the application and for Doctrine migrations (manual run only).
 

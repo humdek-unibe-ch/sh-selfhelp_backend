@@ -10,4 +10,5 @@ Historical plans and superseded notes. These are kept for context only and may n
 
 - [core-installation-and-distribution-plan.md](core-installation-and-distribution-plan.md) - Active handoff plan for SelfHelp Manager, Docker-only connected distribution, registry, updates, and multi-instance operations.
 - [scheduled-jobs-docker-runner-plan.md](scheduled-jobs-docker-runner-plan.md) - Planning handoff for the Docker scheduled-job runner plus communication-preference delivery rules.
-- [selfhelp2-project-plan.md](selfhelp2-project-plan.md) - Original multi-phase project plan.
+- [menus-refactor-plan.md](menus-refactor-plan.md) - Archived menu-builder refactor plan (superseded by `docs/developer/28-navigation-pages-and-page-icons.md`).
+- [page-menu-architecture-brainstorm.md](page-menu-architecture-brainstorm.md) - Archived pre-refactor page-menu brainstorm.

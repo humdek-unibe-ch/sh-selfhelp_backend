@@ -17,6 +17,9 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 ## Core architecture
 
 - [02-dynamic-routing.md](02-dynamic-routing.md) - Database-driven API routes loaded by `ApiRouteLoader`.
+- [27-db-driven-public-routing.md](27-db-driven-public-routing.md) - DB-driven public page URLs (`page_routes`), `{{route.*}}` params, page surfaces, the list/detail wizard, and page export/import.
+- [28-navigation-pages-and-page-icons.md](28-navigation-pages-and-page-icons.md) - Navigation pages (pages-as-navigation), the configurable web/mobile navigation rendering model, auto-created public routes on page create, and the web/mobile page-icon fields.
+- [29-navigation-menu-builder.md](29-navigation-menu-builder.md) - Menu builder architecture: menus, exclusions, presets, search, startup, last visited, and page tree vs menu tree.
 - [03-authentication-authorization.md](03-authentication-authorization.md) - JWT authentication and the permission model.
 - [04-database-design.md](04-database-design.md) - Schema and entity relationships.
 - [api-security-architecture.md](api-security-architecture.md) - Request security pipeline and route permission enforcement.

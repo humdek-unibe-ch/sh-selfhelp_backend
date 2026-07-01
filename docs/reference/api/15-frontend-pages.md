@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-23.
+Last verified: 2026-07-01.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -17,6 +17,15 @@ The Frontend Public APIs provide read-only access to published content for end u
 - **Published Sections**: Content blocks within published pages
 - **Language Support**: Multi-language content delivery
 - **Access Control**: Public content with optional restrictions
+
+### Public navigation menus
+
+Global menu placement (web header, web footer, mobile drawer, mobile bottom tabs)
+is **not** stored on pages. Resolve menus for rendering via:
+
+**Endpoint:** `GET /cms-api/v1/navigation`
+
+See `docs/developer/29-navigation-menu-builder.md` and the `get_navigation.json` schema.
 
 ## Page Access
 
@@ -47,8 +56,8 @@ Retrieve a list of all published pages.
       "id": 1,
       "keyword": "home",
       "url": "/",
-      "navPosition": 1,
-      "language_id": 1
+      "is_headless": 0,
+      "title": "Home"
     }
   ]
 }

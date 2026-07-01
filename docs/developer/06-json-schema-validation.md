@@ -383,15 +383,18 @@ class ApiResponseFormatter
       "default": false,
       "description": "Whether page is headless (API-only)"
     },
-    "navPosition": {
-      "type": ["integer", "null"],
-      "minimum": 0,
-      "description": "Position in navigation menu"
-    },
-    "footerPosition": {
-      "type": ["integer", "null"],
-      "minimum": 0,
-      "description": "Position in footer menu"
+    "navigationAssignments": {
+      "type": "array",
+      "description": "Optional menu-builder placements when creating a page",
+      "items": {
+        "type": "object",
+        "properties": {
+          "menuKey": { "type": "string" },
+          "parentItemId": { "type": ["integer", "null"] },
+          "position": { "type": ["integer", "null"] },
+          "childSource": { "type": "string" }
+        }
+      }
     },
     "isOpenAccess": {
       "type": "boolean",
@@ -487,13 +490,9 @@ class ApiResponseFormatter
       "type": "boolean",
       "description": "Whether page is headless"
     },
-    "navPosition": {
-      "type": ["integer", "null"],
-      "description": "Navigation position"
-    },
-    "footerPosition": {
-      "type": ["integer", "null"],
-      "description": "Footer position"
+    "navigationMembership": {
+      "type": "array",
+      "description": "Read-only badges: which menus include this page"
     },
     "isOpenAccess": {
       "type": "boolean",

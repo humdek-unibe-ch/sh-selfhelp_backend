@@ -533,7 +533,6 @@ class AdminPageService extends BaseService
     "url": "/welcome",
     "protocol": "https",
     "is_headless": false,
-    "nav_position": 1,
     "is_open_access": false,
     "is_system": false,
     "created_at": "2025-01-23T10:30:00Z"

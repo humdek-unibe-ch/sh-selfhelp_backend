@@ -222,8 +222,6 @@ CREATE TABLE `pages` (
   `id_page_types` int NOT NULL,
   `id_page_access_types` int DEFAULT NULL,
   `is_headless` tinyint(1) NOT NULL DEFAULT '0',
-  `nav_position` int DEFAULT NULL,
-  `footer_position` int DEFAULT NULL,
   `is_open_access` tinyint(1) DEFAULT '0',
   `is_system` tinyint(1) DEFAULT '0',
   `id_published_page_versions` int DEFAULT NULL,
@@ -893,7 +891,6 @@ CREATE INDEX idx_page_acl_groups_id_pages  ON page_acl_groups(id_pages);
 
 -- CMS navigation
 CREATE INDEX idx_pages_id_parent_page ON pages(id_parent_page);
-CREATE INDEX idx_pages_nav_position   ON pages(nav_position);
 CREATE INDEX idx_rel_sections_hierarchy_id_parent_section ON rel_sections_hierarchy(id_parent_section);
 CREATE INDEX idx_sections_position    ON sections(position);
 
