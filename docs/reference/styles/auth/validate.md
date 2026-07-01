@@ -3,13 +3,13 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (account-activation API, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-22.
-Source of truth: `IValidateStyle` in `@selfhelp/shared`, `ValidateStyle.tsx`, the token-validation endpoints, and `migrations/Version20260604111011.php` (for the lifecycle status fields).
+Last verified: 2026-06-30.
+Source of truth: `IValidateStyle` in `@selfhelp/shared`, `ValidateStyle.tsx`, the token-validation endpoints, `migrations/Version20260604111011.php` (lifecycle status fields), and the seeded `page_routes` (migration `Version20260630083708`).
 
 ## Summary
 
 Account-activation page reached from the link in the registration email
-(`/validate/{userId}/{token}`). It validates the token, lets the user set their
+(`/validate/{user_id}/{token}`). It validates the token, lets the user set their
 name + password, completes activation, then redirects to login. This is where a
 self-registered user (open or code-required) finishes onboarding.
 
@@ -85,8 +85,13 @@ the shared mapper — RF-21), the card radius `radius`, and the web-only
 
 ## Behaviour
 
-- The `{userId}` + `{token}` are parsed from the `/validate/{uid}/{token}` path
-  segments, so the page works under any route slug containing `validate`.
+- The page owns the seeded canonical route `/validate/{user_id}/{token}`
+  (requirements `user_id = \d+`, `token = [A-Za-z0-9._~-]+`). The backend resolver
+  extracts the params, so `ValidateStyle.tsx` reads `route_params.user_id` /
+  `route_params.token` (from `GET /pages/resolve`) rather than parsing the slug.
+  The `user_id` / `token` names are `snake_case` and identical across backend,
+  frontend, and mobile (see
+  [27-db-driven-public-routing.md](../../../developer/27-db-driven-public-routing.md)).
 - On success the page **always** redirects to login after a 3s countdown
   (regardless of `redirect_at_end`) because the token is consumed and a revisit
   would 404.
@@ -109,5 +114,9 @@ so the placeholder is mandatory for the countdown to show.
 
 ## Change history
 
+- `2026-06-30` — Activation URL params now come from DB-driven routes (issue #30):
+  the seeded canonical route is `/validate/{user_id}/{token}` (snake_case), and the
+  renderer reads `route_params` from `GET /pages/resolve` instead of parsing the
+  slug.
 - `2026-06-04` — Made the activation lifecycle status text (loading / invalid
   link / success / redirect countdown) CMS-managed (`Version20260604111011`).

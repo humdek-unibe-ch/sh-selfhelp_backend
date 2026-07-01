@@ -124,6 +124,63 @@ class PageController extends AbstractController
     }
 
     /**
+     * Resolve a public URL path to a full page payload using the DB-driven
+     * `page_routes` contract (issue #30). This is the single entry point the
+     * web/mobile frontends call for parameterized public URLs (`/reset/42/abc`,
+     * `/team/7`) instead of hardcoding slug parsing.
+     *
+     * Route is DB-defined (loaded by {@see \App\Routing\ApiRouteLoader}) — see
+     * the `pages_resolve_path` row (GET /cms-api/v1/pages/resolve). The route
+     * carries NO permission (open-access API, like `pages_get_by_keyword`), but
+     * the resolved page itself still applies full page ACL, published/draft +
+     * preview, platform/language and data-access security in
+     * {@see PageService::getPageByPublicPath()} — unauthorized access returns
+     * 404 to avoid leaking page existence.
+     *
+     * Query params: `path` (required), `language_id`, `preview`.
+     * `preview=true` requires authentication.
+     */
+    public function resolvePublicPath(Request $request): JsonResponse
+    {
+        try {
+            $path = $request->query->get('path');
+            if (!is_string($path) || $path === '') {
+                return $this->responseFormatter->formatError(
+                    'Missing required query parameter: path',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
+            $language_id = $request->query->get('language_id') ? (int) $request->query->get('language_id') : null;
+            $preview = $request->query->getBoolean('preview', false);
+            $mode = $this->resolvePageAccessMode($request);
+
+            $page = $this->pageService->getPageByPublicPath($path, $language_id, $preview, $mode);
+
+            $response = $this->responseFormatter->formatSuccess(
+                $page,
+                'responses/frontend/get_page',
+                Response::HTTP_OK
+            );
+
+            if ($preview) {
+                $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $response->headers->set('Pragma', 'no-cache');
+                $response->headers->set('Expires', '0');
+                $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+            }
+
+            return $response;
+        } catch (\Throwable $e) {
+            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $statusCode
+            );
+        }
+    }
+
+    /**
      * Determine the page-access mode to filter by based on the incoming
      * request. Mirrors {@see VariableResolverService::getPlatform()} so
      * the page list and the condition variable agree.
