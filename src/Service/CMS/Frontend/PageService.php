@@ -29,6 +29,35 @@ class PageService extends BaseService
     // Default values for language
     private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
 
+    /**
+     * Page property fields (display=0) projected onto each menu-tree node so the
+     * web/mobile navigation renderers can read a page's menu icons + per-platform
+     * child-render type without an extra round-trip. Seeded by
+     * Version20260630130327; consumed by `@selfhelp/shared` `transformPageData`.
+     *
+     * @var list<string>
+     */
+    private const NAV_PROPERTY_FIELDS = ['icon', 'mobile_icon'];
+
+    /**
+     * Page behaviour property field (display=0) projected onto the single-page
+     * content response so the web renderer can open the page inside a modal.
+     * Seeded by Version20260630151141; consumed by `@selfhelp/shared`
+     * `IPageContent.open_in_modal` and the frontend `DynamicPageClient`.
+     */
+    private const OPEN_IN_MODAL_FIELD = 'open_in_modal';
+
+    /**
+     * Modal-size page property fields (display=0) projected next to
+     * `open_in_modal` on the single-page content response. Free-text CSS
+     * lengths or `auto`; empty means "use the frontend default (80%)". Seeded by
+     * Version20260630172821; consumed by `@selfhelp/shared`
+     * `IPageContent.modal_width|modal_height` and `DynamicPageClient`.
+     *
+     * @var list<string>
+     */
+    private const MODAL_SIZE_FIELDS = ['modal_width', 'modal_height'];
+
     // Pages where should_fallback is meaningful: keyword must match a section style name.
     // keyword => style name to look for. If style name equals keyword, just use keyword as value.
     private const FALLBACK_CHECK_KEYWORDS = [
@@ -55,39 +84,20 @@ class PageService extends BaseService
         private readonly InterpolationService $interpolationService,
         private readonly ConditionService $conditionService,
         private readonly \App\Repository\PageVersionRepository $pageVersionRepository,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly \App\Routing\PageRouteResolverService $pageRouteResolver
     ) {
     }
 
     /**
-     * Recursively sorts pages by nav_position
-     * Pages with null nav_position will be placed at the end and sorted alphabetically by keyword
+     * Recursively sorts pages alphabetically by keyword.
      *
      * @param list<array<string, mixed>> $pages
      */
     private function sortPagesRecursively(array &$pages): void
     {
         usort($pages, function (array $a, array $b): int {
-            $aPos = $a['nav_position'] ?? null;
-            $bPos = $b['nav_position'] ?? null;
-
-            // If both positions are null, sort alphabetically by keyword
-            if ($aPos === null && $bPos === null) {
-                return strcasecmp($this->asString($a['keyword'] ?? ''), $this->asString($b['keyword'] ?? ''));
-            }
-
-            // If only a's position is null, it should go after b
-            if ($aPos === null) {
-                return 1;
-            }
-
-            // If only b's position is null, it should go after a
-            if ($bPos === null) {
-                return -1;
-            }
-
-            // If both have positions, compare them normally
-            return $aPos <=> $bPos;
+            return strcasecmp($this->asString($a['keyword'] ?? ''), $this->asString($b['keyword'] ?? ''));
         });
 
         foreach ($pages as &$page) {
@@ -179,6 +189,18 @@ class PageService extends BaseService
                     );
                 }
 
+                // Fetch the navigation property fields (display=0) in one query and
+                // project them onto each node so the web/mobile menu renderers and
+                // the automatic virtual-navigation decision can read a page's menu
+                // icon + per-platform child-render type straight from the tree.
+                $pagePropertyFields = [];
+                if (!empty($pageIds)) {
+                    $pagePropertyFields = $this->pagesFieldsTranslationRepository->fetchPropertyFieldsForPages(
+                        $pageIds,
+                        self::NAV_PROPERTY_FIELDS
+                    );
+                }
+
                 // Create a map of pages by their ID for quick lookup
                 $pagesMap = [];
                 foreach ($filteredPages as &$page) {
@@ -203,6 +225,14 @@ class PageService extends BaseService
                         ? $translations['description']
                         : null;
 
+                    // Navigation property fields (display=0). Null when unset so the
+                    // renderers fall back to the platform defaults.
+                    $properties = $pagePropertyFields[$pageId] ?? [];
+                    foreach (self::NAV_PROPERTY_FIELDS as $propertyField) {
+                        $value = $properties[$propertyField] ?? null;
+                        $page[$propertyField] = ($value === null || $value === '') ? null : $value;
+                    }
+
                     $page['children'] = []; // Initialize children array
                     $pagesMap[$pageId] = &$page;
                 }
@@ -222,7 +252,7 @@ class PageService extends BaseService
                 }
                 unset($page); // Break the reference
     
-                // Optional: Sort children by nav_position if needed
+                // Children are ordered by page tree; menu order is owned by navigation_menu_items.
                 $this->sortPagesRecursively($nestedPages);
 
                 // Cache the result for this user
@@ -262,6 +292,77 @@ class PageService extends BaseService
     }
 
     /**
+     * Resolve a page by its public URL path using the DB-driven `page_routes`
+     * contract (issue #30). The resolver maps a path like `/reset/42/abc123` or
+     * `/team/7` to a page keyword plus snake_case route params; those params are
+     * threaded into the render so `{{route.user_id}}` / `{{route.record_id}}`
+     * resolve in section content and `data_config` filters, and are included in
+     * the page/section cache keys so different params never collide.
+     *
+     * Resolving a path to a page does NOT bypass any access rule: the resolved
+     * page still applies full page ACL, published/draft + preview rules, the
+     * platform/language checks, and data-access security (a 404 is returned for
+     * unauthorized access to avoid leaking page existence). The open-access
+     * `/pages/resolve` API route only governs reaching this resolver, not the
+     * page it returns.
+     *
+     * @return array<string, mixed>
+     */
+    public function getPageByPublicPath(string $path, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
+    {
+        $resolved = $this->pageRouteResolver->resolve($path);
+        if ($resolved === null) {
+            $this->throwNotFound('Page not found');
+        }
+
+        $languageId = $this->determineLanguageId($language_id);
+
+        $page = $this->pageRepository->findOneBy(['keyword' => $resolved['keyword']]);
+        if (!$page) {
+            $this->throwNotFound('Page not found');
+        }
+
+        $routeParams = $resolved['route_params'];
+
+        try {
+            $response = $this->resolvePageResponse(
+                $page,
+                (int) $page->getId(),
+                $languageId,
+                $preview,
+                $mode,
+                $routeParams
+            );
+        } catch (\App\Exception\ServiceException $e) {
+            // Existence-leak guard (issue #30 locked decision): the public path
+            // resolver must NEVER reveal that a path maps to a page the caller
+            // cannot access. A page-ACL denial (403 Forbidden) is remapped to a
+            // 404 so an unauthorized caller cannot distinguish "exists but
+            // forbidden" from "does not exist" — critical for cms/surfaced
+            // pages. The 401 preview-auth case is left intact (it is a generic
+            // "authenticate to preview", not a page-specific existence signal).
+            if ($e->getCode() === \Symfony\Component\HttpFoundation\Response::HTTP_FORBIDDEN) {
+                $this->throwNotFound('Page not found');
+            }
+            throw $e;
+        }
+
+        // Attach route metadata so the frontend/mobile can read params and the
+        // canonical URL without re-parsing the slug. route_params is omitted
+        // when empty (static route) so the wire payload stays a clean object
+        // map per the response schema.
+        if (isset($response['page']) && is_array($response['page'])) {
+            if ($routeParams !== []) {
+                $response['page']['route_params'] = $routeParams;
+            }
+            $response['page']['matched_url_pattern'] = $resolved['matched_pattern'];
+            $response['page']['canonical_url'] = $resolved['canonical_url'];
+        }
+
+        return $response;
+    }
+
+    /**
      * Shared resolution path used by getPageByKeyword().
      *
      * Page-access enforcement:
@@ -279,9 +380,10 @@ class PageService extends BaseService
      *   enforced on top, so a logged-in user can only preview pages they
      *   already have `select` access to.
      *
+     * @param array<string, string> $routeParams Public route params ({{route.*}}); empty for keyword resolution.
      * @return array<string, mixed>
      */
-    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array
+    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null, array $routeParams = []): array
     {
         if ($mode !== null) {
             $this->assertPageAccessForMode($page, $mode);
@@ -297,11 +399,40 @@ class PageService extends BaseService
 
         // If preview mode is disabled and a published version exists, serve it
         if (!$preview && $page->getPublishedVersionId()) {
-            return $this->servePublishedVersion($page_id, $languageId);
+            return $this->servePublishedVersion($page_id, $languageId, $routeParams);
         }
 
         // Otherwise serve the draft version (fresh from database)
-        return $this->serveDraftVersion($page_id, $languageId, $page);
+        return $this->serveDraftVersion($page_id, $languageId, $page, $routeParams);
+    }
+
+    /**
+     * Wrap public route params as a top-level `route` interpolation scope so
+     * `{{route.<name>}}` resolves in section content and `data_config` filters.
+     * Returns an empty array (no scope) when there are no params.
+     *
+     * @param array<string, string> $routeParams
+     * @return array<array-key, mixed>
+     */
+    private function buildRouteScope(array $routeParams): array
+    {
+        return $routeParams === [] ? [] : ['route' => $routeParams];
+    }
+
+    /**
+     * Deterministic cache-key suffix derived from the route params, so a
+     * parameterized page (e.g. `/team/{record_id}`) caches one entry per param
+     * set instead of colliding. Empty string when there are no params.
+     *
+     * @param array<string, string> $routeParams
+     */
+    private function routeCacheSuffix(array $routeParams): string
+    {
+        if ($routeParams === []) {
+            return '';
+        }
+        ksort($routeParams);
+        return '_route_' . substr(md5((string) json_encode($routeParams)), 0, 12);
     }
 
     /**
@@ -340,9 +471,10 @@ class PageService extends BaseService
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
      * @return array<string, mixed> The hydrated page data
      */
-    private function servePublishedVersion(int $page_id, int $languageId): array
+    private function servePublishedVersion(int $page_id, int $languageId, array $routeParams = []): array
     {
         // Get the published version from database
         $page = $this->pageRepository->find($page_id);
@@ -361,7 +493,7 @@ class PageService extends BaseService
         $storedPageData = $publishedVersion->getPageJson();
 
         // Hydrate the published page with fresh dynamic elements
-        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId);
+        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams);
 
         // Inject translated SEO fields (title/description) — these live in
         // pages_fields_translation, not in the versioned JSON, so they must
@@ -370,6 +502,13 @@ class PageService extends BaseService
             $seo = $this->resolvePageSeoFields($page_id, $languageId);
             $hydrated['page']['title'] = $seo['title'];
             $hydrated['page']['description'] = $seo['description'];
+            // open_in_modal lives in pages_fields_translation (a behaviour
+            // property), not in the versioned JSON, so resolve it fresh. The
+            // modal-size properties travel with it.
+            $hydrated['page']['open_in_modal'] = $this->resolveOpenInModal($page_id);
+            $modalSize = $this->resolveModalSize($page_id);
+            $hydrated['page']['modal_width'] = $modalSize['modal_width'];
+            $hydrated['page']['modal_height'] = $modalSize['modal_height'];
             $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
             $keyword = $page->getKeyword();
             if ($keyword !== null) {
@@ -394,9 +533,10 @@ class PageService extends BaseService
      * 
      * @param array<string, mixed> $storedPageData The stored page JSON structure with ALL languages
      * @param int $languageId The language ID to extract and serve
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
      * @return array<string, mixed> The hydrated page data with single language
      */
-    private function hydratePublishedPage(array $storedPageData, int $languageId): array
+    private function hydratePublishedPage(array $storedPageData, int $languageId, array $routeParams = []): array
     {
         // Extract sections from stored data
         if (!isset($storedPageData['page']) || !is_array($storedPageData['page']) || !isset($storedPageData['page']['sections']) || !is_array($storedPageData['page']['sections'])) {
@@ -412,8 +552,8 @@ class PageService extends BaseService
         // Step 2: Re-process sections with dynamic element refresh (data retrieval, conditions, interpolation)
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : null;
-        
-        $hydratedSections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
+
+        $hydratedSections = $this->processSectionsRecursively($sections, $this->buildRouteScope($routeParams), $userId, $languageId);
 
         // Update the page data with hydrated sections
         $storedPageData['page']['sections'] = $hydratedSections;
@@ -472,16 +612,18 @@ class PageService extends BaseService
      * @param int $page_id The page ID
      * @param int $languageId The language ID
      * @param \App\Entity\Page $page The page entity
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
      * @return array<string, mixed> The page data
      */
-    private function serveDraftVersion(int $page_id, int $languageId, \App\Entity\Page $page): array
+    private function serveDraftVersion(int $page_id, int $languageId, \App\Entity\Page $page, array $routeParams = []): array
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
-        // Try to get from cache first
-        $cacheKey = "page_draft_{$page_id}_{$languageId}";
+        // Try to get from cache first. The route-param suffix keeps one cache
+        // entry per param set so e.g. /team/7 and /team/8 never collide.
+        $cacheKey = "page_draft_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections to extract data table dependencies for page-level cache
         /** @var list<array<string, mixed>> $flatSections */
@@ -510,13 +652,14 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections) {
+        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
             // / <meta name="description">.
             $seo = $this->resolvePageSeoFields((int) $page->getId(), $languageId);
 
+            $modalSize = $this->resolveModalSize((int) $page->getId());
             $pageData = [
                 'page' => [
                     'id' => $page->getId(),
@@ -524,11 +667,12 @@ class PageService extends BaseService
                     'url' => $page->getUrl(),
                     'parent_page_id' => $page->getParentPage()?->getId(),
                     'is_headless' => $page->isHeadless(),
-                    'nav_position' => $page->getNavPosition(),
-                    'footer_position' => $page->getFooterPosition(),
+                    'open_in_modal' => $this->resolveOpenInModal((int) $page->getId()),
+                    'modal_width' => $modalSize['modal_width'],
+                    'modal_height' => $modalSize['modal_height'],
                     'title' => $seo['title'],
                     'description' => $seo['description'],
-                    'sections' => $this->getPageSections((int) $page->getId(), $languageId)
+                    'sections' => $this->getPageSections((int) $page->getId(), $languageId, $routeParams)
                 ]
             ];
 
@@ -542,6 +686,49 @@ class PageService extends BaseService
 
             return $pageData;
         });
+    }
+
+    /**
+     * Resolve the `open_in_modal` page behaviour property (display=0, stored
+     * under the property language in `pages_fields_translation`). Returns true
+     * only when the authored value is the boolean-like string `1`/`true`.
+     */
+    private function resolveOpenInModal(int $pageId): bool
+    {
+        $properties = $this->pagesFieldsTranslationRepository->fetchPropertyFieldsForPages(
+            [$pageId],
+            [self::OPEN_IN_MODAL_FIELD]
+        );
+
+        $value = $properties[$pageId][self::OPEN_IN_MODAL_FIELD] ?? null;
+
+        return $value === '1' || $value === 'true';
+    }
+
+    /**
+     * Resolve the optional `modal_width` / `modal_height` page properties
+     * (display=0, stored under the property language in
+     * `pages_fields_translation`). Returns a `{modal_width, modal_height}` map
+     * with the authored CSS length / `auto`, or `null` per field when unset so
+     * the frontend applies its default (80%). Only meaningful together with
+     * `open_in_modal`.
+     *
+     * @return array{modal_width: ?string, modal_height: ?string}
+     */
+    private function resolveModalSize(int $pageId): array
+    {
+        $properties = $this->pagesFieldsTranslationRepository->fetchPropertyFieldsForPages(
+            [$pageId],
+            self::MODAL_SIZE_FIELDS
+        );
+
+        $resolved = ['modal_width' => null, 'modal_height' => null];
+        foreach (self::MODAL_SIZE_FIELDS as $field) {
+            $value = $properties[$pageId][$field] ?? null;
+            $resolved[$field] = ($value === null || $value === '') ? null : $this->asStringOrNull($value);
+        }
+
+        return $resolved;
     }
 
     /**
@@ -726,15 +913,16 @@ class PageService extends BaseService
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
      * @return list<array<string, mixed>> The page sections in a hierarchical structure with translations
      */
-    public function getPageSections(int $page_id, int $languageId): array
+    public function getPageSections(int $page_id, int $languageId, array $routeParams = []): array
     {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
-        $cacheKey = "page_sections_{$page_id}_{$languageId}";
+        $cacheKey = "page_sections_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections first to extract data table dependencies
         /** @var list<array<string, mixed>> $flatSections */
@@ -764,7 +952,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId) {
+        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams) {
             // Build nested hierarchical structure (without applying data initially)
             $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
 
@@ -797,10 +985,13 @@ class PageService extends BaseService
             $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
 
             // Process sections recursively with proper data inheritance and sequential operations
-            // This replaces the bulk applySectionsData, interpolation, and condition filtering
+            // This replaces the bulk applySectionsData, interpolation, and condition filtering.
+            // Seed the top-level parentData with the public route scope so
+            // {{route.<name>}} resolves in data_config filters + content and
+            // propagates to children.
             $user = $this->userContextAwareService->getCurrentUser();
             $userId = $user ? (int) $user->getId() : null;
-            $sections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
+            $sections = $this->processSectionsRecursively($sections, $this->buildRouteScope($routeParams), $userId, $languageId);
 
             return $sections;
         });
@@ -872,6 +1063,17 @@ class PageService extends BaseService
 
             // Step 4: Merge parent data with newly retrieved data efficiently
             $sectionData = $this->mergeDataEfficiently($parentData, $this->asArray($section['retrieved_data'] ?? []));
+
+            // Step 4b: Guarantee the public route scope ({{route.*}}) survives
+            // data binding (issue #30). entry-list / entry-record / loop store
+            // their rows under their own `data_config` scope, but a retrieved
+            // scope accidentally named `route` must never shadow the URL-derived
+            // route params that descendant sections (e.g. entry-record filtering
+            // on {{route.record_id}}) depend on. Re-applying the inherited route
+            // scope after the merge keeps loop/record context namespaced.
+            if (isset($parentData['route'])) {
+                $sectionData['route'] = $parentData['route'];
+            }
 
             // Step 5: CRITICAL - Interpolate ALL content fields using combined data
             // Now we have both parent data and newly retrieved data available

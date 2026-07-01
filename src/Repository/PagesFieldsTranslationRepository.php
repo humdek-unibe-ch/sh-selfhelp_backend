@@ -66,6 +66,67 @@ class PagesFieldsTranslationRepository extends ServiceEntityRepository
     }
 
     /**
+     * Fetch page PROPERTY field values (display = 0) by field name for a list of
+     * pages, in one query. Property fields are non-translatable and normally
+     * stored as a single row; when several language rows exist the lowest
+     * language id wins deterministically, and an empty lower-language value is
+     * superseded by a non-empty higher-language one.
+     *
+     * Used to project page property fields (e.g. `icon`, `mobile_icon`,
+     * `icon`, `mobile_icon`, `search_visibility`) into the ACL-filtered page tree
+     * without an N+1 per page and without touching the `get_user_acl` procedure.
+     *
+     * @param list<int> $pageIds Array of page IDs
+     * @param list<string> $fieldNames Property field names to fetch
+     * @return array<int, array<string, string|null>> page_id => [field_name => content]
+     */
+    public function fetchPropertyFieldsForPages(array $pageIds, array $fieldNames): array
+    {
+        if (empty($pageIds) || empty($fieldNames)) {
+            return [];
+        }
+
+        $qb = $this->createQueryBuilder('pft')
+            ->select('p.id AS page_id, f.name AS field_name, l.id AS language_id, pft.content')
+            ->leftJoin('pft.page', 'p')
+            ->leftJoin('pft.field', 'f')
+            ->leftJoin('pft.language', 'l')
+            ->where('p.id IN (:pageIds)')
+            ->andWhere('f.name IN (:fieldNames)')
+            ->setParameter('pageIds', $pageIds)
+            ->setParameter('fieldNames', $fieldNames)
+            ->orderBy('l.id', 'ASC');
+
+        /** @var list<array{page_id: int|string, field_name: string, language_id: int|string|null, content: mixed}> $results */
+        $results = $qb->getQuery()->getResult();
+
+        $values = [];
+        foreach ($results as $result) {
+            $pageId = (int) $result['page_id'];
+            $name = $result['field_name'];
+            $content = $result['content'];
+            if (is_string($content)) {
+                $stringContent = $content;
+            } elseif (is_scalar($content)) {
+                $stringContent = (string) $content;
+            } else {
+                $stringContent = null;
+            }
+
+            if (!isset($values[$pageId])) {
+                $values[$pageId] = [];
+            }
+
+            $existing = $values[$pageId][$name] ?? null;
+            if (!array_key_exists($name, $values[$pageId]) || $existing === null || $existing === '') {
+                $values[$pageId][$name] = $stringContent;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * Fetch page field translations with fallback to default language
      * Only fetches translations for fields with display=1 (title fields)
      *

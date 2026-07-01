@@ -101,17 +101,40 @@
                 }
             ]
         },
+        "pageSurface": {
+            "type": ["object", "null"],
+            "description": "CMS-in-CMS surface (public|cms) of the page",
+            "allOf": [
+                {
+                    "$ref": "./lookupEntity.json"
+                },
+                {
+                    "properties": {
+                        "typeCode": {
+                            "const": "pageSurface",
+                            "description": "Must be a lookup of type pageSurface"
+                        }
+                    },
+                    "required": ["typeCode"]
+                }
+            ]
+        },
         "headless": {
             "type": "boolean",
             "description": "Whether the page is headless"
         },
-        "navPosition": {
-            "type": ["integer", "null"],
-            "description": "Position in navigation menu"
-        },
-        "footerPosition": {
-            "type": ["integer", "null"],
-            "description": "Position in footer menu"
+        "navigationMembership": {
+            "type": "array",
+            "description": "Read-only menu-builder memberships for this page",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "menu_key": { "type": "string" },
+                    "menu_item_id": { "type": "integer" },
+                    "explicit": { "type": "boolean" }
+                },
+                "required": ["menu_key", "menu_item_id", "explicit"]
+            }
         },
         "openAccess": {
             "type": "boolean",

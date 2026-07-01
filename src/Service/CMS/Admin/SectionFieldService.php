@@ -16,11 +16,13 @@ use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
 use App\Entity\StylesField;
 use App\Exception\ServiceException;
+use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\CMS\DataColumnService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Admin\AdminAssetService;
@@ -39,7 +41,9 @@ class SectionFieldService extends BaseService
         private readonly DataTableService $dataTableService,
         private readonly DataColumnService $dataColumnService,
         private readonly CacheService $cache,
-        private readonly AdminAssetService $adminAssetService
+        private readonly AdminAssetService $adminAssetService,
+        private readonly SectionRepository $sectionRepository,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -450,6 +454,8 @@ class SectionFieldService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
+        $pageIds = $this->sectionRepository->getPageIdsContainingSection((int) $section->getId());
+        $this->navigationCacheInvalidator->invalidateForPageIds($pageIds);
     }
 
     /**

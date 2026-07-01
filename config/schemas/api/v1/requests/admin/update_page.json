@@ -20,14 +20,6 @@
                     "type": "boolean",
                     "description": "Whether the page is headless"
                 },
-                "navPosition": {
-                    "type": ["integer", "null"],
-                    "description": "Navigation position"
-                },
-                "footerPosition": {
-                    "type": ["integer", "null"],
-                    "description": "Footer position"
-                },
                 "openAccess": {
                     "type": "boolean",
                     "description": "Whether the page has open access"
@@ -36,9 +28,61 @@
                     "type": "string",
                     "description": "Access type code from lookups with typeCode=pageAccessTypes"
                 },
+                "surface": {
+                    "type": ["string", "null"],
+                    "enum": ["public", "cms", null],
+                    "description": "CMS-in-CMS organization axis: public website page or cms application page (null resolves to public)"
+                },
                 "parent": {
                     "type": ["integer", "null"],
                     "description": "ID of the parent page"
+                },
+                "syncUrlWithParent": {
+                    "type": "boolean",
+                    "description": "When true, derive URL and canonical route from the selected parent page",
+                    "default": false
+                },
+                "oldRoutePolicy": {
+                    "type": ["string", "null"],
+                    "enum": ["ask", "keep_alias", "remove_old_route", null],
+                    "description": "What to do with the previous canonical route after a parent URL sync"
+                },
+                "routes": {
+                    "type": "array",
+                    "description": "Full desired set of DB-driven public routes for this page (issue #30). Sent by the locked Routes panel; the backend syncs create/update/delete, validates global conflicts, and enforces a single canonical route.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": ["integer", "null"],
+                                "description": "Existing page_routes id; omit or null to create a new route"
+                            },
+                            "path_pattern": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Symfony route pattern, e.g. /team or /team/{record_id}"
+                            },
+                            "requirements": {
+                                "type": ["object", "null"],
+                                "description": "Placeholder name -> regex requirement map, e.g. {\"record_id\":\"\\\\d+\"}",
+                                "additionalProperties": { "type": "string" }
+                            },
+                            "is_canonical": {
+                                "type": "boolean",
+                                "description": "Whether this is the canonical URL pattern for the page"
+                            },
+                            "is_active": {
+                                "type": "boolean",
+                                "description": "Inactive routes are kept but excluded from resolution and conflict checks"
+                            },
+                            "priority": {
+                                "type": "integer",
+                                "description": "Higher priority routes are matched first when shapes differ"
+                            }
+                        },
+                        "required": ["path_pattern"],
+                        "additionalProperties": false
+                    }
                 }
             },
             "additionalProperties": false

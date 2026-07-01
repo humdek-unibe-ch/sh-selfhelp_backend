@@ -1,0 +1,12 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Update navigation menu definition",
+    "type": "object",
+    "properties": {
+        "preset": { "type": "string" },
+        "max_depth": { "type": ["integer", "null"] },
+        "item_limit": { "type": ["integer", "null"] },
+        "config": { "type": ["object", "null"] }
+    },
+    "additionalProperties": false
+}

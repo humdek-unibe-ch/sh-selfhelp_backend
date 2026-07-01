@@ -793,8 +793,6 @@ class PageVersionService extends BaseService
                 'url' => $page->getUrl(),
                 'parent_page_id' => $page->getParentPage()?->getId(),
                 'is_headless' => $page->isHeadless(),
-                'nav_position' => $page->getNavPosition(),
-                'footer_position' => $page->getFooterPosition(),
                 'sections' => $sections
             ]
         ];

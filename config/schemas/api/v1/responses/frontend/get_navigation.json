@@ -1,0 +1,237 @@
+{
+
+    "$schema": "http://json-schema.org/draft-07/schema#",
+
+    "title": "GET /navigation response data",
+
+    "type": "object",
+
+    "required": ["menus", "startup", "search"],
+
+    "additionalProperties": false,
+
+    "properties": {
+
+        "menus": {
+
+            "type": "object",
+
+            "additionalProperties": {
+
+                "type": "object",
+
+                "required": ["key", "platform", "surface", "items"],
+
+                "properties": {
+
+                    "key": { "type": "string" },
+
+                    "platform": { "type": ["string", "null"] },
+
+                    "surface": { "type": ["string", "null"] },
+
+                    "preset": { "type": ["string", "null"] },
+
+                    "max_depth": { "type": ["integer", "null"] },
+
+                    "item_limit": { "type": ["integer", "null"] },
+
+                    "config": { "type": ["object", "null"] },
+
+                    "items": {
+
+                        "type": "array",
+
+                        "items": { "$ref": "#/$defs/menuItem" }
+
+                    }
+
+                }
+
+            }
+
+        },
+
+        "startup": { "$ref": "#/$defs/startup" },
+
+        "search": { "$ref": "#/$defs/search" }
+
+    },
+
+    "$defs": {
+
+        "pageRef": {
+
+            "type": "object",
+
+            "required": ["keyword"],
+
+            "properties": {
+
+                "id": { "type": "integer" },
+
+                "keyword": { "type": "string" },
+
+                "url": { "type": ["string", "null"] },
+
+                "title": { "type": ["string", "null"] },
+
+                "icon": { "type": ["string", "null"] },
+
+                "mobile_icon": { "type": ["string", "null"] },
+
+                "has_content": { "type": "boolean" },
+
+                "section_count": { "type": "integer" }
+
+            }
+
+        },
+
+        "startup": {
+
+            "type": "object",
+
+            "required": [
+
+                "web_guest_start_page",
+
+                "web_user_start_page",
+
+                "web_user_start_mode",
+
+                "mobile_guest_start_page",
+
+                "mobile_user_start_page",
+
+                "mobile_user_start_mode",
+
+                "mobile_start_page_source"
+
+            ],
+
+            "additionalProperties": false,
+
+            "properties": {
+
+                "web_guest_start_page": { "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }] },
+
+                "web_user_start_page": { "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }] },
+
+                "web_user_start_mode": {
+
+                    "type": "string",
+
+                    "enum": ["fixed_page", "last_visited_then_fixed_page"]
+
+                },
+
+                "web_user_last_visited_page": { "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }] },
+
+                "mobile_guest_start_page": { "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }] },
+
+                "mobile_user_start_page": { "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }] },
+
+                "mobile_user_start_mode": {
+
+                    "type": "string",
+
+                    "enum": ["fixed_page", "last_visited_then_fixed_page"]
+
+                },
+
+                "mobile_user_last_visited_page": { "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }] },
+
+                "mobile_start_page_source": {
+
+                    "type": "string",
+
+                    "enum": ["same_as_web", "custom_mobile_pages"]
+
+                }
+
+            }
+
+        },
+
+        "search": {
+
+            "type": "object",
+
+            "required": ["mode", "min_chars", "result_limit", "default_visibility", "field_policy"],
+
+            "additionalProperties": false,
+
+            "properties": {
+
+                "mode": {
+
+                    "type": "string",
+
+                    "enum": ["off", "menu_pages", "searchable_pages", "content_index"]
+
+                },
+
+                "min_chars": { "type": "integer", "minimum": 1 },
+
+                "result_limit": { "type": "integer", "minimum": 1 },
+
+                "default_visibility": { "type": "string" },
+
+                "field_policy": { "type": "string" }
+
+            }
+
+        },
+
+        "menuItem": {
+
+            "type": "object",
+
+            "required": ["id", "item_type", "label", "position", "children"],
+
+            "properties": {
+
+                "id": { "type": ["integer", "string"] },
+
+                "item_type": { "type": "string" },
+
+                "label": { "type": "string" },
+
+                "description": { "type": ["string", "null"] },
+
+                "aria_label": { "type": ["string", "null"] },
+
+                "position": { "type": "integer" },
+
+                "external_url": { "type": ["string", "null"] },
+
+                "icon": { "type": ["string", "null"] },
+
+                "is_virtual": { "type": "boolean" },
+
+                "child_source": { "type": ["string", "null"] },
+
+                "page": {
+
+                    "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }]
+
+                },
+
+                "children": {
+
+                    "type": "array",
+
+                    "items": { "$ref": "#/$defs/menuItem" }
+
+                }
+
+            }
+
+        }
+
+    }
+
+}
+
+

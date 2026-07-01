@@ -134,14 +134,21 @@ abstract class QaWebTestCase extends WebTestCase
      * Perform a JSON request and return the decoded envelope.
      *
      * @param array<string, mixed>|null $body
+     * @param array<string, string> $extraHeaders
      * @return array<string, mixed>
      */
-    protected function jsonRequest(string $method, string $uri, ?array $body = null, ?string $token = null): array
-    {
+    protected function jsonRequest(
+        string $method,
+        string $uri,
+        ?array $body = null,
+        ?string $token = null,
+        array $extraHeaders = [],
+    ): array {
         $headers = ['CONTENT_TYPE' => 'application/json'];
         if ($token !== null) {
             $headers['HTTP_Authorization'] = 'Bearer ' . $token;
         }
+        $headers = array_merge($headers, $extraHeaders);
 
         $this->client->request(
             $method,

@@ -14,6 +14,7 @@ use App\Entity\PagesSection;
 use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\RelationshipManagerTrait;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
@@ -38,7 +39,8 @@ class SectionRelationshipService extends BaseService
         private readonly CacheService $cache,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
-        private readonly UserContextAwareService $userContextAwareService
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -744,6 +746,10 @@ class SectionRelationshipService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
+        $pageIds = $pageId !== null
+            ? [$pageId]
+            : $this->sectionRepository->getPageIdsContainingSection($sectionId);
+        $this->navigationCacheInvalidator->invalidateForPageIds($pageIds);
     }
 
     /**

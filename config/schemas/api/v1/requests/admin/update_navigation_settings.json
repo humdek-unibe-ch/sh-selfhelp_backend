@@ -1,0 +1,21 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Update navigation settings",
+    "type": "object",
+    "properties": {
+        "web_header_search_mode": { "type": "string" },
+        "web_header_search_min_chars": { "type": "integer" },
+        "web_header_search_result_limit": { "type": "integer" },
+        "search_default_visibility": { "type": "string" },
+        "search_field_policy": { "type": "string" },
+        "web_guest_start_page_id": { "type": ["integer", "null"] },
+        "web_user_start_page_id": { "type": ["integer", "null"] },
+        "web_user_start_mode": { "type": "string" },
+        "mobile_guest_start_page_id": { "type": ["integer", "null"] },
+        "mobile_user_start_page_id": { "type": ["integer", "null"] },
+        "mobile_user_start_mode": { "type": "string" },
+        "mobile_start_page_source": { "type": "string" },
+        "route_sync_old_route_policy": { "type": "string" }
+    },
+    "additionalProperties": false
+}

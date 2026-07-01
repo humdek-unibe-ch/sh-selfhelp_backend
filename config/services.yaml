@@ -67,7 +67,7 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '0.1.30'
+    selfhelp_cms_version_default: '0.1.32'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
@@ -207,6 +207,14 @@ services:
     # API Database Route Loader
     App\Routing\ApiRouteLoader:
         tags: [routing.loader]
+        arguments:
+            $env: '%kernel.environment%'
+
+    # DB-driven public route resolver (issue #30). Bind the environment so the
+    # active-row snapshot cache is skipped in dev for easier route authoring,
+    # exactly like ApiRouteLoader above. Without this the `?string $env` arg
+    # autowires to null and the dev cache-skip never fires.
+    App\Routing\PageRouteResolverService:
         arguments:
             $env: '%kernel.environment%'
 
@@ -371,6 +379,10 @@ services:
             $registryUrl: '%selfhelp.plugin_default_registry_url%registry.json'
 
     App\Plugin\Archive\PluginArchivePromoter:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    App\Service\CMS\Admin\HeroHomeSeedService:
         arguments:
             $projectDir: '%kernel.project_dir%'
 

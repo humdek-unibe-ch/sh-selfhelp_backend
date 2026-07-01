@@ -592,10 +592,16 @@ class SectionExportImportService extends BaseService
             
             $this->entityManager->flush();
             
-            // Record the imported section
+            // Record the imported section. `source_name` is the ORIGINAL bundle
+            // section name (before the `-{timestamp}` collision suffix this
+            // method appends) — the page bundle importer needs it to build a
+            // deterministic `bundle section_name -> new section id` map so it can
+            // relink entry-list/entry-record `data_config` `@section:<name>`
+            // owner tokens to the freshly-created form section's id (issue #30).
             $importedSections[] = [
                 'id' => $section->getId(),
                 'section_name' => $section->getName(),
+                'source_name' => $this->asString($sectionData['section_name'] ?? ''),
                 'style_name' => $styleName,
                 'position' => $sectionPosition
             ];
