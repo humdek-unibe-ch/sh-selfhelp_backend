@@ -99,7 +99,10 @@
         "clear": "php bin/console cache:clear",
         "fresh-test-install": "php scripts/fresh-test-install.php",
         "dump": "composer dump-autoload",
-        "validate-db": "php bin/console doctrine:schema:validate",
+        "validate-db": [
+            "php bin/console doctrine:schema:validate",
+            "php bin/console app:page-routes:check-conflicts"
+        ],
         "update-db": "php bin/console doctrine:schema:update --dump-sql",
         "dev": "php -S localhost:8000 -t public/",
         "phpstan": "phpstan analyse --memory-limit=3G",
