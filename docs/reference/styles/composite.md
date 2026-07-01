@@ -141,13 +141,13 @@ the matching item children inside it.
 
 ## entry-list
 
-**Purpose.** A **data-driven** list that renders the rows saved by a `form-log` (one block per stored entry).
+**Purpose.** A **data/context holder** that renders one block per row of a bound data table (any table, not only a `form-log`).
 
-**Administrators.** Show submitted entries back to the user (e.g. a list of past journal entries). Bind it to the source form via the section's data config; lay out how each entry looks using child sections, which can interpolate the entry's fields with `{{field_name}}`.
+**Administrators.** Show a collection of records (e.g. team members, journal entries). Bind it to a data table via the section's data config; lay out how each row looks using child sections, which interpolate the row's fields with `{{field_name}}`. To make a list/detail pattern, give each row a link to its detail page using `/<base>/{{record_id}}`. The **Create list + detail pages** wizard (Admin → Pages) scaffolds this for you — see [../../cookbook/cms-in-cms-list-detail.md](../../cookbook/cms-in-cms-list-detail.md).
 
-**Developers.** Driven by `data_config`. Renders its child template once per backend-provided row; `line_clamp` truncates long text. Pairs with `entry-record` / `entry-record-delete`.
+**Developers.** Pure holder driven by `data_config` (scope `entries`); renders its child template once per backend-provided row. Carries no presentational fields of its own. Pairs with `entry-record` / `entry-record-delete`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
 
-**Distinctive fields.** `line_clamp` (max lines per entry). Data binding via `data_config` (see [_conventions.md](./_conventions.md)).
+**Distinctive fields.** None beyond the common fields. Data binding via `data_config` (see [_conventions.md](./_conventions.md)).
 
 **Children.** Yes (the per-entry template).
 
@@ -155,11 +155,11 @@ the matching item children inside it.
 
 ## entry-record
 
-**Purpose.** A **data-driven** container for a single stored record (the `form-record` row).
+**Purpose.** A **data/context holder** for a single record of a bound data table.
 
-**Administrators.** Display one saved record and interpolate its fields with `{{field_name}}` in child sections.
+**Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`), filter the holder to the URL's record by setting the data config filter to `record_id = {{route.record_id}}`.
 
-**Developers.** Driven by `data_config`; exposes one record's fields to its children.
+**Developers.** Pure holder driven by `data_config` (scope `record`, `retrieve: first`); exposes one record's fields to its children. The `{{route.*}}` params come from the matched public route (see [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md)). Carries no presentational fields of its own.
 
 **Distinctive fields.** None beyond the common fields; binding via `data_config`.
 
@@ -187,7 +187,7 @@ the matching item children inside it.
 
 **Administrators.** Repeat a block of child sections once per item in a data set, interpolating each item's values. Use when you have a list of items to template that is not a form-log table.
 
-**Developers.** Iterates the `loop` data array, rendering its child template per item. Bind the collection via `data_config`.
+**Developers.** Iterates the `loop` data array, rendering its child template per item. Bind the collection via `data_config`. Like the other holders it is a context holder: it must **not** overwrite the read-only `route` interpolation scope, so child sections can still reference `{{route.*}}` URL params inside a loop.
 
 **Distinctive fields.** `loop` (the collection); binding via `data_config`.
 

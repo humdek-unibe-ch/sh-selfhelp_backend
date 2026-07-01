@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-22.
+Last verified: 2026-06-30.
 Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
@@ -39,11 +39,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Append-only form: each submit stores a **new** row.
 
-**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Optionally show an auto-styled heading (`title` + `description`) above the form; set the save label, the success/error messages **and their alert headings** (`alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`); turn on a confirm-before-submit dialog (`confirm_submit` + `confirm_message`); and optionally a cancel URL/label.
+**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Optionally show an auto-styled heading (`title` + `description`) above the form; set the save label, the success/error messages **and their alert headings** (`alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`); turn on a confirm-before-submit dialog (`confirm_submit` + `confirm_message`); and optionally a cancel URL/label. For CMS-in-CMS forms shown inside a modal (a page with `open_in_modal`), enable **Close modal on save** (`close_modal_on_save`) so a successful submit closes the overlay and refreshes the parent list, and/or set **Redirect on save** (`redirect_on_save`) to navigate somewhere afterwards. Both are web-only.
 
-**Developers.** Renders a `<form>` over its input children (mobile: a custom composite); persists a new data row per submit. The heading, alert titles and confirm dialog render on **both** web (Mantine) and mobile.
+**Developers.** Renders a `<form>` over its input children (mobile: a custom composite); persists a new data row per submit. The heading, alert titles and confirm dialog render on **both** web (Mantine) and mobile. `close_modal_on_save` / `redirect_on_save` are honoured only by the web `FormStyle` (via the `PageModalContext` + the Next.js router); on a successful submit it invalidates the page-content query so the underlying list re-renders. Mobile ignores both.
 
-**Distinctive fields.** `title` / `description` (optional heading, content), `name` (form/table identifier), `btn_save_label`, `alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`, `confirm_submit` + `confirm_message` (optional confirm dialog), `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, and the shared button knobs (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `buttons_order`, `btn_save_color`, `btn_cancel_color`, `spacing`).
+**Distinctive fields.** `title` / `description` (optional heading, content), `name` (form/table identifier), `btn_save_label`, `alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`, `confirm_submit` + `confirm_message` (optional confirm dialog), `close_modal_on_save` (web, close the surrounding modal on save), `redirect_on_save` (web, navigate after save), `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, and the shared button knobs (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `buttons_order`, `btn_save_color`, `btn_cancel_color`, `spacing`).
 
 **Children.** Yes (input styles + a submit).
 
@@ -368,9 +368,14 @@ Mantine cosmetic props are not repeated below.
 
 Optional table behaviour: search (`dt_searching`), sorting (`dt_sortable` + `dt_default_order_column` / `dt_default_order_dir`), pagination (`dt_paginate`), the row-count footer (`dt_info`), a CSV export button (`csv_export`), and a leading timestamp column (`show_timestamp`).
 
+**CMS-in-CMS controls (web only).** Two optional URL fields turn the table into an admin CRUD list:
+
+- **Add new URL** (`add_url`) — when set, an "Add new" button is shown above the table linking to a create form (typically a page with `open_in_modal`, so it opens as an overlay).
+- **Open/edit URL** (`edit_url`) — a URL **template** (e.g. `/cms/team/{record_id}`). When set, each row gets an open/view action (eye icon); the single-brace `{record_id}` placeholder is substituted client-side with that row's id at click time (it is **not** a `{{…}}` backend interpolation token). The CMS-in-CMS wizard points it at the record detail page (also `open_in_modal`). These are ignored on mobile.
+
 **Developers.** Web renders as a Mantine Table; **mobile renders the entries as a list of cards** (`components/styles/forms/ShowUserInput.tsx`, theme-aware via `useAppColors`) — the desktop-only DataTable options (`dt_*`, `web_table_*`) are intentionally ignored on mobile, while `title` and `empty_text` render on both. Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. **Header/cell keying (v2, issue #56):** the section payload carries `entries` keyed by the immutable `field_key` plus a `field_labels` map (`field_key => display_name`); the renderer defaults headers to `field_labels[field_key]` (falling back to the key) and reads each cell by `field_key`, so a rename only moves the label. `fields_map` is an explicit override (subset + custom labels). Standard projection columns (`record_id`, `entry_date`, …) are not in `field_labels` and render under their own key. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
 
-**Distinctive fields.** `title` (optional heading, content), `empty_text` (empty-state message, content), `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
+**Distinctive fields.** `title` (optional heading, content), `empty_text` (empty-state message, content), `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `add_url` (web, "Add new" link), `edit_url` (web, per-row open template with `{record_id}`), `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
 
 **Children.** No.
 
