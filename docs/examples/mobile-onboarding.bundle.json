@@ -1,0 +1,43 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "title": "Mobile onboarding landing",
+    "description": "Compact mobile-first onboarding/landing page for guest start screens.",
+    "exported_at": "2026-07-01T00:00:00+00:00",
+    "core_version": "0.1.32",
+    "pages": [
+        {
+            "keyword": "mobile-onboarding",
+            "surface": "public",
+            "page_access_type": "mobile",
+            "headless": false,
+            "open_access": true,
+            "url": "/mobile-onboarding",
+            "sections": [
+                {
+                    "style": "container",
+                    "fields": { "css": "mobile-onboarding-shell" },
+                    "children": [
+                        {
+                            "style": "title",
+                            "fields": { "text": "Welcome" }
+                        },
+                        {
+                            "style": "text",
+                            "fields": {
+                                "text": "A focused first screen for the mobile app. Assign this page as the mobile guest start page when the journey should differ from the website home."
+                            }
+                        },
+                        {
+                            "style": "button",
+                            "fields": {
+                                "text": "Continue",
+                                "url": "/login"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

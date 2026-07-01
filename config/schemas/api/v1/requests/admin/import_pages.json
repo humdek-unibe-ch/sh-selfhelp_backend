@@ -1,0 +1,96 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Import Pages Request Schema",
+    "description": "Schema for validating/importing a portable page bundle (issue #30, Phase 5). Used by both /admin/pages/import/validate and /admin/pages/import.",
+    "type": "object",
+    "properties": {
+        "bundle": {
+            "type": "object",
+            "description": "The exported page bundle (as produced by /admin/pages/export)",
+            "properties": {
+                "format": {
+                    "type": ["string", "null"],
+                    "description": "Bundle format identifier written by the exporter, e.g. 'selfhelp/page-bundle'."
+                },
+                "version": {
+                    "type": ["string", "integer", "null"],
+                    "description": "Bundle format version written by the exporter, e.g. '1.0'."
+                },
+                "bundle_version": {
+                    "type": ["string", "integer", "null"],
+                    "description": "Deprecated legacy alias for 'version'; tolerated for older hand-written bundles. Prefer 'version'."
+                },
+                "core_version": { "type": ["string", "null"] },
+                "exported_at": { "type": ["string", "null"] },
+                "data_tables": {
+                    "type": "array",
+                    "description": "Optional data-table definitions (and optional sample rows) the bundle owns, keyed to their owning form section by 'owner_section_name'. Present only when the export included data tables.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "owner_section_name": {
+                                "type": "string",
+                                "description": "Bundle name of the form section that owns this table; relinked to the new section id on import."
+                            },
+                            "columns": {
+                                "type": "array",
+                                "description": "Human column names of the table (display names of the form inputs).",
+                                "items": { "type": "string" }
+                            },
+                            "rows": {
+                                "type": "array",
+                                "description": "Sample rows keyed by human column name; re-inserted through the form-save path when importData is true.",
+                                "items": { "type": "object" }
+                            }
+                        },
+                        "required": ["owner_section_name"]
+                    }
+                },
+                "pages": {
+                    "type": "array",
+                    "description": "Pages contained in the bundle",
+                    "items": { "type": "object" }
+                }
+            },
+            "required": ["pages"]
+        },
+        "options": {
+            "type": "object",
+            "description": "Import behaviour toggles",
+            "properties": {
+                "keywordPrefix": {
+                    "type": "string",
+                    "description": "Prefix prepended to every imported page keyword (and parent references) to avoid collisions"
+                },
+                "routePrefix": {
+                    "type": "string",
+                    "description": "Prefix prepended to every imported route path_pattern"
+                },
+                "skipConflictingRoutes": {
+                    "type": "boolean",
+                    "description": "When true, routes that collide with existing active routes are skipped instead of aborting the import",
+                    "default": false
+                },
+                "activateRoutes": {
+                    "type": "boolean",
+                    "description": "When false, imported routes are created inactive (default true)",
+                    "default": true
+                },
+                "importData": {
+                    "type": "boolean",
+                    "description": "When true AND the bundle carries 'data_tables', the owned data tables are recreated (columns always; sample rows only when the bundle includes them). When false, only the page structure is imported and entry styles bind to an empty/existing table. Default false.",
+                    "default": false
+                },
+                "accessGroups": {
+                    "type": "array",
+                    "description": "Optional group ids granted access to every imported page so real users can see them. Admin always gets full access regardless. These groups get read-only access on public pages and full CRUD on cms-app pages (surface-appropriate). Omit/empty to import admin-only.",
+                    "items": { "type": "integer" },
+                    "default": []
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "required": ["bundle"],
+    "additionalProperties": false
+}

@@ -1,0 +1,86 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Create CMS App Request Schema",
+    "description": "Schema for the 'Create list + detail pages' CMS-in-CMS wizard (issue #30, Phase 6)",
+    "type": "object",
+    "properties": {
+        "base_name": {
+            "type": "string",
+            "description": "Lowercase keyword base for the generated pages and URLs (e.g. 'team-members').",
+            "pattern": "^[a-z0-9-]+$",
+            "minLength": 1,
+            "maxLength": 80
+        },
+        "data_table": {
+            "type": "string",
+            "description": "Name of the existing data table the generated pages bind to. Required unless create_form is true (then the wizard creates a form-owned table).",
+            "minLength": 1
+        },
+        "create_form": {
+            "type": "boolean",
+            "description": "When true, also scaffold an admin create form page (/cms/<base>/form) with a default input that OWNS a fresh data table; the list/detail pages bind to that table. Default false."
+        },
+        "form_field_name": {
+            "type": "string",
+            "description": "Snake_case name of the default form input created with create_form. Default 'title'.",
+            "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "form_field_label": {
+            "type": "string",
+            "description": "Optional translatable label for the default form input. Defaults to a title-cased form_field_name. Ignored when form_fields is provided."
+        },
+        "form_fields": {
+            "type": "array",
+            "description": "Multi-field builder (used with create_form): one input per entry is scaffolded into the new form, and the list/detail pages get an editable interpolation block listing every field. Falls back to form_field_name when omitted/empty.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Snake_case field name (becomes the input name and data table column).",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "style": {
+                        "type": "string",
+                        "description": "Input style to scaffold.",
+                        "enum": ["text-input", "textarea", "select", "checkbox", "radio", "number-input"]
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Optional translatable label. Defaults to a title-cased name."
+                    }
+                },
+                "required": ["name", "style"],
+                "additionalProperties": false
+            }
+        },
+        "create_public": {
+            "type": "boolean",
+            "description": "Create the public list (/<base>) and detail (/<base>/{record_id}) pair. Default true."
+        },
+        "create_admin": {
+            "type": "boolean",
+            "description": "Create the admin CMS list (/cms/<base>) and detail (/cms/<base>/{record_id}) pair. Default true."
+        },
+        "record_id_param": {
+            "type": "string",
+            "description": "Snake_case name of the detail route parameter. Default 'record_id'.",
+            "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "list_title": {
+            "type": "string",
+            "description": "Optional heading for the list pages. Defaults to a title-cased base_name."
+        },
+        "detail_title": {
+            "type": "string",
+            "description": "Optional heading for the detail pages."
+        },
+        "access_groups": {
+            "type": "array",
+            "description": "Optional group ids granted access to the generated pages (in addition to surface defaults).",
+            "items": { "type": "integer" }
+        }
+    },
+    "required": ["base_name"],
+    "additionalProperties": false
+}

@@ -1,0 +1,354 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "title": "Team Members (list + detail)",
+    "description": "A complete CMS-in-CMS app: a create form that owns a data table, plus public and admin list/detail page pairs bound to it (with sample team members). Import with a keyword/route prefix to try it safely.",
+    "exported_at": "2026-06-30T00:00:00+00:00",
+    "core_version": null,
+    "data_tables": [
+        {
+            "owner_section_name": "team-members-form",
+            "columns": ["name", "role", "bio"],
+            "rows": [
+                {
+                    "name": "Ada Lovelace",
+                    "role": "Mathematician",
+                    "bio": "Pioneer of computing; wrote the first published algorithm intended for a machine."
+                },
+                {
+                    "name": "Alan Turing",
+                    "role": "Computer Scientist",
+                    "bio": "Father of theoretical computer science and artificial intelligence."
+                },
+                {
+                    "name": "Grace Hopper",
+                    "role": "Computer Scientist",
+                    "bio": "Compiler pioneer who popularised the term \"debugging\"."
+                }
+            ]
+        }
+    ],
+    "pages": [
+        {
+            "keyword": "team-members-form",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/team-members/form",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [],
+            "routes": [
+                {
+                    "path_pattern": "/cms/team-members/form",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "team-members-form",
+                    "style_name": "form-log",
+                    "fields": {
+                        "name": { "all": { "content": "team_members_form" } },
+                        "alert_success": {
+                            "de-CH": { "content": "Gespeichert." },
+                            "en-GB": { "content": "Saved." }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "team-members-form-name",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": { "all": { "content": "name" } },
+                                "label": {
+                                    "de-CH": { "content": "Name" },
+                                    "en-GB": { "content": "Name" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-role",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": { "all": { "content": "role" } },
+                                "label": {
+                                    "de-CH": { "content": "Rolle" },
+                                    "en-GB": { "content": "Role" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-bio",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": { "all": { "content": "bio" } },
+                                "label": {
+                                    "de-CH": { "content": "Biografie" },
+                                    "en-GB": { "content": "Bio" }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "team-members",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/team-members",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        { "language_code": "de-CH", "content": "Team" },
+                        { "language_code": "en-GB", "content": "Team" }
+                    ]
+                },
+                {
+                    "name": "icon",
+                    "display": false,
+                    "translations": [
+                        { "language_code": "all", "content": "users" }
+                    ]
+                },
+                {
+                    "name": "mobile_icon",
+                    "display": false,
+                    "translations": [
+                        { "language_code": "all", "content": "Users" }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/team-members",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "team-members-list",
+                    "style_name": "entry-list",
+                    "global_fields": {
+                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:team-members-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                    },
+                    "children": [
+                        {
+                            "section_name": "team-members-list-item",
+                            "style_name": "card",
+                            "children": [
+                                {
+                                    "section_name": "team-members-list-item-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": { "content": "Team-Mitglied #{{record_id}}" },
+                                            "en-GB": { "content": "Team member #{{record_id}}" }
+                                        },
+                                        "title_order": { "all": { "content": "4" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "team-members-list-item-link",
+                                    "style_name": "link",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": { "content": "Profil öffnen" },
+                                            "en-GB": { "content": "Open profile" }
+                                        },
+                                        "url": { "all": { "content": "/team-members/{{record_id}}" } }
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "team-members-record",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/team-members/{record_id}",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [],
+            "routes": [
+                {
+                    "path_pattern": "/team-members/{record_id}",
+                    "requirements": { "record_id": "\\d+" },
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "team-members-detail",
+                    "style_name": "entry-record",
+                    "global_fields": {
+                        "data_config": "[{\"scope\":\"record\",\"table\":\"@section:team-members-form\",\"retrieve\":\"first\",\"current_user\":false,\"filter\":\"record_id = {{route.record_id}}\"}]"
+                    },
+                    "children": [
+                        {
+                            "section_name": "team-members-detail-title",
+                            "style_name": "title",
+                            "fields": {
+                                "content": {
+                                    "de-CH": { "content": "Team-Mitglied" },
+                                    "en-GB": { "content": "Team member" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-detail-text",
+                            "style_name": "text",
+                            "fields": {
+                                "text": {
+                                    "de-CH": { "content": "Datensatz {{route.record_id}}." },
+                                    "en-GB": { "content": "Viewing record {{route.record_id}}." }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "cms-team-members",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/team-members",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [],
+            "routes": [
+                {
+                    "path_pattern": "/cms/team-members",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "cms-team-members-list",
+                    "style_name": "entry-list",
+                    "global_fields": {
+                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:team-members-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                    },
+                    "children": [
+                        {
+                            "section_name": "cms-team-members-list-item",
+                            "style_name": "card",
+                            "children": [
+                                {
+                                    "section_name": "cms-team-members-list-item-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": { "content": "Datensatz #{{record_id}}" },
+                                            "en-GB": { "content": "Record #{{record_id}}" }
+                                        },
+                                        "title_order": { "all": { "content": "4" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "cms-team-members-list-item-link",
+                                    "style_name": "link",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": { "content": "Bearbeiten" },
+                                            "en-GB": { "content": "Edit" }
+                                        },
+                                        "url": { "all": { "content": "/cms/team-members/{{record_id}}" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "cms-team-members-list-item-delete",
+                                    "style_name": "entry-record-delete",
+                                    "fields": {
+                                        "label_delete": {
+                                            "de-CH": { "content": "Löschen" },
+                                            "en-GB": { "content": "Delete" }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "cms-team-members-record",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/team-members/{record_id}",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [],
+            "routes": [
+                {
+                    "path_pattern": "/cms/team-members/{record_id}",
+                    "requirements": { "record_id": "\\d+" },
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "cms-team-members-detail",
+                    "style_name": "entry-record",
+                    "global_fields": {
+                        "data_config": "[{\"scope\":\"record\",\"table\":\"@section:team-members-form\",\"retrieve\":\"first\",\"current_user\":false,\"filter\":\"record_id = {{route.record_id}}\"}]"
+                    },
+                    "children": [
+                        {
+                            "section_name": "cms-team-members-detail-title",
+                            "style_name": "title",
+                            "fields": {
+                                "content": {
+                                    "de-CH": { "content": "Team-Mitglied bearbeiten" },
+                                    "en-GB": { "content": "Edit team member" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "cms-team-members-detail-text",
+                            "style_name": "text",
+                            "fields": {
+                                "text": {
+                                    "de-CH": { "content": "Datensatz {{route.record_id}}." },
+                                    "en-GB": { "content": "Editing record {{route.record_id}}." }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

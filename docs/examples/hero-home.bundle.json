@@ -1,0 +1,60 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "title": "Hero home landing",
+    "description": "Polished marketing-style home page built from core layout/typography styles. Import to replace or clone a public landing page.",
+    "exported_at": "2026-07-01T00:00:00+00:00",
+    "core_version": "0.1.32",
+    "pages": [
+        {
+            "keyword": "hero-home",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": true,
+            "url": "/",
+            "sections": [
+                {
+                    "style": "container",
+                    "fields": {
+                        "css": "hero-home-shell"
+                    },
+                    "children": [
+                        {
+                            "style": "title",
+                            "fields": {
+                                "text": "Welcome to SelfHelp"
+                            }
+                        },
+                        {
+                            "style": "text",
+                            "fields": {
+                                "text": "Build accessible digital health experiences with a flexible CMS, structured content, and platform-aware navigation."
+                            }
+                        },
+                        {
+                            "style": "group",
+                            "children": [
+                                {
+                                    "style": "button",
+                                    "fields": {
+                                        "text": "Get started",
+                                        "url": "/about"
+                                    }
+                                },
+                                {
+                                    "style": "button",
+                                    "fields": {
+                                        "text": "Learn more",
+                                        "url": "/contact",
+                                        "variant": "outline"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
