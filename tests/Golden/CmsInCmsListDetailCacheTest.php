@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Golden;
 
+use App\Tests\Support\ExampleBundleTestPaths;
 use App\Tests\Support\QaWebTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
@@ -124,7 +125,7 @@ final class CmsInCmsListDetailCacheTest extends QaWebTestCase
      */
     private function loadExampleBundle(): array
     {
-        $path = dirname(__DIR__, 2) . '/docs/examples/cms-in-cms/team-members.bundle.json';
+        $path = ExampleBundleTestPaths::teamMembersBundle();
         self::assertFileExists($path);
 
         $decoded = json_decode((string) file_get_contents($path), true);

@@ -1,36 +1,38 @@
 {
     "format": "selfhelp/page-bundle",
     "version": "1.0",
-    "title": "Team Members (list + detail)",
-    "description": "A complete CMS-in-CMS app: a create form that owns a data table, plus public and admin list/detail page pairs bound to it (with sample team members). Import with a keyword/route prefix to try it safely.",
     "exported_at": "2026-06-30T00:00:00+00:00",
-    "core_version": null,
+    "core_version": "0.1.x",
+    "_comment": "Self-contained CMS-in-CMS example (issue #30). Recreates a Team Members app: a public list/detail pair (/team-members + /team-members/{record_id}) for visitors, plus a CMS-in-CMS admin trio (a /cms/team-members/form append form that OWNS the data table, a /cms/team-members list with inline delete, and a /cms/team-members/{record_id} detail). The entry styles do NOT hardcode a table name: they reference the owning form section with the portable token \"table\":\"@section:team-members-form\", which the importer relinks to the new form section id. The bundle's data_tables[] block carries the column names plus sample rows keyed by human field name; import with options.importData=true to seed them. Content fields use the default-install locales de-CH and en-GB; if your install lacks one, import fails naming the missing locale. If /team-members is taken, set a keyword + route prefix in the import dialog. Import via Admin > Pages > Import. NOT auto-seeded.",
     "data_tables": [
         {
             "owner_section_name": "team-members-form",
-            "columns": ["name", "role", "bio"],
+            "columns": ["name", "role", "email", "bio"],
             "rows": [
                 {
                     "name": "Ada Lovelace",
-                    "role": "Mathematician",
-                    "bio": "Pioneer of computing; wrote the first published algorithm intended for a machine."
+                    "role": "Lead Engineer",
+                    "email": "ada@example.org",
+                    "bio": "Works on the analytical engine and the first published algorithm."
                 },
                 {
                     "name": "Alan Turing",
-                    "role": "Computer Scientist",
-                    "bio": "Father of theoretical computer science and artificial intelligence."
+                    "role": "Researcher",
+                    "email": "alan@example.org",
+                    "bio": "Computability, cryptanalysis and the foundations of computer science."
                 },
                 {
                     "name": "Grace Hopper",
-                    "role": "Computer Scientist",
-                    "bio": "Compiler pioneer who popularised the term \"debugging\"."
+                    "role": "Compiler Pioneer",
+                    "email": "grace@example.org",
+                    "bio": "Built the first compiler and championed machine-independent languages."
                 }
             ]
         }
     ],
     "pages": [
         {
-            "keyword": "team-members-form",
+            "keyword": "cms-team-members-form",
             "surface": "cms",
             "page_access_type": "mobile_and_web",
             "headless": false,
@@ -53,10 +55,12 @@
                     "section_name": "team-members-form",
                     "style_name": "form-log",
                     "fields": {
-                        "name": { "all": { "content": "team_members_form" } },
+                        "name": {
+                            "all": { "content": "team_members_form" }
+                        },
                         "alert_success": {
-                            "de-CH": { "content": "Gespeichert." },
-                            "en-GB": { "content": "Saved." }
+                            "de-CH": { "content": "Teammitglied gespeichert." },
+                            "en-GB": { "content": "Team member saved." }
                         }
                     },
                     "children": [
@@ -68,7 +72,8 @@
                                 "label": {
                                     "de-CH": { "content": "Name" },
                                     "en-GB": { "content": "Name" }
-                                }
+                                },
+                                "is_required": { "all": { "content": "1" } }
                             }
                         },
                         {
@@ -83,13 +88,24 @@
                             }
                         },
                         {
-                            "section_name": "team-members-form-bio",
+                            "section_name": "team-members-form-email",
                             "style_name": "text-input",
+                            "fields": {
+                                "name": { "all": { "content": "email" } },
+                                "label": {
+                                    "de-CH": { "content": "E-Mail" },
+                                    "en-GB": { "content": "Email" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-bio",
+                            "style_name": "textarea",
                             "fields": {
                                 "name": { "all": { "content": "bio" } },
                                 "label": {
-                                    "de-CH": { "content": "Biografie" },
-                                    "en-GB": { "content": "Bio" }
+                                    "de-CH": { "content": "Kurzbiografie" },
+                                    "en-GB": { "content": "Short bio" }
                                 }
                             }
                         }
@@ -106,30 +122,7 @@
             "url": "/team-members",
             "parent_keyword": null,
             "is_system": false,
-            "fields": [
-                {
-                    "name": "title",
-                    "display": true,
-                    "translations": [
-                        { "language_code": "de-CH", "content": "Team" },
-                        { "language_code": "en-GB", "content": "Team" }
-                    ]
-                },
-                {
-                    "name": "icon",
-                    "display": false,
-                    "translations": [
-                        { "language_code": "all", "content": "users" }
-                    ]
-                },
-                {
-                    "name": "mobile_icon",
-                    "display": false,
-                    "translations": [
-                        { "language_code": "all", "content": "Users" }
-                    ]
-                }
-            ],
+            "fields": [],
             "routes": [
                 {
                     "path_pattern": "/team-members",
@@ -148,29 +141,43 @@
                     },
                     "children": [
                         {
-                            "section_name": "team-members-list-item",
+                            "section_name": "team-members-list-card",
                             "style_name": "card",
                             "children": [
                                 {
-                                    "section_name": "team-members-list-item-title",
+                                    "section_name": "team-members-list-name",
                                     "style_name": "title",
                                     "fields": {
                                         "content": {
-                                            "de-CH": { "content": "Team-Mitglied #{{record_id}}" },
-                                            "en-GB": { "content": "Team member #{{record_id}}" }
+                                            "de-CH": { "content": "{{name}}" },
+                                            "en-GB": { "content": "{{name}}" }
                                         },
-                                        "title_order": { "all": { "content": "4" } }
+                                        "title_order": {
+                                            "all": { "content": "3" }
+                                        }
                                     }
                                 },
                                 {
-                                    "section_name": "team-members-list-item-link",
+                                    "section_name": "team-members-list-role",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": { "content": "{{role}}" },
+                                            "en-GB": { "content": "{{role}}" }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "team-members-list-link",
                                     "style_name": "link",
                                     "fields": {
                                         "label": {
-                                            "de-CH": { "content": "Profil öffnen" },
-                                            "en-GB": { "content": "Open profile" }
+                                            "de-CH": { "content": "Profil ansehen" },
+                                            "en-GB": { "content": "View profile" }
                                         },
-                                        "url": { "all": { "content": "/team-members/{{record_id}}" } }
+                                        "url": {
+                                            "all": { "content": "/team-members/{{record_id}}" }
+                                        }
                                     }
                                 }
                             ]
@@ -207,22 +214,45 @@
                     },
                     "children": [
                         {
-                            "section_name": "team-members-detail-title",
+                            "section_name": "team-members-detail-name",
                             "style_name": "title",
                             "fields": {
                                 "content": {
-                                    "de-CH": { "content": "Team-Mitglied" },
-                                    "en-GB": { "content": "Team member" }
+                                    "de-CH": { "content": "{{name}}" },
+                                    "en-GB": { "content": "{{name}}" }
                                 }
                             }
                         },
                         {
-                            "section_name": "team-members-detail-text",
+                            "section_name": "team-members-detail-meta",
                             "style_name": "text",
                             "fields": {
                                 "text": {
-                                    "de-CH": { "content": "Datensatz {{route.record_id}}." },
-                                    "en-GB": { "content": "Viewing record {{route.record_id}}." }
+                                    "de-CH": { "content": "{{role}} — {{email}}" },
+                                    "en-GB": { "content": "{{role}} — {{email}}" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-detail-bio",
+                            "style_name": "text",
+                            "fields": {
+                                "text": {
+                                    "de-CH": { "content": "{{bio}}" },
+                                    "en-GB": { "content": "{{bio}}" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-detail-back",
+                            "style_name": "link",
+                            "fields": {
+                                "label": {
+                                    "de-CH": { "content": "Zurück zur Übersicht" },
+                                    "en-GB": { "content": "Back to the team" }
+                                },
+                                "url": {
+                                    "all": { "content": "/team-members" }
                                 }
                             }
                         }
@@ -258,36 +288,40 @@
                     },
                     "children": [
                         {
-                            "section_name": "cms-team-members-list-item",
+                            "section_name": "cms-team-members-list-card",
                             "style_name": "card",
                             "children": [
                                 {
-                                    "section_name": "cms-team-members-list-item-title",
+                                    "section_name": "cms-team-members-list-name",
                                     "style_name": "title",
                                     "fields": {
                                         "content": {
-                                            "de-CH": { "content": "Datensatz #{{record_id}}" },
-                                            "en-GB": { "content": "Record #{{record_id}}" }
+                                            "de-CH": { "content": "{{name}}" },
+                                            "en-GB": { "content": "{{name}}" }
                                         },
-                                        "title_order": { "all": { "content": "4" } }
+                                        "title_order": {
+                                            "all": { "content": "4" }
+                                        }
                                     }
                                 },
                                 {
-                                    "section_name": "cms-team-members-list-item-link",
+                                    "section_name": "cms-team-members-list-edit",
                                     "style_name": "link",
                                     "fields": {
                                         "label": {
                                             "de-CH": { "content": "Bearbeiten" },
                                             "en-GB": { "content": "Edit" }
                                         },
-                                        "url": { "all": { "content": "/cms/team-members/{{record_id}}" } }
+                                        "url": {
+                                            "all": { "content": "/cms/team-members/{{record_id}}" }
+                                        }
                                     }
                                 },
                                 {
-                                    "section_name": "cms-team-members-list-item-delete",
+                                    "section_name": "cms-team-members-list-delete",
                                     "style_name": "entry-record-delete",
                                     "fields": {
-                                        "label_delete": {
+                                        "label": {
                                             "de-CH": { "content": "Löschen" },
                                             "en-GB": { "content": "Delete" }
                                         }
@@ -327,22 +361,35 @@
                     },
                     "children": [
                         {
-                            "section_name": "cms-team-members-detail-title",
+                            "section_name": "cms-team-members-detail-name",
                             "style_name": "title",
                             "fields": {
                                 "content": {
-                                    "de-CH": { "content": "Team-Mitglied bearbeiten" },
-                                    "en-GB": { "content": "Edit team member" }
+                                    "de-CH": { "content": "{{name}}" },
+                                    "en-GB": { "content": "{{name}}" }
                                 }
                             }
                         },
                         {
-                            "section_name": "cms-team-members-detail-text",
+                            "section_name": "cms-team-members-detail-meta",
                             "style_name": "text",
                             "fields": {
                                 "text": {
-                                    "de-CH": { "content": "Datensatz {{route.record_id}}." },
-                                    "en-GB": { "content": "Editing record {{route.record_id}}." }
+                                    "de-CH": { "content": "{{role}} — {{email}}" },
+                                    "en-GB": { "content": "{{role}} — {{email}}" }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "cms-team-members-detail-back",
+                            "style_name": "link",
+                            "fields": {
+                                "label": {
+                                    "de-CH": { "content": "Zurück zur Liste" },
+                                    "en-GB": { "content": "Back to the list" }
+                                },
+                                "url": {
+                                    "all": { "content": "/cms/team-members" }
                                 }
                             }
                         }

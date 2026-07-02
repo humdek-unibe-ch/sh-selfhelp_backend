@@ -69,6 +69,7 @@ class PageExportImportService extends BaseService
         private readonly PageFieldService $pageFieldService,
         private readonly AdminPageService $adminPageService,
         private readonly SectionExportImportService $sectionExportImportService,
+        private readonly ExampleBundlePathResolver $exampleBundlePathResolver,
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
         private readonly UserContextAwareService $userContextAwareService,
@@ -516,17 +517,14 @@ class PageExportImportService extends BaseService
      * Each entry carries the full decoded bundle so the picker can hand it
      * straight to the existing validate/import flow without a second fetch.
      *
-     * Bundles are `*.bundle.json` files under `docs/examples/cms-in-cms/` and
-     * top-level `docs/examples/` (hero-home, mobile-onboarding, etc.).
+ * Bundles are `*.bundle.json` files resolved from the frontend `examples/`
+ * catalogue (pages/, cms-in-cms/, navigation/) with backend fixture fallback.
      *
      * @return list<array{id: string, title: string, description: string, page_count: int, bundle: array<string, mixed>}>
      */
     public function listExampleBundles(): array
     {
-        $dirs = [
-            dirname(__DIR__, 4) . '/docs/examples/cms-in-cms',
-            dirname(__DIR__, 4) . '/docs/examples',
-        ];
+        $dirs = $this->exampleBundlePathResolver->listBundleDirectories();
 
         $files = [];
         foreach ($dirs as $dir) {
@@ -634,6 +632,7 @@ class PageExportImportService extends BaseService
                     sprintf('A page with keyword "%s" already exists. Use a keyword prefix to import a copy.', $keyword),
                     $keyword
                 );
+                continue;
             }
 
             // Parent hierarchy: parent must be in the bundle or already exist.
@@ -1443,7 +1442,7 @@ class PageExportImportService extends BaseService
     private function collectStyleNames(array $sections, array &$names): void
     {
         foreach ($sections as $section) {
-            $styleName = $section['style_name'] ?? ($section['styleName'] ?? null);
+            $styleName = $section['style_name'] ?? null;
             if (is_string($styleName) && $styleName !== '') {
                 $names[$styleName] = true;
             }

@@ -23,16 +23,14 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class HeroHomeSeedService extends BaseService
 {
-    private const BUNDLE_PATH = '/docs/examples/hero-home.bundle.json';
-
     public function __construct(
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly SectionExportImportService $sectionExportImportService,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly ExampleBundlePathResolver $exampleBundlePathResolver,
         private readonly EntityManagerInterface $entityManager,
-        private readonly string $projectDir,
     ) {
     }
 
@@ -114,9 +112,9 @@ class HeroHomeSeedService extends BaseService
             return ['seeded' => false, 'reason' => 'home page was already customized'];
         }
 
-        $bundlePath = rtrim($this->projectDir, '/\\') . self::BUNDLE_PATH;
+        $bundlePath = $this->exampleBundlePathResolver->resolveHeroHomeBundlePath();
         if (!is_file($bundlePath)) {
-            $this->throwNotFound('Hero home bundle not found at ' . self::BUNDLE_PATH);
+            $this->throwNotFound('Hero home bundle not found.');
         }
 
         $raw = file_get_contents($bundlePath);

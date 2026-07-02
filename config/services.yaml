@@ -382,7 +382,7 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
-    App\Service\CMS\Admin\HeroHomeSeedService:
+    App\Service\CMS\Admin\ExampleBundlePathResolver:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
