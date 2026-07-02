@@ -151,7 +151,28 @@ Admin page create/update accepts `navigationAssignments` to add the new page to 
 
 ## Page bundle import/export
 
-Bundles export/import **pages and CMS parent/child relationships** (`id_parent_page`). They do **not** export or restore menu membership — after import, assign pages to menus via the navigation builder. This avoids ordering conflicts and keeps import focused on content structure.
+Bundles export/import **pages and CMS parent/child relationships** (`id_parent_page`) only. Menu membership uses the separate **`selfhelp/navigation-bundle` v1.0** format via `POST /admin/navigation/export` and `POST /admin/navigation/import`. Legacy `navigation.assignments` in page bundles is warned and ignored.
+
+### Navigation bundle export/import
+
+- Format: `selfhelp/navigation-bundle` v1.0 (independent from `selfhelp/page-bundle` v2.0).
+- Export modes: `full_snapshot` (whole menu(s)) or `branch` (selected pages + ancestor/sibling branches).
+- Optional embedded `pages[]` when `include_pages` is true.
+- Import options: `missing_pages_mode` (`strict` | `skip_missing` | `create_stubs`), per-menu `menu_policies` (`replace` | `merge` | `append`), optional `keyword_prefix`.
+- Menu depth is capped at **two levels** (top-level + children) on write and in bundles.
+
+Permissions: `admin.navigation.export`, `admin.navigation.import`.
+
+## Example bundles
+
+Canonical location: **`sh-selfhelp_frontend/examples/`** (`pages/`, `cms-in-cms/`, `navigation/`). The backend resolves them from the monorepo sibling path and falls back to `tests/fixtures/examples/` for CI.
+
+- `pages/hero-home.bundle.json` — seeded on untouched fresh-install `home` pages
+- `pages/mobile-onboarding.bundle.json` — importable mobile-first landing template
+- `cms-in-cms/team-members.bundle.json` — list+detail CMS-in-CMS demo
+- `navigation/menu-demo.bundle.json` — 20-page mini-site with all four menus wired
+
+Import pages via admin **Import / Export** or `POST /admin/pages/import`. Import navigation via **Navigation** export/import or `POST /admin/navigation/import`.
 
 ## Admin UI
 
@@ -207,14 +228,7 @@ labels; ACL still applies at query time.
 
 ## Example bundles
 
-Shipped under `docs/examples/` (backend) and `examples/` (frontend catalogue):
-
-- `hero-home.bundle.json` — seeded on untouched fresh-install `home` pages
-- `mobile-onboarding.bundle.json` — importable mobile-first landing template;
-  assign via Navigation → Start pages after import (not auto-seeded by default)
-- CMS-in-CMS list+detail examples under `docs/examples/cms-in-cms/`
-
-Import via admin **Import / Export** or `POST /admin/pages/import`.
+See the **Page bundle import/export** section above for canonical paths and bundle catalogue.
 
 ## Deprecated model
 

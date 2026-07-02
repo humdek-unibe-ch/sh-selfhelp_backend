@@ -3,38 +3,45 @@ SPDX-FileCopyrightText: 2026 Humdek, University of Bern
 SPDX-License-Identifier: MPL-2.0
 -->
 
-# Navigation examples (hero home + mobile onboarding)
+# Navigation examples (hero home + mobile onboarding + menu demo)
 
 Audience: Developers and CMS operators.
 Status: active.
-Applies to: SelfHelp2 Symfony backend `0.1.32+`.
-Last verified: 2026-07-01.
-Source of truth: `docs/examples/*.bundle.json`, `HeroHomeSeedService`, admin page import API.
+Applies to: SelfHelp2 Symfony backend `0.1.33+`.
+Last verified: 2026-07-02.
+Source of truth: `sh-selfhelp_frontend/examples/`, `NavigationExportImportService`, admin navigation import API.
+
+## Canonical example location
+
+All curated bundles live in **`sh-selfhelp_frontend/examples/`** (`pages/`, `cms-in-cms/`, `navigation/`). The backend resolves them from the monorepo sibling path and falls back to `tests/fixtures/examples/` for CI.
 
 ## Hero home (fresh install + optional re-import)
 
-The polished marketing-style landing lives in [`hero-home.bundle.json`](../examples/hero-home.bundle.json).
+The polished marketing-style landing lives in [`hero-home.bundle.json`](../../sh-selfhelp_frontend/examples/pages/hero-home.bundle.json).
 
-**Fresh installs:** migration `Version20260701112111` replaces the baseline `home-sys*` placeholder on the system `home` page when that page is still untouched (only `home-sys*` sections, no custom edits). A normal `doctrine:migrations:migrate` run is enough — no extra console step.
+**Fresh installs:** migration `Version20260701112111` replaces the baseline `home-sys*` placeholder on the system `home` page when that page is still untouched. A normal `doctrine:migrations:migrate` run is enough — no extra console step.
 
-**Re-import later** (or on an instance that already customized `home` before this migration ran), use the guarded CLI:
+**Re-import later**, use the guarded CLI:
 
 ```bash
 php bin/console app:examples:seed-hero-home
 ```
 
-Use `--force` only when you intentionally want to replace customized `home` content.
-
-After seeding, rebuild the search projection if you rely on content-index search:
-
-```bash
-php bin/console app:navigation:rebuild-search-index --page-id=<home-id>
-```
-
 ## Mobile onboarding template
 
-[`mobile-onboarding.bundle.json`](../examples/mobile-onboarding.bundle.json) is a mobile-first onboarding/landing template. Import it through the admin **Pages → Import bundle** flow (or `POST /cms-api/v1/admin/pages/import`) with a `qa-` keyword prefix in test environments.
+[`mobile-onboarding.bundle.json`](../../sh-selfhelp_frontend/examples/pages/mobile-onboarding.bundle.json) is a mobile-first onboarding/landing template. Import via **Pages → Export / Import**.
 
-## Manual import
+## Menu demo (20-page mini-site)
 
-Both bundles use the standard `selfhelp/page-bundle` format consumed by `PageExportImportService`. They are also listed from the developer navigation guide [`28-navigation-pages-and-page-icons.md`](../developer/28-navigation-pages-and-page-icons.md).
+[`menu-demo.bundle.json`](../../sh-selfhelp_frontend/examples/navigation/menu-demo.bundle.json) ships a realistic mini-site with **all four menus** wired (dropdown header, grouped footer, mobile drawer, five bottom tabs).
+
+Import via **Navigation → Export / Import** (or `POST /cms-api/v1/admin/navigation/import`) with optional `keyword_prefix` (e.g. `qa-demo-`) in import options. Use `menu_policies.replace` for a clean demo reset.
+
+## Page vs navigation bundles
+
+| Format | Purpose |
+| --- | --- |
+| `selfhelp/page-bundle` v2.0 | Pages, sections, routes, optional data — **no menu membership** |
+| `selfhelp/navigation-bundle` v1.0 | Menu trees, item metadata, optional embedded pages |
+
+Legacy `navigation.assignments` inside page bundles is warned and ignored on import.
