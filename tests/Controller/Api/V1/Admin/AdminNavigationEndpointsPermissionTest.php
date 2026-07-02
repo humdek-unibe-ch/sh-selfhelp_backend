@@ -36,6 +36,9 @@ final class AdminNavigationEndpointsPermissionTest extends QaWebTestCase
         yield 'item-delete' => ['DELETE', '/cms-api/v1/admin/navigation/items/1', null];
         yield 'reorder' => ['PUT', '/cms-api/v1/admin/navigation/menus/web_header/reorder', ['items' => []]];
         yield 'settings' => ['PUT', '/cms-api/v1/admin/navigation/settings', ['web_header_search_min_chars' => 2]];
+        yield 'export' => ['POST', '/cms-api/v1/admin/navigation/export', []];
+        yield 'import-validate' => ['POST', '/cms-api/v1/admin/navigation/import/validate', ['bundle' => ['format' => 'selfhelp/navigation-bundle', 'menus' => []]]];
+        yield 'import' => ['POST', '/cms-api/v1/admin/navigation/import', ['bundle' => ['format' => 'selfhelp/navigation-bundle', 'menus' => []]]];
     }
 
     /**

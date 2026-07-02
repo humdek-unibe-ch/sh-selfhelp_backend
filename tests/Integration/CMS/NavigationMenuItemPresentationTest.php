@@ -81,8 +81,8 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
                 LookupService::NAVIGATION_CHILD_SOURCES,
                 LookupService::NAVIGATION_CHILD_SOURCE_MANUAL,
             )))
-            ->setIcon('tabler-home')
-            ->setMobileIcon('Home')
+            ->setIcon('IconHome')
+            ->setMobileIcon('House')
             ->setPosition(9910)
             ->setIsActive(true);
         $em->persist($pageItem);
@@ -120,8 +120,8 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
 
         $pagePayload = $this->findItemById($itemList, $pageItem->getId() ?? 0);
         self::assertNotNull($pagePayload);
-        self::assertSame('tabler-home', $pagePayload['icon']);
-        self::assertSame('Home', $pagePayload['mobile_icon']);
+        self::assertSame('IconHome', $pagePayload['icon']);
+        self::assertSame('House', $pagePayload['mobile_icon']);
         self::assertArrayNotHasKey('description', $pagePayload);
         self::assertArrayNotHasKey('aria_label', $pagePayload);
         $pageRef = $pagePayload['page'] ?? null;
