@@ -41,8 +41,14 @@ class NavigationMenuItem
     #[ORM\Column(name: 'external_url', type: 'string', length: 500, nullable: true)]
     private ?string $externalUrl = null;
 
-    #[ORM\Column(name: 'icon_override', type: 'string', length: 100, nullable: true)]
-    private ?string $iconOverride = null;
+    #[ORM\Column(name: 'icon', type: 'string', length: 100, nullable: true)]
+    private ?string $icon = null;
+
+    #[ORM\Column(name: 'mobile_icon', type: 'string', length: 100, nullable: true)]
+    private ?string $mobileIcon = null;
+
+    #[ORM\Column(name: 'label', type: 'string', length: 255, nullable: true)]
+    private ?string $label = null;
 
     #[ORM\Column(name: 'position', type: 'integer')]
     private int $position = 0;
@@ -122,14 +128,38 @@ class NavigationMenuItem
         return $this;
     }
 
-    public function getIconOverride(): ?string
+    public function getIcon(): ?string
     {
-        return $this->iconOverride;
+        return $this->icon;
     }
 
-    public function setIconOverride(?string $iconOverride): static
+    public function setIcon(?string $icon): static
     {
-        $this->iconOverride = $iconOverride;
+        $this->icon = $icon;
+
+        return $this;
+    }
+
+    public function getMobileIcon(): ?string
+    {
+        return $this->mobileIcon;
+    }
+
+    public function setMobileIcon(?string $mobileIcon): static
+    {
+        $this->mobileIcon = $mobileIcon;
+
+        return $this;
+    }
+
+    public function getLabel(): ?string
+    {
+        return $this->label;
+    }
+
+    public function setLabel(?string $label): static
+    {
+        $this->label = $label;
 
         return $this;
     }

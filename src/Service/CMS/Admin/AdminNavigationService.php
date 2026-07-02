@@ -9,17 +9,16 @@ namespace App\Service\CMS\Admin;
 
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
-use App\Entity\NavigationMenuItemExclusion;
-use App\Entity\NavigationMenuItemTranslation;
 use App\Entity\NavigationSettings;
 use App\Entity\Page;
-use App\Repository\NavigationMenuItemExclusionRepository;
+use App\Navigation\NavigationMenuChildPagesSupport;
+use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuItemTranslationRepository;
 use App\Repository\NavigationMenuRepository;
 use App\Repository\NavigationSettingsRepository;
 use App\Repository\PageRepository;
-use App\Service\CMS\Frontend\PageService;
+use App\Service\CMS\CmsPreferenceService;
 use App\Service\CMS\NavigationMenuService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -35,13 +34,14 @@ class AdminNavigationService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly NavigationMenuRepository $navigationMenuRepository,
         private readonly NavigationMenuItemRepository $navigationMenuItemRepository,
-        private readonly NavigationMenuItemTranslationRepository $navigationMenuItemTranslationRepository,
-        private readonly NavigationMenuItemExclusionRepository $navigationMenuItemExclusionRepository,
         private readonly NavigationSettingsRepository $navigationSettingsRepository,
         private readonly PageRepository $pageRepository,
         private readonly LookupService $lookupService,
         private readonly NavigationMenuService $navigationMenuService,
-        private readonly PageService $pageService,
+        private readonly NavigationMenuChildPagesSupport $navigationMenuChildPagesSupport,
+        private readonly NavigationMenuItemTranslationRepository $navigationMenuItemTranslationRepository,
+        private readonly NavigationMenuItemTranslationSupport $navigationMenuItemTranslationSupport,
+        private readonly CmsPreferenceService $cmsPreferenceService,
         private readonly TransactionService $transactionService,
     ) {
     }
@@ -105,13 +105,79 @@ class AdminNavigationService extends BaseService
     public function createMenuItem(string $menuKey, array $data): array
     {
         $menu = $this->requireMenuByKey($menuKey);
-        $item = $this->buildMenuItemFromPayload($menu, $data, null);
-        $this->entityManager->persist($item);
-        $this->entityManager->flush();
-        $this->navigationMenuService->invalidateNavigationCaches();
-        $this->logMenuItemChange('insert', $item);
+        $childPageIds = $this->normalizeIntList($data['child_page_ids'] ?? []);
+        $includeDescendants = (bool) ($data['include_descendants'] ?? false);
 
-        return $this->formatMenuItemEntity($item);
+        $parentPageId = $data['page_id'] ?? $data['pageId'] ?? null;
+        $parentPage = null;
+        if (is_int($parentPageId) || is_numeric($parentPageId)) {
+            $parentPage = $this->pageRepository->find((int) $parentPageId);
+            if (!$parentPage instanceof Page) {
+                $this->throwBadRequest('Page not found');
+            }
+        }
+
+        $pagesToCreate = [];
+        if ($parentPage instanceof Page && $childPageIds !== []) {
+            $pagesToCreate = $this->navigationMenuChildPagesSupport->resolvePagesToCreate(
+                $parentPage,
+                $childPageIds,
+                $includeDescendants,
+            );
+        }
+
+        $pageIdsToAssign = [];
+        if ($parentPage instanceof Page && $parentPage->getId() !== null) {
+            $pageIdsToAssign[] = $parentPage->getId();
+        }
+        foreach ($pagesToCreate as $row) {
+            $pageId = $row['page']->getId();
+            if ($pageId !== null) {
+                $pageIdsToAssign[] = $pageId;
+            }
+        }
+        $this->assertNoDuplicatePagesInMenu($menu, $pageIdsToAssign);
+
+        $itemTypeCode = is_string($data['item_type'] ?? null)
+            ? (string) $data['item_type']
+            : LookupService::NAVIGATION_ITEM_TYPE_PAGE;
+        $this->assertTranslatableLabelsPresent($data, $itemTypeCode);
+
+        $this->entityManager->beginTransaction();
+        try {
+            $parentItem = $this->buildMenuItemFromPayload($menu, $data, null);
+            $this->entityManager->persist($parentItem);
+            $this->entityManager->flush();
+
+            $this->syncMenuItemTranslations($parentItem, $data);
+
+            $createdChildren = [];
+            if ($parentPage instanceof Page && $pagesToCreate !== []) {
+                $createdChildren = $this->createStoredChildMenuItems($menu, $parentItem, $pagesToCreate);
+                $this->entityManager->flush();
+            }
+
+            $this->entityManager->commit();
+        } catch (\Throwable $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+
+        $this->navigationMenuService->invalidateNavigationCaches();
+        $this->logMenuItemChange('insert', $parentItem);
+
+        return [
+            'item' => $this->formatMenuItemEntity(
+                $parentItem,
+                $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds(
+                    $parentItem->getId() !== null ? [$parentItem->getId()] : [],
+                ),
+            ),
+            'children' => array_map(
+                fn (NavigationMenuItem $i): array => $this->formatMenuItemEntity($i),
+                $createdChildren,
+            ),
+        ];
     }
 
     /**
@@ -122,12 +188,21 @@ class AdminNavigationService extends BaseService
     public function updateMenuItem(int $itemId, array $data): array
     {
         $item = $this->requireMenuItem($itemId);
+        $itemTypeCode = $item->getItemType()?->getLookupCode() ?? LookupService::NAVIGATION_ITEM_TYPE_PAGE;
+        if (array_key_exists('item_type', $data) && is_string($data['item_type'])) {
+            $itemTypeCode = $data['item_type'];
+        }
+        $this->assertTranslatableLabelsPresent($data, $itemTypeCode);
         $this->applyMenuItemPayload($item, $data);
+        $this->syncMenuItemTranslations($item, $data);
         $this->entityManager->flush();
         $this->navigationMenuService->invalidateNavigationCaches();
         $this->logMenuItemChange('update', $item);
 
-        return $this->formatMenuItemEntity($item);
+        return $this->formatMenuItemEntity(
+            $item,
+            $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds([$itemId]),
+        );
     }
 
     public function deleteMenuItem(int $itemId): void
@@ -227,178 +302,6 @@ class AdminNavigationService extends BaseService
         return $this->formatSettings($settings);
     }
 
-    public function addExclusion(int $menuItemId, int $pageId): void
-    {
-        $item = $this->requireMenuItem($menuItemId);
-        $page = $this->pageRepository->find($pageId);
-        if (!$page instanceof Page) {
-            $this->throwNotFound('Page not found');
-        }
-        $exclusion = new NavigationMenuItemExclusion();
-        $exclusion->setNavigationMenuItem($item);
-        $exclusion->setPage($page);
-        $this->entityManager->persist($exclusion);
-        $this->entityManager->flush();
-        $this->navigationMenuService->invalidateNavigationCaches();
-    }
-
-    public function removeExclusion(int $menuItemId, int $pageId): void
-    {
-        $exclusion = $this->navigationMenuItemExclusionRepository->findOneBy([
-            'navigationMenuItem' => $menuItemId,
-            'page' => $pageId,
-        ]);
-        if ($exclusion instanceof NavigationMenuItemExclusion) {
-            $this->entityManager->remove($exclusion);
-            $this->entityManager->flush();
-            $this->navigationMenuService->invalidateNavigationCaches();
-        }
-    }
-
-    /**
-     * Materialize auto-included page children as explicit menu items and switch the parent to manual.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public function convertAutoChildrenToExplicit(int $menuItemId, int $languageId = 1): array
-    {
-        $item = $this->requireMenuItem($menuItemId);
-        $childSourceCode = $item->getChildSource()?->getLookupCode();
-        if ($childSourceCode !== LookupService::NAVIGATION_CHILD_SOURCE_PAGE_CHILDREN) {
-            $this->throwBadRequest('Menu item does not auto-include page children');
-        }
-
-        $pageId = $item->getPage()?->getId();
-        if ($pageId === null) {
-            $this->throwBadRequest('Menu item has no linked page');
-        }
-
-        $menuKey = $item->getNavigationMenu()?->getMenuKey()?->getLookupCode() ?? '';
-        $mode = $menuKey === LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER
-            || $menuKey === LookupService::NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS
-            ? LookupService::PAGE_ACCESS_TYPES_MOBILE
-            : LookupService::PAGE_ACCESS_TYPES_WEB;
-
-        $authoringTree = $this->pageService->getAllAccessiblePagesForUser($mode, true, $languageId);
-        $parentNode = $this->findPageNodeInTree($authoringTree, (int) $pageId);
-        if ($parentNode === null) {
-            $this->throwNotFound('Linked page not found in accessible page tree');
-        }
-
-        $treeChildren = $parentNode['children'] ?? [];
-        if (!is_array($treeChildren)) {
-            $treeChildren = [];
-        }
-
-        $excluded = $this->navigationMenuItemExclusionRepository->findExcludedPageIdsForItem($item);
-        $menu = $item->getNavigationMenu();
-        if (!$menu instanceof NavigationMenu) {
-            $this->throwNotFound('Menu item has no owning menu');
-        }
-        $explicitChildPageIds = [];
-        foreach ($this->navigationMenuItemRepository->findActiveByMenu($menu) as $candidate) {
-            if ($candidate->getParentItem()?->getId() !== $item->getId()) {
-                continue;
-            }
-            $childPageId = $candidate->getPage()?->getId();
-            if ($childPageId !== null) {
-                $explicitChildPageIds[] = (int) $childPageId;
-            }
-        }
-
-        $itemType = $this->lookupService->findByTypeAndCode(
-            LookupService::NAVIGATION_MENU_ITEM_TYPES,
-            LookupService::NAVIGATION_ITEM_TYPE_PAGE
-        );
-        $manualSource = $this->lookupService->findByTypeAndCode(
-            LookupService::NAVIGATION_CHILD_SOURCES,
-            LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
-        );
-        if (!$itemType || !$manualSource) {
-            $this->throwNotFound('Navigation lookup configuration is incomplete');
-        }
-
-        $created = [];
-        $position = 10;
-        $this->entityManager->beginTransaction();
-        try {
-            foreach ($treeChildren as $child) {
-                if (!is_array($child)) {
-                    continue;
-                }
-                $childPageId = isset($child['id_pages']) && is_numeric($child['id_pages'])
-                    ? (int) $child['id_pages']
-                    : (isset($child['id']) && is_numeric($child['id']) ? (int) $child['id'] : 0);
-                if ($childPageId <= 0 || in_array($childPageId, $excluded, true) || in_array($childPageId, $explicitChildPageIds, true)) {
-                    continue;
-                }
-
-                $childPage = $this->pageRepository->find($childPageId);
-                if (!$childPage instanceof Page) {
-                    continue;
-                }
-
-                $childItem = new NavigationMenuItem();
-                $childItem->setNavigationMenu($menu);
-                $childItem->setParentItem($item);
-                $childItem->setItemType($itemType);
-                $childItem->setPage($childPage);
-                $childItem->setPosition($position);
-                $childItem->setChildSource($manualSource);
-                $childItem->setIsActive(true);
-                $this->entityManager->persist($childItem);
-                $created[] = $childItem;
-                $position += 10;
-            }
-
-            $item->setChildSource($manualSource);
-            $item->setAutoIncludeDepth(null);
-            $this->entityManager->flush();
-            $this->entityManager->commit();
-        } catch (\Throwable $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
-
-        $this->navigationMenuService->invalidateNavigationCaches();
-        $this->logMenuItemChange('update', $item);
-
-        return array_map(fn (NavigationMenuItem $i): array => $this->formatMenuItemEntity($i), $created);
-    }
-
-    /**
-     * @param array<int|string, mixed> $tree
-     *
-     * @return array<string, mixed>|null
-     */
-    private function findPageNodeInTree(array $tree, int $pageId): ?array
-    {
-        foreach ($tree as $node) {
-            if (!is_array($node)) {
-                continue;
-            }
-            /** @var array<string, mixed> $pageNode */
-            $pageNode = $node;
-            $nodeId = isset($pageNode['id_pages']) && is_numeric($pageNode['id_pages'])
-                ? (int) $pageNode['id_pages']
-                : (isset($pageNode['id']) && is_numeric($pageNode['id']) ? (int) $pageNode['id'] : 0);
-            if ($nodeId === $pageId) {
-                return $pageNode;
-            }
-            $children = $pageNode['children'] ?? [];
-            if (is_array($children) && $children !== []) {
-                /** @var list<array<string, mixed>> $childList */
-                $childList = array_values(array_filter($children, 'is_array'));
-                $found = $this->findPageNodeInTree($childList, $pageId);
-                if ($found !== null) {
-                    return $found;
-                }
-            }
-        }
-
-        return null;
-    }
-
     /**
      * @return list<string>
      */
@@ -482,9 +385,19 @@ class AdminNavigationService extends BaseService
             $item->setExternalUrl($data['external_url']);
         }
 
-        if (array_key_exists('icon_override', $data) || array_key_exists('iconOverride', $data)) {
-            $icon = $data['icon_override'] ?? $data['iconOverride'] ?? null;
-            $item->setIconOverride(is_string($icon) && $icon !== '' ? $icon : null);
+        if (array_key_exists('icon', $data) || array_key_exists('icon_override', $data) || array_key_exists('iconOverride', $data)) {
+            $icon = $data['icon'] ?? $data['icon_override'] ?? $data['iconOverride'] ?? null;
+            $item->setIcon(is_string($icon) && $icon !== '' ? $icon : null);
+        }
+
+        if (array_key_exists('mobile_icon', $data) || array_key_exists('mobileIcon', $data)) {
+            $mobileIcon = $data['mobile_icon'] ?? $data['mobileIcon'] ?? null;
+            $item->setMobileIcon(is_string($mobileIcon) && $mobileIcon !== '' ? $mobileIcon : null);
+        }
+
+        if (array_key_exists('label', $data)) {
+            $label = $data['label'];
+            $item->setLabel(is_string($label) && $label !== '' ? $label : null);
         }
 
         if (array_key_exists('position', $data) && is_int($data['position'])) {
@@ -493,25 +406,14 @@ class AdminNavigationService extends BaseService
             $item->setPosition(10);
         }
 
-        if (array_key_exists('child_source', $data) || array_key_exists('childSource', $data)) {
-            $code = $data['child_source'] ?? $data['childSource'] ?? LookupService::NAVIGATION_CHILD_SOURCE_MANUAL;
-            if (is_string($code)) {
-                $childSource = $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_CHILD_SOURCES, $code);
-                if ($childSource) {
-                    $item->setChildSource($childSource);
-                }
-            }
-        } elseif ($item->getChildSource() === null) {
-            $item->setChildSource($this->lookupService->findByTypeAndCode(
-                LookupService::NAVIGATION_CHILD_SOURCES,
-                LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
-            ));
+        $manualSource = $this->lookupService->findByTypeAndCode(
+            LookupService::NAVIGATION_CHILD_SOURCES,
+            LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
+        );
+        if ($manualSource) {
+            $item->setChildSource($manualSource);
         }
-
-        if (array_key_exists('auto_include_depth', $data) || array_key_exists('autoIncludeDepth', $data)) {
-            $depth = $data['auto_include_depth'] ?? $data['autoIncludeDepth'] ?? null;
-            $item->setAutoIncludeDepth(is_int($depth) ? $depth : (is_numeric($depth) ? (int) $depth : null));
-        }
+        $item->setAutoIncludeDepth(null);
 
         if (array_key_exists('is_active', $data) || array_key_exists('isActive', $data)) {
             $item->setIsActive((bool) ($data['is_active'] ?? $data['isActive'] ?? true));
@@ -528,45 +430,6 @@ class AdminNavigationService extends BaseService
                 $item->setParentItem($parent);
             }
         }
-
-        $translations = $data['translations'] ?? null;
-        if (is_array($translations)) {
-            /** @var list<array<string, mixed>> $translationRows */
-            $translationRows = array_values($translations);
-            $this->syncTranslations($item, $translationRows);
-        }
-    }
-
-    /**
-     * @param list<array<string, mixed>> $translations
-     */
-    private function syncTranslations(NavigationMenuItem $item, array $translations): void
-    {
-        foreach ($translations as $row) {
-            $languageId = $row['language_id'] ?? $row['languageId'] ?? null;
-            if (!is_int($languageId) && !is_numeric($languageId)) {
-                continue;
-            }
-            $languageId = (int) $languageId;
-            $existing = $this->navigationMenuItemTranslationRepository->findOneBy([
-                'navigationMenuItem' => $item,
-                'language' => $languageId,
-            ]);
-            $translation = $existing ?? new NavigationMenuItemTranslation();
-            $translation->setNavigationMenuItem($item);
-            $translation->setLanguage($this->entityManager->getReference(\App\Entity\Language::class, $languageId));
-            if (array_key_exists('label', $row)) {
-                $translation->setLabel(is_string($row['label']) ? $row['label'] : null);
-            }
-            if (array_key_exists('description', $row)) {
-                $translation->setDescription(is_string($row['description']) ? $row['description'] : null);
-            }
-            if (array_key_exists('aria_label', $row) || array_key_exists('ariaLabel', $row)) {
-                $aria = $row['aria_label'] ?? $row['ariaLabel'] ?? null;
-                $translation->setAriaLabel(is_string($aria) ? $aria : null);
-            }
-            $this->entityManager->persist($translation);
-        }
     }
 
     /**
@@ -575,6 +438,11 @@ class AdminNavigationService extends BaseService
     private function formatMenuDefinition(NavigationMenu $menu): array
     {
         $items = $this->navigationMenuItemRepository->findActiveByMenu($menu);
+        $itemIds = array_values(array_filter(array_map(
+            static fn (NavigationMenuItem $item): ?int => $item->getId(),
+            $items,
+        )));
+        $translationMap = $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds($itemIds);
 
         return [
             'key' => $menu->getMenuKey()?->getLookupCode(),
@@ -585,30 +453,43 @@ class AdminNavigationService extends BaseService
             'item_limit' => $menu->getItemLimit(),
             'is_system' => $menu->isSystem(),
             'config' => $menu->getConfig(),
-            'items' => array_map(fn (NavigationMenuItem $i): array => $this->formatMenuItemEntity($i), $items),
+            'items' => array_map(
+                fn (NavigationMenuItem $i): array => $this->formatMenuItemEntity($i, $translationMap),
+                $items,
+            ),
         ];
     }
 
     /**
+     * @param array<int, array<int, string>> $translationMap
+     *
      * @return array<string, mixed>
      */
-    private function formatMenuItemEntity(NavigationMenuItem $item): array
+    private function formatMenuItemEntity(NavigationMenuItem $item, array $translationMap = []): array
     {
-        $excludedPageIds = $this->navigationMenuItemExclusionRepository->findExcludedPageIdsForItem($item);
-
-        return [
-            'id' => $item->getId(),
+        $itemId = $item->getId();
+        $typeCode = $item->getItemType()?->getLookupCode() ?? LookupService::NAVIGATION_ITEM_TYPE_PAGE;
+        $formatted = [
+            'id' => $itemId,
             'parent_item_id' => $item->getParentItem()?->getId(),
-            'item_type' => $item->getItemType()?->getLookupCode(),
+            'item_type' => $typeCode,
             'page_id' => $item->getPage()?->getId(),
             'external_url' => $item->getExternalUrl(),
-            'icon_override' => $item->getIconOverride(),
+            'icon' => $item->getIcon(),
+            'mobile_icon' => $item->getMobileIcon(),
+            'label' => $item->getLabel(),
             'position' => $item->getPosition(),
-            'child_source' => $item->getChildSource()?->getLookupCode(),
-            'auto_include_depth' => $item->getAutoIncludeDepth(),
             'is_active' => $item->isActive(),
-            'excluded_page_ids' => $excludedPageIds,
         ];
+
+        if ($itemId !== null && $this->navigationMenuItemTranslationSupport->isTranslatableItemType($typeCode)) {
+            $formatted['translations'] = $this->navigationMenuItemTranslationSupport->formatTranslationsForAdmin(
+                $itemId,
+                $translationMap,
+            );
+        }
+
+        return $formatted;
     }
 
     /**
@@ -695,5 +576,131 @@ class AdminNavigationService extends BaseService
             true,
             "Navigation menu item {$verb}"
         );
+    }
+
+    /**
+     * @param list<int> $pageIds
+     */
+    private function assertNoDuplicatePagesInMenu(NavigationMenu $menu, array $pageIds): void
+    {
+        $existingPageIds = array_fill_keys($this->navigationMenuItemRepository->findActivePageIdsForMenu($menu), true);
+        foreach ($pageIds as $pageId) {
+            if (isset($existingPageIds[$pageId])) {
+                $page = $this->pageRepository->find($pageId);
+                $label = $page instanceof Page ? ($page->getKeyword() ?? (string) $pageId) : (string) $pageId;
+                $this->throwBadRequest(sprintf('Page "%s" is already in this menu.', $label));
+            }
+        }
+    }
+
+    /**
+     * @param list<array{page: Page, parent_page_id: int}> $pagesToCreate
+     *
+     * @return list<NavigationMenuItem>
+     */
+    private function createStoredChildMenuItems(
+        NavigationMenu $menu,
+        NavigationMenuItem $rootParentItem,
+        array $pagesToCreate,
+    ): array {
+        $itemType = $this->lookupService->findByTypeAndCode(
+            LookupService::NAVIGATION_MENU_ITEM_TYPES,
+            LookupService::NAVIGATION_ITEM_TYPE_PAGE
+        );
+        $manualSource = $this->lookupService->findByTypeAndCode(
+            LookupService::NAVIGATION_CHILD_SOURCES,
+            LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
+        );
+        if (!$itemType || !$manualSource) {
+            $this->throwNotFound('Navigation lookup configuration is incomplete');
+        }
+
+        /** @var array<int, NavigationMenuItem> $menuItemByPageId */
+        $menuItemByPageId = [];
+        $rootPageId = $rootParentItem->getPage()?->getId();
+        if ($rootPageId !== null) {
+            $menuItemByPageId[$rootPageId] = $rootParentItem;
+        }
+
+        $created = [];
+        $position = 10;
+        foreach ($pagesToCreate as $row) {
+            $page = $row['page'];
+            $cmsParentPageId = $row['parent_page_id'];
+            $menuParent = $menuItemByPageId[$cmsParentPageId] ?? $rootParentItem;
+
+            $childItem = new NavigationMenuItem();
+            $childItem->setNavigationMenu($menu);
+            $childItem->setParentItem($menuParent);
+            $childItem->setItemType($itemType);
+            $childItem->setPage($page);
+            $childItem->setPosition($position);
+            $childItem->setChildSource($manualSource);
+            $childItem->setIsActive(true);
+            $this->entityManager->persist($childItem);
+            $created[] = $childItem;
+
+            $pageId = $page->getId();
+            if ($pageId !== null) {
+                $menuItemByPageId[$pageId] = $childItem;
+            }
+            $position += 10;
+        }
+
+        return $created;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function normalizeIntList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $entry) {
+            if (is_int($entry)) {
+                $out[] = $entry;
+            } elseif (is_numeric($entry)) {
+                $out[] = (int) $entry;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function assertTranslatableLabelsPresent(array $data, string $typeCode): void
+    {
+        try {
+            $this->navigationMenuItemTranslationSupport->assertTranslatableLabelsPresent(
+                $data,
+                $typeCode,
+                $this->resolveDefaultLanguageId(),
+            );
+        } catch (\InvalidArgumentException $e) {
+            $this->throwBadRequest($e->getMessage());
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function syncMenuItemTranslations(NavigationMenuItem $item, array $data): void
+    {
+        $this->navigationMenuItemTranslationSupport->syncMenuItemTranslations(
+            $item,
+            $data,
+            $this->resolveDefaultLanguageId(),
+        );
+    }
+
+    private function resolveDefaultLanguageId(): int
+    {
+        return $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
     }
 }

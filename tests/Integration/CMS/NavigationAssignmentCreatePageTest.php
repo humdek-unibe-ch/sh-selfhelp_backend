@@ -79,7 +79,7 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
         self::assertContains(LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER, $menuKeys);
     }
 
-    public function testChildPageGetsAutoMembershipBadgeFromParentAutoInclude(): void
+    public function testChildPageWithoutMenuAssignmentHasNoMembershipBadge(): void
     {
         $admin = $this->loginAsQaAdmin();
 
@@ -90,10 +90,7 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
             'openAccess' => true,
             'url' => '/' . self::KEYWORD . '_parent',
             'navigationAssignments' => [
-                [
-                    'menuKey' => LookupService::NAVIGATION_MENU_KEY_WEB_HEADER,
-                    'childSource' => LookupService::NAVIGATION_CHILD_SOURCE_PAGE_CHILDREN,
-                ],
+                ['menuKey' => LookupService::NAVIGATION_MENU_KEY_WEB_HEADER],
             ],
         ], $admin);
         $parentData = $this->assertEnvelopeSuccess($parent, Response::HTTP_CREATED);
@@ -112,19 +109,9 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
         $childId = $childData['id'] ?? null;
         self::assertIsInt($childId);
 
-        /** @var NavigationMenuItemRepository $itemRepo */
-        $itemRepo = self::getContainer()->get(NavigationMenuItemRepository::class);
-        $autoParents = $itemRepo->findActiveAutoIncludeItemsForPage($parentId);
-        self::assertNotEmpty($autoParents);
-
         /** @var NavigationAssignmentService $assignmentService */
         $assignmentService = self::getContainer()->get(NavigationAssignmentService::class);
         $badges = $assignmentService->getMembershipBadgesForPage($childId);
-        $auto = array_values(array_filter(
-            $badges,
-            static fn (array $badge): bool => ($badge['menu_key'] ?? '') === LookupService::NAVIGATION_MENU_KEY_WEB_HEADER
-                && ($badge['explicit'] ?? true) === false,
-        ));
-        self::assertCount(1, $auto);
+        self::assertSame([], $badges);
     }
 }

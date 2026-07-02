@@ -192,7 +192,7 @@
 
             "properties": {
 
-                "id": { "type": ["integer", "string"] },
+                "id": { "type": "integer" },
 
                 "item_type": { "type": "string" },
 
@@ -207,10 +207,6 @@
                 "external_url": { "type": ["string", "null"] },
 
                 "icon": { "type": ["string", "null"] },
-
-                "is_virtual": { "type": "boolean" },
-
-                "child_source": { "type": ["string", "null"] },
 
                 "page": {
 

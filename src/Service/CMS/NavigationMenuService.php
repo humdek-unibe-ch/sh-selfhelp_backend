@@ -9,8 +9,8 @@ namespace App\Service\CMS;
 
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
+use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Navigation\NavigationMenuResolveSupport;
-use App\Repository\NavigationMenuItemExclusionRepository;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuItemTranslationRepository;
 use App\Repository\NavigationMenuRepository;
@@ -39,7 +39,7 @@ class NavigationMenuService extends BaseService
         private readonly NavigationMenuRepository $navigationMenuRepository,
         private readonly NavigationMenuItemRepository $navigationMenuItemRepository,
         private readonly NavigationMenuItemTranslationRepository $navigationMenuItemTranslationRepository,
-        private readonly NavigationMenuItemExclusionRepository $navigationMenuItemExclusionRepository,
+        private readonly NavigationMenuItemTranslationSupport $navigationMenuItemTranslationSupport,
         private readonly NavigationSettingsRepository $navigationSettingsRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly PageService $pageService,
@@ -72,93 +72,13 @@ class NavigationMenuService extends BaseService
     }
 
     /**
-     * Admin-only diagnostics: hidden auto-children and manual-plus suggestions.
-     *
      * @return array{warnings: list<array<string, mixed>>, suggestions: list<array<string, mixed>>}
      */
     public function getAdminMenuDiagnostics(string $menuKey, int $languageId): array
     {
-        $menu = $this->navigationMenuRepository->findByMenuKeyLookupId(
-            (int) $this->lookupService->getLookupIdByCode(LookupService::NAVIGATION_MENU_KEYS, $menuKey)
-        );
-        if (!$menu instanceof NavigationMenu) {
-            return ['warnings' => [], 'suggestions' => []];
-        }
+        unset($menuKey, $languageId);
 
-        $mode = $menuKey === LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER
-            || $menuKey === LookupService::NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS
-            ? LookupService::PAGE_ACCESS_TYPES_MOBILE
-            : LookupService::PAGE_ACCESS_TYPES_WEB;
-
-        $authoringTree = $this->pageService->getAllAccessiblePagesForUser($mode, true, $languageId);
-        $publicTree = $this->pageService->getAllAccessiblePagesForUser($mode, false, $languageId);
-        $authoringMap = $this->flattenPageTreeToMap($authoringTree);
-        $publicMap = $this->flattenPageTreeToMap($publicTree);
-
-        $warnings = [];
-        $suggestions = [];
-        $items = $this->navigationMenuItemRepository->findActiveByMenu($menu);
-
-        foreach ($items as $item) {
-            $childSource = $item->getChildSource()?->getLookupCode() ?? LookupService::NAVIGATION_CHILD_SOURCE_MANUAL;
-            $pageId = $item->getPage()?->getId();
-            if ($pageId === null || !isset($authoringMap[$pageId])) {
-                continue;
-            }
-
-            $authoringNode = $authoringMap[$pageId];
-            $treeChildren = $authoringNode['children'] ?? [];
-            if (!is_array($treeChildren)) {
-                $treeChildren = [];
-            }
-            /** @var list<array<string, mixed>> $childList */
-            $childList = array_values(array_filter($treeChildren, 'is_array'));
-
-            if ($childSource === LookupService::NAVIGATION_CHILD_SOURCE_PAGE_CHILDREN) {
-                $excluded = $this->navigationMenuItemExclusionRepository->findExcludedPageIdsForItem($item);
-                foreach (NavigationMenuResolveSupport::hiddenAutoIncludeChildren($childList, $publicMap, $excluded) as $hidden) {
-                    $warnings[] = [
-                        'code' => 'hidden_auto_child',
-                        'menu_item_id' => $item->getId(),
-                        'parent_page_id' => $pageId,
-                        'page_id' => $hidden['page_id'],
-                        'keyword' => $hidden['keyword'],
-                        'message' => sprintf(
-                            'Page "%s" is a child in the page tree but is hidden from the public menu (ACL, platform, or headless).',
-                            $hidden['keyword'] !== '' ? $hidden['keyword'] : (string) $hidden['page_id'],
-                        ),
-                    ];
-                }
-            }
-
-            if ($childSource === LookupService::NAVIGATION_CHILD_SOURCE_MANUAL_PLUS_SUGGESTIONS) {
-                $explicitChildPageIds = [];
-                foreach ($items as $candidate) {
-                    if ($candidate->getParentItem()?->getId() !== $item->getId()) {
-                        continue;
-                    }
-                    $childPageId = $candidate->getPage()?->getId();
-                    if ($childPageId !== null) {
-                        $explicitChildPageIds[] = (int) $childPageId;
-                    }
-                }
-                foreach (NavigationMenuResolveSupport::suggestedManualChildren($childList, $explicitChildPageIds) as $suggested) {
-                    $suggestions[] = [
-                        'code' => 'child_not_in_menu',
-                        'menu_item_id' => $item->getId(),
-                        'parent_page_id' => $pageId,
-                        'page_id' => $suggested['page_id'],
-                        'keyword' => $suggested['keyword'],
-                        'message' => sprintf(
-                            'Page "%s" is not in this menu branch. Add it explicitly or switch child source to page_children.',
-                            $suggested['keyword'] !== '' ? $suggested['keyword'] : (string) $suggested['page_id'],
-                        ),
-                    ];
-                }
-            }
-        }
-
-        return ['warnings' => $warnings, 'suggestions' => $suggestions];
+        return ['warnings' => [], 'suggestions' => []];
     }
 
     /**
@@ -166,7 +86,6 @@ class NavigationMenuService extends BaseService
      */
     private function buildPublicNavigationPayload(string $mode, int $languageId, int $userId): array
     {
-        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
         $pageTree = $this->pageService->getAllAccessiblePagesForUser($mode, false, $languageId);
         $pageMap = $this->flattenPageTreeToMap($pageTree);
         $sectionCounts = $this->fetchSectionCounts(array_keys($pageMap));
@@ -179,7 +98,7 @@ class NavigationMenuService extends BaseService
             if (!$menu instanceof NavigationMenu) {
                 continue;
             }
-            $menus[$menuKeyCode] = $this->formatMenu($menu, $pageMap, $sectionCounts, $languageId, $defaultLanguageId);
+            $menus[$menuKeyCode] = $this->formatMenu($menu, $pageMap, $sectionCounts, $languageId);
         }
 
         $settings = $this->navigationSettingsRepository->getSingleton();
@@ -304,36 +223,30 @@ class NavigationMenuService extends BaseService
         array $pageMap,
         array $sectionCounts,
         int $languageId,
-        ?int $defaultLanguageId,
     ): array {
         $menuKey = $menu->getMenuKey()?->getLookupCode() ?? '';
         $items = $this->navigationMenuItemRepository->findActiveByMenu($menu);
         $itemIds = array_values(array_filter(array_map(
-            static fn (NavigationMenuItem $i): ?int => $i->getId(),
+            static fn (NavigationMenuItem $item): ?int => $item->getId(),
             $items,
         )));
-        $translationsByItem = $this->navigationMenuItemTranslationRepository->fetchTranslationsForItems(
-            $itemIds,
-            $languageId,
-            $defaultLanguageId,
-        );
-        $roots = array_values(array_filter($items, static fn (NavigationMenuItem $i): bool => $i->getParentItem() === null));
+        $translationMap = $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds($itemIds);
+        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
+        $roots = NavigationMenuResolveSupport::resolveRootMenuItems($items);
         $resolvedRoots = $this->buildItemTree(
             $roots,
             $items,
             $pageMap,
             $sectionCounts,
-            $languageId,
-            $defaultLanguageId,
-            $translationsByItem,
             0,
             $menu->getMaxDepth(),
+            $languageId,
+            $defaultLanguageId,
+            $translationMap,
         );
 
         if ($menuKey === LookupService::NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS) {
-            /** @var list<array<string, mixed>> $limitedRoots */
-            $limitedRoots = NavigationMenuResolveSupport::applyRootItemLimit($resolvedRoots, $menu->getItemLimit());
-            $resolvedRoots = $limitedRoots;
+            $resolvedRoots = NavigationMenuResolveSupport::applyRootItemLimit($resolvedRoots, $menu->getItemLimit());
         }
 
         return [
@@ -353,7 +266,7 @@ class NavigationMenuService extends BaseService
      * @param list<NavigationMenuItem> $allItems
      * @param array<int, array<string, mixed>> $pageMap
      * @param array<int, int> $sectionCounts
-     * @param array<int, array<int, array{label: ?string, description: ?string, aria_label: ?string}>> $translationsByItem
+     * @param array<int, array<int, string>> $translationMap
      *
      * @return list<array<string, mixed>>
      */
@@ -362,11 +275,11 @@ class NavigationMenuService extends BaseService
         array $allItems,
         array $pageMap,
         array $sectionCounts,
-        int $languageId,
-        ?int $defaultLanguageId,
-        array $translationsByItem,
         int $depth,
         ?int $maxDepth,
+        int $languageId,
+        int $defaultLanguageId,
+        array $translationMap,
     ): array {
         $out = [];
         foreach ($roots as $item) {
@@ -375,11 +288,11 @@ class NavigationMenuService extends BaseService
                 $allItems,
                 $pageMap,
                 $sectionCounts,
-                $languageId,
-                $defaultLanguageId,
-                $translationsByItem,
                 $depth,
                 $maxDepth,
+                $languageId,
+                $defaultLanguageId,
+                $translationMap,
             );
             if ($formatted !== null) {
                 $out[] = $formatted;
@@ -393,7 +306,7 @@ class NavigationMenuService extends BaseService
      * @param list<NavigationMenuItem> $allItems
      * @param array<int, array<string, mixed>> $pageMap
      * @param array<int, int> $sectionCounts
-     * @param array<int, array<int, array{label: ?string, description: ?string, aria_label: ?string}>> $translationsByItem
+     * @param array<int, array<int, string>> $translationMap
      *
      * @return array<string, mixed>|null
      */
@@ -402,11 +315,11 @@ class NavigationMenuService extends BaseService
         array $allItems,
         array $pageMap,
         array $sectionCounts,
-        int $languageId,
-        ?int $defaultLanguageId,
-        array $translationsByItem,
         int $depth,
         ?int $maxDepth,
+        int $languageId,
+        int $defaultLanguageId,
+        array $translationMap,
     ): ?array {
         if (!$item->isActive()) {
             return null;
@@ -440,27 +353,12 @@ class NavigationMenuService extends BaseService
                 $allItems,
                 $pageMap,
                 $sectionCounts,
-                $languageId,
-                $defaultLanguageId,
-                $translationsByItem,
                 $depth + 1,
                 $maxDepth,
-            );
-        }
-
-        if ($this->shouldAutoIncludeChildren($item) && $pageId !== null) {
-            $autoChildren = $this->buildAutoIncludedChildren(
-                $item,
-                $pageNode,
-                $pageMap,
-                $sectionCounts,
                 $languageId,
                 $defaultLanguageId,
-                $translationsByItem,
-                1,
-                $item->getAutoIncludeDepth() ?? 1,
+                $translationMap,
             );
-            $childItems = $this->mergeItemLists($childItems, $autoChildren);
         }
 
         if ($typeCode === LookupService::NAVIGATION_ITEM_TYPE_GROUP && $childItems === []) {
@@ -468,33 +366,36 @@ class NavigationMenuService extends BaseService
         }
 
         $pageTitle = $pageNode !== null ? $this->stringOrNullFromNode($pageNode, 'title') : null;
-        $presentation = $this->navigationMenuItemTranslationRepository->resolvePresentationFromMap(
+        $itemId = $item->getId() ?? 0;
+        /** @var array<int, string> $labelsByLanguage */
+        $labelsByLanguage = $translationMap[$itemId] ?? [];
+        $label = $this->resolveMenuItemLabel(
             $item,
-            $translationsByItem,
+            $typeCode,
+            $pageTitle,
+            $pageNode,
+            $labelsByLanguage,
             $languageId,
             $defaultLanguageId,
-            $pageTitle,
         );
+        if ($label === null || $label === '') {
+            return null;
+        }
 
         $formatted = [
             'id' => $item->getId(),
             'item_type' => $typeCode,
-            'label' => $presentation['label'],
+            'label' => $label,
             'position' => $item->getPosition(),
             'is_active' => true,
-            'child_source' => $item->getChildSource()?->getLookupCode(),
             'children' => $childItems,
         ];
 
-        if ($presentation['description'] !== null) {
-            $formatted['description'] = $presentation['description'];
+        if ($item->getIcon() !== null && $item->getIcon() !== '') {
+            $formatted['icon'] = $item->getIcon();
         }
-        if ($presentation['aria_label'] !== null) {
-            $formatted['aria_label'] = $presentation['aria_label'];
-        }
-
-        if ($item->getIconOverride()) {
-            $formatted['icon'] = $item->getIconOverride();
+        if ($item->getMobileIcon() !== null && $item->getMobileIcon() !== '') {
+            $formatted['mobile_icon'] = $item->getMobileIcon();
         }
 
         if ($typeCode === LookupService::NAVIGATION_ITEM_TYPE_EXTERNAL_URL) {
@@ -507,9 +408,7 @@ class NavigationMenuService extends BaseService
                 'id' => $pageId,
                 'keyword' => $this->stringOrNullFromNode($pageNode, 'keyword') ?? '',
                 'url' => $this->stringOrNullFromNode($pageNode, 'url'),
-                'title' => $this->stringOrNullFromNode($pageNode, 'title'),
-                'icon' => $this->stringOrNullFromNode($pageNode, 'icon'),
-                'mobile_icon' => $this->stringOrNullFromNode($pageNode, 'mobile_icon'),
+                'title' => $label,
                 'has_content' => $sectionCount > 0,
                 'section_count' => $sectionCount,
             ];
@@ -518,135 +417,38 @@ class NavigationMenuService extends BaseService
         return $formatted;
     }
 
-    private function shouldAutoIncludeChildren(NavigationMenuItem $item): bool
-    {
-        $code = $item->getChildSource()?->getLookupCode();
-
-        return $code === LookupService::NAVIGATION_CHILD_SOURCE_PAGE_CHILDREN;
-    }
-
     /**
-     * @param array<string, mixed> $parentNode
-     * @param array<int, array<string, mixed>> $pageMap
-     * @param array<int, int> $sectionCounts
-     * @param array<int, array<int, array{label: ?string, description: ?string, aria_label: ?string}>> $translationsByItem
-     *
-     * @return list<array<string, mixed>>
+     * @param array<string, mixed>|null $pageNode
+     * @param array<int, string>         $labelsByLanguage
      */
-    private function buildAutoIncludedChildren(
-        NavigationMenuItem $parentItem,
-        array $parentNode,
-        array $pageMap,
-        array $sectionCounts,
+    private function resolveMenuItemLabel(
+        NavigationMenuItem $item,
+        string $typeCode,
+        ?string $pageTitle,
+        ?array $pageNode,
+        array $labelsByLanguage,
         int $languageId,
-        ?int $defaultLanguageId,
-        array $translationsByItem,
-        int $currentDepth,
-        int $maxAutoDepth,
-    ): array {
-        if ($currentDepth > $maxAutoDepth) {
-            return [];
+        int $defaultLanguageId,
+    ): ?string {
+        if ($typeCode === LookupService::NAVIGATION_ITEM_TYPE_PAGE) {
+            if ($pageTitle !== null && $pageTitle !== '') {
+                return $pageTitle;
+            }
+            if ($pageNode !== null) {
+                $keyword = $this->stringOrNullFromNode($pageNode, 'keyword');
+
+                return ($keyword === null || $keyword === '') ? null : $keyword;
+            }
+
+            return null;
         }
 
-        $excluded = $this->navigationMenuItemExclusionRepository->findExcludedPageIdsForItem($parentItem);
-        $children = $parentNode['children'] ?? [];
-        if (!is_array($children)) {
-            return [];
-        }
-
-        $out = [];
-        $position = 1000;
-        foreach ($children as $child) {
-            if (!is_array($child)) {
-                continue;
-            }
-            $childId = $this->pageIdFromNode($child);
-            if ($childId <= 0 || in_array($childId, $excluded, true)) {
-                continue;
-            }
-            if (!array_key_exists($childId, $pageMap) || $this->isHeadlessNode($child)) {
-                continue;
-            }
-            /** @var array<string, mixed> $childNode */
-            $childNode = $pageMap[$childId];
-            $sectionCount = $sectionCounts[$childId] ?? 0;
-            $nestedAuto = $currentDepth < $maxAutoDepth
-                ? $this->buildAutoIncludedChildren(
-                    $parentItem,
-                    $childNode,
-                    $pageMap,
-                    $sectionCounts,
-                    $languageId,
-                    $defaultLanguageId,
-                    $translationsByItem,
-                    $currentDepth + 1,
-                    $maxAutoDepth,
-                )
-                : [];
-
-            $childLabel = $this->stringOrNullFromNode($child, 'title')
-                ?? $this->stringOrNullFromNode($child, 'keyword')
-                ?? '';
-            $childDescription = $this->stringOrNullFromNode($child, 'description');
-
-            $virtualItem = [
-                'id' => 'virtual-' . $parentItem->getId() . '-' . $childId,
-                'item_type' => LookupService::NAVIGATION_ITEM_TYPE_PAGE,
-                'label' => $childLabel,
-                'position' => $position,
-                'is_active' => true,
-                'is_virtual' => true,
-                'children' => $nestedAuto,
-                'page' => [
-                    'id' => $childId,
-                    'keyword' => $this->stringOrNullFromNode($child, 'keyword') ?? '',
-                    'url' => $this->stringOrNullFromNode($child, 'url'),
-                    'title' => $this->stringOrNullFromNode($child, 'title'),
-                    'icon' => $this->stringOrNullFromNode($child, 'icon'),
-                    'mobile_icon' => $this->stringOrNullFromNode($child, 'mobile_icon'),
-                    'has_content' => $sectionCount > 0,
-                    'section_count' => $sectionCount,
-                ],
-            ];
-            if ($childDescription !== null) {
-                $virtualItem['description'] = $childDescription;
-            }
-            $out[] = $virtualItem;
-            $position += 10;
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param list<array<string, mixed>> $explicit
-     * @param list<array<string, mixed>> $auto
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function mergeItemLists(array $explicit, array $auto): array
-    {
-        $explicitPageIds = [];
-        foreach ($explicit as $item) {
-            $page = $item['page'] ?? null;
-            if (is_array($page) && isset($page['id']) && is_numeric($page['id'])) {
-                $explicitPageIds[(int) $page['id']] = true;
-            }
-        }
-        foreach ($auto as $item) {
-            $page = $item['page'] ?? null;
-            if (!is_array($page) || !isset($page['id']) || !is_numeric($page['id'])) {
-                continue;
-            }
-            $pid = (int) $page['id'];
-            if (!isset($explicitPageIds[$pid])) {
-                $explicit[] = $item;
-            }
-        }
-
-        usort($explicit, static fn (array $a, array $b): int => ($a['position'] ?? 0) <=> ($b['position'] ?? 0));
-
-        return $explicit;
+        return $this->navigationMenuItemTranslationSupport->resolveLabel(
+            $labelsByLanguage,
+            $item->getLabel(),
+            $languageId,
+            $defaultLanguageId,
+        );
     }
 
     /**

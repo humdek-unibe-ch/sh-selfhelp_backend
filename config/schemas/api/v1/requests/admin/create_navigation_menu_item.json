@@ -1,30 +1,57 @@
 {
+
     "$schema": "http://json-schema.org/draft-07/schema#",
+
     "title": "Create navigation menu item",
+
     "type": "object",
+
     "properties": {
+
         "item_type": { "type": "string", "enum": ["page", "external_url", "group"] },
+
         "page_id": { "type": ["integer", "null"] },
+
         "external_url": { "type": ["string", "null"] },
-        "icon_override": { "type": ["string", "null"] },
-        "position": { "type": "integer" },
-        "parent_item_id": { "type": ["integer", "null"] },
-        "child_source": { "type": "string" },
-        "auto_include_depth": { "type": ["integer", "null"] },
-        "is_active": { "type": "boolean" },
+
+        "icon": { "type": ["string", "null"] },
+
+        "mobile_icon": { "type": ["string", "null"] },
+
+        "label": { "type": ["string", "null"] },
+
         "translations": {
             "type": "array",
             "items": {
                 "type": "object",
-                "required": ["language_id"],
                 "properties": {
                     "language_id": { "type": "integer" },
-                    "label": { "type": ["string", "null"] },
-                    "description": { "type": ["string", "null"] },
-                    "aria_label": { "type": ["string", "null"] }
-                }
+                    "label": { "type": ["string", "null"] }
+                },
+                "required": ["language_id"],
+                "additionalProperties": false
             }
-        }
+        },
+
+        "position": { "type": "integer" },
+
+        "parent_item_id": { "type": ["integer", "null"] },
+
+        "child_page_ids": {
+
+            "type": "array",
+
+            "items": { "type": "integer" }
+
+        },
+
+        "include_descendants": { "type": "boolean" },
+
+        "is_active": { "type": "boolean" }
+
     },
+
     "additionalProperties": false
+
 }
+

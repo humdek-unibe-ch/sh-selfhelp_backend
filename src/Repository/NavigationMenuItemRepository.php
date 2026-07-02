@@ -41,25 +41,35 @@ class NavigationMenuItemRepository extends ServiceEntityRepository
     }
 
     /**
-     * Active menu items linked to {@see $pageId} with child_source = page_children.
-     *
-     * @return list<NavigationMenuItem>
+     * @return list<int>
      */
-    public function findActiveAutoIncludeItemsForPage(int $pageId): array
+    public function findActivePageIdsForMenu(NavigationMenu $menu): array
     {
-        /** @var list<NavigationMenuItem> $items */
-        $items = $this->createQueryBuilder('i')
-            ->innerJoin('i.page', 'p')
-            ->innerJoin('i.childSource', 'cs')
-            ->andWhere('p.id = :pageId')
+        /** @var list<int> $pageIds */
+        $pageIds = $this->createQueryBuilder('i')
+            ->select('IDENTITY(i.page)')
+            ->andWhere('i.navigationMenu = :menu')
             ->andWhere('i.isActive = 1')
-            ->andWhere('cs.lookupCode = :childSource')
-            ->setParameter('pageId', $pageId)
-            ->setParameter('childSource', 'page_children')
-            ->orderBy('i.position', 'ASC')
+            ->andWhere('i.page IS NOT NULL')
+            ->setParameter('menu', $menu)
             ->getQuery()
-            ->getResult();
+            ->getSingleColumnResult();
 
-        return $items;
+        return array_map(static fn (mixed $id): int => (int) $id, $pageIds);
+    }
+
+    public function findActiveByMenuAndPageId(NavigationMenu $menu, int $pageId): ?NavigationMenuItem
+    {
+        $item = $this->createQueryBuilder('i')
+            ->andWhere('i.navigationMenu = :menu')
+            ->andWhere('i.isActive = 1')
+            ->andWhere('i.page = :pageId')
+            ->setParameter('menu', $menu)
+            ->setParameter('pageId', $pageId)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        return $item instanceof NavigationMenuItem ? $item : null;
     }
 }

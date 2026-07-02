@@ -324,8 +324,8 @@ final class Version20260701112111 extends AbstractMigration
      */
     private function seedDefaultNavigationMenuItems(): void
     {
-        $this->seedPageMenuItemIfMissing('home', 'web_header', 'page_children', 10, 1);
-        $this->seedPageMenuItemIfMissing('home', 'mobile_drawer', 'page_children', 10, 1);
+        $this->seedPageMenuItemIfMissing('home', 'web_header', 'manual', 10, null);
+        $this->seedPageMenuItemIfMissing('home', 'mobile_drawer', 'manual', 10, null);
         $this->seedPageMenuItemIfMissing('home', 'mobile_bottom_tabs', 'manual', 10, null);
         $this->seedPageMenuItemIfMissing('privacy', 'web_footer', 'manual', 400, null);
     }

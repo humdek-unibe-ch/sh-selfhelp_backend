@@ -2,13 +2,13 @@
 
 Audience: Developers and technical product owners.
 Status: active.
-Applies to: SelfHelp2 backend `0.1.32+`, frontend/mobile/shared navigation contracts.
-Last verified: 2026-07-01.
+Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts.
+Last verified: 2026-07-02.
 Source of truth: `NavigationMenuService`, admin navigation APIs, `GET /navigation`, `@selfhelp/shared` navigation types.
 
 ## Overview
 
-Public navigation is no longer driven by per-page `nav_position` / `footer_position`. Instead, four first-class menus are stored in `navigation_*` tables and resolved at runtime:
+Public navigation is stored in four first-class menus (`navigation_*` tables) and resolved at runtime:
 
 | Menu key | Platform | Surface | Consumer |
 |----------|----------|---------|----------|
@@ -30,7 +30,7 @@ flowchart LR
         AdminAPI[Admin navigation APIs]
     end
     subgraph storage [Database]
-        Menus[navigation_menus / items / translations / exclusions]
+        Menus[navigation_menus / items / translations]
         Settings[navigation_settings]
         State[user_navigation_state]
         SearchIdx[page_search_index]
@@ -45,40 +45,58 @@ flowchart LR
     NavSvc --> Menus
     NavSvc --> Settings
     NavSvc --> State
-    NavSvc --> PageSvc[PageService accessible tree]
 ```
 
-**Page tree ≠ menu tree.** The page hierarchy (`id_parent_page`) is the CMS content structure. Menu items may reference pages explicitly, auto-include page children, or mix manual children with builder suggestions.
+**Page tree ≠ menu tree.** The CMS page hierarchy (`id_parent_page`) is content structure only. The public menu is built exclusively from **stored** `navigation_menu_items` rows. There is no runtime virtual-child expansion.
 
 ## Menu items
 
 Each stored item (`navigation_menu_items`) has:
 
-- **item type**: `page`, `external_url`, or `group`
-- **child source** (page items only):
-  - `manual` — only explicit child menu items
-  - `page_children` — auto-include accessible child pages from the page tree
-  - `manual_plus_suggestions` — manual children plus admin diagnostics for missing siblings
+- **item type** — `page`, `external_url`, or `group`
+- **parent_item_id** — nested menu branch (nullable for top-level items)
 - **position** — sibling order within the parent branch
-- **translations** — optional label/description/aria per language; resolved public items expose `description` and `aria_label` when present (page items fall back to page title for label only)
+- **label (page items)** — resolved from the linked page title (translatable via page fields); menu row `icon` / `mobile_icon` override page defaults per menu
+- **label (group / external_url)** — stored in `navigation_menu_item_translations` per language; `navigation_menu_items.label` holds the default-language cache/fallback. Public resolve order: requested language → CMS default language → stored `label` column
 
-Resolved public items are built by `NavigationMenuService` + `NavigationMenuResolveSupport`.
+Child pages appear in a menu only when an admin creates a **stored menu item** for that page (directly, via the add-page checkbox flow below, or via **Add existing child page** on a parent row).
 
-## Exclusions
+### Adding a page with optional CMS children
 
-When `child_source = page_children`, accessible child pages appear as virtual items in the resolved tree. Admins can **exclude** a child for **this menu branch only** via:
+When an admin adds an existing page to a menu (`POST /admin/navigation/menus/{menu_key}/items`):
 
-- `POST /admin/navigation/items/{item_id}/exclusions` `{ "page_id": N }`
-- `DELETE /admin/navigation/items/{item_id}/exclusions/{page_id}`
+1. The parent page menu item is created.
+2. If the page has CMS child pages, the UI shows **checkboxes** (all checked by default):
+   - direct children listed individually
+   - optional **Include grandchildren** toggle for deeper descendants
+3. Selected children are created as **stored menu items** under the parent menu item, ordered by **CMS page-tree order**.
+4. If any selected child is already present in the same menu branch, the API returns an error (no silent skips).
 
-Exclusions are stored in `navigation_menu_item_exclusions`. They do not remove the page from the CMS or from other menus.
+**Create page here** does not show the checkbox flow (a newly created page has no children yet). Add child pages to the menu afterward via **Add existing page**, **Add existing child page** (under a parent menu row), or by creating the page under the correct CMS parent first.
 
-To promote auto-included children to explicit editable items, use `POST /admin/navigation/items/{item_id}/convert-auto-children`.
+### Reordering
+
+Menu builder supports **drag-and-drop** and **Up/Down** controls among siblings at the same `parent_item_id`. Reorder persists via `PUT /admin/navigation/menus/{menu_key}/reorder`.
+
+## Removed concepts (pre-release simplification)
+
+The following were removed before the first public release:
+
+| Removed | Replacement |
+|---------|-------------|
+| `child_source = page_children` (virtual auto-children) | Explicit stored child menu items via checkbox flow |
+| `child_source = manual_plus_suggestions` | Removed — manual items only |
+| `navigation_menu_item_exclusions` | Not needed — hide a page by not adding it (or remove its menu item) |
+| `POST .../convert-auto-children` | Not needed — children are stored from the start when selected |
+| `POST/DELETE .../exclusions` | Removed |
+| Resolved `is_virtual` menu items | Removed from public payload |
+
+Fresh installs and dev resets use **manual-only** menu items. Database seeds no longer set `page_children` on `home`.
 
 ## Groups and external links
 
-- **group** — label-only parent; children are manual menu items
-- **external_url** — opens absolute URL; not tied to a page record
+- **group** — label-only parent; children are manual menu items. Labels are editable per language in the admin builder (`translations[]` on create/update).
+- **external_url** — opens absolute URL; not tied to a page record. Same per-language label model as groups.
 
 ## Web header presets
 
@@ -129,20 +147,28 @@ Page URLs are stored in `page_routes` and kept in sync when parent pages move. `
 
 ## Page create navigation assignments
 
-Admin page create/update accepts `navigationAssignments` to add the new page to selected menus in one step (`NavigationAssignmentService`). Bundle export/import carries menu definitions and assignments.
+Admin page create/update accepts `navigationAssignments` to add the new page to selected menus in one step (`NavigationAssignmentService`). Assignments always create **manual** stored menu items.
+
+## Page bundle import/export
+
+Bundles export/import **pages and CMS parent/child relationships** (`id_parent_page`). They do **not** export or restore menu membership — after import, assign pages to menus via the navigation builder. This avoids ordering conflicts and keeps import focused on content structure.
 
 ## Admin UI
 
 `/admin/navigation` — menu builder with:
 
-- stored items table (drag reorder, child source, exclusions)
-- resolved preview with exclude actions for auto-included children
-- settings tab (search, start pages, route sync)
+- menu structure list (drag + Up/Down reorder, page labels, per-menu icons)
+- add existing page modal with optional child-page checkboxes
+- **Add existing child page** on page/group rows (creates a stored child item under that menu branch)
+- group/external modals with language-tab label editor
+- settings tab (search, start pages, route sync; explicit Save)
 - web header preset selector
+
+Shareable tab URLs: `/admin/navigation?menu=web_header` (and `settings`, etc.).
 
 ## Caching
 
-Navigation payloads are cached per user + language (`CacheService::CATEGORY_NAVIGATION`). Writes to menus, settings, exclusions, or last-visited invalidate relevant scopes.
+Navigation payloads are cached per user + language (`CacheService::CATEGORY_NAVIGATION`). Writes to menus, settings, or last-visited invalidate relevant scopes.
 
 ## Web header presets and depth
 

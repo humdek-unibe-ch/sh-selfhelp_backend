@@ -9,21 +9,14 @@
 namespace App\Service\CMS\Admin;
 
 use App\Entity\Language;
-use App\Entity\NavigationMenuItem;
-use App\Entity\NavigationMenuItemExclusion;
-use App\Entity\NavigationMenuItemTranslation;
 use App\Entity\Page;
 use App\Entity\Section;
 use App\Exception\ServiceException;
-use App\Repository\NavigationMenuItemExclusionRepository;
-use App\Repository\NavigationMenuItemRepository;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
 use App\Routing\RouteConflictValidator;
 use App\Service\CMS\DataService;
-use App\Service\CMS\NavigationAssignmentService;
-use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -80,10 +73,6 @@ class PageExportImportService extends BaseService
         private readonly DataTableService $dataTableService,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly SystemInstanceService $instance,
-        private readonly NavigationMenuItemRepository $navigationMenuItemRepository,
-        private readonly NavigationMenuItemExclusionRepository $navigationMenuItemExclusionRepository,
-        private readonly NavigationAssignmentService $navigationAssignmentService,
-        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -145,8 +134,6 @@ class PageExportImportService extends BaseService
         if ($includeTables && $ownerTableIds !== []) {
             $bundle['data_tables'] = $this->exportOwnedDataTables(array_keys($ownerTableIds), $idToName, $includeRows);
         }
-
-        $bundle['navigation'] = $this->exportNavigationAssignments($pageIds);
 
         return $bundle;
     }
@@ -671,7 +658,7 @@ class PageExportImportService extends BaseService
         }
 
         $this->validateBundleDataTables($bundle, $bundleSectionNames, $issues);
-        $this->validateBundleNavigation($bundle, $bundleKeywords, $issues);
+        $this->validateLegacyBundleNavigationIgnored($bundle, $issues);
 
         $hasError = false;
         foreach ($issues as $issue) {
@@ -1007,7 +994,6 @@ class PageExportImportService extends BaseService
             // (optionally) restore the owned data tables + sample rows.
             $this->relinkOwnerTokens($allNewSectionIds, $sourceNameToNewId);
             $this->restoreDataTables($bundle, $sourceNameToNewId, $importData);
-            $this->importNavigationAssignments($bundle, $keywordToId, $keywordPrefix, $options);
 
             $this->entityManager->commit();
 
@@ -1635,421 +1621,27 @@ class PageExportImportService extends BaseService
     }
 
     /**
-     * Portable menu assignments for every bundled page that has explicit menu items.
-     *
-     * @param list<int> $pageIds
-     *
-     * @return array{assignments: list<array<string, mixed>>}
-     */
-    private function exportNavigationAssignments(array $pageIds): array
-    {
-        if ($pageIds === []) {
-            return ['assignments' => []];
-        }
-
-        /** @var array<int, string> $pageIdToKeyword */
-        $pageIdToKeyword = [];
-        foreach ($pageIds as $pageId) {
-            $page = $this->pageRepository->find($pageId);
-            if ($page instanceof Page && $page->getKeyword() !== null) {
-                $pageIdToKeyword[$pageId] = $page->getKeyword();
-            }
-        }
-
-        if ($pageIdToKeyword === []) {
-            return ['assignments' => []];
-        }
-
-        /** @var list<NavigationMenuItem> $items */
-        $items = $this->navigationMenuItemRepository->createQueryBuilder('i')
-            ->andWhere('i.page IN (:pageIds)')
-            ->andWhere('i.isActive = 1')
-            ->setParameter('pageIds', array_keys($pageIdToKeyword))
-            ->orderBy('i.position', 'ASC')
-            ->addOrderBy('i.id', 'ASC')
-            ->getQuery()
-            ->getResult();
-
-        $itemIds = array_values(array_filter(array_map(
-            static fn (NavigationMenuItem $item): ?int => $item->getId(),
-            $items,
-        )));
-        $translationsByItem = $this->exportNavigationItemTranslations($itemIds);
-
-        $assignments = [];
-        foreach ($items as $item) {
-            $pageId = $item->getPage()?->getId();
-            $pageKeyword = $pageId !== null ? ($pageIdToKeyword[$pageId] ?? null) : null;
-            if ($pageKeyword === null) {
-                continue;
-            }
-
-            $menuKey = $item->getNavigationMenu()?->getMenuKey()?->getLookupCode();
-            if ($menuKey === null || $menuKey === '') {
-                continue;
-            }
-
-            $parentPageKeyword = $this->resolveParentPageKeywordForExport($item, $pageIdToKeyword);
-            $excludedKeywords = [];
-            foreach ($this->navigationMenuItemExclusionRepository->findExcludedPageIdsForItem($item) as $excludedPageId) {
-                if (isset($pageIdToKeyword[$excludedPageId])) {
-                    $excludedKeywords[] = $pageIdToKeyword[$excludedPageId];
-                }
-            }
-
-            $assignment = [
-                'page_keyword' => $pageKeyword,
-                'menu_key' => $menuKey,
-                'item_type' => $item->getItemType()?->getLookupCode() ?? LookupService::NAVIGATION_ITEM_TYPE_PAGE,
-                'position' => $item->getPosition(),
-                'child_source' => $item->getChildSource()?->getLookupCode(),
-                'is_active' => $item->isActive(),
-            ];
-
-            if ($parentPageKeyword !== null) {
-                $assignment['parent_page_keyword'] = $parentPageKeyword;
-            }
-            if ($item->getIconOverride()) {
-                $assignment['icon_override'] = $item->getIconOverride();
-            }
-            if ($item->getAutoIncludeDepth() !== null) {
-                $assignment['auto_include_depth'] = $item->getAutoIncludeDepth();
-            }
-            if ($excludedKeywords !== []) {
-                $assignment['excluded_page_keywords'] = $excludedKeywords;
-            }
-
-            $itemTranslations = $translationsByItem[$item->getId() ?? 0] ?? [];
-            if ($itemTranslations !== []) {
-                $assignment['translations'] = $itemTranslations;
-            }
-
-            $assignments[] = $assignment;
-        }
-
-        return ['assignments' => $assignments];
-    }
-
-    /**
-     * @param list<int> $itemIds
-     *
-     * @return array<int, list<array{locale: string, label?: ?string, description?: ?string, aria_label?: ?string}>>
-     */
-    private function exportNavigationItemTranslations(array $itemIds): array
-    {
-        if ($itemIds === []) {
-            return [];
-        }
-
-        /** @var list<array{item_id:int|string, locale:string, label:?string, description:?string, aria_label:?string}> $rows */
-        $rows = $this->entityManager->createQueryBuilder()
-            ->select(
-                'IDENTITY(t.navigationMenuItem) AS item_id',
-                'l.locale AS locale',
-                't.label AS label',
-                't.description AS description',
-                't.ariaLabel AS aria_label',
-            )
-            ->from(NavigationMenuItemTranslation::class, 't')
-            ->join('t.language', 'l')
-            ->andWhere('t.navigationMenuItem IN (:ids)')
-            ->setParameter('ids', $itemIds)
-            ->getQuery()
-            ->getArrayResult();
-
-        $out = [];
-        foreach ($rows as $row) {
-            $itemId = (int) $row['item_id'];
-            $entry = ['locale' => (string) $row['locale']];
-            if ($row['label'] !== null) {
-                $entry['label'] = $row['label'];
-            }
-            if ($row['description'] !== null) {
-                $entry['description'] = $row['description'];
-            }
-            if ($row['aria_label'] !== null) {
-                $entry['aria_label'] = $row['aria_label'];
-            }
-            $out[$itemId][] = $entry;
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param array<int, string> $pageIdToKeyword
-     */
-    private function resolveParentPageKeywordForExport(NavigationMenuItem $item, array $pageIdToKeyword): ?string
-    {
-        $parent = $item->getParentItem();
-        while ($parent instanceof NavigationMenuItem) {
-            $parentPageId = $parent->getPage()?->getId();
-            if ($parentPageId !== null && isset($pageIdToKeyword[$parentPageId])) {
-                return $pageIdToKeyword[$parentPageId];
-            }
-            $parent = $parent->getParentItem();
-        }
-
-        return null;
-    }
-
-    /**
      * @param array<string, mixed> $bundle
-     * @param array<string, true> $bundleKeywords
      * @param list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
      * @param-out list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
      */
-    private function validateBundleNavigation(array $bundle, array $bundleKeywords, array &$issues): void
+    private function validateLegacyBundleNavigationIgnored(array $bundle, array &$issues): void
     {
-        $navigation = is_array($bundle['navigation'] ?? null) ? $bundle['navigation'] : null;
-        if ($navigation === null) {
+        $navigation = $bundle['navigation'] ?? null;
+        if (!is_array($navigation)) {
             return;
         }
 
-        $assignments = is_array($navigation['assignments'] ?? null) ? $navigation['assignments'] : [];
-        foreach ($assignments as $assignment) {
-            if (!is_array($assignment)) {
-                continue;
-            }
-            $pageKeyword = $this->asString($assignment['page_keyword'] ?? '');
-            if ($pageKeyword === '' || !isset($bundleKeywords[$pageKeyword])) {
-                $issues[] = $this->issue(
-                    self::ISSUE_ERROR,
-                    'invalid_navigation_assignment',
-                    sprintf('Navigation assignment references page "%s" which is not part of this bundle.', $pageKeyword !== '' ? $pageKeyword : '?'),
-                    $pageKeyword !== '' ? $pageKeyword : null,
-                );
-            }
-            $parentKeyword = $this->asString($assignment['parent_page_keyword'] ?? '');
-            if ($parentKeyword !== '' && !isset($bundleKeywords[$parentKeyword])) {
-                $issues[] = $this->issue(
-                    self::ISSUE_WARNING,
-                    'navigation_parent_outside_bundle',
-                    sprintf(
-                        'Navigation assignment for "%s" nests under parent "%s" which is outside the bundle; it will be attached at the menu root on import.',
-                        $pageKeyword,
-                        $parentKeyword,
-                    ),
-                    $pageKeyword,
-                );
-            }
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $bundle
-     * @param array<string, int> $keywordToId
-     * @param array<string, mixed> $options
-     */
-    private function importNavigationAssignments(array $bundle, array $keywordToId, string $keywordPrefix, array $options): void
-    {
-        if (array_key_exists('importNavigation', $options) && !(bool) $options['importNavigation']) {
+        $assignments = $navigation['assignments'] ?? null;
+        if (!is_array($assignments) || $assignments === []) {
             return;
         }
 
-        $navigation = is_array($bundle['navigation'] ?? null) ? $bundle['navigation'] : null;
-        if ($navigation === null) {
-            return;
-        }
-
-        $assignments = $this->asNavigationAssignmentList($navigation['assignments'] ?? null);
-        if ($assignments === []) {
-            return;
-        }
-
-        $localeMap = $this->buildLocaleMap();
-        $sorted = $this->sortNavigationAssignmentsForImport($assignments);
-        /** @var array<string, int> $menuItemKeyToId menu_key:page_keyword => item id */
-        $menuItemKeyToId = [];
-
-        foreach ($sorted as $assignment) {
-            $pageKeyword = $this->prefixKeyword($keywordPrefix, $this->asString($assignment['page_keyword'] ?? ''));
-            $menuKey = $this->asString($assignment['menu_key'] ?? '');
-            if ($pageKeyword === '' || $menuKey === '' || !isset($keywordToId[$pageKeyword])) {
-                continue;
-            }
-
-            $page = $this->pageRepository->find($keywordToId[$pageKeyword]);
-            if (!$page instanceof Page) {
-                continue;
-            }
-
-            $parentItemId = null;
-            $parentPageKeyword = $this->asString($assignment['parent_page_keyword'] ?? '');
-            if ($parentPageKeyword !== '') {
-                $prefixedParent = $this->prefixKeyword($keywordPrefix, $parentPageKeyword);
-                $parentKey = $menuKey . ':' . $prefixedParent;
-                $parentItemId = $menuItemKeyToId[$parentKey] ?? null;
-            }
-
-            $payload = [
-                'menuKey' => $menuKey,
-                'position' => is_numeric($assignment['position'] ?? null) ? (int) $assignment['position'] : null,
-                'childSource' => $this->asString($assignment['child_source'] ?? LookupService::NAVIGATION_CHILD_SOURCE_MANUAL),
-                'iconOverride' => $this->stringOrNull($assignment['icon_override'] ?? null),
-                'autoIncludeDepth' => is_numeric($assignment['auto_include_depth'] ?? null) ? (int) $assignment['auto_include_depth'] : null,
-            ];
-            if ($parentItemId !== null) {
-                $payload['parentItemId'] = $parentItemId;
-            }
-
-            $labels = $this->navigationLabelsFromBundleTranslations($assignment, $localeMap);
-            if ($labels !== []) {
-                $payload['labels'] = $labels;
-            }
-
-            $this->navigationAssignmentService->applyAssignmentsForPage($page, [$payload]);
-            $this->entityManager->flush();
-
-            $createdItem = $this->findMenuItemForPageAndMenu($page, $menuKey, $parentItemId);
-            if (!$createdItem instanceof NavigationMenuItem || $createdItem->getId() === null) {
-                continue;
-            }
-
-            $menuItemKeyToId[$menuKey . ':' . $pageKeyword] = $createdItem->getId();
-            $this->importNavigationExclusions($createdItem, $assignment, $keywordToId, $keywordPrefix);
-        }
-
-        foreach (array_values($keywordToId) as $pageId) {
-            $this->navigationCacheInvalidator->invalidateForPage($pageId);
-        }
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function asNavigationAssignmentList(mixed $raw): array
-    {
-        if (!is_array($raw)) {
-            return [];
-        }
-
-        $out = [];
-        foreach ($raw as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-            /** @var array<string, mixed> $assignment */
-            $assignment = $item;
-            $out[] = $assignment;
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param list<array<string, mixed>> $assignments
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function sortNavigationAssignmentsForImport(array $assignments): array
-    {
-        $remaining = $assignments;
-        $sorted = [];
-        $placed = [];
-
-        while ($remaining !== []) {
-            $progress = false;
-            foreach ($remaining as $index => $assignment) {
-                $pageKeyword = $this->asString($assignment['page_keyword'] ?? '');
-                $parentKeyword = $this->asString($assignment['parent_page_keyword'] ?? '');
-                if ($parentKeyword === '' || isset($placed[$parentKeyword])) {
-                    $sorted[] = $assignment;
-                    $placed[$pageKeyword] = true;
-                    unset($remaining[$index]);
-                    $progress = true;
-                }
-            }
-            $remaining = array_values($remaining);
-            if (!$progress) {
-                $sorted = [...$sorted, ...$remaining];
-                break;
-            }
-        }
-
-        return $sorted;
-    }
-
-    /**
-     * @param array<string, mixed> $assignment
-     * @param array<string, int> $localeMap
-     *
-     * @return array<int, string>
-     */
-    private function navigationLabelsFromBundleTranslations(array $assignment, array $localeMap): array
-    {
-        $translations = is_array($assignment['translations'] ?? null) ? $assignment['translations'] : [];
-        $labels = [];
-        foreach ($translations as $translation) {
-            if (!is_array($translation)) {
-                continue;
-            }
-            $locale = $this->asString($translation['locale'] ?? '');
-            $label = $this->asString($translation['label'] ?? '');
-            if ($locale === '' || $label === '' || !isset($localeMap[$locale])) {
-                continue;
-            }
-            $labels[(int) $localeMap[$locale]] = $label;
-        }
-
-        return $labels;
-    }
-
-    private function findMenuItemForPageAndMenu(Page $page, string $menuKey, ?int $parentItemId): ?NavigationMenuItem
-    {
-        $qb = $this->navigationMenuItemRepository->createQueryBuilder('i')
-            ->join('i.navigationMenu', 'm')
-            ->join('m.menuKey', 'mk')
-            ->andWhere('i.page = :page')
-            ->andWhere('mk.lookupCode = :menuKey')
-            ->andWhere('i.isActive = 1')
-            ->setParameter('page', $page)
-            ->setParameter('menuKey', $menuKey)
-            ->orderBy('i.id', 'DESC')
-            ->setMaxResults(1);
-
-        if ($parentItemId !== null) {
-            $qb->andWhere('i.parentItem = :parent')->setParameter('parent', $parentItemId);
-        } else {
-            $qb->andWhere('i.parentItem IS NULL');
-        }
-
-        $result = $qb->getQuery()->getOneOrNullResult();
-
-        return $result instanceof NavigationMenuItem ? $result : null;
-    }
-
-    /**
-     * @param array<string, mixed> $assignment
-     * @param array<string, int> $keywordToId
-     */
-    private function importNavigationExclusions(
-        NavigationMenuItem $item,
-        array $assignment,
-        array $keywordToId,
-        string $keywordPrefix,
-    ): void {
-        $excludedKeywords = is_array($assignment['excluded_page_keywords'] ?? null)
-            ? $assignment['excluded_page_keywords']
-            : [];
-        foreach ($excludedKeywords as $excludedKeyword) {
-            if (!is_string($excludedKeyword) || $excludedKeyword === '') {
-                continue;
-            }
-            $prefixed = $this->prefixKeyword($keywordPrefix, $excludedKeyword);
-            $pageId = $keywordToId[$prefixed] ?? null;
-            if ($pageId === null) {
-                continue;
-            }
-            $page = $this->pageRepository->find($pageId);
-            if (!$page instanceof Page) {
-                continue;
-            }
-            $exclusion = new NavigationMenuItemExclusion();
-            $exclusion->setNavigationMenuItem($item);
-            $exclusion->setPage($page);
-            $this->entityManager->persist($exclusion);
-        }
-        $this->entityManager->flush();
+        $issues[] = $this->issue(
+            self::ISSUE_WARNING,
+            'navigation_membership_ignored',
+            'This bundle contains legacy navigation assignments. Menu membership is not imported; assign pages to menus in the Navigation builder after import.',
+            null,
+        );
     }
 }

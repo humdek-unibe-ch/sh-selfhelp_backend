@@ -30,16 +30,6 @@ class PageService extends BaseService
     private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
 
     /**
-     * Page property fields (display=0) projected onto each menu-tree node so the
-     * web/mobile navigation renderers can read a page's menu icons + per-platform
-     * child-render type without an extra round-trip. Seeded by
-     * Version20260630130327; consumed by `@selfhelp/shared` `transformPageData`.
-     *
-     * @var list<string>
-     */
-    private const NAV_PROPERTY_FIELDS = ['icon', 'mobile_icon'];
-
-    /**
      * Page behaviour property field (display=0) projected onto the single-page
      * content response so the web renderer can open the page inside a modal.
      * Seeded by Version20260630151141; consumed by `@selfhelp/shared`
@@ -189,18 +179,6 @@ class PageService extends BaseService
                     );
                 }
 
-                // Fetch the navigation property fields (display=0) in one query and
-                // project them onto each node so the web/mobile menu renderers and
-                // the automatic virtual-navigation decision can read a page's menu
-                // icon + per-platform child-render type straight from the tree.
-                $pagePropertyFields = [];
-                if (!empty($pageIds)) {
-                    $pagePropertyFields = $this->pagesFieldsTranslationRepository->fetchPropertyFieldsForPages(
-                        $pageIds,
-                        self::NAV_PROPERTY_FIELDS
-                    );
-                }
-
                 // Create a map of pages by their ID for quick lookup
                 $pagesMap = [];
                 foreach ($filteredPages as &$page) {
@@ -224,14 +202,6 @@ class PageService extends BaseService
                     $page['description'] = isset($translations['description'])
                         ? $translations['description']
                         : null;
-
-                    // Navigation property fields (display=0). Null when unset so the
-                    // renderers fall back to the platform defaults.
-                    $properties = $pagePropertyFields[$pageId] ?? [];
-                    foreach (self::NAV_PROPERTY_FIELDS as $propertyField) {
-                        $value = $properties[$propertyField] ?? null;
-                        $page[$propertyField] = ($value === null || $value === '') ? null : $value;
-                    }
 
                     $page['children'] = []; // Initialize children array
                     $pagesMap[$pageId] = &$page;

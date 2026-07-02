@@ -10,10 +10,8 @@ namespace App\Service\CMS;
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
 use App\Entity\Page;
-use App\Repository\NavigationMenuItemExclusionRepository;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuRepository;
-use App\Repository\PageRepository;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -27,8 +25,6 @@ class NavigationAssignmentService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly NavigationMenuRepository $navigationMenuRepository,
         private readonly NavigationMenuItemRepository $navigationMenuItemRepository,
-        private readonly NavigationMenuItemExclusionRepository $navigationMenuItemExclusionRepository,
-        private readonly PageRepository $pageRepository,
         private readonly LookupService $lookupService,
     ) {
     }
@@ -70,18 +66,13 @@ class NavigationAssignmentService extends BaseService
                 $position = $this->nextPositionForParent($menu, $parentItem);
             }
 
-            $childSourceCode = $assignment['childSource'] ?? $assignment['child_source'] ?? LookupService::NAVIGATION_CHILD_SOURCE_MANUAL;
-            if (!is_string($childSourceCode)) {
-                $childSourceCode = LookupService::NAVIGATION_CHILD_SOURCE_MANUAL;
-            }
-
             $itemType = $this->lookupService->findByTypeAndCode(
                 LookupService::NAVIGATION_MENU_ITEM_TYPES,
                 LookupService::NAVIGATION_ITEM_TYPE_PAGE
             );
             $childSource = $this->lookupService->findByTypeAndCode(
                 LookupService::NAVIGATION_CHILD_SOURCES,
-                $childSourceCode
+                LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
             );
             if (!$itemType || !$childSource) {
                 $this->throwNotFound('Navigation lookup configuration is incomplete');
@@ -94,24 +85,25 @@ class NavigationAssignmentService extends BaseService
             $item->setPage($page);
             $item->setPosition((int) $position);
             $item->setChildSource($childSource);
+            $item->setAutoIncludeDepth(null);
             $item->setIsActive(true);
 
-            $iconOverride = $assignment['iconOverride'] ?? $assignment['icon_override'] ?? null;
-            if (is_string($iconOverride) && $iconOverride !== '') {
-                $item->setIconOverride($iconOverride);
+            $icon = $assignment['icon'] ?? $assignment['iconOverride'] ?? $assignment['icon_override'] ?? null;
+            if (is_string($icon) && $icon !== '') {
+                $item->setIcon($icon);
             }
 
-            $autoDepth = $assignment['autoIncludeDepth'] ?? $assignment['auto_include_depth'] ?? null;
-            if ($childSourceCode === LookupService::NAVIGATION_CHILD_SOURCE_PAGE_CHILDREN) {
-                $item->setAutoIncludeDepth(is_int($autoDepth) ? $autoDepth : 1);
+            $mobileIcon = $assignment['mobileIcon'] ?? $assignment['mobile_icon'] ?? null;
+            if (is_string($mobileIcon) && $mobileIcon !== '') {
+                $item->setMobileIcon($mobileIcon);
+            }
+
+            $label = $assignment['label'] ?? null;
+            if (is_string($label) && $label !== '') {
+                $item->setLabel($label);
             }
 
             $this->entityManager->persist($item);
-
-            $labels = $assignment['labels'] ?? $assignment['labelOverrides'] ?? null;
-            if (is_array($labels)) {
-                $this->persistLabelOverrides($item, $labels);
-            }
         }
     }
 
@@ -134,71 +126,17 @@ class NavigationAssignmentService extends BaseService
             ];
         }
 
-        foreach ($this->resolveAutoIncludedMemberships($pageId) as $autoBadge) {
-            $badges[] = $autoBadge;
-        }
-
         return $badges;
     }
 
     /**
-     * Menu keys where a new child of {@see $parentPageId} will appear via page_children auto-include.
-     *
      * @return list<string>
      */
     public function getAutoIncludeMenuKeysForParentPage(int $parentPageId): array
     {
-        $keys = [];
-        foreach ($this->navigationMenuItemRepository->findActiveAutoIncludeItemsForPage($parentPageId) as $item) {
-            $menuKey = $item->getNavigationMenu()?->getMenuKey()?->getLookupCode();
-            if (is_string($menuKey) && $menuKey !== '') {
-                $keys[] = $menuKey;
-            }
-        }
+        unset($parentPageId);
 
-        return array_values(array_unique($keys));
-    }
-
-    /**
-     * @return list<array{menu_key: string, menu_item_id: int, explicit: false}>
-     */
-    private function resolveAutoIncludedMemberships(int $pageId): array
-    {
-        $page = $this->pageRepository->find($pageId);
-        if (!$page instanceof Page) {
-            return [];
-        }
-
-        $parentPage = $page->getParentPage();
-        if ($parentPage === null) {
-            return [];
-        }
-
-        $parentPageId = $parentPage->getId();
-        if ($parentPageId === null) {
-            return [];
-        }
-
-        $badges = [];
-        foreach ($this->navigationMenuItemRepository->findActiveAutoIncludeItemsForPage($parentPageId) as $item) {
-            $excluded = $this->navigationMenuItemExclusionRepository->findExcludedPageIdsForItem($item);
-            if (in_array($pageId, $excluded, true)) {
-                continue;
-            }
-
-            $menuKey = $item->getNavigationMenu()?->getMenuKey()?->getLookupCode();
-            if ($menuKey === null) {
-                continue;
-            }
-
-            $badges[] = [
-                'menu_key' => $menuKey,
-                'menu_item_id' => (int) $item->getId(),
-                'explicit' => false,
-            ];
-        }
-
-        return $badges;
+        return [];
     }
 
     /**
@@ -237,12 +175,6 @@ class NavigationAssignmentService extends BaseService
             ];
         }
 
-        foreach ($pageIds as $pageId) {
-            foreach ($this->resolveAutoIncludedMemberships($pageId) as $autoBadge) {
-                $byPage[$pageId][] = $autoBadge;
-            }
-        }
-
         return $byPage;
     }
 
@@ -270,23 +202,5 @@ class NavigationAssignmentService extends BaseService
         $max = $qb->getQuery()->getSingleScalarResult();
 
         return $max !== null ? ((int) $max) + 10 : 10;
-    }
-
-    /**
-     * @param array<int|string, mixed> $labels languageId => label or { languageId: label }
-     */
-    private function persistLabelOverrides(NavigationMenuItem $item, array $labels): void
-    {
-        foreach ($labels as $languageId => $label) {
-            if (!is_numeric($languageId) || !is_string($label) || $label === '') {
-                continue;
-            }
-            $translation = new \App\Entity\NavigationMenuItemTranslation();
-            $translation->setNavigationMenuItem($item);
-            $language = $this->entityManager->getReference(\App\Entity\Language::class, (int) $languageId);
-            $translation->setLanguage($language);
-            $translation->setLabel($label);
-            $this->entityManager->persist($translation);
-        }
     }
 }
