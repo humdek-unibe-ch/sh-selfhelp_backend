@@ -1,3 +1,19 @@
+# Unreleased
+
+## Feature: Navigation bundle export/import
+
+- **`selfhelp/navigation-bundle` v1.0** — separate from page bundles; exports menu
+  trees with `ref`/`parent_ref`, translations (label/description/aria_label),
+  icons, and menu config. Optional embedded `pages[]`.
+- **API:** `POST /admin/navigation/export`, `POST /admin/navigation/import`,
+  `POST /admin/navigation/import/validate`, `?dry_run=1` on import.
+- **Permissions:** `admin.navigation.export`, `admin.navigation.import`.
+- **Menu depth cap:** two levels (top-level + children) enforced on write.
+- **Examples:** canonical in `sh-selfhelp_frontend/examples/`; backend uses
+  `ExampleBundlePathResolver` + `tests/fixtures/examples/` fallback.
+- **Demo bundle:** `examples/navigation/menu-demo.bundle.json` (20-page mini-site,
+  all four menus).
+
 # v0.1.32
 
 ## Feature: Menu-builder completion wave (navigation refactor)

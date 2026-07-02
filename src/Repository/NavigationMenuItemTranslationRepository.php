@@ -55,6 +55,50 @@ class NavigationMenuItemTranslationRepository extends ServiceEntityRepository
     }
 
     /**
+     * @param list<int> $menuItemIds
+     *
+     * @return array<int, list<array{language_id: int, locale: string, label: ?string, description: ?string, aria_label: ?string}>>
+     */
+    public function findPortableTranslationsByMenuItemIds(array $menuItemIds): array
+    {
+        if ($menuItemIds === []) {
+            return [];
+        }
+
+        /** @var list<NavigationMenuItemTranslation> $rows */
+        $rows = $this->createQueryBuilder('t')
+            ->addSelect('l')
+            ->join('t.language', 'l')
+            ->andWhere('t.menuItem IN (:ids)')
+            ->setParameter('ids', $menuItemIds)
+            ->getQuery()
+            ->getResult();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $itemId = $row->getMenuItem()?->getId();
+            if ($itemId === null) {
+                continue;
+            }
+            $locale = $row->getLanguage()?->getLocale() ?? '';
+            $out[$itemId][] = [
+                'language_id' => $row->getLanguage()?->getId() ?? 0,
+                'locale' => $locale,
+                'label' => $row->getLabel(),
+                'description' => $row->getDescription(),
+                'aria_label' => $row->getAriaLabel(),
+            ];
+        }
+
+        foreach ($out as &$translations) {
+            usort($translations, static fn (array $a, array $b): int => $a['language_id'] <=> $b['language_id']);
+        }
+        unset($translations);
+
+        return $out;
+    }
+
+    /**
      * @return list<NavigationMenuItemTranslation>
      */
     public function findByMenuItemId(int $menuItemId): array

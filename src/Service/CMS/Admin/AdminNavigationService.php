@@ -12,6 +12,7 @@ use App\Entity\NavigationMenuItem;
 use App\Entity\NavigationSettings;
 use App\Entity\Page;
 use App\Navigation\NavigationMenuChildPagesSupport;
+use App\Navigation\NavigationMenuDepthSupport;
 use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuItemTranslationRepository;
@@ -39,6 +40,7 @@ class AdminNavigationService extends BaseService
         private readonly LookupService $lookupService,
         private readonly NavigationMenuService $navigationMenuService,
         private readonly NavigationMenuChildPagesSupport $navigationMenuChildPagesSupport,
+        private readonly NavigationMenuDepthSupport $navigationMenuDepthSupport,
         private readonly NavigationMenuItemTranslationRepository $navigationMenuItemTranslationRepository,
         private readonly NavigationMenuItemTranslationSupport $navigationMenuItemTranslationSupport,
         private readonly CmsPreferenceService $cmsPreferenceService,
@@ -146,6 +148,7 @@ class AdminNavigationService extends BaseService
         $this->entityManager->beginTransaction();
         try {
             $parentItem = $this->buildMenuItemFromPayload($menu, $data, null);
+            $this->navigationMenuDepthSupport->assertDepthAllowed($parentItem->getParentItem());
             $this->entityManager->persist($parentItem);
             $this->entityManager->flush();
 
@@ -193,6 +196,14 @@ class AdminNavigationService extends BaseService
             $itemTypeCode = $data['item_type'];
         }
         $this->assertTranslatableLabelsPresent($data, $itemTypeCode);
+        if (array_key_exists('parent_item_id', $data) || array_key_exists('parentItemId', $data)) {
+            $parentId = $data['parent_item_id'] ?? $data['parentItemId'] ?? null;
+            $parent = null;
+            if (is_int($parentId) || is_numeric($parentId)) {
+                $parent = $this->navigationMenuItemRepository->find((int) $parentId);
+            }
+            $this->navigationMenuDepthSupport->assertDepthAllowed($parent instanceof NavigationMenuItem ? $parent : null);
+        }
         $this->applyMenuItemPayload($item, $data);
         $this->syncMenuItemTranslations($item, $data);
         $this->entityManager->flush();
@@ -235,6 +246,7 @@ class AdminNavigationService extends BaseService
                 } else {
                     $parent = $this->navigationMenuItemRepository->find($parentId);
                     if ($parent instanceof NavigationMenuItem && $parent->getNavigationMenu()?->getId() === $menu->getId()) {
+                        $this->navigationMenuDepthSupport->assertDepthAllowed($parent);
                         $item->setParentItem($parent);
                     }
                 }
@@ -261,7 +273,9 @@ class AdminNavigationService extends BaseService
             $menu->setPreset($preset);
         }
         if (array_key_exists('max_depth', $data)) {
-            $menu->setMaxDepth(is_int($data['max_depth']) ? $data['max_depth'] : null);
+            $menu->setMaxDepth($this->navigationMenuDepthSupport->normalizeMenuMaxDepth(
+                is_int($data['max_depth']) ? $data['max_depth'] : null
+            ));
         }
         if (array_key_exists('item_limit', $data)) {
             $menu->setItemLimit(is_int($data['item_limit']) ? $data['item_limit'] : null);
@@ -427,6 +441,7 @@ class AdminNavigationService extends BaseService
         } elseif (is_int($parentId) || is_numeric($parentId)) {
             $parent = $this->navigationMenuItemRepository->find((int) $parentId);
             if ($parent instanceof NavigationMenuItem) {
+                $this->navigationMenuDepthSupport->assertDepthAllowed($parent);
                 $item->setParentItem($parent);
             }
         }
@@ -628,6 +643,7 @@ class AdminNavigationService extends BaseService
             $page = $row['page'];
             $cmsParentPageId = $row['parent_page_id'];
             $menuParent = $menuItemByPageId[$cmsParentPageId] ?? $rootParentItem;
+            $this->navigationMenuDepthSupport->assertDepthAllowed($menuParent);
 
             $childItem = new NavigationMenuItem();
             $childItem->setNavigationMenu($menu);

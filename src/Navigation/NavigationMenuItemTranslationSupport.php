@@ -28,6 +28,25 @@ final class NavigationMenuItemTranslationSupport
     /**
      * @param array<string, mixed> $data
      */
+    public function syncMenuItemTranslationsWithPresentation(NavigationMenuItem $item, array $data, int $defaultLanguageId): void
+    {
+        $typeCode = $item->getItemType()?->getLookupCode() ?? '';
+        if (!$this->isTranslatableItemType($typeCode)) {
+            return;
+        }
+
+        if (!array_key_exists('translations', $data) || !is_array($data['translations'])) {
+            return;
+        }
+
+        /** @var list<array<string, mixed>> $translationRows */
+        $translationRows = array_values($data['translations']);
+        $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId, true);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
     public function syncMenuItemTranslations(NavigationMenuItem $item, array $data, int $defaultLanguageId): void
     {
         $typeCode = $item->getItemType()?->getLookupCode() ?? '';
@@ -38,7 +57,7 @@ final class NavigationMenuItemTranslationSupport
         if (array_key_exists('translations', $data) && is_array($data['translations'])) {
             /** @var list<array<string, mixed>> $translationRows */
             $translationRows = array_values($data['translations']);
-            $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId);
+            $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId, false);
 
             return;
         }
@@ -61,6 +80,7 @@ final class NavigationMenuItemTranslationSupport
         NavigationMenuItem $item,
         array $translations,
         int $defaultLanguageId,
+        bool $includePresentationFields,
     ): void {
         $itemId = $item->getId();
         if ($itemId !== null) {
@@ -71,6 +91,8 @@ final class NavigationMenuItemTranslationSupport
         }
 
         $defaultLabel = null;
+        /** @var array<int, true> $seenLanguageIds */
+        $seenLanguageIds = [];
         foreach ($translations as $row) {
             $languageId = $row['language_id'] ?? $row['languageId'] ?? null;
             $label = $row['label'] ?? null;
@@ -81,8 +103,12 @@ final class NavigationMenuItemTranslationSupport
                 continue;
             }
             $languageId = (int) $languageId;
+            if (isset($seenLanguageIds[$languageId])) {
+                continue;
+            }
+            $seenLanguageIds[$languageId] = true;
             $trimmed = trim($label);
-            $this->upsertTranslation($item, $languageId, $trimmed);
+            $this->upsertTranslation($item, $languageId, $trimmed, $includePresentationFields ? $row : null);
             if ($languageId === $defaultLanguageId) {
                 $defaultLabel = $trimmed;
             }
@@ -97,14 +123,28 @@ final class NavigationMenuItemTranslationSupport
         $item->setLabel($defaultLabel);
     }
 
-    public function upsertTranslation(NavigationMenuItem $item, int $languageId, string $label): void
+    /**
+     * @param array<string, mixed>|null $presentation
+     */
+    public function upsertTranslation(NavigationMenuItem $item, int $languageId, string $label, ?array $presentation = null): void
     {
+        $description = null;
+        $ariaLabel = null;
+        if ($presentation !== null) {
+            $desc = $presentation['description'] ?? null;
+            $description = is_string($desc) && $desc !== '' ? $desc : null;
+            $aria = $presentation['aria_label'] ?? null;
+            $ariaLabel = is_string($aria) && $aria !== '' ? $aria : null;
+        }
+
         $itemId = $item->getId();
         if ($itemId === null) {
             $translation = (new NavigationMenuItemTranslation())
                 ->setMenuItem($item)
                 ->setLanguage($this->entityManager->getReference(Language::class, $languageId))
-                ->setLabel($label);
+                ->setLabel($label)
+                ->setDescription($description)
+                ->setAriaLabel($ariaLabel);
             $this->entityManager->persist($translation);
 
             return;
@@ -116,6 +156,10 @@ final class NavigationMenuItemTranslationSupport
         ]);
         if ($existing instanceof NavigationMenuItemTranslation) {
             $existing->setLabel($label);
+            if ($presentation !== null) {
+                $existing->setDescription($description);
+                $existing->setAriaLabel($ariaLabel);
+            }
 
             return;
         }
@@ -123,7 +167,9 @@ final class NavigationMenuItemTranslationSupport
         $translation = (new NavigationMenuItemTranslation())
             ->setMenuItem($item)
             ->setLanguage($this->entityManager->getReference(Language::class, $languageId))
-            ->setLabel($label);
+            ->setLabel($label)
+            ->setDescription($description)
+            ->setAriaLabel($ariaLabel);
         $this->entityManager->persist($translation);
     }
 

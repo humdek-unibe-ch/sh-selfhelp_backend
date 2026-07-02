@@ -33,6 +33,12 @@ class NavigationMenuItemTranslation
     #[ORM\Column(name: 'label', type: 'string', length: 255, nullable: true)]
     private ?string $label = null;
 
+    #[ORM\Column(name: 'description', type: 'string', length: 500, nullable: true)]
+    private ?string $description = null;
+
+    #[ORM\Column(name: 'aria_label', type: 'string', length: 255, nullable: true)]
+    private ?string $ariaLabel = null;
+
     public function getId(): ?int
     {
         return $this->id;
@@ -70,6 +76,30 @@ class NavigationMenuItemTranslation
     public function setLabel(?string $label): static
     {
         $this->label = $label;
+
+        return $this;
+    }
+
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function setDescription(?string $description): static
+    {
+        $this->description = $description;
+
+        return $this;
+    }
+
+    public function getAriaLabel(): ?string
+    {
+        return $this->ariaLabel;
+    }
+
+    public function setAriaLabel(?string $ariaLabel): static
+    {
+        $this->ariaLabel = $ariaLabel;
 
         return $this;
     }

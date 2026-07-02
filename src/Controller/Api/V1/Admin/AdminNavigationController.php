@@ -10,6 +10,7 @@ namespace App\Controller\Api\V1\Admin;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\AdminNavigationService;
+use App\Service\CMS\Admin\NavigationExportImportService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -23,6 +24,7 @@ class AdminNavigationController extends AbstractController
 
     public function __construct(
         private readonly AdminNavigationService $adminNavigationService,
+        private readonly NavigationExportImportService $navigationExportImportService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
     ) {
@@ -181,6 +183,79 @@ class AdminNavigationController extends AbstractController
                 $this->adminNavigationService->updateSettings($data),
                 null,
                 Response::HTTP_OK
+            );
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * POST /cms-api/v1/admin/navigation/export
+     */
+    public function exportNavigation(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/export_navigation', $this->jsonSchemaValidationService);
+            $options = is_array($data['options'] ?? null) ? $this->toAssocArray($data['options']) : [];
+
+            return $this->responseFormatter->formatSuccess(
+                $this->navigationExportImportService->exportBundle($options),
+                null,
+                Response::HTTP_OK,
+            );
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * POST /cms-api/v1/admin/navigation/import/validate
+     */
+    public function validateImportNavigation(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/import_navigation', $this->jsonSchemaValidationService);
+            $bundle = $this->toAssocArray($data['bundle'] ?? []);
+            $options = is_array($data['options'] ?? null) ? $this->toAssocArray($data['options']) : [];
+
+            return $this->responseFormatter->formatSuccess(
+                $this->navigationExportImportService->validateImport($bundle, $options),
+                null,
+                Response::HTTP_OK,
+            );
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * POST /cms-api/v1/admin/navigation/import
+     */
+    public function importNavigation(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/import_navigation', $this->jsonSchemaValidationService);
+            $bundle = $this->toAssocArray($data['bundle'] ?? []);
+            $options = is_array($data['options'] ?? null) ? $this->toAssocArray($data['options']) : [];
+            $dryRun = $request->query->getBoolean('dry_run');
+            if ($dryRun) {
+                return $this->responseFormatter->formatSuccess(
+                    $this->navigationExportImportService->validateImport($bundle, $options),
+                    null,
+                    Response::HTTP_OK,
+                );
+            }
+
+            return $this->responseFormatter->formatSuccess(
+                $this->navigationExportImportService->importBundle($bundle, $options),
+                null,
+                Response::HTTP_OK,
             );
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);

@@ -1,0 +1,73 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Import Navigation Request Schema",
+    "description": "Schema for validating/importing a portable navigation bundle",
+    "type": "object",
+    "properties": {
+        "bundle": {
+            "type": "object",
+            "properties": {
+                "format": { "type": "string" },
+                "version": { "type": "string" },
+                "min_core_version": { "type": "string" },
+                "export_mode": { "type": "string" },
+                "import_hints": {
+                    "type": "object",
+                    "properties": {
+                        "default_keyword_prefix": { "type": "string" }
+                    },
+                    "additionalProperties": true
+                },
+                "menus": { "type": "object" },
+                "settings": { "type": "object" },
+                "pages": {
+                    "type": "array",
+                    "items": { "type": "object" }
+                }
+            },
+            "required": ["menus"]
+        },
+        "options": {
+            "type": "object",
+            "properties": {
+                "keyword_prefix": { "type": "string" },
+                "route_prefix": { "type": "string" },
+                "skip_conflicting_routes": {
+                    "type": "boolean",
+                    "description": "When true, embedded page routes that collide with existing active routes are skipped instead of failing validation/import.",
+                    "default": false
+                },
+                "activate_routes": {
+                    "type": "boolean",
+                    "description": "When false, embedded page routes are created inactive (default true).",
+                    "default": true
+                },
+                "missing_pages_mode": {
+                    "type": "string",
+                    "enum": ["strict", "skip_missing", "create_stubs"],
+                    "default": "strict"
+                },
+                "menu_policies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string",
+                        "enum": ["replace", "merge", "append"]
+                    }
+                },
+                "import_settings": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "access_groups": {
+                    "type": "array",
+                    "description": "Optional group ids granted access to every embedded page imported with this bundle. Admin always gets full access. Public pages also receive default subject and therapist read ACL from page create; these groups are additional viewer/editor grants matching page import behaviour.",
+                    "items": { "type": "integer" },
+                    "default": []
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "required": ["bundle"],
+    "additionalProperties": false
+}
