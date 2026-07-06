@@ -43,14 +43,17 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
     /**
      * The core routes a `purpose: mobile_preview` token may call with GET. All
      * are read-only reads the preview renderer needs: resolve + render a page,
-     * list languages, read the plugin manifest, and read the (admin) user
-     * data the shared renderer expects. Plugin PUBLIC runtime routes are
-     * allowed in addition to this list — see {@see isPluginPublicRoute()}.
+     * fetch the navigation payload (drawer/bottom-tab menus + startup pages —
+     * without it the preview shell falls back to modal-only rendering), list
+     * languages, read the plugin manifest, and read the (admin) user data the
+     * shared renderer expects. Plugin PUBLIC runtime routes are allowed in
+     * addition to this list — see {@see isPluginPublicRoute()}.
      */
     private const ALLOWED_ROUTES = [
         'pages_get_by_keyword_v1',
         'pages_get_all_v1',
         'pages_get_all_with_language_v1',
+        'navigation_get_v1',
         'languages_get_all_v1',
         'plugins_manifest_v1',
         'auth_user_data_get_v1',
