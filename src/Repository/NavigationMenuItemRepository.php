@@ -58,6 +58,16 @@ class NavigationMenuItemRepository extends ServiceEntityRepository
         return array_map(static fn (mixed $id): int => (int) $id, $pageIds);
     }
 
+    public function countChildren(NavigationMenuItem $item): int
+    {
+        return (int) $this->createQueryBuilder('i')
+            ->select('COUNT(i.id)')
+            ->andWhere('i.parentItem = :item')
+            ->setParameter('item', $item)
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
     public function findActiveByMenuAndPageId(NavigationMenu $menu, int $pageId): ?NavigationMenuItem
     {
         $item = $this->createQueryBuilder('i')

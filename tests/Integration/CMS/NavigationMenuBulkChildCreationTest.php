@@ -79,7 +79,7 @@ final class NavigationMenuBulkChildCreationTest extends QaWebTestCase
         self::assertCount(2, $storedChildren);
     }
 
-    public function testIncludeDescendantsCreatesGrandchildMenuItem(): void
+    public function testIncludeDescendantsFlattensDeepPagesToMenuDepthCap(): void
     {
         $admin = $this->loginAsQaAdmin();
         $parentId = $this->createQaPage($admin, self::PARENT_KEYWORD . '_desc', null);
@@ -109,10 +109,13 @@ final class NavigationMenuBulkChildCreationTest extends QaWebTestCase
         $parentItemId = $parentItem['id'] ?? null;
         self::assertIsInt($parentItemId);
 
-        $childMenuItem = $itemRepo->findOneBy(['parentItem' => $parentItemId, 'isActive' => true]);
-        self::assertNotNull($childMenuItem);
-        $grandchildren = $itemRepo->findBy(['parentItem' => $childMenuItem, 'isActive' => true]);
-        self::assertCount(1, $grandchildren);
+        // Menus support two levels only: the grandchild page cannot nest under
+        // the child item, so it is flattened to a direct child of the root item.
+        $directChildren = $itemRepo->findBy(['parentItem' => $parentItemId, 'isActive' => true]);
+        self::assertCount(2, $directChildren);
+        foreach ($directChildren as $directChild) {
+            self::assertCount(0, $itemRepo->findBy(['parentItem' => $directChild, 'isActive' => true]));
+        }
     }
 
     public function testDuplicateChildPageReturnsBadRequestWithoutPartialWrite(): void

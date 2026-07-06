@@ -77,10 +77,6 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
                 LookupService::NAVIGATION_MENU_ITEM_TYPES,
                 LookupService::NAVIGATION_ITEM_TYPE_PAGE,
             )))
-            ->setChildSource($em->getReference(\App\Entity\Lookup::class, (int) $lookup->getLookupIdByCode(
-                LookupService::NAVIGATION_CHILD_SOURCES,
-                LookupService::NAVIGATION_CHILD_SOURCE_MANUAL,
-            )))
             ->setIcon('IconHome')
             ->setMobileIcon('House')
             ->setPosition(9910)
@@ -94,10 +90,6 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
             ->setItemType($em->getReference(\App\Entity\Lookup::class, (int) $lookup->getLookupIdByCode(
                 LookupService::NAVIGATION_MENU_ITEM_TYPES,
                 LookupService::NAVIGATION_ITEM_TYPE_EXTERNAL_URL,
-            )))
-            ->setChildSource($em->getReference(\App\Entity\Lookup::class, (int) $lookup->getLookupIdByCode(
-                LookupService::NAVIGATION_CHILD_SOURCES,
-                LookupService::NAVIGATION_CHILD_SOURCE_MANUAL,
             )))
             ->setPosition(9920)
             ->setIsActive(true);
@@ -122,8 +114,13 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
         self::assertNotNull($pagePayload);
         self::assertSame('IconHome', $pagePayload['icon']);
         self::assertSame('House', $pagePayload['mobile_icon']);
-        self::assertArrayNotHasKey('description', $pagePayload);
-        self::assertArrayNotHasKey('aria_label', $pagePayload);
+        // Strict contract: presentation keys are always present, null when unset.
+        self::assertArrayHasKey('description', $pagePayload);
+        self::assertNull($pagePayload['description']);
+        self::assertArrayHasKey('aria_label', $pagePayload);
+        self::assertNull($pagePayload['aria_label']);
+        self::assertArrayHasKey('layer', $pagePayload);
+        self::assertNull($pagePayload['layer']);
         $pageRef = $pagePayload['page'] ?? null;
         self::assertIsArray($pageRef);
         self::assertArrayNotHasKey('icon', $pageRef);
@@ -236,10 +233,6 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
             ->setItemType($em->getReference(\App\Entity\Lookup::class, (int) $lookup->getLookupIdByCode(
                 LookupService::NAVIGATION_MENU_ITEM_TYPES,
                 LookupService::NAVIGATION_ITEM_TYPE_PAGE,
-            )))
-            ->setChildSource($em->getReference(\App\Entity\Lookup::class, (int) $lookup->getLookupIdByCode(
-                LookupService::NAVIGATION_CHILD_SOURCES,
-                LookupService::NAVIGATION_CHILD_SOURCE_MANUAL,
             )))
             ->setPosition(9930)
             ->setIsActive(true);

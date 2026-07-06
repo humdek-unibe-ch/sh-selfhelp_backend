@@ -26,25 +26,11 @@ final class NavigationMenuItemTranslationSupport
     }
 
     /**
-     * @param array<string, mixed> $data
-     */
-    public function syncMenuItemTranslationsWithPresentation(NavigationMenuItem $item, array $data, int $defaultLanguageId): void
-    {
-        $typeCode = $item->getItemType()?->getLookupCode() ?? '';
-        if (!$this->isTranslatableItemType($typeCode)) {
-            return;
-        }
-
-        if (!array_key_exists('translations', $data) || !is_array($data['translations'])) {
-            return;
-        }
-
-        /** @var list<array<string, mixed>> $translationRows */
-        $translationRows = array_values($data['translations']);
-        $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId, true);
-    }
-
-    /**
+     * Replace an item's translations from an admin/import payload. A
+     * `translations` array is a full replace including the presentation
+     * fields (`description`, `aria_label`); a bare `label` upserts the
+     * default-language label only.
+     *
      * @param array<string, mixed> $data
      */
     public function syncMenuItemTranslations(NavigationMenuItem $item, array $data, int $defaultLanguageId): void
@@ -57,7 +43,7 @@ final class NavigationMenuItemTranslationSupport
         if (array_key_exists('translations', $data) && is_array($data['translations'])) {
             /** @var list<array<string, mixed>> $translationRows */
             $translationRows = array_values($data['translations']);
-            $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId, false);
+            $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId);
 
             return;
         }
@@ -80,7 +66,6 @@ final class NavigationMenuItemTranslationSupport
         NavigationMenuItem $item,
         array $translations,
         int $defaultLanguageId,
-        bool $includePresentationFields,
     ): void {
         $itemId = $item->getId();
         if ($itemId !== null) {
@@ -108,7 +93,7 @@ final class NavigationMenuItemTranslationSupport
             }
             $seenLanguageIds[$languageId] = true;
             $trimmed = trim($label);
-            $this->upsertTranslation($item, $languageId, $trimmed, $includePresentationFields ? $row : null);
+            $this->upsertTranslation($item, $languageId, $trimmed, $row);
             if ($languageId === $defaultLanguageId) {
                 $defaultLabel = $trimmed;
             }
@@ -198,24 +183,22 @@ final class NavigationMenuItemTranslationSupport
     }
 
     /**
-     * @param array<int, array<int, string>> $translationMap
+     * Resolve one translated text field with requested → default language fallback.
      *
-     * @return list<array{language_id: int, label: string}>
+     * @param array<int, ?string> $valuesByLanguage
      */
-    public function formatTranslationsForAdmin(int $menuItemId, array $translationMap): array
+    public function resolveText(array $valuesByLanguage, int $languageId, int $defaultLanguageId): ?string
     {
-        $byLang = $translationMap[$menuItemId] ?? [];
-        $out = [];
-        foreach ($byLang as $languageId => $label) {
-            $out[] = [
-                'language_id' => $languageId,
-                'label' => $label,
-            ];
+        $requested = $valuesByLanguage[$languageId] ?? null;
+        if ($requested !== null && $requested !== '') {
+            return $requested;
+        }
+        $fallback = $valuesByLanguage[$defaultLanguageId] ?? null;
+        if ($fallback !== null && $fallback !== '') {
+            return $fallback;
         }
 
-        usort($out, static fn (array $a, array $b): int => $a['language_id'] <=> $b['language_id']);
-
-        return $out;
+        return null;
     }
 
     public function isTranslatableItemType(string $typeCode): bool

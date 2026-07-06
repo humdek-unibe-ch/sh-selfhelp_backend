@@ -53,12 +53,14 @@ class NavigationMenuItem
     #[ORM\Column(name: 'position', type: 'integer')]
     private int $position = 0;
 
-    #[ORM\ManyToOne(targetEntity: Lookup::class)]
-    #[ORM\JoinColumn(name: 'id_child_source', referencedColumnName: 'id', nullable: false)]
-    private ?Lookup $childSource = null;
+    /** Header row assignment for web_header root items ('top' or null = main row). */
+    #[ORM\Column(name: 'layer', type: 'string', length: 16, nullable: true)]
+    private ?string $layer = null;
 
-    #[ORM\Column(name: 'auto_include_depth', type: 'integer', nullable: true)]
-    private ?int $autoIncludeDepth = 1;
+    /** Per-parent-item override of the menu-level children navigation mode. */
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_children_nav', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Lookup $childrenNav = null;
 
     #[ORM\Column(name: 'is_active', type: 'boolean', options: ['default' => 1])]
     private bool $isActive = true;
@@ -176,26 +178,26 @@ class NavigationMenuItem
         return $this;
     }
 
-    public function getChildSource(): ?Lookup
+    public function getLayer(): ?string
     {
-        return $this->childSource;
+        return $this->layer;
     }
 
-    public function setChildSource(?Lookup $childSource): static
+    public function setLayer(?string $layer): static
     {
-        $this->childSource = $childSource;
+        $this->layer = $layer;
 
         return $this;
     }
 
-    public function getAutoIncludeDepth(): ?int
+    public function getChildrenNav(): ?Lookup
     {
-        return $this->autoIncludeDepth;
+        return $this->childrenNav;
     }
 
-    public function setAutoIncludeDepth(?int $autoIncludeDepth): static
+    public function setChildrenNav(?Lookup $childrenNav): static
     {
-        $this->autoIncludeDepth = $autoIncludeDepth;
+        $this->childrenNav = $childrenNav;
 
         return $this;
     }

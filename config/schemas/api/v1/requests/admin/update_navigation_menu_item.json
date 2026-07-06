@@ -1,47 +1,33 @@
 {
-
     "$schema": "http://json-schema.org/draft-07/schema#",
-
     "title": "Update navigation menu item",
-
     "type": "object",
-
     "properties": {
-
         "item_type": { "type": "string", "enum": ["page", "external_url", "group"] },
-
         "page_id": { "type": ["integer", "null"] },
-
         "external_url": { "type": ["string", "null"] },
-
         "icon": { "type": ["string", "null"] },
-
         "mobile_icon": { "type": ["string", "null"] },
-
         "label": { "type": ["string", "null"] },
-
         "translations": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
                     "language_id": { "type": "integer" },
-                    "label": { "type": ["string", "null"] }
+                    "label": { "type": ["string", "null"] },
+                    "description": { "type": ["string", "null"] },
+                    "aria_label": { "type": ["string", "null"] }
                 },
                 "required": ["language_id"],
                 "additionalProperties": false
             }
         },
-
         "position": { "type": "integer" },
-
         "parent_item_id": { "type": ["integer", "null"] },
-
+        "layer": { "enum": ["top", null] },
+        "children_nav": { "enum": ["sidebar", "pills", "none", null] },
         "is_active": { "type": "boolean" }
-
     },
-
     "additionalProperties": false
-
 }
-

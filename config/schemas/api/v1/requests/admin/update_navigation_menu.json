@@ -6,7 +6,8 @@
         "preset": { "type": "string" },
         "max_depth": { "type": ["integer", "null"] },
         "item_limit": { "type": ["integer", "null"] },
-        "config": { "type": ["object", "null"] }
+        "children_nav": { "enum": ["sidebar", "pills", "none", null] },
+        "show_breadcrumbs": { "type": "boolean" }
     },
     "additionalProperties": false
 }

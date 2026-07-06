@@ -230,7 +230,7 @@ class NavigationMenuService extends BaseService
             static fn (NavigationMenuItem $item): ?int => $item->getId(),
             $items,
         )));
-        $translationMap = $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds($itemIds);
+        $translationMap = $this->navigationMenuItemTranslationRepository->findPresentationByMenuItemIds($itemIds);
         $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId() ?? 1;
         $roots = NavigationMenuResolveSupport::resolveRootMenuItems($items);
         $resolvedRoots = $this->buildItemTree(
@@ -249,6 +249,8 @@ class NavigationMenuService extends BaseService
             $resolvedRoots = NavigationMenuResolveSupport::applyRootItemLimit($resolvedRoots, $menu->getItemLimit());
         }
 
+        $isWebMenu = $menu->getPlatform()?->getLookupCode() === 'web';
+
         return [
             'key' => $menuKey,
             'platform' => $menu->getPlatform()?->getLookupCode(),
@@ -256,7 +258,14 @@ class NavigationMenuService extends BaseService
             'preset' => $menu->getPreset()?->getLookupCode(),
             'max_depth' => $menu->getMaxDepth(),
             'item_limit' => $menu->getItemLimit(),
-            'config' => $menu->getConfig(),
+            // Web branch presentation: how a page in this menu shows its
+            // children/siblings (sidebar is the platform default) and whether a
+            // breadcrumb trail renders above nested pages. Mobile menus have
+            // their own native presentation, so they carry neutral values.
+            'children_nav' => $isWebMenu
+                ? ($menu->getChildrenNav()?->getLookupCode() ?? LookupService::NAVIGATION_CHILDREN_NAV_SIDEBAR)
+                : null,
+            'show_breadcrumbs' => $isWebMenu && $menu->isShowBreadcrumbs(),
             'items' => $resolvedRoots,
         ];
     }
@@ -266,7 +275,7 @@ class NavigationMenuService extends BaseService
      * @param list<NavigationMenuItem> $allItems
      * @param array<int, array<string, mixed>> $pageMap
      * @param array<int, int> $sectionCounts
-     * @param array<int, array<int, string>> $translationMap
+     * @param array<int, array<int, array{label: ?string, description: ?string, aria_label: ?string}>> $translationMap
      *
      * @return list<array<string, mixed>>
      */
@@ -306,7 +315,7 @@ class NavigationMenuService extends BaseService
      * @param list<NavigationMenuItem> $allItems
      * @param array<int, array<string, mixed>> $pageMap
      * @param array<int, int> $sectionCounts
-     * @param array<int, array<int, string>> $translationMap
+     * @param array<int, array<int, array{label: ?string, description: ?string, aria_label: ?string}>> $translationMap
      *
      * @return array<string, mixed>|null
      */
@@ -367,8 +376,18 @@ class NavigationMenuService extends BaseService
 
         $pageTitle = $pageNode !== null ? $this->stringOrNullFromNode($pageNode, 'title') : null;
         $itemId = $item->getId() ?? 0;
-        /** @var array<int, string> $labelsByLanguage */
-        $labelsByLanguage = $translationMap[$itemId] ?? [];
+        /** @var array<int, array{label: ?string, description: ?string, aria_label: ?string}> $presentationByLanguage */
+        $presentationByLanguage = $translationMap[$itemId] ?? [];
+        $labelsByLanguage = [];
+        $descriptionsByLanguage = [];
+        $ariaLabelsByLanguage = [];
+        foreach ($presentationByLanguage as $presentationLanguageId => $row) {
+            if ($row['label'] !== null && $row['label'] !== '') {
+                $labelsByLanguage[$presentationLanguageId] = $row['label'];
+            }
+            $descriptionsByLanguage[$presentationLanguageId] = $row['description'];
+            $ariaLabelsByLanguage[$presentationLanguageId] = $row['aria_label'];
+        }
         $label = $this->resolveMenuItemLabel(
             $item,
             $typeCode,
@@ -382,29 +401,10 @@ class NavigationMenuService extends BaseService
             return null;
         }
 
-        $formatted = [
-            'id' => $item->getId(),
-            'item_type' => $typeCode,
-            'label' => $label,
-            'position' => $item->getPosition(),
-            'is_active' => true,
-            'children' => $childItems,
-        ];
-
-        if ($item->getIcon() !== null && $item->getIcon() !== '') {
-            $formatted['icon'] = $item->getIcon();
-        }
-        if ($item->getMobileIcon() !== null && $item->getMobileIcon() !== '') {
-            $formatted['mobile_icon'] = $item->getMobileIcon();
-        }
-
-        if ($typeCode === LookupService::NAVIGATION_ITEM_TYPE_EXTERNAL_URL) {
-            $formatted['external_url'] = $item->getExternalUrl();
-        }
-
+        $pageRef = null;
         if ($pageNode !== null) {
             $sectionCount = $sectionCounts[$pageId] ?? 0;
-            $formatted['page'] = [
+            $pageRef = [
                 'id' => $pageId,
                 'keyword' => $this->stringOrNullFromNode($pageNode, 'keyword') ?? '',
                 'url' => $this->stringOrNullFromNode($pageNode, 'url'),
@@ -414,7 +414,30 @@ class NavigationMenuService extends BaseService
             ];
         }
 
-        return $formatted;
+        return [
+            'id' => $item->getId(),
+            'item_type' => $typeCode,
+            'label' => $label,
+            'description' => $this->navigationMenuItemTranslationSupport->resolveText(
+                $descriptionsByLanguage,
+                $languageId,
+                $defaultLanguageId,
+            ),
+            'aria_label' => $this->navigationMenuItemTranslationSupport->resolveText(
+                $ariaLabelsByLanguage,
+                $languageId,
+                $defaultLanguageId,
+            ),
+            'icon' => $item->getIcon() !== '' ? $item->getIcon() : null,
+            'mobile_icon' => $item->getMobileIcon() !== '' ? $item->getMobileIcon() : null,
+            'position' => $item->getPosition(),
+            'layer' => $item->getLayer(),
+            'children_nav' => $item->getChildrenNav()?->getLookupCode(),
+            'external_url' => $item->getExternalUrl() !== '' ? $item->getExternalUrl() : null,
+            'page' => $pageRef,
+            'is_active' => true,
+            'children' => $childItems,
+        ];
     }
 
     /**

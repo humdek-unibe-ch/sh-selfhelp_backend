@@ -57,6 +57,43 @@ class NavigationMenuItemTranslationRepository extends ServiceEntityRepository
     /**
      * @param list<int> $menuItemIds
      *
+     * @return array<int, array<int, array{label: ?string, description: ?string, aria_label: ?string}>> menu item id → language id → presentation
+     */
+    public function findPresentationByMenuItemIds(array $menuItemIds): array
+    {
+        if ($menuItemIds === []) {
+            return [];
+        }
+
+        /** @var list<array{menuItemId: int|string, languageId: int|string, label: string|null, description: string|null, ariaLabel: string|null}> $rows */
+        $rows = $this->createQueryBuilder('t')
+            ->select(
+                'IDENTITY(t.menuItem) AS menuItemId',
+                'IDENTITY(t.language) AS languageId',
+                't.label',
+                't.description',
+                't.ariaLabel',
+            )
+            ->andWhere('t.menuItem IN (:ids)')
+            ->setParameter('ids', $menuItemIds)
+            ->getQuery()
+            ->getArrayResult();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int) $row['menuItemId']][(int) $row['languageId']] = [
+                'label' => $row['label'],
+                'description' => $row['description'],
+                'aria_label' => $row['ariaLabel'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param list<int> $menuItemIds
+     *
      * @return array<int, list<array{language_id: int, locale: string, label: ?string, description: ?string, aria_label: ?string}>>
      */
     public function findPortableTranslationsByMenuItemIds(array $menuItemIds): array

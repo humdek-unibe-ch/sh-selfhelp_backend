@@ -8,6 +8,7 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Controller\Trait\RequestValidatorTrait;
+use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\AdminNavigationService;
 use App\Service\CMS\Admin\NavigationExportImportService;
@@ -41,6 +42,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -61,6 +65,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -82,6 +89,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -103,6 +113,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_CREATED
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -124,6 +137,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -140,6 +156,9 @@ class AdminNavigationController extends AbstractController
             $this->adminNavigationService->deleteMenuItem($item_id);
 
             return $this->responseFormatter->formatSuccess(['deleted' => true], null, Response::HTTP_OK);
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -163,6 +182,9 @@ class AdminNavigationController extends AbstractController
             $this->adminNavigationService->reorderMenuItems($menu_key, $typedOrder);
 
             return $this->responseFormatter->formatSuccess(['reordered' => true], null, Response::HTTP_OK);
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -184,6 +206,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -205,6 +230,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK,
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -227,6 +255,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK,
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {
@@ -257,6 +288,9 @@ class AdminNavigationController extends AbstractController
                 null,
                 Response::HTTP_OK,
             );
+        } catch (RequestValidationException $e) {
+            // Let the ApiExceptionListener format the 400 with field errors.
+            throw $e;
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Throwable $e) {

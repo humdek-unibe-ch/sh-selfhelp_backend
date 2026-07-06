@@ -96,5 +96,45 @@ final class NavigationMenuBuilderWorkflowTest extends QaWebTestCase
         };
         $walk($itemsJson);
         self::assertTrue($found, 'Created page should appear in resolved web_header menu');
+
+        // Layer workflow: promote the item to the header top row, verify the
+        // strict payload reflects it, and confirm a preset switch keeps it.
+        $item = $items[0];
+        $itemId = $item->getId();
+        self::assertIsInt($itemId);
+
+        $moved = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/items/' . $itemId,
+            ['layer' => 'top'],
+            $admin,
+        );
+        $movedData = $this->assertEnvelopeSuccess($moved);
+        self::assertSame('top', $movedData['layer']);
+
+        $presetSwitch = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_HEADER,
+            ['preset' => 'double-dropdown'],
+            $admin,
+        );
+        $this->assertEnvelopeSuccess($presetSwitch);
+
+        $resolvedAgain = $this->jsonRequest('GET', '/cms-api/v1/navigation?language_id=1', null, $admin);
+        $payloadAgain = $this->assertEnvelopeSuccess($resolvedAgain);
+        $menusAgain = $payloadAgain['menus'] ?? null;
+        self::assertIsArray($menusAgain);
+        $headerAgain = $menusAgain[LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
+        self::assertIsArray($headerAgain);
+        self::assertSame('double-dropdown', $headerAgain['preset'] ?? null);
+
+        $resolvedLayer = null;
+        foreach (is_array($headerAgain['items'] ?? null) ? $headerAgain['items'] : [] as $node) {
+            if (is_array($node) && is_numeric($node['id'] ?? null) && (int) $node['id'] === $itemId) {
+                $resolvedLayer = $node['layer'] ?? null;
+                break;
+            }
+        }
+        self::assertSame('top', $resolvedLayer, 'Promoted item should resolve with layer "top" in the public payload');
     }
 }

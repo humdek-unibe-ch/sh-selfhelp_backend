@@ -12,7 +12,8 @@
                 "properties": {
                     "item_id": { "type": "integer" },
                     "position": { "type": "integer" },
-                    "parent_item_id": { "type": ["integer", "null"] }
+                    "parent_item_id": { "type": ["integer", "null"] },
+                    "layer": { "enum": ["top", null] }
                 },
                 "additionalProperties": false
             }

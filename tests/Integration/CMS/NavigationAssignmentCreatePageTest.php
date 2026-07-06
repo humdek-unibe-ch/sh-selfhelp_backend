@@ -51,7 +51,7 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
             'url' => '/' . self::KEYWORD,
             'navigationAssignments' => [
                 ['menuKey' => LookupService::NAVIGATION_MENU_KEY_WEB_HEADER],
-                ['menuKey' => LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER, 'childSource' => 'manual'],
+                ['menuKey' => LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER],
             ],
         ], $admin);
 

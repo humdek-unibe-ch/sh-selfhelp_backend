@@ -7,10 +7,12 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\Lookup;
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
 use App\Entity\NavigationSettings;
 use App\Entity\Page;
+use App\Navigation\NavigationHeaderLayerSupport;
 use App\Navigation\NavigationMenuChildPagesSupport;
 use App\Navigation\NavigationMenuDepthSupport;
 use App\Navigation\NavigationMenuItemTranslationSupport;
@@ -41,6 +43,7 @@ class AdminNavigationService extends BaseService
         private readonly NavigationMenuService $navigationMenuService,
         private readonly NavigationMenuChildPagesSupport $navigationMenuChildPagesSupport,
         private readonly NavigationMenuDepthSupport $navigationMenuDepthSupport,
+        private readonly NavigationHeaderLayerSupport $navigationHeaderLayerSupport,
         private readonly NavigationMenuItemTranslationRepository $navigationMenuItemTranslationRepository,
         private readonly NavigationMenuItemTranslationSupport $navigationMenuItemTranslationSupport,
         private readonly CmsPreferenceService $cmsPreferenceService,
@@ -149,6 +152,10 @@ class AdminNavigationService extends BaseService
         try {
             $parentItem = $this->buildMenuItemFromPayload($menu, $data, null);
             $this->navigationMenuDepthSupport->assertDepthAllowed($parentItem->getParentItem());
+            $this->navigationHeaderLayerSupport->assertNoChildrenForTopLayer(
+                $parentItem->getLayer(),
+                count($pagesToCreate),
+            );
             $this->entityManager->persist($parentItem);
             $this->entityManager->flush();
 
@@ -172,7 +179,7 @@ class AdminNavigationService extends BaseService
         return [
             'item' => $this->formatMenuItemEntity(
                 $parentItem,
-                $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds(
+                $this->navigationMenuItemTranslationRepository->findPortableTranslationsByMenuItemIds(
                     $parentItem->getId() !== null ? [$parentItem->getId()] : [],
                 ),
             ),
@@ -205,6 +212,10 @@ class AdminNavigationService extends BaseService
             $this->navigationMenuDepthSupport->assertDepthAllowed($parent instanceof NavigationMenuItem ? $parent : null);
         }
         $this->applyMenuItemPayload($item, $data);
+        $this->navigationHeaderLayerSupport->assertNoChildrenForTopLayer(
+            $item->getLayer(),
+            $this->navigationMenuItemRepository->countChildren($item),
+        );
         $this->syncMenuItemTranslations($item, $data);
         $this->entityManager->flush();
         $this->navigationMenuService->invalidateNavigationCaches();
@@ -212,7 +223,7 @@ class AdminNavigationService extends BaseService
 
         return $this->formatMenuItemEntity(
             $item,
-            $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds([$itemId]),
+            $this->navigationMenuItemTranslationRepository->findPortableTranslationsByMenuItemIds([$itemId]),
         );
     }
 
@@ -226,7 +237,7 @@ class AdminNavigationService extends BaseService
     }
 
     /**
-     * @param list<array{item_id: int, position: int, parent_item_id?: int|null}> $order
+     * @param list<array{item_id: int, position: int, parent_item_id?: int|null, layer?: string|null}> $order
      */
     public function reorderMenuItems(string $menuKey, array $order): void
     {
@@ -247,8 +258,22 @@ class AdminNavigationService extends BaseService
                     $parent = $this->navigationMenuItemRepository->find($parentId);
                     if ($parent instanceof NavigationMenuItem && $parent->getNavigationMenu()?->getId() === $menu->getId()) {
                         $this->navigationMenuDepthSupport->assertDepthAllowed($parent);
+                        $this->navigationHeaderLayerSupport->assertParentNotTopLayer($parent);
                         $item->setParentItem($parent);
                     }
+                }
+                if (array_key_exists('layer', $row)) {
+                    $layer = $this->navigationHeaderLayerSupport->normalizeLayer($row['layer']);
+                    $this->navigationHeaderLayerSupport->assertLayerAssignable($menu, $item->getParentItem(), $layer);
+                    $this->navigationHeaderLayerSupport->assertNoChildrenForTopLayer(
+                        $layer,
+                        $this->navigationMenuItemRepository->countChildren($item),
+                    );
+                    $item->setLayer($layer);
+                }
+                if ($item->getParentItem() !== null) {
+                    // Nested items always live in the main tree.
+                    $item->setLayer(null);
                 }
             }
             $this->entityManager->flush();
@@ -268,9 +293,8 @@ class AdminNavigationService extends BaseService
     public function updateMenuDefinition(string $menuKey, array $data): array
     {
         $menu = $this->requireMenuByKey($menuKey);
-        if (array_key_exists('preset', $data) && is_string($data['preset'])) {
-            $preset = $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_MENU_PRESETS, $data['preset']);
-            $menu->setPreset($preset);
+        if (array_key_exists('preset', $data)) {
+            $this->applyMenuPreset($menu, $menuKey, $data['preset']);
         }
         if (array_key_exists('max_depth', $data)) {
             $menu->setMaxDepth($this->navigationMenuDepthSupport->normalizeMenuMaxDepth(
@@ -280,21 +304,75 @@ class AdminNavigationService extends BaseService
         if (array_key_exists('item_limit', $data)) {
             $menu->setItemLimit(is_int($data['item_limit']) ? $data['item_limit'] : null);
         }
-        if (array_key_exists('config', $data)) {
-            $config = $data['config'];
-            if ($config === null) {
-                $menu->setConfig(null);
-            } elseif (is_array($config)) {
-                /** @var array<string, mixed> $typedConfig */
-                $typedConfig = $config;
-                $existing = $menu->getConfig() ?? [];
-                $menu->setConfig(array_merge($existing, $typedConfig));
-            }
+        if (array_key_exists('children_nav', $data)) {
+            $menu->setChildrenNav($this->resolveChildrenNavLookup(
+                $menuKey,
+                $data['children_nav'],
+                $menu->getPlatform()?->getLookupCode() === 'web',
+            ));
+        }
+        if (array_key_exists('show_breadcrumbs', $data)) {
+            $menu->setShowBreadcrumbs((bool) $data['show_breadcrumbs']);
         }
         $this->entityManager->flush();
         $this->navigationMenuService->invalidateNavigationCaches();
 
         return $this->formatMenuDefinition($menu);
+    }
+
+    /**
+     * Resolve a children-nav mode payload value to its lookup row. Only web
+     * menus carry the setting (mobile has its own native presentation).
+     */
+    private function resolveChildrenNavLookup(string $menuKey, mixed $value, bool $isWebMenu): ?Lookup
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (!$isWebMenu) {
+            $this->throwBadRequest(sprintf('Menu "%s" does not support children_nav.', $menuKey));
+        }
+        if (!is_string($value) || !in_array($value, LookupService::NAVIGATION_CHILDREN_NAV_MODE_CODES, true)) {
+            $this->throwBadRequest(sprintf(
+                'children_nav "%s" is invalid. Allowed: %s.',
+                is_scalar($value) ? (string) $value : gettype($value),
+                implode(', ', LookupService::NAVIGATION_CHILDREN_NAV_MODE_CODES),
+            ));
+        }
+
+        $lookup = $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_CHILDREN_NAV_MODES, $value);
+        if ($lookup === null) {
+            $this->throwNotFound(sprintf('children_nav lookup "%s" is not seeded.', $value));
+        }
+
+        return $lookup;
+    }
+
+    /**
+     * Presets are menu-specific: header presets for web_header, footer presets
+     * for web_footer, none for mobile menus. Switching presets never mutates
+     * menu items (layers and groups are preserved for switching back).
+     */
+    private function applyMenuPreset(NavigationMenu $menu, string $menuKey, mixed $presetValue): void
+    {
+        $allowed = LookupService::allowedNavigationPresetsForMenuKey($menuKey);
+        if ($allowed === []) {
+            $this->throwBadRequest(sprintf('Menu "%s" does not support presets.', $menuKey));
+        }
+        if (!is_string($presetValue) || !in_array($presetValue, $allowed, true)) {
+            $this->throwBadRequest(sprintf(
+                'Preset "%s" is not valid for menu "%s". Allowed: %s.',
+                is_scalar($presetValue) ? (string) $presetValue : gettype($presetValue),
+                $menuKey,
+                implode(', ', $allowed),
+            ));
+        }
+
+        $preset = $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_MENU_PRESETS, $presetValue);
+        if ($preset === null) {
+            $this->throwNotFound(sprintf('Preset lookup "%s" is not seeded.', $presetValue));
+        }
+        $menu->setPreset($preset);
     }
 
     /**
@@ -420,15 +498,6 @@ class AdminNavigationService extends BaseService
             $item->setPosition(10);
         }
 
-        $manualSource = $this->lookupService->findByTypeAndCode(
-            LookupService::NAVIGATION_CHILD_SOURCES,
-            LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
-        );
-        if ($manualSource) {
-            $item->setChildSource($manualSource);
-        }
-        $item->setAutoIncludeDepth(null);
-
         if (array_key_exists('is_active', $data) || array_key_exists('isActive', $data)) {
             $item->setIsActive((bool) ($data['is_active'] ?? $data['isActive'] ?? true));
         }
@@ -442,8 +511,32 @@ class AdminNavigationService extends BaseService
             $parent = $this->navigationMenuItemRepository->find((int) $parentId);
             if ($parent instanceof NavigationMenuItem) {
                 $this->navigationMenuDepthSupport->assertDepthAllowed($parent);
+                $this->navigationHeaderLayerSupport->assertParentNotTopLayer($parent);
                 $item->setParentItem($parent);
             }
+        }
+
+        if (array_key_exists('layer', $data)) {
+            $layer = $this->navigationHeaderLayerSupport->normalizeLayer($data['layer']);
+            $menu = $item->getNavigationMenu();
+            if ($menu instanceof NavigationMenu) {
+                $this->navigationHeaderLayerSupport->assertLayerAssignable($menu, $item->getParentItem(), $layer);
+            }
+            $item->setLayer($layer);
+        }
+
+        if (array_key_exists('children_nav', $data)) {
+            $menu = $item->getNavigationMenu();
+            $item->setChildrenNav($this->resolveChildrenNavLookup(
+                $menu?->getMenuKey()?->getLookupCode() ?? '',
+                $data['children_nav'],
+                $menu?->getPlatform()?->getLookupCode() === 'web',
+            ));
+        }
+
+        if ($item->getParentItem() !== null) {
+            // Nested items always live in the main tree.
+            $item->setLayer(null);
         }
     }
 
@@ -457,7 +550,7 @@ class AdminNavigationService extends BaseService
             static fn (NavigationMenuItem $item): ?int => $item->getId(),
             $items,
         )));
-        $translationMap = $this->navigationMenuItemTranslationRepository->findLabelsByMenuItemIds($itemIds);
+        $translationMap = $this->navigationMenuItemTranslationRepository->findPortableTranslationsByMenuItemIds($itemIds);
 
         return [
             'key' => $menu->getMenuKey()?->getLookupCode(),
@@ -466,8 +559,11 @@ class AdminNavigationService extends BaseService
             'preset' => $menu->getPreset()?->getLookupCode(),
             'max_depth' => $menu->getMaxDepth(),
             'item_limit' => $menu->getItemLimit(),
+            'children_nav' => $menu->getPlatform()?->getLookupCode() === 'web'
+                ? ($menu->getChildrenNav()?->getLookupCode() ?? LookupService::NAVIGATION_CHILDREN_NAV_SIDEBAR)
+                : null,
+            'show_breadcrumbs' => $menu->getPlatform()?->getLookupCode() === 'web' && $menu->isShowBreadcrumbs(),
             'is_system' => $menu->isSystem(),
-            'config' => $menu->getConfig(),
             'items' => array_map(
                 fn (NavigationMenuItem $i): array => $this->formatMenuItemEntity($i, $translationMap),
                 $items,
@@ -476,7 +572,7 @@ class AdminNavigationService extends BaseService
     }
 
     /**
-     * @param array<int, array<int, string>> $translationMap
+     * @param array<int, list<array{language_id: int, locale: string, label: ?string, description: ?string, aria_label: ?string}>> $translationMap
      *
      * @return array<string, mixed>
      */
@@ -494,14 +590,13 @@ class AdminNavigationService extends BaseService
             'mobile_icon' => $item->getMobileIcon(),
             'label' => $item->getLabel(),
             'position' => $item->getPosition(),
+            'layer' => $item->getLayer(),
+            'children_nav' => $item->getChildrenNav()?->getLookupCode(),
             'is_active' => $item->isActive(),
         ];
 
         if ($itemId !== null && $this->navigationMenuItemTranslationSupport->isTranslatableItemType($typeCode)) {
-            $formatted['translations'] = $this->navigationMenuItemTranslationSupport->formatTranslationsForAdmin(
-                $itemId,
-                $translationMap,
-            );
+            $formatted['translations'] = $translationMap[$itemId] ?? [];
         }
 
         return $formatted;
@@ -622,11 +717,7 @@ class AdminNavigationService extends BaseService
             LookupService::NAVIGATION_MENU_ITEM_TYPES,
             LookupService::NAVIGATION_ITEM_TYPE_PAGE
         );
-        $manualSource = $this->lookupService->findByTypeAndCode(
-            LookupService::NAVIGATION_CHILD_SOURCES,
-            LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
-        );
-        if (!$itemType || !$manualSource) {
+        if (!$itemType) {
             $this->throwNotFound('Navigation lookup configuration is incomplete');
         }
 
@@ -643,7 +734,13 @@ class AdminNavigationService extends BaseService
             $page = $row['page'];
             $cmsParentPageId = $row['parent_page_id'];
             $menuParent = $menuItemByPageId[$cmsParentPageId] ?? $rootParentItem;
+            // Menus are capped at two levels; page-tree descendants deeper
+            // than that are flattened under the root item instead of nesting.
+            if (!$this->navigationMenuDepthSupport->isDepthAllowed($menuParent)) {
+                $menuParent = $rootParentItem;
+            }
             $this->navigationMenuDepthSupport->assertDepthAllowed($menuParent);
+            $this->navigationHeaderLayerSupport->assertParentNotTopLayer($menuParent);
 
             $childItem = new NavigationMenuItem();
             $childItem->setNavigationMenu($menu);
@@ -651,8 +748,11 @@ class AdminNavigationService extends BaseService
             $childItem->setItemType($itemType);
             $childItem->setPage($page);
             $childItem->setPosition($position);
-            $childItem->setChildSource($manualSource);
             $childItem->setIsActive(true);
+            // No per-item flush: parents are persisted before their children
+            // (the page tree is walked parent-first), and Doctrine resolves the
+            // nullable self-FK within one flush — the caller flushes once after
+            // the whole batch.
             $this->entityManager->persist($childItem);
             $created[] = $childItem;
 

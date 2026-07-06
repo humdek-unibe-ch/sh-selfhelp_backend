@@ -192,7 +192,13 @@ abstract class QaWebTestCase extends WebTestCase
     protected function assertEnvelopeSuccess(array $envelope, int $expectedStatus = Response::HTTP_OK): array
     {
         self::assertArrayHasKey('status', $envelope, 'Envelope missing "status"');
-        self::assertSame($expectedStatus, $envelope['status'], 'Unexpected envelope status');
+        self::assertSame(
+            $expectedStatus,
+            $envelope['status'],
+            'Unexpected envelope status. Envelope: ' . json_encode(
+                ['status' => $envelope['status'] ?? null, 'message' => $envelope['message'] ?? null, 'error' => $envelope['error'] ?? null],
+            ),
+        );
         self::assertArrayHasKey('error', $envelope, 'Envelope missing "error"');
         self::assertNull($envelope['error'], 'Success envelope must have null error');
         self::assertArrayHasKey('logged_in', $envelope, 'Envelope missing "logged_in"');

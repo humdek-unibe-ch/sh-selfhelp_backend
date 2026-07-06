@@ -62,8 +62,6 @@
                     "menuKey": { "type": "string" },
                     "parentItemId": { "type": ["integer", "null"] },
                     "position": { "type": ["integer", "null"] },
-                    "childSource": { "type": "string" },
-                    "autoIncludeDepth": { "type": ["integer", "null"] },
                     "iconOverride": { "type": ["string", "null"] },
                     "labels": {
                         "type": "object",

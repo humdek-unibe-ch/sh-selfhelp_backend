@@ -42,12 +42,17 @@ class NavigationMenu
     #[ORM\Column(name: 'item_limit', type: 'integer', nullable: true)]
     private ?int $itemLimit = null;
 
+    /** How web pages present their menu branch (children/siblings); null = platform default. */
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_children_nav', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Lookup $childrenNav = null;
+
+    /** Render a breadcrumb trail above nested web pages of this menu. */
+    #[ORM\Column(name: 'show_breadcrumbs', type: 'boolean', options: ['default' => 1])]
+    private bool $showBreadcrumbs = true;
+
     #[ORM\Column(name: 'is_system', type: 'boolean', options: ['default' => 1])]
     private bool $isSystem = true;
-
-    /** @var array<string, mixed>|null */
-    #[ORM\Column(name: 'config', type: 'json', nullable: true)]
-    private ?array $config = null;
 
     public function getId(): ?int
     {
@@ -126,6 +131,30 @@ class NavigationMenu
         return $this;
     }
 
+    public function getChildrenNav(): ?Lookup
+    {
+        return $this->childrenNav;
+    }
+
+    public function setChildrenNav(?Lookup $childrenNav): static
+    {
+        $this->childrenNav = $childrenNav;
+
+        return $this;
+    }
+
+    public function isShowBreadcrumbs(): bool
+    {
+        return $this->showBreadcrumbs;
+    }
+
+    public function setShowBreadcrumbs(bool $showBreadcrumbs): static
+    {
+        $this->showBreadcrumbs = $showBreadcrumbs;
+
+        return $this;
+    }
+
     public function isSystem(): bool
     {
         return $this->isSystem;
@@ -134,20 +163,6 @@ class NavigationMenu
     public function setIsSystem(bool $isSystem): static
     {
         $this->isSystem = $isSystem;
-
-        return $this;
-    }
-
-    /** @return array<string, mixed>|null */
-    public function getConfig(): ?array
-    {
-        return $this->config;
-    }
-
-    /** @param array<string, mixed>|null $config */
-    public function setConfig(?array $config): static
-    {
-        $this->config = $config;
 
         return $this;
     }

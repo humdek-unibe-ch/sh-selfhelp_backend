@@ -10,6 +10,7 @@ namespace App\Service\CMS;
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
 use App\Entity\Page;
+use App\Navigation\NavigationHeaderLayerSupport;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuRepository;
 use App\Service\Core\BaseService;
@@ -26,6 +27,7 @@ class NavigationAssignmentService extends BaseService
         private readonly NavigationMenuRepository $navigationMenuRepository,
         private readonly NavigationMenuItemRepository $navigationMenuItemRepository,
         private readonly LookupService $lookupService,
+        private readonly NavigationHeaderLayerSupport $navigationHeaderLayerSupport,
     ) {
     }
 
@@ -59,6 +61,7 @@ class NavigationAssignmentService extends BaseService
                 if ($parentItem->getNavigationMenu()?->getId() !== $menu->getId()) {
                     $this->throwBadRequest('Parent menu item does not belong to the target menu');
                 }
+                $this->navigationHeaderLayerSupport->assertParentNotTopLayer($parentItem);
             }
 
             $position = $assignment['position'] ?? null;
@@ -70,11 +73,7 @@ class NavigationAssignmentService extends BaseService
                 LookupService::NAVIGATION_MENU_ITEM_TYPES,
                 LookupService::NAVIGATION_ITEM_TYPE_PAGE
             );
-            $childSource = $this->lookupService->findByTypeAndCode(
-                LookupService::NAVIGATION_CHILD_SOURCES,
-                LookupService::NAVIGATION_CHILD_SOURCE_MANUAL
-            );
-            if (!$itemType || !$childSource) {
+            if (!$itemType) {
                 $this->throwNotFound('Navigation lookup configuration is incomplete');
             }
 
@@ -84,8 +83,6 @@ class NavigationAssignmentService extends BaseService
             $item->setItemType($itemType);
             $item->setPage($page);
             $item->setPosition((int) $position);
-            $item->setChildSource($childSource);
-            $item->setAutoIncludeDepth(null);
             $item->setIsActive(true);
 
             $icon = $assignment['icon'] ?? $assignment['iconOverride'] ?? $assignment['icon_override'] ?? null;
