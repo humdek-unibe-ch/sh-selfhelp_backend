@@ -77,7 +77,10 @@ model, one API payload, one bundle schema. See
 - **API:** `POST /admin/navigation/export`, `POST /admin/navigation/import`,
   `POST /admin/navigation/import/validate`, `?dry_run=1` on import.
 - **Permissions:** `admin.navigation.export`, `admin.navigation.import`.
-- **Menu depth cap:** two levels (top-level + children) enforced on write.
+- **Menu depth cap:** three levels (top-level + children + grandchildren)
+  enforced on write; grandchildren render as indented sub-links in web
+  dropdown/mega panels and as a third collapsible drawer level on mobile.
+  Bulk "include descendants" nests up to the cap and flattens deeper pages.
 - **Examples:** canonical in `sh-selfhelp_frontend/examples/`; backend uses
   `ExampleBundlePathResolver` + `tests/fixtures/examples/` fallback. The demo
   bundle `examples/navigation/menu-demo.bundle.json` is rewritten as the v2.0
@@ -109,6 +112,28 @@ configurable contract instead of the hardcoded pill tabs (same 0.1.33 wave).
   group, the breadcrumb trail, and the prev/next pager from the same payload;
   the frontend renders the left-sidebar layout (sticky, collapses to pills on
   small screens), the pill strip, breadcrumbs, and neighbour-title pager cards.
+
+## Added: Navigation branding + pager toggles + mega-menu descriptions
+
+Same 0.1.33 wave (migration `Version20260706175630`, with round-trip test):
+
+- **Branding:** `navigation_settings` gains `logo_asset_path` / `logo_alt` /
+  `id_logo_link_page`. `GET /navigation` emits a `branding` object
+  (`logo_url`, `logo_alt`, `link_url`); `PATCH /admin/navigation/settings`
+  accepts the three fields. The web header brand slot and the mobile drawer
+  header render the configured logo/link (fallback: text + home).
+- **Pager split from sidebar:** `navigation_menus.show_pager` (menu default,
+  seeded on) + `navigation_menu_items.show_pager` (per-parent override,
+  NULL = inherit) let editors show the branch sidebar without prev/next
+  pager cards (or vice versa). Emitted on web menus/items in the public
+  payload, accepted by menu PATCH + item create/update, carried in
+  navigation bundles.
+- **Mega-menu descriptions for page items:** page items now accept
+  presentation-only translation rows (`label: null` + per-language
+  `description` / `aria_label`) via item create/update and bundle import;
+  the stored label stays NULL so the page title keeps driving the menu
+  label. The web dropdown/mega panels render the descriptions
+  (`menu-demo.bundle.json` ships examples).
 
 ## Added: Search across all languages
 

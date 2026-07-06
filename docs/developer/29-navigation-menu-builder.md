@@ -208,7 +208,7 @@ Bundles export/import **pages and CMS parent/child relationships** (`id_parent_p
 - Export modes: `full_snapshot` (whole menu(s)) or `branch` (selected pages + ancestor/sibling branches).
 - Optional embedded `pages[]` when `include_pages` is true.
 - Import options: `missing_pages_mode` (`strict` | `skip_missing` | `create_stubs`), per-menu `menu_policies` (`replace` | `merge` | `append`), optional `keyword_prefix`.
-- Menu depth is capped at **two levels** (top-level + children) on write and in bundles.
+- Menu depth is capped at **three levels** (top-level + children + grandchildren) on write and in bundles (`NavigationMenuDepthSupport::MAX_LEVEL = 2`). Grandchildren render as indented sub-links in web dropdown/mega panels and as a third collapsible level in the mobile drawer; deeper page-tree descendants are flattened on bulk add.
 
 Permissions: `admin.navigation.export`, `admin.navigation.import`.
 
@@ -222,7 +222,7 @@ Canonical location: **`sh-selfhelp_frontend/examples/`** (`pages/`, `cms-in-cms/
 - `pages/mobile-onboarding.bundle.json` — mobile-first guest onboarding
   template (image hero, value points, register/login CTAs; headless)
 - `cms-in-cms/team-members.bundle.json` — list+detail CMS-in-CMS demo
-- `navigation/menu-demo.bundle.json` — 20-page mini-site with all four menus wired
+- `navigation/menu-demo.bundle.json` — 22-page mini-site with all four menus wired (incl. mega-menu descriptions and a three-level Services > Training branch)
 
 Import pages via admin **Import / Export** or `POST /admin/pages/import`. Import navigation via **Navigation** export/import or `POST /admin/navigation/import`.
 

@@ -31,11 +31,11 @@ php bin/console app:examples:seed-hero-home
 
 [`mobile-onboarding.bundle.json`](../../sh-selfhelp_frontend/examples/pages/mobile-onboarding.bundle.json) is a mobile-first onboarding/landing template. Import via **Pages → Export / Import**.
 
-## Menu demo (20-page mini-site)
+## Menu demo (22-page mini-site)
 
-[`menu-demo.bundle.json`](../../sh-selfhelp_frontend/examples/navigation/menu-demo.bundle.json) ships a realistic mini-site with **all four menus** wired (dropdown header, grouped footer, mobile drawer, five bottom tabs).
+[`menu-demo.bundle.json`](../../sh-selfhelp_frontend/examples/navigation/menu-demo.bundle.json) ships a realistic mini-site with **all four menus** wired (dropdown header with mega-menu descriptions and a three-level Services > Training branch, grouped footer, mobile drawer, five bottom tabs).
 
-Import via **Navigation → Export / Import** (or `POST /cms-api/v1/admin/navigation/import`) with optional `keyword_prefix` (e.g. `qa-demo-`) in import options. Use `menu_policies.replace` for a clean demo reset.
+Import via **Navigation → Export / Import** (or `POST /cms-api/v1/admin/navigation/import`). The bundle's pages already use namespaced `demo-*` keywords, so no keyword prefix is needed; the default `/demo` route prefix keeps its routes clear of `/`. Use `menu_policies.replace` for a clean demo reset. Tests importing this fixture must still pass an explicit `qa-`-prefixed `keyword_prefix` per the QA test-data convention.
 
 ## Page vs navigation bundles
 
