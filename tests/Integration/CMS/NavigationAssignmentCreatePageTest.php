@@ -77,6 +77,31 @@ final class NavigationAssignmentCreatePageTest extends QaWebTestCase
 
         self::assertContains(LookupService::NAVIGATION_MENU_KEY_WEB_HEADER, $menuKeys);
         self::assertContains(LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER, $menuKeys);
+
+        // The admin pages list must surface the membership badges so the
+        // admin navbar can group pages by menu instead of listing them as
+        // content-only pages.
+        $pagesEnvelope = $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $admin);
+        $pagesData = $this->assertEnvelopeSuccess($pagesEnvelope);
+        $created = null;
+        foreach ($pagesData as $row) {
+            if (is_array($row) && ($row['keyword'] ?? null) === self::KEYWORD) {
+                $created = $row;
+                break;
+            }
+        }
+        self::assertNotNull($created, 'Created page missing from admin pages list');
+        self::assertArrayHasKey('navigationMembership', $created);
+        $badges = $created['navigationMembership'];
+        self::assertIsArray($badges);
+        $badgeMenuKeys = [];
+        foreach ($badges as $badge) {
+            if (is_array($badge) && is_string($badge['menu_key'] ?? null)) {
+                $badgeMenuKeys[] = $badge['menu_key'];
+            }
+        }
+        self::assertContains(LookupService::NAVIGATION_MENU_KEY_WEB_HEADER, $badgeMenuKeys);
+        self::assertContains(LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER, $badgeMenuKeys);
     }
 
     public function testChildPageWithoutMenuAssignmentHasNoMembershipBadge(): void

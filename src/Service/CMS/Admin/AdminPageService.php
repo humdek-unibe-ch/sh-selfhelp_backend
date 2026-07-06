@@ -894,7 +894,34 @@ class AdminPageService extends BaseService
             });
         }
 
-        return $this->attachPageTitles(array_values($pages));
+        return $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)));
+    }
+
+    /**
+     * Attach `navigationMembership` badges (menu key + item id per active menu
+     * item referencing the page) so the admin navbar/search can group pages by
+     * where they actually appear instead of listing everything as content.
+     *
+     * @param list<array<string, mixed>> $pages
+     * @return list<array<string, mixed>>
+     */
+    private function attachNavigationMembership(array $pages): array
+    {
+        $pageIds = [];
+        foreach ($pages as $page) {
+            if (isset($page['id_pages']) && is_numeric($page['id_pages'])) {
+                $pageIds[] = (int) $page['id_pages'];
+            }
+        }
+        $membershipByPage = $this->navigationAssignmentService->getMembershipBadgesForPageIds($pageIds);
+
+        foreach ($pages as &$page) {
+            $pageId = isset($page['id_pages']) && is_numeric($page['id_pages']) ? (int) $page['id_pages'] : null;
+            $page['navigationMembership'] = $pageId !== null ? ($membershipByPage[$pageId] ?? []) : [];
+        }
+        unset($page);
+
+        return $pages;
     }
 
     /**

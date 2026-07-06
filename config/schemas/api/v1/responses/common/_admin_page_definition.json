@@ -42,6 +42,20 @@
                         "required": ["language_id", "title"],
                         "additionalProperties": false
                     }
+                },
+                "navigationMembership": {
+                    "type": "array",
+                    "description": "Active navigation menu items referencing this page (admin navbar grouping)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "menu_key": { "type": "string" },
+                            "menu_item_id": { "type": "integer" },
+                            "explicit": { "type": "boolean" }
+                        },
+                        "required": ["menu_key", "menu_item_id", "explicit"],
+                        "additionalProperties": false
+                    }
                 }
             },
             "required": [
