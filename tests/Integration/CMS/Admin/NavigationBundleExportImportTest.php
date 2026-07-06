@@ -512,7 +512,7 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
     public function testImportRollsBackEmbeddedPagesWhenLaterMenuImportFails(): void
     {
         $keywordPrefix = 'qa-nav-rollback-';
-        $pageKeyword = $keywordPrefix . 'rollback-page';
+        $pageKeyword = $keywordPrefix . 'qa-rollback-page';
 
         /** @var NavigationExportImportService $navExportImport */
         $navExportImport = self::getContainer()->get(NavigationExportImportService::class);
@@ -529,7 +529,7 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
                             'item_type' => 'page',
                             'position' => 10,
                             'is_active' => true,
-                            'page_keyword' => 'rollback-page',
+                            'page_keyword' => 'qa-rollback-page',
                         ],
                     ],
                 ],
@@ -539,15 +539,15 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
             ],
             'pages' => [
                 [
-                    'keyword' => 'rollback-page',
+                    'keyword' => 'qa-rollback-page',
                     'surface' => 'public',
                     'page_access_type' => LookupService::PAGE_ACCESS_TYPES_WEB,
                     'headless' => false,
                     'open_access' => false,
-                    'url' => '/rollback-page',
+                    'url' => '/qa-nav-rollback-page',
                     'routes' => [
                         [
-                            'path_pattern' => '/rollback-page',
+                            'path_pattern' => '/qa-nav-rollback-page',
                             'is_canonical' => true,
                             'is_active' => true,
                             'priority' => 0,

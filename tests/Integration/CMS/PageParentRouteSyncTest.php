@@ -60,7 +60,7 @@ final class PageParentRouteSyncTest extends QaWebTestCase
             'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
             'headless' => false,
             'openAccess' => true,
-            'url' => '/legacy-child',
+            'url' => '/qa-legacy-child',
             'parent' => $parentId,
             'syncUrlWithParent' => true,
             'oldRoutePolicy' => 'keep_alias',
@@ -80,7 +80,7 @@ final class PageParentRouteSyncTest extends QaWebTestCase
         $routes = $routeRepo->findByPageId($childId);
         $patterns = array_map(static fn ($route) => $route->getPathPattern(), $routes);
         self::assertContains('/' . self::PARENT_KEYWORD . '/' . self::CHILD_KEYWORD, $patterns);
-        self::assertContains('/legacy-child', $patterns);
+        self::assertContains('/qa-legacy-child', $patterns);
     }
 
     public function testMenuReorderDoesNotChangePageUrl(): void
@@ -206,7 +206,7 @@ final class PageParentRouteSyncTest extends QaWebTestCase
             'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
             'headless' => false,
             'openAccess' => true,
-            'url' => '/legacy-child-rm',
+            'url' => '/qa-legacy-child-rm',
             'parent' => $parentId,
             'syncUrlWithParent' => true,
             'oldRoutePolicy' => 'remove_old_route',
@@ -223,6 +223,6 @@ final class PageParentRouteSyncTest extends QaWebTestCase
             '/' . self::PARENT_KEYWORD . '_rm/' . self::CHILD_KEYWORD . '_rm',
             $patterns,
         );
-        self::assertNotContains('/legacy-child-rm', $patterns);
+        self::assertNotContains('/qa-legacy-child-rm', $patterns);
     }
 }
