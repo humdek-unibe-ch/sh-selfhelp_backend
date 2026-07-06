@@ -27,6 +27,7 @@
         "parent_item_id": { "type": ["integer", "null"] },
         "layer": { "enum": ["top", null] },
         "children_nav": { "enum": ["sidebar", "pills", "none", null] },
+        "show_pager": { "type": ["boolean", "null"] },
         "is_active": { "type": "boolean" }
     },
     "additionalProperties": false

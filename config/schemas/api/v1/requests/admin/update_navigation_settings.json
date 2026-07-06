@@ -15,7 +15,10 @@
         "mobile_user_start_page_id": { "type": ["integer", "null"] },
         "mobile_user_start_mode": { "type": "string" },
         "mobile_start_page_source": { "type": "string" },
-        "route_sync_old_route_policy": { "type": "string" }
+        "route_sync_old_route_policy": { "type": "string" },
+        "logo_asset_path": { "type": ["string", "null"], "maxLength": 500 },
+        "logo_alt": { "type": ["string", "null"], "maxLength": 255 },
+        "logo_link_page_id": { "type": ["integer", "null"] }
     },
     "additionalProperties": false
 }

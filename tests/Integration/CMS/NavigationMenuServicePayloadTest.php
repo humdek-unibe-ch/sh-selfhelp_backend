@@ -28,6 +28,13 @@ final class NavigationMenuServicePayloadTest extends QaWebTestCase
         self::assertArrayHasKey('menus', $payload);
         self::assertArrayHasKey('startup', $payload);
         self::assertArrayHasKey('search', $payload);
+        self::assertArrayHasKey('branding', $payload);
+
+        $branding = $payload['branding'];
+        self::assertIsArray($branding);
+        foreach (['logo_url', 'logo_alt', 'link_url'] as $brandingKey) {
+            self::assertArrayHasKey($brandingKey, $branding);
+        }
 
         $menus = $payload['menus'];
         self::assertIsArray($menus);
@@ -43,7 +50,7 @@ final class NavigationMenuServicePayloadTest extends QaWebTestCase
             self::assertIsArray($menu);
 
             // Strict menu contract: typed keys always present, no config blob.
-            foreach (['key', 'platform', 'surface', 'preset', 'max_depth', 'item_limit', 'children_nav', 'show_breadcrumbs', 'items'] as $requiredKey) {
+            foreach (['key', 'platform', 'surface', 'preset', 'max_depth', 'item_limit', 'children_nav', 'show_breadcrumbs', 'show_pager', 'items'] as $requiredKey) {
                 self::assertArrayHasKey($requiredKey, $menu, sprintf('%s.%s', $menuKey, $requiredKey));
             }
             self::assertArrayNotHasKey('config', $menu);
@@ -61,6 +68,7 @@ final class NavigationMenuServicePayloadTest extends QaWebTestCase
         // with breadcrumbs on; mobile menus carry neutral values.
         self::assertContains($header['children_nav'], LookupService::NAVIGATION_CHILDREN_NAV_MODE_CODES);
         self::assertIsBool($header['show_breadcrumbs']);
+        self::assertIsBool($header['show_pager']);
         $footer = $menus[LookupService::NAVIGATION_MENU_KEY_WEB_FOOTER];
         self::assertIsArray($footer);
         self::assertContains($footer['preset'], LookupService::NAVIGATION_FOOTER_PRESETS);
@@ -68,6 +76,7 @@ final class NavigationMenuServicePayloadTest extends QaWebTestCase
         self::assertIsArray($drawer);
         self::assertNull($drawer['children_nav']);
         self::assertFalse($drawer['show_breadcrumbs']);
+        self::assertFalse($drawer['show_pager']);
 
         $search = $payload['search'];
         self::assertIsArray($search);
@@ -97,6 +106,7 @@ final class NavigationMenuServicePayloadTest extends QaWebTestCase
                 'position',
                 'layer',
                 'children_nav',
+                'show_pager',
                 'external_url',
                 'page',
                 'is_active',

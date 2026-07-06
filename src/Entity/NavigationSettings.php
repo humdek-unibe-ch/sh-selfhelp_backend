@@ -69,6 +69,19 @@ class NavigationSettings
     #[ORM\JoinColumn(name: 'id_route_sync_old_route_policy', referencedColumnName: 'id', nullable: false)]
     private ?Lookup $routeSyncOldRoutePolicy = null;
 
+    /** Public path of the header/drawer logo asset (from the asset library); null = text fallback. */
+    #[ORM\Column(name: 'logo_asset_path', type: 'string', length: 500, nullable: true)]
+    private ?string $logoAssetPath = null;
+
+    /** Accessible alt text / brand name shown when no logo image is set. */
+    #[ORM\Column(name: 'logo_alt', type: 'string', length: 255, nullable: true)]
+    private ?string $logoAlt = null;
+
+    /** Page the logo links to; null = the home page. */
+    #[ORM\ManyToOne(targetEntity: Page::class)]
+    #[ORM\JoinColumn(name: 'id_logo_link_page', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Page $logoLinkPage = null;
+
     public function getId(): int
     {
         return $this->id;
@@ -226,6 +239,42 @@ class NavigationSettings
     public function setRouteSyncOldRoutePolicy(?Lookup $routeSyncOldRoutePolicy): static
     {
         $this->routeSyncOldRoutePolicy = $routeSyncOldRoutePolicy;
+
+        return $this;
+    }
+
+    public function getLogoAssetPath(): ?string
+    {
+        return $this->logoAssetPath;
+    }
+
+    public function setLogoAssetPath(?string $logoAssetPath): static
+    {
+        $this->logoAssetPath = $logoAssetPath;
+
+        return $this;
+    }
+
+    public function getLogoAlt(): ?string
+    {
+        return $this->logoAlt;
+    }
+
+    public function setLogoAlt(?string $logoAlt): static
+    {
+        $this->logoAlt = $logoAlt;
+
+        return $this;
+    }
+
+    public function getLogoLinkPage(): ?Page
+    {
+        return $this->logoLinkPage;
+    }
+
+    public function setLogoLinkPage(?Page $logoLinkPage): static
+    {
+        $this->logoLinkPage = $logoLinkPage;
 
         return $this;
     }

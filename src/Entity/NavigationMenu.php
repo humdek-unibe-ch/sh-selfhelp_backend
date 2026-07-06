@@ -51,6 +51,10 @@ class NavigationMenu
     #[ORM\Column(name: 'show_breadcrumbs', type: 'boolean', options: ['default' => 1])]
     private bool $showBreadcrumbs = true;
 
+    /** Render the prev/next pager on nested web pages of this menu. */
+    #[ORM\Column(name: 'show_pager', type: 'boolean', options: ['default' => 1])]
+    private bool $showPager = true;
+
     #[ORM\Column(name: 'is_system', type: 'boolean', options: ['default' => 1])]
     private bool $isSystem = true;
 
@@ -151,6 +155,18 @@ class NavigationMenu
     public function setShowBreadcrumbs(bool $showBreadcrumbs): static
     {
         $this->showBreadcrumbs = $showBreadcrumbs;
+
+        return $this;
+    }
+
+    public function isShowPager(): bool
+    {
+        return $this->showPager;
+    }
+
+    public function setShowPager(bool $showPager): static
+    {
+        $this->showPager = $showPager;
 
         return $this;
     }

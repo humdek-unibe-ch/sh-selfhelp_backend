@@ -110,6 +110,34 @@ class NavigationMenuService extends BaseService
             'menus' => $menus,
             'startup' => $this->formatStartup($settings, $pageMap, $sectionCounts, $languageId, $user),
             'search' => $this->formatSearch($settings),
+            'branding' => $this->formatBranding($settings, $pageMap),
+        ];
+    }
+
+    /**
+     * Global branding block shared by the web header and the mobile drawer.
+     * The link target only surfaces when the current user can access the page.
+     *
+     * @param array<int, array<string, mixed>> $pageMap
+     *
+     * @return array{logo_url: ?string, logo_alt: ?string, link_url: ?string}
+     */
+    private function formatBranding(?\App\Entity\NavigationSettings $settings, array $pageMap): array
+    {
+        if ($settings === null) {
+            return ['logo_url' => null, 'logo_alt' => null, 'link_url' => null];
+        }
+
+        $linkUrl = null;
+        $linkPageId = $settings->getLogoLinkPage()?->getId();
+        if ($linkPageId !== null && isset($pageMap[$linkPageId])) {
+            $linkUrl = $this->stringOrNullFromNode($pageMap[$linkPageId], 'url');
+        }
+
+        return [
+            'logo_url' => $settings->getLogoAssetPath(),
+            'logo_alt' => $settings->getLogoAlt(),
+            'link_url' => $linkUrl,
         ];
     }
 
@@ -266,6 +294,7 @@ class NavigationMenuService extends BaseService
                 ? ($menu->getChildrenNav()?->getLookupCode() ?? LookupService::NAVIGATION_CHILDREN_NAV_SIDEBAR)
                 : null,
             'show_breadcrumbs' => $isWebMenu && $menu->isShowBreadcrumbs(),
+            'show_pager' => $isWebMenu && $menu->isShowPager(),
             'items' => $resolvedRoots,
         ];
     }
@@ -433,6 +462,7 @@ class NavigationMenuService extends BaseService
             'position' => $item->getPosition(),
             'layer' => $item->getLayer(),
             'children_nav' => $item->getChildrenNav()?->getLookupCode(),
+            'show_pager' => $item->getShowPager(),
             'external_url' => $item->getExternalUrl() !== '' ? $item->getExternalUrl() : null,
             'page' => $pageRef,
             'is_active' => true,
@@ -613,5 +643,11 @@ class NavigationMenuService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_NAVIGATION)
             ->invalidateCategory();
+        // Admin page lists embed navigationMembership badges, so menu item
+        // changes must also drop the cached page lists or the admin navbar
+        // keeps grouping pages under stale menus.
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateAllListsInCategory();
     }
 }

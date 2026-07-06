@@ -2,14 +2,14 @@
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "GET /navigation response data",
     "type": "object",
-    "required": ["menus", "startup", "search"],
+    "required": ["menus", "startup", "search", "branding"],
     "additionalProperties": false,
     "properties": {
         "menus": {
             "type": "object",
             "additionalProperties": {
                 "type": "object",
-                "required": ["key", "platform", "surface", "preset", "max_depth", "item_limit", "children_nav", "show_breadcrumbs", "items"],
+                "required": ["key", "platform", "surface", "preset", "max_depth", "item_limit", "children_nav", "show_breadcrumbs", "show_pager", "items"],
                 "additionalProperties": false,
                 "properties": {
                     "key": {
@@ -23,6 +23,7 @@
                     "item_limit": { "type": ["integer", "null"] },
                     "children_nav": { "enum": ["sidebar", "pills", "none", null] },
                     "show_breadcrumbs": { "type": "boolean" },
+                    "show_pager": { "type": "boolean" },
                     "items": {
                         "type": "array",
                         "items": { "$ref": "#/$defs/menuItem" }
@@ -31,7 +32,8 @@
             }
         },
         "startup": { "$ref": "#/$defs/startup" },
-        "search": { "$ref": "#/$defs/search" }
+        "search": { "$ref": "#/$defs/search" },
+        "branding": { "$ref": "#/$defs/branding" }
     },
     "$defs": {
         "pageRef": {
@@ -95,6 +97,16 @@
                 "field_policy": { "type": "string" }
             }
         },
+        "branding": {
+            "type": "object",
+            "required": ["logo_url", "logo_alt", "link_url"],
+            "additionalProperties": false,
+            "properties": {
+                "logo_url": { "type": ["string", "null"] },
+                "logo_alt": { "type": ["string", "null"] },
+                "link_url": { "type": ["string", "null"] }
+            }
+        },
         "menuItem": {
             "type": "object",
             "required": [
@@ -108,6 +120,7 @@
                 "position",
                 "layer",
                 "children_nav",
+                "show_pager",
                 "external_url",
                 "page",
                 "is_active",
@@ -125,6 +138,7 @@
                 "position": { "type": "integer" },
                 "layer": { "enum": ["top", null] },
                 "children_nav": { "enum": ["sidebar", "pills", "none", null] },
+                "show_pager": { "type": ["boolean", "null"] },
                 "external_url": { "type": ["string", "null"] },
                 "page": {
                     "oneOf": [{ "$ref": "#/$defs/pageRef" }, { "type": "null" }]

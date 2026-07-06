@@ -314,6 +314,9 @@ class AdminNavigationService extends BaseService
         if (array_key_exists('show_breadcrumbs', $data)) {
             $menu->setShowBreadcrumbs((bool) $data['show_breadcrumbs']);
         }
+        if (array_key_exists('show_pager', $data)) {
+            $menu->setShowPager((bool) $data['show_pager']);
+        }
         $this->entityManager->flush();
         $this->navigationMenuService->invalidateNavigationCaches();
 
@@ -534,6 +537,11 @@ class AdminNavigationService extends BaseService
             ));
         }
 
+        if (array_key_exists('show_pager', $data)) {
+            $showPager = $data['show_pager'];
+            $item->setShowPager(is_bool($showPager) ? $showPager : null);
+        }
+
         if ($item->getParentItem() !== null) {
             // Nested items always live in the main tree.
             $item->setLayer(null);
@@ -563,6 +571,7 @@ class AdminNavigationService extends BaseService
                 ? ($menu->getChildrenNav()?->getLookupCode() ?? LookupService::NAVIGATION_CHILDREN_NAV_SIDEBAR)
                 : null,
             'show_breadcrumbs' => $menu->getPlatform()?->getLookupCode() === 'web' && $menu->isShowBreadcrumbs(),
+            'show_pager' => $menu->getPlatform()?->getLookupCode() === 'web' && $menu->isShowPager(),
             'is_system' => $menu->isSystem(),
             'items' => array_map(
                 fn (NavigationMenuItem $i): array => $this->formatMenuItemEntity($i, $translationMap),
@@ -592,10 +601,14 @@ class AdminNavigationService extends BaseService
             'position' => $item->getPosition(),
             'layer' => $item->getLayer(),
             'children_nav' => $item->getChildrenNav()?->getLookupCode(),
+            'show_pager' => $item->getShowPager(),
             'is_active' => $item->isActive(),
         ];
 
-        if ($itemId !== null && $this->navigationMenuItemTranslationSupport->isTranslatableItemType($typeCode)) {
+        // Group/external items are label-driven; page items are presentation-only
+        // (per-language description / aria_label shown in mega menus) — both
+        // surface their translation rows to the admin builder.
+        if ($itemId !== null) {
             $formatted['translations'] = $translationMap[$itemId] ?? [];
         }
 
@@ -625,6 +638,9 @@ class AdminNavigationService extends BaseService
             'mobile_user_start_mode' => $settings->getMobileUserStartMode()?->getLookupCode(),
             'mobile_start_page_source' => $settings->getMobileStartPageSource()?->getLookupCode(),
             'route_sync_old_route_policy' => $settings->getRouteSyncOldRoutePolicy()?->getLookupCode(),
+            'logo_asset_path' => $settings->getLogoAssetPath(),
+            'logo_alt' => $settings->getLogoAlt(),
+            'logo_link_page_id' => $settings->getLogoLinkPage()?->getId(),
         ];
     }
 
@@ -662,6 +678,7 @@ class AdminNavigationService extends BaseService
             'web_user_start_page_id' => 'setWebUserStartPage',
             'mobile_guest_start_page_id' => 'setMobileGuestStartPage',
             'mobile_user_start_page_id' => 'setMobileUserStartPage',
+            'logo_link_page_id' => 'setLogoLinkPage',
         ];
         foreach ($pageMap as $field => $setter) {
             if (!array_key_exists($field, $data)) {
@@ -673,6 +690,15 @@ class AdminNavigationService extends BaseService
             } elseif (is_int($pageId) || is_numeric($pageId)) {
                 $settings->{$setter}($this->pageRepository->find((int) $pageId));
             }
+        }
+
+        if (array_key_exists('logo_asset_path', $data)) {
+            $path = $data['logo_asset_path'];
+            $settings->setLogoAssetPath(is_string($path) && $path !== '' ? $path : null);
+        }
+        if (array_key_exists('logo_alt', $data)) {
+            $alt = $data['logo_alt'];
+            $settings->setLogoAlt(is_string($alt) && $alt !== '' ? $alt : null);
         }
     }
 
@@ -734,7 +760,7 @@ class AdminNavigationService extends BaseService
             $page = $row['page'];
             $cmsParentPageId = $row['parent_page_id'];
             $menuParent = $menuItemByPageId[$cmsParentPageId] ?? $rootParentItem;
-            // Menus are capped at two levels; page-tree descendants deeper
+            // Menus are capped at three levels; page-tree descendants deeper
             // than that are flattened under the root item instead of nesting.
             if (!$this->navigationMenuDepthSupport->isDepthAllowed($menuParent)) {
                 $menuParent = $rootParentItem;

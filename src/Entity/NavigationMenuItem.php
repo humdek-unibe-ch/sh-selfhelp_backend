@@ -62,6 +62,10 @@ class NavigationMenuItem
     #[ORM\JoinColumn(name: 'id_children_nav', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Lookup $childrenNav = null;
 
+    /** Per-parent-item override of the menu-level prev/next pager toggle (null = inherit). */
+    #[ORM\Column(name: 'show_pager', type: 'boolean', nullable: true)]
+    private ?bool $showPager = null;
+
     #[ORM\Column(name: 'is_active', type: 'boolean', options: ['default' => 1])]
     private bool $isActive = true;
 
@@ -198,6 +202,18 @@ class NavigationMenuItem
     public function setChildrenNav(?Lookup $childrenNav): static
     {
         $this->childrenNav = $childrenNav;
+
+        return $this;
+    }
+
+    public function getShowPager(): ?bool
+    {
+        return $this->showPager;
+    }
+
+    public function setShowPager(?bool $showPager): static
+    {
+        $this->showPager = $showPager;
 
         return $this;
     }
