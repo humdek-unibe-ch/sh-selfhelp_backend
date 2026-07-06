@@ -101,38 +101,45 @@ class NavigationSearchIndexService extends BaseService
 
         $connection = $this->entityManager->getConnection();
         $placeholders = implode(',', array_fill(0, count($pageIdList), '?'));
+        // Cross-language search: match content indexed in ANY language, but
+        // order current-language rows first so their snippet wins the
+        // per-page dedupe below (searching "Impressum" from the English UI
+        // must still surface the page).
         $sql = <<<SQL
             SELECT p.id AS page_id, p.keyword, p.url,
                    psi.title_text, psi.description_text, psi.body_text
             FROM page_search_index psi
             INNER JOIN pages p ON p.id = psi.id_pages
-            WHERE psi.id_languages = ?
-              AND p.id IN ({$placeholders})
+            WHERE p.id IN ({$placeholders})
               AND (
                 LOWER(COALESCE(psi.title_text, '')) LIKE ?
                 OR LOWER(COALESCE(psi.description_text, '')) LIKE ?
                 OR LOWER(COALESCE(psi.body_text, '')) LIKE ?
               )
+            ORDER BY (psi.id_languages = ?) DESC
             LIMIT ?
             SQL;
 
-        $params = array_merge([$languageId], $pageIdList, [$like, $like, $like, $limit * 4]);
+        $params = array_merge($pageIdList, [$like, $like, $like, $languageId, $limit * 4]);
         $types = array_merge(
-            [ParameterType::INTEGER],
             array_fill(0, count($pageIdList), ParameterType::INTEGER),
-            [ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::INTEGER],
+            [ParameterType::STRING, ParameterType::STRING, ParameterType::STRING, ParameterType::INTEGER, ParameterType::INTEGER],
         );
 
         /** @var list<array<string, mixed>> $rows */
         $rows = $connection->executeQuery($sql, $params, $types)->fetchAllAssociative();
 
         $hits = [];
+        $seenPages = [];
         foreach ($rows as $row) {
             $pageIdRaw = $row['page_id'] ?? null;
             if (!is_numeric($pageIdRaw)) {
                 continue;
             }
             $pageId = (int) $pageIdRaw;
+            if (isset($seenPages[$pageId])) {
+                continue;
+            }
             $keywordRaw = $row['keyword'] ?? '';
             $keyword = is_string($keywordRaw) ? $keywordRaw : '';
             $title = is_string($row['title_text'] ?? null) ? $row['title_text'] : '';
@@ -168,6 +175,7 @@ class NavigationSearchIndexService extends BaseService
                 'snippet_source' => $snippetSource,
                 'snippet_text' => $snippetText,
             ];
+            $seenPages[$pageId] = true;
         }
 
         usort($hits, static fn (array $a, array $b): int => $b['weight'] <=> $a['weight']);

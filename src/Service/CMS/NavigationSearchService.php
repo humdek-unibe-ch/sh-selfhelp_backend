@@ -69,6 +69,7 @@ class NavigationSearchService extends BaseService
             return [];
         }
 
+        $seenPageIds = [];
         foreach ($menus as $menu) {
             if (!is_array($menu)) {
                 continue;
@@ -79,7 +80,7 @@ class NavigationSearchService extends BaseService
             }
             /** @var list<array<string, mixed>> $itemList */
             $itemList = array_values($items);
-            $this->collectMenuPageHits($itemList, $needle, $results);
+            $this->collectMenuPageHits($itemList, $needle, $results, $seenPageIds);
         }
 
         return array_slice($results, 0, $limit);
@@ -88,25 +89,33 @@ class NavigationSearchService extends BaseService
     /**
      * @param list<array<string, mixed>> $items
      * @param list<array<string, mixed>> $results
+     * @param array<int, true> $seenPageIds pages already emitted (a page may sit in several menus)
      */
-    private function collectMenuPageHits(array $items, string $needle, array &$results): void
+    private function collectMenuPageHits(array $items, string $needle, array &$results, array &$seenPageIds): void
     {
         foreach ($items as $item) {
             $page = $item['page'] ?? null;
             if (is_array($page)) {
                 /** @var array<string, mixed> $pageData */
                 $pageData = $page;
-                $label = isset($item['label']) && is_string($item['label']) ? $item['label'] : null;
-                $haystacks = [
-                    $this->stringField($pageData, 'title'),
-                    $this->stringField($pageData, 'keyword'),
-                    $this->stringField($pageData, 'url'),
-                    $label ?? '',
-                ];
-                foreach ($haystacks as $haystack) {
-                    if ($haystack !== '' && str_contains(mb_strtolower($haystack), $needle)) {
-                        $results[] = $this->formatHit($pageData, $label, 'menu');
-                        break;
+                $pageId = $pageData['id'] ?? $pageData['id_pages'] ?? null;
+                $pageKey = is_numeric($pageId) ? (int) $pageId : null;
+                if ($pageKey === null || !isset($seenPageIds[$pageKey])) {
+                    $label = isset($item['label']) && is_string($item['label']) ? $item['label'] : null;
+                    $haystacks = [
+                        $this->stringField($pageData, 'title'),
+                        $this->stringField($pageData, 'keyword'),
+                        $this->stringField($pageData, 'url'),
+                        $label ?? '',
+                    ];
+                    foreach ($haystacks as $haystack) {
+                        if ($haystack !== '' && str_contains(mb_strtolower($haystack), $needle)) {
+                            $results[] = $this->formatHit($pageData, $label, 'menu');
+                            if ($pageKey !== null) {
+                                $seenPageIds[$pageKey] = true;
+                            }
+                            break;
+                        }
                     }
                 }
             }
@@ -114,7 +123,7 @@ class NavigationSearchService extends BaseService
             if (is_array($children) && $children !== []) {
                 /** @var list<array<string, mixed>> $childList */
                 $childList = array_values($children);
-                $this->collectMenuPageHits($childList, $needle, $results);
+                $this->collectMenuPageHits($childList, $needle, $results, $seenPageIds);
             }
         }
     }
@@ -128,9 +137,16 @@ class NavigationSearchService extends BaseService
         $searchConfig = $this->searchConfigFromNavigation($navigation);
         $tree = $this->pageService->getAllAccessiblePagesForUser($mode, false, $languageId);
         $visibilityOverrides = $this->loadSearchVisibilityOverrides($tree);
+        // Cross-language metadata: a query typed in ANY site language must find
+        // the page even when the current UI language uses a different title
+        // ("Impressum" from the English UI). Hits still render current-language.
+        $allLanguageTexts = $this->pagesFieldsTranslationRepository->fetchDisplayFieldTextsAllLanguages(
+            array_keys($this->flattenPageIds($tree)),
+        );
         $needle = mb_strtolower($query);
         $results = [];
-        $walk = function (array $nodes) use (&$walk, &$results, $needle, $visibilityOverrides, $searchConfig): void {
+        $seenPageIds = [];
+        $walk = function (array $nodes) use (&$walk, &$results, &$seenPageIds, $needle, $visibilityOverrides, $searchConfig, $allLanguageTexts): void {
             foreach ($nodes as $node) {
                 if (!is_array($node)) {
                     continue;
@@ -145,13 +161,28 @@ class NavigationSearchService extends BaseService
                     }
                     continue;
                 }
+                $pageKey = (int) $pageId;
+                if (isset($seenPageIds[$pageKey])) {
+                    $children = $node['children'] ?? [];
+                    if (is_array($children) && $children !== []) {
+                        $walk($children);
+                    }
+                    continue;
+                }
                 $title = $this->stringField($pageNode, 'title');
                 $keyword = $this->stringField($pageNode, 'keyword');
                 $url = $this->stringField($pageNode, 'url');
                 $description = $this->stringField($pageNode, 'description');
-                $blob = mb_strtolower("{$title} {$keyword} {$url} {$description}");
+                $blob = mb_strtolower(implode(' ', [
+                    $title,
+                    $keyword,
+                    $url,
+                    $description,
+                    implode(' ', $allLanguageTexts[$pageKey] ?? []),
+                ]));
                 if (str_contains($blob, $needle)) {
                     $results[] = $this->formatHit($pageNode, $title !== '' ? $title : null, 'page_metadata');
+                    $seenPageIds[$pageKey] = true;
                 }
                 $children = $node['children'] ?? [];
                 if (is_array($children) && $children !== []) {

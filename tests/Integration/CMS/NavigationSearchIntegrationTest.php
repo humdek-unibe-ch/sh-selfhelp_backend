@@ -125,6 +125,100 @@ final class NavigationSearchIntegrationTest extends QaWebTestCase
         self::assertStringContainsString(self::UNIQUE_BODY, (string) $hit['snippet']);
     }
 
+    public function testMetadataSearchFindsPageByOtherLanguageTitle(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $created = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => self::KEYWORD,
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/' . self::KEYWORD,
+        ], $admin);
+        $pageData = $this->assertEnvelopeSuccess($created, Response::HTTP_CREATED);
+        $pageId = $pageData['id'] ?? null;
+        self::assertIsInt($pageId);
+
+        $otherLanguageId = $this->findSecondLanguageId();
+        if ($otherLanguageId === null) {
+            self::markTestSkipped('QA baseline has a single language');
+        }
+
+        $this->setPageTitleTranslation($pageId, 'qa_nav_xlang_current_title');
+        $this->setPageTitleTranslationForLanguage($pageId, $otherLanguageId, 'qa_nav_xlang_other_marker');
+
+        /** @var NavigationSearchService $searchService */
+        $searchService = self::getContainer()->get(NavigationSearchService::class);
+        // Query typed in the OTHER language must find the page even though the
+        // search runs with language 1; the hit renders the current-language title.
+        $results = $searchService->searchPageMetadataOnly(
+            'qa_nav_xlang_other_marker',
+            LookupService::PAGE_ACCESS_TYPES_WEB,
+            1,
+            20,
+        );
+
+        $hit = null;
+        foreach ($results as $row) {
+            if (($row['page_id'] ?? null) === $pageId) {
+                $hit = $row;
+                break;
+            }
+        }
+        self::assertIsArray($hit, 'cross-language title should surface the page');
+        self::assertSame('qa_nav_xlang_current_title', $hit['title'] ?? null);
+    }
+
+    public function testContentIndexSearchReturnsSinglePageHitAcrossLanguages(): void
+    {
+        self::markTestSkippedIf(!$this->searchIndexTableExists(), 'page_search_index migration not applied');
+        $otherLanguageId = $this->findSecondLanguageId();
+        if ($otherLanguageId === null) {
+            self::markTestSkipped('QA baseline has a single language');
+        }
+
+        $admin = $this->loginAsQaAdmin();
+        $created = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => self::KEYWORD,
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/' . self::KEYWORD,
+        ], $admin);
+        $pageData = $this->assertEnvelopeSuccess($created, Response::HTTP_CREATED);
+        $pageId = $pageData['id'] ?? null;
+        self::assertIsInt($pageId);
+
+        /** @var EntityManagerInterface $em */
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $connection = $em->getConnection();
+        foreach ([1, $otherLanguageId] as $languageId) {
+            $connection->executeStatement(
+                <<<'SQL'
+                    INSERT INTO page_search_index (title_text, description_text, body_text, updated_at, id_pages, id_languages)
+                    VALUES (:title, NULL, :body, UTC_TIMESTAMP(), :pageId, :languageId)
+                    ON DUPLICATE KEY UPDATE body_text = VALUES(body_text), updated_at = UTC_TIMESTAMP()
+                    SQL,
+                [
+                    'title' => self::KEYWORD,
+                    'body' => 'Body with ' . self::UNIQUE_BODY . ' present.',
+                    'pageId' => $pageId,
+                    'languageId' => $languageId,
+                ],
+            );
+        }
+
+        /** @var NavigationSearchService $searchService */
+        $searchService = self::getContainer()->get(NavigationSearchService::class);
+        $results = $searchService->search(self::UNIQUE_BODY, LookupService::PAGE_ACCESS_TYPES_WEB, 1, 20);
+
+        $hitsForPage = array_values(array_filter(
+            $results,
+            static fn (array $row): bool => ($row['page_id'] ?? null) === $pageId,
+        ));
+        self::assertCount(1, $hitsForPage, 'a page indexed in several languages must yield one hit');
+    }
+
     public function testGuestSearchDoesNotReturnAdminOnlyPage(): void
     {
         $admin = $this->loginAsQaAdmin();
@@ -242,18 +336,32 @@ final class NavigationSearchIntegrationTest extends QaWebTestCase
 
     private function setPageTitleTranslation(int $pageId, string $title): void
     {
+        $this->setPageTitleTranslationForLanguage($pageId, 1, $title);
+    }
+
+    private function setPageTitleTranslationForLanguage(int $pageId, int $languageId, string $title): void
+    {
         /** @var EntityManagerInterface $em */
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $em->getConnection()->executeStatement(
             <<<'SQL'
                 INSERT INTO pages_fields_translation (id_pages, id_fields, id_languages, content)
-                SELECT :pageId, f.id, 1, :title
+                SELECT :pageId, f.id, :languageId, :title
                 FROM fields f
                 WHERE f.name = 'title'
                 ON DUPLICATE KEY UPDATE content = VALUES(content)
                 SQL,
-            ['pageId' => $pageId, 'title' => $title],
+            ['pageId' => $pageId, 'languageId' => $languageId, 'title' => $title],
         );
+    }
+
+    private function findSecondLanguageId(): ?int
+    {
+        /** @var EntityManagerInterface $em */
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $id = $em->getConnection()->fetchOne('SELECT id FROM languages WHERE id <> 1 ORDER BY id LIMIT 1');
+
+        return is_numeric($id) ? (int) $id : null;
     }
 
     private function searchIndexTableExists(): bool
