@@ -13,6 +13,7 @@ use App\Entity\PageTypeField;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
 use App\Repository\PageTypeRepository;
+use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Repository\SectionRepository;
 use App\Service\ACL\ACLService;
@@ -68,6 +69,8 @@ class AdminPageService extends BaseService
         private readonly PageParentRouteSyncService $pageParentRouteSyncService,
         private readonly NavigationAssignmentService $navigationAssignmentService,
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
+        private readonly CmsPreferenceService $cmsPreferenceService,
     ) {
     }
 
@@ -891,6 +894,46 @@ class AdminPageService extends BaseService
             });
         }
 
-        return array_values($pages);
+        return $this->attachPageTitles(array_values($pages));
+    }
+
+    /**
+     * Attach human titles to admin page rows: `title` in the default CMS
+     * language plus a `titles` list per language so pickers can label pages
+     * in the admin's current UI language (no per-language refetch needed).
+     *
+     * @param list<array<string, mixed>> $pages
+     * @return list<array<string, mixed>>
+     */
+    private function attachPageTitles(array $pages): array
+    {
+        $pageIds = [];
+        foreach ($pages as $page) {
+            if (isset($page['id_pages']) && is_numeric($page['id_pages'])) {
+                $pageIds[] = (int) $page['id_pages'];
+            }
+        }
+        $titlesByPage = $this->pagesFieldsTranslationRepository->fetchTitleByLanguageForPages($pageIds);
+        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+
+        foreach ($pages as &$page) {
+            $pageId = isset($page['id_pages']) && is_numeric($page['id_pages']) ? (int) $page['id_pages'] : null;
+            $byLanguage = $pageId !== null ? ($titlesByPage[$pageId] ?? []) : [];
+            $default = null;
+            if ($defaultLanguageId !== null && isset($byLanguage[$defaultLanguageId])) {
+                $default = $byLanguage[$defaultLanguageId];
+            } elseif ($byLanguage !== []) {
+                $default = reset($byLanguage);
+            }
+            $page['title'] = $default;
+            $titles = [];
+            foreach ($byLanguage as $languageId => $title) {
+                $titles[] = ['language_id' => $languageId, 'title' => $title];
+            }
+            $page['titles'] = $titles;
+        }
+        unset($page);
+
+        return $pages;
     }
 }

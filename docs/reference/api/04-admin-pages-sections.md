@@ -168,8 +168,7 @@ Create a new page with specified properties.
     {
       "menuKey": "web_header",
       "parentItemId": null,
-      "position": 20,
-      "childSource": "manual"
+      "position": 20
     }
   ]
 }
