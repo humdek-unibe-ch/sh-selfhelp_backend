@@ -321,7 +321,7 @@
                                     "section_name": "cms-team-members-list-delete",
                                     "style_name": "entry-record-delete",
                                     "fields": {
-                                        "label": {
+                                        "label_delete": {
                                             "de-CH": { "content": "Löschen" },
                                             "en-GB": { "content": "Delete" }
                                         }

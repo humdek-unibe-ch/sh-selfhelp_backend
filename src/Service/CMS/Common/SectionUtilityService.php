@@ -350,8 +350,17 @@ class SectionUtilityService
 
         $tableName = $this->asString($dataConfig['table']);
         $retrieve = $dataConfig['retrieve'] ?? 'all';
-        $filter = $this->asString($dataConfig['filter'] ?? '');
+        $filter = trim($this->asString($dataConfig['filter'] ?? ''));
         $currentUser = $dataConfig['current_user'] ?? true;
+
+        // The stored procedure appends the filter verbatim after `WHERE 1=1 `,
+        // so a bare condition ("record_id = 34" — the documented authoring
+        // form, see docs/cookbook/cms-in-cms-list-detail.md) must be glued
+        // with AND. Filters that already start with a connective or a clause
+        // keyword pass through unchanged.
+        if ($filter !== '' && preg_match('/^(AND|OR|ORDER\s+BY|LIMIT|GROUP\s+BY|HAVING)\b/i', $filter) !== 1) {
+            $filter = 'AND ' . $filter;
+        }
 
         // Get data table
         $dataTable = $this->dataService->getDataTableByName($tableName);

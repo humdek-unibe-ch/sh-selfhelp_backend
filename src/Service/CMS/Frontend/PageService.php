@@ -1045,6 +1045,34 @@ class PageService extends BaseService
                 $sectionData['route'] = $parentData['route'];
             }
 
+            // Step 4c: Entry data binding (issue #30). The wizard/bundles author
+            // row columns as TOP-LEVEL tokens inside entry subtrees ({{name}},
+            // {{record_id}}), so entry-record flattens its bound row into the
+            // section data here, and entry-list clones its child template once
+            // per row at Step 8 (each clone rendered with that row flattened).
+            $styleName = isset($section['style_name']) ? $this->asString($section['style_name']) : '';
+            $isEntryList = $styleName === StyleNames::STYLE_ENTRY_LIST;
+            $entryRows = [];
+            if ($isEntryList || $styleName === StyleNames::STYLE_ENTRY_RECORD) {
+                $entryRows = $this->resolveEntryRows($section, $parentData, $languageId);
+                if (!$isEntryList && isset($entryRows[0])) {
+                    $sectionData = array_merge($sectionData, $entryRows[0]);
+                    if (isset($parentData['route'])) {
+                        $sectionData['route'] = $parentData['route'];
+                    }
+                }
+            }
+
+            // entry-record-delete needs the bound row's record id as a real
+            // FIELD (both renderers read `record_id` off the section to call
+            // the delete API), not just as an interpolation token.
+            if ($styleName === StyleNames::STYLE_ENTRY_RECORD_DELETE && !isset($section['record_id'])) {
+                $recordId = $sectionData['record_id'] ?? null;
+                if (is_int($recordId) || is_float($recordId) || (is_string($recordId) && $recordId !== '')) {
+                    $section['record_id'] = ['content' => (string) $recordId, 'meta' => null];
+                }
+            }
+
             // Step 5: CRITICAL - Interpolate ALL content fields using combined data
             // Now we have both parent data and newly retrieved data available
             $this->applyOptimizedInterpolationPass($section, $sectionData);
@@ -1063,11 +1091,18 @@ class PageService extends BaseService
                     $section['condition_debug'] = $conditionResult['debug'];
                 }
 
-                // Step 8: Process children recursively with inherited data
+                // Step 8: Process children recursively with inherited data.
+                // entry-list is data-bound: its children are a TEMPLATE cloned
+                // once per bound row (the web/mobile renderers just render the
+                // already-cloned children). No rows -> no children.
                 if (isset($section['children']) && is_array($section['children'])) {
                     /** @var array<int, array<string, mixed>> $children */
                     $children = $section['children'];
-                    $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
+                    if ($isEntryList) {
+                        $section['children'] = $this->hydrateEntryListChildren($children, $entryRows, $sectionData, $userId, $languageId);
+                    } else {
+                        $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
+                    }
                 }
 
                 // Step 9: `retrieved_data` is internal scaffolding for the
@@ -1100,6 +1135,106 @@ class PageService extends BaseService
         }
 
         return $processedSections;
+    }
+
+    /**
+     * Resolve the bound rows for an entry-list / entry-record section from its
+     * FIRST `data_config` entry. The generic scope retrieval (Step 3) collapses
+     * multi-row results into comma-joined strings (`processAll`, for
+     * `{{scope.field}}` tokens), so entry binding re-retrieves the same config
+     * in the row-preserving `JSON` mode — the repository layer is cached, so
+     * this does not hit the database twice. `retrieve: first|last` keeps its
+     * single-record semantics and is normalised to a one-row list. Row keys
+     * are remapped from the immutable storage `field_key` (`section_<id>`)
+     * back to the current human input names, so the wizard/bundle top-level
+     * tokens ({{name}}, {{role}}) resolve.
+     *
+     * @param array<string, mixed> $section
+     * @param array<array-key, mixed> $parentData Parent data for config interpolation.
+     * @return list<array<string, mixed>>
+     */
+    private function resolveEntryRows(array $section, array $parentData, int $languageId): array
+    {
+        $dataConfig = is_array($section['data_config'] ?? null) ? $section['data_config'] : [];
+        $firstConfig = null;
+        foreach ($dataConfig as $config) {
+            if (is_array($config)) {
+                $firstConfig = $this->toConfigArray($config);
+                break;
+            }
+        }
+        if ($firstConfig === null) {
+            return [];
+        }
+
+        $retrieve = isset($firstConfig['retrieve']) ? $this->asString($firstConfig['retrieve']) : 'all';
+        if ($retrieve !== 'first' && $retrieve !== 'last') {
+            $firstConfig['retrieve'] = 'JSON';
+        }
+
+        try {
+            // Same interpolation the scope retrieval applies (filters like
+            // "record_id = {{route.record_id}}" must resolve identically).
+            $interpolatedConfig = $this->interpolateDataConfig($firstConfig, $parentData);
+            $rowsData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        if ($rowsData === []) {
+            return [];
+        }
+
+        // JSON mode returns a list of records; first/last the record itself.
+        $rows = array_is_list($rowsData) ? $rowsData : [$rowsData];
+
+        $tableName = isset($firstConfig['table']) ? $this->asString($firstConfig['table']) : '';
+        if ($tableName !== '') {
+            $dataTable = $this->dataService->getDataTableByName($tableName);
+            if ($dataTable !== null) {
+                $rows = $this->dataService->remapEntriesToInputNames((int) $dataTable->getId(), $rows);
+            }
+        }
+
+        $normalized = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $rowArray = [];
+                foreach ($row as $key => $value) {
+                    $rowArray[(string) $key] = $value;
+                }
+                $normalized[] = $rowArray;
+            }
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Clone the entry-list child template once per bound row and process each
+     * clone with the row's columns flattened into the interpolation data (so
+     * `{{name}}` / `{{record_id}}` resolve per row). The inherited `route`
+     * scope is re-pinned after the flatten (same rule as Step 4b).
+     *
+     * @param array<int, array<string, mixed>> $templateChildren
+     * @param list<array<string, mixed>> $rows
+     * @param array<array-key, mixed> $sectionData
+     * @return list<array<string, mixed>>
+     */
+    private function hydrateEntryListChildren(array $templateChildren, array $rows, array $sectionData, ?int $userId, int $languageId): array
+    {
+        $hydrated = [];
+        foreach ($rows as $row) {
+            $rowData = array_merge($sectionData, $row);
+            if (isset($sectionData['route'])) {
+                $rowData['route'] = $sectionData['route'];
+            }
+            foreach ($this->processSectionsRecursively($templateChildren, $rowData, $userId, $languageId) as $child) {
+                $hydrated[] = $child;
+            }
+        }
+
+        return $hydrated;
     }
 
     /**

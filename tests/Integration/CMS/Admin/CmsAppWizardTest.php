@@ -178,10 +178,41 @@ final class CmsAppWizardTest extends QaWebTestCase
      */
     private function sectionsBody(int $pageId, string $token): string
     {
+        // The page sections list is structural (style names, hierarchy); the
+        // scaffolded FIELD values live behind the per-section detail endpoint,
+        // so fetch every section's detail and concatenate all bodies.
         $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $pageId), null, $token);
-        $this->assertEnvelopeSuccess($resp);
+        $data = $this->assertEnvelopeSuccess($resp);
+        $body = (string) $this->client->getResponse()->getContent();
 
-        return (string) $this->client->getResponse()->getContent();
+        $sectionIds = [];
+        $collect = static function (array $sections) use (&$collect, &$sectionIds): void {
+            foreach ($sections as $section) {
+                if (!is_array($section)) {
+                    continue;
+                }
+                if (is_int($section['id'] ?? null)) {
+                    $sectionIds[] = $section['id'];
+                }
+                if (is_array($section['children'] ?? null)) {
+                    $collect($section['children']);
+                }
+            }
+        };
+        $collect(is_array($data['sections'] ?? null) ? $data['sections'] : []);
+
+        foreach ($sectionIds as $sectionId) {
+            $detail = $this->jsonRequest(
+                'GET',
+                sprintf('/cms-api/v1/admin/pages/%d/sections/%d', $pageId, $sectionId),
+                null,
+                $token
+            );
+            $this->assertEnvelopeSuccess($detail);
+            $body .= (string) $this->client->getResponse()->getContent();
+        }
+
+        return $body;
     }
 
     /**

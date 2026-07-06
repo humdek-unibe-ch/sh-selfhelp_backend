@@ -107,9 +107,12 @@ class FormValidationService extends BaseService
         // Ensure section belongs to the page
         $this->validateSectionBelongsToPage($pageId, $sectionId);
 
-        // Ensure section style is the display/input form type
+        // Ensure section style is a delete-capable type: the show-user-input
+        // display form or the entry-record-delete trigger inside an entry
+        // subtree (the backend hydrates its record_id per bound row).
         $styleName = $section->getStyle()?->getName();
-        if ($styleName !== StyleNames::STYLE_SHOW_USER_INPUT) {
+        $deleteCapableStyles = [StyleNames::STYLE_SHOW_USER_INPUT, StyleNames::STYLE_ENTRY_RECORD_DELETE];
+        if (!in_array($styleName, $deleteCapableStyles, true)) {
             throw new ServiceException(
                 'Invalid section type for delete operation',
                 Response::HTTP_BAD_REQUEST

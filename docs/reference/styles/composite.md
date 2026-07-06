@@ -145,11 +145,11 @@ the matching item children inside it.
 
 **Administrators.** Show a collection of records (e.g. team members, journal entries). Bind it to a data table via the section's data config; lay out how each row looks using child sections, which interpolate the row's fields with `{{field_name}}`. To make a list/detail pattern, give each row a link to its detail page using `/<base>/{{record_id}}`. The **Create list + detail pages** wizard (Admin → Pages) scaffolds this for you — see [../../cookbook/cms-in-cms-list-detail.md](../../cookbook/cms-in-cms-list-detail.md).
 
-**Developers.** Pure holder driven by `data_config` (scope `entries`); renders its child template once per backend-provided row. Carries no presentational fields of its own. Pairs with `entry-record` / `entry-record-delete`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+**Developers.** Pure holder driven by `data_config` (scope `entries`); the **backend** clones the child template once per bound row during page render (`PageService::processSectionsRecursively`, Step 8) and flattens each row's columns into top-level interpolation tokens, so `{{name}}` / `{{record_id}}` resolve per clone (row keys are remapped from the immutable `section_<id>` field keys back to the current input names). The web/mobile renderers just render the already-cloned children. No rows → no children. Carries no presentational fields of its own. Pairs with `entry-record` / `entry-record-delete`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
 
 **Distinctive fields.** None beyond the common fields. Data binding via `data_config` (see [_conventions.md](./_conventions.md)).
 
-**Children.** Yes (the per-entry template).
+**Children.** Yes (the per-entry template, cloned per row by the backend).
 
 ---
 
@@ -159,7 +159,7 @@ the matching item children inside it.
 
 **Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`), filter the holder to the URL's record by setting the data config filter to `record_id = {{route.record_id}}`.
 
-**Developers.** Pure holder driven by `data_config` (scope `record`, `retrieve: first`); exposes one record's fields to its children. The `{{route.*}}` params come from the matched public route (see [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md)). Carries no presentational fields of its own.
+**Developers.** Pure holder driven by `data_config` (scope `record`, `retrieve: first`); the **backend** flattens the bound record's columns into top-level interpolation tokens for the section and its children (`{{name}}`, `{{record_id}}`), remapping the immutable `section_<id>` field keys back to input names. Bare filters (`record_id = {{route.record_id}}` — the documented authoring form) are glued to the query with `AND` automatically. The `{{route.*}}` params come from the matched public route (see [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md)). Carries no presentational fields of its own.
 
 **Distinctive fields.** None beyond the common fields; binding via `data_config`.
 
@@ -173,9 +173,9 @@ the matching item children inside it.
 
 **Administrators.** Add inside an entry template to let users delete that entry (with confirmation).
 
-**Developers.** Renders a delete action scoped to the current entry/record context.
+**Developers.** Renders a delete action scoped to the current entry/record context. The backend hydrates `record_id` into the section during entry rendering; both renderers read the button text from `label_delete` (the generic `label` field is not linked to this style). The delete call goes to `DELETE /cms-api/v1/forms/delete`, whose validation accepts `entry-record-delete` (and `show-user-input`) sections — ACL `delete` on the page plus the own-entries/data-table permission rules apply.
 
-**Distinctive fields.** None beyond the common fields.
+**Distinctive fields.** `label_delete` (button text, default "Delete"); `confirmation_title` / `confirmation_message` / `confirmation_continue` / `confirmation_cancel` (confirmation dialog copy); `own_entries_only`.
 
 **Children.** No.
 

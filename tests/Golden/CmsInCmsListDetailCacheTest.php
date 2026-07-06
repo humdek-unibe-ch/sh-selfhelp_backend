@@ -108,7 +108,9 @@ final class CmsInCmsListDetailCacheTest extends QaWebTestCase
      */
     private function extractRecordIds(string $body): array
     {
-        if (preg_match_all('#(?:/team-members/|record_id"\s*:\s*"?)(\d+)#', $body, $matches) === false) {
+        // The resolve body is raw JSON, so `/` appears escaped (`\/`): match
+        // hydrated detail links (`\/team-members\/34`) or raw record_id fields.
+        if (preg_match_all('#(?:\\\\?/team-members\\\\?/|record_id"\s*:\s*"?)(\d+)#', $body, $matches) === false) {
             return [];
         }
 

@@ -337,6 +337,48 @@ final class FormControllerTest extends QaWebTestCase
         $this->assertEnvelope400($envelope);
     }
 
+    public function testEntryRecordDeleteSectionDeletesOwnRecord(): void
+    {
+        // Regression: the CMS-in-CMS entry subtree renders per-row delete
+        // buttons through the `entry-record-delete` style; the delete endpoint
+        // must accept that style (previously only show-user-input passed).
+        [$page, $formSection] = $this->pages->createFormPage('qa_form_entry_del', openAccess: false);
+        $deleteSection = $this->pages->createSection('qa_form_entry_del_btn', 'entry-record-delete');
+        $this->pages->linkSectionToPage($page, $deleteSection, 20);
+        $this->pages->grantGroupAcl(
+            $page,
+            $this->subjectGroup(),
+            select: true,
+            insert: true,
+            update: false,
+            delete: true,
+            affectedUserIds: [$this->qaUserId()],
+        );
+
+        $token = $this->loginAsQaUser();
+        $submit = $this->jsonRequest('POST', self::SUBMIT, [
+            'page_id' => (int) $page->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => ['qa_answer' => 'row to delete'],
+        ], $token);
+        $recordId = $this->assertEnvelopeSuccess($submit)['record_id'] ?? null;
+        self::assertIsInt($recordId);
+
+        $envelope = $this->jsonRequest('DELETE', self::DELETE, [
+            'record_id' => $recordId,
+            'page_id' => (int) $page->getId(),
+            'section_id' => (int) $deleteSection->getId(),
+        ], $token);
+        $this->assertEnvelopeSuccess($envelope);
+
+        // Public side effect: the row is tombstoned with the `deleted` trigger.
+        $row = $this->em->getRepository(DataRow::class)->find($recordId);
+        self::assertInstanceOf(DataRow::class, $row);
+        $deletedTrigger = $this->service(LookupService::class)
+            ->getLookupIdByValue('actionTriggerTypes', LookupService::ACTION_TRIGGER_TYPES_DELETED);
+        self::assertSame($deletedTrigger, $row->getIdActionTriggerTypes());
+    }
+
     // -- helpers ------------------------------------------------------------
 
     private function subjectGroup(): Group
