@@ -385,6 +385,16 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess($response, Response::HTTP_OK);
         self::assertIsArray($data['imported_pages'] ?? null);
         self::assertCount(20, $data['imported_pages']);
+        self::assertIsArray($data['imported_menus'] ?? null);
+        self::assertEqualsCanonicalizing(
+            [
+                LookupService::NAVIGATION_MENU_KEY_WEB_HEADER,
+                LookupService::NAVIGATION_MENU_KEY_WEB_FOOTER,
+                LookupService::NAVIGATION_MENU_KEY_MOBILE_DRAWER,
+                LookupService::NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS,
+            ],
+            $data['imported_menus'],
+        );
 
         /** @var list<array{keyword: string, page_id: int}> $importedPages */
         $importedPages = [];
@@ -396,6 +406,63 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
             self::assertIsString($keyword);
             $importedPages[] = ['keyword' => $keyword, 'page_id' => $pageId];
         }
+
+        // Regression (issue: "imported pages have no ACL access"): every embedded
+        // page must come out of the import with full admin-group ACL by default.
+        /** @var EntityManagerInterface $em */
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $adminGroup = $em->getRepository(\App\Entity\Group::class)->findOneBy(['name' => 'admin']);
+        self::assertNotNull($adminGroup);
+        foreach ($importedPages as $importedPage) {
+            $acl = $em->getRepository(PageAclGroup::class)->findOneBy([
+                'page' => $importedPage['page_id'],
+                'group' => $adminGroup,
+            ]);
+            self::assertInstanceOf(PageAclGroup::class, $acl, 'Missing admin ACL for ' . $importedPage['keyword']);
+            self::assertTrue($acl->isAclSelect(), 'Admin should read ' . $importedPage['keyword']);
+            self::assertTrue($acl->isAclInsert(), 'Admin should insert ' . $importedPage['keyword']);
+            self::assertTrue($acl->isAclUpdate(), 'Admin should update ' . $importedPage['keyword']);
+            self::assertTrue($acl->isAclDelete(), 'Admin should delete ' . $importedPage['keyword']);
+        }
+
+        // Regression (issue: "pages were not wrapped in the navigation"): the
+        // public navigation payload — the exact payload web + mobile consume —
+        // must contain the imported pages inside the imported menu structure.
+        $navEnvelope = $this->jsonRequest('GET', '/cms-api/v1/navigation', null, $admin);
+        $navData = $this->assertEnvelopeSuccess($navEnvelope, Response::HTTP_OK);
+        $menus = $navData['menus'] ?? null;
+        self::assertIsArray($menus);
+
+        $headerMenu = $menus[LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
+        self::assertIsArray($headerMenu);
+        self::assertIsArray($headerMenu['items'] ?? null);
+        $headerKeywords = $this->collectPageKeywordsFromPayloadItems($headerMenu['items']);
+        self::assertContains($keywordPrefix . 'demo-home', $headerKeywords);
+        // The "Resources" main-row group carries its pages as dropdown children.
+        self::assertContains($keywordPrefix . 'demo-resources', $headerKeywords);
+        self::assertContains($keywordPrefix . 'demo-blog', $headerKeywords);
+
+        $footerMenu = $menus[LookupService::NAVIGATION_MENU_KEY_WEB_FOOTER] ?? null;
+        self::assertIsArray($footerMenu);
+        self::assertIsArray($footerMenu['items'] ?? null);
+        $footerExternalUrls = $this->collectExternalUrlsFromPayloadItems($footerMenu['items']);
+        self::assertContains('https://status.example.org', $footerExternalUrls);
+
+        // Bottom tabs: the "More" group holder tab keeps FAQ + Contact as
+        // children within the 5-tab limit.
+        $tabsMenu = $menus[LookupService::NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS] ?? null;
+        self::assertIsArray($tabsMenu);
+        self::assertIsArray($tabsMenu['items'] ?? null);
+        $holderChildren = [];
+        foreach ($tabsMenu['items'] as $tabItem) {
+            if (is_array($tabItem) && ($tabItem['item_type'] ?? null) === 'group') {
+                $holderChildren = $this->collectPageKeywordsFromPayloadItems(
+                    is_array($tabItem['children'] ?? null) ? $tabItem['children'] : [],
+                );
+            }
+        }
+        self::assertContains($keywordPrefix . 'demo-faq', $holderChildren);
+        self::assertContains($keywordPrefix . 'demo-contact', $holderChildren);
 
         usort(
             $importedPages,
@@ -492,6 +559,190 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         self::assertNull($pageRepo->findOneBy(['keyword' => $pageKeyword]));
     }
 
+    public function testLegacyV1BundleIsRejectedWithClearError(): void
+    {
+        /** @var NavigationExportImportService $navExportImport */
+        $navExportImport = self::getContainer()->get(NavigationExportImportService::class);
+
+        $legacyBundle = [
+            'format' => NavigationExportImportService::BUNDLE_FORMAT,
+            'version' => '1.0',
+            'menus' => [
+                LookupService::NAVIGATION_MENU_KEY_WEB_HEADER => ['items' => []],
+            ],
+        ];
+
+        $validation = $navExportImport->validateImport($legacyBundle, []);
+        self::assertFalse($validation['valid']);
+        $versionIssues = array_values(array_filter(
+            $validation['issues'],
+            static fn (array $issue): bool => $issue['code'] === 'unsupported_version',
+        ));
+        self::assertCount(1, $versionIssues);
+        self::assertStringContainsString(
+            'only "2.0" bundles can be imported',
+            $versionIssues[0]['message'],
+        );
+
+        $this->expectException(ServiceException::class);
+        $navExportImport->importBundle($legacyBundle, []);
+    }
+
+    public function testTopLayerRoundTripsThroughExportImport(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+
+        $created = $this->jsonRequest(
+            'POST',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_HEADER . '/items',
+            [
+                'item_type' => 'external_url',
+                'external_url' => 'https://example.test/qa-layer-round-trip',
+                'label' => 'QA layer round trip',
+                'layer' => 'top',
+                'children_nav' => 'pills',
+            ],
+            $admin,
+        );
+        $this->assertEnvelopeSuccess($created, Response::HTTP_CREATED);
+
+        // Menu-level branch presentation must survive the round trip too.
+        $menuUpdate = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_HEADER,
+            ['children_nav' => 'none', 'show_breadcrumbs' => false],
+            $admin,
+        );
+        $this->assertEnvelopeSuccess($menuUpdate);
+
+        /** @var NavigationExportImportService $navExportImport */
+        $navExportImport = self::getContainer()->get(NavigationExportImportService::class);
+        $bundle = $navExportImport->exportBundle([
+            'mode' => NavigationExportImportService::EXPORT_MODE_FULL_SNAPSHOT,
+            'menu_keys' => [LookupService::NAVIGATION_MENU_KEY_WEB_HEADER],
+        ]);
+
+        $menus = $bundle['menus'];
+        self::assertIsArray($menus);
+        $header = $menus[LookupService::NAVIGATION_MENU_KEY_WEB_HEADER] ?? null;
+        self::assertIsArray($header);
+        self::assertSame('none', $header['children_nav'] ?? null);
+        self::assertFalse($header['show_breadcrumbs'] ?? null);
+        $items = $header['items'] ?? null;
+        self::assertIsArray($items);
+        $exportedTop = array_values(array_filter(
+            $items,
+            static fn (mixed $item): bool => is_array($item)
+                && ($item['external_url'] ?? null) === 'https://example.test/qa-layer-round-trip',
+        ));
+        self::assertCount(1, $exportedTop);
+        self::assertSame('top', $exportedTop[0]['layer']);
+        self::assertSame('pills', $exportedTop[0]['children_nav']);
+
+        // Reset the menu default so the import has to restore it.
+        $menuReset = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_HEADER,
+            ['children_nav' => null, 'show_breadcrumbs' => true],
+            $admin,
+        );
+        $this->assertEnvelopeSuccess($menuReset);
+
+        // Re-acquire the service after the HTTP reset so its EntityManager
+        // sees the reset row (client requests reboot the kernel container).
+        /** @var NavigationExportImportService $navExportImport */
+        $navExportImport = self::getContainer()->get(NavigationExportImportService::class);
+        $navExportImport->importBundle($bundle, [
+            'menu_policies' => [
+                LookupService::NAVIGATION_MENU_KEY_WEB_HEADER => NavigationExportImportService::POLICY_REPLACE,
+            ],
+        ]);
+
+        /** @var \Doctrine\ORM\EntityManagerInterface $em */
+        $em = self::getContainer()->get(\Doctrine\ORM\EntityManagerInterface::class);
+        $em->clear();
+
+        /** @var NavigationMenuItemRepository $itemRepo */
+        $itemRepo = self::getContainer()->get(NavigationMenuItemRepository::class);
+        $reimported = $itemRepo->findOneBy(['externalUrl' => 'https://example.test/qa-layer-round-trip']);
+        self::assertNotNull($reimported);
+        self::assertSame('top', $reimported->getLayer());
+        self::assertSame('pills', $reimported->getChildrenNav()?->getLookupCode());
+
+        $menuAfter = $reimported->getNavigationMenu();
+        self::assertNotNull($menuAfter);
+        self::assertSame('none', $menuAfter->getChildrenNav()?->getLookupCode());
+        self::assertFalse($menuAfter->isShowBreadcrumbs());
+    }
+
+    public function testExportEmbedsAncestorChainOfMenuReferencedPages(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+
+        // Structural parent page that is NOT linked from any menu item.
+        $parent = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => self::PARENT_KEYWORD,
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/' . self::PARENT_KEYWORD,
+        ], $admin);
+        $parentData = $this->assertEnvelopeSuccess($parent, Response::HTTP_CREATED);
+        $parentId = $parentData['id'] ?? null;
+        self::assertIsInt($parentId);
+
+        $child = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => self::CHILD_KEYWORD,
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/' . self::PARENT_KEYWORD . '/' . self::CHILD_KEYWORD,
+            'parent' => $parentId,
+        ], $admin);
+        $childData = $this->assertEnvelopeSuccess($child, Response::HTTP_CREATED);
+        $childId = $childData['id'] ?? null;
+        self::assertIsInt($childId);
+
+        // Only the CHILD goes into the menu; the parent is menu-invisible.
+        $created = $this->jsonRequest(
+            'POST',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_HEADER . '/items',
+            ['item_type' => 'page', 'page_id' => $childId],
+            $admin,
+        );
+        $this->assertEnvelopeSuccess($created, Response::HTTP_CREATED);
+
+        /** @var NavigationExportImportService $navExportImport */
+        $navExportImport = self::getContainer()->get(NavigationExportImportService::class);
+        $bundle = $navExportImport->exportBundle([
+            'mode' => NavigationExportImportService::EXPORT_MODE_BRANCH,
+            'page_keywords' => [self::CHILD_KEYWORD],
+            'include_pages' => true,
+            'menu_keys' => [LookupService::NAVIGATION_MENU_KEY_WEB_HEADER],
+        ]);
+
+        $pages = $bundle['pages'] ?? null;
+        self::assertIsArray($pages);
+        $keywords = array_values(array_filter(array_map(
+            static fn (mixed $page): ?string => is_array($page) && is_string($page['keyword'] ?? null) ? $page['keyword'] : null,
+            $pages,
+        )));
+        self::assertContains(self::CHILD_KEYWORD, $keywords);
+        self::assertContains(
+            self::PARENT_KEYWORD,
+            $keywords,
+            'Menu-invisible ancestor pages must be embedded so the exported bundle is self-contained.',
+        );
+
+        // Re-importing the export under a fresh prefix must validate cleanly
+        // (before the ancestor embedding this failed with missing_parent).
+        $validation = $navExportImport->validateImport($bundle, [
+            'keyword_prefix' => 'qa_rt_',
+            'route_prefix' => '/qa_rt',
+        ]);
+        self::assertTrue($validation['valid'], json_encode($validation['issues'], JSON_THROW_ON_ERROR));
+    }
+
     public function testPageBundleStillOmitsNavigation(): void
     {
         $admin = $this->loginAsQaAdmin();
@@ -513,6 +764,62 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         self::assertArrayNotHasKey('menus', $bundle);
 
         $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $pageId, null, $admin);
+    }
+
+    /**
+     * Collect every page keyword reachable in a public navigation payload item
+     * tree (roots + nested children).
+     *
+     * @param array<array-key, mixed> $items
+     *
+     * @return list<string>
+     */
+    private function collectPageKeywordsFromPayloadItems(array $items): array
+    {
+        $keywords = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $page = $item['page'] ?? null;
+            if (is_array($page) && is_string($page['keyword'] ?? null) && $page['keyword'] !== '') {
+                $keywords[] = $page['keyword'];
+            }
+            $children = $item['children'] ?? null;
+            if (is_array($children) && $children !== []) {
+                foreach ($this->collectPageKeywordsFromPayloadItems($children) as $childKeyword) {
+                    $keywords[] = $childKeyword;
+                }
+            }
+        }
+
+        return $keywords;
+    }
+
+    /**
+     * @param array<array-key, mixed> $items
+     *
+     * @return list<string>
+     */
+    private function collectExternalUrlsFromPayloadItems(array $items): array
+    {
+        $urls = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            if (is_string($item['external_url'] ?? null) && $item['external_url'] !== '') {
+                $urls[] = $item['external_url'];
+            }
+            $children = $item['children'] ?? null;
+            if (is_array($children) && $children !== []) {
+                foreach ($this->collectExternalUrlsFromPayloadItems($children) as $childUrl) {
+                    $urls[] = $childUrl;
+                }
+            }
+        }
+
+        return $urls;
     }
 
     private function findMenuItemIdForPage(int $pageId): int

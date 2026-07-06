@@ -1,10 +1,10 @@
 {
     "format": "selfhelp/navigation-bundle",
-    "version": "1.0",
+    "version": "2.0",
     "title": "Menu demo mini-site",
-    "description": "20-page realistic demo with all four navigation menus wired (dropdown header, grouped footer, mobile drawer, bottom tabs).",
+    "description": "20-page realistic demo with all four navigation menus wired: double-dropdown header with top-row utility links and a main-row Resources group, grouped footer columns with a standalone link and an external status link, nested mobile drawer, and bottom tabs with a segment child plus a More holder tab (first-child redirect).",
     "min_core_version": "0.1.33",
-    "exported_at": "2026-07-02T16:51:26+00:00",
+    "exported_at": "2026-07-06T08:00:00+00:00",
     "core_version": "0.1.33",
     "export_mode": "full_snapshot",
     "import_hints": {
@@ -13,11 +13,43 @@
     },
     "menus": {
         "web_header": {
-            "preset": "dropdown",
+            "preset": "double-dropdown",
             "max_depth": 2,
             "item_limit": null,
-            "config": [],
             "items": [
+                {
+                    "ref": "wh-top-careers",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-careers",
+                    "icon": "IconUsers",
+                    "layer": "top"
+                },
+                {
+                    "ref": "wh-top-university",
+                    "parent_ref": null,
+                    "item_type": "external_url",
+                    "position": 20,
+                    "is_active": true,
+                    "external_url": "https://www.example.org",
+                    "icon": "IconExternalLink",
+                    "layer": "top",
+                    "label": "University",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "University",
+                            "aria_label": "University website (external)"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Universität",
+                            "aria_label": "Universitätswebseite (extern)"
+                        }
+                    ]
+                },
                 {
                     "ref": "wh-home",
                     "parent_ref": null,
@@ -109,6 +141,44 @@
                     "icon": "IconNews"
                 },
                 {
+                    "ref": "wh-resources",
+                    "parent_ref": null,
+                    "item_type": "group",
+                    "position": 55,
+                    "is_active": true,
+                    "icon": "IconBook",
+                    "label": "Resources",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Resources",
+                            "description": "Guides and updates",
+                            "aria_label": "Resources menu"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Ressourcen",
+                            "description": "Anleitungen und Neuigkeiten"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-res-overview",
+                    "parent_ref": "wh-resources",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-resources"
+                },
+                {
+                    "ref": "wh-res-blog",
+                    "parent_ref": "wh-resources",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-blog"
+                },
+                {
                     "ref": "wh-contact",
                     "parent_ref": null,
                     "item_type": "page",
@@ -120,12 +190,9 @@
             ]
         },
         "web_footer": {
-            "preset": null,
+            "preset": "columns",
             "max_depth": 2,
             "item_limit": null,
-            "config": {
-                "footer_layout": "columns"
-            },
             "items": [
                 {
                     "ref": "wf-company",
@@ -138,7 +205,8 @@
                         {
                             "locale": "en-GB",
                             "label": "Company",
-                            "description": "About our organisation"
+                            "description": "About our organisation",
+                            "aria_label": "Company footer links"
                         },
                         {
                             "locale": "de-CH",
@@ -240,6 +308,35 @@
                     "position": 20,
                     "is_active": true,
                     "page_keyword": "demo-blog"
+                },
+                {
+                    "ref": "wf-partners",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 40,
+                    "is_active": true,
+                    "page_keyword": "demo-partners"
+                },
+                {
+                    "ref": "wf-status",
+                    "parent_ref": null,
+                    "item_type": "external_url",
+                    "position": 50,
+                    "is_active": true,
+                    "external_url": "https://status.example.org",
+                    "label": "Service status",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Service status",
+                            "aria_label": "Service status page (external)"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Systemstatus",
+                            "aria_label": "Systemstatus-Seite (extern)"
+                        }
+                    ]
                 }
             ]
         },
@@ -247,7 +344,6 @@
             "preset": null,
             "max_depth": 2,
             "item_limit": null,
-            "config": [],
             "items": [
                 {
                     "ref": "md-home",
@@ -277,6 +373,15 @@
                     "mobile_icon": "Users"
                 },
                 {
+                    "ref": "md-training",
+                    "parent_ref": "md-services",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training",
+                    "mobile_icon": "GraduationCap"
+                },
+                {
                     "ref": "md-news",
                     "parent_ref": null,
                     "item_type": "page",
@@ -300,7 +405,6 @@
             "preset": null,
             "max_depth": 2,
             "item_limit": 5,
-            "config": [],
             "items": [
                 {
                     "ref": "mb-home",
@@ -321,6 +425,15 @@
                     "mobile_icon": "Briefcase"
                 },
                 {
+                    "ref": "mb-consulting",
+                    "parent_ref": "mb-services",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-consulting",
+                    "mobile_icon": "Users"
+                },
+                {
                     "ref": "mb-news",
                     "parent_ref": null,
                     "item_type": "page",
@@ -330,19 +443,40 @@
                     "mobile_icon": "Bell"
                 },
                 {
-                    "ref": "mb-faq",
+                    "ref": "mb-more",
                     "parent_ref": null,
-                    "item_type": "page",
+                    "item_type": "group",
                     "position": 40,
+                    "is_active": true,
+                    "mobile_icon": "Menu",
+                    "label": "More",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "More",
+                            "aria_label": "More pages"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Mehr",
+                            "aria_label": "Weitere Seiten"
+                        }
+                    ]
+                },
+                {
+                    "ref": "mb-faq",
+                    "parent_ref": "mb-more",
+                    "item_type": "page",
+                    "position": 10,
                     "is_active": true,
                     "page_keyword": "demo-faq",
                     "mobile_icon": "CircleQuestionMark"
                 },
                 {
                     "ref": "mb-contact",
-                    "parent_ref": null,
+                    "parent_ref": "mb-more",
                     "item_type": "page",
-                    "position": 50,
+                    "position": 20,
                     "is_active": true,
                     "page_keyword": "demo-contact",
                     "mobile_icon": "Mail"

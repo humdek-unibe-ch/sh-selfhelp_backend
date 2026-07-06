@@ -16,6 +16,7 @@ use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
 use App\Routing\RouteConflictValidator;
+use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
@@ -74,6 +75,7 @@ class PageExportImportService extends BaseService
         private readonly DataTableService $dataTableService,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly SystemInstanceService $instance,
+        private readonly CacheService $cache,
     ) {
     }
 
@@ -995,6 +997,19 @@ class PageExportImportService extends BaseService
             $this->restoreDataTables($bundle, $sourceNameToNewId, $importData);
 
             $this->entityManager->commit();
+
+            // Re-invalidate AFTER the commit. createPage/addGroupAcl invalidated
+            // the page + permission lists while the transaction was still open,
+            // so a concurrent request could re-cache the pre-import state; a
+            // post-commit bump guarantees fresh lists (admin pages, per-user
+            // accessible pages, per-user ACL snapshots) actually include the
+            // imported pages.
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_PAGES)
+                ->invalidateAllListsInCategory();
+            $this->cache
+                ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+                ->invalidateAllListsInCategory();
 
             return ['created' => $createdResult];
         } catch (\Throwable $e) {

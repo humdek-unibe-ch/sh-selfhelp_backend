@@ -14,6 +14,7 @@ use App\Entity\NavigationMenuItemTranslation;
 use App\Entity\NavigationSettings;
 use App\Entity\Page;
 use App\Exception\ServiceException;
+use App\Navigation\NavigationHeaderLayerSupport;
 use App\Navigation\NavigationMenuDepthSupport;
 use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Repository\LanguageRepository;
@@ -22,6 +23,7 @@ use App\Repository\NavigationMenuItemTranslationRepository;
 use App\Repository\NavigationMenuRepository;
 use App\Repository\NavigationSettingsRepository;
 use App\Repository\PageRepository;
+use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\NavigationMenuService;
 use App\Service\Core\BaseService;
 use App\Service\Core\LookupService;
@@ -32,16 +34,18 @@ use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Portable navigation bundle export/import ({@see self::BUNDLE_FORMAT} v1.0).
+ * Portable navigation bundle export/import ({@see self::BUNDLE_FORMAT} v2.0).
  *
  * Page bundles remain content-only; navigation membership travels in a separate
  * bundle that references pages by keyword and rebuilds menu trees with stable
- * {@code ref}/{@code parent_ref} links.
+ * {@code ref}/{@code parent_ref} links. v2.0 is the only supported version:
+ * menus carry `preset`/`max_depth`/`item_limit` (no `config`), header root
+ * items may carry `layer: "top"`, and validation is strict.
  */
 class NavigationExportImportService extends BaseService
 {
     public const BUNDLE_FORMAT = 'selfhelp/navigation-bundle';
-    public const BUNDLE_VERSION = '1.0';
+    public const BUNDLE_VERSION = '2.0';
     public const MIN_CORE_VERSION = '0.1.33';
 
     public const EXPORT_MODE_FULL_SNAPSHOT = 'full_snapshot';
@@ -71,10 +75,12 @@ class NavigationExportImportService extends BaseService
         private readonly NavigationMenuService $navigationMenuService,
         private readonly NavigationMenuItemTranslationSupport $translationSupport,
         private readonly NavigationMenuDepthSupport $depthSupport,
+        private readonly NavigationHeaderLayerSupport $headerLayerSupport,
         private readonly PageExportImportService $pageExportImportService,
         private readonly AdminPageService $adminPageService,
         private readonly TransactionService $transactionService,
         private readonly SystemInstanceService $instance,
+        private readonly CacheService $cache,
     ) {
     }
 
@@ -132,6 +138,22 @@ class NavigationExportImportService extends BaseService
         }
 
         if ($includePages && $referencedPageIds !== []) {
+            // The bundle must be self-contained: menu-referenced pages may hang
+            // under structural parent pages that are not linked from any menu
+            // item (e.g. a "legal" holder). Embed the ancestor chain too,
+            // otherwise re-importing the export fails with missing_parent.
+            foreach (array_keys($referencedPageIds) as $pageId) {
+                $parent = $this->pageRepository->find($pageId)?->getParentPage();
+                while ($parent !== null) {
+                    $parentId = $parent->getId();
+                    if ($parentId === null || isset($referencedPageIds[$parentId])) {
+                        break;
+                    }
+                    $referencedPageIds[$parentId] = true;
+                    $parent = $parent->getParentPage();
+                }
+            }
+
             $bundle['pages'] = $this->pageExportImportService->exportBundle(
                 array_keys($referencedPageIds),
             )['pages'] ?? [];
@@ -246,7 +268,7 @@ class NavigationExportImportService extends BaseService
                 $createdItems += $result['created'];
                 $skippedItems += $result['skipped'];
                 $importedMenus[] = $menuKey;
-                $this->applyMenuConfigImport($menu, $menuPayload);
+                $this->applyMenuConfigImport($menu, $menuKey, $menuPayload);
             }
 
             $this->entityManager->flush();
@@ -262,9 +284,9 @@ class NavigationExportImportService extends BaseService
             }
 
             // Inner page/section services may have bumped caches before the outer
-            // transaction rolled back — refresh navigation caches so clients do
+            // transaction rolled back — refresh the affected caches so clients do
             // not briefly see pages that were never committed.
-            $this->navigationMenuService->invalidateNavigationCaches();
+            $this->invalidateImportAffectedCaches();
 
             if (!$this->entityManager->isOpen()) {
                 $this->managerRegistry->resetManager();
@@ -279,7 +301,13 @@ class NavigationExportImportService extends BaseService
             $connection->setNestTransactionsWithSavepoints($previousSavepoints);
         }
 
-        $this->navigationMenuService->invalidateNavigationCaches();
+        // Invalidate AFTER the commit. The nested createPage/addGroupAcl calls
+        // already invalidated these categories, but that happened inside the
+        // still-open transaction — any concurrent request could re-cache the
+        // pre-import pages/ACL lists before the data became visible, leaving
+        // imported pages hidden ("not in navigation") and seemingly without
+        // ACL access until the TTL expired.
+        $this->invalidateImportAffectedCaches();
 
         return [
             'imported_menus' => $importedMenus,
@@ -287,6 +315,22 @@ class NavigationExportImportService extends BaseService
             'skipped_items' => $skippedItems,
             'imported_pages' => $importedPages,
         ];
+    }
+
+    /**
+     * Refresh every cache family a bundle import can touch: navigation payloads,
+     * page lists (admin + per-user accessible pages), and permission lists
+     * (per-user ACL snapshots for embedded pages created with ACL rows).
+     */
+    private function invalidateImportAffectedCaches(): void
+    {
+        $this->navigationMenuService->invalidateNavigationCaches();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PAGES)
+            ->invalidateAllListsInCategory();
+        $this->cache
+            ->withCategory(CacheService::CATEGORY_PERMISSIONS)
+            ->invalidateAllListsInCategory();
     }
 
     /**
@@ -423,6 +467,8 @@ class NavigationExportImportService extends BaseService
                 'parent_ref' => $parentRef,
                 'item_type' => $typeCode,
                 'position' => $item->getPosition(),
+                'layer' => $item->getLayer(),
+                'children_nav' => $item->getChildrenNav()?->getLookupCode(),
                 'icon' => $item->getIcon(),
                 'mobile_icon' => $item->getMobileIcon(),
                 'label' => $item->getLabel(),
@@ -478,12 +524,18 @@ class NavigationExportImportService extends BaseService
      */
     private function exportMenuConfig(NavigationMenu $menu): array
     {
-        return [
+        $config = [
             'preset' => $menu->getPreset()?->getLookupCode(),
             'max_depth' => $this->depthSupport->normalizeMenuMaxDepth($menu->getMaxDepth()),
             'item_limit' => $menu->getItemLimit(),
-            'config' => $menu->getConfig(),
         ];
+
+        if ($menu->getPlatform()?->getLookupCode() === 'web') {
+            $config['children_nav'] = $menu->getChildrenNav()?->getLookupCode();
+            $config['show_breadcrumbs'] = $menu->isShowBreadcrumbs();
+        }
+
+        return $config;
     }
 
     /**
@@ -639,13 +691,6 @@ class NavigationExportImportService extends BaseService
         if ($type) {
             $item->setItemType($type);
         }
-        $manualSource = $this->lookupService->findByTypeAndCode(
-            LookupService::NAVIGATION_CHILD_SOURCES,
-            LookupService::NAVIGATION_CHILD_SOURCE_MANUAL,
-        );
-        if ($manualSource) {
-            $item->setChildSource($manualSource);
-        }
         $item->setPage($page);
         $this->applyImportedItemFields($item, $row, $parent);
         $this->entityManager->persist($item);
@@ -679,6 +724,22 @@ class NavigationExportImportService extends BaseService
         $item->setLabel(is_string($label) && $label !== '' ? $label : null);
         $externalUrl = $row['external_url'] ?? null;
         $item->setExternalUrl(is_string($externalUrl) && $externalUrl !== '' ? $externalUrl : null);
+
+        $menu = $item->getNavigationMenu();
+        $layer = $this->headerLayerSupport->normalizeLayer($row['layer'] ?? null);
+        if ($menu instanceof NavigationMenu) {
+            $this->headerLayerSupport->assertLayerAssignable($menu, $parent, $layer);
+        }
+        $item->setLayer($layer);
+
+        $childrenNav = $row['children_nav'] ?? null;
+        $item->setChildrenNav(
+            is_string($childrenNav)
+                && in_array($childrenNav, LookupService::NAVIGATION_CHILDREN_NAV_MODE_CODES, true)
+                && $menu?->getPlatform()?->getLookupCode() === 'web'
+                ? $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_CHILDREN_NAV_MODES, $childrenNav)
+                : null,
+        );
     }
 
     /**
@@ -714,7 +775,7 @@ class NavigationExportImportService extends BaseService
             ];
         }
 
-        $this->translationSupport->syncMenuItemTranslationsWithPresentation($item, [
+        $this->translationSupport->syncMenuItemTranslations($item, [
             'translations' => array_values($payloadTranslations),
         ], $this->resolveDefaultLanguageId());
     }
@@ -733,6 +794,16 @@ class NavigationExportImportService extends BaseService
     private function deleteAllMenuItems(NavigationMenu $menu): void
     {
         foreach ($this->navigationMenuItemRepository->findActiveByMenu($menu) as $item) {
+            // Remove translations through the ORM too: the DB FK cascade would
+            // delete the rows anyway, but translation entities hydrated earlier
+            // (e.g. by an export in the same request) would stay managed and
+            // point at the removed item, breaking the final import flush.
+            $itemId = $item->getId();
+            if ($itemId !== null) {
+                foreach ($this->navigationMenuItemTranslationRepository->findByMenuItemId($itemId) as $translation) {
+                    $this->entityManager->remove($translation);
+                }
+            }
             $this->entityManager->remove($item);
         }
         $this->entityManager->flush();
@@ -741,13 +812,16 @@ class NavigationExportImportService extends BaseService
     /**
      * @param array<string, mixed> $menuPayload
      */
-    private function applyMenuConfigImport(NavigationMenu $menu, array $menuPayload): void
+    private function applyMenuConfigImport(NavigationMenu $menu, string $menuKey, array $menuPayload): void
     {
         if (array_key_exists('preset', $menuPayload) && is_string($menuPayload['preset'])) {
-            $menu->setPreset($this->lookupService->findByTypeAndCode(
-                LookupService::NAVIGATION_MENU_PRESETS,
-                $menuPayload['preset'],
-            ));
+            $allowed = LookupService::allowedNavigationPresetsForMenuKey($menuKey);
+            if (in_array($menuPayload['preset'], $allowed, true)) {
+                $menu->setPreset($this->lookupService->findByTypeAndCode(
+                    LookupService::NAVIGATION_MENU_PRESETS,
+                    $menuPayload['preset'],
+                ));
+            }
         }
         if (array_key_exists('max_depth', $menuPayload)) {
             $maxDepth = is_int($menuPayload['max_depth']) ? $menuPayload['max_depth'] : null;
@@ -756,10 +830,19 @@ class NavigationExportImportService extends BaseService
         if (array_key_exists('item_limit', $menuPayload)) {
             $menu->setItemLimit(is_int($menuPayload['item_limit']) ? $menuPayload['item_limit'] : null);
         }
-        if (array_key_exists('config', $menuPayload) && is_array($menuPayload['config'])) {
-            /** @var array<string, mixed> $config */
-            $config = $menuPayload['config'];
-            $menu->setConfig($config);
+        if ($menu->getPlatform()?->getLookupCode() === 'web') {
+            if (array_key_exists('children_nav', $menuPayload)) {
+                $childrenNav = $menuPayload['children_nav'];
+                $menu->setChildrenNav(
+                    is_string($childrenNav)
+                        && in_array($childrenNav, LookupService::NAVIGATION_CHILDREN_NAV_MODE_CODES, true)
+                        ? $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_CHILDREN_NAV_MODES, $childrenNav)
+                        : null,
+                );
+            }
+            if (array_key_exists('show_breadcrumbs', $menuPayload)) {
+                $menu->setShowBreadcrumbs((bool) $menuPayload['show_breadcrumbs']);
+            }
         }
     }
 
@@ -818,7 +901,7 @@ class NavigationExportImportService extends BaseService
         }
         $version = $this->asString($bundle['version'] ?? '');
         if ($version !== self::BUNDLE_VERSION) {
-            $issues[] = $this->issue(self::ISSUE_WARNING, 'version_mismatch', sprintf('Bundle version is "%s"; importer supports "%s".', $version, self::BUNDLE_VERSION), null);
+            $issues[] = $this->issue(self::ISSUE_ERROR, 'unsupported_version', sprintf('Bundle version "%s" is not supported; only "%s" bundles can be imported. Re-export the bundle with the current version.', $version, self::BUNDLE_VERSION), null);
         }
     }
 
@@ -835,10 +918,25 @@ class NavigationExportImportService extends BaseService
         array $keywordToExists,
         array &$issues,
     ): void {
+        $presetValue = $menuPayload['preset'] ?? null;
+        if ($presetValue !== null) {
+            $allowed = LookupService::allowedNavigationPresetsForMenuKey($menuKey);
+            if (!is_string($presetValue) || !in_array($presetValue, $allowed, true)) {
+                $issues[] = $this->issue(self::ISSUE_ERROR, 'invalid_preset', sprintf(
+                    'Preset "%s" is not valid for menu "%s".%s',
+                    is_scalar($presetValue) ? (string) $presetValue : gettype($presetValue),
+                    $menuKey,
+                    $allowed === [] ? ' This menu does not support presets.' : sprintf(' Allowed: %s.', implode(', ', $allowed)),
+                ), $menuKey);
+            }
+        }
+
         $items = is_array($menuPayload['items'] ?? null) ? $menuPayload['items'] : [];
         $refs = [];
         /** @var array<string, ?string> $parentRefByRef */
         $parentRefByRef = [];
+        /** @var array<string, true> $topLayerRefs */
+        $topLayerRefs = [];
         foreach ($items as $row) {
             if (!is_array($row)) {
                 continue;
@@ -861,6 +959,19 @@ class NavigationExportImportService extends BaseService
             $depth = $this->computeBundleItemDepth($ref, $parentRefByRef);
             if ($depth > NavigationMenuDepthSupport::MAX_LEVEL) {
                 $issues[] = $this->issue(self::ISSUE_ERROR, 'menu_depth_exceeded', sprintf('Item "%s" exceeds the maximum menu depth of 2 levels.', $ref), $menuKey);
+            }
+
+            $layer = $row['layer'] ?? null;
+            if ($layer !== null && $layer !== '') {
+                if ($layer !== NavigationHeaderLayerSupport::LAYER_TOP) {
+                    $issues[] = $this->issue(self::ISSUE_ERROR, 'invalid_layer', sprintf('Item "%s" has unknown layer "%s"; allowed values are "top" or null.', $ref, is_scalar($layer) ? (string) $layer : gettype($layer)), $menuKey);
+                } elseif ($menuKey !== LookupService::NAVIGATION_MENU_KEY_WEB_HEADER) {
+                    $issues[] = $this->issue(self::ISSUE_ERROR, 'layer_not_allowed', sprintf('Item "%s" sets layer "top" but only web_header items support layers.', $ref), $menuKey);
+                } elseif ($parentRefByRef[$ref] !== null) {
+                    $issues[] = $this->issue(self::ISSUE_ERROR, 'layer_on_nested_item', sprintf('Item "%s" sets layer "top" but only top-level header items can be assigned to the top row.', $ref), $menuKey);
+                } else {
+                    $topLayerRefs[$ref] = true;
+                }
             }
 
             $itemType = $this->asString($row['item_type'] ?? LookupService::NAVIGATION_ITEM_TYPE_PAGE);
@@ -886,6 +997,10 @@ class NavigationExportImportService extends BaseService
             if (is_string($parentRef) && $parentRef !== '' && !isset($refs[$parentRef])) {
                 $refValue = $row['ref'] ?? '';
                 $issues[] = $this->issue(self::ISSUE_ERROR, 'orphan_parent_ref', sprintf('Item "%s" references unknown parent_ref "%s".', is_string($refValue) ? $refValue : '', $parentRef), $menuKey);
+            }
+            if (is_string($parentRef) && isset($topLayerRefs[$parentRef])) {
+                $refValue = $row['ref'] ?? '';
+                $issues[] = $this->issue(self::ISSUE_ERROR, 'child_under_top_layer', sprintf('Item "%s" nests under top-row link "%s"; top-row links cannot have sub-items.', is_string($refValue) ? $refValue : '', $parentRef), $menuKey);
             }
         }
     }
