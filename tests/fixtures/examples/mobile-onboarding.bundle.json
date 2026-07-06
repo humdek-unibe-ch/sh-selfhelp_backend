@@ -1,0 +1,292 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "title": "Mobile onboarding landing",
+    "description": "Compact mobile-first onboarding screen for guest users: welcome hero, three value points, and register/login actions. Assign it as the mobile guest start page, or link it from the app menu. Works in dark and light mode.",
+    "exported_at": "2026-07-06T00:00:00+00:00",
+    "core_version": "0.1.33",
+    "_comment": "Guest onboarding template built only from core styles. Single-column layout tuned for phone screens; also renders cleanly on web (headless). Buttons target the system 'register' and 'login' pages via page_keyword. Content ships in the default-install locales de-CH and en-GB.",
+    "pages": [
+        {
+            "keyword": "mobile-onboarding",
+            "surface": "public",
+            "page_access_type": "mobile",
+            "headless": true,
+            "open_access": true,
+            "url": "/mobile-onboarding",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        { "language_code": "de-CH", "content": "Willkommen" },
+                        { "language_code": "en-GB", "content": "Welcome" }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        { "language_code": "de-CH", "content": "Onboarding-Startseite für Gäste in der mobilen App." },
+                        { "language_code": "en-GB", "content": "Guest onboarding start screen for the mobile app." }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/mobile-onboarding",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "mobile-onboarding-shell",
+                    "style_name": "container",
+                    "fields": {
+                        "size": { "all": { "content": "sm" } }
+                    },
+                    "children": [
+                        {
+                            "section_name": "mobile-onboarding-space-top",
+                            "style_name": "space",
+                            "fields": {
+                                "size": { "all": { "content": "lg" } }
+                            }
+                        },
+                        {
+                            "section_name": "mobile-onboarding-hero",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": { "all": { "content": "md" } },
+                                "align": { "all": { "content": "center" } }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "mobile-onboarding-hero-image",
+                                    "style_name": "image",
+                                    "fields": {
+                                        "img_src": { "all": { "content": "https://images.unsplash.com/photo-1512438248247-f0f2a5a8b7f0?w=900&q=80&auto=format&fit=crop" } },
+                                        "alt": {
+                                            "de-CH": { "content": "Person nutzt eine Gesundheits-App auf dem Smartphone" },
+                                            "en-GB": { "content": "Person using a health app on a smartphone" }
+                                        },
+                                        "is_fluid": { "all": { "content": "1" } },
+                                        "radius": { "all": { "content": "lg" } },
+                                        "web_image_fit": { "all": { "content": "cover" } },
+                                        "web_height": { "all": { "content": "260px" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "mobile-onboarding-badge",
+                                    "style_name": "badge",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": { "content": "Ihr Programm" },
+                                            "en-GB": { "content": "Your program" }
+                                        },
+                                        "variant": { "all": { "content": "light" } },
+                                        "radius": { "all": { "content": "full" } },
+                                        "web_left_icon": { "all": { "content": "IconHeartHandshake" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "mobile-onboarding-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": { "content": "Schön, dass Sie da sind" },
+                                            "en-GB": { "content": "Good to have you here" }
+                                        },
+                                        "title_order": { "all": { "content": "2" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "mobile-onboarding-lead",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": { "content": "In wenigen Minuten eingerichtet: Konto erstellen, Programm wählen und im eigenen Tempo starten." },
+                                            "en-GB": { "content": "Set up in minutes: create an account, pick your program, and start at your own pace." }
+                                        },
+                                        "text_align": { "all": { "content": "center" } },
+                                        "color": { "all": { "content": "gray" } }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "mobile-onboarding-space-mid",
+                            "style_name": "space",
+                            "fields": {
+                                "size": { "all": { "content": "md" } }
+                            }
+                        },
+                        {
+                            "section_name": "mobile-onboarding-points",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": { "all": { "content": "sm" } }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "mobile-onboarding-point-1",
+                                    "style_name": "group",
+                                    "fields": {
+                                        "gap": { "all": { "content": "sm" } },
+                                        "align": { "all": { "content": "flex-start" } }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "mobile-onboarding-point-1-icon",
+                                            "style_name": "theme-icon",
+                                            "fields": {
+                                                "web_variant": { "all": { "content": "light" } },
+                                                "size": { "all": { "content": "md" } },
+                                                "radius": { "all": { "content": "full" } },
+                                                "web_left_icon": { "all": { "content": "IconRoute" } }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "mobile-onboarding-point-1-text",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": { "content": "Ein klarer Weg: Schritt für Schritt durch Ihr Programm." },
+                                                    "en-GB": { "content": "A clear path: step by step through your program." }
+                                                },
+                                                "size": { "all": { "content": "sm" } }
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "mobile-onboarding-point-2",
+                                    "style_name": "group",
+                                    "fields": {
+                                        "gap": { "all": { "content": "sm" } },
+                                        "align": { "all": { "content": "flex-start" } }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "mobile-onboarding-point-2-icon",
+                                            "style_name": "theme-icon",
+                                            "fields": {
+                                                "web_variant": { "all": { "content": "light" } },
+                                                "size": { "all": { "content": "md" } },
+                                                "radius": { "all": { "content": "full" } },
+                                                "web_left_icon": { "all": { "content": "IconBellRinging" } }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "mobile-onboarding-point-2-text",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": { "content": "Sanfte Erinnerungen halten Sie auf Kurs – Sie bestimmen das Tempo." },
+                                                    "en-GB": { "content": "Gentle reminders keep you on track – you set the pace." }
+                                                },
+                                                "size": { "all": { "content": "sm" } }
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "mobile-onboarding-point-3",
+                                    "style_name": "group",
+                                    "fields": {
+                                        "gap": { "all": { "content": "sm" } },
+                                        "align": { "all": { "content": "flex-start" } }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "mobile-onboarding-point-3-icon",
+                                            "style_name": "theme-icon",
+                                            "fields": {
+                                                "web_variant": { "all": { "content": "light" } },
+                                                "size": { "all": { "content": "md" } },
+                                                "radius": { "all": { "content": "full" } },
+                                                "web_left_icon": { "all": { "content": "IconLock" } }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "mobile-onboarding-point-3-text",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": { "content": "Ihre Daten bleiben geschützt und gehören Ihnen." },
+                                                    "en-GB": { "content": "Your data stays protected and belongs to you." }
+                                                },
+                                                "size": { "all": { "content": "sm" } }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "mobile-onboarding-space-cta",
+                            "style_name": "space",
+                            "fields": {
+                                "size": { "all": { "content": "lg" } }
+                            }
+                        },
+                        {
+                            "section_name": "mobile-onboarding-actions",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": { "all": { "content": "sm" } }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "mobile-onboarding-cta-register",
+                                    "style_name": "button",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": { "content": "Konto erstellen" },
+                                            "en-GB": { "content": "Create account" }
+                                        },
+                                        "variant": { "all": { "content": "filled" } },
+                                        "size": { "all": { "content": "md" } },
+                                        "radius": { "all": { "content": "md" } },
+                                        "full_width": { "all": { "content": "1" } },
+                                        "is_link": { "all": { "content": "1" } },
+                                        "page_keyword": { "all": { "content": "register" } },
+                                        "web_right_icon": { "all": { "content": "IconArrowRight" } }
+                                    }
+                                },
+                                {
+                                    "section_name": "mobile-onboarding-cta-login",
+                                    "style_name": "button",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": { "content": "Ich habe bereits ein Konto" },
+                                            "en-GB": { "content": "I already have an account" }
+                                        },
+                                        "variant": { "all": { "content": "subtle" } },
+                                        "size": { "all": { "content": "md" } },
+                                        "radius": { "all": { "content": "md" } },
+                                        "full_width": { "all": { "content": "1" } },
+                                        "is_link": { "all": { "content": "1" } },
+                                        "page_keyword": { "all": { "content": "login" } }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "mobile-onboarding-space-bottom",
+                            "style_name": "space",
+                            "fields": {
+                                "size": { "all": { "content": "lg" } }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

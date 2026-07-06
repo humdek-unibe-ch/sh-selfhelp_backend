@@ -21,6 +21,11 @@ final class ExampleBundleTestPaths
         return self::resolve('pages/hero-home.bundle.json', 'hero-home.bundle.json');
     }
 
+    public static function mobileOnboardingBundle(): string
+    {
+        return self::resolve('pages/mobile-onboarding.bundle.json', 'mobile-onboarding.bundle.json');
+    }
+
     public static function menuDemoBundle(): string
     {
         return self::resolve('navigation/menu-demo.bundle.json');
