@@ -31,20 +31,26 @@ final class NavigationMenuItemTranslationSupport
      * fields (`description`, `aria_label`); a bare `label` upserts the
      * default-language label only.
      *
+     * Page items are presentation-only: their menu label always comes from
+     * the page title, but translation rows may still carry a per-language
+     * `description` / `aria_label` (shown under mega-menu entries).
+     *
      * @param array<string, mixed> $data
      */
     public function syncMenuItemTranslations(NavigationMenuItem $item, array $data, int $defaultLanguageId): void
     {
         $typeCode = $item->getItemType()?->getLookupCode() ?? '';
-        if (!$this->isTranslatableItemType($typeCode)) {
-            return;
-        }
+        $labelDriven = $this->isTranslatableItemType($typeCode);
 
         if (array_key_exists('translations', $data) && is_array($data['translations'])) {
             /** @var list<array<string, mixed>> $translationRows */
             $translationRows = array_values($data['translations']);
-            $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId);
+            $this->replaceTranslationsFromPayload($item, $translationRows, $defaultLanguageId, $labelDriven);
 
+            return;
+        }
+
+        if (!$labelDriven) {
             return;
         }
 
@@ -66,6 +72,7 @@ final class NavigationMenuItemTranslationSupport
         NavigationMenuItem $item,
         array $translations,
         int $defaultLanguageId,
+        bool $labelDriven = true,
     ): void {
         $itemId = $item->getId();
         if ($itemId !== null) {
@@ -84,7 +91,11 @@ final class NavigationMenuItemTranslationSupport
             if (!is_int($languageId) && !is_numeric($languageId)) {
                 continue;
             }
-            if (!is_string($label) || trim($label) === '') {
+            $trimmed = is_string($label) ? trim($label) : '';
+            if ($labelDriven && $trimmed === '') {
+                continue;
+            }
+            if (!$labelDriven && $trimmed === '' && !$this->rowHasPresentation($row)) {
                 continue;
             }
             $languageId = (int) $languageId;
@@ -92,11 +103,15 @@ final class NavigationMenuItemTranslationSupport
                 continue;
             }
             $seenLanguageIds[$languageId] = true;
-            $trimmed = trim($label);
-            $this->upsertTranslation($item, $languageId, $trimmed, $row);
-            if ($languageId === $defaultLanguageId) {
+            $this->upsertTranslation($item, $languageId, $trimmed !== '' ? $trimmed : null, $row);
+            if ($languageId === $defaultLanguageId && $trimmed !== '') {
                 $defaultLabel = $trimmed;
             }
+        }
+
+        if (!$labelDriven) {
+            // Page items keep a NULL stored label — the menu label is the page title.
+            return;
         }
 
         if ($defaultLabel === null && $itemId !== null) {
@@ -109,9 +124,21 @@ final class NavigationMenuItemTranslationSupport
     }
 
     /**
+     * @param array<string, mixed> $row
+     */
+    private function rowHasPresentation(array $row): bool
+    {
+        $description = $row['description'] ?? null;
+        $ariaLabel = $row['aria_label'] ?? null;
+
+        return (is_string($description) && trim($description) !== '')
+            || (is_string($ariaLabel) && trim($ariaLabel) !== '');
+    }
+
+    /**
      * @param array<string, mixed>|null $presentation
      */
-    public function upsertTranslation(NavigationMenuItem $item, int $languageId, string $label, ?array $presentation = null): void
+    public function upsertTranslation(NavigationMenuItem $item, int $languageId, ?string $label, ?array $presentation = null): void
     {
         $description = null;
         $ariaLabel = null;

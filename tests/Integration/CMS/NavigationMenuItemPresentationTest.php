@@ -194,6 +194,91 @@ final class NavigationMenuItemPresentationTest extends QaWebTestCase
         $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $pageId, null, $admin);
     }
 
+    public function testPageItemPresentationOnlyTranslationsSurfaceDescriptionInPublicPayload(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $keyword = 'qa_nav_page_mega_desc';
+        $createPage = $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+            'keyword' => $keyword,
+            'pageAccessTypeCode' => LookupService::PAGE_ACCESS_TYPES_WEB,
+            'headless' => false,
+            'openAccess' => true,
+            'url' => '/' . $keyword,
+        ], $admin);
+        $pageData = $this->assertEnvelopeSuccess($createPage, Response::HTTP_CREATED);
+        $pageId = $pageData['id'] ?? null;
+        self::assertIsInt($pageId);
+
+        $createItem = $this->jsonRequest(
+            'POST',
+            '/cms-api/v1/admin/navigation/menus/' . LookupService::NAVIGATION_MENU_KEY_WEB_HEADER . '/items',
+            [
+                'item_type' => 'page',
+                'page_id' => $pageId,
+            ],
+            $admin,
+        );
+        $itemData = $this->assertEnvelopeSuccess($createItem, Response::HTTP_CREATED);
+        /** @var array<string, mixed> $itemPayload */
+        $itemPayload = $itemData['item'];
+        $itemId = $itemPayload['id'] ?? null;
+        self::assertIsInt($itemId);
+
+        // Presentation-only rows: no label (the page title stays the menu
+        // label), but per-language mega-menu descriptions + ARIA labels.
+        $update = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/items/' . $itemId,
+            [
+                'translations' => [
+                    ['language_id' => 1, 'label' => null, 'description' => 'QA mega description EN', 'aria_label' => 'QA aria EN'],
+                    ['language_id' => 2, 'label' => null, 'description' => 'QA Mega-Beschreibung DE', 'aria_label' => 'QA aria DE'],
+                ],
+            ],
+            $admin,
+        );
+        $updated = $this->assertEnvelopeSuccess($update, Response::HTTP_OK);
+        self::assertArrayHasKey('label', $updated);
+        self::assertNull($updated['label'], 'Stored label must stay NULL for page items');
+
+        /** @var NavigationMenuService $navigationMenuService */
+        $navigationMenuService = self::getContainer()->get(NavigationMenuService::class);
+        $navigationMenuService->invalidateNavigationCaches();
+
+        $payloadEn = $navigationMenuService->getPublicNavigationPayload(LookupService::PAGE_ACCESS_TYPES_WEB, 1);
+        /** @var array<string, mixed> $menusEn */
+        $menusEn = $payloadEn['menus'];
+        /** @var array<string, mixed> $webHeaderEn */
+        $webHeaderEn = $menusEn['web_header'];
+        $rawItemsEn = $webHeaderEn['items'];
+        self::assertIsArray($rawItemsEn);
+        /** @var list<array<string, mixed>> $itemListEn */
+        $itemListEn = array_values(array_filter($rawItemsEn, 'is_array'));
+        $itemEn = $this->findItemById($itemListEn, $itemId);
+        self::assertNotNull($itemEn);
+        self::assertSame('QA mega description EN', $itemEn['description']);
+        self::assertSame('QA aria EN', $itemEn['aria_label']);
+        // Label still resolves from the page (keyword fallback — no title set).
+        self::assertSame($keyword, $itemEn['label']);
+
+        $payloadDe = $navigationMenuService->getPublicNavigationPayload(LookupService::PAGE_ACCESS_TYPES_WEB, 2);
+        /** @var array<string, mixed> $menusDe */
+        $menusDe = $payloadDe['menus'];
+        /** @var array<string, mixed> $webHeaderDe */
+        $webHeaderDe = $menusDe['web_header'];
+        $rawItemsDe = $webHeaderDe['items'];
+        self::assertIsArray($rawItemsDe);
+        /** @var list<array<string, mixed>> $itemListDe */
+        $itemListDe = array_values(array_filter($rawItemsDe, 'is_array'));
+        $itemDe = $this->findItemById($itemListDe, $itemId);
+        self::assertNotNull($itemDe);
+        self::assertSame('QA Mega-Beschreibung DE', $itemDe['description']);
+        self::assertSame('QA aria DE', $itemDe['aria_label']);
+
+        $this->jsonRequest('DELETE', '/cms-api/v1/admin/navigation/items/' . $itemId, null, $admin);
+        $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $pageId, null, $admin);
+    }
+
     public function testPublicPayloadFallsBackToKeywordWhenPageHasNoTitle(): void
     {
         $admin = $this->loginAsQaAdmin();
