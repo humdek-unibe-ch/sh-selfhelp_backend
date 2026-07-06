@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-01.
+Last verified: 2026-07-06.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -415,6 +415,51 @@ the same change wave:
 > Keep `icon` / `mobile_icon` on pages; menu membership is owned by
 > `navigation_menu_items`.
 
+> **Core 0.1.33 (navigation overhaul: strict contract v2 ⇄ frontend 0.1.59 —
+> breaking):** destructive pre-release cleanup of the menu-builder model into
+> one strict final contract. Migration `Version20260706074503` adds
+> `navigation_menu_items.layer` (`'top'`/NULL — top header row for `web_header`
+> root items on the double presets), drops the dead `id_child_source` /
+> `auto_include_depth` columns and the `navigationChildSources` lookup type,
+> carries `config.footer_layout` into `id_preset` (`columns` / `inline` join
+> `navigationMenuPresets` — footer layout becomes a preset like the header) and
+> drops `navigation_menus.config` (the translation columns `description` /
+> `aria_label` already ship since `Version20260702164932`; the legacy `n` key
+> only ever existed in bundle v1.0, not as a DB column). `GET /cms-api/v1/navigation` now emits the
+> strict always-present item shape (`description`, `aria_label`, `layer`
+> included; `null`, never a missing key) plus menu-level
+> `preset`/`max_depth`/`item_limit`; the admin payloads mirror it (`layer` on
+> item create/update/reorder, footer preset on menu update, translations with
+> `label`/`description`/`aria_label`). The navigation bundle becomes
+> `selfhelp/navigation-bundle` **v2.0**, the only accepted version — a v1.0
+> bundle fails validation with a "re-export with the current version" error.
+> **Frontend 0.1.59** adopts the strict payload (layered double-header
+> rendering via `splitHeaderLayers`/`mergeHeaderLayers`, preset-keyed footer via
+> the shared footer helpers, burger top-row section, admin layer sections +
+> presentation fields + bundle v2.0 panel), so **both floors move in lockstep**:
+> frontend `supports.core` `0.1.32 → 0.1.33` and backend `supports.frontend`
+> `0.1.58 → 0.1.59`. The live pairing is now **frontend `>=0.1.59` ⇄ core
+> `>=0.1.33`** (both `<0.2.0`). The cross-layer anchor is `@selfhelp/shared`
+> **`2.0.0`** (breaking major: strict `INavigationMenu`/`INavigationMenuItem`
+> with `layer`/`description`/`aria_label` and no `config`, `TWebFooterPreset`,
+> `headerLayers` + `footerPreset` + `activeTrail` helper modules, strict bundle
+> v2.0 types); frontend and mobile must adopt `2.0.0` in the same wave.
+> **Mobile 0.1.33** ships the matching adoption in the same wave (collapsible
+> drawer with active-trail auto-expand via `expandedIdsForActiveTrail`, shared
+> `isMenuItemActiveOnMobile` active states, tab `item_limit` slice, local
+> duplicate helpers deleted); its preview-image `supports.core` floor moves
+> `0.1.32 → 0.1.33` (see "Mobile ⇄ core coupling").
+> The same 0.1.33 wave also ships the **child-page navigation presentation**
+> contract (migration `Version20260706143547`): `navigationChildrenNavModes`
+> lookups (`sidebar`/`pills`/`none`), menu-level `children_nav` default +
+> `show_breadcrumbs` toggle, per-item `children_nav` override, emitted on web
+> menus in `GET /navigation` and mirrored in the admin payloads + bundle v2.0.
+> Frontend 0.1.59 renders it (sticky branch sidebar / pill strip / breadcrumbs
+> / prev-next pager) via the `@selfhelp/shared` 2.0.0 `branchNav` resolver
+> (`resolveWebBranchNavContext`), and the all-language content search + admin
+> pages `title`/`titles` fields land in the same versions — no extra floor
+> moves beyond the 0.1.33 ⇄ 0.1.59 pairing above.
+
 > **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
 > wave):** further additive issue #30 follow-up. Core adds two page-property
 > fields `modal_width` + `modal_height` (migration `Version20260630172821`, page
@@ -443,18 +488,18 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.32` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.33` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.21.0` | npm (`1.21.0` menu-builder navigation contract — `INavigationPayload`, `TWebHeaderPreset`, menu-tree helpers, `searchMenuPagesInPayload`, mobile branch nav with self-segment; legacy `TWebNavRender`/`TMobileNavRender` no longer active; `1.20.0` CMS-in-CMS modal sizing; `1.19.0` page icons + early navigation helpers; earlier entries unchanged) |
-| `sh-selfhelp_frontend` | `0.1.58` | menu-builder admin UI, Mantine header presets, header search modes, navigation builder |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.21.0` | menu payload + header preset contract |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.32 <0.2.0` | menu-builder completion: navigation tables, public `/navigation`, search, last-visited |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.58 <0.2.0` | frontend adopts menu-builder UI + header presets + mobile dual-surface shell |
+| `@selfhelp/shared` | `2.0.0` | npm (`2.0.0` strict navigation contract v2 — strict `INavigationMenu`/`INavigationMenuItem` with `layer`/`description`/`aria_label`, no `config`, `TWebFooterPreset`, `headerLayers`/`footerPreset`/`activeTrail` helpers, bundle v2.0 types; `1.21.0` menu-builder navigation contract; `1.20.0` CMS-in-CMS modal sizing; earlier entries unchanged) |
+| `sh-selfhelp_frontend` | `0.1.59` | strict nav payload, layered double header, preset-keyed footer, admin layer sections, bundle v2.0 |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `2.0.0` (local tgz) | strict menu payload + header layer + footer preset contract |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | navigation overhaul: strict payload, layer, footer presets, bundle v2.0 |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.59 <0.2.0` | frontend adopts the strict nav contract v2 |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
-| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.32 <0.2.0` | deep-link resolve + menu-builder navigation adoption |
+| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | strict navigation payload v2 (layer/description/aria_label, typed presets, no config) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
-| `sh-selfhelp_mobile` | `0.1.32` | dual-surface drawer + bottom tabs, URL-based shell nav, segmented sibling nav |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.21.0` | menu payload helpers + `isOnAnyMobileMenuFromPayload` |
+| `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `2.0.0` | strict menu payload + active-trail helpers (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
@@ -565,6 +610,20 @@ admin `/admin/navigation/*`, search routes, last-visited).
 | `sh-selfhelp_frontend` | `0.1.58` | `supports.core` `>=0.1.32` |
 | `sh-selfhelp_mobile` | `0.1.32` | `supports.core` `>=0.1.32` |
 | `@selfhelp/shared` | `1.21.0` | `INavigationPayload`, `TWebHeaderPreset`, menu helpers |
+
+## Navigation overhaul wave (strict contract v2, 2026-07-06)
+
+Destructive follow-up: one strict final menu model (header layers, footer
+presets, complete item payload with `description`/`aria_label`/`layer`, no
+`config`) and the `selfhelp/navigation-bundle` v2.0 as the only accepted
+import format.
+
+| Repo | Version | Floor |
+|------|---------|-------|
+| `sh-selfhelp_backend` | `0.1.33` | `supports.frontend` `>=0.1.59` |
+| `sh-selfhelp_frontend` | `0.1.59` | `supports.core` `>=0.1.33` |
+| `sh-selfhelp_mobile` | `0.1.33` | `supports.core` `>=0.1.33` (collapsible drawer, active-trail auto-expand, tab `item_limit`, shared 2.0.0) |
+| `@selfhelp/shared` | `2.0.0` | strict `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/`activeTrail`, bundle v2.0 |
 
 Working-tree implementations across all four repos are aligned to these floors.
 Tag and publish together — partial deploy breaks navigation for migrated installs.

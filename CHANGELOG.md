@@ -1,18 +1,146 @@
-# Unreleased
+# v0.1.33
 
-## Feature: Navigation bundle export/import
+## Fix: entry-list / entry-record data binding actually renders rows
 
-- **`selfhelp/navigation-bundle` v1.0** — separate from page bundles; exports menu
-  trees with `ref`/`parent_ref`, translations (label/description/aria_label),
-  icons, and menu config. Optional embedded `pages[]`.
+The CMS-in-CMS entry styles were data-bound in name only: the web/mobile
+renderers (and the wizard/bundle-authored `{{name}}` / `{{record_id}}` tokens)
+assumed the backend clones the entry-list child template once per row, but no
+hydration existed — lists rendered a single template card with empty tokens.
+
+- `PageService::processSectionsRecursively` now resolves the bound rows for
+  `entry-list` / `entry-record` from the section's first `data_config` entry
+  (row-preserving retrieval; the repository layer is cached so no double DB
+  hit) and remaps the immutable `section_<id>` field keys back to the current
+  input names.
+- `entry-list` clones its child template once per row (each clone interpolated
+  with that row's columns as top-level tokens; no rows → no children);
+  `entry-record` flattens its single record into top-level tokens for itself
+  and its children. The inherited `{{route.*}}` scope stays pinned.
+- `entry-record-delete` sections get the bound row's `record_id` injected as a
+  real field during hydration (both renderers read it to enable the delete
+  button), and `DELETE /cms-api/v1/forms/delete` now accepts the
+  `entry-record-delete` style alongside `show-user-input`
+  (`FormValidationService::validateFormDeletion`) — same ACL `delete` +
+  own-entries/data-table permission rules.
+- Bare `data_config` filters (`record_id = {{route.record_id}}` — the form the
+  cookbook documents and the wizard generates) are now glued to the query with
+  `AND`; filters already starting with `AND`/`OR`/`ORDER BY`/`LIMIT`/
+  `GROUP BY`/`HAVING` pass through unchanged
+  (`SectionUtilityService::fetchData`).
+- Docs: `docs/reference/styles/composite.md` (`entry-list`, `entry-record`,
+  `entry-record-delete` — button text is the catalog field `label_delete`, and
+  the web/mobile renderers + the team-members example bundle now read/write
+  that field).
+- Tests: `CmsInCmsListDetailCacheTest` (golden list/detail + per-record cache
+  isolation) and `PageBundleDataTableLinkingTest` now pass end-to-end;
+  `CmsAppWizardTest` asserts scaffolded field values through the per-section
+  detail endpoint (the page sections list is structural).
+
+## Breaking: Navigation menu system overhaul — one strict final contract
+
+Destructive pre-release cleanup wave (no backward compatibility). One data
+model, one API payload, one bundle schema. See
+`docs/developer/29-navigation-menu-builder.md`.
+
+- **Schema** (migration `Version20260706074503`, with round-trip test):
+  `navigation_menu_items` gains `layer` (`'top'`/NULL — top header row for
+  `web_header` root items) and loses the dead `id_child_source` /
+  `auto_include_depth` columns; the `navigationChildSources` lookup type and
+  its three codes are deleted; `config.footer_layout` is carried into `id_preset`
+  (`columns` / `inline` join `navigationMenuPresets`) and `navigation_menus.config`
+  is dropped; the `navigation_menu_item_translations` table engine/FKs are
+  repaired (the `description` / `aria_label` columns themselves ship since
+  `Version20260702164932` — no `n` column ever existed in this backend; `n` was
+  only the legacy bundle v1.0 translation key).
+- **Header layers:** double presets (`double-dropdown` / `double-mega-menu`)
+  split `web_header` root items into a top utility row (`layer: 'top'`, flat
+  links) and the main row. Layer is validated by
+  `NavigationHeaderLayerSupport`: `web_header` roots only, top-layer items must
+  stay leaf. Single presets merge both rows at render time; assignments are
+  preserved across preset switches.
+- **Footer presets:** `web_footer` uses the same preset mechanism as the header
+  (`columns` = group headings become columns + standalone meta row; `inline` =
+  flat centered links, groups flattened at render time only). The free-form
+  `config` JSON is gone everywhere (entity, admin API, payload, bundle).
+- **Strict payload:** `GET /navigation` items now always emit every key
+  (`description`, `aria_label`, `layer` included; `null` for absent values) and
+  menus emit `key`/`platform`/`surface`/`preset`/`max_depth`/`item_limit`.
+  Admin payloads mirror the same shape; translations carry
+  `label`/`description`/`aria_label` per locale.
+- **`selfhelp/navigation-bundle` v2.0** (the only accepted version — v1.0 is
+  rejected with a "re-export with the current version" error): items carry
+  `layer` + `aria_label`, menu blocks carry `preset`/`max_depth`/`item_limit`,
+  no `config`, no `n` key. Exports with `include_pages` embed the full
+  ancestor chain of every menu-referenced page (menu-invisible structural
+  parents included), so an export always re-imports without `missing_parent`
+  errors.
 - **API:** `POST /admin/navigation/export`, `POST /admin/navigation/import`,
   `POST /admin/navigation/import/validate`, `?dry_run=1` on import.
 - **Permissions:** `admin.navigation.export`, `admin.navigation.import`.
 - **Menu depth cap:** two levels (top-level + children) enforced on write.
 - **Examples:** canonical in `sh-selfhelp_frontend/examples/`; backend uses
-  `ExampleBundlePathResolver` + `tests/fixtures/examples/` fallback.
-- **Demo bundle:** `examples/navigation/menu-demo.bundle.json` (20-page mini-site,
-  all four menus).
+  `ExampleBundlePathResolver` + `tests/fixtures/examples/` fallback. The demo
+  bundle `examples/navigation/menu-demo.bundle.json` is rewritten as the v2.0
+  regression fixture (double header layers, footer groups + standalone link,
+  nested drawer, segment tabs).
+- **Cross-repo:** pairs with `@selfhelp/shared` 2.0.0 (strict
+  `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/
+  `activeTrail` helpers, bundle v2.0 types) and frontend 0.1.59.
+  `supports.frontend` raised to `>=0.1.59`.
+
+## Added: Child-page navigation presentation (sidebar / pills / breadcrumbs)
+
+How a web page presents its menu branch (siblings + children) is now a typed,
+configurable contract instead of the hardcoded pill tabs (same 0.1.33 wave).
+
+- **Schema** (migration `Version20260706143547`, with round-trip test): new
+  `navigationChildrenNavModes` lookup type (`sidebar` | `pills` | `none`);
+  `navigation_menus` gains `id_children_nav` (menu-level default; seeded
+  `sidebar` for `web_header`) + `show_breadcrumbs` (default off);
+  `navigation_menu_items` gains `id_children_nav` (per-parent override,
+  NULL = inherit).
+- **Payload:** `GET /navigation` web menus always emit `children_nav` +
+  `show_breadcrumbs` (mobile menus emit `null`/`false` — they have native
+  presentation). `PATCH /admin/navigation/menus/{key}` accepts them
+  (web menus only), and menu items accept/return `children_nav` on
+  create/update; the navigation bundle v2.0 carries both.
+- **Rendering contract:** `@selfhelp/shared` 2.0.0 `branchNav` resolves the
+  effective mode (item override → menu default → `sidebar`), the branch
+  group, the breadcrumb trail, and the prev/next pager from the same payload;
+  the frontend renders the left-sidebar layout (sticky, collapses to pills on
+  small screens), the pill strip, breadcrumbs, and neighbour-title pager cards.
+
+## Added: Search across all languages
+
+- Header/content search (`GET /navigation/search`) now matches the
+  `page_search_index` projection in **every** language, not just the request
+  language, and dedupes hits per page (preferring the requested language's
+  title/snippet). A German visitor typing an English title still finds the
+  page (`NavigationSearchService`; `content_index` mode).
+
+## Added: Admin pages list carries human titles
+
+- `GET /admin/pages` rows now include `title` (CMS default language) and
+  `titles` (per-language `{language_id, title}` list) via one batched
+  translation fetch (`PagesFieldsTranslationRepository::fetchTitleByLanguageForPages`),
+  so admin pickers (add-to-menu, start pages, parent selectors) can label
+  pages with real titles instead of raw keywords.
+
+## Added: Landing-page templates in the example gallery
+
+- `examples/pages/hero-home.bundle.json` (frontend canonical +
+  `tests/fixtures/examples/` mirror) is rewritten as a full **headless**
+  landing page in the current bundle schema: hero split with imagery, stats
+  band, six feature cards, how-it-works split, testimonial quote, and a CTA
+  card — dark/light safe, de-CH + en-GB, buttons targeting the system
+  `register`/`login` pages via `page_keyword`, curated Unsplash imagery.
+- New `examples/pages/mobile-onboarding.bundle.json`: compact mobile-first
+  guest onboarding screen (image hero, three value points, full-width
+  register/login CTAs), also headless/open-access.
+- `HeroHomeSeedService` keeps seeding the hero bundle onto an untouched
+  `home` page; `tests/Integration/CMS/Admin/ExampleLandingBundlesImportTest.php`
+  guards that both bundles validate and import end-to-end (styles, fields,
+  locales, headless flag, section tree).
 
 # v0.1.32
 

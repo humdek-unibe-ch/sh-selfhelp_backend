@@ -391,8 +391,7 @@ class ApiResponseFormatter
         "properties": {
           "menuKey": { "type": "string" },
           "parentItemId": { "type": ["integer", "null"] },
-          "position": { "type": ["integer", "null"] },
-          "childSource": { "type": "string" }
+          "position": { "type": ["integer", "null"] }
         }
       }
     },

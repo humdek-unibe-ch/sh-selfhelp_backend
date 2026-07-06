@@ -2,8 +2,8 @@
 
 Audience: Developers and technical product owners.
 Status: active.
-Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts.
-Last verified: 2026-07-02.
+Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts (`@selfhelp/shared` `2.0.0`).
+Last verified: 2026-07-06.
 Source of truth: `NavigationMenuService`, admin navigation APIs, `GET /navigation`, `@selfhelp/shared` navigation types.
 
 ## Overview
@@ -56,8 +56,15 @@ Each stored item (`navigation_menu_items`) has:
 - **item type** — `page`, `external_url`, or `group`
 - **parent_item_id** — nested menu branch (nullable for top-level items)
 - **position** — sibling order within the parent branch
+- **layer** — `web_header` root items only: `top` places the item in the upper
+  row of double presets, `NULL` means the main nav row. Ignored (and rejected on
+  write) for children and non-header menus
 - **label (page items)** — resolved from the linked page title (translatable via page fields); menu row `icon` / `mobile_icon` override page defaults per menu
 - **label (group / external_url)** — stored in `navigation_menu_item_translations` per language; `navigation_menu_items.label` holds the default-language cache/fallback. Public resolve order: requested language → CMS default language → stored `label` column
+- **description / aria_label** — per-language presentation texts in
+  `navigation_menu_item_translations`; always present in the public payload
+  (`null` when unset). `description` feeds mega-menu/footer link subtext,
+  `aria_label` overrides the accessible name
 
 Child pages appear in a menu only when an admin creates a **stored menu item** for that page (directly, via the add-page checkbox flow below, or via **Add existing child page** on a parent row).
 
@@ -86,6 +93,10 @@ The following were removed before the first public release:
 |---------|-------------|
 | `child_source = page_children` (virtual auto-children) | Explicit stored child menu items via checkbox flow |
 | `child_source = manual_plus_suggestions` | Removed — manual items only |
+| `navigation_menu_items.id_child_source` + `auto_include_depth` columns, `navigationChildSources` lookups | Dropped entirely (navigation overhaul migration) — all items are manual |
+| `navigation_menus.config` JSON (`footer_layout` key) | Typed `id_preset` lookup on the menu (`columns` / `inline` in `navigationMenuPresets`) |
+| Bundle v1.0 `n` translation key | `aria_label` (the DB column was created as `aria_label` from the start — no column rename happened) |
+| `selfhelp/navigation-bundle` v1.0 | v2.0 only; v1.0 imports are rejected |
 | `navigation_menu_item_exclusions` | Not needed — hide a page by not adding it (or remove its menu item) |
 | `POST .../convert-auto-children` | Not needed — children are stored from the start when selected |
 | `POST/DELETE .../exclusions` | Removed |
@@ -100,7 +111,7 @@ Fresh installs and dev resets use **manual-only** menu items. Database seeds no 
 
 ## Web header presets
 
-`web_header` menus carry a **preset** lookup (`navigationHeaderPresets`):
+`web_header` menus carry a **preset** lookup (`navigationMenuPresets`):
 
 | Preset | Structure |
 |--------|-----------|
@@ -111,7 +122,40 @@ Fresh installs and dev resets use **manual-only** menu items. Database seeds no 
 | `double-dropdown` | Two-level dropdown chrome |
 | `double-mega-menu` | Nested mega layout |
 
-On small viewports the frontend burger drawer renders the same resolved `web_header` tree.
+Double presets render two rows: root items with `layer = 'top'` form the upper
+utility row (flat links next to search/language/profile), everything else the
+main nav row. Single presets ignore `layer` and render one merged row (main
+items first, then top items); the stored `layer` value survives preset
+switches, so toggling back to a double preset restores the previous split.
+
+On small viewports the frontend burger drawer renders the same resolved `web_header` tree (main items first, then a divider and the top-layer links).
+
+## Child-page navigation (branch presentation)
+
+How a web page presents its menu branch (siblings + children) is a typed
+contract (`navigationChildrenNavModes` lookup type):
+
+| Mode | Rendering (web) |
+|------|-----------------|
+| `sidebar` | Sticky left sidebar with the branch pages; collapses to a pill strip on small screens (platform default) |
+| `pills` | Horizontal pill strip above the content (the pre-0.1.33 look) |
+| `none` | No branch navigation chrome |
+
+- **Menu-level default:** `navigation_menus.id_children_nav` (web menus only;
+  seeded `sidebar` for `web_header`). Set via
+  `PATCH /admin/navigation/menus/{key}` (`children_nav`).
+- **Per-parent override:** `navigation_menu_items.id_children_nav`
+  (NULL = inherit). Set via menu-item create/update (`children_nav`).
+- **Breadcrumbs:** `navigation_menus.show_breadcrumbs` renders a breadcrumb
+  trail above nested pages (menu-level toggle, same PATCH).
+- **Payload:** web menus always emit `children_nav` + `show_breadcrumbs`;
+  mobile menus emit `null`/`false` (native presentation). The navigation
+  bundle v2.0 carries both.
+- **Resolution** lives in `@selfhelp/shared` `branchNav`
+  (`resolveWebBranchNavContext`): effective mode (item override → menu default
+  → `sidebar`), branch group, breadcrumb trail, and the prev/next pager
+  (neighbour page titles, auto-translated). Migration
+  `Version20260706143547` (+ round-trip test) seeds the lookups and columns.
 
 ## Mobile drawer and bottom tabs
 
@@ -128,7 +172,11 @@ There is no production fallback `menu` screen; navigation comes from the CMS pay
 - `web_header_search_min_chars` — minimum query length before API calls
 - `web_header_search_result_limit`, `search_default_visibility`, `search_field_policy`
 
-Content search uses `page_search_index`, rebuilt when pages change.
+Content search uses `page_search_index`, rebuilt when pages change. The
+`content_index` mode matches the projection in **every** language (not just the
+request language) and dedupes hits per page, preferring the requested
+language's title/snippet — so a German visitor typing an English title still
+finds the page.
 
 ## Start pages and last visited
 
@@ -151,11 +199,12 @@ Admin page create/update accepts `navigationAssignments` to add the new page to 
 
 ## Page bundle import/export
 
-Bundles export/import **pages and CMS parent/child relationships** (`id_parent_page`) only. Menu membership uses the separate **`selfhelp/navigation-bundle` v1.0** format via `POST /admin/navigation/export` and `POST /admin/navigation/import`. Legacy `navigation.assignments` in page bundles is warned and ignored.
+Bundles export/import **pages and CMS parent/child relationships** (`id_parent_page`) only. Menu membership uses the separate **`selfhelp/navigation-bundle` v2.0** format via `POST /admin/navigation/export` and `POST /admin/navigation/import`. Legacy `navigation.assignments` in page bundles is warned and ignored.
 
 ### Navigation bundle export/import
 
-- Format: `selfhelp/navigation-bundle` v1.0 (independent from `selfhelp/page-bundle` v2.0).
+- Format: `selfhelp/navigation-bundle` v2.0 (independent from `selfhelp/page-bundle` v2.0). `1.0` bundles are rejected with a clear error — there is no legacy import path.
+- Menus carry `preset` / `max_depth` / `item_limit`; items carry `layer` and per-language `label` / `description` / `aria_label` translation objects. No `config` object exists anywhere in the bundle.
 - Export modes: `full_snapshot` (whole menu(s)) or `branch` (selected pages + ancestor/sibling branches).
 - Optional embedded `pages[]` when `include_pages` is true.
 - Import options: `missing_pages_mode` (`strict` | `skip_missing` | `create_stubs`), per-menu `menu_policies` (`replace` | `merge` | `append`), optional `keyword_prefix`.
@@ -167,8 +216,11 @@ Permissions: `admin.navigation.export`, `admin.navigation.import`.
 
 Canonical location: **`sh-selfhelp_frontend/examples/`** (`pages/`, `cms-in-cms/`, `navigation/`). The backend resolves them from the monorepo sibling path and falls back to `tests/fixtures/examples/` for CI.
 
-- `pages/hero-home.bundle.json` — seeded on untouched fresh-install `home` pages
-- `pages/mobile-onboarding.bundle.json` — importable mobile-first landing template
+- `pages/hero-home.bundle.json` — full headless landing template (hero split,
+  stats band, feature cards, how-it-works, quote, CTA; de-CH + en-GB); also
+  seeded on untouched fresh-install `home` pages
+- `pages/mobile-onboarding.bundle.json` — mobile-first guest onboarding
+  template (image hero, value points, register/login CTAs; headless)
 - `cms-in-cms/team-members.bundle.json` — list+detail CMS-in-CMS demo
 - `navigation/menu-demo.bundle.json` — 20-page mini-site with all four menus wired
 
@@ -179,11 +231,17 @@ Import pages via admin **Import / Export** or `POST /admin/pages/import`. Import
 `/admin/navigation` — menu builder with:
 
 - menu structure list (drag + Up/Down reorder, page labels, per-menu icons)
+- **Top row / Main row sections** on `web_header` double presets (drag between rows or use the row actions; top-row items cannot have children)
 - add existing page modal with optional child-page checkboxes
 - **Add existing child page** on page/group rows (creates a stored child item under that menu branch)
-- group/external modals with language-tab label editor
+- group/external modals with language-tab label, description, and aria-label editors
 - settings tab (search, start pages, route sync; explicit Save)
-- web header preset selector
+- web header preset selector and web footer preset selector (`columns` / `inline`)
+- **child-pages navigation selector** (`sidebar` / `pills` / `none`) + breadcrumbs
+  toggle on the web header tab; per-item override in the item edit modal
+- page pickers label pages with their **localized title** (keyword as fallback/
+  secondary line) using the admin pages `title`/`titles` fields
+- bottom-tabs item counter against the menu `item_limit`
 
 Shareable tab URLs: `/admin/navigation?menu=web_header` (and `settings`, etc.).
 
@@ -194,23 +252,32 @@ Navigation payloads are cached per user + language (`CacheService::CATEGORY_NAVI
 ## Web header presets and depth
 
 `web_header.preset` selects the Mantine header layout (`simple`, `dropdown`,
-`mega-menu`, `tabs`, `double-dropdown`, `double-mega-menu`). Double-header presets
-render a utility row (search, language, profile) above the main nav row.
+`mega-menu`, `tabs`, `double-dropdown`, `double-mega-menu`). Double-header
+presets render the top row from `layer = 'top'` root items plus the utility
+controls (search, language, profile); see **Web header presets** above for the
+layer merge/restore rules.
 
 `web_header.max_depth` limits nested dropdown/mega levels in the resolved tree
 and in the frontend renderer; deeper page children remain reachable via the parent
 page link or on-page branch navigation.
 
-## Web footer groups
+## Web footer presets
 
-`web_footer` supports the same item types as other menus. Footer layout is stored
-in menu `config.footer_layout` (`columns` default, `inline` for a flat link row)
-via the navigation builder — not in the header preset lookup table.
+`web_footer` supports the same item types as other menus. The footer layout is a
+**preset lookup** on the menu (`columns` default, `inline` for a flat link row —
+both codes live in the shared `navigationMenuPresets` lookup type), selected in
+the navigation builder and returned as `preset` in the public payload — the
+same mechanism as header presets. `AdminNavigationService` validates the preset
+code against the menu key (header codes only on `web_header`, footer codes only
+on `web_footer`, none on mobile menus).
 
-The frontend renders top-level **group** items as footer columns (heading +
-optional description + nested links). Page items use translated menu labels when
-set, otherwise page titles. `aria_label` is honoured when set. External URLs open
-in a new tab. Inactive items and empty groups are omitted.
+With `columns`, top-level **group** items render as footer columns (heading +
+optional description + nested links) and non-group root items as a standalone
+link column. With `inline`, the tree is flattened to one link row (group
+headings dropped, their children promoted) via the shared `flattenFooterItems`
+helper. Page items use translated menu labels when set, otherwise page titles.
+`aria_label` is honoured when set. External URLs open in a new tab. Inactive
+items and empty groups are omitted.
 
 ## Menu-only moves vs page-tree URL sync
 
