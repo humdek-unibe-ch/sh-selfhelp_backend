@@ -469,6 +469,7 @@ class NavigationExportImportService extends BaseService
                 'position' => $item->getPosition(),
                 'layer' => $item->getLayer(),
                 'children_nav' => $item->getChildrenNav()?->getLookupCode(),
+                'show_pager' => $item->getShowPager(),
                 'icon' => $item->getIcon(),
                 'mobile_icon' => $item->getMobileIcon(),
                 'label' => $item->getLabel(),
@@ -533,6 +534,7 @@ class NavigationExportImportService extends BaseService
         if ($menu->getPlatform()?->getLookupCode() === 'web') {
             $config['children_nav'] = $menu->getChildrenNav()?->getLookupCode();
             $config['show_breadcrumbs'] = $menu->isShowBreadcrumbs();
+            $config['show_pager'] = $menu->isShowPager();
         }
 
         return $config;
@@ -603,17 +605,32 @@ class NavigationExportImportService extends BaseService
         $created = 0;
         $skipped = 0;
 
-        usort($items, function (array $a, array $b): int {
-            $parentA = $a['parent_ref'] ?? null;
-            $parentB = $b['parent_ref'] ?? null;
-            $depthA = $parentA === null || $parentA === '' ? 0 : 1;
-            $depthB = $parentB === null || $parentB === '' ? 0 : 1;
-            if ($depthA !== $depthB) {
-                return $depthA <=> $depthB;
+        // Create parents before their children regardless of position values:
+        // sort by real ref-chain depth first (root=0, child=1, grandchild=2, …),
+        // then by position. Sorting only by "has parent_ref" broke three-level
+        // menus — a grandchild with a lower position than its parent was created
+        // before the parent existed and silently became a root item.
+        /** @var array<string, array<string, mixed>> $rowsByRef */
+        $rowsByRef = [];
+        foreach ($items as $row) {
+            $ref = $this->asString($row['ref'] ?? '');
+            if ($ref !== '') {
+                $rowsByRef[$ref] = $row;
             }
-
-            return $this->itemPosition($a) <=> $this->itemPosition($b);
-        });
+        }
+        /** @var list<array{0: int, 1: int, 2: int, 3: array<string, mixed>}> $sortable */
+        $sortable = [];
+        foreach ($items as $index => $row) {
+            $depth = 0;
+            $parentRef = $row['parent_ref'] ?? null;
+            while (is_string($parentRef) && $parentRef !== '' && isset($rowsByRef[$parentRef]) && $depth < 10) {
+                ++$depth;
+                $parentRef = $rowsByRef[$parentRef]['parent_ref'] ?? null;
+            }
+            $sortable[] = [$depth, $this->itemPosition($row), $index, $row];
+        }
+        usort($sortable, static fn (array $a, array $b): int => [$a[0], $a[1], $a[2]] <=> [$b[0], $b[1], $b[2]]);
+        $items = array_map(static fn (array $tuple): array => $tuple[3], $sortable);
 
         foreach ($items as $typedRow) {
             $importResult = $this->importMenuItemRow($menu, $menuKey, $typedRow, $policy, $keywordPrefix, $missingMode, $refToEntity);
@@ -740,18 +757,19 @@ class NavigationExportImportService extends BaseService
                 ? $this->lookupService->findByTypeAndCode(LookupService::NAVIGATION_CHILDREN_NAV_MODES, $childrenNav)
                 : null,
         );
+
+        $showPager = $row['show_pager'] ?? null;
+        $item->setShowPager(is_bool($showPager) ? $showPager : null);
     }
 
     /**
+     * Imports translation rows for label-driven items (group/external) AND
+     * page items (presentation-only description/aria rows for mega menus).
+     *
      * @param array<string, mixed> $row
      */
     private function syncImportedTranslations(NavigationMenuItem $item, array $row): void
     {
-        $typeCode = $item->getItemType()?->getLookupCode() ?? '';
-        if (!$this->translationSupport->isTranslatableItemType($typeCode)) {
-            return;
-        }
-
         $translations = is_array($row['translations'] ?? null) ? $row['translations'] : [];
         if ($translations === []) {
             return;
@@ -842,6 +860,9 @@ class NavigationExportImportService extends BaseService
             }
             if (array_key_exists('show_breadcrumbs', $menuPayload)) {
                 $menu->setShowBreadcrumbs((bool) $menuPayload['show_breadcrumbs']);
+            }
+            if (array_key_exists('show_pager', $menuPayload)) {
+                $menu->setShowPager((bool) $menuPayload['show_pager']);
             }
         }
     }

@@ -2,13 +2,13 @@
     "format": "selfhelp/navigation-bundle",
     "version": "2.0",
     "title": "Menu demo mini-site",
-    "description": "20-page realistic demo with all four navigation menus wired: double-dropdown header with top-row utility links and a main-row Resources group, grouped footer columns with a standalone link and an external status link, nested mobile drawer, and bottom tabs with a segment child plus a More holder tab (first-child redirect).",
+    "description": "22-page realistic demo with all four navigation menus wired: double-dropdown header with top-row utility links, mega-menu descriptions and a three-level Services branch (Training grandchildren), grouped footer columns with a standalone link and an external status link, nested mobile drawer, and bottom tabs with a segment child plus a More holder tab (first-child redirect).",
     "min_core_version": "0.1.33",
     "exported_at": "2026-07-06T08:00:00+00:00",
     "core_version": "0.1.33",
     "export_mode": "full_snapshot",
     "import_hints": {
-        "default_keyword_prefix": "qa-demo-",
+        "default_keyword_prefix": "",
         "default_route_prefix": "/demo"
     },
     "menus": {
@@ -16,6 +16,9 @@
             "preset": "double-dropdown",
             "max_depth": 2,
             "item_limit": null,
+            "children_nav": "sidebar",
+            "show_breadcrumbs": true,
+            "show_pager": true,
             "items": [
                 {
                     "ref": "wh-top-careers",
@@ -84,7 +87,19 @@
                     "position": 10,
                     "is_active": true,
                     "page_keyword": "demo-services-consulting",
-                    "icon": "IconStethoscope"
+                    "icon": "IconStethoscope",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Personal guidance from our expert team"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Persönliche Beratung durch unser Expertenteam"
+                        }
+                    ]
                 },
                 {
                     "ref": "wh-training",
@@ -93,7 +108,35 @@
                     "position": 20,
                     "is_active": true,
                     "page_keyword": "demo-services-training",
-                    "icon": "IconSchool"
+                    "icon": "IconSchool",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Workshops and trainings for your team"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Workshops und Schulungen für Ihr Team"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-training-basics",
+                    "parent_ref": "wh-training",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training-basics"
+                },
+                {
+                    "ref": "wh-training-cert",
+                    "parent_ref": "wh-training",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training-cert"
                 },
                 {
                     "ref": "wh-support",
@@ -102,7 +145,19 @@
                     "position": 30,
                     "is_active": true,
                     "page_keyword": "demo-services-support",
-                    "icon": "IconLifebuoy"
+                    "icon": "IconLifebuoy",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Fast help whenever you need it"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Schnelle Hilfe, wann immer Sie sie brauchen"
+                        }
+                    ]
                 },
                 {
                     "ref": "wh-products",
@@ -120,7 +175,19 @@
                     "position": 10,
                     "is_active": true,
                     "page_keyword": "demo-products-a",
-                    "icon": "IconBox"
+                    "icon": "IconBox",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Our platform for structured programs"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Unsere Plattform für strukturierte Programme"
+                        }
+                    ]
                 },
                 {
                     "ref": "wh-product-b",
@@ -129,7 +196,19 @@
                     "position": 20,
                     "is_active": true,
                     "page_keyword": "demo-products-b",
-                    "icon": "IconBox"
+                    "icon": "IconBox",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Add-ons and integrations for existing setups"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Erweiterungen und Integrationen für bestehende Setups"
+                        }
+                    ]
                 },
                 {
                     "ref": "wh-news",
@@ -168,7 +247,19 @@
                     "item_type": "page",
                     "position": 10,
                     "is_active": true,
-                    "page_keyword": "demo-resources"
+                    "page_keyword": "demo-resources",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "All guides and materials at a glance"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Alle Anleitungen und Materialien im Überblick"
+                        }
+                    ]
                 },
                 {
                     "ref": "wh-res-blog",
@@ -176,7 +267,19 @@
                     "item_type": "page",
                     "position": 20,
                     "is_active": true,
-                    "page_keyword": "demo-blog"
+                    "page_keyword": "demo-blog",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "News and insights from the team"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Neuigkeiten und Einblicke aus dem Team"
+                        }
+                    ]
                 },
                 {
                     "ref": "wh-contact",
@@ -380,6 +483,15 @@
                     "is_active": true,
                     "page_keyword": "demo-services-training",
                     "mobile_icon": "GraduationCap"
+                },
+                {
+                    "ref": "md-training-basics",
+                    "parent_ref": "md-training",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training-basics",
+                    "mobile_icon": "BookOpen"
                 },
                 {
                     "ref": "md-news",
@@ -852,6 +964,156 @@
                         {
                             "language_code": "de-CH",
                             "content": "Workshops und Schulungen für Ihr Team."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-training-basics",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/training/basics",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Training basics"
+                            },
+                            "de-CH": {
+                                "content": "Grundlagen"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Introductory workshop for new teams: first steps, core concepts, and hands-on exercises."
+                            },
+                            "de-CH": {
+                                "content": "Einstiegsworkshop für neue Teams: erste Schritte, Kernkonzepte und praktische Übungen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services-training",
+            "routes": [
+                {
+                    "path_pattern": "/services/training/basics",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Training basics"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Grundlagen"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Introductory workshop for new teams."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Einstiegsworkshop für neue Teams."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-training-cert",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/training/certification",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Certification"
+                            },
+                            "de-CH": {
+                                "content": "Zertifizierung"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Advanced program with a final assessment and an official certificate for your organisation."
+                            },
+                            "de-CH": {
+                                "content": "Aufbauprogramm mit Abschlussprüfung und offiziellem Zertifikat für Ihre Organisation."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services-training",
+            "routes": [
+                {
+                    "path_pattern": "/services/training/certification",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Certification"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Zertifizierung"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Advanced program with certificate."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Aufbauprogramm mit Zertifikat."
                         }
                     ]
                 }

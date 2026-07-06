@@ -12,15 +12,21 @@ use App\Exception\ServiceException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Enforces the menu-tree depth cap: top-level (0) + one child level (1) only.
+ * Enforces the menu-tree depth cap: top-level (0) + child (1) + grandchild (2).
  * CMS page trees may be deeper; this applies to navigation_menu_items only.
+ * Grandchildren render as indented sub-links in dropdown/mega panels on the
+ * web and as a third collapsible level in the mobile drawer.
  */
 final class NavigationMenuDepthSupport
 {
-    /** Allowed menu depths: 0 (top-level) and 1 (child). Depth 2+ is forbidden. */
-    public const MAX_LEVEL = 1;
+    /** Allowed menu depths: 0 (top-level), 1 (child), 2 (grandchild). Depth 3+ is forbidden. */
+    public const MAX_LEVEL = 2;
 
-    /** Menu {@see NavigationMenu::maxDepth} stored value (levels count). */
+    /**
+     * Menu {@see NavigationMenu::maxDepth} stored cap. It is a depth-INDEX
+     * limit for the render clamp (`clampMenuItemsAtDepth` keeps depths
+     * 0..maxDepth), so the stored value 2 renders all three item levels.
+     */
     public const MENU_MAX_DEPTH = 2;
 
     public function computeDepth(?NavigationMenuItem $item): int
@@ -56,7 +62,7 @@ final class NavigationMenuDepthSupport
         }
 
         throw new ServiceException(
-            'Navigation menus support at most two levels (top-level items and their direct children).',
+            'Navigation menus support at most three levels (top-level items, children, and grandchildren).',
             Response::HTTP_BAD_REQUEST,
         );
     }

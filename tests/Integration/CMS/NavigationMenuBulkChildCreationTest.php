@@ -31,15 +31,18 @@ final class NavigationMenuBulkChildCreationTest extends QaWebTestCase
         $admin = $this->loginAsQaAdmin();
         /** @var PageRepository $pageRepo */
         $pageRepo = self::getContainer()->get(PageRepository::class);
+        // Deepest first so parent deletes never trip on remaining children.
         foreach ([
             self::GRANDCHILD_KEYWORD,
             self::CHILD_B_KEYWORD,
             self::CHILD_A_KEYWORD,
             self::PARENT_KEYWORD,
-        ] as $keyword) {
-            $page = $pageRepo->findOneBy(['keyword' => $keyword]);
-            if ($page instanceof Page) {
-                $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $page->getId(), null, $admin);
+        ] as $base) {
+            foreach (['_desc4', '_desc', '_dup', '_pub', ''] as $suffix) {
+                $page = $pageRepo->findOneBy(['keyword' => $base . $suffix]);
+                if ($page instanceof Page) {
+                    $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $page->getId(), null, $admin);
+                }
             }
         }
 
@@ -79,12 +82,14 @@ final class NavigationMenuBulkChildCreationTest extends QaWebTestCase
         self::assertCount(2, $storedChildren);
     }
 
-    public function testIncludeDescendantsFlattensDeepPagesToMenuDepthCap(): void
+    public function testIncludeDescendantsNestsGrandchildrenAndFlattensBeyondDepthCap(): void
     {
         $admin = $this->loginAsQaAdmin();
         $parentId = $this->createQaPage($admin, self::PARENT_KEYWORD . '_desc', null);
         $childId = $this->createQaPage($admin, self::CHILD_A_KEYWORD . '_desc', $parentId);
-        $this->createQaPage($admin, self::GRANDCHILD_KEYWORD . '_desc', $childId);
+        $grandchildId = $this->createQaPage($admin, self::GRANDCHILD_KEYWORD . '_desc', $childId);
+        // Depth 4 in the page tree — beyond the three-level menu cap.
+        $this->createQaPage($admin, self::GRANDCHILD_KEYWORD . '_desc4', $grandchildId);
 
         $create = $this->jsonRequest(
             'POST',
@@ -100,7 +105,7 @@ final class NavigationMenuBulkChildCreationTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess($create, Response::HTTP_CREATED);
         /** @var list<array<string, mixed>> $createdChildren */
         $createdChildren = $data['children'] ?? [];
-        self::assertCount(2, $createdChildren);
+        self::assertCount(3, $createdChildren);
 
         /** @var NavigationMenuItemRepository $itemRepo */
         $itemRepo = self::getContainer()->get(NavigationMenuItemRepository::class);
@@ -109,13 +114,24 @@ final class NavigationMenuBulkChildCreationTest extends QaWebTestCase
         $parentItemId = $parentItem['id'] ?? null;
         self::assertIsInt($parentItemId);
 
-        // Menus support two levels only: the grandchild page cannot nest under
-        // the child item, so it is flattened to a direct child of the root item.
+        // Menus support three levels: the grandchild page nests under the
+        // child item, and the great-grandchild (depth 4) is flattened to a
+        // direct child of the root item.
         $directChildren = $itemRepo->findBy(['parentItem' => $parentItemId, 'isActive' => true]);
         self::assertCount(2, $directChildren);
+        $nestedCounts = [];
         foreach ($directChildren as $directChild) {
-            self::assertCount(0, $itemRepo->findBy(['parentItem' => $directChild, 'isActive' => true]));
+            $grandchildren = $itemRepo->findBy(['parentItem' => $directChild, 'isActive' => true]);
+            $nestedCounts[] = count($grandchildren);
+            foreach ($grandchildren as $grandchildItem) {
+                // Depth cap: grandchild items never have children of their own.
+                self::assertCount(0, $itemRepo->findBy(['parentItem' => $grandchildItem, 'isActive' => true]));
+            }
         }
+        sort($nestedCounts);
+        // One direct child is the real child page (with the nested grandchild),
+        // the other is the flattened depth-4 page (no children).
+        self::assertSame([0, 1], $nestedCounts);
     }
 
     public function testDuplicateChildPageReturnsBadRequestWithoutPartialWrite(): void

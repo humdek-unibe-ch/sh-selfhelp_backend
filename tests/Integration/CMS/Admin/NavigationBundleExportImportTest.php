@@ -384,7 +384,7 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         ], $admin);
         $data = $this->assertEnvelopeSuccess($response, Response::HTTP_OK);
         self::assertIsArray($data['imported_pages'] ?? null);
-        self::assertCount(20, $data['imported_pages']);
+        self::assertCount(22, $data['imported_pages']);
         self::assertIsArray($data['imported_menus'] ?? null);
         self::assertEqualsCanonicalizing(
             [
@@ -441,6 +441,32 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         // The "Resources" main-row group carries its pages as dropdown children.
         self::assertContains($keywordPrefix . 'demo-resources', $headerKeywords);
         self::assertContains($keywordPrefix . 'demo-blog', $headerKeywords);
+
+        // Regression: three-level nesting survives import regardless of item
+        // positions. The Training grandchildren (position 10, listed after their
+        // position-20 parent) must nest under the Training item — the old
+        // position-first creation order silently re-rooted them.
+        $trainingItem = $this->findPayloadItemByPageKeyword(
+            $headerMenu['items'],
+            $keywordPrefix . 'demo-services-training',
+        );
+        self::assertNotNull($trainingItem, 'Training item missing from header payload');
+        $trainingChildKeywords = $this->collectPageKeywordsFromPayloadItems(
+            is_array($trainingItem['children'] ?? null) ? $trainingItem['children'] : [],
+        );
+        self::assertContains($keywordPrefix . 'demo-services-training-basics', $trainingChildKeywords);
+        self::assertContains($keywordPrefix . 'demo-services-training-cert', $trainingChildKeywords);
+        $rootKeywords = [];
+        foreach ($headerMenu['items'] as $rootItem) {
+            if (is_array($rootItem) && is_array($rootItem['page'] ?? null) && is_string($rootItem['page']['keyword'] ?? null)) {
+                $rootKeywords[] = $rootItem['page']['keyword'];
+            }
+        }
+        self::assertNotContains(
+            $keywordPrefix . 'demo-services-training-basics',
+            $rootKeywords,
+            'Grandchild item leaked to the menu root during import',
+        );
 
         $footerMenu = $menus[LookupService::NAVIGATION_MENU_KEY_WEB_FOOTER] ?? null;
         self::assertIsArray($footerMenu);
@@ -764,6 +790,37 @@ final class NavigationBundleExportImportTest extends QaWebTestCase
         self::assertArrayNotHasKey('menus', $bundle);
 
         $this->jsonRequest('DELETE', '/cms-api/v1/admin/pages/' . $pageId, null, $admin);
+    }
+
+    /**
+     * Find the first payload item (roots + nested children) whose page keyword
+     * matches.
+     *
+     * @param array<array-key, mixed> $items
+     *
+     * @return array<string, mixed>|null
+     */
+    private function findPayloadItemByPageKeyword(array $items, string $keyword): ?array
+    {
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $page = $item['page'] ?? null;
+            if (is_array($page) && ($page['keyword'] ?? null) === $keyword) {
+                /** @var array<string, mixed> $item */
+                return $item;
+            }
+            $children = $item['children'] ?? null;
+            if (is_array($children) && $children !== []) {
+                $found = $this->findPayloadItemByPageKeyword($children, $keyword);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
