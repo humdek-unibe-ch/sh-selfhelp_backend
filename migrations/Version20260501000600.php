@@ -338,16 +338,23 @@ final class Version20260501000600 extends AbstractMigration
             sections: [
                 [
                     'key' => 'wrapper',
+                    'style' => 'center',
+                    'fields' => [
+                        'mih' => '100vh',
+                    ],
+                ],
+                [
+                    'key' => 'container',
                     'style' => 'container',
+                    'parent' => 'wrapper',
                     'fields' => [
                         'mantine_size' => 'sm',
-                        'mantine_py' => 'xl',
                     ],
                 ],
                 [
                     'key' => 'form',
                     'style' => 'validate',
-                    'parent' => 'wrapper',
+                    'parent' => 'container',
                     'fields' => [
                         'name' => 'validate_form',
                         'mantine_card_padding' => 'lg',
