@@ -178,6 +178,25 @@ request language) and dedupes hits per page, preferring the requested
 language's title/snippet — so a German visitor typing an English title still
 finds the page.
 
+## Branding
+
+`navigation_settings` also carries the global brand block returned as
+`branding` in `GET /navigation`:
+
+- `logo_asset_path` / `logo_alt` — asset served as the header/drawer logo
+  (falls back to the plain product name when unset)
+- `id_logo_link_page` — page the logo links to (`link_url` in the payload;
+  home when unset)
+- `logo_size` — `sm` | `md` | `lg` | `xl` (logo heights 24/32/44/56 px,
+  resolved identically on web and mobile via `@selfhelp/shared`
+  `resolveBrandingPresentation` / `NAVIGATION_BRANDING_LOGO_HEIGHTS`)
+- `logo_variant` — `logo-and-name` (default) | `logo-only` | `name-only`
+
+All five are accepted by `PATCH /admin/navigation/settings`
+(schema-validated enums; unknown values are rejected with 422). The admin
+builder's Settings tab exposes them with a live preview; the asset dropdown
+refetches on open so newly uploaded assets appear without a page reload.
+
 ## Start pages and last visited
 
 `navigation_settings` stores guest/user start pages per platform and start modes:

@@ -166,6 +166,45 @@ Same 0.1.33 wave (migration `Version20260706175630`, with round-trip test):
   `home` page; `tests/Integration/CMS/Admin/ExampleLandingBundlesImportTest.php`
   guards that both bundles validate and import end-to-end (styles, fields,
   locales, headless flag, section tree).
+- Fresh installs now run `app:examples:seed-hero-home` automatically
+  (`scripts/fresh-test-install.php`), so a new instance starts with the
+  polished hero landing on `home` instead of the placeholder.
+
+## Added: Anonymous page-view analytics + admin dashboard API
+
+Same 0.1.33 wave (migration `Version20260706220759`, with round-trip test):
+
+- **Tracking:** `PageController` records one anonymous view per delivered page
+  (`PageViewTrackerService`; live-preview requests are never counted, failures
+  never break page delivery). Views aggregate into `page_views`
+  (day x page x platform x visitor) and `page_view_referrers` (day x external
+  host). The visitor hash is HMAC-SHA256 keyed by the app secret **and the
+  date**, so identities rotate daily and no IP/user-agent/PII is ever stored.
+- **API:** `GET /cms-api/v1/admin/analytics/summary` (range/granularity/
+  platform filters; totals, per-day series, top pages, referrers) and
+  `GET /cms-api/v1/admin/analytics/today` (visits + due/executed scheduled
+  jobs + form-submission counts), both gated by the new
+  `admin.analytics.read` permission (seeded to the admin role) with response
+  schemas under `config/schemas/api/v1/responses/admin/analytics/`.
+- Consumed by the frontend 0.1.59 admin dashboard (`/admin`) with
+  web/mobile split charts. Additive — no floor moves beyond the existing
+  0.1.33 ⇄ 0.1.59 pairing.
+
+## Added: Branding logo size + variant
+
+- `navigation_settings` gains `logo_size` (`sm|md|lg|xl`) and `logo_variant`
+  (`logo-and-name` | `logo-only` | `name-only`), emitted in the public
+  `branding` block and accepted by `PATCH /admin/navigation/settings`
+  (schema-validated enums). Pairs with `@selfhelp/shared`
+  `resolveBrandingPresentation` so web header and mobile drawer render
+  identical sizing/fallbacks.
+
+## Changed: reset-password / validate / maintenance become headless
+
+- The three remaining auth/system flow pages (`reset-password`, `validate`,
+  `maintenance`) are flagged headless like `login` / `register` / `two-factor`,
+  so the whole auth journey renders as standalone centered cards without the
+  site chrome.
 
 # v0.1.32
 

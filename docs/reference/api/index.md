@@ -79,6 +79,7 @@ See [01-authentication.md](01-authentication.md) for the login, refresh, 2FA, an
 - [13-admin-scheduled-jobs.md](13-admin-scheduled-jobs.md) - Background job management.
 - [14-admin-actions.md](14-admin-actions.md) - Automated action system.
 - [20-admin-system-maintenance.md](20-admin-system-maintenance.md) - Instance-scoped version, update preflight, request, and status (SelfHelp Manager flow).
+- [21-admin-analytics.md](21-admin-analytics.md) - Anonymous page-view analytics and the today's-operations dashboard snapshot.
 
 ### Public and forms
 

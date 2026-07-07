@@ -459,6 +459,17 @@ the same change wave:
 > (`resolveWebBranchNavContext`), and the all-language content search + admin
 > pages `title`/`titles` fields land in the same versions — no extra floor
 > moves beyond the 0.1.33 ⇄ 0.1.59 pairing above.
+> The wave's remaining additions are **additive inside the same pairing**:
+> anonymous page-view analytics + the admin dashboard API (migration
+> `Version20260706220759`: `page_views`/`page_view_referrers` tables, the
+> `admin.analytics.read` permission, `GET /admin/analytics/summary` +
+> `GET /admin/analytics/today` consumed by the frontend 0.1.59 `/admin`
+> dashboard, which hides the widgets without the permission), the branding
+> `logo_size`/`logo_variant` columns on `navigation_settings` (emitted in the
+> `branding` block, resolved by `@selfhelp/shared`
+> `resolveBrandingPresentation` on web + mobile), and the
+> `reset-password`/`validate`/`maintenance` system pages turning headless.
+> An older frontend simply ignores all of it, so no further floor moves.
 
 > **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
 > wave):** further additive issue #30 follow-up. Core adds two page-property
