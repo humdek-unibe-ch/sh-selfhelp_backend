@@ -83,6 +83,24 @@ class FormValidationService extends BaseService
     }
 
     /**
+     * Validate a form update request: the same checks as a submission plus the
+     * section's `own_entries_only` flag (default on when the field is unset),
+     * which FormController::updateForm needs for the record edit mode rule
+     * (issue #30) — updating another user's record requires the section to opt
+     * out of own_entries_only AND table UPDATE permission.
+     *
+     * @param array<string, mixed> $formData
+     * @return array<string, mixed>
+     */
+    public function validateFormUpdate(int $pageId, int $sectionId, array $formData): array
+    {
+        $result = $this->validateFormSubmission($pageId, $sectionId, $formData);
+        $result['own_entries_only'] = ($this->readSectionFieldContent($sectionId, 'own_entries_only') ?? '1') === '1';
+
+        return $result;
+    }
+
+    /**
      * Validate delete request: ACL delete permission, section in page, and correct section type
      *
      * @return array<string, mixed>
@@ -107,11 +125,11 @@ class FormValidationService extends BaseService
         // Ensure section belongs to the page
         $this->validateSectionBelongsToPage($pageId, $sectionId);
 
-        // Ensure section style is a delete-capable type: the show-user-input
-        // display form or the entry-record-delete trigger inside an entry
+        // Ensure section style is a delete-capable type: the entry-table
+        // admin grid or the entry-record-delete trigger inside an entry
         // subtree (the backend hydrates its record_id per bound row).
         $styleName = $section->getStyle()?->getName();
-        $deleteCapableStyles = [StyleNames::STYLE_SHOW_USER_INPUT, StyleNames::STYLE_ENTRY_RECORD_DELETE];
+        $deleteCapableStyles = [StyleNames::STYLE_ENTRY_TABLE, StyleNames::STYLE_ENTRY_RECORD_DELETE];
         if (!in_array($styleName, $deleteCapableStyles, true)) {
             throw new ServiceException(
                 'Invalid section type for delete operation',

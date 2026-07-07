@@ -73,9 +73,9 @@ class DataAccessSecurityService
     }
 
     /**
-     * Single source of truth for "may this user delete this form/showUserInput
+     * Single source of truth for "may this user delete this form/entry-table
      * record?". Shared by the delete endpoint (enforcement, FormController) and
-     * the showUserInput renderer (per-row `_can_delete` flag, SectionUtilityService)
+     * the entry-table renderer (per-row `_can_delete` flag, SectionUtilityService)
      * so the two never drift.
      *
      * - own_entries_only=true: the section only ever shows the user's own
@@ -89,6 +89,26 @@ class DataAccessSecurityService
     public function canDeleteOwnedRecord(bool $ownEntriesOnly, bool $isOwnRecord, bool $hasDeletePermission): bool
     {
         return $ownEntriesOnly || $isOwnRecord || $hasDeletePermission;
+    }
+
+    /**
+     * Single source of truth for "may this user update this form record?"
+     * (issue #30 record edit mode). Shared by the update endpoint
+     * (enforcement, FormController::updateForm) and the form-record prefill
+     * loader (DataService::getFormRecordDataForRecord) so the two never drift.
+     *
+     * - own_entries_only=true: the form only ever loads/updates the user's own
+     *   records — DataService enforces ownership at the query, so the decision
+     *   here is always allow.
+     * - own_entries_only=false: the user may always update their own record;
+     *   updating someone else's requires UPDATE permission on the data table.
+     *
+     * Callers resolve $hasUpdatePermission themselves so this stays a pure
+     * decision with no extra queries.
+     */
+    public function canUpdateOwnedRecord(bool $ownEntriesOnly, bool $isOwnRecord, bool $hasUpdatePermission): bool
+    {
+        return $ownEntriesOnly || $isOwnRecord || $hasUpdatePermission;
     }
 
     /**

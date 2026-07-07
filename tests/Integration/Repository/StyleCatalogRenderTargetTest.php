@@ -34,7 +34,8 @@ final class StyleCatalogRenderTargetTest extends QaKernelTestCase
     /** Styles that must exist (previously absent from shared/mobile registries). */
     private const FORMERLY_MISSING = [
         'data-container', 'timeline-item', 'version', 'no-access',
-        'missing', 'not-found', 'ref-container', 'show-user-input',
+        // `entry-table` is the renamed `show-user-input` (Version20260706221024).
+        'missing', 'not-found', 'ref-container', 'entry-table',
     ];
 
     /** Deferred speculative styles that must NOT be in the milestone-one catalog. */

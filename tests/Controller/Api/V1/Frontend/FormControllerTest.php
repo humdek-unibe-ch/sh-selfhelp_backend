@@ -314,7 +314,7 @@ final class FormControllerTest extends QaWebTestCase
         self::assertSame(Response::HTTP_UNAUTHORIZED, $envelope['status'] ?? null);
     }
 
-    public function testDeleteFormWithNonShowUserInputSectionReturns400(): void
+    public function testDeleteFormWithNonDeleteCapableSectionReturns400(): void
     {
         [$page, $section] = $this->pages->createFormPage('qa_form_delete_wrongtype', openAccess: false);
         $this->pages->grantGroupAcl(
@@ -327,8 +327,8 @@ final class FormControllerTest extends QaWebTestCase
             affectedUserIds: [$this->qaUserId()],
         );
 
-        // ACL delete passes, but a form-record section is not the showUserInput
-        // style the delete path requires → 400.
+        // ACL delete passes, but a form-record section is not a delete-capable
+        // style (entry-table / entry-record-delete) → 400.
         $envelope = $this->jsonRequest('DELETE', self::DELETE, [
             'record_id' => 1,
             'page_id' => (int) $page->getId(),
@@ -341,7 +341,7 @@ final class FormControllerTest extends QaWebTestCase
     {
         // Regression: the CMS-in-CMS entry subtree renders per-row delete
         // buttons through the `entry-record-delete` style; the delete endpoint
-        // must accept that style (previously only show-user-input passed).
+        // must accept that style (previously only the entry-table grid passed).
         [$page, $formSection] = $this->pages->createFormPage('qa_form_entry_del', openAccess: false);
         $deleteSection = $this->pages->createSection('qa_form_entry_del_btn', 'entry-record-delete');
         $this->pages->linkSectionToPage($page, $deleteSection, 20);

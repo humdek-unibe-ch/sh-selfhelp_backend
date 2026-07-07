@@ -1,0 +1,681 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "exported_at": "2026-07-06T00:00:00+00:00",
+    "core_version": "0.1.x",
+    "title": "Testimonials",
+    "description": "Quote wall with avatars and author lines; translatable quotes maintained in an admin grid.",
+    "tags": [
+        "cms-in-cms",
+        "list only",
+        "translatable"
+    ],
+    "_comment": "CMS-in-CMS template: a Testimonials wall in three pages — the list-only variant of the pattern (no public detail page). PUBLIC: /testimonials renders every quote as a blockquote card with avatar initials and author line. ADMIN (CMS surface): /cms/testimonials is an entry-table CRUD grid and /cms/testimonials/form is one create+edit form page with two routes (blank = create, /{record_id} = update) opened as a modal. Data binding is portable via \"@section:testimonials-form\" tokens; data_tables[] carries columns + sample rows (import with options.importData=true). The quote input is translatable. Content locales: de-CH + en-GB. Use a keyword + route prefix to import a second copy — in-content links are rewritten automatically. Import via Admin > Pages > Import. NOT auto-seeded.",
+    "data_tables": [
+        {
+            "owner_section_name": "testimonials-form",
+            "columns": [
+                "author",
+                "role_company",
+                "quote"
+            ],
+            "rows": [
+                {
+                    "author": "Lena Baumann",
+                    "role_company": "Study participant, wave 2",
+                    "quote": "The weekly check-ins take me two minutes on my phone. It is the first study where I never felt like the technology was in the way."
+                },
+                {
+                    "author": "Dr. Samuel Frei",
+                    "role_company": "Principal investigator, cardiology",
+                    "quote": "Our coordinators build and translate new questionnaires themselves. What used to be a two-week IT ticket is now an afternoon of clicking."
+                },
+                {
+                    "author": "Priya Sharma",
+                    "role_company": "Research coordinator",
+                    "quote": "Importing a template gave us a working participant portal in one morning — list page, detail pages and the admin grid included."
+                },
+                {
+                    "author": "Thomas Egli",
+                    "role_company": "IT services",
+                    "quote": "One backend, one frontend, versioned plugins. It slots into our infrastructure without any special cases."
+                },
+                {
+                    "author": "Camille Rochat",
+                    "role_company": "Study participant, pilot group",
+                    "quote": "I can read everything in French while the team works in German. The switch is seamless."
+                },
+                {
+                    "author": "Prof. Anna Vogel",
+                    "role_company": "Head of research group",
+                    "quote": "The audit trail and permission model convinced our data protection office on the first review."
+                }
+            ]
+        }
+    ],
+    "pages": [
+        {
+            "keyword": "cms-testimonials-form",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/testimonials/form",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Stimme bearbeiten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Edit testimonial"
+                        }
+                    ]
+                },
+                {
+                    "name": "open_in_modal",
+                    "display": false,
+                    "translations": [
+                        {
+                            "language_code": "all",
+                            "content": "1"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/cms/testimonials/form",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                },
+                {
+                    "path_pattern": "/cms/testimonials/{record_id}",
+                    "requirements": {
+                        "record_id": "\\d+"
+                    },
+                    "is_canonical": false,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "testimonials-form",
+                    "style_name": "form-record",
+                    "fields": {
+                        "name": {
+                            "all": {
+                                "content": "testimonials_form"
+                            }
+                        },
+                        "title": {
+                            "de-CH": {
+                                "content": "Stimme"
+                            },
+                            "en-GB": {
+                                "content": "Testimonial"
+                            }
+                        },
+                        "alert_success": {
+                            "de-CH": {
+                                "content": "Stimme gespeichert."
+                            },
+                            "en-GB": {
+                                "content": "Testimonial saved."
+                            }
+                        },
+                        "btn_save_label": {
+                            "de-CH": {
+                                "content": "Speichern"
+                            },
+                            "en-GB": {
+                                "content": "Save"
+                            }
+                        },
+                        "btn_update_label": {
+                            "de-CH": {
+                                "content": "Aktualisieren"
+                            },
+                            "en-GB": {
+                                "content": "Update"
+                            }
+                        },
+                        "btn_cancel_label": {
+                            "de-CH": {
+                                "content": "Abbrechen"
+                            },
+                            "en-GB": {
+                                "content": "Cancel"
+                            }
+                        },
+                        "btn_cancel_url": {
+                            "all": {
+                                "content": "/cms/testimonials"
+                            }
+                        },
+                        "close_modal_on_save": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "load_record_from": {
+                            "all": {
+                                "content": "record_id"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "testimonials-form-author",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "author"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Name"
+                                    },
+                                    "en-GB": {
+                                        "content": "Author"
+                                    }
+                                },
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "testimonials-form-role",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "role_company"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Rolle / Organisation"
+                                    },
+                                    "en-GB": {
+                                        "content": "Role / organisation"
+                                    }
+                                },
+                                "placeholder": {
+                                    "de-CH": {
+                                        "content": "z. B. Studienkoordinatorin"
+                                    },
+                                    "en-GB": {
+                                        "content": "e.g. Research coordinator"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "testimonials-form-quote",
+                            "style_name": "textarea",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "quote"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Zitat"
+                                    },
+                                    "en-GB": {
+                                        "content": "Quote"
+                                    }
+                                },
+                                "description": {
+                                    "de-CH": {
+                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                    },
+                                    "en-GB": {
+                                        "content": "Translatable — enter a separate text per language."
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "rows": {
+                                    "all": {
+                                        "content": "4"
+                                    }
+                                },
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "testimonials",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/testimonials",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Stimmen"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Testimonials"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/testimonials",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "testimonials-hero",
+                    "style_name": "stack",
+                    "fields": {
+                        "gap": {
+                            "all": {
+                                "content": "xs"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"mb\":\"xl\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "testimonials-hero-title",
+                            "style_name": "title",
+                            "fields": {
+                                "content": {
+                                    "de-CH": {
+                                        "content": "Das sagen unsere Nutzerinnen und Nutzer"
+                                    },
+                                    "en-GB": {
+                                        "content": "What people say"
+                                    }
+                                },
+                                "title_order": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "testimonials-hero-subtitle",
+                            "style_name": "text",
+                            "fields": {
+                                "text": {
+                                    "de-CH": {
+                                        "content": "Stimmen aus Studien, Koordination und IT — gepflegt über das Admin-Grid."
+                                    },
+                                    "en-GB": {
+                                        "content": "Voices from studies, coordination and IT — maintained through the admin grid."
+                                    }
+                                },
+                                "color": {
+                                    "all": {
+                                        "content": "dimmed"
+                                    }
+                                },
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "testimonials-hero-divider",
+                            "style_name": "divider",
+                            "fields": {
+                                "spacing": {
+                                    "all": {
+                                        "content": "{\"mt\":\"sm\"}"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "section_name": "testimonials-list",
+                    "style_name": "entry-list",
+                    "global_fields": {
+                        "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:testimonials-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                    },
+                    "children": [
+                        {
+                            "section_name": "testimonials-list-card",
+                            "style_name": "card",
+                            "fields": {
+                                "border": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "radius": {
+                                    "all": {
+                                        "content": "md"
+                                    }
+                                },
+                                "web_card_shadow": {
+                                    "all": {
+                                        "content": "sm"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "testimonials-list-card-quote",
+                                    "style_name": "blockquote",
+                                    "fields": {
+                                        "blockquote_content": {
+                                            "de-CH": {
+                                                "content": "{{quote}}"
+                                            },
+                                            "en-GB": {
+                                                "content": "{{quote}}"
+                                            }
+                                        },
+                                        "web_left_icon": {
+                                            "all": {
+                                                "content": "IconQuote"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "testimonials-list-card-author",
+                                    "style_name": "group",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "align": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        },
+                                        "web_group_wrap": {
+                                            "all": {
+                                                "content": "nowrap"
+                                            }
+                                        },
+                                        "spacing": {
+                                            "all": {
+                                                "content": "{\"mt\":\"sm\"}"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "testimonials-list-card-avatar",
+                                            "style_name": "avatar",
+                                            "fields": {
+                                                "name": {
+                                                    "all": {
+                                                        "content": "{{author}}"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "initials"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "md"
+                                                    }
+                                                },
+                                                "radius": {
+                                                    "all": {
+                                                        "content": "50%"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "testimonials-list-card-author-text",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "xs"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "testimonials-list-card-author-name",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "{{author}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{author}}"
+                                                            }
+                                                        },
+                                                        "web_text_font_weight": {
+                                                            "all": {
+                                                                "content": "600"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "testimonials-list-card-author-role",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "{{role_company}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{role_company}}"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "dimmed"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "xs"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "cms-testimonials",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/testimonials",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Stimmen verwalten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Manage testimonials"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/cms/testimonials",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "cms-testimonials-table",
+                    "style_name": "entry-table",
+                    "fields": {
+                        "title": {
+                            "de-CH": {
+                                "content": "Alle Stimmen"
+                            },
+                            "en-GB": {
+                                "content": "All testimonials"
+                            }
+                        },
+                        "data_table": {
+                            "all": {
+                                "content": "@section:testimonials-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "delete_entry": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "dt_sortable": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "dt_searching": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "dt_paginate": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "dt_info": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "csv_export": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "add_url": {
+                            "all": {
+                                "content": "/cms/testimonials/form"
+                            }
+                        },
+                        "edit_url": {
+                            "all": {
+                                "content": "/cms/testimonials/{record_id}"
+                            }
+                        },
+                        "empty_text": {
+                            "de-CH": {
+                                "content": "Noch keine Stimmen — mit «Neu hinzufügen» die erste anlegen."
+                            },
+                            "en-GB": {
+                                "content": "No testimonials yet — click \"Add new\" to create the first one."
+                            }
+                        },
+                        "delete_modal_title": {
+                            "de-CH": {
+                                "content": "Stimme löschen?"
+                            },
+                            "en-GB": {
+                                "content": "Delete testimonial?"
+                            }
+                        },
+                        "delete_modal_body": {
+                            "de-CH": {
+                                "content": "Der Eintrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+                            },
+                            "en-GB": {
+                                "content": "The entry is removed permanently. This action cannot be undone."
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

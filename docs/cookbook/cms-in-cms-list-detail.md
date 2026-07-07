@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-30.
+Last verified: 2026-07-06.
 Source of truth: Runtime backend code (issue #30) and the linked architecture doc.
 
 This recipe builds a working **list → detail** pattern bound to a data table —
@@ -25,16 +25,16 @@ For a base name `team-members`:
 | Admin create form | `/cms/team-members/form` | cms | with `create_form` | opens in a **modal** (`open_in_modal`) |
 | Public list | `/team-members` | public | with `create_public` | `entry-list` of cards |
 | Public detail | `/team-members/{record_id}` | public | with `create_public` | normal shareable page |
-| Admin list | `/cms/team-members` | cms | with `create_admin` | `show-user-input` **data table** |
-| Admin detail | `/cms/team-members/{record_id}` | cms | with `create_admin` | opens in a **modal** (`open_in_modal`) |
+| Admin list | `/cms/team-members` | cms | with `create_admin` | `entry-table` **data table** |
+| Admin detail | `/cms/team-members/{record_id}` | cms | with `create_admin` | **edit form** in a **modal** (`open_in_modal`) |
 
 The two list surfaces are presented differently on purpose:
 
 - **Public list** is an `entry-list` of **cards** (one per row) with an "Open"
   link to the shareable, full-page public detail (`/team-members/{{record_id}}`).
-- **Admin list** is a `show-user-input` **data table** with search, sorting,
+- **Admin list** is an `entry-table` **data table** with search, sorting,
   pagination, CSV export and an inline **delete**, plus an **"Add new"** button
-  (`add_url` → the create form) and a per-row **open** action (`edit_url` → the
+  (`add_url` → the create form) and a per-row **edit** action (`edit_url` → the
   admin detail). The create form and the admin detail carry the `open_in_modal`
   page property, so on the website they open as **modal overlays** on top of the
   list; the create form closes its modal on save (`close_modal_on_save`) and the
@@ -44,12 +44,14 @@ The detail page filters the table on `record_id = {{route.record_id}}`. With
 `create_form` the form page **owns the data table** (it is named by the form
 section id) and the other pages bind to that owned table automatically.
 
-> Editing a *specific* existing record in the same form (load-by-`record_id`
-> "upsert") needs the frontend form to honour a record route param; it is a
-> documented future enhancement, and the natural home for a SurveyJS-style smart
-> form. The scaffold today is **create** (append, in a modal) + **read**
-> (cards / data table / detail modal) + **delete** (inline on the admin table).
-> The admin per-row action **opens the read-only detail modal**.
+**Record editing** works out of the box: the wizard reuses the *same*
+`form-record` section on the admin detail page, configured with
+`load_record_from = record_id` and *Own entries only* **off**. Opening
+`/cms/team-members/42` prefills the form with record 42 (all languages —
+translatable inputs get their per-language values) and saving **updates** that
+record instead of appending a new one. Updating another user's record requires
+UPDATE permission on the form's data table; admins pass automatically. See
+[forms.md#form-record](../reference/styles/forms.md#form-record).
 
 ## Option A — the wizard (recommended)
 
@@ -94,10 +96,13 @@ not lock anything.
 6. Add child fields that reference the record (`{{name}}`, `{{role}}`, …).
 
 Repeat with `surface = cms` and `/cms/...` URLs for an admin-only pair. For the
-admin list, prefer a **show-user-input** section (a real data table) instead of
+admin list, prefer an **entry-table** section (a real data table) instead of
 an `entry-list`: point its `data_table` at the table, turn on `delete_entry`, set
 `add_url` to the create form and `edit_url` to `/cms/team-members/{record_id}`
-(single-brace `{record_id}` is substituted per row).
+(single-brace `{record_id}` is substituted per row). For the admin detail, reuse
+the create form's `form-record` section and set its **Load record from route
+parameter** field (`load_record_from`) to `record_id` with *Own entries only*
+off — the form then prefills and updates the addressed record.
 
 ## Open in modal (web)
 
@@ -141,24 +146,40 @@ existing modal pages need no change.
 The wizard sets all of this up automatically; by hand, just toggle the page
 property and the two form fields.
 
-## Import the ready-made example
+## Start from a template (recommended for a first app)
 
-The ready-made example bundle now lives with all other curated examples in the
-**frontend** repo at `sh-selfhelp_frontend/examples/cms-in-cms/team-members.bundle.json`
-(see that repo's `examples/README.md`). It
-is a **self-contained** importable Team-Members app: a create form that owns the
-table, public list/detail, and an admin list (inline delete) + detail. The entry
-styles bind to the form section via the portable `"table":"@section:team-members-form"`
-token, and the bundle carries sample rows in `data_tables[]`. It is **not**
-auto-seeded.
+Six ready-made CMS-in-CMS templates ship with the CMS — complete apps with
+translated content and sample rows:
 
-1. Admin → Pages → **Export / import** (transfer icon) → **Import** tab.
-2. Upload the bundle file. The dialog runs a dry-run validation and shows any
-   issues. Enable **import data** to also seed the sample rows.
-3. If `/team-members` is already taken, set a **keyword prefix** and **route
-   prefix** (e.g. `demo-` / `/demo`) to import a non-colliding copy, or enable
-   **skip conflicting routes**.
-4. Confirm import.
+| Template | Pages | Pattern |
+|----------|-------|---------|
+| **Team members** (flagship) | form + public list + public detail + admin grid | card grid with avatar initials, role badges, contact links |
+| **News & updates** | form + public list + public detail + admin grid | posts with category badge, date, translatable body |
+| **FAQ accordion** | form + public list + admin grid | accordion, one item per data row |
+| **Events** | form + public list + public detail + admin grid | date badge, location, teaser |
+| **Contact directory** | form + public list + admin grid | compact cards with tap-to-call / tap-to-mail links |
+| **Testimonials** | form + public list + admin grid | quote wall with avatars |
+
+1. Admin → Pages → **Export / import** (transfer icon) → **Start from template**
+   tab (the app wizard also links here via **Browse templates**).
+2. Pick a template — **Use this template** jumps to the Import tab with the
+   bundle loaded and safe demo keyword/route prefixes pre-filled, so the copy
+   never collides with existing pages and its internal links are rewritten to
+   the prefixed routes automatically.
+3. Enable **import data** to seed the sample rows, validate, and import. The
+   app is clickable immediately.
+
+The bundle files live in the **frontend** repo under
+`sh-selfhelp_frontend/examples/cms-in-cms/` (see that repo's
+`examples/README.md`); each is self-contained — a create/edit form that owns the
+table, the public pages, and an `entry-table` admin grid, with entry styles
+bound via the portable `"table":"@section:<form>"` token and sample rows in
+`data_tables[]`. Nothing is auto-seeded.
+
+To import a bundle **file** instead (e.g. one exported from another install):
+Import tab → upload the file → the dialog runs a dry-run validation and shows
+any issues → set prefixes if the routes are taken (or enable **skip conflicting
+routes**) → confirm.
 
 The owner token is relinked to the freshly-created form section automatically, so
 the list/detail show the seeded rows immediately. Content fields use the

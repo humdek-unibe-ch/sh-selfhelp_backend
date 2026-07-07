@@ -11,6 +11,23 @@ namespace App\Tests\Support;
 
 final class ExampleBundleTestPaths
 {
+    /**
+     * Every CMS-in-CMS template bundle shipped in the frontend gallery, keyed
+     * by template id. Used by the parameterized golden import test so a new
+     * template cannot ship without an import+render guard.
+     *
+     * @return array<string, string> template id -> bundle path
+     */
+    public static function cmsInCmsBundles(): array
+    {
+        $bundles = [];
+        foreach (['team-members', 'news', 'faq', 'events', 'contact-directory', 'testimonials'] as $id) {
+            $bundles[$id] = self::resolve('cms-in-cms/' . $id . '.bundle.json');
+        }
+
+        return $bundles;
+    }
+
     public static function teamMembersBundle(): string
     {
         return self::resolve('cms-in-cms/team-members.bundle.json');

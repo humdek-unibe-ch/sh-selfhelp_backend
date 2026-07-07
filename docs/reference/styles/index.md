@@ -147,7 +147,7 @@ the per-style web/mobile mapping and the recommended targeting.
 | `progress` | no | [forms.md#progress](./forms.md#progress) |
 | `progress-root` | yes | [forms.md#progress-root](./forms.md#progress-root) |
 | `progress-section` | no | [forms.md#progress-section](./forms.md#progress-section) |
-| `show-user-input` | no | [forms.md#show-user-input](./forms.md#show-user-input) |
+| `entry-table` | no | [forms.md#entry-table](./forms.md#entry-table) |
 
 ## composite
 

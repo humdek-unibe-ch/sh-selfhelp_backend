@@ -719,18 +719,47 @@ class SectionUtilityService
      *
      * @param array<string, mixed> &$section The section to apply data to (passed by reference)
      * @param int $languageId Language ID for data retrieval
+     * @param array<string, mixed> $routeParams Public route URL parameters
+     *   ({{route.*}} scope) — used by the form-record edit mode to resolve
+     *   `load_record_from` into a concrete record id.
      */
-    public function applySectionData(array &$section, int $languageId = 1): void
+    public function applySectionData(array &$section, int $languageId = 1, array $routeParams = []): void
     {
         $section['section_data'] = [];
 
-        // Handle form record data
+        // Handle form record data. Default: prefill the current user's latest
+        // own record. Record edit mode (issue #30): when the style's
+        // `load_record_from` property names a route parameter, the record
+        // context comes ONLY from the URL — param present: prefill THAT record
+        // (permission-gated through DataService::getFormRecordDataForRecord —
+        // own record always; foreign records need own_entries_only=0 + table
+        // UPDATE permission); param absent: stay EMPTY (create mode), so one
+        // section serves both the "add new" modal and the edit-by-URL modal.
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
-            $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
+            $loadRecordFrom = is_array($section['load_record_from'] ?? null)
+                ? trim($this->asString($section['load_record_from']['content'] ?? ''))
+                : '';
+
+            if ($loadRecordFrom !== '') {
+                $routeRecordId = is_numeric($routeParams[$loadRecordFrom] ?? null)
+                    ? (int) $routeParams[$loadRecordFrom]
+                    : 0;
+                if ($routeRecordId > 0) {
+                    $ownEntriesOnly = !is_array($section['own_entries_only'] ?? null)
+                        || ($section['own_entries_only']['content'] ?? '1') !== '0';
+                    $section['section_data'] = $this->dataService->getFormRecordDataForRecord(
+                        $this->asString($section['id']),
+                        $routeRecordId,
+                        $ownEntriesOnly
+                    );
+                }
+            } else {
+                $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
+            }
         }
 
-        // Handle showUserInput data: fetch rows from the configured data_table
-        if ($section['style_name'] == StyleNames::STYLE_SHOW_USER_INPUT) {
+        // Handle entry-table data: fetch rows from the configured data_table
+        if ($section['style_name'] == StyleNames::STYLE_ENTRY_TABLE) {
             $dataTableId = is_array($section['data_table'] ?? null)
                 ? (int) $this->asString($section['data_table']['content'] ?? '')
                 : 0;
@@ -758,21 +787,34 @@ class SectionUtilityService
 
                 $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
                     && ($section['delete_entry']['content'] ?? '0') === '1';
+                $editEntryEnabled = is_array($section['edit_url'] ?? null)
+                    && trim($this->asString($section['edit_url']['content'] ?? '')) !== '';
 
-                if ($deleteEntryEnabled) {
+                if ($deleteEntryEnabled || $editEntryEnabled) {
                     $currentUser = $this->userContextService->getCurrentUser();
                     $currentUserId = $currentUser ? (int) $currentUser->getId() : 0;
-                    // Resolve the data-table DELETE permission once (hoisted out
-                    // of the per-row loop). Only relevant when the section shows
-                    // everyone's records; when own_entries_only is true every
-                    // visible row is the user's own and is always deletable.
-                    $hasDeletePermission = !$ownEntriesOnly
+                    // Resolve the data-table DELETE/UPDATE permissions once
+                    // (hoisted out of the per-row loop). Only relevant when the
+                    // section shows everyone's records; when own_entries_only is
+                    // true every visible row is the user's own and is always
+                    // deletable/editable.
+                    $hasDeletePermission = $deleteEntryEnabled
+                        && !$ownEntriesOnly
                         && $currentUserId > 0
                         && $this->dataAccessSecurityService->hasPermission(
                             $currentUserId,
                             'data_table',
                             $dataTableId,
                             DataAccessSecurityService::PERMISSION_DELETE
+                        );
+                    $hasUpdatePermission = $editEntryEnabled
+                        && !$ownEntriesOnly
+                        && $currentUserId > 0
+                        && $this->dataAccessSecurityService->hasPermission(
+                            $currentUserId,
+                            'data_table',
+                            $dataTableId,
+                            DataAccessSecurityService::PERMISSION_UPDATE
                         );
 
                     foreach ($entries as &$entry) {
@@ -783,19 +825,29 @@ class SectionUtilityService
                         $rawOwner = $entry['id_users'] ?? null;
                         $entryOwnerId = is_numeric($rawOwner) ? (int) $rawOwner : 0;
                         $isOwnRecord = $entryOwnerId > 0 && $entryOwnerId === $currentUserId;
-                        // Same rule as FormController::deleteForm enforcement.
-                        $entry['_can_delete'] = $this->dataAccessSecurityService->canDeleteOwnedRecord(
-                            $ownEntriesOnly,
-                            $isOwnRecord,
-                            $hasDeletePermission
-                        );
+                        if ($deleteEntryEnabled) {
+                            // Same rule as FormController::deleteForm enforcement.
+                            $entry['_can_delete'] = $this->dataAccessSecurityService->canDeleteOwnedRecord(
+                                $ownEntriesOnly,
+                                $isOwnRecord,
+                                $hasDeletePermission
+                            );
+                        }
+                        if ($editEntryEnabled) {
+                            // Same rule as FormController::updateForm enforcement.
+                            $entry['_can_edit'] = $this->dataAccessSecurityService->canUpdateOwnedRecord(
+                                $ownEntriesOnly,
+                                $isOwnRecord,
+                                $hasUpdatePermission
+                            );
+                        }
                     }
                     unset($entry);
                 }
 
                 $section['entries'] = $entries;
                 // field_key => display_name for this table's curated columns, so
-                // the show-user-input renderer shows human headers while keying
+                // the entry-table renderer shows human headers while keying
                 // cells by the stable field_key (issue #56 v2).
                 $section['field_labels'] = $this->dataService->getColumnDisplayLabels($dataTableId);
             }

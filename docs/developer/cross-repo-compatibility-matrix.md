@@ -471,6 +471,30 @@ the same change wave:
 > `reset-password`/`validate`/`maintenance` system pages turning headless.
 > An older frontend simply ignores all of it, so no further floor moves.
 
+> **CMS-in-CMS polish wave (same core 0.1.33 ⇄ frontend 0.1.59 pairing —
+> breaking style contract):** the list/detail feature ships polished in the same
+> release pair. The **`show-user-input` style is renamed `entry-table`**
+> (migration `Version20260706221024`; sections keep their `id_styles` FK) — a
+> breaking render-contract change, so the cross-layer anchor moves to
+> `@selfhelp/shared` **`3.0.0`** (breaking major: `IEntryTableStyle` /
+> `IEntryTableEntry` replace the `IShowUserInput*` types, `STYLE_REGISTRY` key
+> `entry-table`, `IEntryTableEntry._can_edit`, `IFormRecordStyle` gains
+> `load_record_from` + `own_entries_only`); frontend and mobile adopt `3.0.0`
+> in the same wave (renderers renamed `EntryTableStyle.tsx` / `EntryTable.tsx`).
+> The same wave ships **record edit mode** (`form-record` `load_record_from`;
+> `PUT /cms-api/v1/forms/update` accepts an explicit `record_id` under the
+> shared `canUpdateOwnedRecord` rule with three ownership modes), the
+> per-row `_can_edit` flag in the `entry-table` payload, **portable bundles**
+> (`entry-table` `data_table` exported as `@section:<owner>` and relinked on
+> import; prefixed imports rewrite in-bundle content links so demo copies stay
+> clickable), and the **template gallery** (six curated CMS-in-CMS bundles;
+> `GET /admin/pages/examples` emits `tags` for the frontend's one-click "Start
+> from template" tab). Because the rename + edit mode land inside the SAME
+> unreleased 0.1.33 ⇄ 0.1.59 pair, the `release-manifest.json` floors do not
+> move again: frontend `supports.core` stays `>=0.1.33` and backend
+> `supports.frontend` stays `>=0.1.59` (both `<0.2.0`). Mobile 0.1.33 adopts
+> the rename in the same wave via `@selfhelp/shared` `3.0.0`.
+
 > **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
 > wave):** further additive issue #30 follow-up. Core adds two page-property
 > fields `modal_width` + `modal_height` (migration `Version20260630172821`, page
@@ -501,16 +525,16 @@ the same change wave:
 |-----------|---------|-------------|
 | Host CMS (`selfhelp.cms_version`) | `0.1.33` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `2.0.0` | npm (`2.0.0` strict navigation contract v2 — strict `INavigationMenu`/`INavigationMenuItem` with `layer`/`description`/`aria_label`, no `config`, `TWebFooterPreset`, `headerLayers`/`footerPreset`/`activeTrail` helpers, bundle v2.0 types; `1.21.0` menu-builder navigation contract; `1.20.0` CMS-in-CMS modal sizing; earlier entries unchanged) |
-| `sh-selfhelp_frontend` | `0.1.59` | strict nav payload, layered double header, preset-keyed footer, admin layer sections, bundle v2.0 |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `2.0.0` (local tgz) | strict menu payload + header layer + footer preset contract |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | navigation overhaul: strict payload, layer, footer presets, bundle v2.0 |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.59 <0.2.0` | frontend adopts the strict nav contract v2 |
+| `@selfhelp/shared` | `3.0.0` | npm (`3.0.0` `show-user-input` → `entry-table` rename — `IEntryTableStyle`/`IEntryTableEntry` + `_can_edit`, `IFormRecordStyle.load_record_from`/`own_entries_only`; `2.0.0` strict navigation contract v2 — strict `INavigationMenu`/`INavigationMenuItem` with `layer`/`description`/`aria_label`, no `config`, `TWebFooterPreset`, `headerLayers`/`footerPreset`/`activeTrail` helpers, bundle v2.0 types; `1.21.0` menu-builder navigation contract; `1.20.0` CMS-in-CMS modal sizing; earlier entries unchanged) |
+| `sh-selfhelp_frontend` | `0.1.59` | strict nav payload, layered double header, preset-keyed footer, admin layer sections, bundle v2.0; entry-table grid + record edit mode + template gallery |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `3.0.0` (local tgz) | strict menu payload + header layer + footer preset contract + entry-table style types |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | navigation overhaul + CMS-in-CMS polish wave (entry-table, record edit mode, portable bundles) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.59 <0.2.0` | frontend adopts the strict nav contract v2 + the entry-table/edit-mode contract |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | strict navigation payload v2 (layer/description/aria_label, typed presets, no config) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
-| `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `2.0.0` | strict menu payload + active-trail helpers (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
+| `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers; entry-table renderer rename |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `3.0.0` | strict menu payload + active-trail helpers + entry-table style types (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |

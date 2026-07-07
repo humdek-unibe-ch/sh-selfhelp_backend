@@ -461,12 +461,13 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
     }
 
     /**
-     * Wave J — form / notification / show-user-input authoring upgrade (migration
-     * Version20260622161717): form-record/form-log gain title + description + alert
-     * titles + confirm dialog; notification promotes its icon (`shared_icon`, a
-     * reserved-name exception that stays prefixed but is common scope) + close
-     * button (`with_close_button`, unprefixed) to common; show-user-input gains
-     * title + empty_text.
+     * Wave J — form / notification / entry-table authoring upgrade (migration
+     * Version20260622161717, style renamed from show-user-input by
+     * Version20260706221024): form-record/form-log gain title + description +
+     * alert titles + confirm dialog; notification promotes its icon
+     * (`shared_icon`, a reserved-name exception that stays prefixed but is
+     * common scope) + close button (`with_close_button`, unprefixed) to
+     * common; entry-table gains title + empty_text.
      */
     public function testFormNotificationAuthoringWaveFieldsAndScopes(): void
     {
@@ -491,10 +492,10 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
         self::assertSame('common', $notification['with_close_button']['scope'] ?? null, 'notification.with_close_button must be common (ex-shared_with_close_button, unprefixed).');
         self::assertArrayNotHasKey('web_notification_with_close_button', $notification, 'notification.web_notification_with_close_button must be promoted away.');
 
-        // show-user-input: optional heading + empty-state copy.
-        $showUserInput = $this->fieldsOf($data, 'show-user-input');
-        self::assertSame('content', $showUserInput['title']['scope'] ?? null, 'show-user-input.title must be translatable content.');
-        self::assertSame('content', $showUserInput['empty_text']['scope'] ?? null, 'show-user-input.empty_text must be translatable content.');
+        // entry-table: optional heading + empty-state copy.
+        $entryTable = $this->fieldsOf($data, 'entry-table');
+        self::assertSame('content', $entryTable['title']['scope'] ?? null, 'entry-table.title must be translatable content.');
+        self::assertSame('content', $entryTable['empty_text']['scope'] ?? null, 'entry-table.empty_text must be translatable content.');
     }
 
     /**

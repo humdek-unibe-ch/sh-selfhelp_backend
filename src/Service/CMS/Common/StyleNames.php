@@ -12,9 +12,11 @@ final class StyleNames
 {
    
     /**
-     * Style that is used to display a user input form (read/view context)
+     * Built-in admin data grid over a form's entries (search / sort /
+     * pagination / CSV / add-edit-delete row actions). Renamed from
+     * `show-user-input` by Version20260706221024.
      */
-    public const STYLE_SHOW_USER_INPUT = 'show-user-input';
+    public const STYLE_ENTRY_TABLE = 'entry-table';
 
     /**
      * Style that is used for form record
@@ -38,6 +40,12 @@ final class StyleNames
      * row's `record_id` as a field so the renderers can call the delete API.
      */
     public const STYLE_ENTRY_RECORD_DELETE = 'entry-record-delete';
+
+    /**
+     * Generic repeater: clones its child template once per row, rows coming
+     * from `data_config` (like entry-list) or the style's `loop` JSON field.
+     */
+    public const STYLE_LOOP = 'loop';
 
     /**
      * Styles that are allowed to be used for submitting data

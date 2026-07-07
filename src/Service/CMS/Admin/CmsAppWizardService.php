@@ -16,6 +16,7 @@ use App\Exception\ServiceException;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Routing\RouteConflictValidator;
+use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
@@ -32,6 +33,9 @@ use Symfony\Component\HttpFoundation\Response;
  * the page (with the right `page_surface` + ACL), its DB-driven `page_routes`,
  * and an `entry-list` / `entry-record` holder section whose `data_config` binds
  * to the table — the detail filtering on `record_id = {{route.record_id}}`.
+ * With `create_form` the admin detail page instead ATTACHES the shared
+ * `form-record` section (record edit mode): the list's per-row action opens an
+ * edit form modal prefilled from the URL record id.
  *
  * Everything is conflict-checked up front (keywords + the full active route set)
  * so a partial failure is unlikely; any error still rolls back by deleting the
@@ -159,8 +163,10 @@ class CmsAppWizardService extends BaseService
         $connection->setNestTransactionsWithSavepoints(true);
         $this->entityManager->beginTransaction();
         // Set when the create-form page is scaffolded (it comes first in the
-        // plan); the admin list links its "Add new" button here.
+        // plan); the admin list links its "Add new" button here and the admin
+        // detail reuses the form section itself as its edit form.
         $formUrl = null;
+        $formSectionId = null;
         try {
             foreach ($plan as $entry) {
                 $page = $this->adminPageService->createPage(
@@ -190,15 +196,17 @@ class CmsAppWizardService extends BaseService
                 ];
 
                 if ($entry['role'] === 'form') {
-                    // Scaffold the create form + its owned data table; bind every
-                    // later list/detail to that table by its new section id.
-                    $dataTableName = $this->scaffoldFormAndTable(
+                    // Scaffold the create/edit form + its owned data table; bind
+                    // every later list/detail to that table by its new section id.
+                    $formSectionId = $this->scaffoldFormAndTable(
                         $pageId,
                         $baseName,
                         $formFields,
+                        $recordParam,
                         $contentLocales,
                         $propertyLocale
                     );
+                    $dataTableName = (string) $formSectionId;
                     $formUrl = $entry['url'];
                     // The create form opens as a modal overlay (CMS-in-CMS create);
                     // close_modal_on_save (a form section field) closes it after a
@@ -211,6 +219,16 @@ class CmsAppWizardService extends BaseService
                 // the list). The public detail stays a normal, shareable full page.
                 if ($entry['role'] === 'admin_detail') {
                     $this->setPageProperty($page, self::FIELD_OPEN_IN_MODAL, '1');
+                }
+
+                // Admin detail = EDIT FORM (record edit mode): reuse the SAME
+                // form-record section as the create page — sections are shared,
+                // so both pages write the same data table. Opened with the
+                // record route param the form prefills that record and submits
+                // an update; opened without (the create page) it stays blank.
+                if ($entry['role'] === 'admin_detail' && $formSectionId !== null) {
+                    $this->adminPageService->addSectionToPage($pageId, [['sectionId' => $formSectionId]]);
+                    continue;
                 }
 
                 if ($entry['is_detail']) {
@@ -272,10 +290,11 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Scaffold the create form (`form-log` + one default `text-input`) into the
-     * form page, locate the new form section, and materialize its owned data
-     * table. Returns the table name (the new form section id) the list/detail
-     * pages bind to.
+     * Scaffold the create/edit form (`form-record` + one input per field) into
+     * the form page, locate the new form section, and materialize its owned
+     * data table. Returns the new form section id — it doubles as the data
+     * table name the list/detail pages bind to AND as the shared section the
+     * admin detail page attaches as its edit form.
      *
      * @param list<array{name: string, style: string, label: string}> $formFields
      * @param list<string> $contentLocales
@@ -284,10 +303,11 @@ class CmsAppWizardService extends BaseService
         int $pageId,
         string $baseName,
         array $formFields,
+        string $recordParam,
         array $contentLocales,
         string $propertyLocale
-    ): string {
-        $sections = $this->buildFormSections($baseName, $formFields, $contentLocales, $propertyLocale);
+    ): int {
+        $sections = $this->buildFormSections($baseName, $formFields, $recordParam, $contentLocales, $propertyLocale);
         $imported = $this->sectionExportImportService->importSectionsToPage($pageId, $sections);
 
         $formSectionName = $baseName . '-form';
@@ -311,7 +331,7 @@ class CmsAppWizardService extends BaseService
         // list/detail bindings resolve before the first submission.
         $this->dataTableService->createDataTableForFormSection($formSection);
 
-        return (string) $formSectionId;
+        return $formSectionId;
     }
 
     /**
@@ -337,7 +357,7 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Resolve the numeric `data_tables.id` for a table name (the show-user-input
+     * Resolve the numeric `data_tables.id` for a table name (the entry-table
      * data binding uses the id, not the name).
      */
     private function resolveDataTableId(string $dataTableName): int
@@ -354,13 +374,14 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Build the create form: a `form-log` holder (append-only — each submit adds
-     * a new record, which is what a multi-row list/detail app needs) with one
-     * default translatable `text-input`. The form's `name` property is the table
-     * identifier; `alert_success` is translatable copy. Editing a *specific*
-     * existing record in the same form (load-by-record_id "upsert") is a frontend
-     * capability (form-record honoring the record route param / the future
-     * SurveyJS smart-form) and is intentionally out of scope for this scaffold.
+     * Build the create/edit form: a `form-record` holder in record edit mode
+     * with one input per requested field. `load_record_from` binds the record
+     * context to the URL: on the create page (no route param) the form stays
+     * blank and each submit CREATES a new row; on the admin detail page
+     * (`/cms/<base>/{record_id}`) the SAME shared section prefills that record
+     * and submits an UPDATE. `own_entries_only=0` is the admin edit-any mode —
+     * updating another user's record still requires table UPDATE data access
+     * (admins pass via the role override).
      *
      * @param list<array{name: string, style: string, label: string}> $formFields
      * @param list<string> $contentLocales
@@ -369,6 +390,7 @@ class CmsAppWizardService extends BaseService
     private function buildFormSections(
         string $baseName,
         array $formFields,
+        string $recordParam,
         array $contentLocales,
         string $propertyLocale
     ): array {
@@ -386,13 +408,16 @@ class CmsAppWizardService extends BaseService
 
         return [[
             'section_name' => $baseName . '-form',
-            'style_name' => 'form-log',
+            'style_name' => 'form-record',
             'fields' => [
                 'name' => $this->propertyField(str_replace('-', '_', $baseName) . '_form', $propertyLocale),
                 'alert_success' => $this->contentField('Saved.', $contentLocales),
-                // When this form is opened inside a modal (the CMS create flow),
-                // a successful submit closes it and the parent list refreshes.
+                // When this form is opened inside a modal (the CMS create/edit
+                // flows), a successful save closes it and the list refreshes.
                 'close_modal_on_save' => $this->propertyField('1', $propertyLocale),
+                // Record edit mode: the record context comes ONLY from the URL.
+                'load_record_from' => $this->propertyField($recordParam, $propertyLocale),
+                'own_entries_only' => $this->propertyField('0', $propertyLocale),
             ],
             'children' => $inputChildren,
         ]];
@@ -604,7 +629,7 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Admin list: a `show-user-input` DATA TABLE (search / sort / pagination /
+     * Admin list: an `entry-table` DATA TABLE (search / sort / pagination /
      * CSV) bound to the table by numeric id, showing every record. It gets an
      * inline delete control (permission-gated), an "Add new" button that opens
      * the create form modal, and a per-row open/view action that opens the
@@ -642,7 +667,7 @@ class CmsAppWizardService extends BaseService
 
         return [[
             'section_name' => $baseName . '-admin-table',
-            'style_name' => 'show-user-input',
+            'style_name' => StyleNames::STYLE_ENTRY_TABLE,
             'fields' => $fields,
         ]];
     }

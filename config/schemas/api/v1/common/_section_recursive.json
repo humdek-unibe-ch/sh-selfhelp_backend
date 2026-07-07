@@ -134,7 +134,7 @@
         },
         "entries": {
             "type": "array",
-            "description": "show-user-input rows, each keyed by the immutable data column field_key (issue #56 v2)",
+            "description": "entry-table rows, each keyed by the immutable data column field_key (issue #56 v2)",
             "items": {
                 "type": "object",
                 "additionalProperties": true
@@ -142,7 +142,7 @@
         },
         "field_labels": {
             "type": "object",
-            "description": "show-user-input header map: data column field_key => display_name (issue #56 v2)",
+            "description": "entry-table header map: data column field_key => display_name (issue #56 v2)",
             "additionalProperties": { "type": "string" }
         }
     },

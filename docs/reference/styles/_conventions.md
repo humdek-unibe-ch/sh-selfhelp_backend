@@ -176,10 +176,11 @@ explicit gaps (not implicit drift) so they are visible when planning mobile work
   tags degrade to inline via `sanitizeContent`). Authored headings/lists therefore
   appear flattened on mobile. Closing this needs a mobile block renderer — until
   then keep critical structure out of mobile-facing copy.
-- **show-user-input headers — parity restored (mobile `0.1.30`).** Rows are keyed
-  by the immutable `field_key`; both platforms now resolve human labels through
-  the section's `field_labels` (`field_key => display_name`) map, so default
-  headers and `fields_map` mappings behave the same on web and mobile.
+- **entry-table headers (then `show-user-input`) — parity restored (mobile
+  `0.1.30`).** Rows are keyed by the immutable `field_key`; both platforms now
+  resolve human labels through the section's `field_labels`
+  (`field_key => display_name`) map, so default headers and `fields_map`
+  mappings behave the same on web and mobile.
 
 ## Conventions used on the per-category pages
 

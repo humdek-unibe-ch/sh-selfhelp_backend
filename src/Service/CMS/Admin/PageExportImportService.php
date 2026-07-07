@@ -11,12 +11,14 @@ namespace App\Service\CMS\Admin;
 use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\Section;
+use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
 use App\Routing\RouteConflictValidator;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\BaseService;
@@ -56,6 +58,16 @@ class PageExportImportService extends BaseService
      * resolves it back to the freshly-created form section's id (issue #30).
      */
     private const OWNER_TOKEN_PREFIX = '@section:';
+
+    /**
+     * Content field names that carry an in-app URL and therefore must follow
+     * the route prefix on import: the `link`/`button` target, the entry-table
+     * CRUD URLs, and the form redirect / cancel targets.
+     */
+    private const URL_FIELD_NAMES = [
+        'url', 'add_url', 'edit_url', 'btn_cancel_url', 'cancel_url',
+        'url_cancel', 'redirect_at_end', 'redirect_on_save',
+    ];
 
     private const ISSUE_ERROR = 'error';
     private const ISSUE_WARNING = 'warning';
@@ -159,8 +171,14 @@ class PageExportImportService extends BaseService
             $id = $section['id'] ?? null;
             $name = $this->asString($section['section_name'] ?? ($section['name'] ?? ''));
             if (is_numeric($id) && $name !== '') {
-                $idToName[(int) $id] = $name;
-                $nameCounts[$name] = ($nameCounts[$name] ?? 0) + 1;
+                // A section may legitimately appear on several bundle pages
+                // (e.g. the wizard reuses the form section on the admin detail
+                // page). Count each unique section id once so reuse is not
+                // mistaken for an owner-name collision.
+                if (!isset($idToName[(int) $id])) {
+                    $idToName[(int) $id] = $name;
+                    $nameCounts[$name] = ($nameCounts[$name] ?? 0) + 1;
+                }
             }
             if (is_array($section['children'] ?? null)) {
                 $this->collectSectionIndex($this->asSectionList($section['children']), $idToName, $nameCounts);
@@ -196,6 +214,9 @@ class PageExportImportService extends BaseService
                     }
                 }
             }
+            if ($this->asString($section['style_name'] ?? '') === StyleNames::STYLE_ENTRY_TABLE) {
+                $this->rewriteEntryTableExportRef($section, $idToName, $nameCounts, $ownerTableIds);
+            }
             if (is_array($section['children'] ?? null)) {
                 $children = $this->asSectionList($section['children']);
                 $this->rewriteExportTableRefs($children, $idToName, $nameCounts, $ownerTableIds);
@@ -203,6 +224,61 @@ class PageExportImportService extends BaseService
             }
         }
         unset($section);
+    }
+
+    /**
+     * Make an `entry-table` section's `data_table` field portable: the stored
+     * value is an install-specific numeric `data_tables.id`, so when the table
+     * is owned by an in-bundle form section (its name is that section's id) the
+     * exported field content becomes the `@section:<owner name>` token and the
+     * owner is recorded for the bundle's `data_tables[]` block. References to
+     * tables not owned by a bundled section are left numeric (they point at
+     * install-local data the bundle cannot carry).
+     *
+     * @param array<string, mixed> $section
+     * @param array<int, string> $idToName
+     * @param array<string, int> $nameCounts
+     * @param array<int, true> $ownerTableIds
+     * @param-out array<string, mixed> $section
+     * @param-out array<int, true> $ownerTableIds
+     */
+    private function rewriteEntryTableExportRef(array &$section, array $idToName, array $nameCounts, array &$ownerTableIds): void
+    {
+        $fields = $section['fields'] ?? null;
+        if (!is_array($fields) || !is_array($fields['data_table'] ?? null)) {
+            return;
+        }
+
+        $changed = false;
+        foreach ($fields['data_table'] as $locale => $entry) {
+            if (!is_array($entry) || !is_numeric($entry['content'] ?? null)) {
+                continue;
+            }
+            $dataTable = $this->dataService->getDataTableById((int) $entry['content']);
+            if ($dataTable === null || !is_numeric($dataTable->getName())) {
+                continue;
+            }
+            $ownerId = (int) $dataTable->getName();
+            $ownerName = $idToName[$ownerId] ?? null;
+            if ($ownerName === null) {
+                continue;
+            }
+            if (($nameCounts[$ownerName] ?? 0) > 1) {
+                $this->throwBadRequest(sprintf(
+                    'Cannot export: the data-owning form section "%s" (id %d) shares its name with another section in the bundle, so its data link cannot be made portable. Rename it to a unique name and export again.',
+                    $ownerName,
+                    $ownerId
+                ));
+            }
+            $entry['content'] = self::OWNER_TOKEN_PREFIX . $ownerName;
+            $fields['data_table'][$locale] = $entry;
+            $ownerTableIds[$ownerId] = true;
+            $changed = true;
+        }
+
+        if ($changed) {
+            $section['fields'] = $fields;
+        }
     }
 
     /**
@@ -522,7 +598,7 @@ class PageExportImportService extends BaseService
  * Bundles are `*.bundle.json` files resolved from the frontend `examples/`
  * catalogue (pages/, cms-in-cms/, navigation/) with backend fixture fallback.
      *
-     * @return list<array{id: string, title: string, description: string, page_count: int, bundle: array<string, mixed>}>
+     * @return list<array{id: string, title: string, description: string, tags: list<string>, page_count: int, bundle: array<string, mixed>}>
      */
     public function listExampleBundles(): array
     {
@@ -569,11 +645,20 @@ class PageExportImportService extends BaseService
             $id = basename($file, '.bundle.json');
             $pages = is_array($bundle['pages'] ?? null) ? $bundle['pages'] : [];
             $title = $this->asString($bundle['title'] ?? '');
+            // Optional gallery tags carried by the bundle (e.g. "cms-in-cms",
+            // "list + detail") so the template picker can badge each card.
+            $tags = [];
+            foreach (is_array($bundle['tags'] ?? null) ? $bundle['tags'] : [] as $tag) {
+                if (is_string($tag) && $tag !== '') {
+                    $tags[] = $tag;
+                }
+            }
 
             $result[] = [
                 'id' => $id,
                 'title' => $title !== '' ? $title : ucwords(str_replace('-', ' ', $id)),
                 'description' => $this->asString($bundle['description'] ?? ''),
+                'tags' => $tags,
                 'page_count' => count($pages),
                 'bundle' => $bundle,
             ];
@@ -864,6 +949,57 @@ class PageExportImportService extends BaseService
                 );
             }
         }
+
+        // Numeric entry-table bindings survive import verbatim but point at
+        // install-specific table ids — almost certainly the wrong table on the
+        // target install. Exports rewrite in-bundle bindings to `@section:`
+        // tokens; a remaining numeric value means the table's owner form is
+        // not part of this bundle.
+        $numericRefs = [];
+        $this->collectEntryTableNumericRefs($this->asSectionList($page['sections'] ?? null), $numericRefs);
+        foreach ($numericRefs as $sectionName => $tableId) {
+            $issues[] = $this->issue(
+                self::ISSUE_WARNING,
+                'unportable_data_table',
+                sprintf(
+                    'Page "%s": entry-table section "%s" is bound to data table id %d, which is install-specific. The imported grid may show the wrong table; rebind it after import.',
+                    $keyword,
+                    $sectionName,
+                    $tableId
+                ),
+                $keyword
+            );
+        }
+    }
+
+    /**
+     * Collect `section name -> numeric data_table id` for every entry-table
+     * section in the tree whose binding was NOT rewritten to an owner token.
+     *
+     * @param array<int, array<string, mixed>> $sections
+     * @param array<string, int> $numericRefs
+     * @param-out array<string, int> $numericRefs
+     */
+    private function collectEntryTableNumericRefs(array $sections, array &$numericRefs): void
+    {
+        foreach ($sections as $section) {
+            if ($this->asString($section['style_name'] ?? '') === StyleNames::STYLE_ENTRY_TABLE) {
+                $fields = $section['fields'] ?? null;
+                $dataTable = is_array($fields) ? ($fields['data_table'] ?? null) : null;
+                if (is_array($dataTable)) {
+                    foreach ($dataTable as $entry) {
+                        if (is_array($entry) && is_numeric($entry['content'] ?? null)) {
+                            $name = $this->asString($section['section_name'] ?? '');
+                            $numericRefs[$name !== '' ? $name : 'entry-table'] = (int) $entry['content'];
+                            break;
+                        }
+                    }
+                }
+            }
+            if (is_array($section['children'] ?? null)) {
+                $this->collectEntryTableNumericRefs($this->asSectionList($section['children']), $numericRefs);
+            }
+        }
     }
 
     /**
@@ -929,6 +1065,14 @@ class PageExportImportService extends BaseService
 
         $localeMap = $this->buildLocaleMap();
 
+        // A route prefix moves every bundle page to a new URL base, so the
+        // bundle's own cross-page links (card "Open" links, entry-table
+        // add/edit URLs, form redirect/cancel URLs) must move with them or
+        // they would 404 / hit the unprefixed original pages after import.
+        if ($routePrefix !== '') {
+            $pages = $this->rewriteInContentLinksForPrefix($pages, $routePrefix);
+        }
+
         $this->entityManager->beginTransaction();
         try {
             // Pass 1: create every page (no parent yet) and remember its id.
@@ -936,12 +1080,20 @@ class PageExportImportService extends BaseService
             $keywordToId = [];
             foreach ($pages as $page) {
                 $keyword = $this->prefixKeyword($keywordPrefix, $this->asString($page['keyword'] ?? ''));
+                // Apply the route prefix to the page url up front: pass 2
+                // realigns it to the canonical route anyway, but the raw
+                // bundle url could collide with a still-existing source page
+                // when importing next to the original (`pages.url` is unique).
+                $pageUrl = $this->stringOrNull($page['url'] ?? null);
+                if ($pageUrl !== null && $routePrefix !== '' && str_starts_with($pageUrl, '/')) {
+                    $pageUrl = $this->prefixRoute($routePrefix, $pageUrl);
+                }
                 $created = $this->adminPageService->createPage(
                     $keyword,
                     $this->asString($page['page_access_type'] ?? 'mobile_and_web'),
                     (bool) ($page['headless'] ?? false),
                     (bool) ($page['open_access'] ?? false),
-                    $this->stringOrNull($page['url'] ?? null),
+                    $pageUrl,
                     null,
                     $this->normalizeSurface($page['surface'] ?? 'public'),
                     // Admin is always granted full access inside createPage; these
@@ -992,9 +1144,12 @@ class PageExportImportService extends BaseService
             }
 
             // Pass 3: relink `@section:` owner tokens to the new section ids and
-            // (optionally) restore the owned data tables + sample rows.
+            // (optionally) restore the owned data tables + sample rows. The
+            // entry-table relink runs last: it needs the owner's data table row
+            // to exist so the field can point at its fresh numeric id.
             $this->relinkOwnerTokens($allNewSectionIds, $sourceNameToNewId);
             $this->restoreDataTables($bundle, $sourceNameToNewId, $importData);
+            $this->relinkEntryTableDataTables($allNewSectionIds, $sourceNameToNewId);
 
             $this->entityManager->commit();
 
@@ -1048,6 +1203,75 @@ class PageExportImportService extends BaseService
             $section->setDataConfig($resolved);
             $this->entityManager->persist($section);
             $touched = true;
+        }
+
+        if ($touched) {
+            $this->entityManager->flush();
+        }
+    }
+
+    /**
+     * Replace every `@section:<owner name>` token stored in a freshly-imported
+     * `entry-table` section's `data_table` field with the numeric id of the
+     * owner's (freshly-created) data table. Runs after {@see restoreDataTables}
+     * so bundles that carry a `data_tables[]` block already have the table row;
+     * for bundles without one the empty table is materialized here — the field
+     * must hold a real `data_tables.id` either way.
+     *
+     * @param list<int> $newSectionIds
+     * @param array<string, int> $sourceNameToNewId
+     */
+    private function relinkEntryTableDataTables(array $newSectionIds, array $sourceNameToNewId): void
+    {
+        $touched = false;
+        foreach ($newSectionIds as $sectionId) {
+            $section = $this->sectionRepository->find($sectionId);
+            if (!$section instanceof Section || $section->getStyle()?->getName() !== StyleNames::STYLE_ENTRY_TABLE) {
+                continue;
+            }
+
+            /** @var list<SectionsFieldsTranslation> $translations */
+            $translations = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
+                ->createQueryBuilder('t')
+                ->join('t.field', 'f')
+                ->where('t.section = :sectionId')
+                ->andWhere('f.name = :fieldName')
+                ->setParameter('sectionId', $sectionId)
+                ->setParameter('fieldName', 'data_table')
+                ->getQuery()
+                ->getResult();
+
+            foreach ($translations as $translation) {
+                $content = (string) $translation->getContent();
+                if (!str_starts_with($content, self::OWNER_TOKEN_PREFIX)) {
+                    continue;
+                }
+                $ownerName = substr($content, strlen(self::OWNER_TOKEN_PREFIX));
+                $newOwnerId = $sourceNameToNewId[$ownerName] ?? null;
+                if ($newOwnerId === null) {
+                    throw new ServiceException(
+                        sprintf('Import failed: data table link references owner section "%s" which is not part of this bundle.', $ownerName),
+                        Response::HTTP_UNPROCESSABLE_ENTITY,
+                        ['owner_section_name' => $ownerName]
+                    );
+                }
+
+                $ownerSection = $this->sectionRepository->find($newOwnerId);
+                $dataTable = $ownerSection instanceof Section
+                    ? $this->dataTableService->createDataTableForFormSection($ownerSection)
+                    : null;
+                if ($dataTable === null) {
+                    throw new ServiceException(
+                        sprintf('Import failed: could not materialize the data table owned by section "%s".', $ownerName),
+                        Response::HTTP_INTERNAL_SERVER_ERROR,
+                        ['owner_section_name' => $ownerName]
+                    );
+                }
+
+                $translation->setContent((string) $dataTable->getId());
+                $this->entityManager->persist($translation);
+                $touched = true;
+            }
         }
 
         if ($touched) {
@@ -1490,7 +1714,7 @@ class PageExportImportService extends BaseService
 
     /**
      * Collect every `@section:<owner>` owner name referenced by a section's
-     * `data_config` (recursively).
+     * `data_config` or by an `entry-table` `data_table` field (recursively).
      *
      * @param array<int, array<string, mixed>> $sections
      * @param array<string, true> $owners
@@ -1510,10 +1734,41 @@ class PageExportImportService extends BaseService
                     }
                 }
             }
+            foreach ($this->entryTableOwnerTokens($section) as $owner) {
+                $owners[$owner] = true;
+            }
             if (is_array($section['children'] ?? null)) {
                 $this->collectOwnerTokens($this->asSectionList($section['children']), $owners);
             }
         }
+    }
+
+    /**
+     * Owner names referenced by a bundle section's `data_table` field token(s).
+     * Empty for anything that is not an `entry-table` with `@section:` content.
+     *
+     * @param array<string, mixed> $section
+     * @return list<string>
+     */
+    private function entryTableOwnerTokens(array $section): array
+    {
+        if ($this->asString($section['style_name'] ?? '') !== StyleNames::STYLE_ENTRY_TABLE) {
+            return [];
+        }
+        $fields = $section['fields'] ?? null;
+        if (!is_array($fields) || !is_array($fields['data_table'] ?? null)) {
+            return [];
+        }
+
+        $owners = [];
+        foreach ($fields['data_table'] as $entry) {
+            $content = is_array($entry) ? $this->asString($entry['content'] ?? '') : '';
+            if (str_starts_with($content, self::OWNER_TOKEN_PREFIX)) {
+                $owners[] = substr($content, strlen(self::OWNER_TOKEN_PREFIX));
+            }
+        }
+
+        return $owners;
     }
 
     /**
@@ -1583,6 +1838,132 @@ class PageExportImportService extends BaseService
         $normalizedPrefix = '/' . trim($prefix, '/');
 
         return $normalizedPrefix . $pattern;
+    }
+
+    /**
+     * Rewrite the bundle's own in-content links for a prefixed import: every
+     * URL field value that targets an in-bundle route base (the static part of
+     * a bundled page's route pattern, e.g. `/team-members` or
+     * `/cms/team-members`) gets the route prefix prepended — matching what
+     * {@see prefixRoute} does to the routes themselves. External URLs,
+     * anchors, and links to routes not in the bundle are left untouched.
+     * Dynamic tails (`{{route.record_id}}` tokens, single-brace `{record_id}`
+     * templates) sit after the static base and survive unchanged.
+     *
+     * @param list<array<string, mixed>> $pages
+     * @return list<array<string, mixed>>
+     */
+    private function rewriteInContentLinksForPrefix(array $pages, string $routePrefix): array
+    {
+        // Static URL bases of every in-bundle route, longest first so the most
+        // specific base wins (e.g. `/cms/team-members` before `/team-members`).
+        $bases = [];
+        foreach ($pages as $page) {
+            $routes = is_array($page['routes'] ?? null) ? $page['routes'] : [];
+            foreach ($routes as $route) {
+                if (!is_array($route)) {
+                    continue;
+                }
+                $pattern = $this->asString($route['path_pattern'] ?? '');
+                $base = rtrim($this->routeStaticBase($pattern), '/');
+                if ($base !== '' && $base !== '/') {
+                    $bases[$base] = true;
+                }
+            }
+        }
+        if ($bases === []) {
+            return $pages;
+        }
+        $baseList = array_keys($bases);
+        usort($baseList, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+
+        foreach ($pages as &$page) {
+            $sections = $this->asSectionList($page['sections'] ?? null);
+            if ($sections !== []) {
+                $this->rewriteSectionUrlFields($sections, $baseList, $routePrefix);
+                $page['sections'] = $sections;
+            }
+        }
+        unset($page);
+
+        return $pages;
+    }
+
+    /**
+     * The static prefix of a route pattern: everything before the first
+     * `{placeholder}`.
+     */
+    private function routeStaticBase(string $pattern): string
+    {
+        $bracePos = strpos($pattern, '{');
+
+        return $bracePos === false ? $pattern : substr($pattern, 0, $bracePos);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $sections
+     * @param list<string> $baseList longest-first static route bases
+     * @param-out array<int, array<string, mixed>> $sections
+     */
+    private function rewriteSectionUrlFields(array &$sections, array $baseList, string $routePrefix): void
+    {
+        foreach ($sections as &$section) {
+            $fields = $section['fields'] ?? null;
+            if (is_array($fields)) {
+                $changed = false;
+                foreach (self::URL_FIELD_NAMES as $fieldName) {
+                    if (!is_array($fields[$fieldName] ?? null)) {
+                        continue;
+                    }
+                    foreach ($fields[$fieldName] as $locale => $entry) {
+                        if (!is_array($entry)) {
+                            continue;
+                        }
+                        $content = $this->asString($entry['content'] ?? '');
+                        $rewritten = $this->prefixInBundleUrl($content, $baseList, $routePrefix);
+                        if ($rewritten !== null) {
+                            $entry['content'] = $rewritten;
+                            $fields[$fieldName][$locale] = $entry;
+                            $changed = true;
+                        }
+                    }
+                }
+                if ($changed) {
+                    $section['fields'] = $fields;
+                }
+            }
+            if (is_array($section['children'] ?? null)) {
+                $children = $this->asSectionList($section['children']);
+                $this->rewriteSectionUrlFields($children, $baseList, $routePrefix);
+                $section['children'] = $children;
+            }
+        }
+        unset($section);
+    }
+
+    /**
+     * Prefix a single URL value when it targets an in-bundle route base.
+     * Returns the rewritten URL, or null when the value must stay unchanged
+     * (external / anchor / empty / not an in-bundle target).
+     *
+     * @param list<string> $baseList longest-first static route bases
+     */
+    private function prefixInBundleUrl(string $url, array $baseList, string $routePrefix): ?string
+    {
+        if ($url === '' || $url[0] !== '/') {
+            return null;
+        }
+        foreach ($baseList as $base) {
+            if ($url === $base
+                || str_starts_with($url, $base . '/')
+                || str_starts_with($url, $base . '?')
+                || str_starts_with($url, $base . '#')
+            ) {
+                return $this->prefixRoute($routePrefix, $url);
+            }
+        }
+
+        return null;
     }
 
     private function normalizeSurface(mixed $surface): string

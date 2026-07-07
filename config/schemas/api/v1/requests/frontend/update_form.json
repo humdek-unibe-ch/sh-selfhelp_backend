@@ -61,6 +61,13 @@
       "type": "object",
       "description": "Fields to use for identifying the record to update",
       "minProperties": 1,
+      "properties": {
+        "record_id": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Explicit target record id (record edit mode). Updating your own record is always allowed; updating another user's record requires the form section to opt out of own_entries_only AND UPDATE permission on the form's data table."
+        }
+      },
       "additionalProperties": {
         "oneOf": [
           {"type": "string", "maxLength": 65535},

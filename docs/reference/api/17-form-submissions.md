@@ -150,7 +150,7 @@ Remove a form submission from the system.
 > carries the name along as the auto `display_name`. Because the key is tied to
 > the input **section id** (which never changes), renaming an input only updates
 > its `display_name` and **never** forks the column or splits old and new
-> submissions (issue #56). On read, prefill / `show-user-input` / export remap
+> submissions (issue #56). On read, prefill / `entry-table` / export remap
 > `field_key → current name`, so every human-facing surface shows the current
 > label. SurveyJS submits its own stable key (`question.name`) with the question
 > `title` as the label; see the per-source `field_key` derivation contract in

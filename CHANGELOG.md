@@ -36,6 +36,65 @@ hydration existed — lists rendered a single template card with empty tokens.
   `CmsAppWizardTest` asserts scaffolded field values through the per-section
   detail endpoint (the page sections list is structural).
 
+## Breaking: CMS-in-CMS polish wave — entry-table, record edit mode, portable bundles, template gallery
+
+The list/detail pattern becomes a first-class, polished product. Pairs with
+frontend `0.1.59`, mobile `0.1.33`, and `@selfhelp/shared` **`3.0.0`**
+(breaking major: the style rename below). See
+`docs/cookbook/cms-in-cms-list-detail.md` and
+`docs/developer/27-db-driven-public-routing.md`.
+
+- **Style rename `show-user-input` → `entry-table`** (migration
+  `Version20260706221024`, with round-trip test): the built-in admin CRUD grid
+  gets a name that matches the entry-style family. Sections reference styles by
+  `id_styles`, so this is a catalog `UPDATE`, no content migration. The same
+  migration drops the stale pre-`data_config` legacy binding fields from the
+  entry holders (`entry-list` / `entry-record` `data_table`, `filter`,
+  `load_as_table`, `own_entries_only`, `scope`, `url_param`; the Bootstrap-era
+  `type` on `entry-record-delete`) and seeds the `form-record` record-edit-mode
+  fields (`load_record_from` + an `own_entries_only` link). No alias remains —
+  web + mobile renderers, the wizard, docs, and bundles all say `entry-table`.
+- **Record edit mode** (`form-record`): new `load_record_from` field binds the
+  form to a route param (e.g. `record_id`) so `/cms/team-members/42` prefills
+  record 42 across all languages (translatable inputs included) and saving
+  **updates** it. One shared rule
+  (`DataAccessSecurityService::canUpdateOwnedRecord`, mirroring
+  `canDeleteOwnedRecord`) covers the three ownership modes — own-entries diary,
+  shared editing via the table UPDATE grant, admin edit-any —
+  and is enforced by `PUT /cms-api/v1/forms/update`, which now accepts an
+  explicit `record_id` (schema updated; previously hardcoded own-latest-only).
+- **`entry-table` per-row permission flags**: hydration injects `_can_edit`
+  next to `_can_delete` (same shared rules), so the grid can disable per-row
+  actions the user cannot perform.
+- **Wizard scaffolds the polished app**
+  (`POST /admin/pages/cms-app`): multi-field form builder (`form_fields[]`
+  name/style/label), the admin list is an `entry-table` grid (inline delete +
+  `add_url` / `edit_url`), and the admin detail attaches the *same shared*
+  `form-record` section in record edit mode (modal, close-on-save) instead of a
+  read-only `entry-record` copy.
+- **Bundle export/import portability**
+  (`PageExportImportService`): the `entry-table` `data_table` field is
+  tokenized to `@section:<owner>` on export and relinked on import (like
+  `data_config.table`); validation warns on unportable numeric references;
+  a section legitimately shared by several pages no longer trips the
+  duplicate-name export guard; imported page `url`s are prefixed up front (no
+  more 409 on prefixed re-import); and with `routePrefix` the importer
+  rewrites in-bundle content links (`link.url`, `add_url`, `edit_url`,
+  `redirect_on_save`, `btn_cancel_url`) onto the prefixed routes so the
+  imported copy is fully clickable.
+- **Template gallery**: six curated CMS-in-CMS bundles (team-members flagship,
+  news, FAQ accordion, events, contact directory, testimonials) with
+  translated de-CH/en-GB content, sample rows, and top-level
+  `title`/`description`/`tags` metadata; `GET /admin/pages/examples` now emits
+  `tags` for the admin UI's one-click **Start from template** tab.
+- Tests: `EntryListHydrationTest` (N cards = N rows, structural),
+  `FormRecordEditModeTest` (`#[Group('security')]` matrix across all three
+  ownership modes + admin override), `canUpdateOwnedRecord` rule matrix in
+  `DataAccessSecurityServiceTest`, `PageBundleEntryTablePortabilityTest`
+  (export token → prefixed import round trip incl. link rewriting), and the
+  golden `CmsInCmsTemplateBundlesImportTest` importing + rendering every
+  shipped template so the gallery cannot rot.
+
 ## Breaking: Navigation menu system overhaul — one strict final contract
 
 Destructive pre-release cleanup wave (no backward compatibility). One data

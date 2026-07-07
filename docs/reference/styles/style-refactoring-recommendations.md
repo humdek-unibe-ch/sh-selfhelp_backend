@@ -393,10 +393,10 @@ writing `styles.id_render_target` (mechanism: `Version20260618143215`):
 - **`version`** → `web` (or remove if unreferenced): build/diagnostic surface, 0
   author fields. Run a content-reference check first.
 - **Web-first styles** (`html-tag`, `typography`, `rich-text-editor`,
-  `color-picker`, `color-input`, `show-user-input`) → stay `both` **with a
+  `color-picker`, `color-input`, `entry-table`) → stay `both` **with a
   documented mobile fallback** (read-only viewer, RN list/cards, RN color UI).
   Do not mark them `web` just because the mobile renderer is unfinished.
-- **`show-user-input`** → mobile must render a **list/card** view, never a copied
+- **`entry-table`** (ex `show-user-input`) → mobile must render a **list/card** view, never a copied
   desktop table (mobile.md §11.6).
 - Layout styles stay `both`: they map to RN flexbox (see mobile mapping §6); they
   are not web-only even though they look web-shaped.

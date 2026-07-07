@@ -822,31 +822,31 @@ class PageService extends BaseService
                     }
                 }
 
-                // showUserInput sections reference their data table through the
+                // entry-table sections reference their data table through the
                 // `data_table` property field, NOT data_config. Without registering
                 // it here the page render cache never carries the data-table entity
                 // scope, so DataService's write-path invalidation
                 // (invalidateEntityScope(DATA_TABLE, id) on submit/update/delete)
                 // cannot bust the cached page and the rendered rows stay stale until
                 // a manual cache clear.
-                $showUserInputSectionIds = [];
+                $entryTableSectionIds = [];
                 foreach ($flatSections as $section) {
-                    if (($section['style_name'] ?? null) === StyleNames::STYLE_SHOW_USER_INPUT) {
+                    if (($section['style_name'] ?? null) === StyleNames::STYLE_ENTRY_TABLE) {
                         $rawSectionId = $section['id'] ?? null;
                         $sectionId = is_numeric($rawSectionId) ? (int) $rawSectionId : 0;
                         if ($sectionId > 0) {
-                            $showUserInputSectionIds[] = $sectionId;
+                            $entryTableSectionIds[] = $sectionId;
                         }
                     }
                 }
 
-                if ($showUserInputSectionIds !== []) {
-                    $showUserInputProperties = $this->translationRepository->fetchTranslationsForSections(
-                        $showUserInputSectionIds,
+                if ($entryTableSectionIds !== []) {
+                    $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
+                        $entryTableSectionIds,
                         self::PROPERTY_LANGUAGE_ID
                     );
 
-                    foreach ($showUserInputProperties as $fields) {
+                    foreach ($entryTableProperties as $fields) {
                         $dataTableId = isset($fields['data_table']['content'])
                             ? (int) $this->asString($fields['data_table']['content'])
                             : 0;
@@ -1025,8 +1025,16 @@ class PageService extends BaseService
             // This allows filters like "record_id = {{parent.record_id}}" to work
             $this->interpolateDataConfigInSection($section, $parentData);
 
-            // Step 2: Apply section data (for form-record sections)
-            $this->sectionUtilityService->applySectionData($section, $languageId);
+            // Step 2: Apply section data (for form-record sections). Route
+            // params flow in so the form-record edit mode (`load_record_from`)
+            // can prefill the URL-addressed record.
+            $routeParams = [];
+            if (is_array($parentData['route'] ?? null)) {
+                foreach ($parentData['route'] as $routeKey => $routeValue) {
+                    $routeParams[(string) $routeKey] = $routeValue;
+                }
+            }
+            $this->sectionUtilityService->applySectionData($section, $languageId, $routeParams);
 
             // Step 3: Retrieve data from data_config (now with properly interpolated filters)
             $this->retrieveSectionData($section, $parentData, $languageId);
@@ -1048,14 +1056,19 @@ class PageService extends BaseService
             // Step 4c: Entry data binding (issue #30). The wizard/bundles author
             // row columns as TOP-LEVEL tokens inside entry subtrees ({{name}},
             // {{record_id}}), so entry-record flattens its bound row into the
-            // section data here, and entry-list clones its child template once
-            // per row at Step 8 (each clone rendered with that row flattened).
+            // section data here, and entry-list / loop clone their child
+            // template once per row at Step 8 (each clone rendered with that
+            // row flattened). `loop` additionally accepts a static JSON array
+            // of rows in its `loop` field when no `data_config` is bound.
             $styleName = isset($section['style_name']) ? $this->asString($section['style_name']) : '';
-            $isEntryList = $styleName === StyleNames::STYLE_ENTRY_LIST;
+            $isRepeater = $styleName === StyleNames::STYLE_ENTRY_LIST || $styleName === StyleNames::STYLE_LOOP;
             $entryRows = [];
-            if ($isEntryList || $styleName === StyleNames::STYLE_ENTRY_RECORD) {
+            if ($isRepeater || $styleName === StyleNames::STYLE_ENTRY_RECORD) {
                 $entryRows = $this->resolveEntryRows($section, $parentData, $languageId);
-                if (!$isEntryList && isset($entryRows[0])) {
+                if ($entryRows === [] && $styleName === StyleNames::STYLE_LOOP) {
+                    $entryRows = $this->resolveLoopFieldRows($section, $sectionData);
+                }
+                if (!$isRepeater && isset($entryRows[0])) {
                     $sectionData = array_merge($sectionData, $entryRows[0]);
                     if (isset($parentData['route'])) {
                         $sectionData['route'] = $parentData['route'];
@@ -1092,13 +1105,14 @@ class PageService extends BaseService
                 }
 
                 // Step 8: Process children recursively with inherited data.
-                // entry-list is data-bound: its children are a TEMPLATE cloned
-                // once per bound row (the web/mobile renderers just render the
-                // already-cloned children). No rows -> no children.
+                // entry-list / loop are data-bound repeaters: their children
+                // are a TEMPLATE cloned once per bound row (the web/mobile
+                // renderers just render the already-cloned children). No rows
+                // -> no children.
                 if (isset($section['children']) && is_array($section['children'])) {
                     /** @var array<int, array<string, mixed>> $children */
                     $children = $section['children'];
-                    if ($isEntryList) {
+                    if ($isRepeater) {
                         $section['children'] = $this->hydrateEntryListChildren($children, $entryRows, $sectionData, $userId, $languageId);
                     } else {
                         $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
@@ -1211,10 +1225,54 @@ class PageService extends BaseService
     }
 
     /**
-     * Clone the entry-list child template once per bound row and process each
-     * clone with the row's columns flattened into the interpolation data (so
-     * `{{name}}` / `{{record_id}}` resolve per row). The inherited `route`
-     * scope is re-pinned after the flatten (same rule as Step 4b).
+     * Rows for a `loop` section without data binding: the style's `loop`
+     * field carries a static JSON array of row objects. The raw JSON is
+     * interpolated with the section's data first (authors may reference
+     * parent scopes inside the array), then decoded. Invalid JSON, a
+     * non-list value, or non-object items yield no rows.
+     *
+     * @param array<string, mixed> $section
+     * @param array<array-key, mixed> $sectionData
+     * @return list<array<string, mixed>>
+     */
+    private function resolveLoopFieldRows(array $section, array $sectionData): array
+    {
+        $loopField = $section['loop'] ?? null;
+        $raw = is_array($loopField) ? ($loopField['content'] ?? null) : null;
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        if (str_contains($raw, '{{')) {
+            $raw = $this->interpolationService->interpolate($raw, $sectionData);
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || !array_is_list($decoded)) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $row = [];
+            foreach ($item as $key => $value) {
+                $row[(string) $key] = $value;
+            }
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Clone the entry-list / loop child template once per bound row and
+     * process each clone with the row's columns flattened into the
+     * interpolation data (so `{{name}}` / `{{record_id}}` resolve per row).
+     * The inherited `route` scope is re-pinned after the flatten (same rule
+     * as Step 4b).
      *
      * @param array<int, array<string, mixed>> $templateChildren
      * @param list<array<string, mixed>> $rows

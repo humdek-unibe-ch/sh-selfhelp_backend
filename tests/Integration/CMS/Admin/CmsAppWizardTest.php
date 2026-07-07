@@ -14,16 +14,19 @@ use PHPUnit\Framework\Attributes\Group;
 
 /**
  * End-to-end coverage for the "Create list + detail pages" CMS-in-CMS wizard
- * with the issue #30 p7 extension and the "open in modal + list presentation"
- * pass:
+ * with the issue #30 p7 extension and the record edit mode pass:
  *
- * - `create_form` scaffolds an append `form-log` that OWNS a fresh data table
+ * - `create_form` scaffolds a `form-record` in record edit mode
+ *   (`load_record_from` + `own_entries_only=0`) that OWNS a fresh data table
  *   (one input per requested field) and closes its modal on save
- *   (`close_modal_on_save`).
+ *   (`close_modal_on_save`). Opened without the route param it stays blank
+ *   (create); opened with it, it prefills that record (edit).
+ * - The ADMIN DETAIL page attaches the SAME shared form section as its edit
+ *   form — no separate read-only `entry-record` copy.
  * - The CMS create form + CMS detail pages carry the `open_in_modal` page
  *   property so the web frontend opens them as modal overlays.
- * - The ADMIN list is a `show-user-input` DATA TABLE (search/sort/paginate/
- *   delete) with an "Add new" (`add_url`) button and a per-row open/view
+ * - The ADMIN list is an `entry-table` DATA TABLE (search/sort/paginate/
+ *   delete) with an "Add new" (`add_url`) button and a per-row edit
  *   (`edit_url`) action; the PUBLIC list stays an `entry-list` of cards with an
  *   "Open" link to the shareable (non-modal) public detail page.
  *
@@ -71,21 +74,28 @@ final class CmsAppWizardTest extends QaWebTestCase
         self::assertArrayHasKey('public_detail', $byRole, 'The wizard must create a public detail page.');
 
         try {
-            // The form page owns the table: a form-log holder with an input that
-            // closes its modal on save.
+            // The form page owns the table: a form-record holder in record edit
+            // mode with an input, closing its modal on save.
             $formBody = $this->sectionsBody($byRole['form'], $admin);
-            self::assertStringContainsString('form-log', $formBody, 'The form page must scaffold a form-log holder.');
+            self::assertStringContainsString('form-record', $formBody, 'The form page must scaffold a form-record holder.');
             self::assertStringContainsString('text-input', $formBody, 'The form must carry a default text input.');
             self::assertStringContainsString('close_modal_on_save', $formBody, 'The create form must close its modal on save.');
+            self::assertStringContainsString('load_record_from', $formBody, 'The form must bind its record context to the URL (record edit mode).');
+
+            // The admin detail page attaches the SAME shared form section as
+            // its edit form (record edit mode) instead of a read-only copy.
+            $adminDetailBody = $this->sectionsBody($byRole['admin_detail'], $admin);
+            self::assertStringContainsString('form-record', $adminDetailBody, 'The admin detail must be the shared edit form.');
+            self::assertStringNotContainsString('entry-record', str_replace('form-record', '', $adminDetailBody), 'The admin detail must not scaffold a read-only entry-record.');
 
             // The CMS create form + detail open as modal overlays (web-only).
             self::assertSame('1', $this->pageProperty($byRole['form'], 'open_in_modal', $admin), 'The create form must open in a modal.');
             self::assertSame('1', $this->pageProperty($byRole['admin_detail'], 'open_in_modal', $admin), 'The admin detail must open in a modal.');
 
-            // The admin list is a show-user-input DATA TABLE with delete + the
+            // The admin list is an entry-table DATA TABLE with delete + the
             // add/open controls (NOT the old entry-record-delete clone list).
             $adminBody = $this->sectionsBody($byRole['admin_list'], $admin);
-            self::assertStringContainsString('show-user-input', $adminBody, 'The admin list must be a show-user-input data table.');
+            self::assertStringContainsString('entry-table', $adminBody, 'The admin list must be an entry-table data table.');
             self::assertStringNotContainsString('entry-record-delete', $adminBody, 'The admin list must no longer clone an entry-record-delete row.');
             self::assertStringContainsString('delete_entry', $adminBody, 'The admin table must carry an inline delete.');
             self::assertStringContainsString('add_url', $adminBody, 'The admin table must link "Add new" to the create form.');
@@ -106,9 +116,9 @@ final class CmsAppWizardTest extends QaWebTestCase
 
     /**
      * The multi-field builder scaffolds one input per requested field (each with
-     * its chosen style) into the new modal form, the admin list is a
-     * show-user-input table with the add/open controls, and the detail page
-     * carries an editable interpolation block listing every field.
+     * its chosen style) into the new modal form, the admin list is an
+     * entry-table with the add/edit controls, and the admin detail page
+     * shares that same form section as its edit form.
      */
     public function testWizardMultiFieldBuilderScaffoldsEachInputAndDetailInterpolation(): void
     {
@@ -155,21 +165,181 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertStringContainsString('age', $formBody);
             self::assertSame('1', $this->pageProperty($byRole['form'], 'open_in_modal', $admin));
 
-            // The admin list is the show-user-input table with the add/open controls.
+            // The admin list is the entry-table with the add/edit controls.
             $adminBody = $this->sectionsBody($byRole['admin_list'], $admin);
-            self::assertStringContainsString('show-user-input', $adminBody);
+            self::assertStringContainsString('entry-table', $adminBody);
             self::assertStringContainsString('add_url', $adminBody);
             self::assertStringContainsString('edit_url', $adminBody);
 
-            // The detail page carries the editable interpolation block (all field tokens).
+            // The admin detail page shares the form section: every requested
+            // input is editable there (record edit mode), no read-only tokens.
             $detailBody = $this->sectionsBody($byRole['admin_detail'], $admin);
-            self::assertStringContainsString('{{first_name}}', $detailBody, 'The detail must interpolate every field.');
-            self::assertStringContainsString('{{age}}', $detailBody);
+            self::assertStringContainsString('form-record', $detailBody, 'The admin detail must be the shared edit form.');
+            self::assertStringContainsString('first_name', $detailBody);
+            self::assertStringContainsString('age', $detailBody);
+            self::assertStringContainsString('load_record_from', $detailBody, 'The edit form must load its record from the URL param.');
         } finally {
             foreach ($pageIds as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
             }
         }
+    }
+
+    /**
+     * The full CMS-in-CMS record edit loop on a scaffolded app: submitting on
+     * the create page (no route param) creates a row and the form stays blank
+     * on re-render (create mode); resolving the admin detail URL with the new
+     * record id prefills the SHARED form section with that record's values
+     * (record edit mode).
+     */
+    public function testScaffoldedAppCreateThenEditPrefillsAddressedRecord(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $base = 'qa-editmode-app';
+
+        $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/cms-app', [
+            'base_name' => $base,
+            'create_form' => true,
+            'create_public' => false,
+            'create_admin' => true,
+            'form_fields' => [
+                ['name' => 'title', 'style' => 'text-input', 'label' => 'Title'],
+            ],
+        ], $admin);
+        $data = $this->assertEnvelopeSuccess($response, 201);
+
+        $byRole = [];
+        $pageIds = [];
+        foreach (is_array($data['created'] ?? null) ? $data['created'] : [] as $entry) {
+            if (!is_array($entry) || !is_int($entry['page_id'] ?? null)) {
+                continue;
+            }
+            $pageIds[] = $entry['page_id'];
+            $role = is_string($entry['role'] ?? null) ? $entry['role'] : '';
+            $byRole[$role] = $entry['page_id'];
+        }
+
+        try {
+            $formSectionId = $this->firstSectionIdByStyle($byRole['form'], 'form-record', $admin);
+            self::assertGreaterThan(0, $formSectionId, 'The form page must carry the scaffolded form-record section.');
+
+            // The admin detail page shares the SAME section (not a copy).
+            $detailSectionId = $this->firstSectionIdByStyle($byRole['admin_detail'], 'form-record', $admin);
+            self::assertSame($formSectionId, $detailSectionId, 'The admin detail must attach the shared form section.');
+
+            // Create a row through the scaffolded create form.
+            $submit = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+                'page_id' => $byRole['form'],
+                'section_id' => $formSectionId,
+                'form_data' => ['title' => 'qa Alice'],
+            ], $admin);
+            $submitData = $this->assertEnvelopeSuccess($submit);
+            self::assertIsInt($submitData['record_id'] ?? null);
+            $recordId = $submitData['record_id'];
+
+            // Create mode: re-rendering the create page (no route param) stays
+            // BLANK even though the admin now owns a record.
+            $createRender = $this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/by-keyword/cms-' . $base . '-form?preview=true',
+                null,
+                $admin
+            );
+            $createData = $this->assertEnvelopeSuccess($createRender);
+            $createForm = $this->findSectionByStyleInPage($createData, 'form-record');
+            self::assertNotNull($createForm);
+            self::assertSame([], $createForm['section_data'] ?? null, 'With load_record_from set and no route param the form must stay blank (create mode).');
+
+            // Edit mode: resolving the admin detail URL with the record id
+            // prefills the shared section with that record's values.
+            $editRender = $this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/cms/' . $base . '/' . $recordId) . '&preview=true',
+                null,
+                $admin
+            );
+            $editData = $this->assertEnvelopeSuccess($editRender);
+            $editForm = $this->findSectionByStyleInPage($editData, 'form-record');
+            self::assertNotNull($editForm, 'The admin detail render must contain the shared form section.');
+            $sectionData = $editForm['section_data'] ?? null;
+            self::assertIsArray($sectionData);
+            self::assertNotSame([], $sectionData, 'The edit form must prefill the addressed record.');
+            self::assertStringContainsString('qa Alice', (string) json_encode($sectionData), 'The prefilled record must carry the submitted value.');
+        } finally {
+            foreach ($pageIds as $pageId) {
+                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            }
+        }
+    }
+
+    /**
+     * Resolve the first section id with the given style on a page (top level of
+     * the admin sections tree, recursively).
+     */
+    private function firstSectionIdByStyle(int $pageId, string $styleName, string $token): int
+    {
+        $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $pageId), null, $token);
+        $data = $this->assertEnvelopeSuccess($resp);
+
+        $found = 0;
+        $walk = static function (array $sections) use (&$walk, &$found, $styleName): void {
+            foreach ($sections as $section) {
+                if (!is_array($section) || $found !== 0) {
+                    continue;
+                }
+                if (($section['style_name'] ?? null) === $styleName && is_int($section['id'] ?? null)) {
+                    $found = $section['id'];
+                    return;
+                }
+                if (is_array($section['children'] ?? null)) {
+                    $walk($section['children']);
+                }
+            }
+        };
+        $walk(is_array($data['sections'] ?? null) ? $data['sections'] : []);
+
+        return $found;
+    }
+
+    /**
+     * Find the first section with the given style in a rendered page envelope
+     * (`data.page.sections` or `data.sections`).
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>|null
+     */
+    private function findSectionByStyleInPage(array $data, string $styleName): ?array
+    {
+        $sections = is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)
+            ? $data['page']['sections']
+            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+
+        return $this->findSectionByStyle($sections, $styleName);
+    }
+
+    /**
+     * @param array<int|string, mixed> $sections
+     * @return array<string, mixed>|null
+     */
+    private function findSectionByStyle(array $sections, string $styleName): ?array
+    {
+        foreach ($sections as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            if (($section['style_name'] ?? null) === $styleName) {
+                /** @var array<string, mixed> $section */
+                return $section;
+            }
+            if (is_array($section['children'] ?? null)) {
+                $found = $this->findSectionByStyle($section['children'], $styleName);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

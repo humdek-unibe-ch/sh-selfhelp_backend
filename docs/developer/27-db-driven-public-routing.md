@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-30.
+Last verified: 2026-07-06.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository (issue #30).
 
 This document describes how **public page URLs** are resolved from the database,
@@ -139,13 +139,24 @@ The `reset-password` / `validate` styles read `{{route.user_id}}` and
 ## Entry styles as data/context holders
 
 `entry-list`, `entry-record`, and `entry-record-delete` are **holders**: their
-job is to bind a data scope (via `data_config`) and expose row/record fields to
-their children. They carry no presentational fields of their own.
+job is to bind a data scope (via `data_config`) and hydrate their children with
+row/record fields. They carry no presentational fields of their own.
 
-- **List** (`entry-list`): `data_config` scope `entries` over a table; each item
-  links to the detail page with `/<base>/{{record_id}}`.
+- **List** (`entry-list`): `data_config` scope `entries` over a table. The
+  backend **clones the child template once per row** and merges each row's
+  columns at the clone's interpolation root, so `{{name}}` / `{{record_id}}`
+  resolve per card; each item links to the detail page with
+  `/<base>/{{record_id}}`. No rows → no children.
 - **Detail** (`entry-record`): `data_config` scope `record`, `retrieve: first`,
-  `filter: record_id = {{route.record_id}}`.
+  `filter: record_id = {{route.record_id}}`; the single record's fields are
+  merged at the interpolation root for the holder and its children.
+- **Delete button** (`entry-record-delete`): inside an entry subtree the bound
+  row's `record_id` is injected as a real field during hydration, which is what
+  enables the per-row delete button on web and mobile.
+- **Admin grid** (`entry-table`, renamed from `show-user-input`): the built-in
+  CRUD data table over a form's records — search/sort/pagination/CSV plus
+  `add_url` / `edit_url` / inline delete, with server-computed per-row
+  `_can_edit` / `_can_delete` flags.
 - `loop` is also a holder and must not overwrite the `route` context (see above).
 
 See [`../reference/styles/composite.md`](../reference/styles/composite.md).
@@ -162,24 +173,32 @@ scaffolds a working list/detail pattern bound to a data table:
 
 For each page it creates the page (with the right surface + ACL), its canonical
 `page_routes` row, and the `entry-list` / `entry-record` holder + child template
-(title, link, text) wired to the table. With `create_form` the wizard first
-scaffolds an append (`form-log`) form page with one default `text-input`
-(`form_field_name`, default `title`) and immediately materialises the table it
-**owns** (via `DataTableService::createDataTableForFormSection` on the new form
-section id); the list/detail pages then bind to that owned table, and the admin
-list gets an inline `entry-record-delete`. Without `create_form`, `data_table` is
-required and must already exist. Everything is conflict-checked up front; any
-failure rolls back the pages created so far. The generated pages are ordinary CMS
-pages, fully editable afterwards. Request fields: `base_name` (required),
-`data_table` (required unless `create_form`), `create_form`, `form_field_name`,
+(title, link, text) wired to the table. With `create_form` the wizard scaffolds a
+**`form-record` form page in record edit mode** (`load_record_from =
+record_id_param`, *own entries only* off) — one input per `form_fields[]` entry
+(or a single default `text-input` from `form_field_name`) — and immediately
+materialises the table it **owns** (via
+`DataTableService::createDataTableForFormSection` on the new form section id).
+The list/detail pages bind to that owned table; the **admin list is an
+`entry-table` data table** (inline delete, `add_url` to the create form,
+`edit_url` per row) and the **admin detail attaches the same shared form
+section** as its edit form, so `/cms/<base>/{id}` prefills record `{id}` (all
+languages) and saving **updates** it. The create form and admin detail carry
+`open_in_modal` (the form also `close_modal_on_save`). Without `create_form`,
+`data_table` is required and must already exist. Everything is conflict-checked
+up front; any failure rolls back the pages created so far. The generated pages
+are ordinary CMS pages, fully editable afterwards. Request fields: `base_name`
+(required), `data_table` (required unless `create_form`), `create_form`,
+`form_fields[]` (name/style/label builder) or legacy `form_field_name` +
 `form_field_label`, `create_public`, `create_admin`, `record_id_param`,
 `list_title`, `detail_title`, `access_groups`.
 
-> **Future (frontend/plugin):** editing a *specific* record from the form
-> (load-by-`record_id` upsert) and a SurveyJS smart-form variant — insert via
-> SurveyJS, edit a loaded response, read the collected data unchanged on the
-> public side — are intended evolutions of this scaffold; no backend contract
-> change is expected beyond what the form styles already store.
+Record updates are enforced by one shared rule
+(`DataAccessSecurityService::canUpdateOwnedRecord`, mirroring
+`canDeleteOwnedRecord`): own records are always editable; another user's record
+needs the UPDATE data-access permission on the form's table (admins pass via the
+role override). `PUT /cms-api/v1/forms/update` accepts an explicit `record_id`
+under the same rule.
 
 ## Page export / import (portable CMS-in-CMS bundles)
 
@@ -216,22 +235,33 @@ naming convention:
 
 - **Export** rewrites any `data_config.table` that is a numeric id of a form
   section *inside the bundle* to the portable token `"@section:<owner section
-  name>"`, and records that owner. Owner section **names must be unique** within
-  the bundle (export fails loudly otherwise) so the token resolves
+  name>"`, and records that owner. The **`entry-table` `data_table` field** gets
+  the same treatment (numeric table id → `@section:<owner>` token), so the admin
+  grid binding survives the id change too. Owner section **names must be
+  unique** within the bundle (export fails loudly otherwise; the same section
+  legitimately reused on several pages counts once) so the token resolves
   deterministically. The page structure is always made portable this way,
-  independent of whether data is exported.
+  independent of whether data is exported. Validation warns about numeric
+  `entry-table` references that cannot be tokenized (unportable).
 - **Data is opt-in.** `options.includeDataTables` emits a `data_tables[]` block
   (one entry per owned table: `owner_section_name` + human `columns`);
   `includeDataRows` additionally exports `rows` keyed by human field name (read
   via `DataService` and remapped from the immutable `section_<id>` keys).
 - **Import** builds a bundle-wide `source section name -> new section id` map as it
   recreates sections (`SectionExportImportService` now returns each section's
-  original `source_name`), then relinks every `@section:` token to the new
-  form-owned table id. With `options.importData` it (re)creates the owned table and
+  original `source_name`), then relinks every `@section:` token — `data_config`
+  tables and `entry-table` `data_table` fields alike — to the new form-owned
+  table id. With `options.importData` it (re)creates the owned table and
   re-inserts the rows through the **normal form-save path** (`DataService::saveData`
   remaps the human keys to the new `section_<id>` columns). An owner token /
   `data_tables[]` entry that does not resolve to an in-bundle section aborts the
   import.
+- **Prefixed imports stay clickable.** With `options.routePrefix` the importer
+  also rewrites **in-bundle content URLs** that reference in-bundle route bases
+  — `link` `url` fields and the `entry-table` / entry-subtree `add_url`,
+  `edit_url`, `redirect_on_save`, `btn_cancel_url` fields — onto the prefixed
+  routes, so a demo copy imported under `/demo-x` links to itself, not to the
+  original app's URLs.
 
 ### Out-of-band conflict guard
 
@@ -241,16 +271,21 @@ wired into `composer validate-db` so a raw SQL edit or restored backup can't lea
 a self-inconsistent route table that the resolver would later choke on (the
 resolver also defensively rejects same-shape dynamic ambiguity at resolve time).
 
-### Example bundle
+### Template bundles ("Start from template" gallery)
 
-The example bundle now lives with all curated examples in the **frontend** repo
-at `sh-selfhelp_frontend/examples/cms-in-cms/team-members.bundle.json` (see that
-repo's `examples/README.md`). It
-is a **self-contained** importable Team-Members app: a create form that owns the
-table (referenced as `@section:team-members-form`), public list/detail, an admin
-list with inline delete, and an admin detail — plus sample rows in `data_tables[]`.
-It is **not auto-seeded** — import it via **Admin → Pages → Export / import**
-(enable *import data* to seed the rows). See the recipe in
+Six self-contained CMS-in-CMS template bundles live with all curated examples in
+the **frontend** repo under `sh-selfhelp_frontend/examples/cms-in-cms/` (see that
+repo's `examples/README.md`): `team-members` (flagship), `news`, `faq`,
+`events`, `contact-directory`, `testimonials`. Each carries a create/edit form
+that owns its table (referenced as `@section:<form>`), the public pages, an
+`entry-table` admin grid, translated de-CH/en-GB content, sample rows in
+`data_tables[]`, and top-level `title` / `description` / `tags` gallery
+metadata. `GET /admin/pages/examples`
+(`PageExportImportService::listExampleBundles`) serves them to the admin UI's
+**Start from template** tab, which seeds demo keyword/route prefixes for a
+one-click, collision-free import. They are **not auto-seeded**; the golden test
+`tests/Golden/CmsInCmsTemplateBundlesImportTest.php` imports and renders every
+bundle in CI so the gallery cannot rot. See the recipe in
 [`../cookbook/cms-in-cms-list-detail.md`](../cookbook/cms-in-cms-list-detail.md).
 
 ## Frontend & mobile

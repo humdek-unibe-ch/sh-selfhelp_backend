@@ -173,7 +173,7 @@ the matching item children inside it.
 
 **Administrators.** Add inside an entry template to let users delete that entry (with confirmation).
 
-**Developers.** Renders a delete action scoped to the current entry/record context. The backend hydrates `record_id` into the section during entry rendering; both renderers read the button text from `label_delete` (the generic `label` field is not linked to this style). The delete call goes to `DELETE /cms-api/v1/forms/delete`, whose validation accepts `entry-record-delete` (and `show-user-input`) sections — ACL `delete` on the page plus the own-entries/data-table permission rules apply.
+**Developers.** Renders a delete action scoped to the current entry/record context. The backend hydrates `record_id` into the section during entry rendering; both renderers read the button text from `label_delete` (the generic `label` field is not linked to this style). The delete call goes to `DELETE /cms-api/v1/forms/delete`, whose validation accepts `entry-record-delete` (and `entry-table`) sections — ACL `delete` on the page plus the own-entries/data-table permission rules apply.
 
 **Distinctive fields.** `label_delete` (button text, default "Delete"); `confirmation_title` / `confirmation_message` / `confirmation_continue` / `confirmation_cancel` (confirmation dialog copy); `own_entries_only`.
 
@@ -187,9 +187,9 @@ the matching item children inside it.
 
 **Administrators.** Repeat a block of child sections once per item in a data set, interpolating each item's values. Use when you have a list of items to template that is not a form-log table.
 
-**Developers.** Iterates the `loop` data array, rendering its child template per item. Bind the collection via `data_config`. Like the other holders it is a context holder: it must **not** overwrite the read-only `route` interpolation scope, so child sections can still reference `{{route.*}}` URL params inside a loop.
+**Developers.** Server-hydrated repeater, same mechanism as `entry-list`: the backend clones the child template once per row and flattens the row's keys into the interpolation data, so `{{key}}` resolves per item (see `PageService::processSectionsRecursively`). Rows come from the first `data_config` entry when one is bound; otherwise from the style's `loop` field — a static JSON array of row objects that is itself interpolated before decoding, so it may reference parent scopes. No rows means no children. Like the other holders it must **not** overwrite the read-only `route` interpolation scope, so child sections can still reference `{{route.*}}` URL params inside a loop.
 
-**Distinctive fields.** `loop` (the collection); binding via `data_config`.
+**Distinctive fields.** `loop` (static JSON array of row objects, e.g. `[{"title":"First"},{"title":"Second"}]`); binding via `data_config` takes precedence.
 
 **Children.** Yes (the per-item template).
 

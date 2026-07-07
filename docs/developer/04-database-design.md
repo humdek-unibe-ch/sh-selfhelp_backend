@@ -414,7 +414,7 @@ How the core-form contract is enforced (the part that fixes issue #56):
   - **write** — `DataService::saveData()` calls `mapFormFieldKeys()`, which uses
     `FormFieldKeyResolver` to rewrite `name → section_<id>` and carries the name
     along as the auto `display_name`;
-  - **read** — prefill (`getFormRecordDataWithAllLanguages`), `show-user-input`
+  - **read** — prefill (`getFormRecordDataWithAllLanguages`), `entry-table`
     (`SectionUtilityService::applySectionData`) and CSV/JSON export
     (`AdminDataController`) rewrite `section_<id> → current name` via
     `remapRecordKeysToInputNames()` / `remapEntriesToInputNames()`, so every
