@@ -18,7 +18,9 @@
         "route_sync_old_route_policy": { "type": "string" },
         "logo_asset_path": { "type": ["string", "null"], "maxLength": 500 },
         "logo_alt": { "type": ["string", "null"], "maxLength": 255 },
-        "logo_link_page_id": { "type": ["integer", "null"] }
+        "logo_link_page_id": { "type": ["integer", "null"] },
+        "logo_size": { "type": "string", "enum": ["sm", "md", "lg", "xl"] },
+        "logo_variant": { "type": "string", "enum": ["logo-and-name", "logo-only", "name-only"] }
     },
     "additionalProperties": false
 }

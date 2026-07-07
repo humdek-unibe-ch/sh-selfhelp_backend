@@ -9,6 +9,7 @@ namespace App\Controller\Api\V1\Frontend;
 
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\CMS\Frontend\PageService;
+use App\Service\CMS\Frontend\PageViewTrackerService;
 use App\Service\Core\LookupService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -47,7 +48,8 @@ class PageController extends AbstractController
      */
     public function __construct(
         private readonly PageService $pageService,
-        private readonly ApiResponseFormatter $responseFormatter
+        private readonly ApiResponseFormatter $responseFormatter,
+        private readonly PageViewTrackerService $pageViewTracker
     ) {
     }
 
@@ -99,6 +101,8 @@ class PageController extends AbstractController
             $mode = $this->resolvePageAccessMode($request);
 
             $page = $this->pageService->getPageByKeyword($keyword, $language_id, $preview, $mode);
+
+            $this->trackPageView($page, $mode, $preview, $request);
 
             $response = $this->responseFormatter->formatSuccess(
                 $page,
@@ -157,6 +161,8 @@ class PageController extends AbstractController
 
             $page = $this->pageService->getPageByPublicPath($path, $language_id, $preview, $mode);
 
+            $this->trackPageView($page, $mode, $preview, $request);
+
             $response = $this->responseFormatter->formatSuccess(
                 $page,
                 'responses/frontend/get_page',
@@ -177,6 +183,28 @@ class PageController extends AbstractController
                 $e->getMessage(),
                 $statusCode
             );
+        }
+    }
+
+    /**
+     * Record an anonymous page-view for the analytics dashboard. Live-preview
+     * requests are never counted; failures never break page delivery (the
+     * tracker swallows and logs internally).
+     *
+     * @param array<string, mixed> $page
+     */
+    private function trackPageView(array $page, string $mode, bool $preview, Request $request): void
+    {
+        if ($preview) {
+            return;
+        }
+
+        $pageNode = $page['page'] ?? null;
+        $pageId = is_array($pageNode) && isset($pageNode['id']) && is_numeric($pageNode['id'])
+            ? (int) $pageNode['id']
+            : null;
+        if ($pageId !== null && $pageId > 0) {
+            $this->pageViewTracker->recordView($pageId, $mode, $request);
         }
     }
 

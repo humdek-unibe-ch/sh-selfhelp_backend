@@ -82,6 +82,14 @@ class NavigationSettings
     #[ORM\JoinColumn(name: 'id_logo_link_page', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
     private ?Page $logoLinkPage = null;
 
+    /** Brand block size: sm | md | lg | xl (logo height 24/32/44/56px). */
+    #[ORM\Column(name: 'logo_size', type: 'string', length: 8, options: ['default' => 'md'])]
+    private string $logoSize = 'md';
+
+    /** Brand block variant: logo-and-name | logo-only | name-only. */
+    #[ORM\Column(name: 'logo_variant', type: 'string', length: 16, options: ['default' => 'logo-and-name'])]
+    private string $logoVariant = 'logo-and-name';
+
     public function getId(): int
     {
         return $this->id;
@@ -275,6 +283,30 @@ class NavigationSettings
     public function setLogoLinkPage(?Page $logoLinkPage): static
     {
         $this->logoLinkPage = $logoLinkPage;
+
+        return $this;
+    }
+
+    public function getLogoSize(): string
+    {
+        return $this->logoSize;
+    }
+
+    public function setLogoSize(string $logoSize): static
+    {
+        $this->logoSize = $logoSize;
+
+        return $this;
+    }
+
+    public function getLogoVariant(): string
+    {
+        return $this->logoVariant;
+    }
+
+    public function setLogoVariant(string $logoVariant): static
+    {
+        $this->logoVariant = $logoVariant;
 
         return $this;
     }

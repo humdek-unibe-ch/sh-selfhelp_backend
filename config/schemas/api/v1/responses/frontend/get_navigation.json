@@ -104,7 +104,9 @@
             "properties": {
                 "logo_url": { "type": ["string", "null"] },
                 "logo_alt": { "type": ["string", "null"] },
-                "link_url": { "type": ["string", "null"] }
+                "link_url": { "type": ["string", "null"] },
+                "logo_size": { "type": "string", "enum": ["sm", "md", "lg", "xl"] },
+                "logo_variant": { "type": "string", "enum": ["logo-and-name", "logo-only", "name-only"] }
             }
         },
         "menuItem": {

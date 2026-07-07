@@ -160,4 +160,47 @@ final class NavigationPagerAndBrandingTest extends QaWebTestCase
         self::assertNull($clearedData['logo_asset_path']);
         self::assertNull($clearedData['logo_alt']);
     }
+
+    public function testBrandingSizeAndVariantRoundTripToPublicPayload(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+
+        $updated = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/settings',
+            ['logo_size' => 'xl', 'logo_variant' => 'logo-only'],
+            $admin,
+        );
+        $data = $this->assertEnvelopeSuccess($updated);
+        self::assertSame('xl', $data['logo_size']);
+        self::assertSame('logo-only', $data['logo_variant']);
+
+        /** @var NavigationMenuService $navigationMenuService */
+        $navigationMenuService = self::getContainer()->get(NavigationMenuService::class);
+        $navigationMenuService->invalidateNavigationCaches();
+        $payload = $navigationMenuService->getPublicNavigationPayload(LookupService::PAGE_ACCESS_TYPES_WEB, 1);
+        /** @var array<string, mixed> $branding */
+        $branding = $payload['branding'];
+        self::assertSame('xl', $branding['logo_size']);
+        self::assertSame('logo-only', $branding['logo_variant']);
+
+        // Unknown values are rejected by the request schema.
+        $invalid = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/settings',
+            ['logo_size' => 'gigantic'],
+            $admin,
+        );
+        self::assertSame(400, $invalid['status'] ?? null);
+
+        // Restore defaults for other tests.
+        $restored = $this->jsonRequest(
+            'PUT',
+            '/cms-api/v1/admin/navigation/settings',
+            ['logo_size' => 'md', 'logo_variant' => 'logo-and-name'],
+            $admin,
+        );
+        $restoredData = $this->assertEnvelopeSuccess($restored);
+        self::assertSame('md', $restoredData['logo_size']);
+    }
 }

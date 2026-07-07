@@ -386,6 +386,12 @@ services:
         arguments:
             $projectDir: '%kernel.project_dir%'
 
+    # Anonymous page-view analytics: the app secret keys the daily rotating
+    # visitor hash (never stored raw; see PageViewTrackerService).
+    App\Service\CMS\Frontend\PageViewTrackerService:
+        arguments:
+            $appSecret: '%kernel.secret%'
+
     App\Plugin\Archive\PluginRuntimeArtifactFetcher:
         arguments:
             $projectDir: '%kernel.project_dir%'

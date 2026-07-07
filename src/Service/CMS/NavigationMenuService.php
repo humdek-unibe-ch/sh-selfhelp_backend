@@ -125,7 +125,7 @@ class NavigationMenuService extends BaseService
     private function formatBranding(?\App\Entity\NavigationSettings $settings, array $pageMap): array
     {
         if ($settings === null) {
-            return ['logo_url' => null, 'logo_alt' => null, 'link_url' => null];
+            return ['logo_url' => null, 'logo_alt' => null, 'link_url' => null, 'logo_size' => 'md', 'logo_variant' => 'logo-and-name'];
         }
 
         $linkUrl = null;
@@ -138,6 +138,8 @@ class NavigationMenuService extends BaseService
             'logo_url' => $settings->getLogoAssetPath(),
             'logo_alt' => $settings->getLogoAlt(),
             'link_url' => $linkUrl,
+            'logo_size' => $settings->getLogoSize(),
+            'logo_variant' => $settings->getLogoVariant(),
         ];
     }
 

@@ -641,6 +641,8 @@ class AdminNavigationService extends BaseService
             'logo_asset_path' => $settings->getLogoAssetPath(),
             'logo_alt' => $settings->getLogoAlt(),
             'logo_link_page_id' => $settings->getLogoLinkPage()?->getId(),
+            'logo_size' => $settings->getLogoSize(),
+            'logo_variant' => $settings->getLogoVariant(),
         ];
     }
 
@@ -699,6 +701,14 @@ class AdminNavigationService extends BaseService
         if (array_key_exists('logo_alt', $data)) {
             $alt = $data['logo_alt'];
             $settings->setLogoAlt(is_string($alt) && $alt !== '' ? $alt : null);
+        }
+        if (array_key_exists('logo_size', $data) && is_string($data['logo_size'])
+            && in_array($data['logo_size'], ['sm', 'md', 'lg', 'xl'], true)) {
+            $settings->setLogoSize($data['logo_size']);
+        }
+        if (array_key_exists('logo_variant', $data) && is_string($data['logo_variant'])
+            && in_array($data['logo_variant'], ['logo-and-name', 'logo-only', 'name-only'], true)) {
+            $settings->setLogoVariant($data['logo_variant']);
         }
     }
 
