@@ -310,10 +310,10 @@ class AdminPageService extends BaseService
             // Invalidate all page lists since a new page was created
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateAllListsInCategory();
+                ->invalidateCategory();
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-                ->invalidateAllListsInCategory();
+                ->invalidateCategory();
             $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
 
             $this->entityManager->commit();

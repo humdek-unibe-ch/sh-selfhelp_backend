@@ -325,12 +325,15 @@ class NavigationExportImportService extends BaseService
     private function invalidateImportAffectedCaches(): void
     {
         $this->navigationMenuService->invalidateNavigationCaches();
+        // Full category generation bumps (not list-tag only) so nested ACL
+        // item caches used by `ACLService::hasAccess` also retire and
+        // embedded imported pages are readable by admin immediately.
         $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
-            ->invalidateAllListsInCategory();
+            ->invalidateCategory();
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->invalidateAllListsInCategory();
+            ->invalidateCategory();
     }
 
     /**

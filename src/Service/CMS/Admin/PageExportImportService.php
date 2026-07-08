@@ -1153,18 +1153,18 @@ class PageExportImportService extends BaseService
 
             $this->entityManager->commit();
 
-            // Re-invalidate AFTER the commit. createPage/addGroupAcl invalidated
-            // the page + permission lists while the transaction was still open,
-            // so a concurrent request could re-cache the pre-import state; a
-            // post-commit bump guarantees fresh lists (admin pages, per-user
-            // accessible pages, per-user ACL snapshots) actually include the
-            // imported pages.
+            // Re-invalidate AFTER the commit. createPage/addGroupAcl may have
+            // invalidated while the transaction was still open, so a concurrent
+            // request could re-cache the pre-import state. Bump the full
+            // category generations (not only list tags) so nested
+            // `hasAccess` / per-user ACL item keys also retire and imported
+            // pages are visible to admin immediately.
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateAllListsInCategory();
+                ->invalidateCategory();
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-                ->invalidateAllListsInCategory();
+                ->invalidateCategory();
 
             return ['created' => $createdResult];
         } catch (\Throwable $e) {
