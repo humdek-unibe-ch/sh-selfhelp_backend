@@ -34,7 +34,8 @@ use App\Service\Security\DataAccessSecurityService;
  * SECURITY ARCHITECTURE:
  * - Frontend operations use ACL permissions (user-specific + group inheritance)
  * - Admin operations use Data Access permissions (role aggregation with BIT_OR)
- * - Admin users bypass ACL checks but are subject to Data Access restrictions
+ * - Admin-role users pass frontend ACL checks via {@see ACLService::hasAccess()}
+ *   (role bypass) and remain subject to Data Access restrictions in the CMS
  * - All permission checks are audited in data_access_audits table
  *
  * USAGE GUIDELINES:

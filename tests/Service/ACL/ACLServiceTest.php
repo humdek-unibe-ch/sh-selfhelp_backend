@@ -28,6 +28,9 @@ use PHPUnit\Framework\Attributes\Group as TestGroup;
  * to it (grant path) while qa.guest does not (deny path). Grants are applied
  * through {@see PageSectionFactory} which also bumps the permissions cache
  * generation so the freshly-granted ACL is observed deterministically.
+ *
+ * Admin-role users always pass `hasAccess` (documented "admins always have
+ * access" contract used by page import / CMS-in-CMS templates).
  */
 #[TestGroup('security')]
 final class ACLServiceTest extends QaKernelTestCase
@@ -79,6 +82,28 @@ final class ACLServiceTest extends QaKernelTestCase
         self::assertFalse(
             $this->acl->hasAccess($this->userId(QaBaselineFixture::QA_GUEST_EMAIL), (int) $page->getId(), 'select'),
             'A non-member must be denied access to a group-granted page.',
+        );
+    }
+
+    public function testAdminRoleHasAccessWithoutGroupAclRow(): void
+    {
+        // Create a closed page with NO group ACL grants — only open_access=false.
+        // Admin-role users must still pass hasAccess so imported template pages
+        // are visible even if the admin-group ACL row is missing or ACL caches
+        // are stale.
+        $page = $this->pages->createPage('qa_acl_admin_role_bypass_page', openAccess: false);
+
+        self::assertTrue(
+            $this->acl->hasAccess($this->userId(QaBaselineFixture::QA_ADMIN_EMAIL), (int) $page->getId(), 'select'),
+            'Admin-role users must have frontend page access regardless of page_acl_groups rows.',
+        );
+        self::assertTrue(
+            $this->acl->hasAccess($this->userId(QaBaselineFixture::QA_ADMIN_EMAIL), (int) $page->getId(), 'update'),
+            'Admin-role users must have full CRUD access on frontend ACL checks.',
+        );
+        self::assertFalse(
+            $this->acl->hasAccess($this->userId(QaBaselineFixture::QA_USER_EMAIL), (int) $page->getId(), 'select'),
+            'Non-admin users must still be denied when no ACL row exists.',
         );
     }
 

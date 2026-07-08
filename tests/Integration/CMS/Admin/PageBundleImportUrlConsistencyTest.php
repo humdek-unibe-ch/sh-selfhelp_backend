@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\CMS\Admin;
 
+use App\Entity\PageAclGroup;
 use App\Tests\Support\ExampleBundleTestPaths;
 use App\Tests\Support\QaWebTestCase;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
@@ -85,7 +87,8 @@ final class PageBundleImportUrlConsistencyTest extends QaWebTestCase
             );
 
             // Admin always has access to an imported page: the prefixed public
-            // path resolves (200) for the admin who imported it.
+            // path resolves (200) for the admin who imported it (admin-role ACL
+            // bypass + admin-group ACL row written by createPage).
             $resolve = $this->jsonRequest(
                 'GET',
                 '/cms-api/v1/pages/resolve?path=' . rawurlencode(self::ROUTE_PREFIX . '/team-members'),
@@ -93,6 +96,26 @@ final class PageBundleImportUrlConsistencyTest extends QaWebTestCase
                 $admin
             );
             $this->assertEnvelopeSuccess($resolve, 200);
+
+            /** @var EntityManagerInterface $em */
+            $em = static::getContainer()->get(EntityManagerInterface::class);
+            $adminGroup = $em->getRepository(\App\Entity\Group::class)->findOneBy(['name' => 'admin']);
+            self::assertNotNull($adminGroup);
+            foreach ([$publicKeyword, $cmsKeyword] as $keyword) {
+                $acl = $em->getRepository(PageAclGroup::class)->findOneBy([
+                    'page' => $idByKeyword[$keyword],
+                    'group' => $adminGroup,
+                ]);
+                self::assertInstanceOf(
+                    PageAclGroup::class,
+                    $acl,
+                    'Imported page must receive full admin-group ACL: ' . $keyword
+                );
+                self::assertTrue($acl->isAclSelect());
+                self::assertTrue($acl->isAclInsert());
+                self::assertTrue($acl->isAclUpdate());
+                self::assertTrue($acl->isAclDelete());
+            }
         } finally {
             foreach ($idByKeyword as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
