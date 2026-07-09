@@ -1,3 +1,31 @@
+# v0.1.35
+
+## Breaking: restore legacy field-based entry-list / entry-record data binding
+
+Reverses the v0.1.33 `data_config`-only entry hydration. `entry-list` and
+`entry-record` now bind rows through style property fields (`data_table`,
+`own_entries_only`, `filter`, `scope`, plus `load_as_table` / `selected_columns`
+on list and `url_param` on record). **No backward compatibility** — reimport
+CMS-in-CMS bundles with the new field shape.
+
+- Migration `Version20260709134852` re-links catalog fields and recreates
+  `filter`, `load_as_table`, `url_param`, `selected_columns`.
+- Migration `Version20260709134854` extends `get_data_table_filtered` with
+  `selected_columns_param`; `entry-list` row loading honours the field.
+- `PageService::resolveEntryRows()` reads property fields; `entry-record`
+  injects validated `record_id` from `url_param` + route.
+- New `DataTableFilterService` centralises filter interpolation, SQL denylist,
+  and typed route params on entry filters, `data_config` retrieval, and
+  `DataService` update predicates.
+- Rejected/malicious filters return **no rows** (never fall back to unfiltered).
+  Security regression matrix: `FilterSafetyTest` + expanded unit tests.
+  Developer note: `docs/developer/data-table-filter-safety.md`.
+- `PageExportImportService` / `CmsAppWizardService` portable `@section:` tokens
+  on `fields.data_table`; example bundles rewritten.
+- Pairs with frontend `0.1.61` and `@selfhelp/shared` `3.0.0`.
+
+---
+
 # v0.1.34
 
 ## Breaking: first-class CMS apps (`cms_apps`)
@@ -25,6 +53,12 @@ See `docs/cookbook/cms-in-cms-list-detail.md` and
 - Import normalises keyword-prefixed CMS app slugs (underscores → hyphens) and
   reuses an empty shell with the same slug; conflicts when the slug already has
   pages. Operator guide: `docs/user/cms-apps.md`.
+- **User-owned enum options** use a language-neutral catalog plus translatable
+  `option_labels` on select, radio, combobox, and segmented-control. Entry
+  hydration adds reserved `_{field}_label` / `_{field}_labels` values while
+  persisted data stays code-only; legacy `text`/`label` catalogs remain
+  readable. Migration `Version20260709102039` adds/links the field and updates
+  catalog metadata. All six CMS-in-CMS fixture mirrors use the contract.
 
 ---
 
