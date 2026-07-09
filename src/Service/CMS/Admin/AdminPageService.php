@@ -71,6 +71,7 @@ class AdminPageService extends BaseService
         private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
         private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
         private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly CmsAppService $cmsAppService,
     ) {
     }
 
@@ -140,7 +141,9 @@ class AdminPageService extends BaseService
      *        empty array `[]` skips route creation entirely (importer manages routes itself).
      * @param bool $syncUrlWithParent When true and a parent page is set, derive URL + canonical route from the parent.
      * @param string|null $oldRoutePolicy Override for old-route handling (`keep_alias`, `remove_old_route`).
-     * 
+     * @param int|null $cmsAppId Optional first-class CMS app to assign via {@see CmsAppService::assignPage()}.
+     * @param string|null $cmsAppRole Role for the optional CMS app assignment (required when `$cmsAppId` is set).
+     *
      * @return Page The created page entity
      * @throws ServiceException If validation fails or required entities not found
      */
@@ -157,6 +160,8 @@ class AdminPageService extends BaseService
         ?array $initialRoutes = null,
         bool $syncUrlWithParent = false,
         ?string $oldRoutePolicy = null,
+        ?int $cmsAppId = null,
+        ?string $cmsAppRole = null,
     ): Page {
 
         // Check if keyword already exists
@@ -315,6 +320,18 @@ class AdminPageService extends BaseService
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateCategory();
             $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
+
+            // Optional CMS app membership — sole writer path is CmsAppService::assignPage
+            // (hub FKs via CmsAppHubSyncService; never set hubs here).
+            if ($cmsAppId !== null) {
+                if ($cmsAppRole === null || $cmsAppRole === '') {
+                    throw new ServiceException(
+                        'cms_app_role is required when cms_app_id is set on page create.',
+                        Response::HTTP_BAD_REQUEST
+                    );
+                }
+                $this->cmsAppService->assignPage($cmsAppId, (int) $page->getId(), $cmsAppRole);
+            }
 
             $this->entityManager->commit();
 
@@ -502,6 +519,9 @@ class AdminPageService extends BaseService
             // Flush all changes again
             $this->entityManager->flush();
 
+            // Optional CMS app assign / role change / unassign (hub sync only via CmsAppService).
+            $this->applyCmsAppAssignmentFromPageData($page, $pageData);
+
             // Log the transaction
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
@@ -609,6 +629,10 @@ class AdminPageService extends BaseService
                 ->setParameter('pageId', $page->getId())
                 ->execute();
 
+            // Remember CMS app membership before the page row is removed so hubs
+            // can be rebuilt after delete (ON DELETE SET NULL clears the FK).
+            $formerCmsApp = $page->getCmsApp();
+
             // Store page keyword for logging before deletion
             $pageKeywordForLog = $page->getKeyword();
             $pageIdForLog = (int) $page->getId();
@@ -617,6 +641,9 @@ class AdminPageService extends BaseService
             $this->entityManager->remove($page);
             $this->entityManager->flush();
 
+            if ($formerCmsApp !== null && $formerCmsApp->getId() !== null) {
+                $this->cmsAppService->onPageDeleted($formerCmsApp);
+            }
 
             // Log the page deletion transaction after commit to avoid EntityManager conflicts
             // This ensures we capture the page data even after it's removed from the database
@@ -797,6 +824,9 @@ class AdminPageService extends BaseService
                         'id_page_access_types' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
                         'id_page_types' => $page->getPageType() ? $page->getPageType()->getId() : null,
                         'page_surface' => $page->getPageSurfaceCode(),
+                        'cms_app_id' => $page->getCmsApp()?->getId(),
+                        'cms_app_slug' => $page->getCmsApp()?->getSlug(),
+                        'cms_app_role' => $page->getCmsAppRole(),
                         'navigationMembership' => $membershipByPage[$pageId] ?? [],
                     ];
                 }
@@ -895,6 +925,67 @@ class AdminPageService extends BaseService
         }
 
         return $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)));
+    }
+
+    /**
+     * Apply optional cms_app_id / cms_app_role from page update payload via assign/unassign.
+     * Hub FKs are never written here — only through CmsAppService.
+     *
+     * @param array<string, mixed> $pageData
+     */
+    private function applyCmsAppAssignmentFromPageData(Page $page, array $pageData): void
+    {
+        $hasAppId = array_key_exists('cms_app_id', $pageData);
+        $hasRole = array_key_exists('cms_app_role', $pageData);
+        if (!$hasAppId && !$hasRole) {
+            return;
+        }
+
+        $pageId = (int) $page->getId();
+        $currentApp = $page->getCmsApp();
+        $currentAppId = $currentApp?->getId();
+
+        if ($hasAppId && ($pageData['cms_app_id'] === null || $pageData['cms_app_id'] === '')) {
+            if ($currentAppId !== null) {
+                $this->cmsAppService->unassignPage((int) $currentAppId, $pageId);
+            }
+            return;
+        }
+
+        $targetAppId = $hasAppId
+            ? (int) $pageData['cms_app_id']
+            : ($currentAppId !== null ? (int) $currentAppId : null);
+
+        if ($targetAppId === null) {
+            throw new ServiceException(
+                'cms_app_id is required when setting cms_app_role on a page that is not already assigned.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        $role = $hasRole
+            ? $this->asString($pageData['cms_app_role'] ?? '')
+            : ($page->getCmsAppRole() ?? '');
+
+        if ($role === '') {
+            throw new ServiceException(
+                'cms_app_role is required when assigning a page to a CMS app.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        if ($currentAppId !== null && (int) $currentAppId === $targetAppId) {
+            if ($page->getCmsAppRole() !== $role) {
+                $this->cmsAppService->changePageRole($targetAppId, $pageId, $role);
+            }
+            return;
+        }
+
+        if ($currentAppId !== null && (int) $currentAppId !== $targetAppId) {
+            $this->cmsAppService->unassignPage((int) $currentAppId, $pageId);
+        }
+
+        $this->cmsAppService->assignPage($targetAppId, $pageId, $role);
     }
 
     /**

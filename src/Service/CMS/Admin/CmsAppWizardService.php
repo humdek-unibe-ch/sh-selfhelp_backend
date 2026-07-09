@@ -8,11 +8,13 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\CmsApp;
 use App\Entity\Field;
 use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\Section;
 use App\Exception\ServiceException;
+use App\Repository\CmsAppRepository;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Routing\RouteConflictValidator;
@@ -25,22 +27,13 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * "Create list + detail pages" CMS-in-CMS app wizard (issue #30, Phase 6).
+ * Scaffold list/detail/form pages into an existing first-class {@see CmsApp}.
  *
  * Atomically scaffolds a working list/detail pattern bound to a data table:
  * a public pair (`/<base>` list + `/<base>/{record_id}` detail) and/or an admin
- * CMS pair (`/cms/<base>` + `/cms/<base>/{record_id}`). For each page it creates
- * the page (with the right `page_surface` + ACL), its DB-driven `page_routes`,
- * and an `entry-list` / `entry-record` holder section whose `data_config` binds
- * to the table — the detail filtering on `record_id = {{route.record_id}}`.
- * With `create_form` the admin detail page instead ATTACHES the shared
- * `form-record` section (record edit mode): the list's per-row action opens an
- * edit form modal prefilled from the URL record id.
- *
- * Everything is conflict-checked up front (keywords + the full active route set)
- * so a partial failure is unlikely; any error still rolls back by deleting the
- * pages created so far. The generated pages are ordinary CMS pages, fully
- * editable afterwards.
+ * CMS pair (`/cms/<base>` + `/cms/<base>/{record_id}`). Every created page is
+ * assigned to the target app with a strict {@see CmsAppRole}; hub FKs are
+ * refreshed via {@see CmsAppHubSyncService} (never written here directly).
  */
 class CmsAppWizardService extends BaseService
 {
@@ -69,24 +62,34 @@ class CmsAppWizardService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly PageRepository $pageRepository,
         private readonly SectionRepository $sectionRepository,
+        private readonly CmsAppRepository $cmsAppRepository,
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
         private readonly RouteConflictValidator $conflictValidator,
         private readonly AdminPageService $adminPageService,
         private readonly SectionExportImportService $sectionExportImportService,
         private readonly PageFieldService $pageFieldService,
+        private readonly CmsAppHubSyncService $hubSyncService,
     ) {
     }
 
     /**
-     * Create the CMS app (public and/or admin list+detail pairs).
+     * Scaffold pages into an existing CMS app (public and/or cms list+detail pairs).
      *
      * @param array<string, mixed> $input
-     * @return array{created: list<array{keyword: string, page_id: int, surface: string, role: string}>}
+     * @return array{app_id: int, created: list<array{keyword: string, page_id: int, surface: string, role: string}>}
      */
-    public function createCmsApp(array $input): array
+    public function scaffoldCmsApp(int $appId, array $input): array
     {
+        $app = $this->cmsAppRepository->find($appId);
+        if (!$app instanceof CmsApp) {
+            $this->throwNotFound(sprintf('CMS app %d not found.', $appId));
+        }
+
         $baseName = strtolower(trim($this->asString($input['base_name'] ?? '')));
+        if ($baseName === '') {
+            $baseName = $app->getSlug();
+        }
         if ($baseName === '' || !preg_match('/^[a-z0-9-]+$/', $baseName)) {
             $this->throwBadRequest('base_name is required and may only contain lowercase letters, numbers and hyphens.');
         }
@@ -136,12 +139,30 @@ class CmsAppWizardService extends BaseService
             $plan[] = $this->formPagePlan($baseName);
         }
         if ($createPublic) {
-            $plan[] = $this->pagePlan($baseName, '/' . $baseName, LookupService::PAGE_SURFACE_PUBLIC, 'public_list', false, $recordParam);
-            $plan[] = $this->pagePlan($baseName . '-record', '/' . $baseName . '/{' . $recordParam . '}', LookupService::PAGE_SURFACE_PUBLIC, 'public_detail', true, $recordParam);
+            $plan[] = $this->pagePlan($baseName, '/' . $baseName, LookupService::PAGE_SURFACE_PUBLIC, CmsAppRole::PUBLIC_LIST, false, $recordParam);
+            $plan[] = $this->pagePlan($baseName . '-record', '/' . $baseName . '/{' . $recordParam . '}', LookupService::PAGE_SURFACE_PUBLIC, CmsAppRole::PUBLIC_DETAIL, true, $recordParam);
         }
         if ($createAdmin) {
-            $plan[] = $this->pagePlan('cms-' . $baseName, '/cms/' . $baseName, LookupService::PAGE_SURFACE_CMS, 'admin_list', false, $recordParam);
-            $plan[] = $this->pagePlan('cms-' . $baseName . '-record', '/cms/' . $baseName . '/{' . $recordParam . '}', LookupService::PAGE_SURFACE_CMS, 'admin_detail', true, $recordParam);
+            $plan[] = $this->pagePlan('cms-' . $baseName, '/cms/' . $baseName, LookupService::PAGE_SURFACE_CMS, CmsAppRole::CMS_LIST, false, $recordParam);
+            $plan[] = $this->pagePlan('cms-' . $baseName . '-record', '/cms/' . $baseName . '/{' . $recordParam . '}', LookupService::PAGE_SURFACE_CMS, CmsAppRole::CMS_DETAIL, true, $recordParam);
+        }
+
+        // Reject scaffold if the app already holds any of the primary roles we
+        // are about to create (keeps uniqueness without partial assign).
+        foreach ($plan as $entry) {
+            if (CmsAppRole::isPrimary($entry['role'])) {
+                $existing = $this->pageRepository->findOneBy([
+                    'cmsApp' => $app,
+                    'cmsAppRole' => $entry['role'],
+                ]);
+                if ($existing !== null) {
+                    $this->throwConflict(sprintf(
+                        'CMS app "%s" already has a page with role "%s".',
+                        $app->getSlug(),
+                        $entry['role']
+                    ));
+                }
+            }
         }
 
         $this->assertNoConflicts($plan);
@@ -158,9 +179,8 @@ class CmsAppWizardService extends BaseService
         // whole app creation back — no orphaned pages, routes, or sections. This
         // replaces the previous best-effort page-deletion cleanup, which could
         // itself fail and leave dangling data.
-        $connection = $this->entityManager->getConnection();
-        $previousSavepoints = $connection->getNestTransactionsWithSavepoints();
-        $connection->setNestTransactionsWithSavepoints(true);
+        // Nested begin/commit/rollback from page/section services become
+        // savepoints of this outer transaction (DBAL 4+ default nesting).
         $this->entityManager->beginTransaction();
         // Set when the create-form page is scaffolded (it comes first in the
         // plan); the admin list links its "Add new" button here and the admin
@@ -188,6 +208,10 @@ class CmsAppWizardService extends BaseService
                     ]],
                 );
                 $pageId = (int) $page->getId();
+                $page->setCmsApp($app);
+                $page->setCmsAppRole($entry['role']);
+                $this->entityManager->flush();
+
                 $created[] = [
                     'keyword' => $entry['keyword'],
                     'page_id' => $pageId,
@@ -195,7 +219,7 @@ class CmsAppWizardService extends BaseService
                     'role' => $entry['role'],
                 ];
 
-                if ($entry['role'] === 'form') {
+                if ($entry['role'] === CmsAppRole::FORM) {
                     // Scaffold the create/edit form + its owned data table; bind
                     // every later list/detail to that table by its new section id.
                     $formSectionId = $this->scaffoldFormAndTable(
@@ -215,29 +239,28 @@ class CmsAppWizardService extends BaseService
                     continue;
                 }
 
-                // The admin record/detail opens as a modal overlay too (view from
-                // the list). The public detail stays a normal, shareable full page.
-                if ($entry['role'] === 'admin_detail') {
+                // The CMS detail opens as a modal overlay too. The public detail
+                // stays a normal, shareable full page.
+                if ($entry['role'] === CmsAppRole::CMS_DETAIL) {
                     $this->setPageProperty($page, self::FIELD_OPEN_IN_MODAL, '1');
                 }
 
-                // Admin detail = EDIT FORM (record edit mode): reuse the SAME
+                // CMS detail = EDIT FORM (record edit mode): reuse the SAME
                 // form-record section as the create page — sections are shared,
                 // so both pages write the same data table. Opened with the
                 // record route param the form prefills that record and submits
                 // an update; opened without (the create page) it stays blank.
-                if ($entry['role'] === 'admin_detail' && $formSectionId !== null) {
+                if ($entry['role'] === CmsAppRole::CMS_DETAIL && $formSectionId !== null) {
                     $this->adminPageService->addSectionToPage($pageId, [['sectionId' => $formSectionId]]);
                     continue;
                 }
 
                 if ($entry['is_detail']) {
                     $sections = $this->buildDetailSections($baseName, $dataTableName, $recordParam, $detailTitle, $formFields, $contentLocales, $propertyLocale);
-                } elseif ($entry['role'] === 'admin_list') {
-                    // Admin list = full data table (search / sort / pagination /
+                } elseif ($entry['role'] === CmsAppRole::CMS_LIST) {
+                    // CMS list = full data table (search / sort / pagination /
                     // delete) bound to the table by numeric id, with an "Add new"
-                    // button (the modal form) + a per-row open/view action (the
-                    // read-only detail modal).
+                    // button (the modal form) + a per-row edit action.
                     $dataTableId = $this->resolveDataTableId($dataTableName);
                     $sections = $this->buildAdminTableSections($baseName, $dataTableId, $entry['detail_base'], $listTitle, $formUrl, $contentLocales, $propertyLocale);
                 } else {
@@ -249,22 +272,26 @@ class CmsAppWizardService extends BaseService
                 $this->sectionExportImportService->importSectionsToPage($pageId, $sections);
             }
 
+            // Single hub writer — after all pages carry roles.
+            $this->hubSyncService->sync($app);
+
             $this->entityManager->commit();
         } catch (\Throwable $e) {
-            if ($connection->isTransactionActive()) {
+            if ($this->entityManager->getConnection()->isTransactionActive()) {
                 $this->entityManager->rollback();
             }
 
             throw $e instanceof ServiceException ? $e : new ServiceException(
-                'CMS app creation failed: ' . $e->getMessage(),
+                'CMS app scaffold failed: ' . $e->getMessage(),
                 Response::HTTP_INTERNAL_SERVER_ERROR,
                 ['previous_exception' => $e->getMessage()]
             );
-        } finally {
-            $connection->setNestTransactionsWithSavepoints($previousSavepoints);
         }
 
-        return ['created' => $created];
+        return [
+            'app_id' => (int) $app->getId(),
+            'created' => $created,
+        ];
     }
 
     /**
@@ -281,7 +308,7 @@ class CmsAppWizardService extends BaseService
             'keyword' => 'cms-' . $baseName . '-form',
             'url' => $url,
             'surface' => LookupService::PAGE_SURFACE_CMS,
-            'role' => 'form',
+            'role' => CmsAppRole::FORM,
             'is_detail' => false,
             'path_pattern' => $url,
             'requirements' => null,

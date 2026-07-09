@@ -24,25 +24,37 @@
                     "title": "Study kickoff webinar",
                     "event_date": "2026-08-20 17:00",
                     "location": "Online (Zoom)",
-                    "description": "A one-hour introduction for new participants: how the study works, how to use the app, and how your data is protected. Includes a live Q&A with the study team."
+                    "description": {
+                        "en-GB": "A one-hour introduction for new participants: how the study works, how to use the app, and how your data is protected. Includes a live Q&A with the study team.",
+                        "de-CH": "Eine einstündige Einführung für neue Teilnehmende: Ablauf der Studie, Nutzung der App und Schutz Ihrer Daten. Mit Live-Q&A des Studienteams."
+                    }
                 },
                 {
                     "title": "Coordinator workshop",
                     "event_date": "2026-09-04 09:30",
                     "location": "University of Bern, Room A102",
-                    "description": "Hands-on training for study coordinators: building pages with the CMS, importing templates, and managing participant groups. Bring your own laptop."
+                    "description": {
+                        "en-GB": "Hands-on training for study coordinators: building pages with the CMS, importing templates, and managing participant groups. Bring your own laptop.",
+                        "de-CH": "Praxisworkshop für Studienkoordinatorinnen: Seiten im CMS erstellen, Vorlagen importieren und Teilnehmergruppen verwalten. Bitte eigenen Laptop mitbringen."
+                    }
                 },
                 {
                     "title": "Open lab day",
                     "event_date": "2026-09-18 14:00",
                     "location": "Inselspital, Lab Building 3",
-                    "description": "Visit the lab, meet the researchers and see the measurement setup used in the current wave. Open to all enrolled participants and their families."
+                    "description": {
+                        "en-GB": "Visit the lab, meet the researchers and see the measurement setup used in the current wave. Open to all enrolled participants and their families.",
+                        "de-CH": "Besuchen Sie das Labor, lernen Sie die Forschenden kennen und sehen Sie den Messaufbau der aktuellen Welle. Offen für alle eingeschriebenen Teilnehmenden und ihre Familien."
+                    }
                 },
                 {
                     "title": "Results evening",
                     "event_date": "2026-11-12 18:30",
                     "location": "Kursaal Bern",
-                    "description": "We present the first aggregated results of the study, what they mean, and what happens next. With apéro afterwards."
+                    "description": {
+                        "en-GB": "We present the first aggregated results of the study, what they mean, and what happens next. With apéro afterwards.",
+                        "de-CH": "Wir präsentieren die ersten aggregierten Studienergebnisse, was sie bedeuten und wie es weitergeht. Anschliessend Apéro."
+                    }
                 }
             ]
         }
@@ -292,7 +304,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "form"
         },
         {
             "keyword": "events",
@@ -569,7 +582,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_list"
         },
         {
             "keyword": "events-record",
@@ -776,7 +790,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_detail"
         },
         {
             "keyword": "cms-events",
@@ -893,15 +908,26 @@
                         },
                         "delete_modal_body": {
                             "de-CH": {
-                                "content": "Der Eintrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+                                "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
                             },
                             "en-GB": {
-                                "content": "The entry is removed permanently. This action cannot be undone."
+                                "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                            }
+                        },
+                        "show_language_preview": {
+                            "all": {
+                                "content": "1"
                             }
                         }
                     }
                 }
-            ]
+            ],
+            "cms_app_role": "cms_list"
         }
-    ]
+    ],
+    "cms_app": {
+        "name": "Events",
+        "slug": "events",
+        "description": null
+    }
 }

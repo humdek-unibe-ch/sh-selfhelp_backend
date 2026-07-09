@@ -38,7 +38,6 @@ class AdminPageController extends AbstractController
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
         private readonly \App\Service\CMS\Admin\PageExportImportService $pageExportImportService,
-        private readonly \App\Service\CMS\Admin\CmsAppWizardService $cmsAppWizardService,
     ) {
     }
 
@@ -171,6 +170,8 @@ class AdminPageController extends AbstractController
                 null,
                 $this->asBoolField($data, 'syncUrlWithParent', false),
                 $this->asStringOrNullField($data, 'oldRoutePolicy'),
+                $this->asIntOrNullField($data, 'cms_app_id'),
+                $this->asStringOrNullField($data, 'cms_app_role'),
             );
 
             // Page cache is automatically invalidated by the service
@@ -395,32 +396,6 @@ class AdminPageController extends AbstractController
             $examples = $this->pageExportImportService->listExampleBundles();
 
             return $this->responseFormatter->formatSuccess(['examples' => $examples], null, Response::HTTP_OK);
-        } catch (ServiceException $e) {
-            return $this->responseFormatter->formatException($e);
-        } catch (\Exception $e) {
-            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
-     * "Create list + detail pages" CMS-in-CMS app wizard (issue #30, Phase 6).
-     *
-     * Atomically scaffolds a public and/or admin list+detail page pair bound to
-     * a data table: pages (with the right `page_surface` + ACL), their DB-driven
-     * `page_routes`, and `entry-list` / `entry-record` holder sections whose
-     * `data_config` binds to the table (detail filters on
-     * `record_id = {{route.record_id}}`).
-     *
-     * @route /admin/pages/cms-app
-     * @method POST
-     */
-    public function createCmsApp(Request $request): JsonResponse
-    {
-        try {
-            $data = $this->validateRequest($request, 'requests/admin/create_cms_app', $this->jsonSchemaValidationService);
-            $result = $this->cmsAppWizardService->createCmsApp($this->toAssocArray($data));
-
-            return $this->responseFormatter->formatSuccess($result, null, Response::HTTP_CREATED);
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatException($e);
         } catch (\Exception $e) {

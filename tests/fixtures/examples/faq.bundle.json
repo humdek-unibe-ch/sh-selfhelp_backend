@@ -22,23 +22,38 @@
             "rows": [
                 {
                     "question": "How do I reset my password?",
-                    "answer": "Open the login page, click \"Forgot password\" and follow the email link. The link stays valid for 24 hours; afterwards simply request a new one."
+                    "answer": {
+                        "en-GB": "Open the login page, click \"Forgot password\" and follow the email link. The link stays valid for 24 hours; afterwards simply request a new one.",
+                        "de-CH": "Öffnen Sie die Anmeldeseite, klicken Sie auf «Passwort vergessen» und folgen Sie dem E-Mail-Link. Der Link ist 24 Stunden gültig; danach einfach einen neuen anfordern."
+                    }
                 },
                 {
                     "question": "Can I use the platform on my phone?",
-                    "answer": "Yes. Every page is responsive and the companion mobile app covers the full participant flow, including offline form entry that syncs once you are back online."
+                    "answer": {
+                        "en-GB": "Yes. Every page is responsive and the companion mobile app covers the full participant flow, including offline form entry that syncs once you are back online.",
+                        "de-CH": "Ja. Jede Seite ist responsiv und die mobile App deckt den gesamten Teilnehmerablauf ab, inklusive Offline-Formularen, die nach der Verbindung synchronisiert werden."
+                    }
                 },
                 {
                     "question": "Who can see my answers?",
-                    "answer": "Only the study team you are enrolled with. Answers are stored per study group and are never shared across projects without your explicit consent."
+                    "answer": {
+                        "en-GB": "Only the study team you are enrolled with. Answers are stored per study group and are never shared across projects without your explicit consent.",
+                        "de-CH": "Nur das Studienteam, bei dem Sie eingeschrieben sind. Antworten werden pro Studiengruppe gespeichert und ohne Ihre ausdrückliche Zustimmung nie zwischen Projekten geteilt."
+                    }
                 },
                 {
                     "question": "How do I withdraw from a study?",
-                    "answer": "Contact your study coordinator or use the withdrawal form in your profile. Your data is then excluded from future analyses in line with the study consent."
+                    "answer": {
+                        "en-GB": "Contact your study coordinator or use the withdrawal form in your profile. Your data is then excluded from future analyses in line with the study consent.",
+                        "de-CH": "Wenden Sie sich an Ihre Studienkoordination oder nutzen Sie das Widerrufsformular im Profil. Ihre Daten werden dann gemäss Einwilligung von künftigen Analysen ausgeschlossen."
+                    }
                 },
                 {
                     "question": "Which browsers are supported?",
-                    "answer": "The two latest versions of Chrome, Firefox, Edge and Safari. Older browsers may work but are not tested."
+                    "answer": {
+                        "en-GB": "The two latest versions of Chrome, Firefox, Edge and Safari. Older browsers may work but are not tested.",
+                        "de-CH": "Die zwei neuesten Versionen von Chrome, Firefox, Edge und Safari. Ältere Browser funktionieren eventuell, werden aber nicht getestet."
+                    }
                 }
             ]
         }
@@ -237,7 +252,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "form"
         },
         {
             "keyword": "faq",
@@ -402,7 +418,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_list"
         },
         {
             "keyword": "cms-faq",
@@ -519,15 +536,26 @@
                         },
                         "delete_modal_body": {
                             "de-CH": {
-                                "content": "Der Eintrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+                                "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
                             },
                             "en-GB": {
-                                "content": "The entry is removed permanently. This action cannot be undone."
+                                "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                            }
+                        },
+                        "show_language_preview": {
+                            "all": {
+                                "content": "1"
                             }
                         }
                     }
                 }
-            ]
+            ],
+            "cms_app_role": "cms_list"
         }
-    ]
+    ],
+    "cms_app": {
+        "name": "FAQ accordion",
+        "slug": "faq",
+        "description": null
+    }
 }

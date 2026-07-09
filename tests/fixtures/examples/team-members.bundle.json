@@ -4,7 +4,7 @@
     "exported_at": "2026-07-06T00:00:00+00:00",
     "core_version": "0.1.x",
     "title": "Team members",
-    "description": "Public team grid with shareable profile pages plus a full admin CRUD area — the flagship CMS-in-CMS starter.",
+    "description": "A polished team directory: elegant public cards + profiles, and a full CMS entry-table for editors. Import with sample records for an instant demo.",
     "tags": [
         "cms-in-cms",
         "list + detail",
@@ -26,37 +26,55 @@
                     "name": "Ada Lovelace",
                     "role": "Lead Engineer",
                     "email": "ada@example.org",
-                    "bio": "Works on the analytical engine and wrote the first published algorithm. Loves turning hard problems into elegant, testable machines."
+                    "bio": {
+                        "en-GB": "Works on the analytical engine and wrote the first published algorithm. Loves turning hard problems into elegant, testable machines.",
+                        "de-CH": "Arbeitet an der analytischen Maschine und schrieb den ersten veröffentlichten Algorithmus. Verwandelt gern knifflige Probleme in elegante, testbare Maschinen."
+                    }
                 },
                 {
                     "name": "Alan Turing",
                     "role": "Researcher",
                     "email": "alan@example.org",
-                    "bio": "Computability, cryptanalysis and the foundations of computer science. Currently asking whether machines can think."
+                    "bio": {
+                        "en-GB": "Computability, cryptanalysis and the foundations of computer science. Currently asking whether machines can think.",
+                        "de-CH": "Berechenbarkeit, Kryptoanalyse und die Grundlagen der Informatik. Fragt sich derzeit, ob Maschinen denken können."
+                    }
                 },
                 {
                     "name": "Grace Hopper",
                     "role": "Compiler Pioneer",
                     "email": "grace@example.org",
-                    "bio": "Built the first compiler and championed machine-independent programming languages. It is easier to ask forgiveness than permission."
+                    "bio": {
+                        "en-GB": "Built the first compiler and championed machine-independent programming languages. It is easier to ask forgiveness than permission.",
+                        "de-CH": "Baute den ersten Compiler und setzte sich für maschinenunabhängige Programmiersprachen ein. Vergebung erbitten ist einfacher als um Erlaubnis bitten."
+                    }
                 },
                 {
                     "name": "Katherine Johnson",
                     "role": "Trajectory Analyst",
                     "email": "katherine@example.org",
-                    "bio": "Calculates orbital mechanics by hand and verifies what the machines print. Numbers do not lie when you check them twice."
+                    "bio": {
+                        "en-GB": "Calculates orbital mechanics by hand and verifies what the machines print. Numbers do not lie when you check them twice.",
+                        "de-CH": "Berechnet Orbitalmechanik von Hand und prüft, was die Maschinen ausdrucken. Zahlen lügen nicht, wenn man sie zweimal kontrolliert."
+                    }
                 },
                 {
                     "name": "Margaret Hamilton",
                     "role": "Software Director",
                     "email": "margaret@example.org",
-                    "bio": "Leads on-board flight software and coined the term software engineering. Ships systems that keep working when everything else fails."
+                    "bio": {
+                        "en-GB": "Leads on-board flight software and coined the term software engineering. Ships systems that keep working when everything else fails.",
+                        "de-CH": "Leitet die Bordsoftware und prägte den Begriff Software Engineering. Liefert Systeme, die weiterlaufen, wenn alles andere ausfällt."
+                    }
                 },
                 {
                     "name": "Tim Berners-Lee",
                     "role": "Web Architect",
                     "email": "tim@example.org",
-                    "bio": "Connected hypertext to the internet and gave the result away. Believes the web belongs to everyone."
+                    "bio": {
+                        "en-GB": "Connected hypertext to the internet and gave the result away. Believes the web belongs to everyone.",
+                        "de-CH": "Verband Hypertext mit dem Internet und gab das Ergebnis frei. Ist überzeugt, dass das Web allen gehört."
+                    }
                 }
             ]
         }
@@ -66,7 +84,7 @@
             "keyword": "cms-team-members-form",
             "surface": "cms",
             "page_access_type": "mobile_and_web",
-            "headless": false,
+            "headless": true,
             "open_access": false,
             "url": "/cms/team-members/form",
             "parent_keyword": null,
@@ -317,7 +335,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "form"
         },
         {
             "keyword": "team-members",
@@ -360,7 +379,7 @@
                     "fields": {
                         "gap": {
                             "all": {
-                                "content": "xs"
+                                "content": "sm"
                             }
                         },
                         "spacing": {
@@ -371,6 +390,40 @@
                     },
                     "children": [
                         {
+                            "section_name": "team-members-hero-eyebrow",
+                            "style_name": "badge",
+                            "fields": {
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Menschen & Expertise"
+                                    },
+                                    "en-GB": {
+                                        "content": "People & craft"
+                                    }
+                                },
+                                "variant": {
+                                    "all": {
+                                        "content": "light"
+                                    }
+                                },
+                                "color": {
+                                    "all": {
+                                        "content": "blue"
+                                    }
+                                },
+                                "size": {
+                                    "all": {
+                                        "content": "sm"
+                                    }
+                                },
+                                "radius": {
+                                    "all": {
+                                        "content": "xl"
+                                    }
+                                }
+                            }
+                        },
+                        {
                             "section_name": "team-members-hero-title",
                             "style_name": "title",
                             "fields": {
@@ -379,7 +432,7 @@
                                         "content": "Unser Team"
                                     },
                                     "en-GB": {
-                                        "content": "Meet the team"
+                                        "content": "Meet the people building it"
                                     }
                                 },
                                 "title_order": {
@@ -387,6 +440,9 @@
                                         "content": "1"
                                     }
                                 }
+                            },
+                            "global_fields": {
+                                "css": "tracking-tight text-4xl md:text-5xl font-semibold text-slate-900 dark:text-white max-w-3xl"
                             }
                         },
                         {
@@ -395,15 +451,10 @@
                             "fields": {
                                 "text": {
                                     "de-CH": {
-                                        "content": "Die Menschen hinter dem Projekt — Profil öffnen für die ganze Geschichte."
+                                        "content": "Forscherinnen, Ingenieurinnen und Architektinnen — klicken Sie ein Profil für die ganze Geschichte."
                                     },
                                     "en-GB": {
-                                        "content": "The people behind the project — open a profile for the full story."
-                                    }
-                                },
-                                "color": {
-                                    "all": {
-                                        "content": "dimmed"
+                                        "content": "Researchers, engineers, and builders — open any profile for the full story."
                                     }
                                 },
                                 "size": {
@@ -411,6 +462,9 @@
                                         "content": "lg"
                                     }
                                 }
+                            },
+                            "global_fields": {
+                                "css": "max-w-2xl text-slate-600 dark:text-slate-300 leading-relaxed"
                             }
                         },
                         {
@@ -422,15 +476,21 @@
                                         "content": "{\"mt\":\"sm\"}"
                                     }
                                 }
+                            },
+                            "global_fields": {
+                                "css": "opacity-40"
                             }
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm"
+                    }
                 },
                 {
                     "section_name": "team-members-list",
                     "style_name": "entry-list",
                     "global_fields": {
-                        "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
+                        "css": "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8",
                         "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:team-members-form\",\"retrieve\":\"all\",\"current_user\":false}]"
                     },
                     "children": [
@@ -445,12 +505,12 @@
                                 },
                                 "radius": {
                                     "all": {
-                                        "content": "md"
+                                        "content": "xl"
                                     }
                                 },
                                 "web_card_shadow": {
                                     "all": {
-                                        "content": "sm"
+                                        "content": "md"
                                     }
                                 }
                             },
@@ -471,7 +531,7 @@
                                         },
                                         "web_group_wrap": {
                                             "all": {
-                                                "content": "nowrap"
+                                                "content": "wrap"
                                             }
                                         }
                                     },
@@ -492,7 +552,7 @@
                                                 },
                                                 "size": {
                                                     "all": {
-                                                        "content": "lg"
+                                                        "content": "xl"
                                                     }
                                                 },
                                                 "radius": {
@@ -500,6 +560,9 @@
                                                         "content": "50%"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css": "ring-2 ring-sky-100 dark:ring-sky-900 shadow-sm"
                                             }
                                         },
                                         {
@@ -530,6 +593,9 @@
                                                                 "content": "4"
                                                             }
                                                         }
+                                                    },
+                                                    "global_fields": {
+                                                        "css": "tracking-tight"
                                                     }
                                                 },
                                                 {
@@ -547,6 +613,16 @@
                                                         "variant": {
                                                             "all": {
                                                                 "content": "light"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "cyan"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "xl"
                                                             }
                                                         }
                                                     }
@@ -659,23 +735,37 @@
                                                 },
                                                 "variant": {
                                                     "all": {
-                                                        "content": "light"
+                                                        "content": "filled"
                                                     }
                                                 },
                                                 "size": {
                                                     "all": {
-                                                        "content": "xs"
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "blue"
+                                                    }
+                                                },
+                                                "radius": {
+                                                    "all": {
+                                                        "content": "xl"
                                                     }
                                                 }
                                             }
                                         }
                                     ]
                                 }
-                            ]
+                            ],
+                            "global_fields": {
+                                "css": "h-full transition duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-sky-200 dark:hover:border-sky-800 bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm"
+                            }
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_list"
         },
         {
             "keyword": "team-members-record",
@@ -732,7 +822,7 @@
                                 },
                                 "spacing": {
                                     "all": {
-                                        "content": "{\"mt\":\"lg\"}"
+                                        "content": "{\"mt\":\"xl\",\"mb\":\"xl\"}"
                                     }
                                 }
                             },
@@ -748,12 +838,12 @@
                                         },
                                         "radius": {
                                             "all": {
-                                                "content": "md"
+                                                "content": "xl"
                                             }
                                         },
                                         "web_card_shadow": {
                                             "all": {
-                                                "content": "sm"
+                                                "content": "md"
                                             }
                                         }
                                     },
@@ -803,6 +893,9 @@
                                                                 "content": "50%"
                                                             }
                                                         }
+                                                    },
+                                                    "global_fields": {
+                                                        "css": "ring-4 ring-sky-100 dark:ring-sky-900 shadow-md"
                                                     }
                                                 },
                                                 {
@@ -969,19 +1062,23 @@
                                                 }
                                             ]
                                         }
-                                    ]
+                                    ],
+                                    "global_fields": {
+                                        "css": "border border-sky-100/80 dark:border-slate-800 bg-gradient-to-b from-white to-sky-50/40 dark:from-slate-900 dark:to-slate-950"
+                                    }
                                 }
                             ]
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_detail"
         },
         {
             "keyword": "cms-team-members",
             "surface": "cms",
             "page_access_type": "mobile_and_web",
-            "headless": false,
+            "headless": true,
             "open_access": false,
             "url": "/cms/team-members",
             "parent_keyword": null,
@@ -1125,6 +1222,11 @@
                                 "content": "1"
                             }
                         },
+                        "fields_map": {
+                            "all": {
+                                "content": "[{\"field_name\":\"name\",\"field_new_name\":\"Name\"},{\"field_name\":\"role\",\"field_new_name\":\"Role\"},{\"field_name\":\"email\",\"field_new_name\":\"Email\"},{\"field_name\":\"bio\",\"field_new_name\":\"Bio\"}]"
+                            }
+                        },
                         "add_url": {
                             "all": {
                                 "content": "/cms/team-members/form"
@@ -1153,15 +1255,26 @@
                         },
                         "delete_modal_body": {
                             "de-CH": {
-                                "content": "Der Eintrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+                                "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
                             },
                             "en-GB": {
-                                "content": "The entry is removed permanently. This action cannot be undone."
+                                "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                            }
+                        },
+                        "show_language_preview": {
+                            "all": {
+                                "content": "1"
                             }
                         }
                     }
                 }
-            ]
+            ],
+            "cms_app_role": "cms_list"
         }
-    ]
+    ],
+    "cms_app": {
+        "name": "Team members",
+        "slug": "team-members",
+        "description": "Modern public team directory with profiles and a CMS editing grid."
+    }
 }

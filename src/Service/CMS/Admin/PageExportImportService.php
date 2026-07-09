@@ -13,6 +13,8 @@ use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
 use App\Exception\ServiceException;
+use App\Entity\CmsApp;
+use App\Repository\CmsAppRepository;
 use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
@@ -88,6 +90,9 @@ class PageExportImportService extends BaseService
         private readonly UserContextAwareService $userContextAwareService,
         private readonly SystemInstanceService $instance,
         private readonly CacheService $cache,
+        private readonly CmsAppService $cmsAppService,
+        private readonly CmsAppHubSyncService $cmsAppHubSyncService,
+        private readonly CmsAppRepository $cmsAppRepository,
     ) {
     }
 
@@ -123,7 +128,17 @@ class PageExportImportService extends BaseService
         }
 
         $pages = [];
+        $cmsAppMeta = null;
         foreach ($pageIds as $pageId) {
+            $pageEntity = $this->pageRepository->find($pageId);
+            if ($pageEntity?->getCmsApp() !== null && $cmsAppMeta === null) {
+                $app = $pageEntity->getCmsApp();
+                $cmsAppMeta = [
+                    'name' => $app->getName(),
+                    'slug' => $app->getSlug(),
+                    'description' => $app->getDescription(),
+                ];
+            }
             $pages[] = $this->exportPage($pageId);
         }
 
@@ -145,7 +160,9 @@ class PageExportImportService extends BaseService
             'core_version' => $this->instance->getCmsVersion(),
             'pages' => $pages,
         ];
-
+        if ($cmsAppMeta !== null) {
+            $bundle['cms_app'] = $cmsAppMeta;
+        }
         if ($includeTables && $ownerTableIds !== []) {
             $bundle['data_tables'] = $this->exportOwnedDataTables(array_keys($ownerTableIds), $idToName, $includeRows);
         }
@@ -438,6 +455,7 @@ class PageExportImportService extends BaseService
         return [
             'keyword' => $page->getKeyword(),
             'surface' => $page->getPageSurfaceCode(),
+            'cms_app_role' => $page->getCmsAppRole(),
             'page_access_type' => $accessType,
             'headless' => $page->isHeadless(),
             'open_access' => $page->isOpenAccess(),
@@ -1075,6 +1093,23 @@ class PageExportImportService extends BaseService
 
         $this->entityManager->beginTransaction();
         try {
+            // CMS-in-cms bundles must carry first-class cms_app metadata + roles
+            // (no dual-format / no silent downgrade to plain pages).
+            $isCmsInCmsBundle = $this->bundleLooksLikeCmsInCms($bundle, $pages);
+            $cmsAppPayload = is_array($bundle['cms_app'] ?? null) ? $bundle['cms_app'] : null;
+            if ($isCmsInCmsBundle) {
+                $this->assertCmsInCmsBundleContract($bundle, $pages, $cmsAppPayload);
+            } elseif ($cmsAppPayload !== null) {
+                // Explicit cms_app block on a non-tagged bundle still requires
+                // every page to declare a valid cms_app_role.
+                $this->assertCmsInCmsBundleContract($bundle, $pages, $cmsAppPayload);
+            }
+
+            $cmsAppId = null;
+            if ($cmsAppPayload !== null) {
+                $cmsAppId = $this->resolveCmsAppIdForImport($cmsAppPayload, $keywordPrefix);
+            }
+
             // Pass 1: create every page (no parent yet) and remember its id.
             /** @var array<string, int> $keywordToId */
             $keywordToId = [];
@@ -1140,6 +1175,22 @@ class PageExportImportService extends BaseService
                     }
                 }
 
+                if ($cmsAppId !== null) {
+                    $role = $this->asString($page['cms_app_role'] ?? '');
+                    if (!CmsAppRole::isValid($role)) {
+                        throw new ServiceException(
+                            sprintf(
+                                'Page "%s" has invalid cms_app_role "%s". Allowed: %s.',
+                                $this->asString($page['keyword'] ?? $keyword),
+                                $role,
+                                implode(', ', CmsAppRole::ALL)
+                            ),
+                            Response::HTTP_BAD_REQUEST
+                        );
+                    }
+                    $this->cmsAppService->assignPage($cmsAppId, $pageId, $role);
+                }
+
                 $createdResult[] = ['keyword' => $keyword, 'page_id' => $pageId];
             }
 
@@ -1148,8 +1199,13 @@ class PageExportImportService extends BaseService
             // entry-table relink runs last: it needs the owner's data table row
             // to exist so the field can point at its fresh numeric id.
             $this->relinkOwnerTokens($allNewSectionIds, $sourceNameToNewId);
-            $this->restoreDataTables($bundle, $sourceNameToNewId, $importData);
+            $this->restoreDataTables($bundle, $sourceNameToNewId, $importData, $localeMap);
             $this->relinkEntryTableDataTables($allNewSectionIds, $sourceNameToNewId);
+
+            if ($cmsAppId !== null) {
+                $app = $this->cmsAppService->requireApp($cmsAppId);
+                $this->cmsAppHubSyncService->sync($app);
+            }
 
             $this->entityManager->commit();
 
@@ -1328,7 +1384,7 @@ class PageExportImportService extends BaseService
      * @param array<string, mixed> $bundle
      * @param array<string, int> $sourceNameToNewId
      */
-    private function restoreDataTables(array $bundle, array $sourceNameToNewId, bool $importData): void
+    private function restoreDataTables(array $bundle, array $sourceNameToNewId, bool $importData, array $localeMap): void
     {
         $dataTables = is_array($bundle['data_tables'] ?? null) ? $bundle['data_tables'] : [];
         foreach ($dataTables as $dataTable) {
@@ -1362,7 +1418,7 @@ class PageExportImportService extends BaseService
 
             $rows = is_array($dataTable['rows'] ?? null) ? $dataTable['rows'] : [];
             foreach ($rows as $row) {
-                $rowData = $this->normalizeRowForSave($row);
+                $rowData = $this->normalizeRowForSave($row, $localeMap);
                 if ($rowData === []) {
                     continue;
                 }
@@ -1379,13 +1435,16 @@ class PageExportImportService extends BaseService
     }
 
     /**
-     * Reduce a bundle row to scalar `human name => value` pairs the form-save
-     * path accepts (it remaps the human names to the new `section_<id>` keys).
+     * Reduce a bundle row to values the form-save path accepts (it remaps the
+     * human names to the new `section_<id>` keys). Scalar fields are stored as
+     * plain strings; translatable fields may use a locale map
+     * (`{"de-CH":"…","en-GB":"…"}`) or a list of `{language_code, content}`.
      *
      * @param mixed $row
-     * @return array<string, scalar>
+     * @param array<string, int> $localeMap
+     * @return array<string, mixed>
      */
-    private function normalizeRowForSave(mixed $row): array
+    private function normalizeRowForSave(mixed $row, array $localeMap): array
     {
         if (!is_array($row)) {
             return [];
@@ -1393,12 +1452,79 @@ class PageExportImportService extends BaseService
         $clean = [];
         foreach ($row as $key => $value) {
             $name = (string) $key;
-            if ($name !== '' && is_scalar($value)) {
+            if ($name === '') {
+                continue;
+            }
+            if (is_scalar($value)) {
                 $clean[$name] = $value;
+                continue;
+            }
+            if (!is_array($value)) {
+                continue;
+            }
+
+            $multiLang = $this->normalizeTranslatableBundleValue($value, $localeMap);
+            if ($multiLang !== null) {
+                $clean[$name] = $multiLang;
             }
         }
 
         return $clean;
+    }
+
+    /**
+     * @param array<mixed> $value
+     * @param array<string, int> $localeMap
+     * @return list<array{language_id: int, value: string}>|null
+     */
+    private function normalizeTranslatableBundleValue(array $value, array $localeMap): ?array
+    {
+        if ($value === []) {
+            return null;
+        }
+
+        // `{ "de-CH": "…", "en-GB": "…" }`
+        $isLocaleMap = true;
+        $fromLocaleMap = [];
+        foreach ($value as $locale => $content) {
+            if (!is_string($locale) || !is_scalar($content)) {
+                $isLocaleMap = false;
+                break;
+            }
+            $languageId = $localeMap[$locale] ?? null;
+            if ($languageId === null) {
+                continue;
+            }
+            $fromLocaleMap[] = [
+                'language_id' => $languageId,
+                'value' => (string) $content,
+            ];
+        }
+        if ($isLocaleMap && $fromLocaleMap !== []) {
+            return $fromLocaleMap;
+        }
+
+        // `[ { "language_code": "de-CH", "content": "…" }, … ]`
+        if (!isset($value[0]) || !is_array($value[0])) {
+            return null;
+        }
+        $fromList = [];
+        foreach ($value as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $locale = $this->asString($item['language_code'] ?? '');
+            $languageId = $localeMap[$locale] ?? null;
+            if ($languageId === null) {
+                continue;
+            }
+            $fromList[] = [
+                'language_id' => $languageId,
+                'value' => $this->asString($item['content'] ?? ''),
+            ];
+        }
+
+        return $fromList !== [] ? $fromList : null;
     }
 
     /**
@@ -1969,6 +2095,174 @@ class PageExportImportService extends BaseService
     private function normalizeSurface(mixed $surface): string
     {
         return $surface === 'cms' ? 'cms' : 'public';
+    }
+
+    /**
+     * True when this bundle is a CMS-in-CMS template/app export that must carry
+     * first-class `cms_app` metadata (no dual-format / legacy silent import).
+     *
+     * @param array<string, mixed> $bundle
+     * @param list<array<string, mixed>> $pages
+     */
+    private function bundleLooksLikeCmsInCms(array $bundle, array $pages): bool
+    {
+        foreach (is_array($bundle['tags'] ?? null) ? $bundle['tags'] : [] as $tag) {
+            if (is_string($tag) && strtolower($tag) === 'cms-in-cms') {
+                return true;
+            }
+        }
+
+        foreach ($pages as $page) {
+            if (array_key_exists('cms_app_role', $page) && $page['cms_app_role'] !== null && $page['cms_app_role'] !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Create or reuse a CMS app shell for an import.
+     *
+     * Keyword prefixes from the examples gallery (`demo_team_members_`) may
+     * contain underscores / mixed case that are legal for page keywords but
+     * illegal for cms_apps.slug. Sanitise to kebab-case before create.
+     * If an empty shell with that slug already exists, reuse it; if it already
+     * has pages, fail with a clear conflict so operators can delete the shell
+     * (Admin → CMS Apps → Delete shell) or change the keyword prefix.
+     *
+     * @param array<string, mixed> $cmsAppPayload
+     */
+    private function resolveCmsAppIdForImport(array $cmsAppPayload, string $keywordPrefix): int
+    {
+        $bundleSlug = trim($this->asString($cmsAppPayload['slug'] ?? ''));
+        $name = trim($this->asString($cmsAppPayload['name'] ?? $bundleSlug));
+        $description = isset($cmsAppPayload['description'])
+            ? $this->asString($cmsAppPayload['description'])
+            : null;
+
+        $rawSlug = $bundleSlug;
+        if ($keywordPrefix !== '' && $bundleSlug !== '') {
+            $rawSlug = $this->prefixKeyword($keywordPrefix, $bundleSlug);
+        } elseif ($keywordPrefix !== '' && $bundleSlug === '') {
+            $rawSlug = $keywordPrefix;
+        }
+
+        $slug = $this->sanitizeCmsAppSlug($rawSlug);
+        if ($slug === '') {
+            $slug = 'app-' . substr(md5((string) microtime(true)), 0, 8);
+        }
+
+        $existing = $this->cmsAppRepository->findOneBySlug($slug);
+        if ($existing instanceof CmsApp) {
+            $pageCount = (int) $this->entityManager->getRepository(Page::class)->count(['cmsApp' => $existing]);
+            if ($pageCount > 0) {
+                throw new ServiceException(
+                    sprintf(
+                        'A CMS app with slug "%s" already has %d assigned page(s). '
+                        . 'Delete that app shell under Admin → CMS Apps (pages and records are kept), '
+                        . 'or change the keyword prefix and import again.',
+                        $slug,
+                        $pageCount
+                    ),
+                    Response::HTTP_CONFLICT
+                );
+            }
+
+            if ($name !== '' && $existing->getName() !== $name) {
+                $this->cmsAppService->updateApp((int) $existing->getId(), [
+                    'name' => $name,
+                    'description' => $description,
+                ]);
+            }
+
+            return (int) $existing->getId();
+        }
+
+        $createdApp = $this->cmsAppService->createApp(
+            $name !== '' ? $name : $slug,
+            $slug,
+            $description !== null && trim($description) !== '' ? $description : null,
+        );
+
+        return (int) $createdApp['id'];
+    }
+
+    /**
+     * Normalise an imported CMS app slug to the kebab-case contract.
+     */
+    private function sanitizeCmsAppSlug(string $slug): string
+    {
+        $slug = strtolower(trim($slug));
+        $slug = preg_replace('/[^a-z0-9]+/', '-', $slug) ?? '';
+
+        return trim($slug, '-');
+    }
+
+    /**
+     * Enforce cms_app name/slug + a valid cms_app_role on every page.
+     *
+     * @param array<string, mixed> $bundle
+     * @param list<array<string, mixed>> $pages
+     * @param array<string, mixed>|null $cmsAppPayload
+     */
+    private function assertCmsInCmsBundleContract(array $bundle, array $pages, ?array $cmsAppPayload): void
+    {
+        unset($bundle);
+
+        if ($cmsAppPayload === null) {
+            throw new ServiceException(
+                'CMS-in-CMS bundles require a top-level "cms_app" object with name and slug. '
+                . 'Legacy page-only CMS app bundles are no longer supported.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        $name = trim($this->asString($cmsAppPayload['name'] ?? ''));
+        $slug = trim($this->asString($cmsAppPayload['slug'] ?? ''));
+        if ($name === '' || $slug === '') {
+            throw new ServiceException(
+                'cms_app.name and cms_app.slug are required on CMS-in-CMS bundles.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        if ($this->sanitizeCmsAppSlug($slug) === '') {
+            throw new ServiceException(
+                'cms_app.slug must contain at least one letter or number '
+                . '(lowercase letters, numbers and hyphens after import normalisation).',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        if ($pages === []) {
+            throw new ServiceException(
+                'CMS-in-CMS bundles must include at least one page with a cms_app_role.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        foreach ($pages as $page) {
+            $keyword = $this->asString($page['keyword'] ?? '(unknown)');
+            if (!array_key_exists('cms_app_role', $page) || $page['cms_app_role'] === null || $page['cms_app_role'] === '') {
+                throw new ServiceException(
+                    sprintf('Page "%s" is missing required cms_app_role for a CMS-in-CMS bundle.', $keyword),
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+            $role = $this->asString($page['cms_app_role']);
+            if (!CmsAppRole::isValid($role)) {
+                throw new ServiceException(
+                    sprintf(
+                        'Page "%s" has invalid cms_app_role "%s". Allowed: %s.',
+                        $keyword,
+                        $role,
+                        implode(', ', CmsAppRole::ALL)
+                    ),
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+        }
     }
 
     private function stringOrNull(mixed $value): ?string

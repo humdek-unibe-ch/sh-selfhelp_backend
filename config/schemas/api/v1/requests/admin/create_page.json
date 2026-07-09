@@ -81,6 +81,16 @@
             "type": ["string", "null"],
             "enum": ["ask", "keep_alias", "remove_old_route", null],
             "description": "What to do with the previous canonical route after a parent URL sync"
+        },
+        "cms_app_id": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "Optional first-class CMS app to assign the new page to (via CmsAppService::assignPage)"
+        },
+        "cms_app_role": {
+            "type": ["string", "null"],
+            "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other", null],
+            "description": "Role inside the CMS app; required when cms_app_id is set"
         }
     },
     "required": ["keyword", "pageAccessTypeCode"],

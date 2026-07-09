@@ -13,25 +13,12 @@ use App\Tests\Support\QaWebTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * End-to-end coverage for the "Create list + detail pages" CMS-in-CMS wizard
- * with the issue #30 p7 extension and the record edit mode pass:
+ * End-to-end coverage for first-class CMS app scaffold
+ * (`POST /admin/cms-apps` + `POST /admin/cms-apps/{id}/scaffold`):
  *
- * - `create_form` scaffolds a `form-record` in record edit mode
- *   (`load_record_from` + `own_entries_only=0`) that OWNS a fresh data table
- *   (one input per requested field) and closes its modal on save
- *   (`close_modal_on_save`). Opened without the route param it stays blank
- *   (create); opened with it, it prefills that record (edit).
- * - The ADMIN DETAIL page attaches the SAME shared form section as its edit
- *   form — no separate read-only `entry-record` copy.
- * - The CMS create form + CMS detail pages carry the `open_in_modal` page
- *   property so the web frontend opens them as modal overlays.
- * - The ADMIN list is an `entry-table` DATA TABLE (search/sort/paginate/
- *   delete) with an "Add new" (`add_url`) button and a per-row edit
- *   (`edit_url`) action; the PUBLIC list stays an `entry-list` of cards with an
- *   "Open" link to the shareable (non-modal) public detail page.
- *
- * Pages are deleted in a finally block; DAMA rolls back the surrounding
- * transaction.
+ * - empty app shell, then scaffold with `create_form`
+ * - strict roles: form / cms_list / cms_detail / public_list / public_detail
+ * - shared form section on cms_detail, entry-table cms list, public cards
  */
 #[Group('golden')]
 final class CmsAppWizardTest extends QaWebTestCase
@@ -42,89 +29,80 @@ final class CmsAppWizardTest extends QaWebTestCase
     public function testWizardScaffoldsModalFormAndAdminDataTableAndPublicCards(): void
     {
         $admin = $this->loginAsQaAdmin();
-
-        $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/cms-app', [
+        [$appId, $created, $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
             'base_name' => self::BASE,
             'create_form' => true,
             'create_public' => true,
             'create_admin' => true,
             'form_field_name' => 'title',
-        ], $admin);
+        ], 'qa-team-wizard-app');
 
-        $data = $this->assertEnvelopeSuccess($response, 201);
-        $created = $data['created'] ?? null;
-        self::assertIsArray($created);
         self::assertCount(5, $created, 'create_form adds a form page on top of the two list/detail pairs.');
-
-        $byRole = [];
-        $pageIds = [];
-        foreach ($created as $entry) {
-            if (!is_array($entry) || !is_int($entry['page_id'] ?? null)) {
-                continue;
-            }
-            $pageIds[] = $entry['page_id'];
-            $role = is_string($entry['role'] ?? null) ? $entry['role'] : '';
-            $byRole[$role] = $entry['page_id'];
-        }
-
-        self::assertArrayHasKey('form', $byRole, 'The wizard must create a form page.');
-        self::assertArrayHasKey('admin_list', $byRole, 'The wizard must create an admin list page.');
-        self::assertArrayHasKey('admin_detail', $byRole, 'The wizard must create an admin detail page.');
-        self::assertArrayHasKey('public_list', $byRole, 'The wizard must create a public list page.');
-        self::assertArrayHasKey('public_detail', $byRole, 'The wizard must create a public detail page.');
+        self::assertArrayHasKey('form', $byRole);
+        self::assertArrayHasKey('cms_list', $byRole);
+        self::assertArrayHasKey('cms_detail', $byRole);
+        self::assertArrayHasKey('public_list', $byRole);
+        self::assertArrayHasKey('public_detail', $byRole);
 
         try {
-            // The form page owns the table: a form-record holder in record edit
-            // mode with an input, closing its modal on save.
             $formBody = $this->sectionsBody($byRole['form'], $admin);
-            self::assertStringContainsString('form-record', $formBody, 'The form page must scaffold a form-record holder.');
-            self::assertStringContainsString('text-input', $formBody, 'The form must carry a default text input.');
-            self::assertStringContainsString('close_modal_on_save', $formBody, 'The create form must close its modal on save.');
-            self::assertStringContainsString('load_record_from', $formBody, 'The form must bind its record context to the URL (record edit mode).');
+            self::assertStringContainsString('form-record', $formBody);
+            self::assertStringContainsString('text-input', $formBody);
+            // Field contents live on the section-detail endpoint (list is structural).
+            self::assertSame('1', $this->sectionFieldValue($byRole['form'], 'form-record', 'close_modal_on_save', $admin));
+            self::assertSame('record_id', $this->sectionFieldValue($byRole['form'], 'form-record', 'load_record_from', $admin));
 
-            // The admin detail page attaches the SAME shared form section as
-            // its edit form (record edit mode) instead of a read-only copy.
-            $adminDetailBody = $this->sectionsBody($byRole['admin_detail'], $admin);
-            self::assertStringContainsString('form-record', $adminDetailBody, 'The admin detail must be the shared edit form.');
-            self::assertStringNotContainsString('entry-record', str_replace('form-record', '', $adminDetailBody), 'The admin detail must not scaffold a read-only entry-record.');
+            $adminDetailBody = $this->sectionsBody($byRole['cms_detail'], $admin);
+            self::assertStringContainsString('form-record', $adminDetailBody);
+            self::assertStringNotContainsString('entry-record', str_replace('form-record', '', $adminDetailBody));
 
-            // The CMS create form + detail open as modal overlays (web-only).
-            self::assertSame('1', $this->pageProperty($byRole['form'], 'open_in_modal', $admin), 'The create form must open in a modal.');
-            self::assertSame('1', $this->pageProperty($byRole['admin_detail'], 'open_in_modal', $admin), 'The admin detail must open in a modal.');
+            self::assertSame('1', $this->pageProperty($byRole['form'], 'open_in_modal', $admin));
+            self::assertSame('1', $this->pageProperty($byRole['cms_detail'], 'open_in_modal', $admin));
 
-            // The admin list is an entry-table DATA TABLE with delete + the
-            // add/open controls (NOT the old entry-record-delete clone list).
-            $adminBody = $this->sectionsBody($byRole['admin_list'], $admin);
-            self::assertStringContainsString('entry-table', $adminBody, 'The admin list must be an entry-table data table.');
-            self::assertStringNotContainsString('entry-record-delete', $adminBody, 'The admin list must no longer clone an entry-record-delete row.');
-            self::assertStringContainsString('delete_entry', $adminBody, 'The admin table must carry an inline delete.');
-            self::assertStringContainsString('add_url', $adminBody, 'The admin table must link "Add new" to the create form.');
-            self::assertStringContainsString('edit_url', $adminBody, 'The admin table must carry a per-row open action.');
+            $adminBody = $this->sectionsBody($byRole['cms_list'], $admin);
+            self::assertStringContainsString('entry-table', $adminBody);
+            self::assertStringNotContainsString('entry-record-delete', $adminBody);
+            self::assertSame('1', $this->sectionFieldValue($byRole['cms_list'], 'entry-table', 'delete_entry', $admin));
+            self::assertSame(
+                '/cms/' . self::BASE . '/form',
+                $this->sectionFieldValue($byRole['cms_list'], 'entry-table', 'add_url', $admin)
+            );
+            self::assertSame(
+                '/cms/' . self::BASE . '/{record_id}',
+                $this->sectionFieldValue($byRole['cms_list'], 'entry-table', 'edit_url', $admin)
+            );
 
-            // The public list stays an entry-list of cards linking to the
-            // shareable (non-modal) public detail page.
             $publicBody = $this->sectionsBody($byRole['public_list'], $admin);
-            self::assertStringContainsString('entry-list', $publicBody, 'The public list must be an entry-list of cards.');
-            self::assertStringContainsString('{{record_id}}', $publicBody, 'The public list cards interpolate the record id.');
-            self::assertNull($this->pageProperty($byRole['public_detail'], 'open_in_modal', $admin), 'The public detail must stay a normal, shareable page.');
+            self::assertStringContainsString('entry-list', $publicBody);
+            self::assertNull($this->pageProperty($byRole['public_detail'], 'open_in_modal', $admin));
+            self::assertNotNull(
+                $this->sectionFieldValue($byRole['public_list'], 'link', 'url', $admin),
+                'Public list cards must carry a detail link template.'
+            );
+            self::assertStringContainsString(
+                '{{record_id}}',
+                (string) $this->sectionFieldValue($byRole['public_list'], 'link', 'url', $admin)
+            );
+
+            // Hub sync: cms list is resolvable from the app detail.
+            $appDetail = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
+            );
+            self::assertSame($byRole['cms_list'], $appDetail['id_cms_list_page'] ?? null);
+            $assignedIds = array_map(
+                static fn(array $page): int => (int) ($page['page_id'] ?? 0),
+                is_array($appDetail['pages'] ?? null) ? $appDetail['pages'] : []
+            );
+            self::assertContains($byRole['form'], $assignedIds);
         } finally {
-            foreach ($pageIds as $pageId) {
-                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
-            }
+            $this->cleanupApp($admin, $appId, $pageIds);
         }
     }
 
-    /**
-     * The multi-field builder scaffolds one input per requested field (each with
-     * its chosen style) into the new modal form, the admin list is an
-     * entry-table with the add/edit controls, and the admin detail page
-     * shares that same form section as its edit form.
-     */
     public function testWizardMultiFieldBuilderScaffoldsEachInputAndDetailInterpolation(): void
     {
         $admin = $this->loginAsQaAdmin();
-
-        $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/cms-app', [
+        [$appId, $created, $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
             'base_name' => self::MULTI_BASE,
             'create_form' => true,
             'create_public' => false,
@@ -134,11 +112,441 @@ final class CmsAppWizardTest extends QaWebTestCase
                 ['name' => 'bio', 'style' => 'textarea'],
                 ['name' => 'age', 'style' => 'number-input', 'label' => 'Age'],
             ],
+        ], 'qa-team-wizard-multi-app');
+
+        self::assertIsArray($created);
+        self::assertArrayHasKey('form', $byRole);
+        self::assertArrayHasKey('cms_list', $byRole);
+        self::assertArrayHasKey('cms_detail', $byRole);
+
+        try {
+            $formBody = $this->sectionsBody($byRole['form'], $admin);
+            self::assertStringContainsString('textarea', $formBody);
+            self::assertStringContainsString('number-input', $formBody);
+            self::assertStringContainsString('first_name', $formBody);
+            self::assertStringContainsString('bio', $formBody);
+            self::assertStringContainsString('age', $formBody);
+
+            $adminBody = $this->sectionsBody($byRole['cms_list'], $admin);
+            self::assertStringContainsString('entry-table', $adminBody);
+            self::assertNotNull($this->sectionFieldValue($byRole['cms_list'], 'entry-table', 'add_url', $admin));
+            self::assertNotNull($this->sectionFieldValue($byRole['cms_list'], 'entry-table', 'edit_url', $admin));
+
+            $detailBody = $this->sectionsBody($byRole['cms_detail'], $admin);
+            self::assertStringContainsString('form-record', $detailBody);
+            self::assertSame(
+                'record_id',
+                $this->sectionFieldValue($byRole['cms_detail'], 'form-record', 'load_record_from', $admin)
+            );
+            // Same shared form section is attached; inputs live under the form page tree.
+            self::assertStringContainsString('first_name', $this->sectionsBody($byRole['form'], $admin));
+            self::assertStringContainsString('age', $this->sectionsBody($byRole['form'], $admin));
+        } finally {
+            $this->cleanupApp($admin, $appId, $pageIds);
+        }
+    }
+
+    public function testScaffoldedAppCreateThenEditPrefillsAddressedRecord(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $base = 'qa-editmode-app';
+
+        [$appId, , $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
+            'base_name' => $base,
+            'create_form' => true,
+            'create_public' => false,
+            'create_admin' => true,
+            'form_fields' => [
+                ['name' => 'title', 'style' => 'text-input', 'label' => 'Title'],
+            ],
+        ], 'qa-editmode-shell');
+
+        try {
+            $formSectionId = $this->firstSectionIdByStyle($byRole['form'], 'form-record', $admin);
+            self::assertGreaterThan(0, $formSectionId);
+
+            $detailSectionId = $this->firstSectionIdByStyle($byRole['cms_detail'], 'form-record', $admin);
+            self::assertSame($formSectionId, $detailSectionId);
+
+            $submit = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+                'page_id' => $byRole['form'],
+                'section_id' => $formSectionId,
+                'form_data' => ['title' => 'qa Alice'],
+            ], $admin);
+            $submitData = $this->assertEnvelopeSuccess($submit);
+            self::assertIsInt($submitData['record_id'] ?? null);
+            $recordId = $submitData['record_id'];
+
+            $createRender = $this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/by-keyword/cms-' . $base . '-form?preview=true',
+                null,
+                $admin
+            );
+            $createData = $this->assertEnvelopeSuccess($createRender);
+            $createForm = $this->findSectionByStyleInPage($createData, 'form-record');
+            self::assertNotNull($createForm);
+            self::assertSame([], $createForm['section_data'] ?? null);
+
+            $editRender = $this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/cms/' . $base . '/' . $recordId) . '&preview=true',
+                null,
+                $admin
+            );
+            $editData = $this->assertEnvelopeSuccess($editRender);
+            $editForm = $this->findSectionByStyleInPage($editData, 'form-record');
+            self::assertNotNull($editForm);
+            $sectionData = $editForm['section_data'] ?? null;
+            self::assertIsArray($sectionData);
+            self::assertNotSame([], $sectionData);
+            self::assertStringContainsString('qa Alice', (string) json_encode($sectionData));
+        } finally {
+            $this->cleanupApp($admin, $appId, $pageIds);
+        }
+    }
+
+    public function testPrimaryRoleUniquenessIsEnforced(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        [$appId, , $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
+            'base_name' => 'qa-uniq-app',
+            'create_form' => true,
+            'create_public' => false,
+            'create_admin' => true,
+        ], 'qa-uniq-shell');
+
+        $extraPageId = null;
+        try {
+            self::assertArrayHasKey('cms_list', $byRole);
+
+            $extra = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
+                    'keyword' => 'qa-uniq-extra',
+                    'url' => '/cms/qa-uniq-extra',
+                    'pageAccessTypeCode' => 'mobile_and_web',
+                    'headless' => false,
+                    'openAccess' => false,
+                    'surface' => 'cms',
+                ], $admin),
+                201
+            );
+            $extraPageId = (int) ($extra['id'] ?? 0);
+            self::assertGreaterThan(0, $extraPageId);
+
+            $conflict = $this->jsonRequest(
+                'POST',
+                sprintf('/cms-api/v1/admin/cms-apps/%d/pages', $appId),
+                ['page_id' => $extraPageId, 'role' => 'cms_list'],
+                $admin
+            );
+            self::assertSame(409, $conflict['status'] ?? 0);
+        } finally {
+            if ($extraPageId !== null && $extraPageId > 0) {
+                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $extraPageId), null, $admin);
+            }
+            $this->cleanupApp($admin, $appId, $pageIds);
+        }
+    }
+
+    public function testDeleteAppShellKeepsPages(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        [$appId, , $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
+            'base_name' => 'qa-keep-pages',
+            'create_form' => true,
+            'create_public' => false,
+            'create_admin' => true,
+        ], 'qa-keep-shell');
+
+        try {
+            self::assertArrayHasKey('cms_list', $byRole);
+            $listId = $byRole['cms_list'];
+
+            $delete = $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
+            $this->assertEnvelopeSuccess($delete, 200);
+
+            $gone = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
+            self::assertSame(404, $gone['status'] ?? 0);
+
+            $page = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d', $listId), null, $admin)
+            );
+            self::assertIsArray($page);
+            self::assertArrayHasKey('fields', $page);
+
+            $list = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $admin)
+            );
+            $pages = is_array($list['pages'] ?? null) ? $list['pages'] : (is_array($list) ? $list : []);
+            $row = null;
+            foreach ($pages as $candidate) {
+                if (is_array($candidate) && (int) ($candidate['id_pages'] ?? 0) === $listId) {
+                    $row = $candidate;
+                    break;
+                }
+            }
+            self::assertNotNull($row, 'CMS list page must still appear in the admin pages list after app delete.');
+            self::assertNull($row['cms_app_id'] ?? null);
+            self::assertNull($row['cms_app_role'] ?? null);
+        } finally {
+            foreach ($pageIds as $pageId) {
+                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            }
+        }
+    }
+
+    public function testHubSyncOnScaffoldAssignChangeRoleUnassignAndPageDelete(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        [$appId, , $byRole, $pageIds] = $this->createAppAndScaffold($admin, [
+            'base_name' => 'qa-hub-sync',
+            'create_form' => true,
+            'create_public' => false,
+            'create_admin' => true,
+        ], 'qa-hub-sync-shell');
+
+        try {
+            $detail = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
+            );
+            self::assertSame($byRole['cms_list'], (int) ($detail['id_cms_list_page'] ?? 0));
+            self::assertNotNull($detail['id_form_section'] ?? null);
+
+            $listPageId = $byRole['cms_list'];
+            $demoted = $this->assertEnvelopeSuccess(
+                $this->jsonRequest(
+                    'PATCH',
+                    sprintf('/cms-api/v1/admin/cms-apps/%d/pages/%d', $appId, $listPageId),
+                    ['role' => 'other'],
+                    $admin
+                )
+            );
+            self::assertArrayHasKey('id_cms_list_page', $demoted);
+            self::assertNull($demoted['id_cms_list_page']);
+
+            $restored = $this->assertEnvelopeSuccess(
+                $this->jsonRequest(
+                    'PATCH',
+                    sprintf('/cms-api/v1/admin/cms-apps/%d/pages/%d', $appId, $listPageId),
+                    ['role' => 'cms_list'],
+                    $admin
+                )
+            );
+            self::assertSame($listPageId, (int) ($restored['id_cms_list_page'] ?? 0));
+
+            $formPageId = $byRole['form'];
+            $unassigned = $this->assertEnvelopeSuccess(
+                $this->jsonRequest(
+                    'DELETE',
+                    sprintf('/cms-api/v1/admin/cms-apps/%d/pages/%d', $appId, $formPageId),
+                    null,
+                    $admin
+                )
+            );
+            self::assertArrayHasKey('id_form_section', $unassigned);
+            self::assertNull($unassigned['id_form_section']);
+            self::assertSame($listPageId, (int) ($unassigned['id_cms_list_page'] ?? 0));
+
+            $this->assertEnvelopeSuccess(
+                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $listPageId), null, $admin)
+            );
+            $pageIds = array_values(array_filter($pageIds, static fn(int $id): bool => $id !== $listPageId));
+
+            $afterDelete = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
+            );
+            self::assertArrayHasKey('id_cms_list_page', $afterDelete);
+            self::assertNull($afterDelete['id_cms_list_page']);
+        } finally {
+            $this->cleanupApp($admin, $appId, $pageIds);
+        }
+    }
+
+    public function testLegacyCmsInCmsBundleWithoutCmsAppMetadataIsRejected(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
+            'bundle' => [
+                'format' => 'selfhelp/page-bundle',
+                'version' => '1.0',
+                'title' => 'Legacy CMS app',
+                'tags' => ['cms-in-cms'],
+                'pages' => [[
+                    'keyword' => 'qa-legacy-cms-list',
+                    'url' => '/cms/qa-legacy-cms-list',
+                    'page_access_type' => 'mobile_and_web',
+                    'surface' => 'cms',
+                    'headless' => false,
+                    'open_access' => false,
+                    'sections' => [],
+                ]],
+            ],
         ], $admin);
 
+        self::assertSame(400, $response['status'] ?? 0, json_encode($response));
+        $haystack = strtolower(
+            (string) ($response['message'] ?? '') . ' ' . (string) ($response['error'] ?? '') . ' ' . json_encode($response)
+        );
+        self::assertStringContainsString('cms_app', $haystack);
+    }
+
+    public function testCmsInCmsBundleImportSetsHubsAndRejectsInvalidRole(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $slug = 'qa-import-hubs';
+
+        $ok = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
+            'bundle' => [
+                'format' => 'selfhelp/page-bundle',
+                'version' => '1.0',
+                'title' => 'Import hubs',
+                'tags' => ['cms-in-cms'],
+                'cms_app' => [
+                    'name' => 'Import hubs',
+                    'slug' => $slug,
+                    'description' => null,
+                ],
+                'pages' => [[
+                    'keyword' => 'qa-import-hubs-list',
+                    'url' => '/cms/qa-import-hubs-list',
+                    'page_access_type' => 'mobile_and_web',
+                    'surface' => 'cms',
+                    'headless' => false,
+                    'open_access' => false,
+                    'cms_app_role' => 'cms_list',
+                    'sections' => [],
+                ]],
+            ],
+        ], $admin);
+        $data = $this->assertEnvelopeSuccess($ok, 201);
+        $created = is_array($data['created'] ?? null) ? $data['created'] : [];
+        $pageId = (int) ($created[0]['page_id'] ?? 0);
+        self::assertGreaterThan(0, $pageId);
+
+        try {
+            $bySlug = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/by-slug/%s', $slug), null, $admin)
+            );
+            self::assertSame($pageId, (int) ($bySlug['id_cms_list_page'] ?? 0));
+            $appId = (int) ($bySlug['id'] ?? 0);
+
+            $bad = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
+                'bundle' => [
+                    'format' => 'selfhelp/page-bundle',
+                    'version' => '1.0',
+                    'title' => 'Bad role',
+                    'tags' => ['cms-in-cms'],
+                    'cms_app' => [
+                        'name' => 'Bad role',
+                        'slug' => 'qa-bad-role-app',
+                        'description' => null,
+                    ],
+                    'pages' => [[
+                        'keyword' => 'qa-bad-role-page',
+                        'url' => '/cms/qa-bad-role-page',
+                        'page_access_type' => 'mobile_and_web',
+                        'surface' => 'cms',
+                        'headless' => false,
+                        'open_access' => false,
+                        'cms_app_role' => 'not-a-role',
+                        'sections' => [],
+                    ]],
+                ],
+            ], $admin);
+            self::assertSame(400, $bad['status'] ?? 0, json_encode($bad));
+            $haystack = strtolower(
+                (string) ($bad['message'] ?? '') . ' ' . (string) ($bad['error'] ?? '') . ' ' . json_encode($bad)
+            );
+            self::assertStringContainsString('cms_app_role', $haystack);
+
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
+        } catch (\Throwable $e) {
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            throw $e;
+        }
+    }
+
+    public function testCmsAppImportSanitisesKeywordPrefixUnderscoresInSlug(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $keywordPrefix = 'demo_team_members_';
+        $expectedSlug = 'demo-team-members-team-members';
+
+        $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
+            'bundle' => [
+                'format' => 'selfhelp/page-bundle',
+                'version' => '1.0',
+                'title' => 'Prefixed team',
+                'tags' => ['cms-in-cms'],
+                'cms_app' => [
+                    'name' => 'Team members',
+                    'slug' => 'team-members',
+                    'description' => null,
+                ],
+                'pages' => [[
+                    'keyword' => 'cms-team-members',
+                    'url' => '/cms/team-members',
+                    'page_access_type' => 'mobile_and_web',
+                    'surface' => 'cms',
+                    'headless' => false,
+                    'open_access' => false,
+                    'cms_app_role' => 'cms_list',
+                    'sections' => [],
+                ]],
+            ],
+            'options' => [
+                'keywordPrefix' => $keywordPrefix,
+                'routePrefix' => '/demo-team-members',
+            ],
+        ], $admin);
         $data = $this->assertEnvelopeSuccess($response, 201);
-        $created = $data['created'] ?? null;
-        self::assertIsArray($created);
+        $created = is_array($data['created'] ?? null) ? $data['created'] : [];
+        $pageId = (int) ($created[0]['page_id'] ?? 0);
+        self::assertGreaterThan(0, $pageId);
+
+        try {
+            $bySlug = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/by-slug/%s', $expectedSlug), null, $admin)
+            );
+            self::assertSame('Team members', $bySlug['name'] ?? null);
+            self::assertSame($expectedSlug, $bySlug['slug'] ?? null);
+            $appId = (int) ($bySlug['id'] ?? 0);
+            self::assertGreaterThan(0, $appId);
+
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
+        } catch (\Throwable $e) {
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            throw $e;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $scaffold
+     * @return array{0: int, 1: list<array<string, mixed>>, 2: array<string, int>, 3: list<int>}
+     */
+    private function createAppAndScaffold(string $token, array $scaffold, string $slug): array
+    {
+        $createdApp = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', '/cms-api/v1/admin/cms-apps', [
+                'name' => $slug,
+                'slug' => $slug,
+            ], $token),
+            201
+        );
+        $appId = (int) ($createdApp['id'] ?? 0);
+        self::assertGreaterThan(0, $appId);
+
+        $response = $this->jsonRequest(
+            'POST',
+            sprintf('/cms-api/v1/admin/cms-apps/%d/scaffold', $appId),
+            $scaffold,
+            $token
+        );
+        $data = $this->assertEnvelopeSuccess($response, 201);
+        $created = is_array($data['created'] ?? null) ? $data['created'] : [];
 
         $byRole = [];
         $pageIds = [];
@@ -151,190 +559,76 @@ final class CmsAppWizardTest extends QaWebTestCase
             $byRole[$role] = $entry['page_id'];
         }
 
-        self::assertArrayHasKey('form', $byRole);
-        self::assertArrayHasKey('admin_list', $byRole);
-        self::assertArrayHasKey('admin_detail', $byRole);
-
-        try {
-            // Each requested field becomes an input of the requested style + name.
-            $formBody = $this->sectionsBody($byRole['form'], $admin);
-            self::assertStringContainsString('textarea', $formBody, 'A textarea field must be scaffolded.');
-            self::assertStringContainsString('number-input', $formBody, 'A number field must be scaffolded.');
-            self::assertStringContainsString('first_name', $formBody);
-            self::assertStringContainsString('bio', $formBody);
-            self::assertStringContainsString('age', $formBody);
-            self::assertSame('1', $this->pageProperty($byRole['form'], 'open_in_modal', $admin));
-
-            // The admin list is the entry-table with the add/edit controls.
-            $adminBody = $this->sectionsBody($byRole['admin_list'], $admin);
-            self::assertStringContainsString('entry-table', $adminBody);
-            self::assertStringContainsString('add_url', $adminBody);
-            self::assertStringContainsString('edit_url', $adminBody);
-
-            // The admin detail page shares the form section: every requested
-            // input is editable there (record edit mode), no read-only tokens.
-            $detailBody = $this->sectionsBody($byRole['admin_detail'], $admin);
-            self::assertStringContainsString('form-record', $detailBody, 'The admin detail must be the shared edit form.');
-            self::assertStringContainsString('first_name', $detailBody);
-            self::assertStringContainsString('age', $detailBody);
-            self::assertStringContainsString('load_record_from', $detailBody, 'The edit form must load its record from the URL param.');
-        } finally {
-            foreach ($pageIds as $pageId) {
-                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
-            }
-        }
+        return [$appId, $created, $byRole, $pageIds];
     }
 
-    /**
-     * The full CMS-in-CMS record edit loop on a scaffolded app: submitting on
-     * the create page (no route param) creates a row and the form stays blank
-     * on re-render (create mode); resolving the admin detail URL with the new
-     * record id prefills the SHARED form section with that record's values
-     * (record edit mode).
-     */
-    public function testScaffoldedAppCreateThenEditPrefillsAddressedRecord(): void
+    /** @param list<int> $pageIds */
+    private function cleanupApp(string $token, int $appId, array $pageIds): void
     {
-        $admin = $this->loginAsQaAdmin();
-        $base = 'qa-editmode-app';
-
-        $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/cms-app', [
-            'base_name' => $base,
-            'create_form' => true,
-            'create_public' => false,
-            'create_admin' => true,
-            'form_fields' => [
-                ['name' => 'title', 'style' => 'text-input', 'label' => 'Title'],
-            ],
-        ], $admin);
-        $data = $this->assertEnvelopeSuccess($response, 201);
-
-        $byRole = [];
-        $pageIds = [];
-        foreach (is_array($data['created'] ?? null) ? $data['created'] : [] as $entry) {
-            if (!is_array($entry) || !is_int($entry['page_id'] ?? null)) {
-                continue;
-            }
-            $pageIds[] = $entry['page_id'];
-            $role = is_string($entry['role'] ?? null) ? $entry['role'] : '';
-            $byRole[$role] = $entry['page_id'];
+        foreach ($pageIds as $pageId) {
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $token);
         }
-
-        try {
-            $formSectionId = $this->firstSectionIdByStyle($byRole['form'], 'form-record', $admin);
-            self::assertGreaterThan(0, $formSectionId, 'The form page must carry the scaffolded form-record section.');
-
-            // The admin detail page shares the SAME section (not a copy).
-            $detailSectionId = $this->firstSectionIdByStyle($byRole['admin_detail'], 'form-record', $admin);
-            self::assertSame($formSectionId, $detailSectionId, 'The admin detail must attach the shared form section.');
-
-            // Create a row through the scaffolded create form.
-            $submit = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
-                'page_id' => $byRole['form'],
-                'section_id' => $formSectionId,
-                'form_data' => ['title' => 'qa Alice'],
-            ], $admin);
-            $submitData = $this->assertEnvelopeSuccess($submit);
-            self::assertIsInt($submitData['record_id'] ?? null);
-            $recordId = $submitData['record_id'];
-
-            // Create mode: re-rendering the create page (no route param) stays
-            // BLANK even though the admin now owns a record.
-            $createRender = $this->jsonRequest(
-                'GET',
-                '/cms-api/v1/pages/by-keyword/cms-' . $base . '-form?preview=true',
-                null,
-                $admin
-            );
-            $createData = $this->assertEnvelopeSuccess($createRender);
-            $createForm = $this->findSectionByStyleInPage($createData, 'form-record');
-            self::assertNotNull($createForm);
-            self::assertSame([], $createForm['section_data'] ?? null, 'With load_record_from set and no route param the form must stay blank (create mode).');
-
-            // Edit mode: resolving the admin detail URL with the record id
-            // prefills the shared section with that record's values.
-            $editRender = $this->jsonRequest(
-                'GET',
-                '/cms-api/v1/pages/resolve?path=' . rawurlencode('/cms/' . $base . '/' . $recordId) . '&preview=true',
-                null,
-                $admin
-            );
-            $editData = $this->assertEnvelopeSuccess($editRender);
-            $editForm = $this->findSectionByStyleInPage($editData, 'form-record');
-            self::assertNotNull($editForm, 'The admin detail render must contain the shared form section.');
-            $sectionData = $editForm['section_data'] ?? null;
-            self::assertIsArray($sectionData);
-            self::assertNotSame([], $sectionData, 'The edit form must prefill the addressed record.');
-            self::assertStringContainsString('qa Alice', (string) json_encode($sectionData), 'The prefilled record must carry the submitted value.');
-        } finally {
-            foreach ($pageIds as $pageId) {
-                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
-            }
-        }
+        $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $token);
     }
 
-    /**
-     * Resolve the first section id with the given style on a page (top level of
-     * the admin sections tree, recursively).
-     */
     private function firstSectionIdByStyle(int $pageId, string $styleName, string $token): int
     {
         $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $pageId), null, $token);
         $data = $this->assertEnvelopeSuccess($resp);
 
         $found = 0;
-        $walk = static function (array $sections) use (&$walk, &$found, $styleName): void {
-            foreach ($sections as $section) {
-                if (!is_array($section) || $found !== 0) {
+        $walk = function ($nodes) use (&$walk, &$found, $styleName): void {
+            if (!is_array($nodes)) {
+                return;
+            }
+            foreach ($nodes as $node) {
+                if (!is_array($node)) {
                     continue;
                 }
-                if (($section['style_name'] ?? null) === $styleName && is_int($section['id'] ?? null)) {
-                    $found = $section['id'];
+                $style = is_array($node['style'] ?? null) ? ($node['style']['name'] ?? null) : ($node['style_name'] ?? null);
+                if ($style === $styleName && is_numeric($node['id'] ?? null)) {
+                    $found = (int) $node['id'];
+
                     return;
                 }
-                if (is_array($section['children'] ?? null)) {
-                    $walk($section['children']);
+                if (isset($node['children'])) {
+                    $walk($node['children']);
                 }
             }
         };
-        $walk(is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $walk($data['sections'] ?? $data);
 
         return $found;
     }
 
-    /**
-     * Find the first section with the given style in a rendered page envelope
-     * (`data.page.sections` or `data.sections`).
-     *
-     * @param array<string, mixed> $data
-     * @return array<string, mixed>|null
-     */
-    private function findSectionByStyleInPage(array $data, string $styleName): ?array
+    private function sectionsBody(int $pageId, string $token): string
     {
-        $sections = is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)
-            ? $data['page']['sections']
-            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $pageId), null, $token);
+        $data = $this->assertEnvelopeSuccess($resp);
 
-        return $this->findSectionByStyle($sections, $styleName);
+        return (string) json_encode($data);
     }
 
-    /**
-     * @param array<int|string, mixed> $sections
-     * @return array<string, mixed>|null
-     */
-    private function findSectionByStyle(array $sections, string $styleName): ?array
+    private function sectionFieldValue(int $pageId, string $styleName, string $fieldName, string $token): ?string
     {
-        foreach ($sections as $section) {
-            if (!is_array($section)) {
+        $sectionId = $this->firstSectionIdByStyle($pageId, $styleName, $token);
+        self::assertGreaterThan(0, $sectionId);
+
+        $detail = $this->jsonRequest(
+            'GET',
+            sprintf('/cms-api/v1/admin/pages/%d/sections/%d', $pageId, $sectionId),
+            null,
+            $token
+        );
+        $data = $this->assertEnvelopeSuccess($detail);
+
+        foreach (is_array($data['fields'] ?? null) ? $data['fields'] : [] as $field) {
+            if (!is_array($field) || ($field['name'] ?? null) !== $fieldName) {
                 continue;
             }
-            if (($section['style_name'] ?? null) === $styleName) {
-                /** @var array<string, mixed> $section */
-                return $section;
-            }
-            if (is_array($section['children'] ?? null)) {
-                $found = $this->findSectionByStyle($section['children'], $styleName);
-                if ($found !== null) {
-                    return $found;
+            foreach (is_array($field['translations'] ?? null) ? $field['translations'] : [] as $translation) {
+                if (is_array($translation) && is_string($translation['content'] ?? null) && $translation['content'] !== '') {
+                    return $translation['content'];
                 }
             }
         }
@@ -342,71 +636,62 @@ final class CmsAppWizardTest extends QaWebTestCase
         return null;
     }
 
-    /**
-     * Fetch the raw sections JSON body for a page (string match is enough for
-     * style-name / field-name presence assertions).
-     */
-    private function sectionsBody(int $pageId, string $token): string
-    {
-        // The page sections list is structural (style names, hierarchy); the
-        // scaffolded FIELD values live behind the per-section detail endpoint,
-        // so fetch every section's detail and concatenate all bodies.
-        $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d/sections', $pageId), null, $token);
-        $data = $this->assertEnvelopeSuccess($resp);
-        $body = (string) $this->client->getResponse()->getContent();
-
-        $sectionIds = [];
-        $collect = static function (array $sections) use (&$collect, &$sectionIds): void {
-            foreach ($sections as $section) {
-                if (!is_array($section)) {
-                    continue;
-                }
-                if (is_int($section['id'] ?? null)) {
-                    $sectionIds[] = $section['id'];
-                }
-                if (is_array($section['children'] ?? null)) {
-                    $collect($section['children']);
-                }
-            }
-        };
-        $collect(is_array($data['sections'] ?? null) ? $data['sections'] : []);
-
-        foreach ($sectionIds as $sectionId) {
-            $detail = $this->jsonRequest(
-                'GET',
-                sprintf('/cms-api/v1/admin/pages/%d/sections/%d', $pageId, $sectionId),
-                null,
-                $token
-            );
-            $this->assertEnvelopeSuccess($detail);
-            $body .= (string) $this->client->getResponse()->getContent();
-        }
-
-        return $body;
-    }
-
-    /**
-     * Resolve a page PROPERTY field value (display=0, stored under language 1)
-     * from the admin "get page with fields" response. Returns null when the page
-     * carries no value for the field.
-     */
     private function pageProperty(int $pageId, string $fieldName, string $token): ?string
     {
         $resp = $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $token);
         $data = $this->assertEnvelopeSuccess($resp);
         $fields = is_array($data['fields'] ?? null) ? $data['fields'] : [];
-
         foreach ($fields as $field) {
-            if (!is_array($field) || ($field['name'] ?? null) !== $fieldName) {
+            if (!is_array($field)) {
+                continue;
+            }
+            if (($field['name'] ?? null) !== $fieldName) {
                 continue;
             }
             $translations = is_array($field['translations'] ?? null) ? $field['translations'] : [];
-            $first = $translations[0] ?? null;
-            $content = is_array($first) ? ($first['content'] ?? null) : null;
-
-            return is_string($content) ? $content : null;
+            foreach ($translations as $translation) {
+                if (is_array($translation) && array_key_exists('content', $translation)) {
+                    return is_string($translation['content']) ? $translation['content'] : null;
+                }
+            }
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $pagePayload
+     * @return array<string, mixed>|null
+     */
+    private function findSectionByStyleInPage(array $pagePayload, string $styleName): ?array
+    {
+        $found = null;
+        $walk = function ($nodes) use (&$walk, &$found, $styleName): void {
+            if (!is_array($nodes) || $found !== null) {
+                return;
+            }
+            foreach ($nodes as $node) {
+                if (!is_array($node)) {
+                    continue;
+                }
+                $style = $node['style_name'] ?? null;
+                if ($style === null && is_array($node['style'] ?? null)) {
+                    $style = $node['style']['name'] ?? null;
+                }
+                if ($style === $styleName) {
+                    $found = $node;
+
+                    return;
+                }
+                if (isset($node['children'])) {
+                    $walk($node['children']);
+                }
+            }
+        };
+        $sections = $pagePayload['sections']
+            ?? (is_array($pagePayload['page'] ?? null) ? ($pagePayload['page']['sections'] ?? []) : []);
+        $walk($sections);
+
+        return $found;
     }
 }

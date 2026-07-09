@@ -27,28 +27,40 @@
                     "category": "Release",
                     "published_on": "2026-06-01",
                     "summary": "The redesigned participant portal is now open to all study groups.",
-                    "body": "After six months of building and testing, the redesigned participant portal is live. Every study group can now log in with their existing credentials. The new portal loads faster, works on phones, and lets coordinators publish content without writing code."
+                    "body": {
+                        "en-GB": "After six months of building and testing, the redesigned participant portal is live. Every study group can now log in with their existing credentials. The new portal loads faster, works on phones, and lets coordinators publish content without writing code.",
+                        "de-CH": "Nach sechs Monaten Entwicklung und Tests ist das überarbeitete Teilnehmerportal live. Alle Studiengruppen können sich mit ihren bestehenden Zugangsdaten anmelden. Das neue Portal lädt schneller, funktioniert auf dem Handy und lässt Koordinatorinnen Inhalte ohne Code veröffentlichen."
+                    }
                 },
                 {
                     "title": "Maintenance window on Friday",
                     "category": "Notice",
                     "published_on": "2026-06-12",
                     "summary": "The platform will be read-only between 06:00 and 07:00 CET.",
-                    "body": "We are upgrading the database cluster on Friday morning. Between 06:00 and 07:00 CET the platform stays reachable but new form submissions are paused. Drafts are kept locally and submit automatically once the window ends."
+                    "body": {
+                        "en-GB": "We are upgrading the database cluster on Friday morning. Between 06:00 and 07:00 CET the platform stays reachable but new form submissions are paused. Drafts are kept locally and submit automatically once the window ends.",
+                        "de-CH": "Am Freitagmorgen werten wir den Datenbank-Cluster auf. Zwischen 06:00 und 07:00 MEZ bleibt die Plattform erreichbar, neue Formularabgaben sind jedoch pausiert. Entwürfe werden lokal gespeichert und nach dem Fenster automatisch übermittelt."
+                    }
                 },
                 {
                     "title": "Two new questionnaire templates",
                     "category": "Feature",
                     "published_on": "2026-06-20",
                     "summary": "Weekly mood tracking and sleep diary templates are ready to import.",
-                    "body": "The template gallery now ships a weekly mood tracker and a structured sleep diary. Both are fully translated, mobile-friendly, and can be customised in the page editor after import."
+                    "body": {
+                        "en-GB": "The template gallery now ships a weekly mood tracker and a structured sleep diary. Both are fully translated, mobile-friendly, and can be customised in the page editor after import.",
+                        "de-CH": "Die Vorlagengalerie enthält jetzt einen wöchentlichen Stimmungs-Tracker und ein strukturiertes Schlaftagebuch. Beide sind vollständig übersetzt, mobilfreundlich und lassen sich nach dem Import im Seiteneditor anpassen."
+                    }
                 },
                 {
                     "title": "Summer office hours",
                     "category": "Notice",
                     "published_on": "2026-07-01",
                     "summary": "Support replies within two working days during July and August.",
-                    "body": "During July and August the support team runs a reduced schedule. Tickets are answered within two working days. Urgent incidents are still handled around the clock through the status page."
+                    "body": {
+                        "en-GB": "During July and August the support team runs a reduced schedule. Tickets are answered within two working days. Urgent incidents are still handled around the clock through the status page.",
+                        "de-CH": "Im Juli und August arbeitet der Support mit reduziertem Pensum. Tickets werden innerhalb von zwei Arbeitstagen beantwortet. Dringende Vorfälle werden weiterhin rund um die Uhr über die Statusseite bearbeitet."
+                    }
                 }
             ]
         }
@@ -314,7 +326,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "form"
         },
         {
             "keyword": "news",
@@ -465,6 +478,11 @@
                                             "all": {
                                                 "content": "center"
                                             }
+                                        },
+                                        "web_group_wrap": {
+                                            "all": {
+                                                "content": "wrap"
+                                            }
                                         }
                                     },
                                     "children": [
@@ -609,7 +627,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_list"
         },
         {
             "keyword": "news-record",
@@ -829,7 +848,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_detail"
         },
         {
             "keyword": "cms-news",
@@ -946,15 +966,26 @@
                         },
                         "delete_modal_body": {
                             "de-CH": {
-                                "content": "Der Beitrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+                                "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
                             },
                             "en-GB": {
-                                "content": "The post is removed permanently. This action cannot be undone."
+                                "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                            }
+                        },
+                        "show_language_preview": {
+                            "all": {
+                                "content": "1"
                             }
                         }
                     }
                 }
-            ]
+            ],
+            "cms_app_role": "cms_list"
         }
-    ]
+    ],
+    "cms_app": {
+        "name": "News & updates",
+        "slug": "news",
+        "description": null
+    }
 }

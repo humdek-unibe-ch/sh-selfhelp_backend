@@ -945,7 +945,7 @@ class DataService extends BaseService
             ->getList($cacheKey, function () use ($dataTableId, $recordId) {
                 return $this->getDataWithAllLanguages(
                     $dataTableId,
-                    sprintf('AND record_id = %d LIMIT 1', $recordId),
+                    sprintf('AND record_id = %d', $recordId),
                     false,
                     null,
                     false,

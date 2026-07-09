@@ -23,32 +23,50 @@
                 {
                     "author": "Lena Baumann",
                     "role_company": "Study participant, wave 2",
-                    "quote": "The weekly check-ins take me two minutes on my phone. It is the first study where I never felt like the technology was in the way."
+                    "quote": {
+                        "en-GB": "The weekly check-ins take me two minutes on my phone. It is the first study where I never felt like the technology was in the way.",
+                        "de-CH": "Die wöchentlichen Check-ins dauern auf dem Handy zwei Minuten. Es ist die erste Studie, bei der mir die Technik nie im Weg stand."
+                    }
                 },
                 {
                     "author": "Dr. Samuel Frei",
                     "role_company": "Principal investigator, cardiology",
-                    "quote": "Our coordinators build and translate new questionnaires themselves. What used to be a two-week IT ticket is now an afternoon of clicking."
+                    "quote": {
+                        "en-GB": "Our coordinators build and translate new questionnaires themselves. What used to be a two-week IT ticket is now an afternoon of clicking.",
+                        "de-CH": "Unsere Koordinatorinnen erstellen und übersetzen neue Fragebögen selbst. Was früher ein zweiwöchiges IT-Ticket war, ist jetzt ein Nachmittag Klickarbeit."
+                    }
                 },
                 {
                     "author": "Priya Sharma",
                     "role_company": "Research coordinator",
-                    "quote": "Importing a template gave us a working participant portal in one morning — list page, detail pages and the admin grid included."
+                    "quote": {
+                        "en-GB": "Importing a template gave us a working participant portal in one morning — list page, detail pages and the admin grid included.",
+                        "de-CH": "Der Import einer Vorlage lieferte uns an einem Vormittag ein funktionierendes Teilnehmerportal — mit Listen-, Detailseiten und Admin-Grid."
+                    }
                 },
                 {
                     "author": "Thomas Egli",
                     "role_company": "IT services",
-                    "quote": "One backend, one frontend, versioned plugins. It slots into our infrastructure without any special cases."
+                    "quote": {
+                        "en-GB": "One backend, one frontend, versioned plugins. It slots into our infrastructure without any special cases.",
+                        "de-CH": "Ein Backend, ein Frontend, versionierte Plugins. Es fügt sich ohne Sonderfälle in unsere Infrastruktur ein."
+                    }
                 },
                 {
                     "author": "Camille Rochat",
                     "role_company": "Study participant, pilot group",
-                    "quote": "I can read everything in French while the team works in German. The switch is seamless."
+                    "quote": {
+                        "en-GB": "I can read everything in French while the team works in German. The switch is seamless.",
+                        "de-CH": "Ich kann alles auf Französisch lesen, während das Team auf Deutsch arbeitet. Der Wechsel ist nahtlos."
+                    }
                 },
                 {
                     "author": "Prof. Anna Vogel",
                     "role_company": "Head of research group",
-                    "quote": "The audit trail and permission model convinced our data protection office on the first review."
+                    "quote": {
+                        "en-GB": "The audit trail and permission model convinced our data protection office on the first review.",
+                        "de-CH": "Audit-Trail und Berechtigungsmodell haben unser Datenschutzteam bei der ersten Prüfung überzeugt."
+                    }
                 }
             ]
         }
@@ -274,7 +292,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "form"
         },
         {
             "keyword": "testimonials",
@@ -550,7 +569,8 @@
                         }
                     ]
                 }
-            ]
+            ],
+            "cms_app_role": "public_list"
         },
         {
             "keyword": "cms-testimonials",
@@ -667,15 +687,26 @@
                         },
                         "delete_modal_body": {
                             "de-CH": {
-                                "content": "Der Eintrag wird dauerhaft entfernt. Diese Aktion kann nicht rückgängig gemacht werden."
+                                "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
                             },
                             "en-GB": {
-                                "content": "The entry is removed permanently. This action cannot be undone."
+                                "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                            }
+                        },
+                        "show_language_preview": {
+                            "all": {
+                                "content": "1"
                             }
                         }
                     }
                 }
-            ]
+            ],
+            "cms_app_role": "cms_list"
         }
-    ]
+    ],
+    "cms_app": {
+        "name": "Testimonials",
+        "slug": "testimonials",
+        "description": null
+    }
 }

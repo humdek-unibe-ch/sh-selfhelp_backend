@@ -25,6 +25,19 @@
                     "enum": ["public", "cms"],
                     "description": "CMS-in-CMS organization axis; NULL FK resolves to public"
                 },
+                "cms_app_id": {
+                    "type": ["integer", "null"],
+                    "description": "First-class CMS app this page is assigned to, or null"
+                },
+                "cms_app_slug": {
+                    "type": ["string", "null"],
+                    "description": "Slug of the assigned CMS app (UI convenience)"
+                },
+                "cms_app_role": {
+                    "type": ["string", "null"],
+                    "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other", null],
+                    "description": "Role of this page inside its CMS app"
+                },
                 "crud": { "type": "integer", "minimum": 0, "maximum": 15 },
                 "title": {
                     "type": ["string", "null"],

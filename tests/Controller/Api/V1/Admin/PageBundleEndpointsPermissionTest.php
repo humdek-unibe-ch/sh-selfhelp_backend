@@ -14,11 +14,11 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Permission-matrix coverage for the CMS-in-CMS page bundle / wizard admin
- * endpoints added by issue #30 (Testing Rules 3 & 26). Each admin route must
- * reject unauthenticated callers (401) and authenticated non-admins (403)
- * BEFORE any body validation runs, so existence/behaviour is never leaked to a
- * caller without the admin permission.
+ * Permission-matrix coverage for the CMS-in-CMS page bundle and CMS-app admin
+ * endpoints (Testing Rules 3 & 26). Each admin route must reject
+ * unauthenticated callers (401) and authenticated non-admins (403) BEFORE any
+ * body validation runs, so existence/behaviour is never leaked to a caller
+ * without the admin permission.
  *
  * The public resolver (`GET /pages/resolve`) is intentionally NOT in this
  * matrix: it carries no route permission by design (it is the open-access
@@ -38,7 +38,16 @@ final class PageBundleEndpointsPermissionTest extends QaWebTestCase
         yield 'export-suggest' => ['GET', '/cms-api/v1/admin/pages/1/export/suggest', null];
         yield 'import-validate' => ['POST', '/cms-api/v1/admin/pages/import/validate', ['bundle' => ['pages' => []]]];
         yield 'import' => ['POST', '/cms-api/v1/admin/pages/import', ['bundle' => ['pages' => []]]];
-        yield 'cms-app' => ['POST', '/cms-api/v1/admin/pages/cms-app', ['base_name' => 'qa-perm-probe']];
+        yield 'cms-apps-list' => ['GET', '/cms-api/v1/admin/cms-apps', null];
+        yield 'cms-apps-create' => ['POST', '/cms-api/v1/admin/cms-apps', ['name' => 'qa-perm-probe', 'slug' => 'qa-perm-probe']];
+        yield 'cms-apps-get' => ['GET', '/cms-api/v1/admin/cms-apps/1', null];
+        yield 'cms-apps-by-slug' => ['GET', '/cms-api/v1/admin/cms-apps/by-slug/qa-perm-probe', null];
+        yield 'cms-apps-update' => ['PATCH', '/cms-api/v1/admin/cms-apps/1', ['name' => 'qa-perm-probe']];
+        yield 'cms-apps-delete' => ['DELETE', '/cms-api/v1/admin/cms-apps/1', null];
+        yield 'cms-apps-assign' => ['POST', '/cms-api/v1/admin/cms-apps/1/pages', ['page_id' => 1, 'role' => 'other']];
+        yield 'cms-apps-change-role' => ['PATCH', '/cms-api/v1/admin/cms-apps/1/pages/1', ['role' => 'other']];
+        yield 'cms-apps-unassign' => ['DELETE', '/cms-api/v1/admin/cms-apps/1/pages/1', null];
+        yield 'cms-apps-scaffold' => ['POST', '/cms-api/v1/admin/cms-apps/1/scaffold', ['base_name' => 'qa-perm-probe']];
     }
 
     /**

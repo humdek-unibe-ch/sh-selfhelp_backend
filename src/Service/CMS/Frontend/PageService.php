@@ -637,6 +637,7 @@ class PageService extends BaseService
                     'url' => $page->getUrl(),
                     'parent_page_id' => $page->getParentPage()?->getId(),
                     'is_headless' => $page->isHeadless(),
+                    'page_surface' => $page->getPageSurfaceCode(),
                     'open_in_modal' => $this->resolveOpenInModal((int) $page->getId()),
                     'modal_width' => $modalSize['modal_width'],
                     'modal_height' => $modalSize['modal_height'],

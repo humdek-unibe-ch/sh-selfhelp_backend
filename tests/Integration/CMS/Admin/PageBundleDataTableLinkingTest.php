@@ -21,7 +21,7 @@ use PHPUnit\Framework\Attributes\Group;
  * its entry-list / entry-record sections to the owning form section via the
  * portable `"table":"@section:team-members-form"` token and carries sample rows
  * in `data_tables[]`) and asserts the round-trip works end to end:
- *   - all five pages are created (form + public list/detail + admin list/detail);
+ *   - all four pages are created (form + public list/detail + admin list);
  *   - the owner token is relinked to the NEW form section id (a numeric data
  *     table), proven by the public list resolving the SEEDED rows;
  *   - `importData=true` re-inserts the sample rows through the form-save path.
@@ -55,7 +55,7 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess($import, 201);
         $created = $data['created'] ?? null;
         self::assertIsArray($created, 'Import must return the created pages.');
-        self::assertCount(5, $created, 'The Team-Members bundle defines five pages.');
+        self::assertCount(4, $created, 'The Team-Members bundle defines four pages.');
 
         $createdPageIds = [];
         foreach ($created as $entry) {
@@ -63,7 +63,7 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
                 $createdPageIds[] = $entry['page_id'];
             }
         }
-        self::assertCount(5, $createdPageIds, 'Every created page must expose an integer id.');
+        self::assertCount(4, $createdPageIds, 'Every created page must expose an integer id.');
 
         try {
             // Resolving the public list proves the entry-list's `@section:` owner
@@ -87,6 +87,53 @@ final class PageBundleDataTableLinkingTest extends QaWebTestCase
                 '@section:',
                 $body,
                 'No unresolved owner token may survive into a rendered page.'
+            );
+        } finally {
+            foreach ($createdPageIds as $pageId) {
+                $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
+            }
+        }
+    }
+
+    public function testImportSeedsTranslatableBundleRowsPerLocale(): void
+    {
+        $admin = $this->loginAsQaAdmin();
+        $bundle = $this->loadExampleBundle();
+
+        $import = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
+            'bundle' => $bundle,
+            'options' => [
+                'keywordPrefix' => self::KEYWORD_PREFIX,
+                'routePrefix' => self::ROUTE_PREFIX,
+                'importData' => true,
+            ],
+        ], $admin);
+
+        $data = $this->assertEnvelopeSuccess($import, 201);
+        $created = $data['created'] ?? null;
+        self::assertIsArray($created);
+
+        $createdPageIds = [];
+        foreach ($created as $entry) {
+            if (is_array($entry) && is_int($entry['page_id'] ?? null)) {
+                $createdPageIds[] = $entry['page_id'];
+            }
+        }
+
+        try {
+            $resolveDe = $this->jsonRequest(
+                'GET',
+                '/cms-api/v1/pages/resolve?path=' . rawurlencode(self::ROUTE_PREFIX . '/team-members')
+                    . '&language_id=2',
+                null,
+                $admin
+            );
+            $this->assertEnvelopeSuccess($resolveDe, 200);
+            $bodyDe = (string) $this->client->getResponse()->getContent();
+            self::assertStringContainsString(
+                'analytischen Maschine',
+                $bodyDe,
+                'German bio translations from data_tables[] must be seeded on import.'
             );
         } finally {
             foreach ($createdPageIds as $pageId) {

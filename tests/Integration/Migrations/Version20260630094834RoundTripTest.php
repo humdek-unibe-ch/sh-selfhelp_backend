@@ -18,8 +18,10 @@ use PHPUnit\Framework\Attributes\Group;
  * `POST /admin/pages/cms-app` -> `AdminPageController::createCmsApp`, gated by
  * `admin.page.create`.
  *
- * It is data-only (idempotent `INSERT IGNORE` up, scoped `DELETE` down), so the
- * round-trip proves the schema stays ORM-aligned across a revert + replay.
+ * **Note:** `Version20260706221100` removes this route in favour of first-class
+ * `/admin/cms-apps*`. This test only proves the *historical* migration is still
+ * reversible on a fresh database chain; it does not assert the legacy route
+ * remains registered after the full migration head is applied.
  *
  * Release-tier (`#[Group('migration')]`): slow + needs CREATE DATABASE.
  */

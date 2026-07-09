@@ -83,6 +83,16 @@
                         "required": ["path_pattern"],
                         "additionalProperties": false
                     }
+                },
+                "cms_app_id": {
+                    "type": ["integer", "null"],
+                    "minimum": 1,
+                    "description": "Assign/reassign this page to a CMS app, or null to unassign (via CmsAppService)"
+                },
+                "cms_app_role": {
+                    "type": ["string", "null"],
+                    "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other", null],
+                    "description": "Role inside the CMS app; required when assigning"
                 }
             },
             "additionalProperties": false

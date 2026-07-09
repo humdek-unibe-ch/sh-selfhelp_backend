@@ -43,17 +43,32 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
     {
         $admin = $this->loginAsQaAdmin();
 
-        // Scaffold the full five-page app (form + admin pair + public pair).
-        $wizard = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/cms-app', [
-            'base_name' => self::BASE,
-            'create_form' => true,
-            'create_public' => true,
-            'create_admin' => true,
-            'form_field_name' => 'title',
-        ], $admin);
+        // Scaffold the full five-page app (form + cms pair + public pair).
+        $shell = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('POST', '/cms-api/v1/admin/cms-apps', [
+                'name' => self::BASE . '-app',
+                'slug' => self::BASE . '-app',
+            ], $admin),
+            201
+        );
+        $appId = (int) ($shell['id'] ?? 0);
+        self::assertGreaterThan(0, $appId);
+
+        $wizard = $this->jsonRequest(
+            'POST',
+            sprintf('/cms-api/v1/admin/cms-apps/%d/scaffold', $appId),
+            [
+                'base_name' => self::BASE,
+                'create_form' => true,
+                'create_public' => true,
+                'create_admin' => true,
+                'form_field_name' => 'title',
+            ],
+            $admin
+        );
         $wizardData = $this->assertEnvelopeSuccess($wizard, 201);
         [$sourcePageIds, $sourceByRole] = $this->indexCreatedPages($wizardData['created'] ?? null);
-        self::assertCount(5, $sourcePageIds, 'The wizard must scaffold five pages.');
+        self::assertCount(5, $sourcePageIds, 'The scaffold must create five pages.');
 
         $importedPageIds = [];
         try {
@@ -119,7 +134,7 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
 
             // The relinked binding is the NEW owner's data table: numeric, and
             // different from the source app's table id.
-            $sourceBinding = $this->sectionFieldValue($sourceByRole['admin_list'], 'entry-table', 'data_table', $admin);
+            $sourceBinding = $this->sectionFieldValue($sourceByRole['cms_list'], 'entry-table', 'data_table', $admin);
             $importedBinding = $this->sectionFieldValue($importedAdminListId, 'entry-table', 'data_table', $admin);
             self::assertIsNumeric($importedBinding, 'The imported entry-table must be relinked to a real data table id.');
             self::assertNotSame(
@@ -176,12 +191,13 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
             );
 
             // The source app is untouched: its links keep the unprefixed base.
-            $sourceAddUrl = $this->sectionFieldValue($sourceByRole['admin_list'], 'entry-table', 'add_url', $admin);
+            $sourceAddUrl = $this->sectionFieldValue($sourceByRole['cms_list'], 'entry-table', 'add_url', $admin);
             self::assertSame('/cms/' . self::BASE . '/form', $sourceAddUrl, 'The source app must keep its own URLs.');
         } finally {
             foreach (array_merge($sourcePageIds, $importedPageIds) as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
             }
+            $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin);
         }
     }
 

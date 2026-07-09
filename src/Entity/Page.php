@@ -19,6 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_pages_id_page_access_types', columns: ['id_page_access_types'])]
 #[ORM\Index(name: 'idx_pages_id_page_surface', columns: ['id_page_surface'])]
 #[ORM\Index(name: 'idx_pages_id_published_page_versions', columns: ['id_published_page_versions'])]
+#[ORM\Index(name: 'idx_pages_id_cms_app', columns: ['id_cms_app'])]
 class Page
 {
     #[ORM\Id]
@@ -72,6 +73,21 @@ class Page
     #[ORM\ManyToOne(targetEntity: PageVersion::class)]
     #[ORM\JoinColumn(name: 'id_published_page_versions', referencedColumnName: 'id', nullable: true)]
     private ?PageVersion $publishedVersion = null;
+
+    /**
+     * Optional CMS app this page belongs to (first-class cms_app product unit).
+     * NULL = ordinary content page (not part of a CMS app).
+     */
+    #[ORM\ManyToOne(targetEntity: CmsApp::class)]
+    #[ORM\JoinColumn(name: 'id_cms_app', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?CmsApp $cmsApp = null;
+
+    /**
+     * Role of this page inside its CMS app ({@see \App\Service\CMS\Admin\CmsAppRole}).
+     * Required when {@see $cmsApp} is set; NULL when unassigned.
+     */
+    #[ORM\Column(name: 'cms_app_role', type: 'string', length: 32, nullable: true)]
+    private ?string $cmsAppRole = null;
 
     public function getId(): ?int
     {
@@ -218,6 +234,30 @@ class Page
     public function getPublishedVersionId(): ?int
     {
         return $this->publishedVersion?->getId();
+    }
+
+    public function getCmsApp(): ?CmsApp
+    {
+        return $this->cmsApp;
+    }
+
+    public function setCmsApp(?CmsApp $cmsApp): static
+    {
+        $this->cmsApp = $cmsApp;
+
+        return $this;
+    }
+
+    public function getCmsAppRole(): ?string
+    {
+        return $this->cmsAppRole;
+    }
+
+    public function setCmsAppRole(?string $cmsAppRole): static
+    {
+        $this->cmsAppRole = $cmsAppRole;
+
+        return $this;
     }
 }
 // ENTITY RULE
