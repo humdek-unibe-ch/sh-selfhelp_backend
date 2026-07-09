@@ -1,3 +1,33 @@
+# v0.1.34
+
+## Breaking: first-class CMS apps (`cms_apps`)
+
+CMS-in-CMS apps become a first-class product unit. Pairs with frontend `0.1.60`.
+See `docs/cookbook/cms-in-cms-list-detail.md` and
+`docs/developer/27-db-driven-public-routing.md`.
+
+- **Entity** `cms_apps` + hub FKs (`id_form_section`, `id_cms_list_page`,
+  `id_cms_detail_page`, `id_public_list_page`, `id_public_detail_page`); pages
+  gain `id_cms_app` + strict `cms_app_role`
+  (`form` / `cms_list` / `cms_detail` / `public_list` / `public_detail` /
+  `other`; primary roles unique per app → 409).
+- **API** `/admin/cms-apps` CRUD, assign/change-role/unassign, and
+  `POST /admin/cms-apps/{id}/scaffold`; permissions `admin.cms_app.*`.
+- **Removed** legacy `POST /admin/pages/cms-app` (pre-1.0, no alias).
+- **Hub sync** sole writer: `CmsAppHubSyncService`. Deleting an app shell
+  unassigns pages and clears hubs; pages/sections/tables/records are kept.
+- **Bundles** emit/consume `cms_app` + per-page `cms_app_role`; fixtures under
+  `tests/fixtures/examples/*.bundle.json` realigned for the six CMS-in-CMS
+  templates. Import **rejects** CMS-in-CMS bundles without `cms_app` /
+  valid roles (no dual-format). Response schemas under
+  `responses/admin/cms_apps/`. Optional `cms_app_id` + `cms_app_role` on
+  page create/update go through `CmsAppService::assignPage` only.
+- Import normalises keyword-prefixed CMS app slugs (underscores → hyphens) and
+  reuses an empty shell with the same slug; conflicts when the slug already has
+  pages. Operator guide: `docs/user/cms-apps.md`.
+
+---
+
 # v0.1.33
 
 ## Fix: entry-list / entry-record data binding actually renders rows
