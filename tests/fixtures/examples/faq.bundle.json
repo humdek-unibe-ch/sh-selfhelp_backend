@@ -16,11 +16,13 @@
         {
             "owner_section_name": "faq-form",
             "columns": [
+                "category",
                 "question",
                 "answer"
             ],
             "rows": [
                 {
+                    "category": "account",
                     "question": {
                         "en-GB": "How do I reset my password?",
                         "de-CH": "Wie setze ich mein Passwort zurück?"
@@ -31,6 +33,7 @@
                     }
                 },
                 {
+                    "category": "mobile",
                     "question": {
                         "en-GB": "Can I use the platform on my phone?",
                         "de-CH": "Kann ich die Plattform auf dem Handy nutzen?"
@@ -41,6 +44,7 @@
                     }
                 },
                 {
+                    "category": "privacy",
                     "question": {
                         "en-GB": "Who can see my answers?",
                         "de-CH": "Wer kann meine Antworten sehen?"
@@ -51,6 +55,7 @@
                     }
                 },
                 {
+                    "category": "studies",
                     "question": {
                         "en-GB": "How do I withdraw from a study?",
                         "de-CH": "Wie trete ich aus einer Studie aus?"
@@ -61,6 +66,7 @@
                     }
                 },
                 {
+                    "category": "compatibility",
                     "question": {
                         "en-GB": "Which browsers are supported?",
                         "de-CH": "Welche Browser werden unterstützt?"
@@ -199,6 +205,43 @@
                         }
                     },
                     "children": [
+                        {
+                            "section_name": "faq-form-category",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "category"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Kategorie"
+                                    },
+                                    "en-GB": {
+                                        "content": "Category"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"account\",\"sort\":1},{\"value\":\"mobile\",\"sort\":2},{\"value\":\"privacy\",\"sort\":3},{\"value\":\"studies\",\"sort\":4},{\"value\":\"compatibility\",\"sort\":5}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"account\":\"Konto\",\"mobile\":\"Mobile Nutzung\",\"privacy\":\"Datenschutz\",\"studies\":\"Studienteilnahme\",\"compatibility\":\"Kompatibilität\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"account\":\"Account\",\"mobile\":\"Mobile use\",\"privacy\":\"Privacy\",\"studies\":\"Study participation\",\"compatibility\":\"Compatibility\"}"
+                                    }
+                                },
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
                         {
                             "section_name": "faq-form-question",
                             "style_name": "text-input",
@@ -390,9 +433,6 @@
                         {
                             "section_name": "faq-accordion-list",
                             "style_name": "entry-list",
-                            "global_fields": {
-                                "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:faq-form\",\"retrieve\":\"all\",\"current_user\":false}]"
-                            },
                             "children": [
                                 {
                                     "section_name": "faq-accordion-item",
@@ -400,10 +440,10 @@
                                     "fields": {
                                         "label": {
                                             "de-CH": {
-                                                "content": "{{question}}"
+                                                "content": "{{_category_label}} — {{question}}"
                                             },
                                             "en-GB": {
-                                                "content": "{{question}}"
+                                                "content": "{{_category_label}} — {{question}}"
                                             }
                                         },
                                         "web_accordion_item_value": {
@@ -434,7 +474,29 @@
                                         }
                                     ]
                                 }
-                            ]
+                            ],
+                            "fields": {
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:faq-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "filter": {
+                                    "all": {
+                                        "content": ""
+                                    }
+                                },
+                                "scope": {
+                                    "all": {
+                                        "content": ""
+                                    }
+                                }
+                            }
                         }
                     ]
                 }
@@ -526,6 +588,11 @@
                         "csv_export": {
                             "all": {
                                 "content": "1"
+                            }
+                        },
+                        "fields_map": {
+                            "all": {
+                                "content": "[{\"field_name\":\"_category_label\",\"field_new_name\":\"Category\"},{\"field_name\":\"question\",\"field_new_name\":\"Question\"},{\"field_name\":\"answer\",\"field_new_name\":\"Answer\"}]"
                             }
                         },
                         "add_url": {

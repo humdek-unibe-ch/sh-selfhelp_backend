@@ -22,55 +22,39 @@
             "rows": [
                 {
                     "author": "Lena Baumann",
-                    "role_company": "Study participant, wave 2",
+                    "role_company": "participant-wave-2",
                     "quote": {
                         "en-GB": "The weekly check-ins take me two minutes on my phone. It is the first study where I never felt like the technology was in the way.",
                         "de-CH": "Die wöchentlichen Check-ins dauern auf dem Handy zwei Minuten. Es ist die erste Studie, bei der mir die Technik nie im Weg stand."
-                    },
-                    "role": {
-                        "en-GB": "Study participant, wave 2",
-                        "de-CH": "Studienteilnehmerin, Welle 2"
                     }
                 },
                 {
                     "author": "Dr. Samuel Frei",
-                    "role_company": "Principal investigator, cardiology",
+                    "role_company": "principal-investigator-cardiology",
                     "quote": {
                         "en-GB": "Our coordinators build and translate new questionnaires themselves. What used to be a two-week IT ticket is now an afternoon of clicking.",
                         "de-CH": "Unsere Koordinatorinnen erstellen und übersetzen neue Fragebögen selbst. Was früher ein zweiwöchiges IT-Ticket war, ist jetzt ein Nachmittag Klickarbeit."
-                    },
-                    "role": {
-                        "en-GB": "Principal Investigator, cardiology",
-                        "de-CH": "Hauptprüferin Kardiologie"
                     }
                 },
                 {
                     "author": "Priya Sharma",
-                    "role_company": "Research coordinator",
+                    "role_company": "research-coordinator",
                     "quote": {
                         "en-GB": "Importing a template gave us a working participant portal in one morning — list page, detail pages and the admin grid included.",
                         "de-CH": "Der Import einer Vorlage lieferte uns an einem Vormittag ein funktionierendes Teilnehmerportal — mit Listen-, Detailseiten und Admin-Grid."
-                    },
-                    "role": {
-                        "en-GB": "Research coordinator",
-                        "de-CH": "Studienkoordinatorin"
                     }
                 },
                 {
                     "author": "Thomas Egli",
-                    "role_company": "IT services",
+                    "role_company": "it-services",
                     "quote": {
                         "en-GB": "One backend, one frontend, versioned plugins. It slots into our infrastructure without any special cases.",
                         "de-CH": "Ein Backend, ein Frontend, versionierte Plugins. Es fügt sich ohne Sonderfälle in unsere Infrastruktur ein."
-                    },
-                    "role": {
-                        "en-GB": "IT support lead",
-                        "de-CH": "IT-Support-Leitung"
                     }
                 },
                 {
                     "author": "Camille Rochat",
-                    "role_company": "Study participant, pilot group",
+                    "role_company": "participant-pilot",
                     "quote": {
                         "en-GB": "I can read everything in French while the team works in German. The switch is seamless.",
                         "de-CH": "Ich kann alles auf Französisch lesen, während das Team auf Deutsch arbeitet. Der Wechsel ist nahtlos."
@@ -78,7 +62,7 @@
                 },
                 {
                     "author": "Prof. Anna Vogel",
-                    "role_company": "Head of research group",
+                    "role_company": "research-group-head",
                     "quote": {
                         "en-GB": "The audit trail and permission model convinced our data protection office on the first review.",
                         "de-CH": "Audit-Trail und Berechtigungsmodell haben unser Datenschutzteam bei der ersten Prüfung überzeugt."
@@ -239,7 +223,7 @@
                         },
                         {
                             "section_name": "testimonials-form-role",
-                            "style_name": "text-input",
+                            "style_name": "select",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -254,12 +238,17 @@
                                         "content": "Role / organisation"
                                     }
                                 },
-                                "placeholder": {
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"participant-wave-2\",\"sort\":1},{\"value\":\"principal-investigator-cardiology\",\"sort\":2},{\"value\":\"research-coordinator\",\"sort\":3},{\"value\":\"it-services\",\"sort\":4},{\"value\":\"participant-pilot\",\"sort\":5},{\"value\":\"research-group-head\",\"sort\":6}]"
+                                    }
+                                },
+                                "option_labels": {
                                     "de-CH": {
-                                        "content": "z. B. Studienkoordinatorin"
+                                        "content": "{\"participant-wave-2\":\"Studienteilnehmerin, Welle 2\",\"principal-investigator-cardiology\":\"Hauptprüferin Kardiologie\",\"research-coordinator\":\"Studienkoordinatorin\",\"it-services\":\"IT-Support-Leitung\",\"participant-pilot\":\"Studienteilnehmende, Pilotgruppe\",\"research-group-head\":\"Forschungsgruppenleitung\"}"
                                     },
                                     "en-GB": {
-                                        "content": "e.g. Research coordinator"
+                                        "content": "{\"participant-wave-2\":\"Study participant, wave 2\",\"principal-investigator-cardiology\":\"Principal Investigator, cardiology\",\"research-coordinator\":\"Research coordinator\",\"it-services\":\"IT support lead\",\"participant-pilot\":\"Study participant, pilot group\",\"research-group-head\":\"Head of research group\"}"
                                     }
                                 }
                             }
@@ -422,8 +411,7 @@
                     "section_name": "testimonials-list",
                     "style_name": "entry-list",
                     "global_fields": {
-                        "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
-                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:testimonials-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                        "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                     },
                     "children": [
                         {
@@ -559,10 +547,10 @@
                                                     "fields": {
                                                         "text": {
                                                             "de-CH": {
-                                                                "content": "{{role_company}}"
+                                                                "content": "{{_role_company_label}}"
                                                             },
                                                             "en-GB": {
-                                                                "content": "{{role_company}}"
+                                                                "content": "{{_role_company_label}}"
                                                             }
                                                         },
                                                         "color": {
@@ -586,7 +574,29 @@
                                 "css_mobile": "px-md py-md gap-sm"
                             }
                         }
-                    ]
+                    ],
+                    "fields": {
+                        "data_table": {
+                            "all": {
+                                "content": "@section:testimonials-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "filter": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "scope": {
+                            "all": {
+                                "content": ""
+                            }
+                        }
+                    }
                 }
             ],
             "cms_app_role": "public_list"
@@ -676,6 +686,11 @@
                         "csv_export": {
                             "all": {
                                 "content": "1"
+                            }
+                        },
+                        "fields_map": {
+                            "all": {
+                                "content": "[{\"field_name\":\"author\",\"field_new_name\":\"Author\"},{\"field_name\":\"_role_company_label\",\"field_new_name\":\"Role\"},{\"field_name\":\"quote\",\"field_new_name\":\"Quote\"}]"
                             }
                         },
                         "add_url": {

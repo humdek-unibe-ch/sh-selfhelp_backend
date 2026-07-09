@@ -609,12 +609,7 @@ class CmsAppWizardService extends BaseService
         array $contentLocales,
         string $propertyLocale
     ): array {
-        $dataConfig = json_encode([[
-            'scope' => 'entries',
-            'table' => $dataTableName,
-            'retrieve' => 'all',
-            'current_user' => false,
-        ]]);
+        $dataTableId = $this->resolveDataTableId($dataTableName);
 
         $itemChildren = [
             [
@@ -646,7 +641,12 @@ class CmsAppWizardService extends BaseService
         return [[
             'section_name' => $baseName . '-list',
             'style_name' => 'entry-list',
-            'global_fields' => ['data_config' => $dataConfig === false ? '' : $dataConfig],
+            'fields' => [
+                'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
+                'own_entries_only' => $this->propertyField('0', $propertyLocale),
+                'filter' => $this->propertyField('', $propertyLocale),
+                'scope' => $this->propertyField('', $propertyLocale),
+            ],
             'children' => [[
                 'section_name' => $baseName . '-list-item',
                 'style_name' => 'card',
@@ -713,18 +713,18 @@ class CmsAppWizardService extends BaseService
         array $contentLocales,
         string $propertyLocale
     ): array {
-        $dataConfig = json_encode([[
-            'scope' => 'record',
-            'table' => $dataTableName,
-            'retrieve' => 'first',
-            'current_user' => false,
-            'filter' => 'record_id = {{route.' . $recordParam . '}}',
-        ]]);
+        $dataTableId = $this->resolveDataTableId($dataTableName);
 
         return [[
             'section_name' => $baseName . '-detail',
             'style_name' => 'entry-record',
-            'global_fields' => ['data_config' => $dataConfig === false ? '' : $dataConfig],
+            'fields' => [
+                'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
+                'own_entries_only' => $this->propertyField('0', $propertyLocale),
+                'filter' => $this->propertyField('', $propertyLocale),
+                'scope' => $this->propertyField('', $propertyLocale),
+                'url_param' => $this->propertyField($recordParam, $propertyLocale),
+            ],
             'children' => [
                 [
                     'section_name' => $baseName . '-detail-title',

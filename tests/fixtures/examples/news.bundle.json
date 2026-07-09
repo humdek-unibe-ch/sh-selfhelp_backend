@@ -17,6 +17,7 @@
             "columns": [
                 "title",
                 "category",
+                "tags",
                 "published_on",
                 "summary",
                 "body"
@@ -27,7 +28,8 @@
                         "en-GB": "New study platform goes live",
                         "de-CH": "Neue Studienplattform ist live"
                     },
-                    "category": "Release",
+                    "category": "release",
+                    "tags": "platform,study",
                     "published_on": "2026-06-01",
                     "summary": {
                         "en-GB": "The redesigned participant portal is now open to all study groups.",
@@ -43,7 +45,8 @@
                         "en-GB": "Maintenance window on Friday",
                         "de-CH": "Wartungsfenster am Freitag"
                     },
-                    "category": "Notice",
+                    "category": "notice",
+                    "tags": "platform,technical",
                     "published_on": "2026-06-12",
                     "summary": {
                         "en-GB": "The platform will be read-only between 06:00 and 07:00 CET.",
@@ -59,7 +62,8 @@
                         "en-GB": "Two new questionnaire templates",
                         "de-CH": "Zwei neue Fragebogen-Vorlagen"
                     },
-                    "category": "Feature",
+                    "category": "feature",
+                    "tags": "coordinators,study",
                     "published_on": "2026-06-20",
                     "summary": {
                         "en-GB": "Weekly mood tracking and sleep diary templates are ready to import.",
@@ -75,7 +79,8 @@
                         "en-GB": "Summer office hours",
                         "de-CH": "Sommer-Sprechzeiten"
                     },
-                    "category": "Notice",
+                    "category": "notice",
+                    "tags": "study",
                     "published_on": "2026-07-01",
                     "summary": {
                         "en-GB": "Support replies within two working days during July and August.",
@@ -263,7 +268,52 @@
                                 },
                                 "options": {
                                     "all": {
-                                        "content": "[{\"value\":\"Release\",\"text\":\"Release\"},{\"value\":\"Feature\",\"text\":\"Feature\"},{\"value\":\"Notice\",\"text\":\"Notice\"}]"
+                                        "content": "[{\"value\":\"release\",\"sort\":1},{\"value\":\"feature\",\"sort\":2},{\"value\":\"notice\",\"sort\":3}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"release\":\"Freigabe\",\"feature\":\"Funktion\",\"notice\":\"Hinweis\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"release\":\"Release\",\"feature\":\"Feature\",\"notice\":\"Notice\"}"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "news-form-tags",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "tags"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Schlagwörter"
+                                    },
+                                    "en-GB": {
+                                        "content": "Tags"
+                                    }
+                                },
+                                "is_multiple": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"platform\",\"sort\":1},{\"value\":\"study\",\"sort\":2},{\"value\":\"coordinators\",\"sort\":3},{\"value\":\"technical\",\"sort\":4}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"platform\":\"Plattform\",\"study\":\"Studie\",\"coordinators\":\"Koordination\",\"technical\":\"Technik\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"platform\":\"Platform\",\"study\":\"Study\",\"coordinators\":\"Coordination\",\"technical\":\"Technical\"}"
                                     }
                                 }
                             }
@@ -485,7 +535,6 @@
                     "style_name": "entry-list",
                     "global_fields": {
                         "css": "grid grid-cols-1 md:grid-cols-2 gap-6",
-                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:news-form\",\"retrieve\":\"all\",\"current_user\":false}]",
                         "css_mobile": "px-md py-lg gap-md"
                     },
                     "children": [
@@ -537,10 +586,10 @@
                                             "fields": {
                                                 "label": {
                                                     "de-CH": {
-                                                        "content": "{{category}}"
+                                                        "content": "{{_category_label}}"
                                                     },
                                                     "en-GB": {
-                                                        "content": "{{category}}"
+                                                        "content": "{{_category_label}}"
                                                     }
                                                 },
                                                 "variant": {
@@ -575,6 +624,30 @@
                                             }
                                         }
                                     ]
+                                },
+                                {
+                                    "section_name": "news-list-card-tags",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": {
+                                                "content": "{{_tags_labels}}"
+                                            },
+                                            "en-GB": {
+                                                "content": "{{_tags_labels}}"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "dimmed"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "xs"
+                                            }
+                                        }
+                                    }
                                 },
                                 {
                                     "section_name": "news-list-card-title",
@@ -674,7 +747,28 @@
                             }
                         }
                     ],
-                    "fields": {}
+                    "fields": {
+                        "data_table": {
+                            "all": {
+                                "content": "@section:news-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "filter": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "scope": {
+                            "all": {
+                                "content": ""
+                            }
+                        }
+                    }
                 }
             ],
             "cms_app_role": "public_list"
@@ -719,9 +813,6 @@
                 {
                     "section_name": "news-detail",
                     "style_name": "entry-record",
-                    "global_fields": {
-                        "data_config": "[{\"scope\":\"record\",\"table\":\"@section:news-form\",\"retrieve\":\"first\",\"current_user\":false,\"filter\":\"record_id = {{route.record_id}}\"}]"
-                    },
                     "children": [
                         {
                             "section_name": "news-detail-container",
@@ -761,10 +852,10 @@
                                             "fields": {
                                                 "label": {
                                                     "de-CH": {
-                                                        "content": "{{category}}"
+                                                        "content": "{{_category_label}}"
                                                     },
                                                     "en-GB": {
-                                                        "content": "{{category}}"
+                                                        "content": "{{_category_label}}"
                                                     }
                                                 },
                                                 "variant": {
@@ -799,6 +890,30 @@
                                             }
                                         }
                                     ]
+                                },
+                                {
+                                    "section_name": "news-detail-tags",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": {
+                                                "content": "{{_tags_labels}}"
+                                            },
+                                            "en-GB": {
+                                                "content": "{{_tags_labels}}"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "dimmed"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        }
+                                    }
                                 },
                                 {
                                     "section_name": "news-detail-title",
@@ -895,7 +1010,34 @@
                                 }
                             ]
                         }
-                    ]
+                    ],
+                    "fields": {
+                        "data_table": {
+                            "all": {
+                                "content": "@section:news-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "filter": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "scope": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "url_param": {
+                            "all": {
+                                "content": "record_id"
+                            }
+                        }
+                    }
                 }
             ],
             "cms_app_role": "public_detail"
@@ -985,6 +1127,11 @@
                         "csv_export": {
                             "all": {
                                 "content": "1"
+                            }
+                        },
+                        "fields_map": {
+                            "all": {
+                                "content": "[{\"field_name\":\"title\",\"field_new_name\":\"Title\"},{\"field_name\":\"_category_label\",\"field_new_name\":\"Category\"},{\"field_name\":\"_tags_labels\",\"field_new_name\":\"Tags\"},{\"field_name\":\"published_on\",\"field_new_name\":\"Published\"},{\"field_name\":\"summary\",\"field_new_name\":\"Summary\"}]"
                             }
                         },
                         "add_url": {

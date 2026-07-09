@@ -54,7 +54,8 @@ class PageExportImportService extends BaseService
 
     /**
      * Symbolic owner token written into a portable bundle in place of a numeric
-     * `data_config.table` that points at an in-bundle form section. The numeric
+     * `fields.data_table` (or legacy `data_config.table`) reference that points at
+     * an in-bundle form section. The numeric section id is install-specific and
      * section id is install-specific and changes on import, so the export rewrites
      * `"table":"123"` to `"table":"@section:<owner section name>"` and the import
      * resolves it back to the freshly-created form section's id (issue #30).
@@ -99,10 +100,11 @@ class PageExportImportService extends BaseService
     /**
      * Build a portable bundle for the given page ids.
      *
-     * The page structure is always made portable: any `entry-list` /
-     * `entry-record` `data_config.table` that points at a *form section inside
-     * this bundle* is rewritten from its install-specific numeric id to the
+     * The page structure is always made portable: `entry-list` / `entry-record` /
+     * `entry-table` sections rewrite their `fields.data_table` when it points at
+     * an in-bundle form section from the install-specific numeric id to the
      * `@section:<owner name>` token so the import can relink it (issue #30).
+     * Entry holders no longer bind rows through `data_config`.
      *
      * Data is opt-in: with `includeDataTables` the bundle also carries each owned
      * table's column list (so the importer can pre-create an empty table), and
@@ -220,8 +222,9 @@ class PageExportImportService extends BaseService
     private function rewriteExportTableRefs(array &$sections, array $idToName, array $nameCounts, array &$ownerTableIds): void
     {
         foreach ($sections as &$section) {
+            $style = $this->asString($section['style_name'] ?? '');
             $globalFields = $section['global_fields'] ?? null;
-            if (is_array($globalFields)) {
+            if (is_array($globalFields) && !$this->isEntryHolderStyle($style)) {
                 $rawDataConfig = $globalFields['data_config'] ?? null;
                 if (is_string($rawDataConfig) && $rawDataConfig !== '') {
                     $rewritten = $this->rewriteDataConfigForExport($rawDataConfig, $idToName, $nameCounts, $ownerTableIds);
@@ -231,7 +234,11 @@ class PageExportImportService extends BaseService
                     }
                 }
             }
-            if ($this->asString($section['style_name'] ?? '') === StyleNames::STYLE_ENTRY_TABLE) {
+            if (in_array($style, [
+                StyleNames::STYLE_ENTRY_TABLE,
+                StyleNames::STYLE_ENTRY_LIST,
+                StyleNames::STYLE_ENTRY_RECORD,
+            ], true)) {
                 $this->rewriteEntryTableExportRef($section, $idToName, $nameCounts, $ownerTableIds);
             }
             if (is_array($section['children'] ?? null)) {
@@ -1001,7 +1008,7 @@ class PageExportImportService extends BaseService
     private function collectEntryTableNumericRefs(array $sections, array &$numericRefs): void
     {
         foreach ($sections as $section) {
-            if ($this->asString($section['style_name'] ?? '') === StyleNames::STYLE_ENTRY_TABLE) {
+            if ($this->isDataTableFieldStyle($this->asString($section['style_name'] ?? ''))) {
                 $fields = $section['fields'] ?? null;
                 $dataTable = is_array($fields) ? ($fields['data_table'] ?? null) : null;
                 if (is_array($dataTable)) {
@@ -1282,7 +1289,15 @@ class PageExportImportService extends BaseService
         $touched = false;
         foreach ($newSectionIds as $sectionId) {
             $section = $this->sectionRepository->find($sectionId);
-            if (!$section instanceof Section || $section->getStyle()?->getName() !== StyleNames::STYLE_ENTRY_TABLE) {
+            if (!$section instanceof Section) {
+                continue;
+            }
+            $styleName = $section->getStyle()?->getName();
+            if (!in_array($styleName, [
+                StyleNames::STYLE_ENTRY_TABLE,
+                StyleNames::STYLE_ENTRY_LIST,
+                StyleNames::STYLE_ENTRY_RECORD,
+            ], true)) {
                 continue;
             }
 
@@ -1849,8 +1864,9 @@ class PageExportImportService extends BaseService
     private function collectOwnerTokens(array $sections, array &$owners): void
     {
         foreach ($sections as $section) {
+            $style = $this->asString($section['style_name'] ?? '');
             $globalFields = $section['global_fields'] ?? null;
-            if (is_array($globalFields)) {
+            if (is_array($globalFields) && !$this->isEntryHolderStyle($style)) {
                 $dataConfig = $globalFields['data_config'] ?? null;
                 if (is_string($dataConfig) && str_contains($dataConfig, self::OWNER_TOKEN_PREFIX)) {
                     if (preg_match_all('/"table"\s*:\s*"' . preg_quote(self::OWNER_TOKEN_PREFIX, '/') . '([^"]+)"/', $dataConfig, $matches)) {
@@ -1878,7 +1894,7 @@ class PageExportImportService extends BaseService
      */
     private function entryTableOwnerTokens(array $section): array
     {
-        if ($this->asString($section['style_name'] ?? '') !== StyleNames::STYLE_ENTRY_TABLE) {
+        if (!$this->isDataTableFieldStyle($this->asString($section['style_name'] ?? ''))) {
             return [];
         }
         $fields = $section['fields'] ?? null;
@@ -2332,5 +2348,22 @@ class PageExportImportService extends BaseService
             'This bundle contains legacy navigation assignments. Menu membership is not imported; assign pages to menus in the Navigation builder after import.',
             null,
         );
+    }
+
+    private function isDataTableFieldStyle(string $styleName): bool
+    {
+        return in_array($styleName, [
+            StyleNames::STYLE_ENTRY_TABLE,
+            StyleNames::STYLE_ENTRY_LIST,
+            StyleNames::STYLE_ENTRY_RECORD,
+        ], true);
+    }
+
+    private function isEntryHolderStyle(string $styleName): bool
+    {
+        return in_array($styleName, [
+            StyleNames::STYLE_ENTRY_LIST,
+            StyleNames::STYLE_ENTRY_RECORD,
+        ], true);
     }
 }

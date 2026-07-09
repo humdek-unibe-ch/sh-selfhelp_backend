@@ -19,7 +19,7 @@ use PHPUnit\Framework\Attributes\Group;
  *
  * Imports the shipped self-contained Team-Members example bundle (which binds
  * its entry-list / entry-record sections to the owning form section via the
- * portable `"table":"@section:team-members-form"` token and carries sample rows
+ * portable `fields.data_table = "@section:<owner>"` token and carries sample rows
  * in `data_tables[]`) and asserts the round-trip works end to end:
  *   - all four pages are created (form + public list/detail + admin list);
  *   - the owner token is relinked to the NEW form section id (a numeric data

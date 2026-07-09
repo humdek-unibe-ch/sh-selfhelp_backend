@@ -24,7 +24,7 @@
             "rows": [
                 {
                     "name": "Ada Lovelace",
-                    "role": "Lead Engineer",
+                    "role": "lead-engineer",
                     "email": "ada@example.org",
                     "bio": {
                         "en-GB": "Works on the analytical engine and wrote the first published algorithm. Loves turning hard problems into elegant, testable machines.",
@@ -33,7 +33,7 @@
                 },
                 {
                     "name": "Alan Turing",
-                    "role": "Researcher",
+                    "role": "researcher",
                     "email": "alan@example.org",
                     "bio": {
                         "en-GB": "Computability, cryptanalysis and the foundations of computer science. Currently asking whether machines can think.",
@@ -42,7 +42,7 @@
                 },
                 {
                     "name": "Grace Hopper",
-                    "role": "Compiler Pioneer",
+                    "role": "compiler-pioneer",
                     "email": "grace@example.org",
                     "bio": {
                         "en-GB": "Built the first compiler and championed machine-independent programming languages. It is easier to ask forgiveness than permission.",
@@ -51,7 +51,7 @@
                 },
                 {
                     "name": "Katherine Johnson",
-                    "role": "Trajectory Analyst",
+                    "role": "trajectory-analyst",
                     "email": "katherine@example.org",
                     "bio": {
                         "en-GB": "Calculates orbital mechanics by hand and verifies what the machines print. Numbers do not lie when you check them twice.",
@@ -60,7 +60,7 @@
                 },
                 {
                     "name": "Margaret Hamilton",
-                    "role": "Software Director",
+                    "role": "software-director",
                     "email": "margaret@example.org",
                     "bio": {
                         "en-GB": "Leads on-board flight software and coined the term software engineering. Ships systems that keep working when everything else fails.",
@@ -69,7 +69,7 @@
                 },
                 {
                     "name": "Tim Berners-Lee",
-                    "role": "Web Architect",
+                    "role": "web-architect",
                     "email": "tim@example.org",
                     "bio": {
                         "en-GB": "Connected hypertext to the internet and gave the result away. Believes the web belongs to everyone.",
@@ -247,7 +247,7 @@
                         },
                         {
                             "section_name": "team-members-form-role",
-                            "style_name": "text-input",
+                            "style_name": "select",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -262,12 +262,17 @@
                                         "content": "Role"
                                     }
                                 },
-                                "placeholder": {
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"lead-engineer\",\"sort\":1},{\"value\":\"researcher\",\"sort\":2},{\"value\":\"compiler-pioneer\",\"sort\":3},{\"value\":\"trajectory-analyst\",\"sort\":4},{\"value\":\"software-director\",\"sort\":5},{\"value\":\"web-architect\",\"sort\":6}]"
+                                    }
+                                },
+                                "option_labels": {
                                     "de-CH": {
-                                        "content": "z. B. Lead Engineer"
+                                        "content": "{\"lead-engineer\":\"Leitende Entwicklung\",\"researcher\":\"Forschung\",\"compiler-pioneer\":\"Compiler-Pionierin\",\"trajectory-analyst\":\"Trajektorienanalyse\",\"software-director\":\"Softwareleitung\",\"web-architect\":\"Web-Architektur\"}"
                                     },
                                     "en-GB": {
-                                        "content": "e.g. Lead Engineer"
+                                        "content": "{\"lead-engineer\":\"Lead Engineer\",\"researcher\":\"Researcher\",\"compiler-pioneer\":\"Compiler Pioneer\",\"trajectory-analyst\":\"Trajectory Analyst\",\"software-director\":\"Software Director\",\"web-architect\":\"Web Architect\"}"
                                     }
                                 }
                             }
@@ -490,8 +495,7 @@
                     "section_name": "team-members-list",
                     "style_name": "entry-list",
                     "global_fields": {
-                        "css": "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8",
-                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:team-members-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                        "css": "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8"
                     },
                     "children": [
                         {
@@ -604,10 +608,10 @@
                                                     "fields": {
                                                         "label": {
                                                             "de-CH": {
-                                                                "content": "{{role}}"
+                                                                "content": "{{_role_label}}"
                                                             },
                                                             "en-GB": {
-                                                                "content": "{{role}}"
+                                                                "content": "{{_role_label}}"
                                                             }
                                                         },
                                                         "variant": {
@@ -763,7 +767,29 @@
                                 "css_mobile": "px-md py-md gap-sm"
                             }
                         }
-                    ]
+                    ],
+                    "fields": {
+                        "data_table": {
+                            "all": {
+                                "content": "@section:team-members-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "filter": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "scope": {
+                            "all": {
+                                "content": ""
+                            }
+                        }
+                    }
                 }
             ],
             "cms_app_role": "public_list"
@@ -808,9 +834,6 @@
                 {
                     "section_name": "team-members-detail",
                     "style_name": "entry-record",
-                    "global_fields": {
-                        "data_config": "[{\"scope\":\"record\",\"table\":\"@section:team-members-form\",\"retrieve\":\"first\",\"current_user\":false,\"filter\":\"record_id = {{route.record_id}}\"}]"
-                    },
                     "children": [
                         {
                             "section_name": "team-members-detail-container",
@@ -935,10 +958,10 @@
                                                             "fields": {
                                                                 "label": {
                                                                     "de-CH": {
-                                                                        "content": "{{role}}"
+                                                                        "content": "{{_role_label}}"
                                                                     },
                                                                     "en-GB": {
-                                                                        "content": "{{role}}"
+                                                                        "content": "{{_role_label}}"
                                                                     }
                                                                 },
                                                                 "variant": {
@@ -1070,7 +1093,34 @@
                                 }
                             ]
                         }
-                    ]
+                    ],
+                    "fields": {
+                        "data_table": {
+                            "all": {
+                                "content": "@section:team-members-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "filter": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "scope": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "url_param": {
+                            "all": {
+                                "content": "record_id"
+                            }
+                        }
+                    }
                 }
             ],
             "cms_app_role": "public_detail"
@@ -1225,7 +1275,7 @@
                         },
                         "fields_map": {
                             "all": {
-                                "content": "[{\"field_name\":\"name\",\"field_new_name\":\"Name\"},{\"field_name\":\"role\",\"field_new_name\":\"Role\"},{\"field_name\":\"email\",\"field_new_name\":\"Email\"},{\"field_name\":\"bio\",\"field_new_name\":\"Bio\"}]"
+                                "content": "[{\"field_name\":\"name\",\"field_new_name\":\"Name\"},{\"field_name\":\"_role_label\",\"field_new_name\":\"Role\"},{\"field_name\":\"email\",\"field_new_name\":\"Email\"},{\"field_name\":\"bio\",\"field_new_name\":\"Bio\"}]"
                             }
                         },
                         "add_url": {

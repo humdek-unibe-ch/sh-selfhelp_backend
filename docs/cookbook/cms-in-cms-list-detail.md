@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and developers.
 Status: active.
 Applies to: SelfHelp2 Symfony backend + frontend Host Admin.
-Last verified: 2026-07-08.
+Last verified: 2026-07-09.
 Source of truth: Runtime `cms_apps` APIs, `CmsAppWizardService::scaffoldCmsApp`, and the linked architecture doc.
 
 This recipe builds a working **list → detail** pattern bound to a data table —
@@ -40,9 +40,20 @@ The two list surfaces are presented differently on purpose:
   list; the create form closes its modal on save (`close_modal_on_save`) and the
   list refreshes automatically.
 
-The detail page filters the table on `record_id = {{route.record_id}}`. With
-`create_form` the form page **owns the data table** (it is named by the form
-section id) and the other pages bind to that owned table automatically.
+The detail page loads exactly one row: set **Data table** on the `entry-record`
+section and keep **URL parameter** at `record_id` (default). The backend injects
+the validated route id automatically; use **Filter** only for extra constraints.
+With `create_form` the form page **owns the data table** (named by the form
+section id); list and detail holders bind through their **Data table** property
+field — **not** through Data configuration → *Table*.
+
+> **Common mistake:** On `entry-list` / `entry-record` sections, authors sometimes
+> configure **Data configuration** with a table and expect rows to appear. Since
+> core `0.1.35`, row loading uses **only** the property fields (**Data table**,
+> **Filter**, **Own entries only**, …). Data configuration on the same section
+> is for **helper scopes** (e.g. a `filters` scope referenced as
+> `{{filters.category}}` inside **Filter**), not for choosing which table to
+> hydrate. See [composite.md#entry-list](../reference/styles/composite.md#entry-list).
 
 **Record editing** works out of the box: the wizard reuses the *same*
 `form-record` section on the admin detail page, configured with
@@ -87,19 +98,20 @@ Permissions: `admin.cms_app.*` (separate from `admin.page.*`).
 
 1. **Create the list page**: Admin → Pages → New, surface = *public*, URL
    `/team-members`.
-2. Add an **entry-list** section. Set its `data_config`:
-   ```json
-   [{ "scope": "entries", "table": "team_members", "retrieve": "all", "current_user": false }]
-   ```
+2. Add an **entry-list** section. In the **Properties** panel set:
+   - **Data table** — the owning form's table (or pick from the dropdown).
+   - **Own entries only** — off for a public directory; on for a personal journal.
+   - **Filter** (optional) — SQL WHERE fragment; route tokens like `{{route.category}}` are validated server-side.
+   - **Scope** (optional) — prefix row keys (`item.name` when scope is `item`).
+   Do **not** rely on **Data configuration** → *Table* for row binding (ignored on entry holders).
 3. Inside it add a child template (e.g. a `card`) with a `title` (`{{name}}`) and a
    `link` whose URL is `/team-members/{{record_id}}`.
 4. **Create the detail page**: surface = *public*, URL `/team-members/{record_id}`.
    In the page editor's **Routes** panel confirm the canonical route
    `/team-members/{record_id}` with requirement `record_id = \d+`.
-5. Add an **entry-record** section. Set its `data_config`:
-   ```json
-   [{ "scope": "record", "table": "team_members", "retrieve": "first", "current_user": false, "filter": "record_id = {{route.record_id}}" }]
-   ```
+5. Add an **entry-record** section. Set **Data table** to the same table,
+   **URL parameter** to `record_id` (default), and optional **Filter** for extra
+   constraints only — the backend injects `record_id` from the route automatically.
 6. Add child fields that reference the record (`{{name}}`, `{{role}}`, …).
 
 Repeat with `surface = cms` and `/cms/...` URLs for an admin-only pair. For the
@@ -181,7 +193,7 @@ The bundle files live in the **frontend** repo under
 `sh-selfhelp_frontend/examples/cms-in-cms/` (see that repo's
 `examples/README.md`); each is self-contained — a create/edit form that owns the
 table, the public pages, and an `entry-table` admin grid, with entry styles
-bound via the portable `"table":"@section:<form>"` token and sample rows in
+bound via portable `fields.data_table` (`@section:<form>`) tokens and sample rows in
 `data_tables[]`. Nothing is auto-seeded.
 
 To import a bundle **file** instead (e.g. one exported from another install):

@@ -22,37 +22,37 @@
             "rows": [
                 {
                     "name": "Nora Keller",
-                    "department": "Study Coordination",
+                    "department": "study-coordination",
                     "phone": "+41 31 000 11 22",
                     "email": "nora.keller@example.org"
                 },
                 {
                     "name": "Marc Dubois",
-                    "department": "IT Support",
+                    "department": "it-support",
                     "phone": "+41 31 000 33 44",
                     "email": "marc.dubois@example.org"
                 },
                 {
                     "name": "Sofia Ricci",
-                    "department": "Data Protection",
+                    "department": "data-protection",
                     "phone": "+41 31 000 55 66",
                     "email": "sofia.ricci@example.org"
                 },
                 {
                     "name": "Jonas Weber",
-                    "department": "Lab Scheduling",
+                    "department": "lab-scheduling",
                     "phone": "+41 31 000 77 88",
                     "email": "jonas.weber@example.org"
                 },
                 {
                     "name": "Elena Petrova",
-                    "department": "Participant Care",
+                    "department": "participant-care",
                     "phone": "+41 31 000 99 00",
                     "email": "elena.petrova@example.org"
                 },
                 {
                     "name": "David Brunner",
-                    "department": "Finance",
+                    "department": "finance",
                     "phone": "+41 31 000 12 34",
                     "email": "david.brunner@example.org"
                 }
@@ -211,7 +211,7 @@
                         },
                         {
                             "section_name": "contacts-form-department",
-                            "style_name": "text-input",
+                            "style_name": "select",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -224,6 +224,19 @@
                                     },
                                     "en-GB": {
                                         "content": "Department"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"study-coordination\",\"sort\":1},{\"value\":\"it-support\",\"sort\":2},{\"value\":\"data-protection\",\"sort\":3},{\"value\":\"lab-scheduling\",\"sort\":4},{\"value\":\"participant-care\",\"sort\":5},{\"value\":\"finance\",\"sort\":6}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"study-coordination\":\"Studienkoordination\",\"it-support\":\"IT-Support\",\"data-protection\":\"Datenschutz\",\"lab-scheduling\":\"Laborplanung\",\"participant-care\":\"Teilnehmendenbetreuung\",\"finance\":\"Finanzen\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"study-coordination\":\"Study Coordination\",\"it-support\":\"IT Support\",\"data-protection\":\"Data Protection\",\"lab-scheduling\":\"Lab Scheduling\",\"participant-care\":\"Participant Care\",\"finance\":\"Finance\"}"
                                     }
                                 }
                             }
@@ -392,8 +405,7 @@
                     "section_name": "contacts-list",
                     "style_name": "entry-list",
                     "global_fields": {
-                        "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6",
-                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:contacts-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                        "css": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                     },
                     "children": [
                         {
@@ -500,10 +512,10 @@
                                                     "fields": {
                                                         "label": {
                                                             "de-CH": {
-                                                                "content": "{{department}}"
+                                                                "content": "{{_department_label}}"
                                                             },
                                                             "en-GB": {
-                                                                "content": "{{department}}"
+                                                                "content": "{{_department_label}}"
                                                             }
                                                         },
                                                         "variant": {
@@ -596,7 +608,29 @@
                                 }
                             ]
                         }
-                    ]
+                    ],
+                    "fields": {
+                        "data_table": {
+                            "all": {
+                                "content": "@section:contacts-form"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        },
+                        "filter": {
+                            "all": {
+                                "content": ""
+                            }
+                        },
+                        "scope": {
+                            "all": {
+                                "content": ""
+                            }
+                        }
+                    }
                 }
             ],
             "cms_app_role": "public_list"
@@ -686,6 +720,11 @@
                         "csv_export": {
                             "all": {
                                 "content": "1"
+                            }
+                        },
+                        "fields_map": {
+                            "all": {
+                                "content": "[{\"field_name\":\"name\",\"field_new_name\":\"Name\"},{\"field_name\":\"_department_label\",\"field_new_name\":\"Department\"},{\"field_name\":\"phone\",\"field_new_name\":\"Phone\"},{\"field_name\":\"email\",\"field_new_name\":\"Email\"}]"
                             }
                         },
                         "add_url": {
