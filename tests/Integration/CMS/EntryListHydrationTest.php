@@ -27,9 +27,11 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * The CMS-in-CMS "N cards" contract (issue #30): an `entry-list` bound to a
- * data table via `data_config` clones its child template once per DATA ROW and
+ * data table via property fields (`data_table`, `own_entries_only`, …) clones
  * flattens each row's cells into the clone's interpolation data, so `{{col}}`
- * resolves per card. This is the exact mechanism the template gallery's public
+ * resolves per card. `data_config` may still supply helper scopes (e.g.
+ * `filters`) for the author `filter` field but must never choose the row
+ * table. This is the exact mechanism the template gallery's public
  * list pages rely on; rows are created through the real form-submit endpoint
  * (never raw SQL) so the table/columns/cells match production.
  */
@@ -93,13 +95,8 @@ final class EntryListHydrationTest extends QaWebTestCase
 
         $listSection = $this->pages->createSection('qa_el_list_holder', 'entry-list');
         $this->pages->linkSectionToPage($listPage, $listSection, 10);
-        // `data_config` is a global field stored as a column on `sections`.
-        $listSection->setDataConfig(json_encode([[
-            'scope' => 'entries',
-            'table' => $tableName,
-            'retrieve' => 'all',
-            'current_user' => false,
-        ]], JSON_THROW_ON_ERROR));
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
         $this->em->flush();
 
         $cardSection = $this->pages->createSection('qa_el_list_card', 'text');
@@ -149,6 +146,576 @@ final class EntryListHydrationTest extends QaWebTestCase
         );
     }
 
+    public function testEntryListInjectsUnderscoredLabelsForEveryOptionStyleFamily(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_select_rows', openAccess: true);
+        $optionSections = [
+            [
+                'section' => $this->pages->createSection('qa_el_select_category', 'select'),
+                'name' => 'category',
+                'catalog_field' => 'options',
+                'multiple_field' => null,
+            ],
+            [
+                'section' => $this->pages->createSection('qa_el_select_tags', 'select'),
+                'name' => 'tags',
+                'catalog_field' => 'options',
+                'multiple_field' => 'is_multiple',
+            ],
+            [
+                'section' => $this->pages->createSection('qa_el_radio_channel', 'radio'),
+                'name' => 'channel',
+                'catalog_field' => 'radio_options',
+                'multiple_field' => null,
+            ],
+            [
+                'section' => $this->pages->createSection('qa_el_combobox_topics', 'combobox'),
+                'name' => 'topics',
+                'catalog_field' => 'combobox_options',
+                'multiple_field' => 'web_combobox_multi_select',
+            ],
+            [
+                'section' => $this->pages->createSection('qa_el_segment_view', 'segmented-control'),
+                'name' => 'view',
+                'catalog_field' => 'segmented_control_data',
+                'multiple_field' => null,
+            ],
+        ];
+        foreach ($optionSections as $optionSection) {
+            $section = $optionSection['section'];
+            $this->linkChild($formSection, $section);
+            $this->setSectionField($section, 'name', $optionSection['name'], 1);
+            $this->setSectionField(
+                $section,
+                $optionSection['catalog_field'],
+                '[{"value":"release","sort":1},{"value":"feature","sort":2},{"value":"notice","sort":3}]',
+                1
+            );
+            $this->setSectionField(
+                $section,
+                'option_labels',
+                '{"release":"Freigabe","feature":"Funktion","notice":"Hinweis"}',
+                2
+            );
+            $this->setSectionField(
+                $section,
+                'option_labels',
+                '{"release":"Release","feature":"Feature","notice":"Notice"}',
+                3
+            );
+            if (is_string($optionSection['multiple_field'])) {
+                $this->setSectionField($section, $optionSection['multiple_field'], '1', 1);
+            }
+        }
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => [
+                'qa_answer' => 'row-1',
+                'category' => 'release',
+                'tags' => 'release,notice',
+                'channel' => 'notice',
+                'topics' => 'feature,notice',
+                'view' => 'feature',
+            ],
+        ]);
+        $recordId = $this->assertEnvelopeSuccess($envelope)['record_id'] ?? null;
+        self::assertIsInt($recordId);
+
+        $row = $this->em->getRepository(DataRow::class)->find($recordId);
+        self::assertInstanceOf(DataRow::class, $row);
+        $tableName = (string) $row->getDataTable()?->getName();
+
+        $listPage = $this->pages->createPage('qa_el_select_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false, affectedUserIds: []);
+
+        $listSection = $this->pages->createSection('qa_el_select_list_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $dataTable = $row->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+        $this->em->flush();
+
+        $cardSection = $this->pages->createSection('qa_el_select_list_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $labelTemplate = '{{_category_label}}|{{_tags_labels}}|{{_channel_label}}|{{_topics_labels}}|{{_view_label}}';
+        $this->setSectionField($cardSection, 'text', $labelTemplate, 2);
+        $this->setSectionField($cardSection, 'text', $labelTemplate, 3);
+
+        $this->pages->invalidatePageScopedCaches();
+        $token = $this->loginAsQaUser();
+        $dataDe = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true&language_id=2', null, $token)
+        );
+        $dataEn = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true&language_id=3', null, $token)
+        );
+        $sectionsDe = is_array($dataDe['page'] ?? null) && is_array($dataDe['page']['sections'] ?? null)
+            ? $dataDe['page']['sections']
+            : (is_array($dataDe['sections'] ?? null) ? $dataDe['sections'] : []);
+        $sectionsEn = is_array($dataEn['page'] ?? null) && is_array($dataEn['page']['sections'] ?? null)
+            ? $dataEn['page']['sections']
+            : (is_array($dataEn['sections'] ?? null) ? $dataEn['sections'] : []);
+        $entryListDe = $this->findSectionByStyle($sectionsDe, 'entry-list');
+        $entryListEn = $this->findSectionByStyle($sectionsEn, 'entry-list');
+        self::assertNotNull($entryListDe);
+        self::assertNotNull($entryListEn);
+        self::assertSame(
+            'Freigabe|Freigabe, Hinweis|Hinweis|Funktion, Hinweis|Funktion',
+            $this->firstChildTextContent($entryListDe)
+        );
+        self::assertSame(
+            'Release|Release, Notice|Notice|Feature, Notice|Feature',
+            $this->firstChildTextContent($entryListEn)
+        );
+    }
+
+    public function testEntryListScopePrefixExposesScopedInterpolationTokens(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_scope', openAccess: true);
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => ['qa_answer' => 'Scoped'],
+        ]);
+        $this->assertEnvelopeSuccess($envelope);
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+
+        $listPage = $this->pages->createPage('qa_el_scope_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_scope_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+        $this->setSectionField($listSection, 'scope', 'item', 1);
+
+        $cardSection = $this->pages->createSection('qa_el_scope_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{item.qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $sections = is_array($data['page']['sections'] ?? null)
+            ? $data['page']['sections']
+            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $entryList = $this->findSectionByStyle($sections, 'entry-list');
+        self::assertNotNull($entryList);
+        self::assertSame('Scoped', $this->firstChildTextContent($entryList));
+    }
+
+    public function testEntryListOwnEntriesOnlyDefaultShowsOnlyCurrentUserRows(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_own', openAccess: false);
+        $this->pages->grantGroupAcl(
+            $formPage,
+            $this->subjectGroup(),
+            select: true,
+            insert: true,
+            update: false,
+            delete: false,
+        );
+
+        $ownerEnvelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => ['qa_answer' => 'owner-row'],
+        ], $this->loginAsQaUser());
+        $this->assertEnvelopeSuccess($ownerEnvelope);
+
+        $otherEnvelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => ['qa_answer' => 'other-row'],
+        ], $this->loginAsQaAdmin());
+        $this->assertEnvelopeSuccess($otherEnvelope);
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+
+        $listPage = $this->pages->createPage('qa_el_own_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_own_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        // own_entries_only left unset — catalog default is checked (own rows only).
+
+        $cardSection = $this->pages->createSection('qa_el_own_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $sections = is_array($data['page']['sections'] ?? null)
+            ? $data['page']['sections']
+            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $entryList = $this->findSectionByStyle($sections, 'entry-list');
+        self::assertNotNull($entryList);
+        $children = is_array($entryList['children'] ?? null) ? $entryList['children'] : [];
+        self::assertCount(1, $children, 'Default own_entries_only must hide other users rows.');
+        self::assertSame('owner-row', $this->firstChildTextContent($entryList));
+    }
+
+    public function testEntryListSelectedColumnsLimitsLoadedFields(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_cols', openAccess: true);
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => ['qa_answer' => 'only-col'],
+        ]);
+        $this->assertEnvelopeSuccess($envelope);
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'DESC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+        $tableName = (string) $dataTable->getName();
+
+        $columnsEnvelope = $this->jsonRequest(
+            'GET',
+            '/cms-api/v1/admin/data/tables/' . rawurlencode($tableName) . '/columns',
+            null,
+            $this->loginAsQaAdmin(),
+        );
+        $columnsData = $this->assertEnvelopeSuccess($columnsEnvelope);
+        $columns = is_array($columnsData['columns'] ?? null) ? $columnsData['columns'] : [];
+        self::assertNotEmpty($columns);
+        $fieldKey = '';
+        foreach ($columns as $column) {
+            if (!is_array($column)) {
+                continue;
+            }
+            $candidate = $column['fieldKey'] ?? '';
+            if (is_string($candidate) && $candidate !== '' && !($column['standard'] ?? false)) {
+                $fieldKey = $candidate;
+                break;
+            }
+        }
+        self::assertNotSame('', $fieldKey, 'Form-owned table must expose a non-standard field key.');
+
+        $listPage = $this->pages->createPage('qa_el_cols_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_cols_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+        $this->setSectionField($listSection, 'selected_columns', $fieldKey, 1);
+
+        $cardSection = $this->pages->createSection('qa_el_cols_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $sections = is_array($data['page']['sections'] ?? null)
+            ? $data['page']['sections']
+            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $entryList = $this->findSectionByStyle($sections, 'entry-list');
+        self::assertNotNull($entryList);
+        self::assertSame('only-col', $this->firstChildTextContent($entryList));
+    }
+
+    public function testEntryListFilterUsesDataConfigHelperScope(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_helper', openAccess: true);
+        $categoryInput = $this->addNamedFormInput($formSection, 'qa_el_helper_category', 'category');
+
+        $rows = [
+            ['qa_answer' => 'shown-one', 'category' => 'keep'],
+            ['qa_answer' => 'shown-two', 'category' => 'keep'],
+            ['qa_answer' => 'hidden', 'category' => 'skip'],
+        ];
+        foreach ($rows as $row) {
+            $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+                'page_id' => (int) $formPage->getId(),
+                'section_id' => (int) $formSection->getId(),
+                'form_data' => $row,
+            ]));
+        }
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+        $tableName = (string) $dataTable->getName();
+        $categoryFieldKey = 'section_' . $categoryInput->getId();
+
+        $listPage = $this->pages->createPage('qa_el_helper_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_helper_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionDataConfig($listSection, [[
+            'scope' => 'filters',
+            'table' => $tableName,
+            'retrieve' => 'first',
+            'current_user' => false,
+        ]]);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+        $this->setSectionField(
+            $listSection,
+            'filter',
+            sprintf("%s = '{{filters.%s}}'", $categoryFieldKey, $categoryFieldKey),
+            1,
+        );
+
+        $cardSection = $this->pages->createSection('qa_el_helper_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $entryList = $this->findSectionByStyle($this->sectionsFromPayload($data), 'entry-list');
+        self::assertNotNull($entryList);
+
+        $texts = $this->childTextContents($entryList);
+        sort($texts);
+        self::assertSame(['shown-one', 'shown-two'], $texts);
+    }
+
+    public function testEntryListDataConfigTableAloneDoesNotLoadRowsWithoutPropertyDataTable(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_legacy_cfg', openAccess: true);
+
+        foreach (['one', 'two'] as $value) {
+            $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+                'page_id' => (int) $formPage->getId(),
+                'section_id' => (int) $formSection->getId(),
+                'form_data' => ['qa_answer' => $value],
+            ]));
+        }
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+        $tableName = (string) $dataTable->getName();
+
+        $listPage = $this->pages->createPage('qa_el_legacy_cfg_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_legacy_cfg_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionDataConfig($listSection, [[
+            'scope' => 'entries',
+            'table' => $tableName,
+            'retrieve' => 'all',
+            'current_user' => false,
+        ]]);
+
+        $cardSection = $this->pages->createSection('qa_el_legacy_cfg_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $entryList = $this->findSectionByStyle($this->sectionsFromPayload($data), 'entry-list');
+        self::assertNotNull($entryList);
+        self::assertCount(
+            0,
+            is_array($entryList['children'] ?? null) ? $entryList['children'] : [],
+            'Legacy data_config row binding must not hydrate entry-list without fields.data_table.',
+        );
+    }
+
+    public function testEntryListPropertyDataTableIsOnlyRowSource(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_dual_cfg', openAccess: true);
+
+        foreach (['alpha', 'beta'] as $value) {
+            $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+                'page_id' => (int) $formPage->getId(),
+                'section_id' => (int) $formSection->getId(),
+                'form_data' => ['qa_answer' => $value],
+            ]));
+        }
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+        $tableName = (string) $dataTable->getName();
+
+        $listPage = $this->pages->createPage('qa_el_dual_cfg_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_dual_cfg_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionDataConfig($listSection, [[
+            'scope' => 'entries',
+            'table' => $tableName,
+            'retrieve' => 'all',
+            'current_user' => false,
+        ]]);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+
+        $cardSection = $this->pages->createSection('qa_el_dual_cfg_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $entryList = $this->findSectionByStyle($this->sectionsFromPayload($data), 'entry-list');
+        self::assertNotNull($entryList);
+        self::assertCount(
+            2,
+            is_array($entryList['children'] ?? null) ? $entryList['children'] : [],
+            'fields.data_table must be the sole row source even when legacy data_config entries scope is present.',
+        );
+    }
+
+    public function testEntryListFilterRejectsUnsafeValueFromDataConfigHelperScope(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_el_unsafe_helper', openAccess: true);
+        $categoryInput = $this->addNamedFormInput($formSection, 'qa_el_unsafe_category', 'category');
+
+        $this->assertEnvelopeSuccess($this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => [
+                'qa_answer' => 'leak',
+                'category' => "'; DELETE FROM data_rows WHERE '1'='1",
+            ],
+        ]));
+
+        $firstRow = $this->em->getRepository(DataRow::class)->findOneBy([], ['id' => 'ASC']);
+        self::assertInstanceOf(DataRow::class, $firstRow);
+        $dataTable = $firstRow->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+        $tableName = (string) $dataTable->getName();
+        $categoryFieldKey = 'section_' . $categoryInput->getId();
+
+        $listPage = $this->pages->createPage('qa_el_unsafe_helper_list', openAccess: false);
+        $this->pages->grantGroupAcl($listPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $listSection = $this->pages->createSection('qa_el_unsafe_helper_holder', 'entry-list');
+        $this->pages->linkSectionToPage($listPage, $listSection, 10);
+        $this->setSectionDataConfig($listSection, [[
+            'scope' => 'filters',
+            'table' => $tableName,
+            'retrieve' => 'first',
+            'current_user' => false,
+        ]]);
+        $this->setSectionField($listSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($listSection, 'own_entries_only', '0', 1);
+        $this->setSectionField(
+            $listSection,
+            'filter',
+            sprintf("%s = '{{filters.%s}}'", $categoryFieldKey, $categoryFieldKey),
+            1,
+        );
+
+        $cardSection = $this->pages->createSection('qa_el_unsafe_helper_card', 'text');
+        $this->linkChild($listSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess(
+            $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
+        );
+        $entryList = $this->findSectionByStyle($this->sectionsFromPayload($data), 'entry-list');
+        self::assertNotNull($entryList);
+        self::assertCount(
+            0,
+            is_array($entryList['children'] ?? null) ? $entryList['children'] : [],
+            'Unsafe helper scope values interpolated into the entry filter must yield no rows.',
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return list<array<string, mixed>>
+     */
+    private function sectionsFromPayload(array $data): array
+    {
+        if (is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)) {
+            return $data['page']['sections'];
+        }
+
+        return is_array($data['sections'] ?? null) ? $data['sections'] : [];
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     * @return list<string>
+     */
+    private function childTextContents(array $section): array
+    {
+        $children = is_array($section['children'] ?? null) ? $section['children'] : [];
+        $texts = [];
+        foreach ($children as $child) {
+            if (!is_array($child)) {
+                continue;
+            }
+            $content = $this->firstChildTextContent(['children' => [$child]]);
+            if (is_string($content)) {
+                $texts[] = $content;
+            }
+        }
+
+        return $texts;
+    }
+
+    private function addNamedFormInput(Section $formSection, string $sectionName, string $inputName): Section
+    {
+        $input = $this->pages->createSection($sectionName, 'input');
+        $this->linkChild($formSection, $input);
+        $this->setSectionField($input, 'name', $inputName, 1);
+
+        return $input;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $config
+     */
+    private function setSectionDataConfig(Section $section, array $config): void
+    {
+        $section->setDataConfig(json_encode($config, JSON_THROW_ON_ERROR));
+        $this->em->persist($section);
+        $this->em->flush();
+    }
+
     /**
      * @param array<int|string, mixed> $sections
      * @return array<string, mixed>|null
@@ -172,6 +739,28 @@ final class EntryListHydrationTest extends QaWebTestCase
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function firstChildTextContent(array $section): ?string
+    {
+        $children = $section['children'] ?? null;
+        if (!is_array($children)) {
+            return null;
+        }
+        $firstChild = $children[0] ?? null;
+        if (!is_array($firstChild)) {
+            return null;
+        }
+        $text = $firstChild['text'] ?? null;
+        if (!is_array($text)) {
+            return null;
+        }
+        $content = $text['content'] ?? null;
+
+        return is_string($content) ? $content : null;
     }
 
     private function linkChild(Section $parent, Section $child): void

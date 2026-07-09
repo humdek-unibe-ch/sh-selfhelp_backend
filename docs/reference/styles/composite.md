@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 composite styles (`@selfhelp/shared` `composite` category).
-Last verified: 2026-06-22.
+Last verified: 2026-07-09.
 Source of truth: `src/types/styles/composite.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Composite styles combine child sections into a richer widget (accordions, tabs,
@@ -143,11 +143,27 @@ the matching item children inside it.
 
 **Purpose.** A **data/context holder** that renders one block per row of a bound data table (any table, not only a `form-log`).
 
-**Administrators.** Show a collection of records (e.g. team members, journal entries). Bind it to a data table via the section's data config; lay out how each row looks using child sections, which interpolate the row's fields with `{{field_name}}`. To make a list/detail pattern, give each row a link to its detail page using `/<base>/{{record_id}}`. The **Create list + detail pages** wizard (Admin → Pages) scaffolds this for you — see [../../cookbook/cms-in-cms-list-detail.md](../../cookbook/cms-in-cms-list-detail.md).
+**Administrators.** Show a collection of records (e.g. team members, journal entries). Bind it to a data table via the **Data table** property field in the section inspector (Properties panel); lay out how each row looks using child sections, which interpolate the row's fields with `{{field_name}}`. Optional **Filter** accepts a SQL WHERE fragment (route tokens like `{{route.category}}` are validated server-side). **Own entries only** limits rows to the current user (default on). **Scope** prefixes row keys (`scope.name`). **Load as table** wraps each clone in a `<table>` row on web. To make a list/detail pattern, give each row a link to its detail page using `/<base>/{{record_id}}`. The **Create list + detail pages** wizard (Admin → Pages) scaffolds this for you — see [../../cookbook/cms-in-cms-list-detail.md](../../cookbook/cms-in-cms-list-detail.md).
 
-**Developers.** Pure holder driven by `data_config` (scope `entries`); the **backend** clones the child template once per bound row during page render (`PageService::processSectionsRecursively`, Step 8) and flattens each row's columns into top-level interpolation tokens, so `{{name}}` / `{{record_id}}` resolve per clone (row keys are remapped from the immutable `section_<id>` field keys back to the current input names). The web/mobile renderers just render the already-cloned children. No rows → no children. Carries no presentational fields of its own. Pairs with `entry-record` / `entry-record-delete`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+**Data binding (important).** Which rows appear is controlled **only** by the style property fields below — not by **Data configuration** (`global_fields.data_config`).
 
-**Distinctive fields.** None beyond the common fields. Data binding via `data_config` (see [_conventions.md](./_conventions.md)).
+| Task | Where to configure it |
+|------|------------------------|
+| Choose the data table | **Data table** property field |
+| Limit rows to the current user | **Own entries only** property field |
+| SQL constraints on loaded rows | **Filter** property field (SQL builder) |
+| Prefix row tokens (`item.name`) | **Scope** property field |
+| Optional column subset | **Selected columns** property field |
+
+**Do not** use Data configuration → *Table* on an `entry-list` section to bind rows. That path applies to other styles (`loop`, `data-container`, …) but is **ignored** for entry holders since core `0.1.35`. A section with only a legacy `data_config.table` binding and an empty **Data table** field renders **no rows**.
+
+You **may** still add Data configuration on the same section when you need **helper scopes** only — for example a `filters` scope whose values you reference inside the **Filter** property field (`{{filters.category}}`). Helper scopes do not replace **Data table**.
+
+**Developers.** Pure holder driven by style property fields (`data_table`, `own_entries_only`, `filter`, `scope`, `load_as_table`, `selected_columns`); the **backend** clones the child template once per bound row during page render (`PageService::resolveEntryRows` / `processSectionsRecursively`, Step 8) and flattens each row's columns into top-level interpolation tokens, so `{{name}}` / `{{record_id}}` resolve per clone (row keys are remapped from the immutable `section_<id>` field keys back to the current input names). Row table and retrieve mode come **only** from those property fields — never from `data_config.table`. `data_config` on the same section may still run earlier in the pipeline to populate helper scopes (e.g. `filters`) that the author `filter` field may reference via `{{filters.*}}`. Filters pass through `DataTableFilterService` (typed route params, SQL denylist). The web/mobile renderers just render the already-cloned children. No rows → no children. Carries no presentational fields of its own. Pairs with `entry-record` / `entry-record-delete`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+
+**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `filter` (code/SQL), `scope` (text), `load_as_table` (checkbox), `selected_columns` (`select-data_table_columns`, optional column subset).
+
+Filter safety: see [data-table-filter-safety.md](../../developer/data-table-filter-safety.md).
 
 **Children.** Yes (the per-entry template, cloned per row by the backend).
 
@@ -157,11 +173,15 @@ the matching item children inside it.
 
 **Purpose.** A **data/context holder** for a single record of a bound data table.
 
-**Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`), filter the holder to the URL's record by setting the data config filter to `record_id = {{route.record_id}}`.
+**Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`), set **Data table** to the owning form's table and keep **URL parameter** at `record_id` (default). The backend loads the row whose `record_id` matches that route parameter automatically. Use **Filter** for additional constraints only — do not author `record_id = {{route.record_id}}` manually.
 
-**Developers.** Pure holder driven by `data_config` (scope `record`, `retrieve: first`); the **backend** flattens the bound record's columns into top-level interpolation tokens for the section and its children (`{{name}}`, `{{record_id}}`), remapping the immutable `section_<id>` field keys back to input names. Bare filters (`record_id = {{route.record_id}}` — the documented authoring form) are glued to the query with `AND` automatically. The `{{route.*}}` params come from the matched public route (see [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md)). Carries no presentational fields of its own.
+**Data binding (important).** Same rule as `entry-list`: the record comes **only** from property fields (**Data table**, **URL parameter**, **Own entries only**, **Filter**, **Scope**). **Data configuration** → *Table* does **not** load the record. Legacy `data_config.table` bindings are ignored; an empty **Data table** field means the detail page shows no record content.
 
-**Distinctive fields.** None beyond the common fields; binding via `data_config`.
+Helper scopes from Data configuration (e.g. `filters`) remain valid when referenced from the **Filter** property field or child interpolation — they do not choose which table or row to load.
+
+**Developers.** Pure holder driven by style property fields (`data_table`, `own_entries_only`, `filter`, `scope`, `url_param`); the **backend** selects exactly one row (`getData` with `dbFirst`), appending `AND record_id = <int>` from the validated route param, then flattens the record's columns into top-level interpolation tokens for the section and its children. Row table and retrieve mode come **only** from those property fields — never from `data_config.table`. `data_config` on the same section may still populate helper scopes for filter interpolation (e.g. `{{filters.category}}`). Author filters pass through `DataTableFilterService`. The `{{route.*}}` params come from the matched public route (see [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md)). Carries no presentational fields of its own.
+
+**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `filter` (code/SQL), `scope` (text), `url_param` (text, default `record_id`).
 
 **Children.** Yes.
 

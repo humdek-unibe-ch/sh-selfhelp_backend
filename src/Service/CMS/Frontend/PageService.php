@@ -15,6 +15,7 @@ use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
+use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\CmsPreferenceService;
@@ -75,7 +76,9 @@ class PageService extends BaseService
         private readonly ConditionService $conditionService,
         private readonly \App\Repository\PageVersionRepository $pageVersionRepository,
         private readonly CmsPreferenceService $cmsPreferenceService,
-        private readonly \App\Routing\PageRouteResolverService $pageRouteResolver
+        private readonly \App\Routing\PageRouteResolverService $pageRouteResolver,
+        private readonly OptionLabelHydrator $optionLabelHydrator,
+        private readonly DataTableFilterService $dataTableFilterService,
     ) {
     }
 
@@ -830,20 +833,23 @@ class PageService extends BaseService
                 // (invalidateEntityScope(DATA_TABLE, id) on submit/update/delete)
                 // cannot bust the cached page and the rendered rows stay stale until
                 // a manual cache clear.
-                $entryTableSectionIds = [];
+                $entryHolderSectionIds = [];
                 foreach ($flatSections as $section) {
-                    if (($section['style_name'] ?? null) === StyleNames::STYLE_ENTRY_TABLE) {
+                    $style = $section['style_name'] ?? null;
+                    if ($style === StyleNames::STYLE_ENTRY_TABLE
+                        || $style === StyleNames::STYLE_ENTRY_LIST
+                        || $style === StyleNames::STYLE_ENTRY_RECORD) {
                         $rawSectionId = $section['id'] ?? null;
                         $sectionId = is_numeric($rawSectionId) ? (int) $rawSectionId : 0;
                         if ($sectionId > 0) {
-                            $entryTableSectionIds[] = $sectionId;
+                            $entryHolderSectionIds[] = $sectionId;
                         }
                     }
                 }
 
-                if ($entryTableSectionIds !== []) {
+                if ($entryHolderSectionIds !== []) {
                     $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
-                        $entryTableSectionIds,
+                        $entryHolderSectionIds,
                         self::PROPERTY_LANGUAGE_ID
                     );
 
@@ -1044,28 +1050,26 @@ class PageService extends BaseService
             $sectionData = $this->mergeDataEfficiently($parentData, $this->asArray($section['retrieved_data'] ?? []));
 
             // Step 4b: Guarantee the public route scope ({{route.*}}) survives
-            // data binding (issue #30). entry-list / entry-record / loop store
-            // their rows under their own `data_config` scope, but a retrieved
-            // scope accidentally named `route` must never shadow the URL-derived
-            // route params that descendant sections (e.g. entry-record filtering
-            // on {{route.record_id}}) depend on. Re-applying the inherited route
-            // scope after the merge keeps loop/record context namespaced.
+            // data binding (issue #30). `loop` may still bind rows through
+            // `data_config`, but entry-list / entry-record load rows from style
+            // property fields. A retrieved scope accidentally named `route` must
+            // never shadow the URL-derived route params that descendant sections
+            // (e.g. entry-record scoping on `url_param`) depend on.
             if (isset($parentData['route'])) {
                 $sectionData['route'] = $parentData['route'];
             }
 
-            // Step 4c: Entry data binding (issue #30). The wizard/bundles author
-            // row columns as TOP-LEVEL tokens inside entry subtrees ({{name}},
-            // {{record_id}}), so entry-record flattens its bound row into the
-            // section data here, and entry-list / loop clone their child
-            // template once per row at Step 8 (each clone rendered with that
-            // row flattened). `loop` additionally accepts a static JSON array
-            // of rows in its `loop` field when no `data_config` is bound.
+            // Step 4c: Entry row hydration (issue #30). entry-list / entry-record
+            // load their loop rows ONLY from style property fields (`data_table`,
+            // `own_entries_only`, `filter`, …) — never from `data_config.table`.
+            // `data_config` on the same section may still run above (Step 3) to
+            // populate helper scopes in `$sectionData` (e.g. `filters`) that the
+            // author `filter` field may reference via `{{filters.*}}`.
             $styleName = isset($section['style_name']) ? $this->asString($section['style_name']) : '';
             $isRepeater = $styleName === StyleNames::STYLE_ENTRY_LIST || $styleName === StyleNames::STYLE_LOOP;
             $entryRows = [];
             if ($isRepeater || $styleName === StyleNames::STYLE_ENTRY_RECORD) {
-                $entryRows = $this->resolveEntryRows($section, $parentData, $languageId);
+                $entryRows = $this->resolveEntryRows($section, $sectionData, $languageId);
                 if ($entryRows === [] && $styleName === StyleNames::STYLE_LOOP) {
                     $entryRows = $this->resolveLoopFieldRows($section, $sectionData);
                 }
@@ -1153,76 +1157,146 @@ class PageService extends BaseService
     }
 
     /**
-     * Resolve the bound rows for an entry-list / entry-record section from its
-     * FIRST `data_config` entry. The generic scope retrieval (Step 3) collapses
-     * multi-row results into comma-joined strings (`processAll`, for
-     * `{{scope.field}}` tokens), so entry binding re-retrieves the same config
-     * in the row-preserving `JSON` mode — the repository layer is cached, so
-     * this does not hit the database twice. `retrieve: first|last` keeps its
-     * single-record semantics and is normalised to a one-row list. Row keys
-     * are remapped from the immutable storage `field_key` (`section_<id>`)
-     * back to the current human input names, so the wizard/bundle top-level
-     * tokens ({{name}}, {{role}}) resolve.
+     * Resolve bound rows for entry-list / entry-record from style property fields
+     * (`data_table`, `own_entries_only`, `filter`, `scope`, `url_param`).
+     *
+     * Row table and retrieve mode come **only** from those fields — never from
+     * `data_config`. `$interpolationContext` carries parent/route data plus any
+     * helper scopes already retrieved from `data_config` on this section.
      *
      * @param array<string, mixed> $section
-     * @param array<array-key, mixed> $parentData Parent data for config interpolation.
+     * @param array<array-key, mixed> $interpolationContext Parent + retrieved helper scopes
      * @return list<array<string, mixed>>
      */
-    private function resolveEntryRows(array $section, array $parentData, int $languageId): array
+    private function resolveEntryRows(array $section, array $interpolationContext, int $languageId): array
     {
-        $dataConfig = is_array($section['data_config'] ?? null) ? $section['data_config'] : [];
-        $firstConfig = null;
-        foreach ($dataConfig as $config) {
-            if (is_array($config)) {
-                $firstConfig = $this->toConfigArray($config);
-                break;
-            }
-        }
-        if ($firstConfig === null) {
+        $styleName = $this->asString($section['style_name'] ?? '');
+        $dataTableId = (int) $this->getSectionPropertyContent($section, 'data_table');
+        if ($dataTableId <= 0) {
             return [];
         }
 
-        $retrieve = isset($firstConfig['retrieve']) ? $this->asString($firstConfig['retrieve']) : 'all';
-        if ($retrieve !== 'first' && $retrieve !== 'last') {
-            $firstConfig['retrieve'] = 'JSON';
+        $dataTable = $this->dataService->getDataTableById($dataTableId);
+        if ($dataTable === null) {
+            return [];
+        }
+
+        $ownEntriesOnly = $this->getSectionPropertyBool($section, 'own_entries_only', true);
+        $rawFilter = $this->getSectionPropertyContent($section, 'filter');
+        $filter = $this->dataTableFilterService->prepareFilter(
+            $rawFilter,
+            $interpolationContext,
+            is_array($interpolationContext['route_requirements'] ?? null)
+                ? $interpolationContext['route_requirements']
+                : null,
+        );
+        if ($rawFilter !== '' && $filter === '') {
+            return [];
+        }
+
+        if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
+            $urlParam = $this->getSectionPropertyContent($section, 'url_param', 'record_id');
+            $route = is_array($interpolationContext['route'] ?? null) ? $interpolationContext['route'] : [];
+            $recordId = $this->dataTableFilterService->validateRecordId($route[$urlParam] ?? null);
+            if ($recordId === null) {
+                return [];
+            }
+            $filter = $this->dataTableFilterService->appendRecordIdFilter($filter, $recordId);
+            if ($filter === '') {
+                return [];
+            }
         }
 
         try {
-            // Same interpolation the scope retrieval applies (filters like
-            // "record_id = {{route.record_id}}" must resolve identically).
-            $interpolatedConfig = $this->interpolateDataConfig($firstConfig, $parentData);
-            $rowsData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
-        } catch (\Exception $e) {
-            return [];
-        }
-
-        if ($rowsData === []) {
-            return [];
-        }
-
-        // JSON mode returns a list of records; first/last the record itself.
-        $rows = array_is_list($rowsData) ? $rowsData : [$rowsData];
-
-        $tableName = isset($firstConfig['table']) ? $this->asString($firstConfig['table']) : '';
-        if ($tableName !== '') {
-            $dataTable = $this->dataService->getDataTableByName($tableName);
-            if ($dataTable !== null) {
-                $rows = $this->dataService->remapEntriesToInputNames((int) $dataTable->getId(), $rows);
+            $dbFirst = $styleName === StyleNames::STYLE_ENTRY_RECORD;
+            $selectedColumns = '';
+            if ($styleName === StyleNames::STYLE_ENTRY_LIST) {
+                $selectedColumns = $this->getSectionPropertyContent($section, 'selected_columns');
             }
+            $rows = $this->dataService->getData(
+                $dataTableId,
+                $filter,
+                $ownEntriesOnly,
+                null,
+                $dbFirst,
+                true,
+                $languageId,
+                $selectedColumns,
+            );
+        } catch (\Exception) {
+            return [];
         }
 
+        if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
+            $rows = $rows !== [] ? [$rows] : [];
+        } elseif (!array_is_list($rows)) {
+            $rows = $rows === [] ? [] : [$rows];
+        }
+
+        $tableName = (string) $dataTable->getName();
+        if ($rows !== []) {
+            $rows = $this->dataService->remapEntriesToInputNames($dataTableId, $rows);
+        }
+
+        $scope = $this->getSectionPropertyContent($section, 'scope');
         $normalized = [];
+        $index = 0;
         foreach ($rows as $row) {
-            if (is_array($row)) {
-                $rowArray = [];
-                foreach ($row as $key => $value) {
-                    $rowArray[(string) $key] = $value;
-                }
-                $normalized[] = $rowArray;
+            if (!is_array($row)) {
+                continue;
             }
+            $rowArray = [];
+            foreach ($row as $key => $value) {
+                $rowArray[(string) $key] = $value;
+            }
+            if ($styleName === StyleNames::STYLE_ENTRY_LIST) {
+                $rowArray['_index'] = $index;
+                $index++;
+            }
+            if ($scope !== '') {
+                $scoped = [];
+                foreach ($rowArray as $key => $value) {
+                    if ($key === '_index' || str_contains((string) $key, '.')) {
+                        continue;
+                    }
+                    $scoped[$key] = $value;
+                    $rowArray[$scope . '.' . $key] = $value;
+                }
+                if ($scoped !== []) {
+                    $rowArray[$scope] = $scoped;
+                }
+            }
+            $normalized[] = $rowArray;
+        }
+
+        if ($tableName !== '' && $normalized !== []) {
+            $normalized = $this->optionLabelHydrator->hydrate($normalized, $tableName, $languageId);
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function getSectionPropertyContent(array $section, string $fieldName, string $default = ''): string
+    {
+        $field = $section[$fieldName] ?? null;
+        if (is_array($field) && array_key_exists('content', $field)) {
+            return $this->asString($field['content']);
+        }
+
+        return $default;
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function getSectionPropertyBool(array $section, string $fieldName, bool $default = true): bool
+    {
+        $raw = $this->getSectionPropertyContent($section, $fieldName, $default ? '1' : '0');
+
+        return $raw !== '0';
     }
 
     /**
@@ -1488,7 +1562,7 @@ class PageService extends BaseService
                         // Interpolate the config before retrieving data
                         // availableData contains the structured parent data (system, globals, parent scopes)
                         $interpolatedConfig = $this->interpolateDataConfig($this->toConfigArray($config), $availableData);
-                        $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
+                        $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId, $availableData);
                         // Use the scope as key if available, otherwise use index
                         $key = isset($config['scope']) ? $this->asString($config['scope']) : $configIndex;
                         $retrievedData[$key] = $configData;
@@ -1531,7 +1605,18 @@ class PageService extends BaseService
 
         foreach ($fieldsToInterpolate as $field) {
             if (isset($interpolatedConfig[$field]) && is_string($interpolatedConfig[$field])) {
-                $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
+                if ($field === 'filter') {
+                    $routeRequirements = is_array($availableData['route_requirements'] ?? null)
+                        ? $availableData['route_requirements']
+                        : null;
+                    $interpolatedConfig[$field] = $this->dataTableFilterService->prepareFilter(
+                        $interpolatedConfig[$field],
+                        $availableData,
+                        $routeRequirements,
+                    );
+                } else {
+                    $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
+                }
             }
         }
 

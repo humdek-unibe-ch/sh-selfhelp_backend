@@ -27,6 +27,7 @@ class SectionUtilityService
         private readonly UserContextService $userContextService,
         private readonly VariableResolverService $variableResolverService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly DataTableFilterService $dataTableFilterService,
     ) {
     }
 
@@ -295,14 +296,14 @@ class SectionUtilityService
      * @param int $languageId Language ID for data retrieval
      * @return array<array-key, mixed> Retrieved data or empty array if failed
      */
-    public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1): array
+    public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1, array $interpolationContext = []): array
     {
         $parsedConfig = $this->parseParams($dataConfig, $params);
         if (!$parsedConfig) {
             return [];
         }
 
-        return $this->fetchData($parsedConfig, $languageId);
+        return $this->fetchData($parsedConfig, $languageId, $interpolationContext);
     }
 
     /**
@@ -340,9 +341,10 @@ class SectionUtilityService
      *
      * @param array<string, mixed> $dataConfig Parsed data configuration
      * @param int $languageId Language ID for data retrieval
+     * @param array<array-key, mixed> $interpolationContext Scopes for filter token interpolation (`route`, parent scopes, …)
      * @return array<array-key, mixed> Retrieved data
      */
-    private function fetchData(array $dataConfig, int $languageId): array
+    private function fetchData(array $dataConfig, int $languageId, array $interpolationContext = []): array
     {
         if (!isset($dataConfig['table'])) {
             return [];
@@ -350,17 +352,12 @@ class SectionUtilityService
 
         $tableName = $this->asString($dataConfig['table']);
         $retrieve = $dataConfig['retrieve'] ?? 'all';
-        $filter = trim($this->asString($dataConfig['filter'] ?? ''));
-        $currentUser = $dataConfig['current_user'] ?? true;
-
-        // The stored procedure appends the filter verbatim after `WHERE 1=1 `,
-        // so a bare condition ("record_id = 34" — the documented authoring
-        // form, see docs/cookbook/cms-in-cms-list-detail.md) must be glued
-        // with AND. Filters that already start with a connective or a clause
-        // keyword pass through unchanged.
-        if ($filter !== '' && preg_match('/^(AND|OR|ORDER\s+BY|LIMIT|GROUP\s+BY|HAVING)\b/i', $filter) !== 1) {
-            $filter = 'AND ' . $filter;
+        $rawFilter = trim($this->asString($dataConfig['filter'] ?? ''));
+        $filter = $this->resolveDataConfigFilter($rawFilter, $interpolationContext);
+        if ($rawFilter !== '' && $filter === '') {
+            return [];
         }
+        $currentUser = $dataConfig['current_user'] ?? true;
 
         // Get data table
         $dataTable = $this->dataService->getDataTableByName($tableName);
@@ -464,6 +461,29 @@ class SectionUtilityService
             default:
                 return $this->processAll($data, $dataConfig);
         }
+    }
+
+    /**
+     * Resolve a data_config filter that may already have been canonicalized by
+     * {@see PageService::interpolateDataConfig()} or still carry `{{ }}` tokens.
+     *
+     * @param array<array-key, mixed> $interpolationContext
+     */
+    private function resolveDataConfigFilter(string $rawFilter, array $interpolationContext): string
+    {
+        if ($rawFilter === '') {
+            return '';
+        }
+
+        if (!str_contains($rawFilter, '{{')) {
+            if (!$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return '';
+            }
+
+            return $this->dataTableFilterService->glueLeadingAnd($rawFilter);
+        }
+
+        return $this->dataTableFilterService->prepareFilter($rawFilter, $interpolationContext);
     }
 
     /**
