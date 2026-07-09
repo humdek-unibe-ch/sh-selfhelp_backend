@@ -514,6 +514,14 @@ the same change wave:
 > `>=0.1.34`** (both `<0.2.0`). Host `selfhelp.cms_version` becomes `0.1.34`.
 > `@selfhelp/shared` keeps `3.0.0` and adds the `ICmsApp*` / `TCmsAppRole` +
 > `admin.cms_app.*` permission constants (additive within the same major).
+>
+> **User-owned enum options (additive inside the same unreleased pair):**
+> core adds the `option_labels` field and runtime `_{field}_label(s)` hydration;
+> frontend 0.1.60 and mobile 0.1.33 consume the canonical shared resolver, and
+> the six CMS-in-CMS templates adopt stable codes. This lands before the
+> 0.1.34 / 0.1.60 pair is tagged, so the manifest floors remain
+> **frontend `>=0.1.60` ⇄ core `>=0.1.34`**. `@selfhelp/shared` remains 3.0.0
+> with additive helpers in the same release wave.
 
 > **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
 > wave):** further additive issue #30 follow-up. Core adds two page-property

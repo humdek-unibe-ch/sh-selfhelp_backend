@@ -42,6 +42,7 @@ Technical documentation for the SelfHelp Symfony backend: architecture, patterns
 - [20-cms-preferences-timezones.md](20-cms-preferences-timezones.md) - CMS preferences and timezone handling.
 - [css-class-json.md](css-class-json.md) - CSS class catalog JSON.
 - [style-schema-endpoint.md](style-schema-endpoint.md) - Style schema endpoint and the AI prompt catalog.
+- [30-user-owned-enum-options.md](30-user-owned-enum-options.md) - Stable option codes, language-bound labels, runtime hydration, and reserved template keys.
 
 ## System services
 

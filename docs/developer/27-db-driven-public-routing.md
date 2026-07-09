@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-06.
+Last verified: 2026-07-09.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository (issue #30).
 
 This document describes how **public page URLs** are resolved from the database,
@@ -139,17 +139,33 @@ The `reset-password` / `validate` styles read `{{route.user_id}}` and
 ## Entry styles as data/context holders
 
 `entry-list`, `entry-record`, and `entry-record-delete` are **holders**: their
-job is to bind a data scope (via `data_config`) and hydrate their children with
-row/record fields. They carry no presentational fields of their own.
+job is to bind a data table and hydrate their children with row/record fields.
+They carry no presentational fields of their own.
 
-- **List** (`entry-list`): `data_config` scope `entries` over a table. The
-  backend **clones the child template once per row** and merges each row's
-  columns at the clone's interpolation root, so `{{name}}` / `{{record_id}}`
-  resolve per card; each item links to the detail page with
-  `/<base>/{{record_id}}`. No rows → no children.
-- **Detail** (`entry-record`): `data_config` scope `record`, `retrieve: first`,
-  `filter: record_id = {{route.record_id}}`; the single record's fields are
-  merged at the interpolation root for the holder and its children.
+> **Authors:** configure **Data table** (and related property fields) in the
+> section inspector **Properties** panel. **Data configuration** → *Table* on an
+> `entry-list` / `entry-record` section does **not** load rows — it is ignored for
+> row binding. Use Data configuration on the same section only when you need extra
+> helper scopes (e.g. `filters`) referenced from the **Filter** property field or
+> child `{{…}}` tokens. See [composite.md](../reference/styles/composite.md#entry-list).
+
+**Entry-list / entry-record load rows only through style property fields** (`data_table`, `own_entries_only`,
+`filter`, `scope`, …). `global_fields.data_config` must not choose the row
+table or retrieve mode, but it may still run on the same section to populate
+helper scopes (e.g. `filters`) that the author `filter` field references via
+`{{filters.*}}`.
+
+- **List** (`entry-list`): property fields on the section (`data_table`,
+  `own_entries_only`, optional `filter`, `scope`, `load_as_table`,
+  `selected_columns`). The backend **clones the child template once per row**
+  and merges each row's columns at the clone's interpolation root, so
+  `{{name}}` / `{{record_id}}` resolve per card; each item links to the detail
+  page with `/<base>/{{record_id}}`. No rows → no children.
+- **Detail** (`entry-record`): same property fields plus `url_param` (default
+  `record_id`). The backend validates the route param and appends
+  `AND record_id = <int>`; author `filter` is for extra constraints only. The
+  single record's fields are merged at the interpolation root for the holder and
+  its children.
 - **Delete button** (`entry-record-delete`): inside an entry subtree the bound
   row's `record_id` is injected as a real field during hydration, which is what
   enables the per-row delete button on web and mobile.
@@ -157,7 +173,8 @@ row/record fields. They carry no presentational fields of their own.
   CRUD data table over a form's records — search/sort/pagination/CSV plus
   `add_url` / `edit_url` / inline delete, with server-computed per-row
   `_can_edit` / `_can_delete` flags.
-- `loop` is also a holder and must not overwrite the `route` context (see above).
+- `loop` is also a holder and may still bind rows through `data_config` or its
+  static `loop` JSON field; it must not overwrite the `route` context (see above).
 
 See [`../reference/styles/composite.md`](../reference/styles/composite.md).
 
@@ -241,19 +258,20 @@ Endpoints (admin):
 ### Portable data-table links (`@section:` owner token)
 
 Core CMS forms write to a data table **named by the form section id**, so an
-`entry-list`/`entry-record` `data_config.table` that points at an in-bundle form
-section would break on import (the id changes). The exporter solves this without a
-naming convention:
+`entry-list` / `entry-record` / `entry-table` `fields.data_table` reference that
+points at an in-bundle form section would break on import (the id changes). The
+exporter solves this without a naming convention:
 
-- **Export** rewrites any `data_config.table` that is a numeric id of a form
-  section *inside the bundle* to the portable token `"@section:<owner section
-  name>"`, and records that owner. The **`entry-table` `data_table` field** gets
-  the same treatment (numeric table id → `@section:<owner>` token), so the admin
-  grid binding survives the id change too. Owner section **names must be
-  unique** within the bundle (export fails loudly otherwise; the same section
-  legitimately reused on several pages counts once) so the token resolves
-  deterministically. The page structure is always made portable this way,
-  independent of whether data is exported. Validation warns about numeric
+- **Export** rewrites any `fields.data_table` on `entry-list`, `entry-record`, or
+  `entry-table` sections that is a numeric id of a form section *inside the
+  bundle* to the portable token `"@section:<owner section name>"`, and records
+  that owner. Entry holders **do not** ship row binding through
+  `global_fields.data_config` anymore. Other styles (for example `loop` or
+  `data-container`) may still use `data_config.table` portability. Owner section
+  **names must be unique** within the bundle (export fails loudly otherwise; the
+  same section legitimately reused on several pages counts once) so the token
+  resolves deterministically. The page structure is always made portable this
+  way, independent of whether data is exported. Validation warns about numeric
   `entry-table` references that cannot be tokenized (unportable).
 - **Data is opt-in.** `options.includeDataTables` emits a `data_tables[]` block
   (one entry per owned table: `owner_section_name` + human `columns`);
@@ -261,9 +279,10 @@ naming convention:
   via `DataService` and remapped from the immutable `section_<id>` keys).
 - **Import** builds a bundle-wide `source section name -> new section id` map as it
   recreates sections (`SectionExportImportService` now returns each section's
-  original `source_name`), then relinks every `@section:` token — `data_config`
-  tables and `entry-table` `data_table` fields alike — to the new form-owned
-  table id. With `options.importData` it (re)creates the owned table and
+  original `source_name`), then relinks every `@section:` token on
+  `fields.data_table` (entry holders + admin grid) to the new form-owned table id.
+  `data_config.table` tokens are still relinked for non-entry styles that use
+  them. With `options.importData` it (re)creates the owned table and
   re-inserts the rows through the **normal form-save path** (`DataService::saveData`
   remaps the human keys to the new `section_<id>` columns). An owner token /
   `data_tables[]` entry that does not resolve to an in-bundle section aborts the

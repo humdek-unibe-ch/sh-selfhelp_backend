@@ -155,6 +155,14 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 └─────────────────────────────────────────────────────────┘
 ```
 
+**Entry holders (`entry-list` / `entry-record`).** Steps 1–3 still run when
+`data_config` is present — they add helper scopes to the interpolation context
+(e.g. `filters`). Row cloning for entry holders happens in a separate step
+(`PageService::resolveEntryRows`) and reads **only** style property fields
+(`data_table`, `own_entries_only`, `filter`, `scope`, …). A `data_config.table`
+entry on an entry holder does **not** select rows. See
+[composite.md](../reference/styles/composite.md#entry-list).
+
 ---
 
 ## Preview vs Published Pages
