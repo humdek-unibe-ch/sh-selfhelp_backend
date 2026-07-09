@@ -86,6 +86,11 @@ class DataColumnService extends BaseService
         if (str_starts_with($key, '__')) {
             return true;
         }
+        // System-generated hydration fields (`_{field}_label` / `_labels`) are
+        // reserved and must never become real data columns.
+        if ($this->isGeneratedOptionLabelKey($key)) {
+            return true;
+        }
 
         return in_array($key, self::RESERVED_KEYS, true);
     }
@@ -117,8 +122,17 @@ class DataColumnService extends BaseService
      */
     public function assertValidFieldData(array $data): void
     {
-        foreach (array_keys($this->filterFieldData($data)) as $key) {
-            $this->assertValidFieldKey((string) $key);
+        foreach (array_keys($data) as $key) {
+            $fieldKey = (string) $key;
+            if ($this->isGeneratedOptionLabelKey($fieldKey)) {
+                throw new ServiceException(
+                    sprintf('Reserved runtime option label key "%s" cannot be submitted as a field.', $fieldKey),
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+            if (!$this->isReservedKey($fieldKey)) {
+                $this->assertValidFieldKey($fieldKey);
+            }
         }
     }
 
@@ -314,5 +328,10 @@ class DataColumnService extends BaseService
                 Response::HTTP_BAD_REQUEST
             );
         }
+    }
+
+    private function isGeneratedOptionLabelKey(string $key): bool
+    {
+        return preg_match('/^_[A-Za-z0-9_.]+_(label|labels)$/', $key) === 1;
     }
 }

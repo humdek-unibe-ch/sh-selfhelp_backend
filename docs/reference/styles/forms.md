@@ -3,8 +3,8 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-30.
-Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
+Last verified: 2026-07-09.
+Source of truth: backend field/style migrations and `OptionLabelHydrator`, `@selfhelp/shared` form types/helpers, the `admin/styles/schema` endpoint, and web/mobile renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
 it. Read [`_conventions.md`](./_conventions.md) first; common fields and standard
@@ -123,11 +123,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** A dropdown select (HTML `select` / Mantine `Select`).
 
-**Administrators.** A dropdown of predefined options. Provide `options` (the choices), allow multiple (`is_multiple`), live search, image options, and clearing.
+**Administrators.** A dropdown of predefined options. The section inspector's Options grid stores stable codes in `options` and translated labels in `option_labels`; allow multiple (`is_multiple`), live search, image options, and clearing.
 
-**Developers.** Renders a select; `options` is a serialized option list. `max` caps multi-select count.
+**Developers.** Renders a select through the shared option resolver; `options` is the language-neutral serialized catalog and `option_labels` is the active-language map. `max` caps multi-select count. Stored rows contain codes only; hydration emits `_{name}_label` or `_{name}_labels`.
 
-**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`, `mobile_select_presentation` (mobile-only: how the option list opens — bottom-sheet / dialog / popover). *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
+**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `option_labels`, `is_multiple`, `max`, `searchable`, `image_selector`, `clearable`, `is_required`, `disabled`, `mobile_select_presentation` (mobile-only: how the option list opens — bottom-sheet / dialog / popover). *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
 
 **Children.** No.
 
@@ -137,11 +137,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `Radio` / `RadioGroup` — pick exactly one option.
 
-**Administrators.** A single-choice question. Provide the options (`radio_options`), choose inline/orientation, and optionally render them as selectable cards.
+**Administrators.** A single-choice question. Configure codes and multilingual labels in the Options grid (`radio_options` + `option_labels`), choose inline/orientation, and optionally render them as selectable cards.
 
-**Developers.** Renders a `<Radio.Group>`. `web_radio_card` switches to card style; `web_use_input_wrapper` adds a label/description wrapper.
+**Developers.** Renders a `<Radio.Group>` through the shared option resolver. Rows store the selected code and hydration emits `_{name}_label`. `web_radio_card` switches to card style; `web_use_input_wrapper` adds a label/description wrapper.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `items`, `radio_options`, `is_inline`, `web_orientation`, `web_radio_label_position`, `web_radio_variant`, `web_radio_card`, `tooltip_label` / `web_tooltip_position`, `web_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `radio_options`, `option_labels`, `is_inline`, `orientation`, `web_radio_label_position`, `web_radio_variant`, `web_radio_card`, `tooltip_label` / `web_tooltip_position`, `web_use_input_wrapper`.
 
 **Children.** No.
 
@@ -154,6 +154,8 @@ Mantine cosmetic props are not repeated below.
 **Administrators.** A yes/no or opt-in checkbox. Set `name`, the checked value (`checkbox_value`), label position, and required.
 
 **Developers.** Renders `<Checkbox>`. `label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
+
+A single boolean checkbox is not an option catalog and does not use `option_labels`.
 
 **Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`, `mobile_checkbox_variant` (mobile-only HeroUI Native primary/secondary).
 
@@ -221,11 +223,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `Combobox` — a searchable, optionally creatable/multi-select dropdown.
 
-**Administrators.** A power dropdown for long option lists: searchable, can allow creating new entries, multi-select, and clearable.
+**Administrators.** A power dropdown for long option lists. Configure codes and multilingual labels in the Options grid (`combobox_options` + `option_labels`); it can be searchable, creatable, multi-select, and clearable.
 
-**Developers.** Renders a Combobox over `combobox_options`. `web_combobox_multi_select`, `_searchable`, `_creatable`, `_clearable` toggle behaviours.
+**Developers.** Renders a Combobox through the shared option resolver. `web_combobox_multi_select` determines whether hydration emits `_{name}_labels`; `_searchable`, `_creatable`, and `_clearable` toggle behaviours.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`, `mobile_select_presentation` (mobile-only: reuses the select renderer; bottom-sheet / dialog / popover).
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `option_labels`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`, `mobile_select_presentation` (mobile-only: reuses the select renderer; bottom-sheet / dialog / popover).
 
 **Children.** No.
 
@@ -291,11 +293,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `SegmentedControl` — a horizontal set of mutually exclusive buttons.
 
-**Administrators.** A compact single-choice toggle (e.g. Day/Week/Month). Provide the options in `segmented_control_data`.
+**Administrators.** A compact single-choice toggle (e.g. Day/Week/Month). Configure stable codes and multilingual labels in the Options grid (`segmented_control_data` + `option_labels`).
 
-**Developers.** Renders `<SegmentedControl data>`; `fullwidth` stretches across the container.
+**Developers.** Renders `<SegmentedControl data>` through the shared option resolver; rows store one code and hydration emits `_{name}_label`. `fullwidth` stretches across the container.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `segmented_control_data`, `web_orientation`, `fullwidth`, `readonly`, `web_segmented_control_item_border`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `segmented_control_data`, `option_labels`, `orientation`, `fullwidth`, `readonly`, `web_segmented_control_item_border`.
 
 **Children.** No.
 
