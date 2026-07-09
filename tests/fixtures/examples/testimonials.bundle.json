@@ -26,6 +26,10 @@
                     "quote": {
                         "en-GB": "The weekly check-ins take me two minutes on my phone. It is the first study where I never felt like the technology was in the way.",
                         "de-CH": "Die wöchentlichen Check-ins dauern auf dem Handy zwei Minuten. Es ist die erste Studie, bei der mir die Technik nie im Weg stand."
+                    },
+                    "role": {
+                        "en-GB": "Study participant, wave 2",
+                        "de-CH": "Studienteilnehmerin, Welle 2"
                     }
                 },
                 {
@@ -34,6 +38,10 @@
                     "quote": {
                         "en-GB": "Our coordinators build and translate new questionnaires themselves. What used to be a two-week IT ticket is now an afternoon of clicking.",
                         "de-CH": "Unsere Koordinatorinnen erstellen und übersetzen neue Fragebögen selbst. Was früher ein zweiwöchiges IT-Ticket war, ist jetzt ein Nachmittag Klickarbeit."
+                    },
+                    "role": {
+                        "en-GB": "Principal Investigator, cardiology",
+                        "de-CH": "Hauptprüferin Kardiologie"
                     }
                 },
                 {
@@ -42,6 +50,10 @@
                     "quote": {
                         "en-GB": "Importing a template gave us a working participant portal in one morning — list page, detail pages and the admin grid included.",
                         "de-CH": "Der Import einer Vorlage lieferte uns an einem Vormittag ein funktionierendes Teilnehmerportal — mit Listen-, Detailseiten und Admin-Grid."
+                    },
+                    "role": {
+                        "en-GB": "Research coordinator",
+                        "de-CH": "Studienkoordinatorin"
                     }
                 },
                 {
@@ -50,6 +62,10 @@
                     "quote": {
                         "en-GB": "One backend, one frontend, versioned plugins. It slots into our infrastructure without any special cases.",
                         "de-CH": "Ein Backend, ein Frontend, versionierte Plugins. Es fügt sich ohne Sonderfälle in unsere Infrastruktur ein."
+                    },
+                    "role": {
+                        "en-GB": "IT support lead",
+                        "de-CH": "IT-Support-Leitung"
                     }
                 },
                 {
@@ -565,7 +581,10 @@
                                         }
                                     ]
                                 }
-                            ]
+                            ],
+                            "global_fields": {
+                                "css_mobile": "px-md py-md gap-sm"
+                            }
                         }
                     ]
                 }

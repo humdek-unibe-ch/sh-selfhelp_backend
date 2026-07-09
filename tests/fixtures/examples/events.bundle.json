@@ -21,7 +21,10 @@
             ],
             "rows": [
                 {
-                    "title": "Study kickoff webinar",
+                    "title": {
+                        "en-GB": "Study kickoff webinar",
+                        "de-CH": "Kick-off-Webinar zur Studie"
+                    },
                     "event_date": "2026-08-20 17:00",
                     "location": "Online (Zoom)",
                     "description": {
@@ -30,7 +33,10 @@
                     }
                 },
                 {
-                    "title": "Coordinator workshop",
+                    "title": {
+                        "en-GB": "Coordinator workshop",
+                        "de-CH": "Koordinatorinnen-Workshop"
+                    },
                     "event_date": "2026-09-04 09:30",
                     "location": "University of Bern, Room A102",
                     "description": {
@@ -39,7 +45,10 @@
                     }
                 },
                 {
-                    "title": "Open lab day",
+                    "title": {
+                        "en-GB": "Open lab day",
+                        "de-CH": "Tag der offenen Labortür"
+                    },
                     "event_date": "2026-09-18 14:00",
                     "location": "Inselspital, Lab Building 3",
                     "description": {
@@ -48,7 +57,10 @@
                     }
                 },
                 {
-                    "title": "Results evening",
+                    "title": {
+                        "en-GB": "Results evening",
+                        "de-CH": "Ergebnisabend"
+                    },
                     "event_date": "2026-11-12 18:30",
                     "location": "Kursaal Bern",
                     "description": {
@@ -206,12 +218,17 @@
                                     "all": {
                                         "content": "1"
                                     }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
                                 }
                             }
                         },
                         {
                             "section_name": "events-form-date",
-                            "style_name": "text-input",
+                            "style_name": "date-picker",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -234,6 +251,26 @@
                                 "is_required": {
                                     "all": {
                                         "content": "1"
+                                    }
+                                },
+                                "web_datepicker_type": {
+                                    "all": {
+                                        "content": "datetime"
+                                    }
+                                },
+                                "web_datepicker_format": {
+                                    "all": {
+                                        "content": "YYYY-MM-DD HH:mm"
+                                    }
+                                },
+                                "datepicker_placeholder": {
+                                    "all": {
+                                        "content": "2026-07-06 14:30"
+                                    }
+                                },
+                                "web_datepicker_placeholder": {
+                                    "all": {
+                                        "content": "2026-07-06 14:30"
                                     }
                                 }
                             }
@@ -578,7 +615,10 @@
                                         }
                                     }
                                 }
-                            ]
+                            ],
+                            "global_fields": {
+                                "css_mobile": "px-md py-md gap-sm"
+                            }
                         }
                     ]
                 }

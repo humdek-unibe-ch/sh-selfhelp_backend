@@ -23,40 +23,64 @@
             ],
             "rows": [
                 {
-                    "title": "New study platform goes live",
+                    "title": {
+                        "en-GB": "New study platform goes live",
+                        "de-CH": "Neue Studienplattform ist live"
+                    },
                     "category": "Release",
                     "published_on": "2026-06-01",
-                    "summary": "The redesigned participant portal is now open to all study groups.",
+                    "summary": {
+                        "en-GB": "The redesigned participant portal is now open to all study groups.",
+                        "de-CH": "Das überarbeitete Teilnehmerportal steht allen Studiengruppen offen."
+                    },
                     "body": {
                         "en-GB": "After six months of building and testing, the redesigned participant portal is live. Every study group can now log in with their existing credentials. The new portal loads faster, works on phones, and lets coordinators publish content without writing code.",
                         "de-CH": "Nach sechs Monaten Entwicklung und Tests ist das überarbeitete Teilnehmerportal live. Alle Studiengruppen können sich mit ihren bestehenden Zugangsdaten anmelden. Das neue Portal lädt schneller, funktioniert auf dem Handy und lässt Koordinatorinnen Inhalte ohne Code veröffentlichen."
                     }
                 },
                 {
-                    "title": "Maintenance window on Friday",
+                    "title": {
+                        "en-GB": "Maintenance window on Friday",
+                        "de-CH": "Wartungsfenster am Freitag"
+                    },
                     "category": "Notice",
                     "published_on": "2026-06-12",
-                    "summary": "The platform will be read-only between 06:00 and 07:00 CET.",
+                    "summary": {
+                        "en-GB": "The platform will be read-only between 06:00 and 07:00 CET.",
+                        "de-CH": "Die Plattform ist zwischen 06:00 und 07:00 MEZ nur lesbar."
+                    },
                     "body": {
                         "en-GB": "We are upgrading the database cluster on Friday morning. Between 06:00 and 07:00 CET the platform stays reachable but new form submissions are paused. Drafts are kept locally and submit automatically once the window ends.",
                         "de-CH": "Am Freitagmorgen werten wir den Datenbank-Cluster auf. Zwischen 06:00 und 07:00 MEZ bleibt die Plattform erreichbar, neue Formularabgaben sind jedoch pausiert. Entwürfe werden lokal gespeichert und nach dem Fenster automatisch übermittelt."
                     }
                 },
                 {
-                    "title": "Two new questionnaire templates",
+                    "title": {
+                        "en-GB": "Two new questionnaire templates",
+                        "de-CH": "Zwei neue Fragebogen-Vorlagen"
+                    },
                     "category": "Feature",
                     "published_on": "2026-06-20",
-                    "summary": "Weekly mood tracking and sleep diary templates are ready to import.",
+                    "summary": {
+                        "en-GB": "Weekly mood tracking and sleep diary templates are ready to import.",
+                        "de-CH": "Wöchentlicher Stimmungs-Tracker und Schlaftagebuch sind importierbar."
+                    },
                     "body": {
                         "en-GB": "The template gallery now ships a weekly mood tracker and a structured sleep diary. Both are fully translated, mobile-friendly, and can be customised in the page editor after import.",
                         "de-CH": "Die Vorlagengalerie enthält jetzt einen wöchentlichen Stimmungs-Tracker und ein strukturiertes Schlaftagebuch. Beide sind vollständig übersetzt, mobilfreundlich und lassen sich nach dem Import im Seiteneditor anpassen."
                     }
                 },
                 {
-                    "title": "Summer office hours",
+                    "title": {
+                        "en-GB": "Summer office hours",
+                        "de-CH": "Sommer-Sprechzeiten"
+                    },
                     "category": "Notice",
                     "published_on": "2026-07-01",
-                    "summary": "Support replies within two working days during July and August.",
+                    "summary": {
+                        "en-GB": "Support replies within two working days during July and August.",
+                        "de-CH": "Support antwortet im Juli und August innerhalb von zwei Arbeitstagen."
+                    },
                     "body": {
                         "en-GB": "During July and August the support team runs a reduced schedule. Tickets are answered within two working days. Urgent incidents are still handled around the clock through the status page.",
                         "de-CH": "Im Juli und August arbeitet der Support mit reduziertem Pensum. Tickets werden innerhalb von zwei Arbeitstagen beantwortet. Dringende Vorfälle werden weiterhin rund um die Uhr über die Statusseite bearbeitet."
@@ -212,6 +236,11 @@
                                     "all": {
                                         "content": "1"
                                     }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
                                 }
                             }
                         },
@@ -241,7 +270,7 @@
                         },
                         {
                             "section_name": "news-form-published-on",
-                            "style_name": "text-input",
+                            "style_name": "date-picker",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -250,15 +279,25 @@
                                 },
                                 "label": {
                                     "de-CH": {
-                                        "content": "Datum (JJJJ-MM-TT)"
+                                        "content": "Datum und Zeit"
                                     },
                                     "en-GB": {
-                                        "content": "Date (YYYY-MM-DD)"
+                                        "content": "Date and time"
                                     }
                                 },
-                                "placeholder": {
+                                "web_datepicker_type": {
                                     "all": {
-                                        "content": "2026-07-06"
+                                        "content": "datetime"
+                                    }
+                                },
+                                "web_datepicker_format": {
+                                    "all": {
+                                        "content": "YYYY-MM-DD HH:mm"
+                                    }
+                                },
+                                "web_datepicker_placeholder": {
+                                    "all": {
+                                        "content": "2026-07-06 14:30"
                                     }
                                 }
                             }
@@ -283,6 +322,11 @@
                                 "rows": {
                                     "all": {
                                         "content": "2"
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
                                     }
                                 }
                             }
@@ -441,7 +485,8 @@
                     "style_name": "entry-list",
                     "global_fields": {
                         "css": "grid grid-cols-1 md:grid-cols-2 gap-6",
-                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:news-form\",\"retrieve\":\"all\",\"current_user\":false}]"
+                        "data_config": "[{\"scope\":\"entries\",\"table\":\"@section:news-form\",\"retrieve\":\"all\",\"current_user\":false}]",
+                        "css_mobile": "px-md py-lg gap-md"
                     },
                     "children": [
                         {
@@ -623,9 +668,13 @@
                                         }
                                     }
                                 }
-                            ]
+                            ],
+                            "global_fields": {
+                                "css_mobile": "px-md py-md gap-sm"
+                            }
                         }
-                    ]
+                    ],
+                    "fields": {}
                 }
             ],
             "cms_app_role": "public_list"
