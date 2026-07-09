@@ -13,6 +13,7 @@ use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\Frontend\OptionLabelHydrator;
 use App\Service\Core\LookupService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\TransactionService;
@@ -33,7 +34,8 @@ class AdminDataController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
-        private readonly TransactionService $transactionService
+        private readonly TransactionService $transactionService,
+        private readonly OptionLabelHydrator $optionLabelHydrator,
     ) {
     }
 
@@ -140,7 +142,19 @@ class AdminDataController extends AbstractController
                 );
             }
 
-            return $this->responseFormatter->formatSuccess(['rows' => $rows]);
+            $rows = $this->optionLabelHydrator->hydrate(
+                $rows,
+                (string) $dataTable->getName(),
+                $languageId
+            );
+
+            return $this->responseFormatter->formatSuccess([
+                'rows' => $rows,
+                'optionLabelMaps' => $this->optionLabelHydrator->resolveFieldLabelMaps(
+                    (string) $dataTable->getName(),
+                    $languageId
+                ),
+            ]);
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {

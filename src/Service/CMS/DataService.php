@@ -24,7 +24,7 @@ use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\UserContextAwareService;
 use App\Repository\SectionRepository;
-use App\Service\CMS\FormFileUploadService;
+use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -54,7 +54,8 @@ class DataService extends BaseService
         private readonly DataColumnService $dataColumnService,
         private readonly FormFieldKeyResolver $formFieldKeyResolver,
         private readonly LoggerInterface $logger,
-        private readonly DataAccessSecurityService $dataAccessSecurityService
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly DataTableFilterService $dataTableFilterService,
     ) {
     }
 
@@ -170,7 +171,15 @@ class DataService extends BaseService
                     // Handle other types of update filters using the stored procedure
                     $filter = '';
                     foreach ($updateBasedOn as $key => $value) {
-                        $filter = $filter . ' AND ' . $key . ' = "' . $this->asString($value) . '"';
+                        $predicate = $this->dataTableFilterService->buildStringEqualityPredicate(
+                            $this->asString($key),
+                            $this->asString($value),
+                        );
+                        if ($predicate === '') {
+                            $filter = '';
+                            break;
+                        }
+                        $filter .= $predicate;
                     }
 
                     $existingRecord = $this->getData((int) $dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
@@ -974,13 +983,26 @@ class DataService extends BaseService
         ?int $userId = null,
         bool $dbFirst = false,
         bool $excludeDeleted = true,
-        int $languageId = 1
+        int $languageId = 1,
+        string $selectedColumns = '',
     ): array {
         try {
-            // Guard: ignore malformed dynamic filter attempts
-            if (str_contains($filter, '{{')) {
-                $filter = '';
+            $rawFilter = $filter;
+            // Guard: reject malformed or unsafe dynamic filter attempts (return no rows).
+            if (str_contains($rawFilter, '{{')) {
+                return $dbFirst ? [] : [];
             }
+
+            if ($rawFilter !== '' && !$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return $dbFirst ? [] : [];
+            }
+
+            $filter = $this->dataTableFilterService->guardForStoredProcedure($rawFilter);
+            if ($rawFilter !== '' && $filter === '') {
+                return $dbFirst ? [] : [];
+            }
+
+            $selectedColumns = $this->dataTableFilterService->sanitizeSelectedColumns($selectedColumns);
 
             // Resolve user id as per legacy rules
             $resolvedUserId = $userId;
@@ -999,7 +1021,8 @@ class DataService extends BaseService
                 $filter,
                 $excludeDeleted,
                 $languageId,
-                $this->cmsPreferenceService->getDefaultTimezoneCode()
+                $this->cmsPreferenceService->getDefaultTimezoneCode(),
+                $selectedColumns,
             );
 
             if ($dbFirst) {
@@ -1036,9 +1059,19 @@ class DataService extends BaseService
         int $languageId = 1
     ): array {
         try {
-            // Guard: ignore malformed dynamic filter attempts
-            if (str_contains($filter, '{{')) {
-                $filter = '';
+            $rawFilter = $filter;
+            // Guard: reject malformed or unsafe dynamic filter attempts (return no rows).
+            if (str_contains($rawFilter, '{{')) {
+                return [];
+            }
+
+            if ($rawFilter !== '' && !$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return [];
+            }
+
+            $filter = $this->dataTableFilterService->guardForStoredProcedure($rawFilter);
+            if ($rawFilter !== '' && $filter === '') {
+                return [];
             }
 
             $rows = $this->dataTableRepository->getDataTableWithUserGroupFilter(
@@ -1081,9 +1114,19 @@ class DataService extends BaseService
         bool $excludeDeleted = true
     ): array {
         try {
-            // Guard: ignore malformed dynamic filter attempts
-            if (str_contains($filter, '{{')) {
-                $filter = '';
+            $rawFilter = $filter;
+            // Guard: reject malformed or unsafe dynamic filter attempts (return no rows).
+            if (str_contains($rawFilter, '{{')) {
+                return $dbFirst ? [] : [];
+            }
+
+            if ($rawFilter !== '' && !$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return $dbFirst ? [] : [];
+            }
+
+            $filter = $this->dataTableFilterService->guardForStoredProcedure($rawFilter);
+            if ($rawFilter !== '' && $filter === '') {
+                return $dbFirst ? [] : [];
             }
 
             // Resolve user id as per legacy rules

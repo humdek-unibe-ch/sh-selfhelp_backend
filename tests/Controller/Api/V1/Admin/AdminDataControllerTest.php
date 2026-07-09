@@ -97,6 +97,21 @@ final class AdminDataControllerTest extends QaWebTestCase
         self::assertContains($recordId, $this->recordIds($data['rows']), 'The seeded record must appear in the admin read.');
     }
 
+    public function testGetDataIgnoresClientSuppliedFilterQueryParam(): void
+    {
+        [$table, $recordId] = $this->dataTables->createTableWithRow('qa_data_filter_ignore', $this->qaUserId(), 'safe row');
+
+        $envelope = $this->jsonRequest(
+            'GET',
+            self::BASE . '?table_name=' . $table->getName() . '&filter=' . rawurlencode("'; DELETE FROM data_rows WHERE '1'='1"),
+            null,
+            $this->loginAsQaAdmin(),
+        );
+        $data = $this->assertEnvelopeSuccess($envelope);
+
+        self::assertContains($recordId, $this->recordIds($data['rows'] ?? []), 'Admin grid must ignore client-supplied filter params.');
+    }
+
     public function testGetDataMissingTableNameReturns400(): void
     {
         $envelope = $this->jsonRequest('GET', self::BASE, null, $this->loginAsQaAdmin());
