@@ -1,0 +1,65 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Scaffold CMS App Pages",
+    "description": "Scaffold list/detail/form pages into an existing cms_app (POST /admin/cms-apps/{id}/scaffold).",
+    "type": "object",
+    "properties": {
+        "base_name": {
+            "type": "string",
+            "description": "Lowercase keyword base. Defaults to the app slug when omitted.",
+            "pattern": "^[a-z0-9-]+$",
+            "minLength": 1,
+            "maxLength": 80
+        },
+        "data_table": {
+            "type": "string",
+            "description": "Existing data table name. Required unless create_form is true.",
+            "minLength": 1
+        },
+        "create_form": {
+            "type": "boolean",
+            "description": "Scaffold /cms/<base>/form that owns a fresh data table. Default false."
+        },
+        "form_field_name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "form_field_label": {
+            "type": "string"
+        },
+        "form_fields": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    "style": {
+                        "type": "string",
+                        "enum": ["text-input", "textarea", "select", "checkbox", "radio", "number-input"]
+                    },
+                    "label": {
+                        "type": "string"
+                    }
+                },
+                "required": ["name", "style"],
+                "additionalProperties": false
+            }
+        },
+        "create_public": { "type": "boolean" },
+        "create_admin": { "type": "boolean" },
+        "record_id_param": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "list_title": { "type": "string" },
+        "detail_title": { "type": "string" },
+        "access_groups": {
+            "type": "array",
+            "items": { "type": "integer" }
+        }
+    },
+    "additionalProperties": false
+}

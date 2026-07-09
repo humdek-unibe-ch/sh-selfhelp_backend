@@ -1,0 +1,18 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Update CMS app metadata response",
+    "description": "Envelope for CMS apps admin API (update).",
+    "allOf": [
+        {
+            "$ref": "../../common/_response_envelope.json"
+        }
+    ],
+    "properties": {
+        "data": {
+            "$ref": "_definitions.json#/definitions/detail"
+        }
+    },
+    "required": [
+        "data"
+    ]
+}

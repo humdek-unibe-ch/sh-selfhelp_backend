@@ -1,0 +1,102 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "CMS App response shared definitions",
+    "description": "Shared shapes for first-class CMS app admin API responses.",
+    "definitions": {
+        "cms_app_role": {
+            "type": ["string", "null"],
+            "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other", null],
+            "description": "Strict page role inside a CMS app"
+        },
+        "cms_app_role_required": {
+            "type": "string",
+            "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other"],
+            "description": "Strict non-null page role inside a CMS app"
+        },
+        "assigned_page": {
+            "type": "object",
+            "properties": {
+                "page_id": { "type": "integer", "minimum": 1 },
+                "keyword": { "type": "string", "minLength": 1 },
+                "url": { "type": ["string", "null"] },
+                "page_surface": { "type": "string", "enum": ["public", "cms"] },
+                "cms_app_role": { "$ref": "#/definitions/cms_app_role" }
+            },
+            "required": ["page_id", "keyword", "url", "page_surface", "cms_app_role"],
+            "additionalProperties": false
+        },
+        "summary": {
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer", "minimum": 1 },
+                "name": { "type": "string", "minLength": 1 },
+                "slug": { "type": "string", "minLength": 1 },
+                "description": { "type": ["string", "null"] },
+                "page_count": { "type": "integer", "minimum": 0 },
+                "id_form_section": { "type": ["integer", "null"] },
+                "id_cms_list_page": { "type": ["integer", "null"] },
+                "cms_list_keyword": { "type": ["string", "null"] },
+                "cms_list_url": { "type": ["string", "null"] },
+                "id_cms_detail_page": { "type": ["integer", "null"] },
+                "id_public_list_page": { "type": ["integer", "null"] },
+                "public_list_keyword": { "type": ["string", "null"] },
+                "public_list_url": { "type": ["string", "null"] },
+                "id_public_detail_page": { "type": ["integer", "null"] },
+                "created_at": { "type": "string", "format": "date-time" },
+                "updated_at": { "type": ["string", "null"], "format": "date-time" }
+            },
+            "required": [
+                "id", "name", "slug", "description", "page_count",
+                "id_form_section", "id_cms_list_page", "cms_list_keyword", "cms_list_url",
+                "id_cms_detail_page", "id_public_list_page", "public_list_keyword", "public_list_url",
+                "id_public_detail_page", "created_at", "updated_at"
+            ]
+        },
+        "detail": {
+            "allOf": [
+                { "$ref": "#/definitions/summary" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "pages": {
+                            "type": "array",
+                            "items": { "$ref": "#/definitions/assigned_page" }
+                        }
+                    },
+                    "required": ["pages"]
+                }
+            ]
+        },
+        "scaffold_created_page": {
+            "type": "object",
+            "properties": {
+                "keyword": { "type": "string", "minLength": 1 },
+                "page_id": { "type": "integer", "minimum": 1 },
+                "surface": { "type": "string", "enum": ["public", "cms"] },
+                "role": { "$ref": "#/definitions/cms_app_role_required" }
+            },
+            "required": ["keyword", "page_id", "surface", "role"],
+            "additionalProperties": false
+        },
+        "scaffold_result": {
+            "type": "object",
+            "properties": {
+                "app_id": { "type": "integer", "minimum": 1 },
+                "created": {
+                    "type": "array",
+                    "items": { "$ref": "#/definitions/scaffold_created_page" }
+                }
+            },
+            "required": ["app_id", "created"],
+            "additionalProperties": false
+        },
+        "delete_result": {
+            "type": "object",
+            "properties": {
+                "deleted": { "type": "boolean", "const": true }
+            },
+            "required": ["deleted"],
+            "additionalProperties": false
+        }
+    }
+}

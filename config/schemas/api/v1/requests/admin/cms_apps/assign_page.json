@@ -1,0 +1,14 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Assign Page to CMS App",
+    "type": "object",
+    "properties": {
+        "page_id": { "type": "integer", "minimum": 1 },
+        "role": {
+            "type": "string",
+            "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other"]
+        }
+    },
+    "required": ["page_id", "role"],
+    "additionalProperties": false
+}
