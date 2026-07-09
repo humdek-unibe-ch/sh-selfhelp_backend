@@ -125,8 +125,182 @@ const ESSENTIAL_CLASSES = [
   'overflow-x-auto', 'overflow-y-auto'
 ];
 
-// Use the predefined essential classes (no pattern expansion needed)
-const ALL_CSS_CLASSES = ESSENTIAL_CLASSES;
+/** Breakpoints offered in the CMS css dropdown (matches Tailwind + globals.css). */
+const BREAKPOINTS = ['sm', 'md', 'lg', 'xl', '2xl'];
+
+/** Prefix every base utility with responsive breakpoints (keeps the bare class too). */
+function expandResponsive(bases, breakpoints = BREAKPOINTS) {
+  const out = new Set();
+  for (const base of bases) {
+    out.add(base);
+    for (const bp of breakpoints) {
+      out.add(`${bp}:${base}`);
+    }
+  }
+  return [...out];
+}
+
+/** Prefix bases with interaction / color-scheme states. */
+function expandStates(bases, states) {
+  const out = new Set();
+  for (const base of bases) {
+    out.add(base);
+    for (const state of states) {
+      out.add(`${state}:${base}`);
+    }
+  }
+  return [...out];
+}
+
+const GRID_COL_CLASSES = expandResponsive(
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => `grid-cols-${n}`)
+);
+
+const GAP_CLASSES = expandResponsive(
+  ['gap-0', 'gap-1', 'gap-2', 'gap-3', 'gap-4', 'gap-5', 'gap-6', 'gap-8', 'gap-10', 'gap-12']
+);
+
+const COL_SPAN_CLASSES = expandResponsive(
+  ['col-span-1', 'col-span-2', 'col-span-3', 'col-span-4', 'col-span-6', 'col-span-12', 'col-span-full']
+);
+
+const DISPLAY_CLASSES = expandResponsive(
+  ['block', 'inline-block', 'inline', 'flex', 'inline-flex', 'grid', 'hidden']
+);
+
+const FLEX_LAYOUT_CLASSES = expandResponsive(
+  ['flex-row', 'flex-col', 'flex-wrap', 'flex-nowrap', 'justify-center', 'justify-between', 'items-center', 'items-start']
+);
+
+const TEXT_SIZE_CLASSES = expandResponsive(
+  ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl', 'text-5xl']
+);
+
+const MAX_WIDTH_CLASSES = expandResponsive(
+  ['max-w-xs', 'max-w-sm', 'max-w-md', 'max-w-lg', 'max-w-xl', 'max-w-2xl', 'max-w-3xl', 'max-w-4xl', 'max-w-6xl', 'max-w-full']
+);
+
+const SPACING_RESPONSIVE_CLASSES = expandResponsive(
+  ['px-4', 'px-6', 'px-8', 'px-10', 'py-8', 'py-10', 'py-12', 'py-14', 'p-4', 'p-5', 'p-6']
+);
+
+const SIZE_CLASSES = [
+  'w-20', 'w-24', 'h-20', 'h-24', 'min-w-0', 'object-cover',
+];
+
+/**
+ * Polish utilities used by CMS app bundles / section examples (team-members, etc.).
+ * Keep aligned with frontend `examples/` and `src/globals.css` safelist patterns.
+ */
+const CMS_TEMPLATE_CLASSES = [
+  'backdrop-blur-sm',
+  'bg-clip-text',
+  'bg-gradient-to-b',
+  'bg-gradient-to-br',
+  'bg-gradient-to-r',
+  'bg-white/90',
+  'border-sky-100/80',
+  'break-words',
+  'duration-300',
+  'ease-out',
+  'from-blue-600',
+  'from-sky-50',
+  'from-white',
+  'leading-relaxed',
+  'opacity-40',
+  'ring-2',
+  'ring-4',
+  'ring-blue-500/20',
+  'ring-sky-100',
+  'ring-violet-500/20',
+  'rounded-3xl',
+  'text-slate-600',
+  'text-slate-900',
+  'text-transparent',
+  'to-indigo-50',
+  'to-sky-50/40',
+  'to-violet-600',
+  'tracking-tight',
+  'transition',
+  'transition-shadow',
+  'via-white',
+  'flex-wrap',
+  'hover:-translate-y-1',
+  'hover:border-sky-200',
+  'hover:shadow-xl',
+  'dark:bg-gray-900',
+  'dark:bg-slate-900/80',
+  'dark:border-slate-800',
+  'dark:from-blue-400',
+  'dark:from-slate-900',
+  'dark:hover:border-sky-800',
+  'dark:ring-sky-900',
+  'dark:text-gray-50',
+  'dark:text-gray-300',
+  'dark:text-gray-400',
+  'dark:text-slate-300',
+  'dark:text-white',
+  'dark:to-indigo-950',
+  'dark:to-slate-950',
+  'dark:to-violet-400',
+  'dark:via-slate-950',
+];
+
+const SLATE_PALETTE = ['slate'];
+const SLATE_SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+const SLATE_COLOR_CLASSES = expandStates(
+  SLATE_PALETTE.flatMap((color) =>
+    SLATE_SHADES.flatMap((shade) => [
+      `text-${color}-${shade}`,
+      `bg-${color}-${shade}`,
+      `border-${color}-${shade}`,
+    ])
+  ),
+  ['dark', 'hover', 'dark:hover']
+);
+
+/** Classes that must exist — regression guard for CMS bundle templates. */
+const REQUIRED_CLASSES = [
+  'grid',
+  'grid-cols-1',
+  'sm:grid-cols-2',
+  'md:grid-cols-2',
+  'lg:grid-cols-3',
+  'xl:grid-cols-3',
+  'gap-6',
+  'md:gap-8',
+  'rounded-3xl',
+  'text-slate-600',
+  'backdrop-blur-sm',
+];
+
+function buildAllCssClasses() {
+  const merged = new Set([
+    ...ESSENTIAL_CLASSES,
+    ...GRID_COL_CLASSES,
+    ...GAP_CLASSES,
+    ...COL_SPAN_CLASSES,
+    ...DISPLAY_CLASSES,
+    ...FLEX_LAYOUT_CLASSES,
+    ...TEXT_SIZE_CLASSES,
+    ...MAX_WIDTH_CLASSES,
+    ...SPACING_RESPONSIVE_CLASSES,
+    ...SIZE_CLASSES,
+    ...CMS_TEMPLATE_CLASSES,
+    ...SLATE_COLOR_CLASSES,
+  ]);
+  return [...merged].sort();
+}
+
+const ALL_CSS_CLASSES = buildAllCssClasses();
+
+function assertRequiredClasses(classes) {
+  const values = new Set(classes);
+  const missing = REQUIRED_CLASSES.filter((cls) => !values.has(cls));
+  if (missing.length > 0) {
+    throw new Error(`Missing required CSS classes in catalogue: ${missing.join(', ')}`);
+  }
+}
 
 // Enhanced class description generator with Bootstrap equivalents
 function describeClass(cls) {
@@ -384,6 +558,7 @@ function generateCssClassesJson() {
         
         // Sort classes alphabetically for better searchability
         const sortedClasses = [...ALL_CSS_CLASSES].sort();
+        assertRequiredClasses(sortedClasses);
         
         // Create objects with value and descriptive text
         const describedClasses = sortedClasses.map(cls => ({
@@ -437,4 +612,4 @@ if (require.main === module) {
     generateCssClassesJson();
 }
 
-module.exports = { generateCssClassesJson };
+module.exports = { generateCssClassesJson, buildAllCssClasses, REQUIRED_CLASSES };

@@ -1,11 +1,311 @@
 [
   {
+    "value": "2xl:block",
+    "text": "2xl:block - Display as block element @2xl+ (Bootstrap: .d-block)"
+  },
+  {
+    "value": "2xl:col-span-1",
+    "text": "2xl:col-span-1 - Span 1 grid columns @2xl+ (Bootstrap: .col-1)"
+  },
+  {
+    "value": "2xl:col-span-12",
+    "text": "2xl:col-span-12 - Span 12 grid columns @2xl+ (Bootstrap: .col-12)"
+  },
+  {
+    "value": "2xl:col-span-2",
+    "text": "2xl:col-span-2 - Span 2 grid columns @2xl+ (Bootstrap: .col-2)"
+  },
+  {
+    "value": "2xl:col-span-3",
+    "text": "2xl:col-span-3 - Span 3 grid columns @2xl+ (Bootstrap: .col-3)"
+  },
+  {
+    "value": "2xl:col-span-4",
+    "text": "2xl:col-span-4 - Span 4 grid columns @2xl+ (Bootstrap: .col-4)"
+  },
+  {
+    "value": "2xl:col-span-6",
+    "text": "2xl:col-span-6 - Span 6 grid columns @2xl+ (Bootstrap: .col-6)"
+  },
+  {
+    "value": "2xl:col-span-full",
+    "text": "2xl:col-span-full - Span full grid columns @2xl+ (Bootstrap: .col-full)"
+  },
+  {
+    "value": "2xl:flex",
+    "text": "2xl:flex - Display as flexbox container @2xl+ (Bootstrap: .d-flex)"
+  },
+  {
+    "value": "2xl:flex-col",
+    "text": "2xl:flex-col - Flex direction column @2xl+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "2xl:flex-nowrap",
+    "text": "2xl:flex-nowrap - Flex nowrap @2xl+"
+  },
+  {
+    "value": "2xl:flex-row",
+    "text": "2xl:flex-row - Flex direction row @2xl+ (Bootstrap: .flex-row)"
+  },
+  {
+    "value": "2xl:flex-wrap",
+    "text": "2xl:flex-wrap - Flex wrap @2xl+"
+  },
+  {
+    "value": "2xl:gap-0",
+    "text": "2xl:gap-0 - Gap 0 @2xl+"
+  },
+  {
+    "value": "2xl:gap-1",
+    "text": "2xl:gap-1 - Gap 1 @2xl+"
+  },
+  {
+    "value": "2xl:gap-10",
+    "text": "2xl:gap-10 - Gap 10 @2xl+"
+  },
+  {
+    "value": "2xl:gap-12",
+    "text": "2xl:gap-12 - Gap 12 @2xl+"
+  },
+  {
+    "value": "2xl:gap-2",
+    "text": "2xl:gap-2 - Gap 2 @2xl+"
+  },
+  {
+    "value": "2xl:gap-3",
+    "text": "2xl:gap-3 - Gap 3 @2xl+"
+  },
+  {
+    "value": "2xl:gap-4",
+    "text": "2xl:gap-4 - Gap 4 @2xl+"
+  },
+  {
+    "value": "2xl:gap-5",
+    "text": "2xl:gap-5 - Gap 5 @2xl+"
+  },
+  {
+    "value": "2xl:gap-6",
+    "text": "2xl:gap-6 - Gap 6 @2xl+"
+  },
+  {
+    "value": "2xl:gap-8",
+    "text": "2xl:gap-8 - Gap 8 @2xl+"
+  },
+  {
+    "value": "2xl:grid",
+    "text": "2xl:grid - Display as CSS grid container @2xl+ (Bootstrap: .d-grid)"
+  },
+  {
+    "value": "2xl:grid-cols-1",
+    "text": "2xl:grid-cols-1 - Grid with 1 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-10",
+    "text": "2xl:grid-cols-10 - Grid with 10 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-11",
+    "text": "2xl:grid-cols-11 - Grid with 11 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-12",
+    "text": "2xl:grid-cols-12 - Grid with 12 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-2",
+    "text": "2xl:grid-cols-2 - Grid with 2 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-3",
+    "text": "2xl:grid-cols-3 - Grid with 3 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-4",
+    "text": "2xl:grid-cols-4 - Grid with 4 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-5",
+    "text": "2xl:grid-cols-5 - Grid with 5 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-6",
+    "text": "2xl:grid-cols-6 - Grid with 6 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-7",
+    "text": "2xl:grid-cols-7 - Grid with 7 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-8",
+    "text": "2xl:grid-cols-8 - Grid with 8 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:grid-cols-9",
+    "text": "2xl:grid-cols-9 - Grid with 9 columns @2xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "2xl:hidden",
+    "text": "2xl:hidden - Hide element @2xl+ (Bootstrap: .d-none)"
+  },
+  {
+    "value": "2xl:inline",
+    "text": "2xl:inline - Display as inline element @2xl+ (Bootstrap: .d-inline)"
+  },
+  {
+    "value": "2xl:inline-block",
+    "text": "2xl:inline-block - Display as inline-block element @2xl+ (Bootstrap: .d-inline-block)"
+  },
+  {
+    "value": "2xl:inline-flex",
+    "text": "2xl:inline-flex - Display as inline flexbox container @2xl+ (Bootstrap: .d-inline-flex)"
+  },
+  {
+    "value": "2xl:items-center",
+    "text": "2xl:items-center - Center items vertically @2xl+ (Bootstrap: .align-items-center)"
+  },
+  {
+    "value": "2xl:items-start",
+    "text": "2xl:items-start - Align items to start @2xl+ (Bootstrap: .align-items-start)"
+  },
+  {
+    "value": "2xl:justify-between",
+    "text": "2xl:justify-between - Space items evenly with space between @2xl+ (Bootstrap: .justify-content-between)"
+  },
+  {
+    "value": "2xl:justify-center",
+    "text": "2xl:justify-center - Center items horizontally @2xl+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "2xl:max-w-2xl",
+    "text": "2xl:max-w-2xl - Max w 2xl @2xl+"
+  },
+  {
+    "value": "2xl:max-w-3xl",
+    "text": "2xl:max-w-3xl - Max w 3xl @2xl+"
+  },
+  {
+    "value": "2xl:max-w-4xl",
+    "text": "2xl:max-w-4xl - Max w 4xl @2xl+"
+  },
+  {
+    "value": "2xl:max-w-6xl",
+    "text": "2xl:max-w-6xl - Max w 6xl @2xl+"
+  },
+  {
+    "value": "2xl:max-w-full",
+    "text": "2xl:max-w-full - Max w full @2xl+"
+  },
+  {
+    "value": "2xl:max-w-lg",
+    "text": "2xl:max-w-lg - Max w lg @2xl+"
+  },
+  {
+    "value": "2xl:max-w-md",
+    "text": "2xl:max-w-md - Max w md @2xl+"
+  },
+  {
+    "value": "2xl:max-w-sm",
+    "text": "2xl:max-w-sm - Max w sm @2xl+"
+  },
+  {
+    "value": "2xl:max-w-xl",
+    "text": "2xl:max-w-xl - Max w xl @2xl+"
+  },
+  {
+    "value": "2xl:max-w-xs",
+    "text": "2xl:max-w-xs - Max w xs @2xl+"
+  },
+  {
+    "value": "2xl:p-4",
+    "text": "2xl:p-4 - Padding: 4 @2xl+ (Bootstrap: .p-4)"
+  },
+  {
+    "value": "2xl:p-5",
+    "text": "2xl:p-5 - Padding: 5 @2xl+ (Bootstrap: .p-5)"
+  },
+  {
+    "value": "2xl:p-6",
+    "text": "2xl:p-6 - Padding: 6 @2xl+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "2xl:px-10",
+    "text": "2xl:px-10 - Horizontal padding: 10 @2xl+ (Bootstrap: .px-10)"
+  },
+  {
+    "value": "2xl:px-4",
+    "text": "2xl:px-4 - Horizontal padding: 4 @2xl+ (Bootstrap: .px-4)"
+  },
+  {
+    "value": "2xl:px-6",
+    "text": "2xl:px-6 - Horizontal padding: 6 @2xl+ (Bootstrap: .px-6)"
+  },
+  {
+    "value": "2xl:px-8",
+    "text": "2xl:px-8 - Horizontal padding: 8 @2xl+ (Bootstrap: .px-8)"
+  },
+  {
+    "value": "2xl:py-10",
+    "text": "2xl:py-10 - Vertical padding: 10 @2xl+ (Bootstrap: .py-10)"
+  },
+  {
+    "value": "2xl:py-12",
+    "text": "2xl:py-12 - Vertical padding: 12 @2xl+ (Bootstrap: .py-12)"
+  },
+  {
+    "value": "2xl:py-14",
+    "text": "2xl:py-14 - Vertical padding: 14 @2xl+ (Bootstrap: .py-14)"
+  },
+  {
+    "value": "2xl:py-8",
+    "text": "2xl:py-8 - Vertical padding: 8 @2xl+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "2xl:text-2xl",
+    "text": "2xl:text-2xl - Text size: 2xl @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "2xl:text-3xl",
+    "text": "2xl:text-3xl - Text size: 3xl @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "2xl:text-4xl",
+    "text": "2xl:text-4xl - Text color: 4xl @2xl+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "2xl:text-5xl",
+    "text": "2xl:text-5xl - Text color: 5xl @2xl+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "2xl:text-base",
+    "text": "2xl:text-base - Text size: base @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "2xl:text-lg",
+    "text": "2xl:text-lg - Text size: lg @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "2xl:text-sm",
+    "text": "2xl:text-sm - Text size: sm @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "2xl:text-xl",
+    "text": "2xl:text-xl - Text size: xl @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "2xl:text-xs",
+    "text": "2xl:text-xs - Text size: xs @2xl+ (Bootstrap: .fs-*)"
+  },
+  {
     "value": "absolute",
     "text": "absolute - Position: absolute (Bootstrap: .position-absolute)"
   },
   {
     "value": "appearance-none",
     "text": "appearance-none - Appearance none"
+  },
+  {
+    "value": "backdrop-blur-sm",
+    "text": "backdrop-blur-sm - Backdrop blur sm"
   },
   {
     "value": "bg-blue-500",
@@ -18,6 +318,22 @@
   {
     "value": "bg-blue-700",
     "text": "bg-blue-700 - Background: blue 700 (Bootstrap: .bg-primary)"
+  },
+  {
+    "value": "bg-clip-text",
+    "text": "bg-clip-text - Background: clip text (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-gradient-to-b",
+    "text": "bg-gradient-to-b - Background: gradient to b (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-gradient-to-br",
+    "text": "bg-gradient-to-br - Background: gradient to br (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-gradient-to-r",
+    "text": "bg-gradient-to-r - Background: gradient to r (Bootstrap: .bg-*)"
   },
   {
     "value": "bg-gray-100",
@@ -76,8 +392,56 @@
     "text": "bg-red-700 - Background: red 700 (Bootstrap: .bg-danger)"
   },
   {
+    "value": "bg-slate-100",
+    "text": "bg-slate-100 - Background: slate 100 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-200",
+    "text": "bg-slate-200 - Background: slate 200 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-300",
+    "text": "bg-slate-300 - Background: slate 300 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-400",
+    "text": "bg-slate-400 - Background: slate 400 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-50",
+    "text": "bg-slate-50 - Background: slate 50 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-500",
+    "text": "bg-slate-500 - Background: slate 500 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-600",
+    "text": "bg-slate-600 - Background: slate 600 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-700",
+    "text": "bg-slate-700 - Background: slate 700 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-800",
+    "text": "bg-slate-800 - Background: slate 800 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-900",
+    "text": "bg-slate-900 - Background: slate 900 (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-slate-950",
+    "text": "bg-slate-950 - Background: slate 950 (Bootstrap: .bg-*)"
+  },
+  {
     "value": "bg-white",
     "text": "bg-white - Background: white (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "bg-white/90",
+    "text": "bg-white/90 - Background: white/90 (Bootstrap: .bg-*)"
   },
   {
     "value": "bg-yellow-400",
@@ -136,8 +500,60 @@
     "text": "border-red-500 - Border width: red-500 (Bootstrap: .border-*)"
   },
   {
+    "value": "border-sky-100/80",
+    "text": "border-sky-100/80 - Border width: sky-100/80 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-100",
+    "text": "border-slate-100 - Border width: slate-100 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-200",
+    "text": "border-slate-200 - Border width: slate-200 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-300",
+    "text": "border-slate-300 - Border width: slate-300 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-400",
+    "text": "border-slate-400 - Border width: slate-400 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-50",
+    "text": "border-slate-50 - Border width: slate-50 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-500",
+    "text": "border-slate-500 - Border width: slate-500 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-600",
+    "text": "border-slate-600 - Border width: slate-600 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-700",
+    "text": "border-slate-700 - Border width: slate-700 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-800",
+    "text": "border-slate-800 - Border width: slate-800 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-900",
+    "text": "border-slate-900 - Border width: slate-900 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-slate-950",
+    "text": "border-slate-950 - Border width: slate-950 (Bootstrap: .border-*)"
+  },
+  {
     "value": "bottom-0",
     "text": "bottom-0 - Bottom 0"
+  },
+  {
+    "value": "break-words",
+    "text": "break-words - Break words"
   },
   {
     "value": "capitalize",
@@ -168,8 +584,340 @@
     "text": "col-span-6 - Span 6 grid columns (Bootstrap: .col-6)"
   },
   {
+    "value": "col-span-full",
+    "text": "col-span-full - Span full grid columns (Bootstrap: .col-full)"
+  },
+  {
     "value": "container",
     "text": "container - Container with responsive max-widths (Bootstrap: .container)"
+  },
+  {
+    "value": "dark:bg-gray-900",
+    "text": "dark:bg-gray-900 - Background: gray 900 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-100",
+    "text": "dark:bg-slate-100 - Background: slate 100 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-200",
+    "text": "dark:bg-slate-200 - Background: slate 200 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-300",
+    "text": "dark:bg-slate-300 - Background: slate 300 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-400",
+    "text": "dark:bg-slate-400 - Background: slate 400 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-50",
+    "text": "dark:bg-slate-50 - Background: slate 50 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-500",
+    "text": "dark:bg-slate-500 - Background: slate 500 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-600",
+    "text": "dark:bg-slate-600 - Background: slate 600 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-700",
+    "text": "dark:bg-slate-700 - Background: slate 700 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-800",
+    "text": "dark:bg-slate-800 - Background: slate 800 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-900",
+    "text": "dark:bg-slate-900 - Background: slate 900 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-900/80",
+    "text": "dark:bg-slate-900/80 - Background: slate 900/80 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:bg-slate-950",
+    "text": "dark:bg-slate-950 - Background: slate 950 on dark (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "dark:border-slate-100",
+    "text": "dark:border-slate-100 - Border width: slate-100 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-200",
+    "text": "dark:border-slate-200 - Border width: slate-200 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-300",
+    "text": "dark:border-slate-300 - Border width: slate-300 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-400",
+    "text": "dark:border-slate-400 - Border width: slate-400 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-50",
+    "text": "dark:border-slate-50 - Border width: slate-50 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-500",
+    "text": "dark:border-slate-500 - Border width: slate-500 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-600",
+    "text": "dark:border-slate-600 - Border width: slate-600 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-700",
+    "text": "dark:border-slate-700 - Border width: slate-700 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-800",
+    "text": "dark:border-slate-800 - Border width: slate-800 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-900",
+    "text": "dark:border-slate-900 - Border width: slate-900 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:border-slate-950",
+    "text": "dark:border-slate-950 - Border width: slate-950 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:from-blue-400",
+    "text": "dark:from-blue-400 - From blue 400 on dark"
+  },
+  {
+    "value": "dark:from-slate-900",
+    "text": "dark:from-slate-900 - From slate 900 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-100",
+    "text": "dark:hover:bg-slate-100 - Hover:bg slate 100 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-200",
+    "text": "dark:hover:bg-slate-200 - Hover:bg slate 200 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-300",
+    "text": "dark:hover:bg-slate-300 - Hover:bg slate 300 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-400",
+    "text": "dark:hover:bg-slate-400 - Hover:bg slate 400 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-50",
+    "text": "dark:hover:bg-slate-50 - Hover:bg slate 50 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-500",
+    "text": "dark:hover:bg-slate-500 - Hover:bg slate 500 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-600",
+    "text": "dark:hover:bg-slate-600 - Hover:bg slate 600 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-700",
+    "text": "dark:hover:bg-slate-700 - Hover:bg slate 700 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-800",
+    "text": "dark:hover:bg-slate-800 - Hover:bg slate 800 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-900",
+    "text": "dark:hover:bg-slate-900 - Hover:bg slate 900 on dark"
+  },
+  {
+    "value": "dark:hover:bg-slate-950",
+    "text": "dark:hover:bg-slate-950 - Hover:bg slate 950 on dark"
+  },
+  {
+    "value": "dark:hover:border-sky-800",
+    "text": "dark:hover:border-sky-800 - Hover:border sky 800 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-100",
+    "text": "dark:hover:border-slate-100 - Hover:border slate 100 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-200",
+    "text": "dark:hover:border-slate-200 - Hover:border slate 200 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-300",
+    "text": "dark:hover:border-slate-300 - Hover:border slate 300 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-400",
+    "text": "dark:hover:border-slate-400 - Hover:border slate 400 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-50",
+    "text": "dark:hover:border-slate-50 - Hover:border slate 50 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-500",
+    "text": "dark:hover:border-slate-500 - Hover:border slate 500 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-600",
+    "text": "dark:hover:border-slate-600 - Hover:border slate 600 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-700",
+    "text": "dark:hover:border-slate-700 - Hover:border slate 700 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-800",
+    "text": "dark:hover:border-slate-800 - Hover:border slate 800 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-900",
+    "text": "dark:hover:border-slate-900 - Hover:border slate 900 on dark"
+  },
+  {
+    "value": "dark:hover:border-slate-950",
+    "text": "dark:hover:border-slate-950 - Hover:border slate 950 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-100",
+    "text": "dark:hover:text-slate-100 - Hover:text slate 100 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-200",
+    "text": "dark:hover:text-slate-200 - Hover:text slate 200 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-300",
+    "text": "dark:hover:text-slate-300 - Hover:text slate 300 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-400",
+    "text": "dark:hover:text-slate-400 - Hover:text slate 400 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-50",
+    "text": "dark:hover:text-slate-50 - Hover:text slate 50 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-500",
+    "text": "dark:hover:text-slate-500 - Hover:text slate 500 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-600",
+    "text": "dark:hover:text-slate-600 - Hover:text slate 600 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-700",
+    "text": "dark:hover:text-slate-700 - Hover:text slate 700 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-800",
+    "text": "dark:hover:text-slate-800 - Hover:text slate 800 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-900",
+    "text": "dark:hover:text-slate-900 - Hover:text slate 900 on dark"
+  },
+  {
+    "value": "dark:hover:text-slate-950",
+    "text": "dark:hover:text-slate-950 - Hover:text slate 950 on dark"
+  },
+  {
+    "value": "dark:ring-sky-900",
+    "text": "dark:ring-sky-900 - Ring sky 900 on dark"
+  },
+  {
+    "value": "dark:text-gray-300",
+    "text": "dark:text-gray-300 - Text color: gray 300 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-gray-400",
+    "text": "dark:text-gray-400 - Text color: gray 400 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-gray-50",
+    "text": "dark:text-gray-50 - Text color: gray 50 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-100",
+    "text": "dark:text-slate-100 - Text color: slate 100 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-200",
+    "text": "dark:text-slate-200 - Text color: slate 200 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-300",
+    "text": "dark:text-slate-300 - Text color: slate 300 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-400",
+    "text": "dark:text-slate-400 - Text color: slate 400 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-50",
+    "text": "dark:text-slate-50 - Text color: slate 50 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-500",
+    "text": "dark:text-slate-500 - Text color: slate 500 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-600",
+    "text": "dark:text-slate-600 - Text color: slate 600 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-700",
+    "text": "dark:text-slate-700 - Text color: slate 700 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-800",
+    "text": "dark:text-slate-800 - Text color: slate 800 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-900",
+    "text": "dark:text-slate-900 - Text color: slate 900 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-slate-950",
+    "text": "dark:text-slate-950 - Text color: slate 950 on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:text-white",
+    "text": "dark:text-white - Text color: white on dark (Bootstrap: .text-*)"
+  },
+  {
+    "value": "dark:to-indigo-950",
+    "text": "dark:to-indigo-950 - To indigo 950 on dark"
+  },
+  {
+    "value": "dark:to-slate-950",
+    "text": "dark:to-slate-950 - To slate 950 on dark"
+  },
+  {
+    "value": "dark:to-violet-400",
+    "text": "dark:to-violet-400 - To violet 400 on dark"
+  },
+  {
+    "value": "dark:via-slate-950",
+    "text": "dark:via-slate-950 - Via slate 950 on dark"
+  },
+  {
+    "value": "duration-300",
+    "text": "duration-300 - Duration 300"
+  },
+  {
+    "value": "ease-out",
+    "text": "ease-out - Ease out"
   },
   {
     "value": "fixed",
@@ -232,12 +980,48 @@
     "text": "font-semibold - Font weight: semibold (Bootstrap: .fw-semibold)"
   },
   {
+    "value": "from-blue-600",
+    "text": "from-blue-600 - From blue 600"
+  },
+  {
+    "value": "from-sky-50",
+    "text": "from-sky-50 - From sky 50"
+  },
+  {
+    "value": "from-white",
+    "text": "from-white - From white"
+  },
+  {
+    "value": "gap-0",
+    "text": "gap-0 - Gap 0"
+  },
+  {
+    "value": "gap-1",
+    "text": "gap-1 - Gap 1"
+  },
+  {
+    "value": "gap-10",
+    "text": "gap-10 - Gap 10"
+  },
+  {
+    "value": "gap-12",
+    "text": "gap-12 - Gap 12"
+  },
+  {
     "value": "gap-2",
     "text": "gap-2 - Gap 2"
   },
   {
+    "value": "gap-3",
+    "text": "gap-3 - Gap 3"
+  },
+  {
     "value": "gap-4",
     "text": "gap-4 - Gap 4"
+  },
+  {
+    "value": "gap-5",
+    "text": "gap-5 - Gap 5"
   },
   {
     "value": "gap-6",
@@ -256,6 +1040,14 @@
     "text": "grid-cols-1 - Grid with 1 columns (Bootstrap: grid system)"
   },
   {
+    "value": "grid-cols-10",
+    "text": "grid-cols-10 - Grid with 10 columns (Bootstrap: grid system)"
+  },
+  {
+    "value": "grid-cols-11",
+    "text": "grid-cols-11 - Grid with 11 columns (Bootstrap: grid system)"
+  },
+  {
     "value": "grid-cols-12",
     "text": "grid-cols-12 - Grid with 12 columns (Bootstrap: grid system)"
   },
@@ -272,8 +1064,32 @@
     "text": "grid-cols-4 - Grid with 4 columns (Bootstrap: grid system)"
   },
   {
+    "value": "grid-cols-5",
+    "text": "grid-cols-5 - Grid with 5 columns (Bootstrap: grid system)"
+  },
+  {
     "value": "grid-cols-6",
     "text": "grid-cols-6 - Grid with 6 columns (Bootstrap: grid system)"
+  },
+  {
+    "value": "grid-cols-7",
+    "text": "grid-cols-7 - Grid with 7 columns (Bootstrap: grid system)"
+  },
+  {
+    "value": "grid-cols-8",
+    "text": "grid-cols-8 - Grid with 8 columns (Bootstrap: grid system)"
+  },
+  {
+    "value": "grid-cols-9",
+    "text": "grid-cols-9 - Grid with 9 columns (Bootstrap: grid system)"
+  },
+  {
+    "value": "h-20",
+    "text": "h-20 - Height: 20 (Bootstrap: .h-*)"
+  },
+  {
+    "value": "h-24",
+    "text": "h-24 - Height: 24 (Bootstrap: .h-*)"
   },
   {
     "value": "h-32",
@@ -304,6 +1120,10 @@
     "text": "hidden - Hide element (Bootstrap: .d-none)"
   },
   {
+    "value": "hover:-translate-y-1",
+    "text": "hover:-translate-y-1 - -translate y 1 on hover"
+  },
+  {
     "value": "hover:bg-blue-600",
     "text": "hover:bg-blue-600 - Background: blue 600 on hover (Bootstrap: .bg-primary)"
   },
@@ -320,12 +1140,108 @@
     "text": "hover:bg-red-600 - Background: red 600 on hover (Bootstrap: .bg-danger)"
   },
   {
+    "value": "hover:bg-slate-100",
+    "text": "hover:bg-slate-100 - Background: slate 100 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-200",
+    "text": "hover:bg-slate-200 - Background: slate 200 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-300",
+    "text": "hover:bg-slate-300 - Background: slate 300 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-400",
+    "text": "hover:bg-slate-400 - Background: slate 400 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-50",
+    "text": "hover:bg-slate-50 - Background: slate 50 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-500",
+    "text": "hover:bg-slate-500 - Background: slate 500 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-600",
+    "text": "hover:bg-slate-600 - Background: slate 600 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-700",
+    "text": "hover:bg-slate-700 - Background: slate 700 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-800",
+    "text": "hover:bg-slate-800 - Background: slate 800 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-900",
+    "text": "hover:bg-slate-900 - Background: slate 900 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:bg-slate-950",
+    "text": "hover:bg-slate-950 - Background: slate 950 on hover (Bootstrap: .bg-*)"
+  },
+  {
+    "value": "hover:border-sky-200",
+    "text": "hover:border-sky-200 - Border width: sky-200 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-100",
+    "text": "hover:border-slate-100 - Border width: slate-100 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-200",
+    "text": "hover:border-slate-200 - Border width: slate-200 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-300",
+    "text": "hover:border-slate-300 - Border width: slate-300 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-400",
+    "text": "hover:border-slate-400 - Border width: slate-400 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-50",
+    "text": "hover:border-slate-50 - Border width: slate-50 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-500",
+    "text": "hover:border-slate-500 - Border width: slate-500 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-600",
+    "text": "hover:border-slate-600 - Border width: slate-600 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-700",
+    "text": "hover:border-slate-700 - Border width: slate-700 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-800",
+    "text": "hover:border-slate-800 - Border width: slate-800 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-900",
+    "text": "hover:border-slate-900 - Border width: slate-900 on hover (Bootstrap: .border-*)"
+  },
+  {
+    "value": "hover:border-slate-950",
+    "text": "hover:border-slate-950 - Border width: slate-950 on hover (Bootstrap: .border-*)"
+  },
+  {
     "value": "hover:shadow-lg",
     "text": "hover:shadow-lg - Box shadow:  lg on hover (Bootstrap: .shadow*)"
   },
   {
     "value": "hover:shadow-md",
     "text": "hover:shadow-md - Box shadow:  md on hover (Bootstrap: .shadow*)"
+  },
+  {
+    "value": "hover:shadow-xl",
+    "text": "hover:shadow-xl - Box shadow:  xl on hover (Bootstrap: .shadow*)"
   },
   {
     "value": "hover:text-blue-600",
@@ -338,6 +1254,50 @@
   {
     "value": "hover:text-red-600",
     "text": "hover:text-red-600 - Text color: red 600 on hover (Bootstrap: .text-danger)"
+  },
+  {
+    "value": "hover:text-slate-100",
+    "text": "hover:text-slate-100 - Text color: slate 100 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-200",
+    "text": "hover:text-slate-200 - Text color: slate 200 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-300",
+    "text": "hover:text-slate-300 - Text color: slate 300 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-400",
+    "text": "hover:text-slate-400 - Text color: slate 400 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-50",
+    "text": "hover:text-slate-50 - Text color: slate 50 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-500",
+    "text": "hover:text-slate-500 - Text color: slate 500 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-600",
+    "text": "hover:text-slate-600 - Text color: slate 600 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-700",
+    "text": "hover:text-slate-700 - Text color: slate 700 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-800",
+    "text": "hover:text-slate-800 - Text color: slate 800 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-900",
+    "text": "hover:text-slate-900 - Text color: slate 900 on hover (Bootstrap: .text-*)"
+  },
+  {
+    "value": "hover:text-slate-950",
+    "text": "hover:text-slate-950 - Text color: slate 950 on hover (Bootstrap: .text-*)"
   },
   {
     "value": "inline",
@@ -388,6 +1348,10 @@
     "text": "justify-start - Justify start"
   },
   {
+    "value": "leading-relaxed",
+    "text": "leading-relaxed - Leading relaxed"
+  },
+  {
     "value": "left-0",
     "text": "left-0 - Left 0"
   },
@@ -396,16 +1360,296 @@
     "text": "lg:block - Display as block element @lg+ (Bootstrap: .d-block)"
   },
   {
+    "value": "lg:col-span-1",
+    "text": "lg:col-span-1 - Span 1 grid columns @lg+ (Bootstrap: .col-1)"
+  },
+  {
+    "value": "lg:col-span-12",
+    "text": "lg:col-span-12 - Span 12 grid columns @lg+ (Bootstrap: .col-12)"
+  },
+  {
+    "value": "lg:col-span-2",
+    "text": "lg:col-span-2 - Span 2 grid columns @lg+ (Bootstrap: .col-2)"
+  },
+  {
+    "value": "lg:col-span-3",
+    "text": "lg:col-span-3 - Span 3 grid columns @lg+ (Bootstrap: .col-3)"
+  },
+  {
+    "value": "lg:col-span-4",
+    "text": "lg:col-span-4 - Span 4 grid columns @lg+ (Bootstrap: .col-4)"
+  },
+  {
+    "value": "lg:col-span-6",
+    "text": "lg:col-span-6 - Span 6 grid columns @lg+ (Bootstrap: .col-6)"
+  },
+  {
+    "value": "lg:col-span-full",
+    "text": "lg:col-span-full - Span full grid columns @lg+ (Bootstrap: .col-full)"
+  },
+  {
     "value": "lg:flex",
     "text": "lg:flex - Display as flexbox container @lg+ (Bootstrap: .d-flex)"
+  },
+  {
+    "value": "lg:flex-col",
+    "text": "lg:flex-col - Flex direction column @lg+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "lg:flex-nowrap",
+    "text": "lg:flex-nowrap - Flex nowrap @lg+"
+  },
+  {
+    "value": "lg:flex-row",
+    "text": "lg:flex-row - Flex direction row @lg+ (Bootstrap: .flex-row)"
+  },
+  {
+    "value": "lg:flex-wrap",
+    "text": "lg:flex-wrap - Flex wrap @lg+"
+  },
+  {
+    "value": "lg:gap-0",
+    "text": "lg:gap-0 - Gap 0 @lg+"
+  },
+  {
+    "value": "lg:gap-1",
+    "text": "lg:gap-1 - Gap 1 @lg+"
+  },
+  {
+    "value": "lg:gap-10",
+    "text": "lg:gap-10 - Gap 10 @lg+"
+  },
+  {
+    "value": "lg:gap-12",
+    "text": "lg:gap-12 - Gap 12 @lg+"
+  },
+  {
+    "value": "lg:gap-2",
+    "text": "lg:gap-2 - Gap 2 @lg+"
+  },
+  {
+    "value": "lg:gap-3",
+    "text": "lg:gap-3 - Gap 3 @lg+"
+  },
+  {
+    "value": "lg:gap-4",
+    "text": "lg:gap-4 - Gap 4 @lg+"
+  },
+  {
+    "value": "lg:gap-5",
+    "text": "lg:gap-5 - Gap 5 @lg+"
+  },
+  {
+    "value": "lg:gap-6",
+    "text": "lg:gap-6 - Gap 6 @lg+"
+  },
+  {
+    "value": "lg:gap-8",
+    "text": "lg:gap-8 - Gap 8 @lg+"
+  },
+  {
+    "value": "lg:grid",
+    "text": "lg:grid - Display as CSS grid container @lg+ (Bootstrap: .d-grid)"
+  },
+  {
+    "value": "lg:grid-cols-1",
+    "text": "lg:grid-cols-1 - Grid with 1 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-10",
+    "text": "lg:grid-cols-10 - Grid with 10 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-11",
+    "text": "lg:grid-cols-11 - Grid with 11 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-12",
+    "text": "lg:grid-cols-12 - Grid with 12 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-2",
+    "text": "lg:grid-cols-2 - Grid with 2 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-3",
+    "text": "lg:grid-cols-3 - Grid with 3 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-4",
+    "text": "lg:grid-cols-4 - Grid with 4 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-5",
+    "text": "lg:grid-cols-5 - Grid with 5 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-6",
+    "text": "lg:grid-cols-6 - Grid with 6 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-7",
+    "text": "lg:grid-cols-7 - Grid with 7 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-8",
+    "text": "lg:grid-cols-8 - Grid with 8 columns @lg+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "lg:grid-cols-9",
+    "text": "lg:grid-cols-9 - Grid with 9 columns @lg+ (Bootstrap: grid system)"
   },
   {
     "value": "lg:hidden",
     "text": "lg:hidden - Hide element @lg+ (Bootstrap: .d-none)"
   },
   {
+    "value": "lg:inline",
+    "text": "lg:inline - Display as inline element @lg+ (Bootstrap: .d-inline)"
+  },
+  {
+    "value": "lg:inline-block",
+    "text": "lg:inline-block - Display as inline-block element @lg+ (Bootstrap: .d-inline-block)"
+  },
+  {
+    "value": "lg:inline-flex",
+    "text": "lg:inline-flex - Display as inline flexbox container @lg+ (Bootstrap: .d-inline-flex)"
+  },
+  {
+    "value": "lg:items-center",
+    "text": "lg:items-center - Center items vertically @lg+ (Bootstrap: .align-items-center)"
+  },
+  {
+    "value": "lg:items-start",
+    "text": "lg:items-start - Align items to start @lg+ (Bootstrap: .align-items-start)"
+  },
+  {
+    "value": "lg:justify-between",
+    "text": "lg:justify-between - Space items evenly with space between @lg+ (Bootstrap: .justify-content-between)"
+  },
+  {
+    "value": "lg:justify-center",
+    "text": "lg:justify-center - Center items horizontally @lg+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "lg:max-w-2xl",
+    "text": "lg:max-w-2xl - Max w 2xl @lg+"
+  },
+  {
+    "value": "lg:max-w-3xl",
+    "text": "lg:max-w-3xl - Max w 3xl @lg+"
+  },
+  {
+    "value": "lg:max-w-4xl",
+    "text": "lg:max-w-4xl - Max w 4xl @lg+"
+  },
+  {
+    "value": "lg:max-w-6xl",
+    "text": "lg:max-w-6xl - Max w 6xl @lg+"
+  },
+  {
+    "value": "lg:max-w-full",
+    "text": "lg:max-w-full - Max w full @lg+"
+  },
+  {
+    "value": "lg:max-w-lg",
+    "text": "lg:max-w-lg - Max w lg @lg+"
+  },
+  {
+    "value": "lg:max-w-md",
+    "text": "lg:max-w-md - Max w md @lg+"
+  },
+  {
+    "value": "lg:max-w-sm",
+    "text": "lg:max-w-sm - Max w sm @lg+"
+  },
+  {
+    "value": "lg:max-w-xl",
+    "text": "lg:max-w-xl - Max w xl @lg+"
+  },
+  {
+    "value": "lg:max-w-xs",
+    "text": "lg:max-w-xs - Max w xs @lg+"
+  },
+  {
+    "value": "lg:p-4",
+    "text": "lg:p-4 - Padding: 4 @lg+ (Bootstrap: .p-4)"
+  },
+  {
+    "value": "lg:p-5",
+    "text": "lg:p-5 - Padding: 5 @lg+ (Bootstrap: .p-5)"
+  },
+  {
+    "value": "lg:p-6",
+    "text": "lg:p-6 - Padding: 6 @lg+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "lg:px-10",
+    "text": "lg:px-10 - Horizontal padding: 10 @lg+ (Bootstrap: .px-10)"
+  },
+  {
+    "value": "lg:px-4",
+    "text": "lg:px-4 - Horizontal padding: 4 @lg+ (Bootstrap: .px-4)"
+  },
+  {
+    "value": "lg:px-6",
+    "text": "lg:px-6 - Horizontal padding: 6 @lg+ (Bootstrap: .px-6)"
+  },
+  {
+    "value": "lg:px-8",
+    "text": "lg:px-8 - Horizontal padding: 8 @lg+ (Bootstrap: .px-8)"
+  },
+  {
+    "value": "lg:py-10",
+    "text": "lg:py-10 - Vertical padding: 10 @lg+ (Bootstrap: .py-10)"
+  },
+  {
+    "value": "lg:py-12",
+    "text": "lg:py-12 - Vertical padding: 12 @lg+ (Bootstrap: .py-12)"
+  },
+  {
+    "value": "lg:py-14",
+    "text": "lg:py-14 - Vertical padding: 14 @lg+ (Bootstrap: .py-14)"
+  },
+  {
+    "value": "lg:py-8",
+    "text": "lg:py-8 - Vertical padding: 8 @lg+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "lg:text-2xl",
+    "text": "lg:text-2xl - Text size: 2xl @lg+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "lg:text-3xl",
+    "text": "lg:text-3xl - Text size: 3xl @lg+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "lg:text-4xl",
+    "text": "lg:text-4xl - Text color: 4xl @lg+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "lg:text-5xl",
+    "text": "lg:text-5xl - Text color: 5xl @lg+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "lg:text-base",
+    "text": "lg:text-base - Text size: base @lg+ (Bootstrap: .fs-*)"
+  },
+  {
     "value": "lg:text-lg",
     "text": "lg:text-lg - Text size: lg @lg+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "lg:text-sm",
+    "text": "lg:text-sm - Text size: sm @lg+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "lg:text-xl",
+    "text": "lg:text-xl - Text size: xl @lg+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "lg:text-xs",
+    "text": "lg:text-xs - Text size: xs @lg+ (Bootstrap: .fs-*)"
   },
   {
     "value": "lg:w-1/3",
@@ -454,6 +1698,18 @@
   {
     "value": "max-w-2xl",
     "text": "max-w-2xl - Max w 2xl"
+  },
+  {
+    "value": "max-w-3xl",
+    "text": "max-w-3xl - Max w 3xl"
+  },
+  {
+    "value": "max-w-4xl",
+    "text": "max-w-4xl - Max w 4xl"
+  },
+  {
+    "value": "max-w-6xl",
+    "text": "max-w-6xl - Max w 6xl"
   },
   {
     "value": "max-w-full",
@@ -516,20 +1772,304 @@
     "text": "md:block - Display as block element @md+ (Bootstrap: .d-block)"
   },
   {
+    "value": "md:col-span-1",
+    "text": "md:col-span-1 - Span 1 grid columns @md+ (Bootstrap: .col-1)"
+  },
+  {
+    "value": "md:col-span-12",
+    "text": "md:col-span-12 - Span 12 grid columns @md+ (Bootstrap: .col-12)"
+  },
+  {
+    "value": "md:col-span-2",
+    "text": "md:col-span-2 - Span 2 grid columns @md+ (Bootstrap: .col-2)"
+  },
+  {
+    "value": "md:col-span-3",
+    "text": "md:col-span-3 - Span 3 grid columns @md+ (Bootstrap: .col-3)"
+  },
+  {
+    "value": "md:col-span-4",
+    "text": "md:col-span-4 - Span 4 grid columns @md+ (Bootstrap: .col-4)"
+  },
+  {
+    "value": "md:col-span-6",
+    "text": "md:col-span-6 - Span 6 grid columns @md+ (Bootstrap: .col-6)"
+  },
+  {
+    "value": "md:col-span-full",
+    "text": "md:col-span-full - Span full grid columns @md+ (Bootstrap: .col-full)"
+  },
+  {
     "value": "md:flex",
     "text": "md:flex - Display as flexbox container @md+ (Bootstrap: .d-flex)"
+  },
+  {
+    "value": "md:flex-col",
+    "text": "md:flex-col - Flex direction column @md+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "md:flex-nowrap",
+    "text": "md:flex-nowrap - Flex nowrap @md+"
+  },
+  {
+    "value": "md:flex-row",
+    "text": "md:flex-row - Flex direction row @md+ (Bootstrap: .flex-row)"
+  },
+  {
+    "value": "md:flex-wrap",
+    "text": "md:flex-wrap - Flex wrap @md+"
+  },
+  {
+    "value": "md:gap-0",
+    "text": "md:gap-0 - Gap 0 @md+"
+  },
+  {
+    "value": "md:gap-1",
+    "text": "md:gap-1 - Gap 1 @md+"
+  },
+  {
+    "value": "md:gap-10",
+    "text": "md:gap-10 - Gap 10 @md+"
+  },
+  {
+    "value": "md:gap-12",
+    "text": "md:gap-12 - Gap 12 @md+"
+  },
+  {
+    "value": "md:gap-2",
+    "text": "md:gap-2 - Gap 2 @md+"
+  },
+  {
+    "value": "md:gap-3",
+    "text": "md:gap-3 - Gap 3 @md+"
+  },
+  {
+    "value": "md:gap-4",
+    "text": "md:gap-4 - Gap 4 @md+"
+  },
+  {
+    "value": "md:gap-5",
+    "text": "md:gap-5 - Gap 5 @md+"
+  },
+  {
+    "value": "md:gap-6",
+    "text": "md:gap-6 - Gap 6 @md+"
+  },
+  {
+    "value": "md:gap-8",
+    "text": "md:gap-8 - Gap 8 @md+"
+  },
+  {
+    "value": "md:grid",
+    "text": "md:grid - Display as CSS grid container @md+ (Bootstrap: .d-grid)"
+  },
+  {
+    "value": "md:grid-cols-1",
+    "text": "md:grid-cols-1 - Grid with 1 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-10",
+    "text": "md:grid-cols-10 - Grid with 10 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-11",
+    "text": "md:grid-cols-11 - Grid with 11 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-12",
+    "text": "md:grid-cols-12 - Grid with 12 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-2",
+    "text": "md:grid-cols-2 - Grid with 2 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-3",
+    "text": "md:grid-cols-3 - Grid with 3 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-4",
+    "text": "md:grid-cols-4 - Grid with 4 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-5",
+    "text": "md:grid-cols-5 - Grid with 5 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-6",
+    "text": "md:grid-cols-6 - Grid with 6 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-7",
+    "text": "md:grid-cols-7 - Grid with 7 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-8",
+    "text": "md:grid-cols-8 - Grid with 8 columns @md+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "md:grid-cols-9",
+    "text": "md:grid-cols-9 - Grid with 9 columns @md+ (Bootstrap: grid system)"
   },
   {
     "value": "md:hidden",
     "text": "md:hidden - Hide element @md+ (Bootstrap: .d-none)"
   },
   {
+    "value": "md:inline",
+    "text": "md:inline - Display as inline element @md+ (Bootstrap: .d-inline)"
+  },
+  {
+    "value": "md:inline-block",
+    "text": "md:inline-block - Display as inline-block element @md+ (Bootstrap: .d-inline-block)"
+  },
+  {
+    "value": "md:inline-flex",
+    "text": "md:inline-flex - Display as inline flexbox container @md+ (Bootstrap: .d-inline-flex)"
+  },
+  {
+    "value": "md:items-center",
+    "text": "md:items-center - Center items vertically @md+ (Bootstrap: .align-items-center)"
+  },
+  {
+    "value": "md:items-start",
+    "text": "md:items-start - Align items to start @md+ (Bootstrap: .align-items-start)"
+  },
+  {
+    "value": "md:justify-between",
+    "text": "md:justify-between - Space items evenly with space between @md+ (Bootstrap: .justify-content-between)"
+  },
+  {
+    "value": "md:justify-center",
+    "text": "md:justify-center - Center items horizontally @md+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "md:max-w-2xl",
+    "text": "md:max-w-2xl - Max w 2xl @md+"
+  },
+  {
+    "value": "md:max-w-3xl",
+    "text": "md:max-w-3xl - Max w 3xl @md+"
+  },
+  {
+    "value": "md:max-w-4xl",
+    "text": "md:max-w-4xl - Max w 4xl @md+"
+  },
+  {
+    "value": "md:max-w-6xl",
+    "text": "md:max-w-6xl - Max w 6xl @md+"
+  },
+  {
+    "value": "md:max-w-full",
+    "text": "md:max-w-full - Max w full @md+"
+  },
+  {
+    "value": "md:max-w-lg",
+    "text": "md:max-w-lg - Max w lg @md+"
+  },
+  {
+    "value": "md:max-w-md",
+    "text": "md:max-w-md - Max w md @md+"
+  },
+  {
+    "value": "md:max-w-sm",
+    "text": "md:max-w-sm - Max w sm @md+"
+  },
+  {
+    "value": "md:max-w-xl",
+    "text": "md:max-w-xl - Max w xl @md+"
+  },
+  {
+    "value": "md:max-w-xs",
+    "text": "md:max-w-xs - Max w xs @md+"
+  },
+  {
+    "value": "md:p-4",
+    "text": "md:p-4 - Padding: 4 @md+ (Bootstrap: .p-4)"
+  },
+  {
+    "value": "md:p-5",
+    "text": "md:p-5 - Padding: 5 @md+ (Bootstrap: .p-5)"
+  },
+  {
+    "value": "md:p-6",
+    "text": "md:p-6 - Padding: 6 @md+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "md:px-10",
+    "text": "md:px-10 - Horizontal padding: 10 @md+ (Bootstrap: .px-10)"
+  },
+  {
+    "value": "md:px-4",
+    "text": "md:px-4 - Horizontal padding: 4 @md+ (Bootstrap: .px-4)"
+  },
+  {
+    "value": "md:px-6",
+    "text": "md:px-6 - Horizontal padding: 6 @md+ (Bootstrap: .px-6)"
+  },
+  {
+    "value": "md:px-8",
+    "text": "md:px-8 - Horizontal padding: 8 @md+ (Bootstrap: .px-8)"
+  },
+  {
+    "value": "md:py-10",
+    "text": "md:py-10 - Vertical padding: 10 @md+ (Bootstrap: .py-10)"
+  },
+  {
+    "value": "md:py-12",
+    "text": "md:py-12 - Vertical padding: 12 @md+ (Bootstrap: .py-12)"
+  },
+  {
+    "value": "md:py-14",
+    "text": "md:py-14 - Vertical padding: 14 @md+ (Bootstrap: .py-14)"
+  },
+  {
+    "value": "md:py-8",
+    "text": "md:py-8 - Vertical padding: 8 @md+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "md:text-2xl",
+    "text": "md:text-2xl - Text size: 2xl @md+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "md:text-3xl",
+    "text": "md:text-3xl - Text size: 3xl @md+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "md:text-4xl",
+    "text": "md:text-4xl - Text color: 4xl @md+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "md:text-5xl",
+    "text": "md:text-5xl - Text color: 5xl @md+ (Bootstrap: .text-*)"
+  },
+  {
     "value": "md:text-base",
     "text": "md:text-base - Text size: base @md+ (Bootstrap: .fs-*)"
   },
   {
+    "value": "md:text-lg",
+    "text": "md:text-lg - Text size: lg @md+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "md:text-sm",
+    "text": "md:text-sm - Text size: sm @md+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "md:text-xl",
+    "text": "md:text-xl - Text size: xl @md+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "md:text-xs",
+    "text": "md:text-xs - Text size: xs @md+ (Bootstrap: .fs-*)"
+  },
+  {
     "value": "md:w-1/2",
     "text": "md:w-1/2 - Width: 1 of 2 @md+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "min-w-0",
+    "text": "min-w-0 - Min w 0"
   },
   {
     "value": "ml-0",
@@ -708,12 +2248,20 @@
     "text": "no-underline - No underline"
   },
   {
+    "value": "object-cover",
+    "text": "object-cover - Object cover"
+  },
+  {
     "value": "opacity-100",
     "text": "opacity-100 - Opacity: 100% (Bootstrap: .opacity-*)"
   },
   {
     "value": "opacity-25",
     "text": "opacity-25 - Opacity: 25% (Bootstrap: .opacity-*)"
+  },
+  {
+    "value": "opacity-40",
+    "text": "opacity-40 - Opacity: 40% (Bootstrap: .opacity-*)"
   },
   {
     "value": "opacity-50",
@@ -924,6 +2472,10 @@
     "text": "px-1 - Horizontal padding: 1 (Bootstrap: .px-1)"
   },
   {
+    "value": "px-10",
+    "text": "px-10 - Horizontal padding: 10 (Bootstrap: .px-10)"
+  },
+  {
     "value": "px-2",
     "text": "px-2 - Horizontal padding: 2 (Bootstrap: .px-2)"
   },
@@ -954,6 +2506,18 @@
   {
     "value": "py-1",
     "text": "py-1 - Vertical padding: 1 (Bootstrap: .py-1)"
+  },
+  {
+    "value": "py-10",
+    "text": "py-10 - Vertical padding: 10 (Bootstrap: .py-10)"
+  },
+  {
+    "value": "py-12",
+    "text": "py-12 - Vertical padding: 12 (Bootstrap: .py-12)"
+  },
+  {
+    "value": "py-14",
+    "text": "py-14 - Vertical padding: 14 (Bootstrap: .py-14)"
   },
   {
     "value": "py-2",
@@ -1000,8 +2564,32 @@
     "text": "right-0 - Right 0"
   },
   {
+    "value": "ring-2",
+    "text": "ring-2 - Ring 2"
+  },
+  {
+    "value": "ring-4",
+    "text": "ring-4 - Ring 4"
+  },
+  {
+    "value": "ring-blue-500/20",
+    "text": "ring-blue-500/20 - Ring blue 500/20"
+  },
+  {
+    "value": "ring-sky-100",
+    "text": "ring-sky-100 - Ring sky 100"
+  },
+  {
+    "value": "ring-violet-500/20",
+    "text": "ring-violet-500/20 - Ring violet 500/20"
+  },
+  {
     "value": "rounded",
     "text": "rounded - Border radius: default (Bootstrap: .rounded*)"
+  },
+  {
+    "value": "rounded-3xl",
+    "text": "rounded-3xl - Border radius:  3xl (Bootstrap: .rounded*)"
   },
   {
     "value": "rounded-b",
@@ -1064,16 +2652,296 @@
     "text": "sm:block - Display as block element @sm+ (Bootstrap: .d-block)"
   },
   {
+    "value": "sm:col-span-1",
+    "text": "sm:col-span-1 - Span 1 grid columns @sm+ (Bootstrap: .col-1)"
+  },
+  {
+    "value": "sm:col-span-12",
+    "text": "sm:col-span-12 - Span 12 grid columns @sm+ (Bootstrap: .col-12)"
+  },
+  {
+    "value": "sm:col-span-2",
+    "text": "sm:col-span-2 - Span 2 grid columns @sm+ (Bootstrap: .col-2)"
+  },
+  {
+    "value": "sm:col-span-3",
+    "text": "sm:col-span-3 - Span 3 grid columns @sm+ (Bootstrap: .col-3)"
+  },
+  {
+    "value": "sm:col-span-4",
+    "text": "sm:col-span-4 - Span 4 grid columns @sm+ (Bootstrap: .col-4)"
+  },
+  {
+    "value": "sm:col-span-6",
+    "text": "sm:col-span-6 - Span 6 grid columns @sm+ (Bootstrap: .col-6)"
+  },
+  {
+    "value": "sm:col-span-full",
+    "text": "sm:col-span-full - Span full grid columns @sm+ (Bootstrap: .col-full)"
+  },
+  {
     "value": "sm:flex",
     "text": "sm:flex - Display as flexbox container @sm+ (Bootstrap: .d-flex)"
+  },
+  {
+    "value": "sm:flex-col",
+    "text": "sm:flex-col - Flex direction column @sm+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "sm:flex-nowrap",
+    "text": "sm:flex-nowrap - Flex nowrap @sm+"
+  },
+  {
+    "value": "sm:flex-row",
+    "text": "sm:flex-row - Flex direction row @sm+ (Bootstrap: .flex-row)"
+  },
+  {
+    "value": "sm:flex-wrap",
+    "text": "sm:flex-wrap - Flex wrap @sm+"
+  },
+  {
+    "value": "sm:gap-0",
+    "text": "sm:gap-0 - Gap 0 @sm+"
+  },
+  {
+    "value": "sm:gap-1",
+    "text": "sm:gap-1 - Gap 1 @sm+"
+  },
+  {
+    "value": "sm:gap-10",
+    "text": "sm:gap-10 - Gap 10 @sm+"
+  },
+  {
+    "value": "sm:gap-12",
+    "text": "sm:gap-12 - Gap 12 @sm+"
+  },
+  {
+    "value": "sm:gap-2",
+    "text": "sm:gap-2 - Gap 2 @sm+"
+  },
+  {
+    "value": "sm:gap-3",
+    "text": "sm:gap-3 - Gap 3 @sm+"
+  },
+  {
+    "value": "sm:gap-4",
+    "text": "sm:gap-4 - Gap 4 @sm+"
+  },
+  {
+    "value": "sm:gap-5",
+    "text": "sm:gap-5 - Gap 5 @sm+"
+  },
+  {
+    "value": "sm:gap-6",
+    "text": "sm:gap-6 - Gap 6 @sm+"
+  },
+  {
+    "value": "sm:gap-8",
+    "text": "sm:gap-8 - Gap 8 @sm+"
+  },
+  {
+    "value": "sm:grid",
+    "text": "sm:grid - Display as CSS grid container @sm+ (Bootstrap: .d-grid)"
+  },
+  {
+    "value": "sm:grid-cols-1",
+    "text": "sm:grid-cols-1 - Grid with 1 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-10",
+    "text": "sm:grid-cols-10 - Grid with 10 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-11",
+    "text": "sm:grid-cols-11 - Grid with 11 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-12",
+    "text": "sm:grid-cols-12 - Grid with 12 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-2",
+    "text": "sm:grid-cols-2 - Grid with 2 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-3",
+    "text": "sm:grid-cols-3 - Grid with 3 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-4",
+    "text": "sm:grid-cols-4 - Grid with 4 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-5",
+    "text": "sm:grid-cols-5 - Grid with 5 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-6",
+    "text": "sm:grid-cols-6 - Grid with 6 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-7",
+    "text": "sm:grid-cols-7 - Grid with 7 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-8",
+    "text": "sm:grid-cols-8 - Grid with 8 columns @sm+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "sm:grid-cols-9",
+    "text": "sm:grid-cols-9 - Grid with 9 columns @sm+ (Bootstrap: grid system)"
   },
   {
     "value": "sm:hidden",
     "text": "sm:hidden - Hide element @sm+ (Bootstrap: .d-none)"
   },
   {
+    "value": "sm:inline",
+    "text": "sm:inline - Display as inline element @sm+ (Bootstrap: .d-inline)"
+  },
+  {
+    "value": "sm:inline-block",
+    "text": "sm:inline-block - Display as inline-block element @sm+ (Bootstrap: .d-inline-block)"
+  },
+  {
+    "value": "sm:inline-flex",
+    "text": "sm:inline-flex - Display as inline flexbox container @sm+ (Bootstrap: .d-inline-flex)"
+  },
+  {
+    "value": "sm:items-center",
+    "text": "sm:items-center - Center items vertically @sm+ (Bootstrap: .align-items-center)"
+  },
+  {
+    "value": "sm:items-start",
+    "text": "sm:items-start - Align items to start @sm+ (Bootstrap: .align-items-start)"
+  },
+  {
+    "value": "sm:justify-between",
+    "text": "sm:justify-between - Space items evenly with space between @sm+ (Bootstrap: .justify-content-between)"
+  },
+  {
+    "value": "sm:justify-center",
+    "text": "sm:justify-center - Center items horizontally @sm+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "sm:max-w-2xl",
+    "text": "sm:max-w-2xl - Max w 2xl @sm+"
+  },
+  {
+    "value": "sm:max-w-3xl",
+    "text": "sm:max-w-3xl - Max w 3xl @sm+"
+  },
+  {
+    "value": "sm:max-w-4xl",
+    "text": "sm:max-w-4xl - Max w 4xl @sm+"
+  },
+  {
+    "value": "sm:max-w-6xl",
+    "text": "sm:max-w-6xl - Max w 6xl @sm+"
+  },
+  {
+    "value": "sm:max-w-full",
+    "text": "sm:max-w-full - Max w full @sm+"
+  },
+  {
+    "value": "sm:max-w-lg",
+    "text": "sm:max-w-lg - Max w lg @sm+"
+  },
+  {
+    "value": "sm:max-w-md",
+    "text": "sm:max-w-md - Max w md @sm+"
+  },
+  {
+    "value": "sm:max-w-sm",
+    "text": "sm:max-w-sm - Max w sm @sm+"
+  },
+  {
+    "value": "sm:max-w-xl",
+    "text": "sm:max-w-xl - Max w xl @sm+"
+  },
+  {
+    "value": "sm:max-w-xs",
+    "text": "sm:max-w-xs - Max w xs @sm+"
+  },
+  {
+    "value": "sm:p-4",
+    "text": "sm:p-4 - Padding: 4 @sm+ (Bootstrap: .p-4)"
+  },
+  {
+    "value": "sm:p-5",
+    "text": "sm:p-5 - Padding: 5 @sm+ (Bootstrap: .p-5)"
+  },
+  {
+    "value": "sm:p-6",
+    "text": "sm:p-6 - Padding: 6 @sm+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "sm:px-10",
+    "text": "sm:px-10 - Horizontal padding: 10 @sm+ (Bootstrap: .px-10)"
+  },
+  {
+    "value": "sm:px-4",
+    "text": "sm:px-4 - Horizontal padding: 4 @sm+ (Bootstrap: .px-4)"
+  },
+  {
+    "value": "sm:px-6",
+    "text": "sm:px-6 - Horizontal padding: 6 @sm+ (Bootstrap: .px-6)"
+  },
+  {
+    "value": "sm:px-8",
+    "text": "sm:px-8 - Horizontal padding: 8 @sm+ (Bootstrap: .px-8)"
+  },
+  {
+    "value": "sm:py-10",
+    "text": "sm:py-10 - Vertical padding: 10 @sm+ (Bootstrap: .py-10)"
+  },
+  {
+    "value": "sm:py-12",
+    "text": "sm:py-12 - Vertical padding: 12 @sm+ (Bootstrap: .py-12)"
+  },
+  {
+    "value": "sm:py-14",
+    "text": "sm:py-14 - Vertical padding: 14 @sm+ (Bootstrap: .py-14)"
+  },
+  {
+    "value": "sm:py-8",
+    "text": "sm:py-8 - Vertical padding: 8 @sm+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "sm:text-2xl",
+    "text": "sm:text-2xl - Text size: 2xl @sm+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "sm:text-3xl",
+    "text": "sm:text-3xl - Text size: 3xl @sm+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "sm:text-4xl",
+    "text": "sm:text-4xl - Text color: 4xl @sm+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "sm:text-5xl",
+    "text": "sm:text-5xl - Text color: 5xl @sm+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "sm:text-base",
+    "text": "sm:text-base - Text size: base @sm+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "sm:text-lg",
+    "text": "sm:text-lg - Text size: lg @sm+ (Bootstrap: .fs-*)"
+  },
+  {
     "value": "sm:text-sm",
     "text": "sm:text-sm - Text size: sm @sm+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "sm:text-xl",
+    "text": "sm:text-xl - Text size: xl @sm+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "sm:text-xs",
+    "text": "sm:text-xs - Text size: xs @sm+ (Bootstrap: .fs-*)"
   },
   {
     "value": "sm:w-full",
@@ -1094,6 +2962,14 @@
   {
     "value": "text-3xl",
     "text": "text-3xl - Text size: 3xl (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "text-4xl",
+    "text": "text-4xl - Text color: 4xl (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-5xl",
+    "text": "text-5xl - Text color: 5xl (Bootstrap: .text-*)"
   },
   {
     "value": "text-base",
@@ -1188,8 +3064,56 @@
     "text": "text-right - Text align: right (Bootstrap: .text-right)"
   },
   {
+    "value": "text-slate-100",
+    "text": "text-slate-100 - Text color: slate 100 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-200",
+    "text": "text-slate-200 - Text color: slate 200 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-300",
+    "text": "text-slate-300 - Text color: slate 300 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-400",
+    "text": "text-slate-400 - Text color: slate 400 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-50",
+    "text": "text-slate-50 - Text color: slate 50 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-500",
+    "text": "text-slate-500 - Text color: slate 500 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-600",
+    "text": "text-slate-600 - Text color: slate 600 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-700",
+    "text": "text-slate-700 - Text color: slate 700 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-800",
+    "text": "text-slate-800 - Text color: slate 800 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-900",
+    "text": "text-slate-900 - Text color: slate 900 (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-slate-950",
+    "text": "text-slate-950 - Text color: slate 950 (Bootstrap: .text-*)"
+  },
+  {
     "value": "text-sm",
     "text": "text-sm - Text size: sm (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "text-transparent",
+    "text": "text-transparent - Text color: transparent (Bootstrap: .text-*)"
   },
   {
     "value": "text-white",
@@ -1212,8 +3136,32 @@
     "text": "text-yellow-700 - Text color: yellow 700 (Bootstrap: .text-warning)"
   },
   {
+    "value": "to-indigo-50",
+    "text": "to-indigo-50 - To indigo 50"
+  },
+  {
+    "value": "to-sky-50/40",
+    "text": "to-sky-50/40 - To sky 50/40"
+  },
+  {
+    "value": "to-violet-600",
+    "text": "to-violet-600 - To violet 600"
+  },
+  {
     "value": "top-0",
     "text": "top-0 - Top 0"
+  },
+  {
+    "value": "tracking-tight",
+    "text": "tracking-tight - Tracking tight"
+  },
+  {
+    "value": "transition",
+    "text": "transition - Transition"
+  },
+  {
+    "value": "transition-shadow",
+    "text": "transition-shadow - Transition shadow"
   },
   {
     "value": "underline",
@@ -1222,6 +3170,10 @@
   {
     "value": "uppercase",
     "text": "uppercase - Transform text to uppercase (Bootstrap: .text-uppercase)"
+  },
+  {
+    "value": "via-white",
+    "text": "via-white - Via white"
   },
   {
     "value": "w-1/2",
@@ -1240,6 +3192,14 @@
     "text": "w-2/3 - Width: 2 of 3 (Bootstrap: .w-* percentages)"
   },
   {
+    "value": "w-20",
+    "text": "w-20 - Width: 20 (Bootstrap: .w-*)"
+  },
+  {
+    "value": "w-24",
+    "text": "w-24 - Width: 24 (Bootstrap: .w-*)"
+  },
+  {
     "value": "w-3/4",
     "text": "w-3/4 - Width: 3 of 4 (Bootstrap: .w-* percentages)"
   },
@@ -1250,6 +3210,302 @@
   {
     "value": "w-full",
     "text": "w-full - Full width (100%) (Bootstrap: .w-100)"
+  },
+  {
+    "value": "xl:block",
+    "text": "xl:block - Display as block element @xl+ (Bootstrap: .d-block)"
+  },
+  {
+    "value": "xl:col-span-1",
+    "text": "xl:col-span-1 - Span 1 grid columns @xl+ (Bootstrap: .col-1)"
+  },
+  {
+    "value": "xl:col-span-12",
+    "text": "xl:col-span-12 - Span 12 grid columns @xl+ (Bootstrap: .col-12)"
+  },
+  {
+    "value": "xl:col-span-2",
+    "text": "xl:col-span-2 - Span 2 grid columns @xl+ (Bootstrap: .col-2)"
+  },
+  {
+    "value": "xl:col-span-3",
+    "text": "xl:col-span-3 - Span 3 grid columns @xl+ (Bootstrap: .col-3)"
+  },
+  {
+    "value": "xl:col-span-4",
+    "text": "xl:col-span-4 - Span 4 grid columns @xl+ (Bootstrap: .col-4)"
+  },
+  {
+    "value": "xl:col-span-6",
+    "text": "xl:col-span-6 - Span 6 grid columns @xl+ (Bootstrap: .col-6)"
+  },
+  {
+    "value": "xl:col-span-full",
+    "text": "xl:col-span-full - Span full grid columns @xl+ (Bootstrap: .col-full)"
+  },
+  {
+    "value": "xl:flex",
+    "text": "xl:flex - Display as flexbox container @xl+ (Bootstrap: .d-flex)"
+  },
+  {
+    "value": "xl:flex-col",
+    "text": "xl:flex-col - Flex direction column @xl+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "xl:flex-nowrap",
+    "text": "xl:flex-nowrap - Flex nowrap @xl+"
+  },
+  {
+    "value": "xl:flex-row",
+    "text": "xl:flex-row - Flex direction row @xl+ (Bootstrap: .flex-row)"
+  },
+  {
+    "value": "xl:flex-wrap",
+    "text": "xl:flex-wrap - Flex wrap @xl+"
+  },
+  {
+    "value": "xl:gap-0",
+    "text": "xl:gap-0 - Gap 0 @xl+"
+  },
+  {
+    "value": "xl:gap-1",
+    "text": "xl:gap-1 - Gap 1 @xl+"
+  },
+  {
+    "value": "xl:gap-10",
+    "text": "xl:gap-10 - Gap 10 @xl+"
+  },
+  {
+    "value": "xl:gap-12",
+    "text": "xl:gap-12 - Gap 12 @xl+"
+  },
+  {
+    "value": "xl:gap-2",
+    "text": "xl:gap-2 - Gap 2 @xl+"
+  },
+  {
+    "value": "xl:gap-3",
+    "text": "xl:gap-3 - Gap 3 @xl+"
+  },
+  {
+    "value": "xl:gap-4",
+    "text": "xl:gap-4 - Gap 4 @xl+"
+  },
+  {
+    "value": "xl:gap-5",
+    "text": "xl:gap-5 - Gap 5 @xl+"
+  },
+  {
+    "value": "xl:gap-6",
+    "text": "xl:gap-6 - Gap 6 @xl+"
+  },
+  {
+    "value": "xl:gap-8",
+    "text": "xl:gap-8 - Gap 8 @xl+"
+  },
+  {
+    "value": "xl:grid",
+    "text": "xl:grid - Display as CSS grid container @xl+ (Bootstrap: .d-grid)"
+  },
+  {
+    "value": "xl:grid-cols-1",
+    "text": "xl:grid-cols-1 - Grid with 1 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-10",
+    "text": "xl:grid-cols-10 - Grid with 10 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-11",
+    "text": "xl:grid-cols-11 - Grid with 11 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-12",
+    "text": "xl:grid-cols-12 - Grid with 12 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-2",
+    "text": "xl:grid-cols-2 - Grid with 2 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-3",
+    "text": "xl:grid-cols-3 - Grid with 3 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-4",
+    "text": "xl:grid-cols-4 - Grid with 4 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-5",
+    "text": "xl:grid-cols-5 - Grid with 5 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-6",
+    "text": "xl:grid-cols-6 - Grid with 6 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-7",
+    "text": "xl:grid-cols-7 - Grid with 7 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-8",
+    "text": "xl:grid-cols-8 - Grid with 8 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:grid-cols-9",
+    "text": "xl:grid-cols-9 - Grid with 9 columns @xl+ (Bootstrap: grid system)"
+  },
+  {
+    "value": "xl:hidden",
+    "text": "xl:hidden - Hide element @xl+ (Bootstrap: .d-none)"
+  },
+  {
+    "value": "xl:inline",
+    "text": "xl:inline - Display as inline element @xl+ (Bootstrap: .d-inline)"
+  },
+  {
+    "value": "xl:inline-block",
+    "text": "xl:inline-block - Display as inline-block element @xl+ (Bootstrap: .d-inline-block)"
+  },
+  {
+    "value": "xl:inline-flex",
+    "text": "xl:inline-flex - Display as inline flexbox container @xl+ (Bootstrap: .d-inline-flex)"
+  },
+  {
+    "value": "xl:items-center",
+    "text": "xl:items-center - Center items vertically @xl+ (Bootstrap: .align-items-center)"
+  },
+  {
+    "value": "xl:items-start",
+    "text": "xl:items-start - Align items to start @xl+ (Bootstrap: .align-items-start)"
+  },
+  {
+    "value": "xl:justify-between",
+    "text": "xl:justify-between - Space items evenly with space between @xl+ (Bootstrap: .justify-content-between)"
+  },
+  {
+    "value": "xl:justify-center",
+    "text": "xl:justify-center - Center items horizontally @xl+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "xl:max-w-2xl",
+    "text": "xl:max-w-2xl - Max w 2xl @xl+"
+  },
+  {
+    "value": "xl:max-w-3xl",
+    "text": "xl:max-w-3xl - Max w 3xl @xl+"
+  },
+  {
+    "value": "xl:max-w-4xl",
+    "text": "xl:max-w-4xl - Max w 4xl @xl+"
+  },
+  {
+    "value": "xl:max-w-6xl",
+    "text": "xl:max-w-6xl - Max w 6xl @xl+"
+  },
+  {
+    "value": "xl:max-w-full",
+    "text": "xl:max-w-full - Max w full @xl+"
+  },
+  {
+    "value": "xl:max-w-lg",
+    "text": "xl:max-w-lg - Max w lg @xl+"
+  },
+  {
+    "value": "xl:max-w-md",
+    "text": "xl:max-w-md - Max w md @xl+"
+  },
+  {
+    "value": "xl:max-w-sm",
+    "text": "xl:max-w-sm - Max w sm @xl+"
+  },
+  {
+    "value": "xl:max-w-xl",
+    "text": "xl:max-w-xl - Max w xl @xl+"
+  },
+  {
+    "value": "xl:max-w-xs",
+    "text": "xl:max-w-xs - Max w xs @xl+"
+  },
+  {
+    "value": "xl:p-4",
+    "text": "xl:p-4 - Padding: 4 @xl+ (Bootstrap: .p-4)"
+  },
+  {
+    "value": "xl:p-5",
+    "text": "xl:p-5 - Padding: 5 @xl+ (Bootstrap: .p-5)"
+  },
+  {
+    "value": "xl:p-6",
+    "text": "xl:p-6 - Padding: 6 @xl+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "xl:px-10",
+    "text": "xl:px-10 - Horizontal padding: 10 @xl+ (Bootstrap: .px-10)"
+  },
+  {
+    "value": "xl:px-4",
+    "text": "xl:px-4 - Horizontal padding: 4 @xl+ (Bootstrap: .px-4)"
+  },
+  {
+    "value": "xl:px-6",
+    "text": "xl:px-6 - Horizontal padding: 6 @xl+ (Bootstrap: .px-6)"
+  },
+  {
+    "value": "xl:px-8",
+    "text": "xl:px-8 - Horizontal padding: 8 @xl+ (Bootstrap: .px-8)"
+  },
+  {
+    "value": "xl:py-10",
+    "text": "xl:py-10 - Vertical padding: 10 @xl+ (Bootstrap: .py-10)"
+  },
+  {
+    "value": "xl:py-12",
+    "text": "xl:py-12 - Vertical padding: 12 @xl+ (Bootstrap: .py-12)"
+  },
+  {
+    "value": "xl:py-14",
+    "text": "xl:py-14 - Vertical padding: 14 @xl+ (Bootstrap: .py-14)"
+  },
+  {
+    "value": "xl:py-8",
+    "text": "xl:py-8 - Vertical padding: 8 @xl+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "xl:text-2xl",
+    "text": "xl:text-2xl - Text size: 2xl @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:text-3xl",
+    "text": "xl:text-3xl - Text size: 3xl @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:text-4xl",
+    "text": "xl:text-4xl - Text color: 4xl @xl+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "xl:text-5xl",
+    "text": "xl:text-5xl - Text color: 5xl @xl+ (Bootstrap: .text-*)"
+  },
+  {
+    "value": "xl:text-base",
+    "text": "xl:text-base - Text size: base @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:text-lg",
+    "text": "xl:text-lg - Text size: lg @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:text-sm",
+    "text": "xl:text-sm - Text size: sm @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:text-xl",
+    "text": "xl:text-xl - Text size: xl @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:text-xs",
+    "text": "xl:text-xs - Text size: xs @xl+ (Bootstrap: .fs-*)"
   },
   {
     "value": "z-10",
