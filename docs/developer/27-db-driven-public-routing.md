@@ -161,44 +161,56 @@ row/record fields. They carry no presentational fields of their own.
 
 See [`../reference/styles/composite.md`](../reference/styles/composite.md).
 
-## CMS-in-CMS wizard: `POST /admin/pages/cms-app`
+## First-class CMS apps (`cms_apps`)
 
-`CmsAppWizardService::createCmsApp()` (controller
-`AdminPageController::createCmsApp`, permission `admin.page.create`) atomically
-scaffolds a working list/detail pattern bound to a data table:
+CMS-in-CMS apps are a first-class product unit (`cms_apps` table +
+`pages.id_cms_app` / `pages.cms_app_role`). Host Admin manages **structure**
+(metadata, page assignment, form sections, scaffold, preview); editors manage
+**records** only on the CMS surface `/cms/<app>` via `entry-table` + modal
+`form-record`. Permissions are separate: `admin.cms_app.read|create|update|delete`.
 
-- an optional **create form** — `/cms/<base>/form` (with `create_form`);
-- a **public** pair — `/<base>` (list) + `/<base>/{record_id}` (detail);
-- an **admin** pair — `/cms/<base>` + `/cms/<base>/{record_id}`.
+| Role | Purpose |
+|------|---------|
+| `form` | Create/edit form (owns the data table) |
+| `cms_list` | CMS list (`entry-table`) — primary Manage content target |
+| `cms_detail` | CMS edit modal page |
+| `public_list` / `public_detail` | Public list/detail |
+| `other` | Extra related page (unlimited) |
 
-For each page it creates the page (with the right surface + ACL), its canonical
-`page_routes` row, and the `entry-list` / `entry-record` holder + child template
-(title, link, text) wired to the table. With `create_form` the wizard scaffolds a
-**`form-record` form page in record edit mode** (`load_record_from =
-record_id_param`, *own entries only* off) — one input per `form_fields[]` entry
-(or a single default `text-input` from `form_field_name`) — and immediately
-materialises the table it **owns** (via
-`DataTableService::createDataTableForFormSection` on the new form section id).
-The list/detail pages bind to that owned table; the **admin list is an
-`entry-table` data table** (inline delete, `add_url` to the create form,
-`edit_url` per row) and the **admin detail attaches the same shared form
-section** as its edit form, so `/cms/<base>/{id}` prefills record `{id}` (all
-languages) and saving **updates** it. The create form and admin detail carry
-`open_in_modal` (the form also `close_modal_on_save`). Without `create_form`,
-`data_table` is required and must already exist. Everything is conflict-checked
-up front; any failure rolls back the pages created so far. The generated pages
-are ordinary CMS pages, fully editable afterwards. Request fields: `base_name`
-(required), `data_table` (required unless `create_form`), `create_form`,
-`form_fields[]` (name/style/label builder) or legacy `form_field_name` +
-`form_field_label`, `create_public`, `create_admin`, `record_id_param`,
+Primary roles (everything except `other`) are unique per app (409 on conflict).
+Hub FKs on the app (`id_form_section`, `id_cms_list_page`, …) are written only by
+`CmsAppHubSyncService`. Deleting an app shell unassigns pages and clears hubs; it
+does **not** delete pages, sections, tables, or records.
+
+### Create empty shell + scaffold
+
+1. `POST /admin/cms-apps` `{ name, slug, description? }` → empty app (permission
+   `admin.cms_app.create`).
+2. `POST /admin/cms-apps/{id}/scaffold` with the former wizard body → pages
+   + roles + hub sync (permission `admin.cms_app.update`).
+
+Scaffold request fields: `base_name` (required), `data_table` (required unless
+`create_form`), `create_form`, `form_fields[]` (or `form_field_name` /
+`form_field_label`), `create_public`, `create_admin`, `record_id_param`,
 `list_title`, `detail_title`, `access_groups`.
 
-Record updates are enforced by one shared rule
-(`DataAccessSecurityService::canUpdateOwnedRecord`, mirroring
-`canDeleteOwnedRecord`): own records are always editable; another user's record
-needs the UPDATE data-access permission on the form's table (admins pass via the
-role override). `PUT /cms-api/v1/forms/update` accepts an explicit `record_id`
-under the same rule.
+Scaffolded pages (when the matching flags are on):
+
+- **form** — `/cms/<base>/form` (`form-record`, modal, `close_modal_on_save`);
+- **public** pair — `/<base>` + `/<base>/{record_id}`;
+- **CMS** pair — `/cms/<base>` (`entry-table`) + `/cms/<base>/{record_id}`
+  (shared form section in record edit mode).
+
+Without `create_form`, `data_table` must already exist. Conflicts are checked up
+front; failures roll back scaffolded pages. The legacy
+`POST /admin/pages/cms-app` route is removed (pre-1.0, no alias).
+
+Record updates use
+`DataAccessSecurityService::canUpdateOwnedRecord` (mirrors delete ownership).
+`PUT /cms-api/v1/forms/update` accepts an explicit `record_id` under that rule.
+
+UI: Admin → **CMS Apps** (`/admin/cms-apps`, detail `/admin/cms-apps/[slug]`).
+Mutations always use numeric app `id`; slug is for display/URLs only.
 
 ## Page export / import (portable CMS-in-CMS bundles)
 

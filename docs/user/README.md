@@ -17,5 +17,6 @@ each guide.
 
 | Guide | Use it for |
 | --- | --- |
+| [cms-apps.md](cms-apps.md) | CMS Apps: import Team Members, Manage content, Live preview, delete shell. |
 | [interpolation-and-data-naming.md](interpolation-and-data-naming.md) | Inserting variables into text, and naming your form data so it reads nicely without breaking. |
 | [email-templates.md](email-templates.md) | Editing the system emails (2FA, welcome, password reset) and styling them. |

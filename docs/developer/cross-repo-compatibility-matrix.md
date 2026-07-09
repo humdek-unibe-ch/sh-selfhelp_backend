@@ -495,6 +495,26 @@ the same change wave:
 > `supports.frontend` stays `>=0.1.59` (both `<0.2.0`). Mobile 0.1.33 adopts
 > the rename in the same wave via `@selfhelp/shared` `3.0.0`.
 
+> **Core 0.1.34 (first-class `cms_app` product unit ⇄ frontend 0.1.60 —
+> breaking):** CMS-in-CMS apps become a first-class entity. Migration
+> `Version20260706221100` adds the `cms_apps` table (hub FKs for form section +
+> list/detail pages), `pages.id_cms_app` / `pages.cms_app_role` (strict roles
+> `form` / `cms_list` / `cms_detail` / `public_list` / `public_detail` / `other`;
+> primary roles unique per app), separate `admin.cms_app.*` permissions, and the
+> `/admin/cms-apps` CRUD + assign/unassign + scaffold API. The legacy
+> `POST /admin/pages/cms-app` wizard route is **removed** (pre-1.0, no alias).
+> Hub FKs are written only by `CmsAppHubSyncService`; deleting an app shell
+> unassigns pages without deleting pages/sections/tables/records. Portable
+> bundles emit/consume a `cms_app` block + per-page `cms_app_role`.
+> **Frontend 0.1.60** ships `/admin/cms-apps` index/detail, CMS Apps navbar
+> accordion (Content Pages exclude assigned pages), empty-shell create + scaffold
+> modals, and Manage content → `/cms/<app>`, so **both floors move in lockstep**:
+> frontend `supports.core` `0.1.33 → 0.1.34` and backend `supports.frontend`
+> `0.1.59 → 0.1.60`. The live pairing is now **frontend `>=0.1.60` ⇄ core
+> `>=0.1.34`** (both `<0.2.0`). Host `selfhelp.cms_version` becomes `0.1.34`.
+> `@selfhelp/shared` keeps `3.0.0` and adds the `ICmsApp*` / `TCmsAppRole` +
+> `admin.cms_app.*` permission constants (additive within the same major).
+
 > **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
 > wave):** further additive issue #30 follow-up. Core adds two page-property
 > fields `modal_width` + `modal_height` (migration `Version20260630172821`, page
@@ -523,13 +543,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.33` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.34` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `3.0.0` | npm (`3.0.0` `show-user-input` → `entry-table` rename — `IEntryTableStyle`/`IEntryTableEntry` + `_can_edit`, `IFormRecordStyle.load_record_from`/`own_entries_only`; `2.0.0` strict navigation contract v2 — strict `INavigationMenu`/`INavigationMenuItem` with `layer`/`description`/`aria_label`, no `config`, `TWebFooterPreset`, `headerLayers`/`footerPreset`/`activeTrail` helpers, bundle v2.0 types; `1.21.0` menu-builder navigation contract; `1.20.0` CMS-in-CMS modal sizing; earlier entries unchanged) |
-| `sh-selfhelp_frontend` | `0.1.59` | strict nav payload, layered double header, preset-keyed footer, admin layer sections, bundle v2.0; entry-table grid + record edit mode + template gallery |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `3.0.0` (local tgz) | strict menu payload + header layer + footer preset contract + entry-table style types |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | navigation overhaul + CMS-in-CMS polish wave (entry-table, record edit mode, portable bundles) |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.59 <0.2.0` | frontend adopts the strict nav contract v2 + the entry-table/edit-mode contract |
+| `@selfhelp/shared` | `3.0.0` | npm (`3.0.0` `show-user-input` → `entry-table` rename — `IEntryTableStyle`/`IEntryTableEntry` + `_can_edit`, `IFormRecordStyle.load_record_from`/`own_entries_only`; additive `ICmsApp*` / `TCmsAppRole` + `admin.cms_app.*`; `2.0.0` strict navigation contract v2 — strict `INavigationMenu`/`INavigationMenuItem` with `layer`/`description`/`aria_label`, no `config`, `TWebFooterPreset`, `headerLayers`/`footerPreset`/`activeTrail` helpers, bundle v2.0 types; `1.21.0` menu-builder navigation contract; `1.20.0` CMS-in-CMS modal sizing; earlier entries unchanged) |
+| `sh-selfhelp_frontend` | `0.1.60` | first-class CMS Apps admin UI + strict nav payload + entry-table polish |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `3.0.0` (local tgz) | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.34 <0.2.0` | first-class `/admin/cms-apps` API (replaces `POST /admin/pages/cms-app`) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.60 <0.2.0` | frontend adopts CMS Apps Host Admin + `admin.cms_app.*` |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.33 <0.2.0` | strict navigation payload v2 (layer/description/aria_label, typed presets, no config) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

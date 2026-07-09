@@ -7,9 +7,9 @@ SPDX-License-Identifier: MPL-2.0
 
 Audience: CMS administrators and developers.
 Status: active.
-Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-06.
-Source of truth: Runtime backend code (issue #30) and the linked architecture doc.
+Applies to: SelfHelp2 Symfony backend + frontend Host Admin.
+Last verified: 2026-07-08.
+Source of truth: Runtime `cms_apps` APIs, `CmsAppWizardService::scaffoldCmsApp`, and the linked architecture doc.
 
 This recipe builds a working **list → detail** pattern bound to a data table —
 the core "CMS-in-CMS" building block — using DB-driven public routes. For the
@@ -53,28 +53,35 @@ record instead of appending a new one. Updating another user's record requires
 UPDATE permission on the form's data table; admins pass automatically. See
 [forms.md#form-record](../reference/styles/forms.md#form-record).
 
-## Option A — the wizard (recommended)
+## Option A — CMS Apps (recommended)
 
-1. Open **Admin → Pages**.
-2. Click the **Create list + detail pages** button (wand icon) above the page list.
-3. Fill in:
+1. Open **Admin → CMS Apps** (sidebar accordion).
+2. Click **Create CMS app** and enter a display **name** + **slug** (empty shell
+   only — no pages yet). You land on the app detail page.
+3. Click **Scaffold pages** (or open scaffold from the empty-state action) and fill
+   in:
    - **Base name** — lowercase, hyphenated (e.g. `team-members`). Drives the
      keywords and URLs.
-   - **Create form** — when on, the wizard scaffolds an append form page that
-     **creates and owns** the data table (plus one default input named by
-     **Form field name**, default `title`); leave **Data table** empty. When off,
-     supply an existing **Data table** to bind to.
+   - **Create form** — when on, scaffolds a form page that **creates and owns**
+     the data table (plus inputs from the multi-field builder or a default
+     **Form field name**); leave **Data table** empty. When off, supply an
+     existing **Data table** to bind to.
    - **Detail route parameter** — defaults to `record_id` (snake_case).
-   - **Additional access groups** — optional groups to grant access (on top of the
-     surface defaults: `cms` pages are admin/editor-only, `public` pages public).
-   - Toggle **public** / **admin** pairs as needed.
-4. Review the **Pages that will be created** preview table, then **Generate pages**.
-5. On success, use the quick links to open the public list and a detail page for a
-   test record id.
+   - **Additional access groups** — optional groups on top of surface defaults
+     (`cms` = admin/editor-only, `public` = public).
+   - Toggle **public** / **CMS (admin)** pairs as needed.
+4. Review the pages preview, then run scaffold.
+5. Use **Manage content** on the app (or open `/cms/<base>`) to work with
+   records via the `entry-table` + modal form. Host Admin does **not** offer a
+   second record CRUD UI.
 
-The generated pages are ordinary CMS pages — open any of them in the page editor
-to restyle, add fields, or change the binding. The wizard only scaffolds; it does
-not lock anything.
+Assigned pages appear under **CMS Apps**, not under Content Pages. Roles are
+strict (`form`, `cms_list`, `cms_detail`, `public_list`, `public_detail`,
+`other`); primary roles are unique per app. Deleting the app shell unassigns
+pages and clears hubs — it does not delete pages or data.
+
+API: `POST /admin/cms-apps` then `POST /admin/cms-apps/{id}/scaffold`.
+Permissions: `admin.cms_app.*` (separate from `admin.page.*`).
 
 ## Option B — by hand
 
@@ -161,13 +168,14 @@ translated content and sample rows:
 | **Testimonials** | form + public list + admin grid | quote wall with avatars |
 
 1. Admin → Pages → **Export / import** (transfer icon) → **Start from template**
-   tab (the app wizard also links here via **Browse templates**).
+   tab (CMS Apps scaffold can also browse templates).
 2. Pick a template — **Use this template** jumps to the Import tab with the
    bundle loaded and safe demo keyword/route prefixes pre-filled, so the copy
    never collides with existing pages and its internal links are rewritten to
-   the prefixed routes automatically.
+   the prefixed routes automatically. Bundles that include a `cms_app` block
+   recreate the app shell + roles on import.
 3. Enable **import data** to seed the sample rows, validate, and import. The
-   app is clickable immediately.
+   app is clickable immediately; open it under **CMS Apps** after import.
 
 The bundle files live in the **frontend** repo under
 `sh-selfhelp_frontend/examples/cms-in-cms/` (see that repo's
