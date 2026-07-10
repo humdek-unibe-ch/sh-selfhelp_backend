@@ -223,7 +223,7 @@
                         },
                         {
                             "section_name": "events-form-date",
-                            "style_name": "date-picker",
+                            "style_name": "datepicker",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -236,11 +236,6 @@
                                     },
                                     "en-GB": {
                                         "content": "Date and time"
-                                    }
-                                },
-                                "placeholder": {
-                                    "all": {
-                                        "content": "2026-09-04 09:30"
                                     }
                                 },
                                 "is_required": {
@@ -260,12 +255,7 @@
                                 },
                                 "datepicker_placeholder": {
                                     "all": {
-                                        "content": "2026-07-06 14:30"
-                                    }
-                                },
-                                "web_datepicker_placeholder": {
-                                    "all": {
-                                        "content": "2026-07-06 14:30"
+                                        "content": "2026-09-04 09:30"
                                     }
                                 }
                             }

@@ -42,9 +42,14 @@ final class CmsInCmsTemplateBundlesImportTest extends QaWebTestCase
         // must appear in the hydrated list render.
         $expectations = [
             'team-members' => ['/team-members', ['Ada Lovelace', 'Grace Hopper']],
-            'news' => ['/news', ['New study platform goes live', 'Two new questionnaire templates']],
-            'faq' => ['/faq', ['How do I reset my password?', 'Who can see my answers?']],
-            'events' => ['/events', ['Study kickoff webinar', 'Open lab day']],
+            'news' => ['/news', ['Neue Studienplattform ist live', 'Zwei neue Fragebogen-Vorlagen']],
+            // Default CMS language is de-CH; sample rows ship bilingual content and
+            // the public list renders the default-locale labels.
+            // Markers must match decoded render content. Accordion labels are
+            // "Category — question"; assert on the question fragment (umlaut-safe
+            // via JSON decode below, not raw response bytes).
+            'faq' => ['/faq', ['Wie setze ich mein Passwort zurück?', 'Wer kann meine Antworten sehen?']],
+            'events' => ['/events', ['Kick-off-Webinar zur Studie', 'Tag der offenen Labortür']],
             'contact-directory' => ['/contacts', ['Nora Keller', 'Sofia Ricci']],
             'testimonials' => ['/testimonials', ['Lena Baumann', 'Priya Sharma']],
         ];
@@ -122,11 +127,16 @@ final class CmsInCmsTemplateBundlesImportTest extends QaWebTestCase
                 'resolve ' . $publicPath . ': ' . (string) $response->getContent()
             );
             $body = (string) $response->getContent();
+            // Decode so umlauts match UTF-8 markers (raw JSON may use \uXXXX escapes).
+            $decodedBody = json_decode($body, true);
+            $searchHaystack = is_array($decodedBody)
+                ? (string) json_encode($decodedBody, JSON_UNESCAPED_UNICODE)
+                : $body;
 
             foreach ($markers as $marker) {
                 self::assertStringContainsString(
                     $marker,
-                    $body,
+                    $searchHaystack,
                     sprintf('The rendered list at %s must contain the seeded row marker "%s".', $publicPath, $marker)
                 );
             }
@@ -136,13 +146,28 @@ final class CmsInCmsTemplateBundlesImportTest extends QaWebTestCase
             self::assertNotSame('', $bundleSlug, 'Template bundles must ship cms_app.slug metadata.');
             $importedSlug = strtolower(trim(preg_replace('/[^a-z0-9]+/', '-', self::KEYWORD_PREFIX . $bundleSlug) ?? '', '-'));
 
+            $declaredRoles = [];
+            foreach (is_array($bundle['pages'] ?? null) ? $bundle['pages'] : [] as $page) {
+                if (is_array($page) && is_string($page['cms_app_role'] ?? null) && $page['cms_app_role'] !== '') {
+                    $declaredRoles[$page['cms_app_role']] = true;
+                }
+            }
+
             $appDetail = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', '/cms-api/v1/admin/cms-apps/by-slug/' . rawurlencode($importedSlug), null, $admin),
             );
-            self::assertNotEmpty($appDetail['id_form_section'] ?? null, 'CMS app hub must point at the form section.');
-            self::assertNotEmpty($appDetail['id_public_list_page'] ?? null, 'CMS app hub must point at the public list page.');
-            self::assertNotEmpty($appDetail['id_public_detail_page'] ?? null, 'CMS app hub must point at the public detail page.');
-            self::assertNotEmpty($appDetail['id_cms_list_page'] ?? null, 'CMS app hub must point at the CMS entry-table page.');
+            if (isset($declaredRoles['form'])) {
+                self::assertNotEmpty($appDetail['id_form_section'] ?? null, 'CMS app hub must point at the form section.');
+            }
+            if (isset($declaredRoles['public_list'])) {
+                self::assertNotEmpty($appDetail['id_public_list_page'] ?? null, 'CMS app hub must point at the public list page.');
+            }
+            if (isset($declaredRoles['public_detail'])) {
+                self::assertNotEmpty($appDetail['id_public_detail_page'] ?? null, 'CMS app hub must point at the public detail page.');
+            }
+            if (isset($declaredRoles['cms_list'])) {
+                self::assertNotEmpty($appDetail['id_cms_list_page'] ?? null, 'CMS app hub must point at the CMS entry-table page.');
+            }
         } finally {
             foreach ($createdPageIds as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);

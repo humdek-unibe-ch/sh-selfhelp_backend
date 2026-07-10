@@ -315,7 +315,7 @@
                         },
                         {
                             "section_name": "news-form-published-on",
-                            "style_name": "date-picker",
+                            "style_name": "datepicker",
                             "fields": {
                                 "name": {
                                     "all": {
@@ -340,7 +340,7 @@
                                         "content": "YYYY-MM-DD HH:mm"
                                     }
                                 },
-                                "web_datepicker_placeholder": {
+                                "datepicker_placeholder": {
                                     "all": {
                                         "content": "2026-07-06 14:30"
                                     }
