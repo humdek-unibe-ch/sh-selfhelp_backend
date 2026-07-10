@@ -1,3 +1,27 @@
+# v0.1.36
+
+## Migration history consolidation
+
+The branch-local work-in-progress migration chain is collapsed into five
+Doctrine-generated, direct-final migrations: `Version20260710092337` (ORM
+schema), `Version20260710093044` (page routing/CMS apps and authoring),
+`Version20260710093045` (navigation/search), `Version20260710093046`
+(analytics/headless system pages), and `Version20260710093048` (CMS catalog and
+data binding). Transient add/drop/re-add structures and the retired
+`POST /admin/pages/cms-app` route are not part of the final history.
+
+## Breaking: entry-record uses `load_record_from` (same as entry-record-form)
+
+Public/CMS detail holders no longer take an author SQL **Filter**. They use the
+visible **Load record from route parameter** field (`load_record_from`, default
+`record_id`) — the same contract as `entry-record-form`. The server builds
+`AND record_id = <int>` from the matched route. Migration
+`Version20260710093048` leaves `filter` off `entry-record` and links
+`load_record_from`. **Reimport** CMS-in-CMS detail pages (or set the field in
+the inspector). Pairs with frontend `0.1.63` and `@selfhelp/shared` `3.0.1`.
+
+---
+
 # v0.1.35
 
 ## Breaking: restore legacy field-based entry-list / entry-record data binding
@@ -5,24 +29,34 @@
 Reverses the v0.1.33 `data_config`-only entry hydration. `entry-list` and
 `entry-record` now bind rows through style property fields (`data_table`,
 `own_entries_only`, `filter`, `scope`, plus `load_as_table` / `selected_columns`
-on list and `url_param` on record). **No backward compatibility** — reimport
-CMS-in-CMS bundles with the new field shape.
+on list). Detail scoping uses an explicit author `filter` with
+`{{route.record_id}}` — the removed `url_param` field is not active.
+**No backward compatibility** — reimport CMS-in-CMS bundles with the new field shape.
+*(Superseded for entry-record scoping by v0.1.36 `load_record_from`.)*
 
-- Migration `Version20260709134852` re-links catalog fields and recreates
-  `filter`, `load_as_table`, `url_param`, `selected_columns`.
-- Migration `Version20260709134854` extends `get_data_table_filtered` with
+- Migration `Version20260710093048` applies the final catalog fields directly and creates
+  `filter`, `load_as_table`, `selected_columns`.
+- The same migration extends `get_data_table_filtered` with
   `selected_columns_param`; `entry-list` row loading honours the field.
 - `PageService::resolveEntryRows()` reads property fields; `entry-record`
-  injects validated `record_id` from `url_param` + route.
+  scopes rows through the prepared `filter` and validated route params.
 - New `DataTableFilterService` centralises filter interpolation, SQL denylist,
   and typed route params on entry filters, `data_config` retrieval, and
   `DataService` update predicates.
 - Rejected/malicious filters return **no rows** (never fall back to unfiltered).
   Security regression matrix: `FilterSafetyTest` + expanded unit tests.
   Developer note: `docs/developer/data-table-filter-safety.md`.
-- `PageExportImportService` / `CmsAppWizardService` portable `@section:` tokens
+- `PageExportImportService` relinks imported `entry-table` `fields_map` keys to
+  generated section field keys; `CmsAppWizardService` portable `@section:` tokens
   on `fields.data_table`; example bundles rewritten.
-- Pairs with frontend `0.1.61` and `@selfhelp/shared` `3.0.0`.
+- `POST /admin/data/query-preview` (permission `admin.data.read`) previews
+  prepared filters without executing SQL; route placeholders/requirements respect
+  page read data-access grants via `SectionAccessibleRouteService`.
+- **Import validation** reads gallery property fields in the compact
+  `{ "all": { "content": "…" } }` shape (and `language_code: "all"`), so
+  CMS-in-CMS templates with an explicit `entry-record` filter no longer fail
+  as `missing_entry_record_filter`.
+- Pairs with frontend `0.1.62` and `@selfhelp/shared` `3.0.0`.
 
 ---
 
@@ -57,7 +91,7 @@ See `docs/cookbook/cms-in-cms-list-detail.md` and
   `option_labels` on select, radio, combobox, and segmented-control. Entry
   hydration adds reserved `_{field}_label` / `_{field}_labels` values while
   persisted data stays code-only; legacy `text`/`label` catalogs remain
-  readable. Migration `Version20260709102039` adds/links the field and updates
+  readable. Migration `Version20260710093048` adds/links the field and updates
   catalog metadata. All six CMS-in-CMS fixture mirrors use the contract.
 
 ---
@@ -109,7 +143,7 @@ frontend `0.1.59`, mobile `0.1.33`, and `@selfhelp/shared` **`3.0.0`**
 `docs/developer/27-db-driven-public-routing.md`.
 
 - **Style rename `show-user-input` → `entry-table`** (migration
-  `Version20260706221024`, with round-trip test): the built-in admin CRUD grid
+  `Version20260710093048`, with round-trip test): the built-in admin CRUD grid
   gets a name that matches the entry-style family. Sections reference styles by
   `id_styles`, so this is a catalog `UPDATE`, no content migration. The same
   migration drops the stale pre-`data_config` legacy binding fields from the
