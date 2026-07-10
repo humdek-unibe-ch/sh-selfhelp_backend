@@ -2,8 +2,8 @@
 
 /**
  * Generate CSS classes JSON file for Symfony backend
- * This script exports ALL_CSS_CLASSES from the frontend safelist to a JSON file
- * that can be consumed by the PHP backend for select-css field types.
+ * This script generates the curated dynamic web-class contract consumed by
+ * the PHP backend's select-css field and synchronized into the frontend build.
  * 
  * Usage:
  * node scripts/generate-css-classes.js
@@ -172,6 +172,23 @@ const FLEX_LAYOUT_CLASSES = expandResponsive(
   ['flex-row', 'flex-col', 'flex-wrap', 'flex-nowrap', 'justify-center', 'justify-between', 'items-center', 'items-start']
 );
 
+const FLEX_BEHAVIOR_CLASSES = expandResponsive([
+  'flex-1', 'flex-auto', 'flex-initial', 'flex-none',
+  'grow', 'grow-0', 'shrink', 'shrink-0',
+  'justify-evenly', 'items-baseline',
+  'self-auto', 'self-start', 'self-center', 'self-end', 'self-stretch',
+  'place-items-start', 'place-items-center', 'place-items-end', 'place-items-stretch',
+]);
+
+const GRID_ROW_CLASSES = expandResponsive(
+  ['grid-rows-1', 'grid-rows-2', 'grid-rows-3', 'grid-rows-4', 'grid-rows-6']
+);
+
+const AXIS_GAP_CLASSES = expandResponsive([
+  'gap-x-0', 'gap-x-2', 'gap-x-4', 'gap-x-6', 'gap-x-8',
+  'gap-y-0', 'gap-y-2', 'gap-y-4', 'gap-y-6', 'gap-y-8',
+]);
+
 const TEXT_SIZE_CLASSES = expandResponsive(
   ['text-xs', 'text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl', 'text-5xl']
 );
@@ -188,12 +205,63 @@ const SIZE_CLASSES = [
   'w-20', 'w-24', 'h-20', 'h-24', 'min-w-0', 'object-cover',
 ];
 
+const RESPONSIVE_SIZE_CLASSES = expandResponsive([
+  'w-auto', 'w-full', 'w-screen',
+  'w-1/2', 'w-1/3', 'w-2/3', 'w-1/4', 'w-3/4',
+  'h-auto', 'h-full', 'h-screen',
+  'min-w-0', 'min-w-full', 'max-w-none',
+  'min-h-0', 'min-h-full', 'min-h-screen', 'max-h-full', 'max-h-screen',
+]);
+
+const TYPOGRAPHY_UTILITY_CLASSES = [
+  'leading-none', 'leading-tight', 'leading-snug', 'leading-normal', 'leading-relaxed', 'leading-loose',
+  'tracking-tighter', 'tracking-tight', 'tracking-normal', 'tracking-wide', 'tracking-wider', 'tracking-widest',
+  'truncate', 'text-ellipsis', 'text-clip',
+  'whitespace-normal', 'whitespace-nowrap', 'whitespace-pre-line', 'whitespace-pre-wrap',
+  'break-normal', 'break-words', 'break-all',
+];
+
+const MEDIA_UTILITY_CLASSES = [
+  'aspect-auto', 'aspect-square', 'aspect-video',
+  'object-contain', 'object-cover', 'object-fill', 'object-none', 'object-scale-down',
+  'object-center', 'object-top', 'object-right', 'object-bottom', 'object-left',
+];
+
+const INTERACTION_UTILITY_CLASSES = [
+  'cursor-auto', 'cursor-default', 'cursor-pointer', 'cursor-wait', 'cursor-not-allowed',
+  'pointer-events-none', 'pointer-events-auto', 'select-none', 'select-text',
+  'visible', 'invisible', 'sr-only', 'not-sr-only', 'focus:not-sr-only',
+];
+
+const BORDER_EFFECT_UTILITY_CLASSES = [
+  'border-t', 'border-r', 'border-b', 'border-l', 'border-x', 'border-y',
+  'divide-x', 'divide-y', 'divide-gray-200', 'dark:divide-gray-700',
+  'shadow-xl', 'shadow-2xl',
+  'ring-0', 'ring-1', 'ring-2', 'ring-4', 'ring-8',
+];
+
+const TRANSITION_UTILITY_CLASSES = [
+  'transition', 'transition-none', 'transition-all', 'transition-colors',
+  'transition-opacity', 'transition-shadow', 'transition-transform',
+  'duration-75', 'duration-100', 'duration-150', 'duration-200',
+  'duration-300', 'duration-500', 'duration-700',
+  'ease-linear', 'ease-in', 'ease-out', 'ease-in-out',
+  'motion-reduce:transition-none',
+];
+
+const POSITION_UTILITY_CLASSES = [
+  'inset-0', 'inset-x-0', 'inset-y-0',
+  'top-1/2', 'right-1/2', 'bottom-1/2', 'left-1/2',
+  '-translate-x-1/2', '-translate-y-1/2',
+];
+
 /**
  * Polish utilities used by CMS app bundles / section examples (team-members, etc.).
- * Keep aligned with frontend `examples/` and `src/globals.css` safelist patterns.
+ * Keep aligned with frontend `examples/` and the generated catalogue snapshot.
  */
 const CMS_TEMPLATE_CLASSES = [
   'backdrop-blur-sm',
+  'aspect-video',
   'bg-clip-text',
   'bg-gradient-to-b',
   'bg-gradient-to-br',
@@ -272,6 +340,14 @@ const REQUIRED_CLASSES = [
   'rounded-3xl',
   'text-slate-600',
   'backdrop-blur-sm',
+  'aspect-video',
+  'cursor-pointer',
+  'flex-1',
+  'focus:not-sr-only',
+  'md:gap-x-4',
+  'min-h-screen',
+  'motion-reduce:transition-none',
+  'truncate',
 ];
 
 function buildAllCssClasses() {
@@ -282,10 +358,20 @@ function buildAllCssClasses() {
     ...COL_SPAN_CLASSES,
     ...DISPLAY_CLASSES,
     ...FLEX_LAYOUT_CLASSES,
+    ...FLEX_BEHAVIOR_CLASSES,
+    ...GRID_ROW_CLASSES,
+    ...AXIS_GAP_CLASSES,
     ...TEXT_SIZE_CLASSES,
     ...MAX_WIDTH_CLASSES,
     ...SPACING_RESPONSIVE_CLASSES,
     ...SIZE_CLASSES,
+    ...RESPONSIVE_SIZE_CLASSES,
+    ...TYPOGRAPHY_UTILITY_CLASSES,
+    ...MEDIA_UTILITY_CLASSES,
+    ...INTERACTION_UTILITY_CLASSES,
+    ...BORDER_EFFECT_UTILITY_CLASSES,
+    ...TRANSITION_UTILITY_CLASSES,
+    ...POSITION_UTILITY_CLASSES,
     ...CMS_TEMPLATE_CLASSES,
     ...SLATE_COLOR_CLASSES,
   ]);

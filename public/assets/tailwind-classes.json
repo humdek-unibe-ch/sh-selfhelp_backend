@@ -1,5 +1,13 @@
 [
   {
+    "value": "-translate-x-1/2",
+    "text": "-translate-x-1/2 - -translate x 1/2"
+  },
+  {
+    "value": "-translate-y-1/2",
+    "text": "-translate-y-1/2 - -translate y 1/2"
+  },
+  {
     "value": "2xl:block",
     "text": "2xl:block - Display as block element @2xl+ (Bootstrap: .d-block)"
   },
@@ -36,8 +44,24 @@
     "text": "2xl:flex - Display as flexbox container @2xl+ (Bootstrap: .d-flex)"
   },
   {
+    "value": "2xl:flex-1",
+    "text": "2xl:flex-1 - Flex 1 @2xl+"
+  },
+  {
+    "value": "2xl:flex-auto",
+    "text": "2xl:flex-auto - Flex auto @2xl+"
+  },
+  {
     "value": "2xl:flex-col",
     "text": "2xl:flex-col - Flex direction column @2xl+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "2xl:flex-initial",
+    "text": "2xl:flex-initial - Flex initial @2xl+"
+  },
+  {
+    "value": "2xl:flex-none",
+    "text": "2xl:flex-none - Flex none @2xl+"
   },
   {
     "value": "2xl:flex-nowrap",
@@ -92,6 +116,46 @@
     "text": "2xl:gap-8 - Gap 8 @2xl+"
   },
   {
+    "value": "2xl:gap-x-0",
+    "text": "2xl:gap-x-0 - Gap x 0 @2xl+"
+  },
+  {
+    "value": "2xl:gap-x-2",
+    "text": "2xl:gap-x-2 - Gap x 2 @2xl+"
+  },
+  {
+    "value": "2xl:gap-x-4",
+    "text": "2xl:gap-x-4 - Gap x 4 @2xl+"
+  },
+  {
+    "value": "2xl:gap-x-6",
+    "text": "2xl:gap-x-6 - Gap x 6 @2xl+"
+  },
+  {
+    "value": "2xl:gap-x-8",
+    "text": "2xl:gap-x-8 - Gap x 8 @2xl+"
+  },
+  {
+    "value": "2xl:gap-y-0",
+    "text": "2xl:gap-y-0 - Gap y 0 @2xl+"
+  },
+  {
+    "value": "2xl:gap-y-2",
+    "text": "2xl:gap-y-2 - Gap y 2 @2xl+"
+  },
+  {
+    "value": "2xl:gap-y-4",
+    "text": "2xl:gap-y-4 - Gap y 4 @2xl+"
+  },
+  {
+    "value": "2xl:gap-y-6",
+    "text": "2xl:gap-y-6 - Gap y 6 @2xl+"
+  },
+  {
+    "value": "2xl:gap-y-8",
+    "text": "2xl:gap-y-8 - Gap y 8 @2xl+"
+  },
+  {
     "value": "2xl:grid",
     "text": "2xl:grid - Display as CSS grid container @2xl+ (Bootstrap: .d-grid)"
   },
@@ -144,6 +208,46 @@
     "text": "2xl:grid-cols-9 - Grid with 9 columns @2xl+ (Bootstrap: grid system)"
   },
   {
+    "value": "2xl:grid-rows-1",
+    "text": "2xl:grid-rows-1 - Grid rows 1 @2xl+"
+  },
+  {
+    "value": "2xl:grid-rows-2",
+    "text": "2xl:grid-rows-2 - Grid rows 2 @2xl+"
+  },
+  {
+    "value": "2xl:grid-rows-3",
+    "text": "2xl:grid-rows-3 - Grid rows 3 @2xl+"
+  },
+  {
+    "value": "2xl:grid-rows-4",
+    "text": "2xl:grid-rows-4 - Grid rows 4 @2xl+"
+  },
+  {
+    "value": "2xl:grid-rows-6",
+    "text": "2xl:grid-rows-6 - Grid rows 6 @2xl+"
+  },
+  {
+    "value": "2xl:grow",
+    "text": "2xl:grow - Grow @2xl+"
+  },
+  {
+    "value": "2xl:grow-0",
+    "text": "2xl:grow-0 - Grow 0 @2xl+"
+  },
+  {
+    "value": "2xl:h-auto",
+    "text": "2xl:h-auto - Height: auto @2xl+ (Bootstrap: .h-*)"
+  },
+  {
+    "value": "2xl:h-full",
+    "text": "2xl:h-full - Full height (100%) @2xl+ (Bootstrap: .h-100)"
+  },
+  {
+    "value": "2xl:h-screen",
+    "text": "2xl:h-screen - Height: screen @2xl+ (Bootstrap: .h-*)"
+  },
+  {
     "value": "2xl:hidden",
     "text": "2xl:hidden - Hide element @2xl+ (Bootstrap: .d-none)"
   },
@@ -160,6 +264,10 @@
     "text": "2xl:inline-flex - Display as inline flexbox container @2xl+ (Bootstrap: .d-inline-flex)"
   },
   {
+    "value": "2xl:items-baseline",
+    "text": "2xl:items-baseline - Items baseline @2xl+"
+  },
+  {
     "value": "2xl:items-center",
     "text": "2xl:items-center - Center items vertically @2xl+ (Bootstrap: .align-items-center)"
   },
@@ -174,6 +282,18 @@
   {
     "value": "2xl:justify-center",
     "text": "2xl:justify-center - Center items horizontally @2xl+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "2xl:justify-evenly",
+    "text": "2xl:justify-evenly - Justify evenly @2xl+"
+  },
+  {
+    "value": "2xl:max-h-full",
+    "text": "2xl:max-h-full - Max h full @2xl+"
+  },
+  {
+    "value": "2xl:max-h-screen",
+    "text": "2xl:max-h-screen - Max h screen @2xl+"
   },
   {
     "value": "2xl:max-w-2xl",
@@ -204,6 +324,10 @@
     "text": "2xl:max-w-md - Max w md @2xl+"
   },
   {
+    "value": "2xl:max-w-none",
+    "text": "2xl:max-w-none - Max w none @2xl+"
+  },
+  {
     "value": "2xl:max-w-sm",
     "text": "2xl:max-w-sm - Max w sm @2xl+"
   },
@@ -216,6 +340,26 @@
     "text": "2xl:max-w-xs - Max w xs @2xl+"
   },
   {
+    "value": "2xl:min-h-0",
+    "text": "2xl:min-h-0 - Min h 0 @2xl+"
+  },
+  {
+    "value": "2xl:min-h-full",
+    "text": "2xl:min-h-full - Min h full @2xl+"
+  },
+  {
+    "value": "2xl:min-h-screen",
+    "text": "2xl:min-h-screen - Min h screen @2xl+"
+  },
+  {
+    "value": "2xl:min-w-0",
+    "text": "2xl:min-w-0 - Min w 0 @2xl+"
+  },
+  {
+    "value": "2xl:min-w-full",
+    "text": "2xl:min-w-full - Min w full @2xl+"
+  },
+  {
     "value": "2xl:p-4",
     "text": "2xl:p-4 - Padding: 4 @2xl+ (Bootstrap: .p-4)"
   },
@@ -226,6 +370,22 @@
   {
     "value": "2xl:p-6",
     "text": "2xl:p-6 - Padding: 6 @2xl+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "2xl:place-items-center",
+    "text": "2xl:place-items-center - Place items center @2xl+"
+  },
+  {
+    "value": "2xl:place-items-end",
+    "text": "2xl:place-items-end - Place items end @2xl+"
+  },
+  {
+    "value": "2xl:place-items-start",
+    "text": "2xl:place-items-start - Place items start @2xl+"
+  },
+  {
+    "value": "2xl:place-items-stretch",
+    "text": "2xl:place-items-stretch - Place items stretch @2xl+"
   },
   {
     "value": "2xl:px-10",
@@ -258,6 +418,34 @@
   {
     "value": "2xl:py-8",
     "text": "2xl:py-8 - Vertical padding: 8 @2xl+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "2xl:self-auto",
+    "text": "2xl:self-auto - Self auto @2xl+"
+  },
+  {
+    "value": "2xl:self-center",
+    "text": "2xl:self-center - Self center @2xl+"
+  },
+  {
+    "value": "2xl:self-end",
+    "text": "2xl:self-end - Self end @2xl+"
+  },
+  {
+    "value": "2xl:self-start",
+    "text": "2xl:self-start - Self start @2xl+"
+  },
+  {
+    "value": "2xl:self-stretch",
+    "text": "2xl:self-stretch - Self stretch @2xl+"
+  },
+  {
+    "value": "2xl:shrink",
+    "text": "2xl:shrink - Shrink @2xl+"
+  },
+  {
+    "value": "2xl:shrink-0",
+    "text": "2xl:shrink-0 - Shrink 0 @2xl+"
   },
   {
     "value": "2xl:text-2xl",
@@ -296,12 +484,56 @@
     "text": "2xl:text-xs - Text size: xs @2xl+ (Bootstrap: .fs-*)"
   },
   {
+    "value": "2xl:w-1/2",
+    "text": "2xl:w-1/2 - Width: 1 of 2 @2xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "2xl:w-1/3",
+    "text": "2xl:w-1/3 - Width: 1 of 3 @2xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "2xl:w-1/4",
+    "text": "2xl:w-1/4 - Width: 1 of 4 @2xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "2xl:w-2/3",
+    "text": "2xl:w-2/3 - Width: 2 of 3 @2xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "2xl:w-3/4",
+    "text": "2xl:w-3/4 - Width: 3 of 4 @2xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "2xl:w-auto",
+    "text": "2xl:w-auto - Width: auto @2xl+ (Bootstrap: .w-*)"
+  },
+  {
+    "value": "2xl:w-full",
+    "text": "2xl:w-full - Full width (100%) @2xl+ (Bootstrap: .w-100)"
+  },
+  {
+    "value": "2xl:w-screen",
+    "text": "2xl:w-screen - Width: screen @2xl+ (Bootstrap: .w-*)"
+  },
+  {
     "value": "absolute",
     "text": "absolute - Position: absolute (Bootstrap: .position-absolute)"
   },
   {
     "value": "appearance-none",
     "text": "appearance-none - Appearance none"
+  },
+  {
+    "value": "aspect-auto",
+    "text": "aspect-auto - Aspect auto"
+  },
+  {
+    "value": "aspect-square",
+    "text": "aspect-square - Aspect square"
+  },
+  {
+    "value": "aspect-video",
+    "text": "aspect-video - Aspect video"
   },
   {
     "value": "backdrop-blur-sm",
@@ -476,6 +708,10 @@
     "text": "border-4 - Border width: 4 (Bootstrap: .border-*)"
   },
   {
+    "value": "border-b",
+    "text": "border-b - Border width: b (Bootstrap: .border-*)"
+  },
+  {
     "value": "border-blue-500",
     "text": "border-blue-500 - Border blue 500"
   },
@@ -494,6 +730,14 @@
   {
     "value": "border-green-500",
     "text": "border-green-500 - Border width: green-500 (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-l",
+    "text": "border-l - Border width: l (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-r",
+    "text": "border-r - Border width: r (Bootstrap: .border-*)"
   },
   {
     "value": "border-red-500",
@@ -548,8 +792,32 @@
     "text": "border-slate-950 - Border width: slate-950 (Bootstrap: .border-*)"
   },
   {
+    "value": "border-t",
+    "text": "border-t - Border width: t (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-x",
+    "text": "border-x - Border width: x (Bootstrap: .border-*)"
+  },
+  {
+    "value": "border-y",
+    "text": "border-y - Border width: y (Bootstrap: .border-*)"
+  },
+  {
     "value": "bottom-0",
     "text": "bottom-0 - Bottom 0"
+  },
+  {
+    "value": "bottom-1/2",
+    "text": "bottom-1/2 - Bottom 1/2"
+  },
+  {
+    "value": "break-all",
+    "text": "break-all - Break all"
+  },
+  {
+    "value": "break-normal",
+    "text": "break-normal - Break normal"
   },
   {
     "value": "break-words",
@@ -590,6 +858,26 @@
   {
     "value": "container",
     "text": "container - Container with responsive max-widths (Bootstrap: .container)"
+  },
+  {
+    "value": "cursor-auto",
+    "text": "cursor-auto - Cursor auto"
+  },
+  {
+    "value": "cursor-default",
+    "text": "cursor-default - Cursor default"
+  },
+  {
+    "value": "cursor-not-allowed",
+    "text": "cursor-not-allowed - Cursor not allowed"
+  },
+  {
+    "value": "cursor-pointer",
+    "text": "cursor-pointer - Cursor pointer"
+  },
+  {
+    "value": "cursor-wait",
+    "text": "cursor-wait - Cursor wait"
   },
   {
     "value": "dark:bg-gray-900",
@@ -686,6 +974,10 @@
   {
     "value": "dark:border-slate-950",
     "text": "dark:border-slate-950 - Border width: slate-950 on dark (Bootstrap: .border-*)"
+  },
+  {
+    "value": "dark:divide-gray-700",
+    "text": "dark:divide-gray-700 - Divide gray 700 on dark"
   },
   {
     "value": "dark:from-blue-400",
@@ -912,8 +1204,56 @@
     "text": "dark:via-slate-950 - Via slate 950 on dark"
   },
   {
+    "value": "divide-gray-200",
+    "text": "divide-gray-200 - Divide gray 200"
+  },
+  {
+    "value": "divide-x",
+    "text": "divide-x - Divide x"
+  },
+  {
+    "value": "divide-y",
+    "text": "divide-y - Divide y"
+  },
+  {
+    "value": "duration-100",
+    "text": "duration-100 - Duration 100"
+  },
+  {
+    "value": "duration-150",
+    "text": "duration-150 - Duration 150"
+  },
+  {
+    "value": "duration-200",
+    "text": "duration-200 - Duration 200"
+  },
+  {
     "value": "duration-300",
     "text": "duration-300 - Duration 300"
+  },
+  {
+    "value": "duration-500",
+    "text": "duration-500 - Duration 500"
+  },
+  {
+    "value": "duration-700",
+    "text": "duration-700 - Duration 700"
+  },
+  {
+    "value": "duration-75",
+    "text": "duration-75 - Duration 75"
+  },
+  {
+    "value": "ease-in",
+    "text": "ease-in - Ease in"
+  },
+  {
+    "value": "ease-in-out",
+    "text": "ease-in-out - Ease in out"
+  },
+  {
+    "value": "ease-linear",
+    "text": "ease-linear - Ease linear"
   },
   {
     "value": "ease-out",
@@ -928,8 +1268,24 @@
     "text": "flex - Display as flexbox container (Bootstrap: .d-flex)"
   },
   {
+    "value": "flex-1",
+    "text": "flex-1 - Flex 1"
+  },
+  {
+    "value": "flex-auto",
+    "text": "flex-auto - Flex auto"
+  },
+  {
     "value": "flex-col",
     "text": "flex-col - Flex direction column (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "flex-initial",
+    "text": "flex-initial - Flex initial"
+  },
+  {
+    "value": "flex-none",
+    "text": "flex-none - Flex none"
   },
   {
     "value": "flex-nowrap",
@@ -942,6 +1298,10 @@
   {
     "value": "flex-wrap",
     "text": "flex-wrap - Flex wrap"
+  },
+  {
+    "value": "focus:not-sr-only",
+    "text": "focus:not-sr-only - Not sr only on focus"
   },
   {
     "value": "focus:outline-none",
@@ -1032,6 +1392,46 @@
     "text": "gap-8 - Gap 8"
   },
   {
+    "value": "gap-x-0",
+    "text": "gap-x-0 - Gap x 0"
+  },
+  {
+    "value": "gap-x-2",
+    "text": "gap-x-2 - Gap x 2"
+  },
+  {
+    "value": "gap-x-4",
+    "text": "gap-x-4 - Gap x 4"
+  },
+  {
+    "value": "gap-x-6",
+    "text": "gap-x-6 - Gap x 6"
+  },
+  {
+    "value": "gap-x-8",
+    "text": "gap-x-8 - Gap x 8"
+  },
+  {
+    "value": "gap-y-0",
+    "text": "gap-y-0 - Gap y 0"
+  },
+  {
+    "value": "gap-y-2",
+    "text": "gap-y-2 - Gap y 2"
+  },
+  {
+    "value": "gap-y-4",
+    "text": "gap-y-4 - Gap y 4"
+  },
+  {
+    "value": "gap-y-6",
+    "text": "gap-y-6 - Gap y 6"
+  },
+  {
+    "value": "gap-y-8",
+    "text": "gap-y-8 - Gap y 8"
+  },
+  {
     "value": "grid",
     "text": "grid - Display as CSS grid container (Bootstrap: .d-grid)"
   },
@@ -1082,6 +1482,34 @@
   {
     "value": "grid-cols-9",
     "text": "grid-cols-9 - Grid with 9 columns (Bootstrap: grid system)"
+  },
+  {
+    "value": "grid-rows-1",
+    "text": "grid-rows-1 - Grid rows 1"
+  },
+  {
+    "value": "grid-rows-2",
+    "text": "grid-rows-2 - Grid rows 2"
+  },
+  {
+    "value": "grid-rows-3",
+    "text": "grid-rows-3 - Grid rows 3"
+  },
+  {
+    "value": "grid-rows-4",
+    "text": "grid-rows-4 - Grid rows 4"
+  },
+  {
+    "value": "grid-rows-6",
+    "text": "grid-rows-6 - Grid rows 6"
+  },
+  {
+    "value": "grow",
+    "text": "grow - Grow"
+  },
+  {
+    "value": "grow-0",
+    "text": "grow-0 - Grow 0"
   },
   {
     "value": "h-20",
@@ -1312,6 +1740,26 @@
     "text": "inline-flex - Display as inline flexbox container (Bootstrap: .d-inline-flex)"
   },
   {
+    "value": "inset-0",
+    "text": "inset-0 - Inset 0"
+  },
+  {
+    "value": "inset-x-0",
+    "text": "inset-x-0 - Inset x 0"
+  },
+  {
+    "value": "inset-y-0",
+    "text": "inset-y-0 - Inset y 0"
+  },
+  {
+    "value": "invisible",
+    "text": "invisible - Invisible"
+  },
+  {
+    "value": "items-baseline",
+    "text": "items-baseline - Items baseline"
+  },
+  {
     "value": "items-center",
     "text": "items-center - Center items vertically (Bootstrap: .align-items-center)"
   },
@@ -1344,16 +1792,44 @@
     "text": "justify-end - Justify end"
   },
   {
+    "value": "justify-evenly",
+    "text": "justify-evenly - Justify evenly"
+  },
+  {
     "value": "justify-start",
     "text": "justify-start - Justify start"
+  },
+  {
+    "value": "leading-loose",
+    "text": "leading-loose - Leading loose"
+  },
+  {
+    "value": "leading-none",
+    "text": "leading-none - Leading none"
+  },
+  {
+    "value": "leading-normal",
+    "text": "leading-normal - Leading normal"
   },
   {
     "value": "leading-relaxed",
     "text": "leading-relaxed - Leading relaxed"
   },
   {
+    "value": "leading-snug",
+    "text": "leading-snug - Leading snug"
+  },
+  {
+    "value": "leading-tight",
+    "text": "leading-tight - Leading tight"
+  },
+  {
     "value": "left-0",
     "text": "left-0 - Left 0"
+  },
+  {
+    "value": "left-1/2",
+    "text": "left-1/2 - Left 1/2"
   },
   {
     "value": "lg:block",
@@ -1392,8 +1868,24 @@
     "text": "lg:flex - Display as flexbox container @lg+ (Bootstrap: .d-flex)"
   },
   {
+    "value": "lg:flex-1",
+    "text": "lg:flex-1 - Flex 1 @lg+"
+  },
+  {
+    "value": "lg:flex-auto",
+    "text": "lg:flex-auto - Flex auto @lg+"
+  },
+  {
     "value": "lg:flex-col",
     "text": "lg:flex-col - Flex direction column @lg+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "lg:flex-initial",
+    "text": "lg:flex-initial - Flex initial @lg+"
+  },
+  {
+    "value": "lg:flex-none",
+    "text": "lg:flex-none - Flex none @lg+"
   },
   {
     "value": "lg:flex-nowrap",
@@ -1448,6 +1940,46 @@
     "text": "lg:gap-8 - Gap 8 @lg+"
   },
   {
+    "value": "lg:gap-x-0",
+    "text": "lg:gap-x-0 - Gap x 0 @lg+"
+  },
+  {
+    "value": "lg:gap-x-2",
+    "text": "lg:gap-x-2 - Gap x 2 @lg+"
+  },
+  {
+    "value": "lg:gap-x-4",
+    "text": "lg:gap-x-4 - Gap x 4 @lg+"
+  },
+  {
+    "value": "lg:gap-x-6",
+    "text": "lg:gap-x-6 - Gap x 6 @lg+"
+  },
+  {
+    "value": "lg:gap-x-8",
+    "text": "lg:gap-x-8 - Gap x 8 @lg+"
+  },
+  {
+    "value": "lg:gap-y-0",
+    "text": "lg:gap-y-0 - Gap y 0 @lg+"
+  },
+  {
+    "value": "lg:gap-y-2",
+    "text": "lg:gap-y-2 - Gap y 2 @lg+"
+  },
+  {
+    "value": "lg:gap-y-4",
+    "text": "lg:gap-y-4 - Gap y 4 @lg+"
+  },
+  {
+    "value": "lg:gap-y-6",
+    "text": "lg:gap-y-6 - Gap y 6 @lg+"
+  },
+  {
+    "value": "lg:gap-y-8",
+    "text": "lg:gap-y-8 - Gap y 8 @lg+"
+  },
+  {
     "value": "lg:grid",
     "text": "lg:grid - Display as CSS grid container @lg+ (Bootstrap: .d-grid)"
   },
@@ -1500,6 +2032,46 @@
     "text": "lg:grid-cols-9 - Grid with 9 columns @lg+ (Bootstrap: grid system)"
   },
   {
+    "value": "lg:grid-rows-1",
+    "text": "lg:grid-rows-1 - Grid rows 1 @lg+"
+  },
+  {
+    "value": "lg:grid-rows-2",
+    "text": "lg:grid-rows-2 - Grid rows 2 @lg+"
+  },
+  {
+    "value": "lg:grid-rows-3",
+    "text": "lg:grid-rows-3 - Grid rows 3 @lg+"
+  },
+  {
+    "value": "lg:grid-rows-4",
+    "text": "lg:grid-rows-4 - Grid rows 4 @lg+"
+  },
+  {
+    "value": "lg:grid-rows-6",
+    "text": "lg:grid-rows-6 - Grid rows 6 @lg+"
+  },
+  {
+    "value": "lg:grow",
+    "text": "lg:grow - Grow @lg+"
+  },
+  {
+    "value": "lg:grow-0",
+    "text": "lg:grow-0 - Grow 0 @lg+"
+  },
+  {
+    "value": "lg:h-auto",
+    "text": "lg:h-auto - Height: auto @lg+ (Bootstrap: .h-*)"
+  },
+  {
+    "value": "lg:h-full",
+    "text": "lg:h-full - Full height (100%) @lg+ (Bootstrap: .h-100)"
+  },
+  {
+    "value": "lg:h-screen",
+    "text": "lg:h-screen - Height: screen @lg+ (Bootstrap: .h-*)"
+  },
+  {
     "value": "lg:hidden",
     "text": "lg:hidden - Hide element @lg+ (Bootstrap: .d-none)"
   },
@@ -1516,6 +2088,10 @@
     "text": "lg:inline-flex - Display as inline flexbox container @lg+ (Bootstrap: .d-inline-flex)"
   },
   {
+    "value": "lg:items-baseline",
+    "text": "lg:items-baseline - Items baseline @lg+"
+  },
+  {
     "value": "lg:items-center",
     "text": "lg:items-center - Center items vertically @lg+ (Bootstrap: .align-items-center)"
   },
@@ -1530,6 +2106,18 @@
   {
     "value": "lg:justify-center",
     "text": "lg:justify-center - Center items horizontally @lg+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "lg:justify-evenly",
+    "text": "lg:justify-evenly - Justify evenly @lg+"
+  },
+  {
+    "value": "lg:max-h-full",
+    "text": "lg:max-h-full - Max h full @lg+"
+  },
+  {
+    "value": "lg:max-h-screen",
+    "text": "lg:max-h-screen - Max h screen @lg+"
   },
   {
     "value": "lg:max-w-2xl",
@@ -1560,6 +2148,10 @@
     "text": "lg:max-w-md - Max w md @lg+"
   },
   {
+    "value": "lg:max-w-none",
+    "text": "lg:max-w-none - Max w none @lg+"
+  },
+  {
     "value": "lg:max-w-sm",
     "text": "lg:max-w-sm - Max w sm @lg+"
   },
@@ -1572,6 +2164,26 @@
     "text": "lg:max-w-xs - Max w xs @lg+"
   },
   {
+    "value": "lg:min-h-0",
+    "text": "lg:min-h-0 - Min h 0 @lg+"
+  },
+  {
+    "value": "lg:min-h-full",
+    "text": "lg:min-h-full - Min h full @lg+"
+  },
+  {
+    "value": "lg:min-h-screen",
+    "text": "lg:min-h-screen - Min h screen @lg+"
+  },
+  {
+    "value": "lg:min-w-0",
+    "text": "lg:min-w-0 - Min w 0 @lg+"
+  },
+  {
+    "value": "lg:min-w-full",
+    "text": "lg:min-w-full - Min w full @lg+"
+  },
+  {
     "value": "lg:p-4",
     "text": "lg:p-4 - Padding: 4 @lg+ (Bootstrap: .p-4)"
   },
@@ -1582,6 +2194,22 @@
   {
     "value": "lg:p-6",
     "text": "lg:p-6 - Padding: 6 @lg+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "lg:place-items-center",
+    "text": "lg:place-items-center - Place items center @lg+"
+  },
+  {
+    "value": "lg:place-items-end",
+    "text": "lg:place-items-end - Place items end @lg+"
+  },
+  {
+    "value": "lg:place-items-start",
+    "text": "lg:place-items-start - Place items start @lg+"
+  },
+  {
+    "value": "lg:place-items-stretch",
+    "text": "lg:place-items-stretch - Place items stretch @lg+"
   },
   {
     "value": "lg:px-10",
@@ -1614,6 +2242,34 @@
   {
     "value": "lg:py-8",
     "text": "lg:py-8 - Vertical padding: 8 @lg+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "lg:self-auto",
+    "text": "lg:self-auto - Self auto @lg+"
+  },
+  {
+    "value": "lg:self-center",
+    "text": "lg:self-center - Self center @lg+"
+  },
+  {
+    "value": "lg:self-end",
+    "text": "lg:self-end - Self end @lg+"
+  },
+  {
+    "value": "lg:self-start",
+    "text": "lg:self-start - Self start @lg+"
+  },
+  {
+    "value": "lg:self-stretch",
+    "text": "lg:self-stretch - Self stretch @lg+"
+  },
+  {
+    "value": "lg:shrink",
+    "text": "lg:shrink - Shrink @lg+"
+  },
+  {
+    "value": "lg:shrink-0",
+    "text": "lg:shrink-0 - Shrink 0 @lg+"
   },
   {
     "value": "lg:text-2xl",
@@ -1652,8 +2308,36 @@
     "text": "lg:text-xs - Text size: xs @lg+ (Bootstrap: .fs-*)"
   },
   {
+    "value": "lg:w-1/2",
+    "text": "lg:w-1/2 - Width: 1 of 2 @lg+ (Bootstrap: .w-* percentages)"
+  },
+  {
     "value": "lg:w-1/3",
     "text": "lg:w-1/3 - Width: 1 of 3 @lg+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "lg:w-1/4",
+    "text": "lg:w-1/4 - Width: 1 of 4 @lg+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "lg:w-2/3",
+    "text": "lg:w-2/3 - Width: 2 of 3 @lg+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "lg:w-3/4",
+    "text": "lg:w-3/4 - Width: 3 of 4 @lg+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "lg:w-auto",
+    "text": "lg:w-auto - Width: auto @lg+ (Bootstrap: .w-*)"
+  },
+  {
+    "value": "lg:w-full",
+    "text": "lg:w-full - Full width (100%) @lg+ (Bootstrap: .w-100)"
+  },
+  {
+    "value": "lg:w-screen",
+    "text": "lg:w-screen - Width: screen @lg+ (Bootstrap: .w-*)"
   },
   {
     "value": "lowercase",
@@ -1696,6 +2380,14 @@
     "text": "m-auto - Margin: auto (Bootstrap: .m-auto)"
   },
   {
+    "value": "max-h-full",
+    "text": "max-h-full - Max h full"
+  },
+  {
+    "value": "max-h-screen",
+    "text": "max-h-screen - Max h screen"
+  },
+  {
     "value": "max-w-2xl",
     "text": "max-w-2xl - Max w 2xl"
   },
@@ -1722,6 +2414,10 @@
   {
     "value": "max-w-md",
     "text": "max-w-md - Max w md"
+  },
+  {
+    "value": "max-w-none",
+    "text": "max-w-none - Max w none"
   },
   {
     "value": "max-w-sm",
@@ -1804,8 +2500,24 @@
     "text": "md:flex - Display as flexbox container @md+ (Bootstrap: .d-flex)"
   },
   {
+    "value": "md:flex-1",
+    "text": "md:flex-1 - Flex 1 @md+"
+  },
+  {
+    "value": "md:flex-auto",
+    "text": "md:flex-auto - Flex auto @md+"
+  },
+  {
     "value": "md:flex-col",
     "text": "md:flex-col - Flex direction column @md+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "md:flex-initial",
+    "text": "md:flex-initial - Flex initial @md+"
+  },
+  {
+    "value": "md:flex-none",
+    "text": "md:flex-none - Flex none @md+"
   },
   {
     "value": "md:flex-nowrap",
@@ -1860,6 +2572,46 @@
     "text": "md:gap-8 - Gap 8 @md+"
   },
   {
+    "value": "md:gap-x-0",
+    "text": "md:gap-x-0 - Gap x 0 @md+"
+  },
+  {
+    "value": "md:gap-x-2",
+    "text": "md:gap-x-2 - Gap x 2 @md+"
+  },
+  {
+    "value": "md:gap-x-4",
+    "text": "md:gap-x-4 - Gap x 4 @md+"
+  },
+  {
+    "value": "md:gap-x-6",
+    "text": "md:gap-x-6 - Gap x 6 @md+"
+  },
+  {
+    "value": "md:gap-x-8",
+    "text": "md:gap-x-8 - Gap x 8 @md+"
+  },
+  {
+    "value": "md:gap-y-0",
+    "text": "md:gap-y-0 - Gap y 0 @md+"
+  },
+  {
+    "value": "md:gap-y-2",
+    "text": "md:gap-y-2 - Gap y 2 @md+"
+  },
+  {
+    "value": "md:gap-y-4",
+    "text": "md:gap-y-4 - Gap y 4 @md+"
+  },
+  {
+    "value": "md:gap-y-6",
+    "text": "md:gap-y-6 - Gap y 6 @md+"
+  },
+  {
+    "value": "md:gap-y-8",
+    "text": "md:gap-y-8 - Gap y 8 @md+"
+  },
+  {
     "value": "md:grid",
     "text": "md:grid - Display as CSS grid container @md+ (Bootstrap: .d-grid)"
   },
@@ -1912,6 +2664,46 @@
     "text": "md:grid-cols-9 - Grid with 9 columns @md+ (Bootstrap: grid system)"
   },
   {
+    "value": "md:grid-rows-1",
+    "text": "md:grid-rows-1 - Grid rows 1 @md+"
+  },
+  {
+    "value": "md:grid-rows-2",
+    "text": "md:grid-rows-2 - Grid rows 2 @md+"
+  },
+  {
+    "value": "md:grid-rows-3",
+    "text": "md:grid-rows-3 - Grid rows 3 @md+"
+  },
+  {
+    "value": "md:grid-rows-4",
+    "text": "md:grid-rows-4 - Grid rows 4 @md+"
+  },
+  {
+    "value": "md:grid-rows-6",
+    "text": "md:grid-rows-6 - Grid rows 6 @md+"
+  },
+  {
+    "value": "md:grow",
+    "text": "md:grow - Grow @md+"
+  },
+  {
+    "value": "md:grow-0",
+    "text": "md:grow-0 - Grow 0 @md+"
+  },
+  {
+    "value": "md:h-auto",
+    "text": "md:h-auto - Height: auto @md+ (Bootstrap: .h-*)"
+  },
+  {
+    "value": "md:h-full",
+    "text": "md:h-full - Full height (100%) @md+ (Bootstrap: .h-100)"
+  },
+  {
+    "value": "md:h-screen",
+    "text": "md:h-screen - Height: screen @md+ (Bootstrap: .h-*)"
+  },
+  {
     "value": "md:hidden",
     "text": "md:hidden - Hide element @md+ (Bootstrap: .d-none)"
   },
@@ -1928,6 +2720,10 @@
     "text": "md:inline-flex - Display as inline flexbox container @md+ (Bootstrap: .d-inline-flex)"
   },
   {
+    "value": "md:items-baseline",
+    "text": "md:items-baseline - Items baseline @md+"
+  },
+  {
     "value": "md:items-center",
     "text": "md:items-center - Center items vertically @md+ (Bootstrap: .align-items-center)"
   },
@@ -1942,6 +2738,18 @@
   {
     "value": "md:justify-center",
     "text": "md:justify-center - Center items horizontally @md+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "md:justify-evenly",
+    "text": "md:justify-evenly - Justify evenly @md+"
+  },
+  {
+    "value": "md:max-h-full",
+    "text": "md:max-h-full - Max h full @md+"
+  },
+  {
+    "value": "md:max-h-screen",
+    "text": "md:max-h-screen - Max h screen @md+"
   },
   {
     "value": "md:max-w-2xl",
@@ -1972,6 +2780,10 @@
     "text": "md:max-w-md - Max w md @md+"
   },
   {
+    "value": "md:max-w-none",
+    "text": "md:max-w-none - Max w none @md+"
+  },
+  {
     "value": "md:max-w-sm",
     "text": "md:max-w-sm - Max w sm @md+"
   },
@@ -1984,6 +2796,26 @@
     "text": "md:max-w-xs - Max w xs @md+"
   },
   {
+    "value": "md:min-h-0",
+    "text": "md:min-h-0 - Min h 0 @md+"
+  },
+  {
+    "value": "md:min-h-full",
+    "text": "md:min-h-full - Min h full @md+"
+  },
+  {
+    "value": "md:min-h-screen",
+    "text": "md:min-h-screen - Min h screen @md+"
+  },
+  {
+    "value": "md:min-w-0",
+    "text": "md:min-w-0 - Min w 0 @md+"
+  },
+  {
+    "value": "md:min-w-full",
+    "text": "md:min-w-full - Min w full @md+"
+  },
+  {
     "value": "md:p-4",
     "text": "md:p-4 - Padding: 4 @md+ (Bootstrap: .p-4)"
   },
@@ -1994,6 +2826,22 @@
   {
     "value": "md:p-6",
     "text": "md:p-6 - Padding: 6 @md+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "md:place-items-center",
+    "text": "md:place-items-center - Place items center @md+"
+  },
+  {
+    "value": "md:place-items-end",
+    "text": "md:place-items-end - Place items end @md+"
+  },
+  {
+    "value": "md:place-items-start",
+    "text": "md:place-items-start - Place items start @md+"
+  },
+  {
+    "value": "md:place-items-stretch",
+    "text": "md:place-items-stretch - Place items stretch @md+"
   },
   {
     "value": "md:px-10",
@@ -2026,6 +2874,34 @@
   {
     "value": "md:py-8",
     "text": "md:py-8 - Vertical padding: 8 @md+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "md:self-auto",
+    "text": "md:self-auto - Self auto @md+"
+  },
+  {
+    "value": "md:self-center",
+    "text": "md:self-center - Self center @md+"
+  },
+  {
+    "value": "md:self-end",
+    "text": "md:self-end - Self end @md+"
+  },
+  {
+    "value": "md:self-start",
+    "text": "md:self-start - Self start @md+"
+  },
+  {
+    "value": "md:self-stretch",
+    "text": "md:self-stretch - Self stretch @md+"
+  },
+  {
+    "value": "md:shrink",
+    "text": "md:shrink - Shrink @md+"
+  },
+  {
+    "value": "md:shrink-0",
+    "text": "md:shrink-0 - Shrink 0 @md+"
   },
   {
     "value": "md:text-2xl",
@@ -2068,8 +2944,52 @@
     "text": "md:w-1/2 - Width: 1 of 2 @md+ (Bootstrap: .w-* percentages)"
   },
   {
+    "value": "md:w-1/3",
+    "text": "md:w-1/3 - Width: 1 of 3 @md+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "md:w-1/4",
+    "text": "md:w-1/4 - Width: 1 of 4 @md+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "md:w-2/3",
+    "text": "md:w-2/3 - Width: 2 of 3 @md+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "md:w-3/4",
+    "text": "md:w-3/4 - Width: 3 of 4 @md+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "md:w-auto",
+    "text": "md:w-auto - Width: auto @md+ (Bootstrap: .w-*)"
+  },
+  {
+    "value": "md:w-full",
+    "text": "md:w-full - Full width (100%) @md+ (Bootstrap: .w-100)"
+  },
+  {
+    "value": "md:w-screen",
+    "text": "md:w-screen - Width: screen @md+ (Bootstrap: .w-*)"
+  },
+  {
+    "value": "min-h-0",
+    "text": "min-h-0 - Min h 0"
+  },
+  {
+    "value": "min-h-full",
+    "text": "min-h-full - Min h full"
+  },
+  {
+    "value": "min-h-screen",
+    "text": "min-h-screen - Min h screen"
+  },
+  {
     "value": "min-w-0",
     "text": "min-w-0 - Min w 0"
+  },
+  {
+    "value": "min-w-full",
+    "text": "min-w-full - Min w full"
   },
   {
     "value": "ml-0",
@@ -2106,6 +3026,10 @@
   {
     "value": "ml-auto",
     "text": "ml-auto - Left margin: auto (Bootstrap: .ml-auto or .ms-auto)"
+  },
+  {
+    "value": "motion-reduce:transition-none",
+    "text": "motion-reduce:transition-none - Motion reduce:transition none"
   },
   {
     "value": "mr-0",
@@ -2248,8 +3172,48 @@
     "text": "no-underline - No underline"
   },
   {
+    "value": "not-sr-only",
+    "text": "not-sr-only - Not sr only"
+  },
+  {
+    "value": "object-bottom",
+    "text": "object-bottom - Object bottom"
+  },
+  {
+    "value": "object-center",
+    "text": "object-center - Object center"
+  },
+  {
+    "value": "object-contain",
+    "text": "object-contain - Object contain"
+  },
+  {
     "value": "object-cover",
     "text": "object-cover - Object cover"
+  },
+  {
+    "value": "object-fill",
+    "text": "object-fill - Object fill"
+  },
+  {
+    "value": "object-left",
+    "text": "object-left - Object left"
+  },
+  {
+    "value": "object-none",
+    "text": "object-none - Object none"
+  },
+  {
+    "value": "object-right",
+    "text": "object-right - Object right"
+  },
+  {
+    "value": "object-scale-down",
+    "text": "object-scale-down - Object scale down"
+  },
+  {
+    "value": "object-top",
+    "text": "object-top - Object top"
   },
   {
     "value": "opacity-100",
@@ -2398,6 +3362,30 @@
   {
     "value": "pl-8",
     "text": "pl-8 - Pl 8"
+  },
+  {
+    "value": "place-items-center",
+    "text": "place-items-center - Place items center"
+  },
+  {
+    "value": "place-items-end",
+    "text": "place-items-end - Place items end"
+  },
+  {
+    "value": "place-items-start",
+    "text": "place-items-start - Place items start"
+  },
+  {
+    "value": "place-items-stretch",
+    "text": "place-items-stretch - Place items stretch"
+  },
+  {
+    "value": "pointer-events-auto",
+    "text": "pointer-events-auto - Pointer events auto"
+  },
+  {
+    "value": "pointer-events-none",
+    "text": "pointer-events-none - Pointer events none"
   },
   {
     "value": "pr-0",
@@ -2564,12 +3552,28 @@
     "text": "right-0 - Right 0"
   },
   {
+    "value": "right-1/2",
+    "text": "right-1/2 - Right 1/2"
+  },
+  {
+    "value": "ring-0",
+    "text": "ring-0 - Ring 0"
+  },
+  {
+    "value": "ring-1",
+    "text": "ring-1 - Ring 1"
+  },
+  {
     "value": "ring-2",
     "text": "ring-2 - Ring 2"
   },
   {
     "value": "ring-4",
     "text": "ring-4 - Ring 4"
+  },
+  {
+    "value": "ring-8",
+    "text": "ring-8 - Ring 8"
   },
   {
     "value": "ring-blue-500/20",
@@ -2628,8 +3632,40 @@
     "text": "rounded-t - Border radius:  t (Bootstrap: .rounded*)"
   },
   {
+    "value": "select-none",
+    "text": "select-none - Select none"
+  },
+  {
+    "value": "select-text",
+    "text": "select-text - Select text"
+  },
+  {
+    "value": "self-auto",
+    "text": "self-auto - Self auto"
+  },
+  {
+    "value": "self-center",
+    "text": "self-center - Self center"
+  },
+  {
+    "value": "self-end",
+    "text": "self-end - Self end"
+  },
+  {
+    "value": "self-start",
+    "text": "self-start - Self start"
+  },
+  {
+    "value": "self-stretch",
+    "text": "self-stretch - Self stretch"
+  },
+  {
     "value": "shadow",
     "text": "shadow - Box shadow: default (Bootstrap: .shadow*)"
+  },
+  {
+    "value": "shadow-2xl",
+    "text": "shadow-2xl - Box shadow:  2xl (Bootstrap: .shadow*)"
   },
   {
     "value": "shadow-lg",
@@ -2646,6 +3682,18 @@
   {
     "value": "shadow-sm",
     "text": "shadow-sm - Box shadow:  sm (Bootstrap: .shadow*)"
+  },
+  {
+    "value": "shadow-xl",
+    "text": "shadow-xl - Box shadow:  xl (Bootstrap: .shadow*)"
+  },
+  {
+    "value": "shrink",
+    "text": "shrink - Shrink"
+  },
+  {
+    "value": "shrink-0",
+    "text": "shrink-0 - Shrink 0"
   },
   {
     "value": "sm:block",
@@ -2684,8 +3732,24 @@
     "text": "sm:flex - Display as flexbox container @sm+ (Bootstrap: .d-flex)"
   },
   {
+    "value": "sm:flex-1",
+    "text": "sm:flex-1 - Flex 1 @sm+"
+  },
+  {
+    "value": "sm:flex-auto",
+    "text": "sm:flex-auto - Flex auto @sm+"
+  },
+  {
     "value": "sm:flex-col",
     "text": "sm:flex-col - Flex direction column @sm+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "sm:flex-initial",
+    "text": "sm:flex-initial - Flex initial @sm+"
+  },
+  {
+    "value": "sm:flex-none",
+    "text": "sm:flex-none - Flex none @sm+"
   },
   {
     "value": "sm:flex-nowrap",
@@ -2740,6 +3804,46 @@
     "text": "sm:gap-8 - Gap 8 @sm+"
   },
   {
+    "value": "sm:gap-x-0",
+    "text": "sm:gap-x-0 - Gap x 0 @sm+"
+  },
+  {
+    "value": "sm:gap-x-2",
+    "text": "sm:gap-x-2 - Gap x 2 @sm+"
+  },
+  {
+    "value": "sm:gap-x-4",
+    "text": "sm:gap-x-4 - Gap x 4 @sm+"
+  },
+  {
+    "value": "sm:gap-x-6",
+    "text": "sm:gap-x-6 - Gap x 6 @sm+"
+  },
+  {
+    "value": "sm:gap-x-8",
+    "text": "sm:gap-x-8 - Gap x 8 @sm+"
+  },
+  {
+    "value": "sm:gap-y-0",
+    "text": "sm:gap-y-0 - Gap y 0 @sm+"
+  },
+  {
+    "value": "sm:gap-y-2",
+    "text": "sm:gap-y-2 - Gap y 2 @sm+"
+  },
+  {
+    "value": "sm:gap-y-4",
+    "text": "sm:gap-y-4 - Gap y 4 @sm+"
+  },
+  {
+    "value": "sm:gap-y-6",
+    "text": "sm:gap-y-6 - Gap y 6 @sm+"
+  },
+  {
+    "value": "sm:gap-y-8",
+    "text": "sm:gap-y-8 - Gap y 8 @sm+"
+  },
+  {
     "value": "sm:grid",
     "text": "sm:grid - Display as CSS grid container @sm+ (Bootstrap: .d-grid)"
   },
@@ -2792,6 +3896,46 @@
     "text": "sm:grid-cols-9 - Grid with 9 columns @sm+ (Bootstrap: grid system)"
   },
   {
+    "value": "sm:grid-rows-1",
+    "text": "sm:grid-rows-1 - Grid rows 1 @sm+"
+  },
+  {
+    "value": "sm:grid-rows-2",
+    "text": "sm:grid-rows-2 - Grid rows 2 @sm+"
+  },
+  {
+    "value": "sm:grid-rows-3",
+    "text": "sm:grid-rows-3 - Grid rows 3 @sm+"
+  },
+  {
+    "value": "sm:grid-rows-4",
+    "text": "sm:grid-rows-4 - Grid rows 4 @sm+"
+  },
+  {
+    "value": "sm:grid-rows-6",
+    "text": "sm:grid-rows-6 - Grid rows 6 @sm+"
+  },
+  {
+    "value": "sm:grow",
+    "text": "sm:grow - Grow @sm+"
+  },
+  {
+    "value": "sm:grow-0",
+    "text": "sm:grow-0 - Grow 0 @sm+"
+  },
+  {
+    "value": "sm:h-auto",
+    "text": "sm:h-auto - Height: auto @sm+ (Bootstrap: .h-*)"
+  },
+  {
+    "value": "sm:h-full",
+    "text": "sm:h-full - Full height (100%) @sm+ (Bootstrap: .h-100)"
+  },
+  {
+    "value": "sm:h-screen",
+    "text": "sm:h-screen - Height: screen @sm+ (Bootstrap: .h-*)"
+  },
+  {
     "value": "sm:hidden",
     "text": "sm:hidden - Hide element @sm+ (Bootstrap: .d-none)"
   },
@@ -2808,6 +3952,10 @@
     "text": "sm:inline-flex - Display as inline flexbox container @sm+ (Bootstrap: .d-inline-flex)"
   },
   {
+    "value": "sm:items-baseline",
+    "text": "sm:items-baseline - Items baseline @sm+"
+  },
+  {
     "value": "sm:items-center",
     "text": "sm:items-center - Center items vertically @sm+ (Bootstrap: .align-items-center)"
   },
@@ -2822,6 +3970,18 @@
   {
     "value": "sm:justify-center",
     "text": "sm:justify-center - Center items horizontally @sm+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "sm:justify-evenly",
+    "text": "sm:justify-evenly - Justify evenly @sm+"
+  },
+  {
+    "value": "sm:max-h-full",
+    "text": "sm:max-h-full - Max h full @sm+"
+  },
+  {
+    "value": "sm:max-h-screen",
+    "text": "sm:max-h-screen - Max h screen @sm+"
   },
   {
     "value": "sm:max-w-2xl",
@@ -2852,6 +4012,10 @@
     "text": "sm:max-w-md - Max w md @sm+"
   },
   {
+    "value": "sm:max-w-none",
+    "text": "sm:max-w-none - Max w none @sm+"
+  },
+  {
     "value": "sm:max-w-sm",
     "text": "sm:max-w-sm - Max w sm @sm+"
   },
@@ -2864,6 +4028,26 @@
     "text": "sm:max-w-xs - Max w xs @sm+"
   },
   {
+    "value": "sm:min-h-0",
+    "text": "sm:min-h-0 - Min h 0 @sm+"
+  },
+  {
+    "value": "sm:min-h-full",
+    "text": "sm:min-h-full - Min h full @sm+"
+  },
+  {
+    "value": "sm:min-h-screen",
+    "text": "sm:min-h-screen - Min h screen @sm+"
+  },
+  {
+    "value": "sm:min-w-0",
+    "text": "sm:min-w-0 - Min w 0 @sm+"
+  },
+  {
+    "value": "sm:min-w-full",
+    "text": "sm:min-w-full - Min w full @sm+"
+  },
+  {
     "value": "sm:p-4",
     "text": "sm:p-4 - Padding: 4 @sm+ (Bootstrap: .p-4)"
   },
@@ -2874,6 +4058,22 @@
   {
     "value": "sm:p-6",
     "text": "sm:p-6 - Padding: 6 @sm+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "sm:place-items-center",
+    "text": "sm:place-items-center - Place items center @sm+"
+  },
+  {
+    "value": "sm:place-items-end",
+    "text": "sm:place-items-end - Place items end @sm+"
+  },
+  {
+    "value": "sm:place-items-start",
+    "text": "sm:place-items-start - Place items start @sm+"
+  },
+  {
+    "value": "sm:place-items-stretch",
+    "text": "sm:place-items-stretch - Place items stretch @sm+"
   },
   {
     "value": "sm:px-10",
@@ -2906,6 +4106,34 @@
   {
     "value": "sm:py-8",
     "text": "sm:py-8 - Vertical padding: 8 @sm+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "sm:self-auto",
+    "text": "sm:self-auto - Self auto @sm+"
+  },
+  {
+    "value": "sm:self-center",
+    "text": "sm:self-center - Self center @sm+"
+  },
+  {
+    "value": "sm:self-end",
+    "text": "sm:self-end - Self end @sm+"
+  },
+  {
+    "value": "sm:self-start",
+    "text": "sm:self-start - Self start @sm+"
+  },
+  {
+    "value": "sm:self-stretch",
+    "text": "sm:self-stretch - Self stretch @sm+"
+  },
+  {
+    "value": "sm:shrink",
+    "text": "sm:shrink - Shrink @sm+"
+  },
+  {
+    "value": "sm:shrink-0",
+    "text": "sm:shrink-0 - Shrink 0 @sm+"
   },
   {
     "value": "sm:text-2xl",
@@ -2944,8 +4172,40 @@
     "text": "sm:text-xs - Text size: xs @sm+ (Bootstrap: .fs-*)"
   },
   {
+    "value": "sm:w-1/2",
+    "text": "sm:w-1/2 - Width: 1 of 2 @sm+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "sm:w-1/3",
+    "text": "sm:w-1/3 - Width: 1 of 3 @sm+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "sm:w-1/4",
+    "text": "sm:w-1/4 - Width: 1 of 4 @sm+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "sm:w-2/3",
+    "text": "sm:w-2/3 - Width: 2 of 3 @sm+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "sm:w-3/4",
+    "text": "sm:w-3/4 - Width: 3 of 4 @sm+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "sm:w-auto",
+    "text": "sm:w-auto - Width: auto @sm+ (Bootstrap: .w-*)"
+  },
+  {
     "value": "sm:w-full",
     "text": "sm:w-full - Full width (100%) @sm+ (Bootstrap: .w-100)"
+  },
+  {
+    "value": "sm:w-screen",
+    "text": "sm:w-screen - Width: screen @sm+ (Bootstrap: .w-*)"
+  },
+  {
+    "value": "sr-only",
+    "text": "sr-only - Sr only"
   },
   {
     "value": "static",
@@ -2994,6 +4254,14 @@
   {
     "value": "text-center",
     "text": "text-center - Text align: center (Bootstrap: .text-center)"
+  },
+  {
+    "value": "text-clip",
+    "text": "text-clip - Text color: clip (Bootstrap: .text-*)"
+  },
+  {
+    "value": "text-ellipsis",
+    "text": "text-ellipsis - Text color: ellipsis (Bootstrap: .text-*)"
   },
   {
     "value": "text-gray-500",
@@ -3152,16 +4420,64 @@
     "text": "top-0 - Top 0"
   },
   {
+    "value": "top-1/2",
+    "text": "top-1/2 - Top 1/2"
+  },
+  {
+    "value": "tracking-normal",
+    "text": "tracking-normal - Tracking normal"
+  },
+  {
     "value": "tracking-tight",
     "text": "tracking-tight - Tracking tight"
+  },
+  {
+    "value": "tracking-tighter",
+    "text": "tracking-tighter - Tracking tighter"
+  },
+  {
+    "value": "tracking-wide",
+    "text": "tracking-wide - Tracking wide"
+  },
+  {
+    "value": "tracking-wider",
+    "text": "tracking-wider - Tracking wider"
+  },
+  {
+    "value": "tracking-widest",
+    "text": "tracking-widest - Tracking widest"
   },
   {
     "value": "transition",
     "text": "transition - Transition"
   },
   {
+    "value": "transition-all",
+    "text": "transition-all - Transition all"
+  },
+  {
+    "value": "transition-colors",
+    "text": "transition-colors - Transition colors"
+  },
+  {
+    "value": "transition-none",
+    "text": "transition-none - Transition none"
+  },
+  {
+    "value": "transition-opacity",
+    "text": "transition-opacity - Transition opacity"
+  },
+  {
     "value": "transition-shadow",
     "text": "transition-shadow - Transition shadow"
+  },
+  {
+    "value": "transition-transform",
+    "text": "transition-transform - Transition transform"
+  },
+  {
+    "value": "truncate",
+    "text": "truncate - Truncate"
   },
   {
     "value": "underline",
@@ -3174,6 +4490,10 @@
   {
     "value": "via-white",
     "text": "via-white - Via white"
+  },
+  {
+    "value": "visible",
+    "text": "visible - Visible"
   },
   {
     "value": "w-1/2",
@@ -3212,6 +4532,26 @@
     "text": "w-full - Full width (100%) (Bootstrap: .w-100)"
   },
   {
+    "value": "w-screen",
+    "text": "w-screen - Width: screen (Bootstrap: .w-*)"
+  },
+  {
+    "value": "whitespace-normal",
+    "text": "whitespace-normal - Whitespace normal"
+  },
+  {
+    "value": "whitespace-nowrap",
+    "text": "whitespace-nowrap - Whitespace nowrap"
+  },
+  {
+    "value": "whitespace-pre-line",
+    "text": "whitespace-pre-line - Whitespace pre line"
+  },
+  {
+    "value": "whitespace-pre-wrap",
+    "text": "whitespace-pre-wrap - Whitespace pre wrap"
+  },
+  {
     "value": "xl:block",
     "text": "xl:block - Display as block element @xl+ (Bootstrap: .d-block)"
   },
@@ -3248,8 +4588,24 @@
     "text": "xl:flex - Display as flexbox container @xl+ (Bootstrap: .d-flex)"
   },
   {
+    "value": "xl:flex-1",
+    "text": "xl:flex-1 - Flex 1 @xl+"
+  },
+  {
+    "value": "xl:flex-auto",
+    "text": "xl:flex-auto - Flex auto @xl+"
+  },
+  {
     "value": "xl:flex-col",
     "text": "xl:flex-col - Flex direction column @xl+ (Bootstrap: .flex-column)"
+  },
+  {
+    "value": "xl:flex-initial",
+    "text": "xl:flex-initial - Flex initial @xl+"
+  },
+  {
+    "value": "xl:flex-none",
+    "text": "xl:flex-none - Flex none @xl+"
   },
   {
     "value": "xl:flex-nowrap",
@@ -3304,6 +4660,46 @@
     "text": "xl:gap-8 - Gap 8 @xl+"
   },
   {
+    "value": "xl:gap-x-0",
+    "text": "xl:gap-x-0 - Gap x 0 @xl+"
+  },
+  {
+    "value": "xl:gap-x-2",
+    "text": "xl:gap-x-2 - Gap x 2 @xl+"
+  },
+  {
+    "value": "xl:gap-x-4",
+    "text": "xl:gap-x-4 - Gap x 4 @xl+"
+  },
+  {
+    "value": "xl:gap-x-6",
+    "text": "xl:gap-x-6 - Gap x 6 @xl+"
+  },
+  {
+    "value": "xl:gap-x-8",
+    "text": "xl:gap-x-8 - Gap x 8 @xl+"
+  },
+  {
+    "value": "xl:gap-y-0",
+    "text": "xl:gap-y-0 - Gap y 0 @xl+"
+  },
+  {
+    "value": "xl:gap-y-2",
+    "text": "xl:gap-y-2 - Gap y 2 @xl+"
+  },
+  {
+    "value": "xl:gap-y-4",
+    "text": "xl:gap-y-4 - Gap y 4 @xl+"
+  },
+  {
+    "value": "xl:gap-y-6",
+    "text": "xl:gap-y-6 - Gap y 6 @xl+"
+  },
+  {
+    "value": "xl:gap-y-8",
+    "text": "xl:gap-y-8 - Gap y 8 @xl+"
+  },
+  {
     "value": "xl:grid",
     "text": "xl:grid - Display as CSS grid container @xl+ (Bootstrap: .d-grid)"
   },
@@ -3356,6 +4752,46 @@
     "text": "xl:grid-cols-9 - Grid with 9 columns @xl+ (Bootstrap: grid system)"
   },
   {
+    "value": "xl:grid-rows-1",
+    "text": "xl:grid-rows-1 - Grid rows 1 @xl+"
+  },
+  {
+    "value": "xl:grid-rows-2",
+    "text": "xl:grid-rows-2 - Grid rows 2 @xl+"
+  },
+  {
+    "value": "xl:grid-rows-3",
+    "text": "xl:grid-rows-3 - Grid rows 3 @xl+"
+  },
+  {
+    "value": "xl:grid-rows-4",
+    "text": "xl:grid-rows-4 - Grid rows 4 @xl+"
+  },
+  {
+    "value": "xl:grid-rows-6",
+    "text": "xl:grid-rows-6 - Grid rows 6 @xl+"
+  },
+  {
+    "value": "xl:grow",
+    "text": "xl:grow - Grow @xl+"
+  },
+  {
+    "value": "xl:grow-0",
+    "text": "xl:grow-0 - Grow 0 @xl+"
+  },
+  {
+    "value": "xl:h-auto",
+    "text": "xl:h-auto - Height: auto @xl+ (Bootstrap: .h-*)"
+  },
+  {
+    "value": "xl:h-full",
+    "text": "xl:h-full - Full height (100%) @xl+ (Bootstrap: .h-100)"
+  },
+  {
+    "value": "xl:h-screen",
+    "text": "xl:h-screen - Height: screen @xl+ (Bootstrap: .h-*)"
+  },
+  {
     "value": "xl:hidden",
     "text": "xl:hidden - Hide element @xl+ (Bootstrap: .d-none)"
   },
@@ -3372,6 +4808,10 @@
     "text": "xl:inline-flex - Display as inline flexbox container @xl+ (Bootstrap: .d-inline-flex)"
   },
   {
+    "value": "xl:items-baseline",
+    "text": "xl:items-baseline - Items baseline @xl+"
+  },
+  {
     "value": "xl:items-center",
     "text": "xl:items-center - Center items vertically @xl+ (Bootstrap: .align-items-center)"
   },
@@ -3386,6 +4826,18 @@
   {
     "value": "xl:justify-center",
     "text": "xl:justify-center - Center items horizontally @xl+ (Bootstrap: .justify-content-center)"
+  },
+  {
+    "value": "xl:justify-evenly",
+    "text": "xl:justify-evenly - Justify evenly @xl+"
+  },
+  {
+    "value": "xl:max-h-full",
+    "text": "xl:max-h-full - Max h full @xl+"
+  },
+  {
+    "value": "xl:max-h-screen",
+    "text": "xl:max-h-screen - Max h screen @xl+"
   },
   {
     "value": "xl:max-w-2xl",
@@ -3416,6 +4868,10 @@
     "text": "xl:max-w-md - Max w md @xl+"
   },
   {
+    "value": "xl:max-w-none",
+    "text": "xl:max-w-none - Max w none @xl+"
+  },
+  {
     "value": "xl:max-w-sm",
     "text": "xl:max-w-sm - Max w sm @xl+"
   },
@@ -3428,6 +4884,26 @@
     "text": "xl:max-w-xs - Max w xs @xl+"
   },
   {
+    "value": "xl:min-h-0",
+    "text": "xl:min-h-0 - Min h 0 @xl+"
+  },
+  {
+    "value": "xl:min-h-full",
+    "text": "xl:min-h-full - Min h full @xl+"
+  },
+  {
+    "value": "xl:min-h-screen",
+    "text": "xl:min-h-screen - Min h screen @xl+"
+  },
+  {
+    "value": "xl:min-w-0",
+    "text": "xl:min-w-0 - Min w 0 @xl+"
+  },
+  {
+    "value": "xl:min-w-full",
+    "text": "xl:min-w-full - Min w full @xl+"
+  },
+  {
     "value": "xl:p-4",
     "text": "xl:p-4 - Padding: 4 @xl+ (Bootstrap: .p-4)"
   },
@@ -3438,6 +4914,22 @@
   {
     "value": "xl:p-6",
     "text": "xl:p-6 - Padding: 6 @xl+ (Bootstrap: .p-6)"
+  },
+  {
+    "value": "xl:place-items-center",
+    "text": "xl:place-items-center - Place items center @xl+"
+  },
+  {
+    "value": "xl:place-items-end",
+    "text": "xl:place-items-end - Place items end @xl+"
+  },
+  {
+    "value": "xl:place-items-start",
+    "text": "xl:place-items-start - Place items start @xl+"
+  },
+  {
+    "value": "xl:place-items-stretch",
+    "text": "xl:place-items-stretch - Place items stretch @xl+"
   },
   {
     "value": "xl:px-10",
@@ -3470,6 +4962,34 @@
   {
     "value": "xl:py-8",
     "text": "xl:py-8 - Vertical padding: 8 @xl+ (Bootstrap: .py-8)"
+  },
+  {
+    "value": "xl:self-auto",
+    "text": "xl:self-auto - Self auto @xl+"
+  },
+  {
+    "value": "xl:self-center",
+    "text": "xl:self-center - Self center @xl+"
+  },
+  {
+    "value": "xl:self-end",
+    "text": "xl:self-end - Self end @xl+"
+  },
+  {
+    "value": "xl:self-start",
+    "text": "xl:self-start - Self start @xl+"
+  },
+  {
+    "value": "xl:self-stretch",
+    "text": "xl:self-stretch - Self stretch @xl+"
+  },
+  {
+    "value": "xl:shrink",
+    "text": "xl:shrink - Shrink @xl+"
+  },
+  {
+    "value": "xl:shrink-0",
+    "text": "xl:shrink-0 - Shrink 0 @xl+"
   },
   {
     "value": "xl:text-2xl",
@@ -3506,6 +5026,38 @@
   {
     "value": "xl:text-xs",
     "text": "xl:text-xs - Text size: xs @xl+ (Bootstrap: .fs-*)"
+  },
+  {
+    "value": "xl:w-1/2",
+    "text": "xl:w-1/2 - Width: 1 of 2 @xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "xl:w-1/3",
+    "text": "xl:w-1/3 - Width: 1 of 3 @xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "xl:w-1/4",
+    "text": "xl:w-1/4 - Width: 1 of 4 @xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "xl:w-2/3",
+    "text": "xl:w-2/3 - Width: 2 of 3 @xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "xl:w-3/4",
+    "text": "xl:w-3/4 - Width: 3 of 4 @xl+ (Bootstrap: .w-* percentages)"
+  },
+  {
+    "value": "xl:w-auto",
+    "text": "xl:w-auto - Width: auto @xl+ (Bootstrap: .w-*)"
+  },
+  {
+    "value": "xl:w-full",
+    "text": "xl:w-full - Full width (100%) @xl+ (Bootstrap: .w-100)"
+  },
+  {
+    "value": "xl:w-screen",
+    "text": "xl:w-screen - Width: screen @xl+ (Bootstrap: .w-*)"
   },
   {
     "value": "z-10",

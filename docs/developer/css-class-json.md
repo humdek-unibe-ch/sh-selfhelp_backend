@@ -44,7 +44,12 @@ This project uses a dynamic list of Tailwind CSS classes for the `select-css` fi
 - When you update the patterns/variants in `scripts/generate-css-classes.js`.
 - When the supported dynamic web utilities change.
 - After upgrading Tailwind or adding new utility classes used in CMS bundles (`examples/cms-in-cms/`, `examples/sections/`).
-- The generator expands responsive `grid-cols-*`, `gap-*`, display/flex, text sizes, slate palette utilities, and CMS template polish classes. It fails if required bundle classes are missing.
+- The generator expands bounded responsive families for grid columns/rows,
+  gaps, display/flex behavior, common sizing and text sizes. It also includes
+  curated typography, media fitting, borders/effects, transitions, positioning,
+  interaction/accessibility, slate palette, and CMS template polish utilities.
+  It deliberately avoids unrestricted color/opacity/state Cartesian products
+  and fails if representative required classes are missing.
 
 ## Notes
 - The backend will automatically use the latest JSON file for select-css options.

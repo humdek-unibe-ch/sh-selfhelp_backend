@@ -1,6 +1,6 @@
 Essential Tailwind CSS Classes (Bootstrap 5 Equivalents)
-Generated: 2026-07-09T11:59:34.601Z
-Total Classes: 882
+Generated: 2026-07-10T15:32:38.342Z
+Total Classes: 1270
 
 This curated list includes the most essential Tailwind classes that
 provide Bootstrap 5 functionality without overwhelming users.
@@ -16,6 +16,8 @@ Categories included:
 - Responsive & Interactive states
 
 Sample Classes:
+  - -translate-x-1/2 - -translate x 1/2
+  - -translate-y-1/2 - -translate y 1/2
   - 2xl:block - Display as block element @2xl+ (Bootstrap: .d-block)
   - 2xl:col-span-1 - Span 1 grid columns @2xl+ (Bootstrap: .col-1)
   - 2xl:col-span-12 - Span 12 grid columns @2xl+ (Bootstrap: .col-12)
@@ -25,7 +27,11 @@ Sample Classes:
   - 2xl:col-span-6 - Span 6 grid columns @2xl+ (Bootstrap: .col-6)
   - 2xl:col-span-full - Span full grid columns @2xl+ (Bootstrap: .col-full)
   - 2xl:flex - Display as flexbox container @2xl+ (Bootstrap: .d-flex)
+  - 2xl:flex-1 - Flex 1 @2xl+
+  - 2xl:flex-auto - Flex auto @2xl+
   - 2xl:flex-col - Flex direction column @2xl+ (Bootstrap: .flex-column)
+  - 2xl:flex-initial - Flex initial @2xl+
+  - 2xl:flex-none - Flex none @2xl+
   - 2xl:flex-nowrap - Flex nowrap @2xl+
   - 2xl:flex-row - Flex direction row @2xl+ (Bootstrap: .flex-row)
   - 2xl:flex-wrap - Flex wrap @2xl+
@@ -35,10 +41,4 @@ Sample Classes:
   - 2xl:gap-12 - Gap 12 @2xl+
   - 2xl:gap-2 - Gap 2 @2xl+
   - 2xl:gap-3 - Gap 3 @2xl+
-  - 2xl:gap-4 - Gap 4 @2xl+
-  - 2xl:gap-5 - Gap 5 @2xl+
-  - 2xl:gap-6 - Gap 6 @2xl+
-  - 2xl:gap-8 - Gap 8 @2xl+
-  - 2xl:grid - Display as CSS grid container @2xl+ (Bootstrap: .d-grid)
-  - 2xl:grid-cols-1 - Grid with 1 columns @2xl+ (Bootstrap: grid system)
-  ... and 857 more
+  ... and 1245 more
