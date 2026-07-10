@@ -1,5 +1,13 @@
 # v0.1.36
 
+## Fix: mobile Live Preview may call `GET /pages/resolve`
+
+`MobilePreviewAccessGuard` now allowlists `pages_resolve_path_v1` for
+keyword-less `purpose: mobile_preview` tokens. Without it, parameterized
+in-preview navigation (`/team-members/{record_id}`) and web↔mobile Live Preview
+sync received HTTP 403 and looked like a no-op. Keyword-scoped mint sessions
+still cannot call resolve (they stay on by-keyword).
+
 ## Migration history consolidation
 
 The branch-local work-in-progress migration chain is collapsed into five
@@ -10,6 +18,17 @@ schema), `Version20260710093044` (page routing/CMS apps and authoring),
 data binding). Transient add/drop/re-add structures and the retired
 `POST /admin/pages/cms-app` route are not part of the final history.
 
+## Cleanup: CMS-surface public resolve policy
+
+Public `GET /pages/resolve` and `GET /pages/by-keyword/{keyword}` never return
+`page_surface=cms` pages to anonymous or non-admin callers (404). Host Admin
+callers with admin page **select** data-access may still resolve them (CMS Apps
+content host / authorized preview). Anonymous CMS-surface checks short-circuit
+before data-access audit (guest sentinel user id `0` must not be written to
+`data_access_audits`). `DataAccessSecurityService::auditLog` also skips the
+guest sentinel so permission checks cannot close the EntityManager. Pairs with
+`@selfhelp/shared` `1.21.6`.
+
 ## Breaking: entry-record uses `load_record_from` (same as entry-record-form)
 
 Public/CMS detail holders no longer take an author SQL **Filter**. They use the
@@ -18,7 +37,7 @@ visible **Load record from route parameter** field (`load_record_from`, default
 `AND record_id = <int>` from the matched route. Migration
 `Version20260710093048` leaves `filter` off `entry-record` and links
 `load_record_from`. **Reimport** CMS-in-CMS detail pages (or set the field in
-the inspector). Pairs with frontend `0.1.63` and `@selfhelp/shared` `1.21.5`.
+the inspector). Pairs with frontend `0.1.63` and `@selfhelp/shared` `1.21.6`.
 
 ---
 
