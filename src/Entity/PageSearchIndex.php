@@ -14,6 +14,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: PageSearchIndexRepository::class)]
 #[ORM\Table(name: 'page_search_index')]
 #[ORM\UniqueConstraint(name: 'uq_page_search_index_page_lang', columns: ['id_pages', 'id_languages'])]
+#[ORM\Index(name: 'idx_page_search_index_id_pages', columns: ['id_pages'])]
 #[ORM\Index(name: 'idx_page_search_index_id_languages', columns: ['id_languages'])]
 class PageSearchIndex
 {

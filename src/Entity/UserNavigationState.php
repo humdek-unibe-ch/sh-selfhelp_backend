@@ -13,6 +13,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: UserNavigationStateRepository::class)]
 #[ORM\Table(name: 'user_navigation_state')]
 #[ORM\UniqueConstraint(name: 'uq_user_navigation_state_user_platform', columns: ['id_users', 'id_platform'])]
+#[ORM\Index(name: 'idx_user_navigation_state_id_users', columns: ['id_users'])]
+#[ORM\Index(name: 'idx_user_navigation_state_id_platform', columns: ['id_platform'])]
+#[ORM\Index(name: 'idx_user_navigation_state_id_pages', columns: ['id_pages'])]
 class UserNavigationState
 {
     #[ORM\Id]

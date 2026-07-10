@@ -22,6 +22,11 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: CmsAppRepository::class)]
 #[ORM\Table(name: 'cms_apps')]
 #[ORM\UniqueConstraint(name: 'uq_cms_apps_slug', columns: ['slug'])]
+#[ORM\Index(name: 'idx_cms_apps_id_form_section', columns: ['id_form_section'])]
+#[ORM\Index(name: 'idx_cms_apps_id_cms_list_page', columns: ['id_cms_list_page'])]
+#[ORM\Index(name: 'idx_cms_apps_id_cms_detail_page', columns: ['id_cms_detail_page'])]
+#[ORM\Index(name: 'idx_cms_apps_id_public_list_page', columns: ['id_public_list_page'])]
+#[ORM\Index(name: 'idx_cms_apps_id_public_detail_page', columns: ['id_public_detail_page'])]
 class CmsApp
 {
     #[ORM\Id]

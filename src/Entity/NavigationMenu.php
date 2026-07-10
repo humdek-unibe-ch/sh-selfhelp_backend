@@ -13,6 +13,10 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: NavigationMenuRepository::class)]
 #[ORM\Table(name: 'navigation_menus')]
 #[ORM\UniqueConstraint(name: 'uq_navigation_menus_id_navigation_menu_key', columns: ['id_navigation_menu_key'])]
+#[ORM\Index(name: 'idx_navigation_menus_id_platform', columns: ['id_platform'])]
+#[ORM\Index(name: 'idx_navigation_menus_id_surface', columns: ['id_surface'])]
+#[ORM\Index(name: 'idx_navigation_menus_id_preset', columns: ['id_preset'])]
+#[ORM\Index(name: 'idx_navigation_menus_id_children_nav', columns: ['id_children_nav'])]
 class NavigationMenu
 {
     #[ORM\Id]

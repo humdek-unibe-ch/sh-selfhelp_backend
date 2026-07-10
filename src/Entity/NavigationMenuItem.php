@@ -15,6 +15,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_navigation_menu_items_id_navigation_menus', columns: ['id_navigation_menus'])]
 #[ORM\Index(name: 'idx_navigation_menu_items_id_parent_item', columns: ['id_parent_item'])]
 #[ORM\Index(name: 'idx_navigation_menu_items_id_pages', columns: ['id_pages'])]
+#[ORM\Index(name: 'idx_navigation_menu_items_id_item_type', columns: ['id_item_type'])]
+#[ORM\Index(name: 'idx_navigation_menu_items_id_children_nav', columns: ['id_children_nav'])]
 class NavigationMenuItem
 {
     #[ORM\Id]

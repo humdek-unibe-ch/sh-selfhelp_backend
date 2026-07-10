@@ -13,6 +13,18 @@ use Doctrine\ORM\Mapping as ORM;
 /** Singleton navigation settings row (id = 1). */
 #[ORM\Entity(repositoryClass: NavigationSettingsRepository::class)]
 #[ORM\Table(name: 'navigation_settings')]
+#[ORM\Index(name: 'idx_navigation_settings_id_web_header_search_mode', columns: ['id_web_header_search_mode'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_search_default_visibility', columns: ['id_search_default_visibility'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_search_field_policy', columns: ['id_search_field_policy'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_web_guest_start_page', columns: ['id_web_guest_start_page'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_web_user_start_page', columns: ['id_web_user_start_page'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_web_user_start_mode', columns: ['id_web_user_start_mode'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_mobile_guest_start_page', columns: ['id_mobile_guest_start_page'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_mobile_user_start_page', columns: ['id_mobile_user_start_page'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_mobile_user_start_mode', columns: ['id_mobile_user_start_mode'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_mobile_start_page_source', columns: ['id_mobile_start_page_source'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_route_sync_old_route_policy', columns: ['id_route_sync_old_route_policy'])]
+#[ORM\Index(name: 'idx_navigation_settings_id_logo_link_page', columns: ['id_logo_link_page'])]
 class NavigationSettings
 {
     #[ORM\Id]

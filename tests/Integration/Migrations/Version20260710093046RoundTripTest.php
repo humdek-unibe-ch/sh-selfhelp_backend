@@ -13,10 +13,10 @@ use App\Tests\Support\MigrationRoundTripTestCase;
 use PHPUnit\Framework\Attributes\Group;
 
 #[Group('migration')]
-final class Version20260709134852RoundTripTest extends MigrationRoundTripTestCase
+final class Version20260710093046RoundTripTest extends MigrationRoundTripTestCase
 {
-    public function testEntryHolderFieldRestoreRoundTrips(): void
+    public function testAnalyticsAndHeadlessSystemPageContractRoundTrips(): void
     {
-        $this->assertMigrationRoundTrips('DoctrineMigrations\\Version20260709134852');
+        $this->assertMigrationRoundTrips('DoctrineMigrations\\Version20260710093046');
     }
 }

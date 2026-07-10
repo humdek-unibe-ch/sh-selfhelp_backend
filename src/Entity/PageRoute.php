@@ -48,8 +48,12 @@ class PageRoute
     #[ORM\Column(name: 'path_pattern', type: 'string', length: 255)]
     private ?string $pathPattern = null;
 
-    /** @var array<string, string>|null */
-    #[ORM\Column(name: 'requirements', type: 'json', nullable: true, options: ['comment' => 'Placeholder name -> regex requirement, e.g. {"record_id":"\\\\d+"}'])]
+    /**
+     * Placeholder name -> regex requirement, e.g. {"record_id":"\\d+"}.
+     *
+     * @var array<string, string>|null
+     */
+    #[ORM\Column(name: 'requirements', type: 'json', nullable: true)]
     private ?array $requirements = null;
 
     #[ORM\Column(name: 'is_canonical', type: 'boolean', options: ['default' => 0])]
