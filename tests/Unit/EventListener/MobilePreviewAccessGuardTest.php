@@ -79,6 +79,9 @@ final class MobilePreviewAccessGuardTest extends TestCase
             $this->event('/cms-api/v1/pages/by-keyword/home', 'pages_get_by_keyword_v1', 'GET', self::PREVIEW_PAYLOAD),
         );
         $this->guard()->onKernelController(
+            $this->event('/cms-api/v1/pages/resolve?path=%2Fteam-members%2F4', 'pages_resolve_path_v1', 'GET', self::PREVIEW_PAYLOAD),
+        );
+        $this->guard()->onKernelController(
             $this->event('/cms-api/v1/auth/user-data', 'auth_user_data_get_v1', 'GET', self::PREVIEW_PAYLOAD),
         );
         $this->expectNotToPerformAssertions();
@@ -196,6 +199,24 @@ final class MobilePreviewAccessGuardTest extends TestCase
             ],
         );
         $event->getRequest()->attributes->set('keyword', 'qa_other');
+
+        $this->assertDenied($event);
+    }
+
+    public function testBlocksPreviewTokenResolveWhenKeywordScopePinned(): void
+    {
+        $event = $this->event(
+            '/cms-api/v1/pages/resolve?path=%2Fteam-members%2F4',
+            'pages_resolve_path_v1',
+            'GET',
+            self::PREVIEW_PAYLOAD + [
+                'mobile_preview_scope' => [
+                    'keyword'     => 'qa_home',
+                    'language_id' => 1,
+                    'draft'       => true,
+                ],
+            ],
+        );
 
         $this->assertDenied($event);
     }

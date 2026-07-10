@@ -51,6 +51,7 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
      */
     private const ALLOWED_ROUTES = [
         'pages_get_by_keyword_v1',
+        'pages_resolve_path_v1',
         'pages_get_all_v1',
         'pages_get_all_with_language_v1',
         'navigation_get_v1',
@@ -200,14 +201,29 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
             }
         }
 
-        if ($routeName === 'pages_get_all_with_language_v1' || $routeName === 'pages_get_by_keyword_v1') {
+        // Keyword-scoped mint: path resolve is only for free-navigation sessions.
+        // A pinned keyword must keep using by-keyword fetches.
+        if ($routeName === 'pages_resolve_path_v1') {
+            if (array_key_exists('keyword', $scope) && $scope['keyword'] !== null) {
+                return false;
+            }
+            if (($scope['page_id'] ?? null) !== null) {
+                return false;
+            }
+        }
+
+        if (
+            $routeName === 'pages_get_all_with_language_v1'
+            || $routeName === 'pages_get_by_keyword_v1'
+            || $routeName === 'pages_resolve_path_v1'
+        ) {
             $languageId = $this->requestInt($request, 'language_id');
             if (array_key_exists('language_id', $scope) && $scope['language_id'] !== null && $languageId !== null && $scope['language_id'] !== $languageId) {
                 return false;
             }
         }
 
-        if ($routeName === 'pages_get_by_keyword_v1') {
+        if ($routeName === 'pages_get_by_keyword_v1' || $routeName === 'pages_resolve_path_v1') {
             $preview = $request->query->getBoolean('preview', false);
             if (($scope['draft'] ?? null) === false && $preview) {
                 return false;
