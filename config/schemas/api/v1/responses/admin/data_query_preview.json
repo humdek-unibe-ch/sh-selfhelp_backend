@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "selfhelp://schemas/api/v1/responses/admin/data_query_preview",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "data_table",
+    "columns",
+    "route_params",
+    "route_requirements",
+    "raw_filter",
+    "prepared_filter",
+    "selected_columns",
+    "own_entries_only",
+    "language_id",
+    "timezone_code",
+    "errors",
+    "warnings",
+    "stored_procedure",
+    "sql_shape"
+  ],
+  "properties": {
+    "data_table": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "name", "displayName"],
+      "properties": {
+        "id": { "type": "integer" },
+        "name": { "type": "string" },
+        "displayName": { "type": ["string", "null"] }
+      }
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fieldKey", "displayName", "standard"],
+        "properties": {
+          "fieldKey": { "type": ["string", "null"] },
+          "displayName": { "type": ["string", "null"] },
+          "standard": { "type": "boolean" }
+        }
+      }
+    },
+    "route_params": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "route_requirements": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "raw_filter": { "type": "string" },
+    "prepared_filter": { "type": "string" },
+    "selected_columns": { "type": "string" },
+    "own_entries_only": { "type": "boolean" },
+    "language_id": { "type": "integer" },
+    "timezone_code": { "type": "string" },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "stored_procedure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "call", "parameters"],
+      "properties": {
+        "name": { "type": "string" },
+        "call": { "type": "string" },
+        "parameters": { "type": "object" }
+      }
+    },
+    "sql_shape": { "type": "string" }
+  }
+}

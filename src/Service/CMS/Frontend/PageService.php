@@ -33,7 +33,7 @@ class PageService extends BaseService
     /**
      * Page behaviour property field (display=0) projected onto the single-page
      * content response so the web renderer can open the page inside a modal.
-     * Seeded by Version20260630151141; consumed by `@selfhelp/shared`
+     * Seeded by Version20260710093044; consumed by `@selfhelp/shared`
      * `IPageContent.open_in_modal` and the frontend `DynamicPageClient`.
      */
     private const OPEN_IN_MODAL_FIELD = 'open_in_modal';
@@ -42,7 +42,7 @@ class PageService extends BaseService
      * Modal-size page property fields (display=0) projected next to
      * `open_in_modal` on the single-page content response. Free-text CSS
      * lengths or `auto`; empty means "use the frontend default (80%)". Seeded by
-     * Version20260630172821; consumed by `@selfhelp/shared`
+     * Version20260710093044; consumed by `@selfhelp/shared`
      * `IPageContent.modal_width|modal_height` and `DynamicPageClient`.
      *
      * @var list<string>
@@ -296,6 +296,9 @@ class PageService extends BaseService
         }
 
         $routeParams = $resolved['route_params'];
+        $routeRequirements = is_array($resolved['route_requirements'] ?? null)
+            ? $resolved['route_requirements']
+            : [];
 
         try {
             $response = $this->resolvePageResponse(
@@ -304,7 +307,8 @@ class PageService extends BaseService
                 $languageId,
                 $preview,
                 $mode,
-                $routeParams
+                $routeParams,
+                $routeRequirements
             );
         } catch (\App\Exception\ServiceException $e) {
             // Existence-leak guard (issue #30 locked decision): the public path
@@ -354,10 +358,18 @@ class PageService extends BaseService
      *   already have `select` access to.
      *
      * @param array<string, string> $routeParams Public route params ({{route.*}}); empty for keyword resolution.
+     * @param array<string, string> $routeRequirements Matched Symfony route requirements for the public path.
      * @return array<string, mixed>
      */
-    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null, array $routeParams = []): array
-    {
+    private function resolvePageResponse(
+        \App\Entity\Page $page,
+        int $page_id,
+        int $languageId,
+        bool $preview,
+        ?string $mode = null,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         if ($mode !== null) {
             $this->assertPageAccessForMode($page, $mode);
         }
@@ -372,11 +384,11 @@ class PageService extends BaseService
 
         // If preview mode is disabled and a published version exists, serve it
         if (!$preview && $page->getPublishedVersionId()) {
-            return $this->servePublishedVersion($page_id, $languageId, $routeParams);
+            return $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements);
         }
 
         // Otherwise serve the draft version (fresh from database)
-        return $this->serveDraftVersion($page_id, $languageId, $page, $routeParams);
+        return $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
     }
 
     /**
@@ -384,12 +396,21 @@ class PageService extends BaseService
      * `{{route.<name>}}` resolves in section content and `data_config` filters.
      * Returns an empty array (no scope) when there are no params.
      *
-     * @param array<string, string> $routeParams
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<array-key, mixed>
      */
-    private function buildRouteScope(array $routeParams): array
+    private function buildRouteScope(array $routeParams, array $routeRequirements = []): array
     {
-        return $routeParams === [] ? [] : ['route' => $routeParams];
+        $scope = [];
+        if ($routeParams !== []) {
+            $scope['route'] = $routeParams;
+        }
+        if ($routeRequirements !== []) {
+            $scope['route_requirements'] = $routeRequirements;
+        }
+
+        return $scope;
     }
 
     /**
@@ -445,10 +466,15 @@ class PageService extends BaseService
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
      * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<string, mixed> The hydrated page data
      */
-    private function servePublishedVersion(int $page_id, int $languageId, array $routeParams = []): array
-    {
+    private function servePublishedVersion(
+        int $page_id,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Get the published version from database
         $page = $this->pageRepository->find($page_id);
         if (!$page) {
@@ -466,7 +492,7 @@ class PageService extends BaseService
         $storedPageData = $publishedVersion->getPageJson();
 
         // Hydrate the published page with fresh dynamic elements
-        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams);
+        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams, $routeRequirements);
 
         // Inject translated SEO fields (title/description) — these live in
         // pages_fields_translation, not in the versioned JSON, so they must
@@ -507,10 +533,15 @@ class PageService extends BaseService
      * @param array<string, mixed> $storedPageData The stored page JSON structure with ALL languages
      * @param int $languageId The language ID to extract and serve
      * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<string, mixed> The hydrated page data with single language
      */
-    private function hydratePublishedPage(array $storedPageData, int $languageId, array $routeParams = []): array
-    {
+    private function hydratePublishedPage(
+        array $storedPageData,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Extract sections from stored data
         if (!isset($storedPageData['page']) || !is_array($storedPageData['page']) || !isset($storedPageData['page']['sections']) || !is_array($storedPageData['page']['sections'])) {
             return $storedPageData;
@@ -526,7 +557,12 @@ class PageService extends BaseService
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : null;
 
-        $hydratedSections = $this->processSectionsRecursively($sections, $this->buildRouteScope($routeParams), $userId, $languageId);
+        $hydratedSections = $this->processSectionsRecursively(
+            $sections,
+            $this->buildRouteScope($routeParams, $routeRequirements),
+            $userId,
+            $languageId
+        );
 
         // Update the page data with hydrated sections
         $storedPageData['page']['sections'] = $hydratedSections;
@@ -586,10 +622,16 @@ class PageService extends BaseService
      * @param int $languageId The language ID
      * @param \App\Entity\Page $page The page entity
      * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<string, mixed> The page data
      */
-    private function serveDraftVersion(int $page_id, int $languageId, \App\Entity\Page $page, array $routeParams = []): array
-    {
+    private function serveDraftVersion(
+        int $page_id,
+        int $languageId,
+        \App\Entity\Page $page,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
@@ -625,7 +667,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams) {
+        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
@@ -646,7 +688,7 @@ class PageService extends BaseService
                     'modal_height' => $modalSize['modal_height'],
                     'title' => $seo['title'],
                     'description' => $seo['description'],
-                    'sections' => $this->getPageSections((int) $page->getId(), $languageId, $routeParams)
+                    'sections' => $this->getPageSections((int) $page->getId(), $languageId, $routeParams, $routeRequirements)
                 ]
             ];
 
@@ -891,10 +933,15 @@ class PageService extends BaseService
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
      * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return list<array<string, mixed>> The page sections in a hierarchical structure with translations
      */
-    public function getPageSections(int $page_id, int $languageId, array $routeParams = []): array
-    {
+    public function getPageSections(
+        int $page_id,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
@@ -929,7 +976,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams) {
+        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements) {
             // Build nested hierarchical structure (without applying data initially)
             $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
 
@@ -968,7 +1015,12 @@ class PageService extends BaseService
             // propagates to children.
             $user = $this->userContextAwareService->getCurrentUser();
             $userId = $user ? (int) $user->getId() : null;
-            $sections = $this->processSectionsRecursively($sections, $this->buildRouteScope($routeParams), $userId, $languageId);
+            $sections = $this->processSectionsRecursively(
+                $sections,
+                $this->buildRouteScope($routeParams, $routeRequirements),
+                $userId,
+                $languageId
+            );
 
             return $sections;
         });
@@ -1054,17 +1106,19 @@ class PageService extends BaseService
             // `data_config`, but entry-list / entry-record load rows from style
             // property fields. A retrieved scope accidentally named `route` must
             // never shadow the URL-derived route params that descendant sections
-            // (e.g. entry-record scoping on `url_param`) depend on.
+            // (e.g. entry-list filters with `{{route.*}}`, or entry-record
+            // `load_record_from`) depend on.
             if (isset($parentData['route'])) {
                 $sectionData['route'] = $parentData['route'];
             }
 
             // Step 4c: Entry row hydration (issue #30). entry-list / entry-record
-            // load their loop rows ONLY from style property fields (`data_table`,
-            // `own_entries_only`, `filter`, …) — never from `data_config.table`.
+            // load their rows ONLY from style property fields (`data_table`,
+            // `own_entries_only`, `filter` on lists, `load_record_from` on
+            // entry-record, …) — never from `data_config.table`.
             // `data_config` on the same section may still run above (Step 3) to
-            // populate helper scopes in `$sectionData` (e.g. `filters`) that the
-            // author `filter` field may reference via `{{filters.*}}`.
+            // populate helper scopes in `$sectionData` (e.g. `filters`) that an
+            // entry-list author `filter` may reference via `{{filters.*}}`.
             $styleName = isset($section['style_name']) ? $this->asString($section['style_name']) : '';
             $isRepeater = $styleName === StyleNames::STYLE_ENTRY_LIST || $styleName === StyleNames::STYLE_LOOP;
             $entryRows = [];
@@ -1158,7 +1212,7 @@ class PageService extends BaseService
 
     /**
      * Resolve bound rows for entry-list / entry-record from style property fields
-     * (`data_table`, `own_entries_only`, `filter`, `scope`, `url_param`).
+     * (`data_table`, `own_entries_only`, `filter`, `scope`).
      *
      * Row table and retrieve mode come **only** from those fields — never from
      * `data_config`. `$interpolationContext` carries parent/route data plus any
@@ -1182,27 +1236,35 @@ class PageService extends BaseService
         }
 
         $ownEntriesOnly = $this->getSectionPropertyBool($section, 'own_entries_only', true);
-        $rawFilter = $this->getSectionPropertyContent($section, 'filter');
-        $filter = $this->dataTableFilterService->prepareFilter(
-            $rawFilter,
-            $interpolationContext,
-            is_array($interpolationContext['route_requirements'] ?? null)
-                ? $interpolationContext['route_requirements']
-                : null,
-        );
-        if ($rawFilter !== '' && $filter === '') {
-            return [];
-        }
 
+        // entry-record: same visible contract as entry-record-form —
+        // `load_record_from` names the route param; the server builds the
+        // record_id predicate (no author SQL filter).
         if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
-            $urlParam = $this->getSectionPropertyContent($section, 'url_param', 'record_id');
-            $route = is_array($interpolationContext['route'] ?? null) ? $interpolationContext['route'] : [];
-            $recordId = $this->dataTableFilterService->validateRecordId($route[$urlParam] ?? null);
-            if ($recordId === null) {
+            $loadRecordFrom = trim($this->getSectionPropertyContent($section, 'load_record_from'));
+            if ($loadRecordFrom === '') {
                 return [];
             }
-            $filter = $this->dataTableFilterService->appendRecordIdFilter($filter, $recordId);
-            if ($filter === '') {
+            $routeParams = is_array($interpolationContext['route'] ?? null)
+                ? $interpolationContext['route']
+                : [];
+            $routeRecordId = is_numeric($routeParams[$loadRecordFrom] ?? null)
+                ? (int) $routeParams[$loadRecordFrom]
+                : 0;
+            if ($routeRecordId <= 0) {
+                return [];
+            }
+            $filter = 'AND record_id = ' . $routeRecordId;
+        } else {
+            $rawFilter = $this->getSectionPropertyContent($section, 'filter');
+            $filter = $this->dataTableFilterService->prepareFilter(
+                $rawFilter,
+                $interpolationContext,
+                is_array($interpolationContext['route_requirements'] ?? null)
+                    ? $interpolationContext['route_requirements']
+                    : null,
+            );
+            if ($rawFilter !== '' && $filter === '') {
                 return [];
             }
         }

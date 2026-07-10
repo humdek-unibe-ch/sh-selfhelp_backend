@@ -68,6 +68,7 @@ final class PageRouteResolverServiceTest extends TestCase
         self::assertNotNull($ok);
         self::assertSame('team-detail', $ok['keyword']);
         self::assertSame(['record_id' => '5'], $ok['route_params']);
+        self::assertSame(['record_id' => '\\d+'], $ok['route_requirements']);
 
         // `record_id` requires `\d+`, so a non-numeric segment does not match.
         self::assertNull($resolver->resolve('/team/abc'));

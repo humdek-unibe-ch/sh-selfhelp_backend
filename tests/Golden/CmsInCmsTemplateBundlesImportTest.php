@@ -130,6 +130,19 @@ final class CmsInCmsTemplateBundlesImportTest extends QaWebTestCase
                     sprintf('The rendered list at %s must contain the seeded row marker "%s".', $publicPath, $marker)
                 );
             }
+
+            $cmsAppPayload = is_array($bundle['cms_app'] ?? null) ? $bundle['cms_app'] : [];
+            $bundleSlug = is_string($cmsAppPayload['slug'] ?? null) ? $cmsAppPayload['slug'] : '';
+            self::assertNotSame('', $bundleSlug, 'Template bundles must ship cms_app.slug metadata.');
+            $importedSlug = strtolower(trim(preg_replace('/[^a-z0-9]+/', '-', self::KEYWORD_PREFIX . $bundleSlug) ?? '', '-'));
+
+            $appDetail = $this->assertEnvelopeSuccess(
+                $this->jsonRequest('GET', '/cms-api/v1/admin/cms-apps/by-slug/' . rawurlencode($importedSlug), null, $admin),
+            );
+            self::assertNotEmpty($appDetail['id_form_section'] ?? null, 'CMS app hub must point at the form section.');
+            self::assertNotEmpty($appDetail['id_public_list_page'] ?? null, 'CMS app hub must point at the public list page.');
+            self::assertNotEmpty($appDetail['id_public_detail_page'] ?? null, 'CMS app hub must point at the public detail page.');
+            self::assertNotEmpty($appDetail['id_cms_list_page'] ?? null, 'CMS app hub must point at the CMS entry-table page.');
         } finally {
             foreach ($createdPageIds as $pageId) {
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);

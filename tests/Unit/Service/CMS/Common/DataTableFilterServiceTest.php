@@ -70,16 +70,14 @@ final class DataTableFilterServiceTest extends TestCase
 
 
 
-    public function testAppendRecordIdFilterUsesLiteralInteger(): void
-
+    public function testFilterConstrainsRecordIdRequiresLiteralMatch(): void
     {
-
-        self::assertSame('AND record_id = 7', $this->service->appendRecordIdFilter('', 7));
-
-        self::assertSame('AND status = 1 AND record_id = 9', $this->service->appendRecordIdFilter('AND status = 1', 9));
-
-        self::assertSame('', $this->service->appendRecordIdFilter('AND status = 1', 0));
-
+        self::assertTrue($this->service->filterConstrainsRecordId('AND record_id = 7', 7));
+        self::assertTrue($this->service->filterConstrainsRecordId('AND status = 1 AND record_id = 9', 9));
+        self::assertFalse($this->service->filterConstrainsRecordId('AND status = 1', 9));
+        self::assertFalse($this->service->filterConstrainsRecordId('AND record_id = 8', 9));
+        self::assertFalse($this->service->filterConstrainsRecordId('', 7));
+        self::assertFalse($this->service->filterConstrainsRecordId('AND record_id = 7', 0));
     }
 
 

@@ -232,7 +232,9 @@ class AdminAnalyticsService extends BaseService
             'scheduled_jobs' => [
                 'due_today' => $dueToday,
                 'executed_today' => $executedToday,
-                'by_status' => $byStatus,
+                // Empty PHP arrays encode as JSON `[]`; cast so the schema's
+                // object map stays an object when no jobs are due today.
+                'by_status' => (object) $byStatus,
             ],
             'data' => [
                 'entries_today' => is_array($dataToday) ? self::intOf($dataToday['entries'] ?? null) : 0,

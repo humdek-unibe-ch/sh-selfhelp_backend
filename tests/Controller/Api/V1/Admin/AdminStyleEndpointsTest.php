@@ -463,7 +463,7 @@ final class AdminStyleEndpointsTest extends QaWebTestCase
     /**
      * Wave J — form / notification / entry-table authoring upgrade (migration
      * Version20260622161717, style renamed from show-user-input by
-     * Version20260706221024): form-record/form-log gain title + description +
+     * Version20260710093048): form-record/form-log gain title + description +
      * alert titles + confirm dialog; notification promotes its icon
      * (`shared_icon`, a reserved-name exception that stays prefixed but is
      * common scope) + close button (`with_close_button`, unprefixed) to

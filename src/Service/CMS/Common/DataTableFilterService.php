@@ -84,15 +84,46 @@ class DataTableFilterService
         return null;
     }
 
-    public function appendRecordIdFilter(string $filter, int $recordId): string
+    /**
+     * Entry-record sections must declare an explicit `record_id` predicate in
+     * their author filter (typically `AND record_id = {{route.record_id}}`).
+     * After {@see prepareFilter()}, the resolved filter must constrain the
+     * route record id — no implicit append.
+     */
+    public function filterConstrainsRecordId(string $filter, int $recordId): bool
     {
         if ($recordId <= 0) {
-            return '';
+            return false;
         }
 
-        $suffix = ' AND record_id = ' . $recordId;
+        $filter = trim($filter);
+        if ($filter === '') {
+            return false;
+        }
 
-        return trim($filter . $suffix);
+        return preg_match(
+            '/\brecord_id\s*=\s*' . preg_quote((string) $recordId, '/') . '\b/i',
+            $filter,
+        ) === 1;
+    }
+
+    /**
+     * Read the literal record id from a prepared entry-record filter fragment.
+     */
+    public function extractRecordIdFromFilter(string $filter): ?int
+    {
+        $filter = trim($filter);
+        if ($filter === '') {
+            return null;
+        }
+
+        if (preg_match('/\brecord_id\s*=\s*(\d+)\b/i', $filter, $matches) !== 1) {
+            return null;
+        }
+
+        $recordId = (int) $matches[1];
+
+        return $recordId > 0 ? $recordId : null;
     }
 
     /**

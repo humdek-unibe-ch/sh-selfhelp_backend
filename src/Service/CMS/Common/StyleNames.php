@@ -14,7 +14,7 @@ final class StyleNames
     /**
      * Built-in admin data grid over a form's entries (search / sort /
      * pagination / CSV / add-edit-delete row actions). Renamed from
-     * `show-user-input` by Version20260706221024.
+     * `show-user-input` by Version20260710093048.
      */
     public const STYLE_ENTRY_TABLE = 'entry-table';
 
@@ -22,6 +22,11 @@ final class StyleNames
      * Style that is used for form record
      */
     public const STYLE_FORM_RECORD = 'form-record';
+
+    /**
+     * Route-aware form for CMS/public create+edit (dual routes via load_record_from).
+     */
+    public const STYLE_ENTRY_RECORD_FORM = 'entry-record-form';
 
     /**
      * Data-bound list: the backend clones the child template once per data row
@@ -53,6 +58,7 @@ final class StyleNames
     public const FORM_STYLE_NAMES = [
         'form-record',
         'form-log',
+        'entry-record-form',
     ];
 }
 

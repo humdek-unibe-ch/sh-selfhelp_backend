@@ -401,14 +401,9 @@ class CmsAppWizardService extends BaseService
     }
 
     /**
-     * Build the create/edit form: a `form-record` holder in record edit mode
-     * with one input per requested field. `load_record_from` binds the record
-     * context to the URL: on the create page (no route param) the form stays
-     * blank and each submit CREATES a new row; on the admin detail page
-     * (`/cms/<base>/{record_id}`) the SAME shared section prefills that record
-     * and submits an UPDATE. `own_entries_only=0` is the admin edit-any mode —
-     * updating another user's record still requires table UPDATE data access
-     * (admins pass via the role override).
+     * Build the create/edit form: an `entry-record-form` holder with dual-route
+     * create/edit via `load_record_from`. The data table is owned by this section
+     * (materialized on scaffold); `data_table` may point at it explicitly after creation.
      *
      * @param list<array{name: string, style: string, label: string}> $formFields
      * @param list<string> $contentLocales
@@ -435,14 +430,10 @@ class CmsAppWizardService extends BaseService
 
         return [[
             'section_name' => $baseName . '-form',
-            'style_name' => 'form-record',
+            'style_name' => 'entry-record-form',
             'fields' => [
-                'name' => $this->propertyField(str_replace('-', '_', $baseName) . '_form', $propertyLocale),
                 'alert_success' => $this->contentField('Saved.', $contentLocales),
-                // When this form is opened inside a modal (the CMS create/edit
-                // flows), a successful save closes it and the list refreshes.
                 'close_modal_on_save' => $this->propertyField('1', $propertyLocale),
-                // Record edit mode: the record context comes ONLY from the URL.
                 'load_record_from' => $this->propertyField($recordParam, $propertyLocale),
                 'own_entries_only' => $this->propertyField('0', $propertyLocale),
             ],
@@ -580,15 +571,39 @@ class CmsAppWizardService extends BaseService
 
     /**
      * One editable interpolation line listing every field token (e.g.
-     * "{{first_name}} {{last_name}}"). Row columns are top-level tokens in the
-     * entry-list/entry-record scope (mirrors the working `{{record_id}}`), so the
-     * generated text resolves at render and the editor reshapes it afterwards.
+     * "{{team_member.name}} {{team_member.email}}"). Row data is exposed under
+     * the configured entry scope so templates stay explicit and searchable.
      *
      * @param list<array{name: string, style: string, label: string}> $formFields
      */
-    private function fieldInterpolationBlock(array $formFields): string
+    private function fieldInterpolationBlock(array $formFields, string $scope): string
     {
-        return implode(' ', array_map(static fn (array $field): string => '{{' . $field['name'] . '}}', $formFields));
+        return implode(' ', array_map(
+            static fn (array $field): string => '{{' . $scope . '.' . $field['name'] . '}}',
+            $formFields,
+        ));
+    }
+
+    /**
+     * Derive a snake_case entry scope from the app base slug (e.g. team-members → team_member).
+     */
+    private function entryScopeFromBaseName(string $baseName): string
+    {
+        $parts = explode('-', $baseName);
+        $last = array_pop($parts) ?? $baseName;
+        if (str_ends_with($last, 'ies') && strlen($last) > 3) {
+            $last = substr($last, 0, -3) . 'y';
+        } elseif (str_ends_with($last, 's') && strlen($last) > 1 && !str_ends_with($last, 'ss')) {
+            $last = substr($last, 0, -1);
+        }
+        $parts[] = $last;
+
+        return implode('_', $parts);
+    }
+
+    private function entryRecordRouteParam(string $recordParam): string
+    {
+        return $recordParam !== '' ? $recordParam : 'record_id';
     }
 
     /**
@@ -610,13 +625,14 @@ class CmsAppWizardService extends BaseService
         string $propertyLocale
     ): array {
         $dataTableId = $this->resolveDataTableId($dataTableName);
+        $scope = $this->entryScopeFromBaseName($baseName);
 
         $itemChildren = [
             [
                 'section_name' => $baseName . '-list-item-title',
                 'style_name' => 'title',
                 'fields' => [
-                    'content' => $this->contentField($listTitle . ' #{{record_id}}', $contentLocales),
+                    'content' => $this->contentField($listTitle . ' #{{' . $scope . '.record_id}}', $contentLocales),
                     'title_order' => $this->propertyField('4', $propertyLocale),
                 ],
             ],
@@ -625,7 +641,7 @@ class CmsAppWizardService extends BaseService
                 'section_name' => $baseName . '-list-item-fields',
                 'style_name' => 'text',
                 'fields' => [
-                    'text' => $this->contentField($this->fieldInterpolationBlock($formFields), $contentLocales),
+                    'text' => $this->contentField($this->fieldInterpolationBlock($formFields, $scope), $contentLocales),
                 ],
             ],
             [
@@ -633,7 +649,7 @@ class CmsAppWizardService extends BaseService
                 'style_name' => 'link',
                 'fields' => [
                     'label' => $this->contentField('Open', $contentLocales),
-                    'url' => $this->propertyField($detailBase . '/{{record_id}}', $propertyLocale),
+                    'url' => $this->propertyField($detailBase . '/{{' . $scope . '.record_id}}', $propertyLocale),
                 ],
             ],
         ];
@@ -645,7 +661,7 @@ class CmsAppWizardService extends BaseService
                 'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
                 'own_entries_only' => $this->propertyField('0', $propertyLocale),
                 'filter' => $this->propertyField('', $propertyLocale),
-                'scope' => $this->propertyField('', $propertyLocale),
+                'scope' => $this->propertyField($scope, $propertyLocale),
             ],
             'children' => [[
                 'section_name' => $baseName . '-list-item',
@@ -714,6 +730,7 @@ class CmsAppWizardService extends BaseService
         string $propertyLocale
     ): array {
         $dataTableId = $this->resolveDataTableId($dataTableName);
+        $scope = $this->entryScopeFromBaseName($baseName);
 
         return [[
             'section_name' => $baseName . '-detail',
@@ -721,9 +738,8 @@ class CmsAppWizardService extends BaseService
             'fields' => [
                 'data_table' => $this->propertyField((string) $dataTableId, $propertyLocale),
                 'own_entries_only' => $this->propertyField('0', $propertyLocale),
-                'filter' => $this->propertyField('', $propertyLocale),
-                'scope' => $this->propertyField('', $propertyLocale),
-                'url_param' => $this->propertyField($recordParam, $propertyLocale),
+                'load_record_from' => $this->propertyField($this->entryRecordRouteParam($recordParam), $propertyLocale),
+                'scope' => $this->propertyField($scope, $propertyLocale),
             ],
             'children' => [
                 [
@@ -738,7 +754,7 @@ class CmsAppWizardService extends BaseService
                     'section_name' => $baseName . '-detail-fields',
                     'style_name' => 'text',
                     'fields' => [
-                        'text' => $this->contentField($this->fieldInterpolationBlock($formFields), $contentLocales),
+                        'text' => $this->contentField($this->fieldInterpolationBlock($formFields, $scope), $contentLocales),
                     ],
                 ],
             ],

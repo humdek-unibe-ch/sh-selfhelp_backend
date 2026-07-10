@@ -8,10 +8,12 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\DataTable;
 use App\Entity\Language;
 use App\Entity\Page;
 use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
+use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Entity\CmsApp;
 use App\Repository\CmsAppRepository;
@@ -723,6 +725,8 @@ class PageExportImportService extends BaseService
             $this->collectBundleSectionNames($this->asSectionList($page['sections'] ?? null), $bundleSectionNames);
         }
 
+        $isCmsInCmsBundle = $this->bundleLooksLikeCmsInCms($bundle, $pages);
+
         // Keywords present in the bundle (post-prefix), to resolve parent refs.
         $bundleKeywords = [];
         foreach ($pages as $page) {
@@ -763,13 +767,17 @@ class PageExportImportService extends BaseService
 
             $this->validatePageRoutes($page, $keyword, $routePrefix, $skipConflictingRoutes, $issues);
             $this->validatePageSectionsStyles($page, $keyword, $issues);
-            $this->validateRouteParamUsage($page, $keyword, $issues);
+            $this->validateRouteParamUsage($page, $keyword, $issues, $isCmsInCmsBundle);
             $this->validatePageLocales($page, $keyword, $installedLocales, $issues);
-            $this->validateOwnerTokens($page, $keyword, $bundleSectionNames, $issues);
+            $this->validateOwnerTokens($page, $keyword, $bundleSectionNames, $issues, $isCmsInCmsBundle);
         }
 
         $this->validateBundleDataTables($bundle, $bundleSectionNames, $issues);
         $this->validateLegacyBundleNavigationIgnored($bundle, $issues);
+
+        if ($isCmsInCmsBundle) {
+            $this->validateCmsAppTemplateSections($pages, $issues);
+        }
 
         $hasError = false;
         foreach ($issues as $issue) {
@@ -880,7 +888,7 @@ class PageExportImportService extends BaseService
      * @param list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
      * @param-out list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
      */
-    private function validateRouteParamUsage(array $page, string $keyword, array &$issues): void
+    private function validateRouteParamUsage(array $page, string $keyword, array &$issues, bool $isCmsInCmsBundle = false): void
     {
         $definedParams = [];
         $routes = is_array($page['routes'] ?? null) ? $page['routes'] : [];
@@ -900,7 +908,7 @@ class PageExportImportService extends BaseService
         foreach (array_keys($usedParams) as $param) {
             if (!isset($definedParams[$param])) {
                 $issues[] = $this->issue(
-                    self::ISSUE_WARNING,
+                    $isCmsInCmsBundle ? self::ISSUE_ERROR : self::ISSUE_WARNING,
                     'undefined_route_param',
                     sprintf('Page "%s" references {{route.%s}} but no route defines that parameter.', $keyword, $param),
                     $keyword
@@ -960,7 +968,7 @@ class PageExportImportService extends BaseService
      * @param list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
      * @param-out list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
      */
-    private function validateOwnerTokens(array $page, string $keyword, array $bundleSectionNames, array &$issues): void
+    private function validateOwnerTokens(array $page, string $keyword, array $bundleSectionNames, array &$issues, bool $isCmsInCmsBundle = false): void
     {
         $owners = [];
         $this->collectOwnerTokens($this->asSectionList($page['sections'] ?? null), $owners);
@@ -975,7 +983,7 @@ class PageExportImportService extends BaseService
             }
         }
 
-        // Numeric entry-table bindings survive import verbatim but point at
+        // Numeric entry-binding refs survive import verbatim but point at
         // install-specific table ids — almost certainly the wrong table on the
         // target install. Exports rewrite in-bundle bindings to `@section:`
         // tokens; a remaining numeric value means the table's owner form is
@@ -983,17 +991,21 @@ class PageExportImportService extends BaseService
         $numericRefs = [];
         $this->collectEntryTableNumericRefs($this->asSectionList($page['sections'] ?? null), $numericRefs);
         foreach ($numericRefs as $sectionName => $tableId) {
-            $issues[] = $this->issue(
-                self::ISSUE_WARNING,
-                'unportable_data_table',
-                sprintf(
+            $level = $isCmsInCmsBundle ? self::ISSUE_ERROR : self::ISSUE_WARNING;
+            $message = $isCmsInCmsBundle
+                ? sprintf(
+                    'Page "%s": section "%s" binds to install-local data table id %d. CMS app templates must use @section:<owner> tokens instead.',
+                    $keyword,
+                    $sectionName,
+                    $tableId,
+                )
+                : sprintf(
                     'Page "%s": entry-table section "%s" is bound to data table id %d, which is install-specific. The imported grid may show the wrong table; rebind it after import.',
                     $keyword,
                     $sectionName,
                     $tableId
-                ),
-                $keyword
-            );
+                );
+            $issues[] = $this->issue($level, 'unportable_data_table', $message, $keyword);
         }
     }
 
@@ -1208,6 +1220,7 @@ class PageExportImportService extends BaseService
             $this->relinkOwnerTokens($allNewSectionIds, $sourceNameToNewId);
             $this->restoreDataTables($bundle, $sourceNameToNewId, $importData, $localeMap);
             $this->relinkEntryTableDataTables($allNewSectionIds, $sourceNameToNewId);
+            $this->relinkEntryTableFieldsMap($allNewSectionIds, $sourceNameToNewId);
 
             if ($cmsAppId !== null) {
                 $app = $this->cmsAppService->requireApp($cmsAppId);
@@ -1297,6 +1310,7 @@ class PageExportImportService extends BaseService
                 StyleNames::STYLE_ENTRY_TABLE,
                 StyleNames::STYLE_ENTRY_LIST,
                 StyleNames::STYLE_ENTRY_RECORD,
+                StyleNames::STYLE_ENTRY_RECORD_FORM,
             ], true)) {
                 continue;
             }
@@ -1348,6 +1362,231 @@ class PageExportImportService extends BaseService
         if ($touched) {
             $this->entityManager->flush();
         }
+    }
+
+    /**
+     * Rewrite entry-table `fields_map` / `fields_map_labels` from portable
+     * logical column names (bundle `data_tables[].columns`) to immutable field_keys
+     * after the owner form section and its data table exist.
+     *
+     * @param list<int> $newSectionIds
+     * @param array<string, int> $sourceNameToNewId
+     */
+    private function relinkEntryTableFieldsMap(array $newSectionIds, array $sourceNameToNewId): void
+    {
+        $touched = false;
+        foreach ($newSectionIds as $sectionId) {
+            $section = $this->sectionRepository->find($sectionId);
+            if (!$section instanceof Section || $section->getStyle()?->getName() !== StyleNames::STYLE_ENTRY_TABLE) {
+                continue;
+            }
+
+            $dataTableTranslation = $this->findSectionFieldTranslation($sectionId, 'data_table');
+            if ($dataTableTranslation === null) {
+                continue;
+            }
+
+            // After {@see relinkEntryTableDataTables()} the field stores a
+            // `data_tables.id`, not the owner form section id.
+            $dataTableId = (int) $dataTableTranslation->getContent();
+            if ($dataTableId <= 0) {
+                continue;
+            }
+
+            $dataTable = $this->entityManager->getRepository(DataTable::class)->find($dataTableId);
+            if (!$dataTable instanceof DataTable) {
+                continue;
+            }
+
+            $ownerSectionId = (int) $dataTable->getName();
+            if ($ownerSectionId <= 0) {
+                continue;
+            }
+
+            $ownerSection = $this->sectionRepository->find($ownerSectionId);
+            if (!$ownerSection instanceof Section) {
+                continue;
+            }
+
+            $nameToFieldKey = $this->buildLogicalNameToFieldKeyMap($ownerSection);
+            if ($nameToFieldKey === []) {
+                continue;
+            }
+
+            $fieldsMapTranslation = $this->findSectionFieldTranslation($sectionId, 'fields_map');
+            if ($fieldsMapTranslation !== null) {
+                $rewritten = $this->rewriteFieldsMapCatalog((string) $fieldsMapTranslation->getContent(), $nameToFieldKey);
+                if ($rewritten !== null) {
+                    $fieldsMapTranslation->setContent($rewritten);
+                    $this->entityManager->persist($fieldsMapTranslation);
+                    $touched = true;
+                }
+            }
+
+            $labelTranslations = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
+                ->createQueryBuilder('t')
+                ->join('t.field', 'f')
+                ->where('t.section = :sectionId')
+                ->andWhere('f.name = :fieldName')
+                ->setParameter('sectionId', $sectionId)
+                ->setParameter('fieldName', 'fields_map_labels')
+                ->getQuery()
+                ->getResult();
+
+            foreach ($labelTranslations as $labelTranslation) {
+                if (!$labelTranslation instanceof SectionsFieldsTranslation) {
+                    continue;
+                }
+                $rewrittenLabels = $this->rewriteFieldsMapLabels((string) $labelTranslation->getContent(), $nameToFieldKey);
+                if ($rewrittenLabels !== null) {
+                    $labelTranslation->setContent($rewrittenLabels);
+                    $this->entityManager->persist($labelTranslation);
+                    $touched = true;
+                }
+            }
+        }
+
+        if ($touched) {
+            $this->entityManager->flush();
+        }
+    }
+
+    private function findSectionFieldTranslation(int $sectionId, string $fieldName): ?SectionsFieldsTranslation
+    {
+        $translation = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
+            ->createQueryBuilder('t')
+            ->join('t.field', 'f')
+            ->where('t.section = :sectionId')
+            ->andWhere('f.name = :fieldName')
+            ->setParameter('sectionId', $sectionId)
+            ->setParameter('fieldName', $fieldName)
+            ->setMaxResults(1)
+            ->getQuery()
+            ->getOneOrNullResult();
+
+        return $translation instanceof SectionsFieldsTranslation ? $translation : null;
+    }
+
+    /**
+     * @return array<string, string> logical input name => field_key
+     */
+    private function buildLogicalNameToFieldKeyMap(Section $ownerSection): array
+    {
+        $map = [
+            'record_id' => 'record_id',
+            'entry_date' => 'entry_date',
+        ];
+
+        /** @var list<SectionsHierarchy> $links */
+        $links = $this->entityManager->getRepository(SectionsHierarchy::class)
+            ->findBy(['parentSection' => $ownerSection]);
+
+        foreach ($links as $link) {
+            $child = $link->getChildSection();
+            if (!$child instanceof Section) {
+                continue;
+            }
+            $childId = (int) $child->getId();
+            if ($childId <= 0) {
+                continue;
+            }
+            $nameTranslation = $this->findSectionFieldTranslation($childId, 'name');
+            if ($nameTranslation === null) {
+                continue;
+            }
+            $inputName = trim((string) $nameTranslation->getContent());
+            if ($inputName === '') {
+                continue;
+            }
+            $map[$inputName] = 'section_' . $childId;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, string> $nameToFieldKey
+     */
+    private function rewriteFieldsMapCatalog(string $raw, array $nameToFieldKey): ?string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            $parsed = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        $keys = [];
+        if (is_array($parsed) && array_is_list($parsed)) {
+            foreach ($parsed as $item) {
+                if (!is_string($item) || trim($item) === '') {
+                    continue;
+                }
+                $logical = trim($item);
+                $keys[] = $nameToFieldKey[$logical] ?? $logical;
+            }
+        } elseif (is_array($parsed)) {
+            foreach ($parsed as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $logical = trim((string) ($item['field_name'] ?? ''));
+                if ($logical === '') {
+                    continue;
+                }
+                $keys[] = $nameToFieldKey[$logical] ?? $logical;
+            }
+        }
+
+        if ($keys === []) {
+            return null;
+        }
+
+        $encoded = json_encode(array_values($keys));
+
+        return $encoded === false ? null : $encoded;
+    }
+
+    /**
+     * @param array<string, string> $nameToFieldKey
+     */
+    private function rewriteFieldsMapLabels(string $raw, array $nameToFieldKey): ?string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        try {
+            $parsed = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        if (!is_array($parsed)) {
+            return null;
+        }
+
+        $rewritten = [];
+        foreach ($parsed as $key => $label) {
+            if (!is_string($key) || !is_string($label)) {
+                continue;
+            }
+            $fieldKey = $nameToFieldKey[$key] ?? $key;
+            $rewritten[$fieldKey] = $label;
+        }
+
+        if ($rewritten === []) {
+            return null;
+        }
+
+        $encoded = json_encode($rewritten);
+
+        return $encoded === false ? null : $encoded;
     }
 
     /**
@@ -1929,6 +2168,9 @@ class PageExportImportService extends BaseService
                     }
                 }
             }
+            if (is_array($section['children'] ?? null)) {
+                $this->collectRouteParamUsage($this->asSectionList($section['children']), $params);
+            }
         }
     }
 
@@ -2356,7 +2598,136 @@ class PageExportImportService extends BaseService
             StyleNames::STYLE_ENTRY_TABLE,
             StyleNames::STYLE_ENTRY_LIST,
             StyleNames::STYLE_ENTRY_RECORD,
+            StyleNames::STYLE_ENTRY_RECORD_FORM,
         ], true);
+    }
+
+    /**
+     * Extra CMS-in-CMS template checks beyond generic import validation.
+     *
+     * @param list<array<string, mixed>> $pages
+     * @param list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
+     * @param-out list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
+     */
+    private function validateCmsAppTemplateSections(array $pages, array &$issues): void
+    {
+        foreach ($pages as $page) {
+            $keyword = $this->asString($page['keyword'] ?? '');
+            $this->walkCmsAppTemplateSections(
+                $this->asSectionList($page['sections'] ?? null),
+                $keyword,
+                $issues,
+            );
+        }
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $sections
+     * @param list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
+     * @param-out list<array{level:string, code:string, message:string, page_keyword:?string}> $issues
+     */
+    private function walkCmsAppTemplateSections(array $sections, string $keyword, array &$issues): void
+    {
+        foreach ($sections as $section) {
+            $styleName = $this->asString($section['style_name'] ?? '');
+            $sectionName = $this->asString($section['section_name'] ?? $styleName);
+
+            if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
+                $loadRecordFrom = trim($this->readBundlePropertyField($section, 'load_record_from'));
+                if ($loadRecordFrom === '') {
+                    $issues[] = $this->issue(
+                        self::ISSUE_ERROR,
+                        'missing_entry_record_load_record_from',
+                        sprintf(
+                            'Page "%s": entry-record section "%s" must set "Load record from route parameter" (e.g. record_id).',
+                            $keyword,
+                            $sectionName,
+                        ),
+                        $keyword,
+                    );
+                } elseif (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $loadRecordFrom)) {
+                    $issues[] = $this->issue(
+                        self::ISSUE_ERROR,
+                        'invalid_entry_record_load_record_from',
+                        sprintf(
+                            'Page "%s": entry-record section "%s" load_record_from must be a route parameter name (e.g. record_id).',
+                            $keyword,
+                            $sectionName,
+                        ),
+                        $keyword,
+                    );
+                }
+            }
+
+            $encoded = json_encode($section);
+            if (is_string($encoded) && str_contains($encoded, '"url_param"')) {
+                $issues[] = $this->issue(
+                    self::ISSUE_ERROR,
+                    'stale_url_param',
+                    sprintf(
+                        'Page "%s": section "%s" still carries the removed url_param field. Use load_record_from on entry-record (same as entry-record-form).',
+                        $keyword,
+                        $sectionName,
+                    ),
+                    $keyword,
+                );
+            }
+
+            if (is_array($section['children'] ?? null)) {
+                $this->walkCmsAppTemplateSections($this->asSectionList($section['children']), $keyword, $issues);
+            }
+        }
+    }
+
+    /**
+     * Read a non-translatable property from a bundle section.
+     *
+     * Gallery / AI templates use the compact map shape
+     * `{ "all": { "content": "..." } }`. Round-tripped exports may use a list of
+     * `{ "language_id": 1, "content": "..." }` (or `language_code: "all"`).
+     *
+     * @param array<string, mixed> $section
+     */
+    private function readBundlePropertyField(array $section, string $fieldName): string
+    {
+        $fields = is_array($section['fields'] ?? null) ? $section['fields'] : [];
+        $entries = is_array($fields[$fieldName] ?? null) ? $fields[$fieldName] : [];
+
+        // Compact gallery format: { "all": { "content": "..." } }
+        if (isset($entries['all']) && is_array($entries['all'])) {
+            $content = $this->asString($entries['all']['content'] ?? '');
+            if (trim($content) !== '') {
+                return $content;
+            }
+        }
+
+        foreach ($entries as $key => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            if ((int) ($entry['language_id'] ?? 0) === 1) {
+                return $this->asString($entry['content'] ?? '');
+            }
+            $languageCode = $this->asString($entry['language_code'] ?? '');
+            if ($key === 'all' || $languageCode === 'all') {
+                $content = $this->asString($entry['content'] ?? '');
+                if (trim($content) !== '') {
+                    return $content;
+                }
+            }
+        }
+
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $content = $this->asString($entry['content'] ?? '');
+            if (trim($content) !== '') {
+                return $content;
+            }
+        }
+
+        return '';
     }
 
     private function isEntryHolderStyle(string $styleName): bool

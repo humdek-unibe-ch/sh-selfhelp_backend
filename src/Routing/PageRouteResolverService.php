@@ -57,7 +57,7 @@ class PageRouteResolverService
     /**
      * Resolve a public path to a page.
      *
-     * @return array{keyword:string, page_id:int, route_params:array<string,string>, matched_pattern:string, is_canonical:bool, canonical_url:?string}|null
+     * @return array{keyword:string, page_id:int, route_params:array<string,string>, route_requirements:array<string,string>, matched_pattern:string, is_canonical:bool, canonical_url:?string}|null
      *         Null when no active route matches the full path.
      */
     public function resolve(string $path): ?array
@@ -93,10 +93,19 @@ class PageRouteResolverService
             }
         }
 
+        $routeRequirements = [];
+        foreach ($rows as $row) {
+            if ($row['path_pattern'] === $pattern) {
+                $routeRequirements = $row['requirements'];
+                break;
+            }
+        }
+
         return [
             'keyword' => $keyword,
             'page_id' => $pageId,
             'route_params' => $routeParams,
+            'route_requirements' => $routeRequirements,
             'matched_pattern' => $pattern,
             'is_canonical' => $isCanonical,
             'canonical_url' => $this->canonicalUrlFromRows($rows, $pageId),

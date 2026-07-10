@@ -87,7 +87,7 @@ final class CmsAppHubSyncService extends BaseService
                 continue;
             }
             $styleName = $section->getStyle()?->getName();
-            if ($styleName === StyleNames::STYLE_FORM_RECORD) {
+            if ($styleName === StyleNames::STYLE_FORM_RECORD || $styleName === StyleNames::STYLE_ENTRY_RECORD_FORM) {
                 return $section;
             }
         }

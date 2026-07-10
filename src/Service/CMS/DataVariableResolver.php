@@ -8,12 +8,13 @@
 
 namespace App\Service\CMS;
 
-use App\Entity\Section;
 use App\Entity\SectionsHierarchy;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\Common\SectionAccessibleRouteService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\GlobalVariableService;
 use App\Service\Core\BaseService;
+use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -26,7 +27,9 @@ class DataVariableResolver extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly DataService $dataService,
         private readonly CacheService $cache,
-        private readonly GlobalVariableService $globalVariableService
+        private readonly GlobalVariableService $globalVariableService,
+        private readonly UserContextAwareService $userContextAwareService,
+        private readonly SectionAccessibleRouteService $sectionAccessibleRouteService,
     ) {
     }
 
@@ -36,10 +39,10 @@ class DataVariableResolver extends BaseService
      * The TOKEN (map key) is the interpolation key inserted into content
      * (`{{scope.token}}`). For data columns it is the immutable, opaque
      * `field_key` (issue #56 v2): core CMS forms use `section_<input id>`,
-     * SurveyJS uses `question.name`. The token is rename-safe — renaming an
+     * SurveyJS uses `question.name`. The token is rename-safe -- renaming an
      * input or curating a display name only moves the LABEL, never the token, so
      * authored content never breaks. The LABEL (map value) is the human-facing
-     * text shown in the editor/picker — the curated `display_name` when present,
+     * text shown in the editor/picker -- the curated `display_name` when present,
      * otherwise the field_key. The frontend renders the label as a chip while
      * persisting the `{{scope.field_key}}` token.
      *
@@ -399,12 +402,40 @@ class DataVariableResolver extends BaseService
     {
         return array_merge(
             $this->getDataVariables(['id' => $sectionId]),
+            $this->getRouteVariablesForSection($sectionId),
             $this->getGlobalVariables()
         );
     }
 
     /**
-     * `system.*` + `globals.*` catalog — the variables that resolve on every
+     * Route placeholder catalog for sections on parameterized public pages.
+     * Tokens only -- no sample route values or page metadata are exposed.
+     *
+     * @return array<string, string> token => human label
+     */
+    private function getRouteVariablesForSection(int $sectionId): array
+    {
+        if ($sectionId <= 0) {
+            return [];
+        }
+
+        $user = $this->userContextAwareService->getCurrentUser();
+        $placeholders = $this->sectionAccessibleRouteService->getRoutePlaceholdersForSection(
+            $sectionId,
+            $user ? (int) $user->getId() : null,
+        );
+
+        $variables = [];
+        foreach ($placeholders as $placeholder) {
+            $token = 'route.' . $placeholder;
+            $variables[$token] = $token;
+        }
+
+        return $variables;
+    }
+
+    /**
+     * `system.*` + `globals.*` catalog -- the variables that resolve on every
      * render regardless of section/data scope.
      *
      * NOTE: generic page metadata fields are NOT interpolated at render (only
@@ -434,7 +465,7 @@ class DataVariableResolver extends BaseService
     /**
      * Action context catalog: the three scopes
      * {@see \App\Service\Action\ActionTemplateContextBuilder} documents as the
-     * canonical action template namespaces — `recipient.*` (always),
+     * canonical action template namespaces -- `recipient.*` (always),
      * `record.<field_key>` from the action's selected data table (when known),
      * and `system.*`. Globals are intentionally NOT offered here: action
      * templates render through the action context builder, not the page/global

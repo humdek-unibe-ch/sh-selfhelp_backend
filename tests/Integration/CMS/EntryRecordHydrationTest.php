@@ -26,10 +26,10 @@ use App\Tests\Support\QaWebTestCase;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * `entry-record` hydrates exactly one row from `fields.data_table` using the
- * route parameter named by `url_param` (default `record_id`) plus optional
- * author `filter`. `data_config` may still supply helper scopes for filter
- * interpolation but must never choose the row table or retrieve mode.
+ * `entry-record` hydrates exactly one row from `fields.data_table` using
+ * `load_record_from` (same visible contract as `entry-record-form`): the field
+ * names the route param (e.g. `record_id`), and the server loads that row.
+ * `data_config` must never choose the row table or retrieve mode.
  */
 final class EntryRecordHydrationTest extends QaWebTestCase
 {
@@ -94,7 +94,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
         $this->setSectionField($recordSection, 'data_table', (string) $dataTable->getId(), 1);
         $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
-        $this->setSectionField($recordSection, 'url_param', 'record_id', 1);
+        $this->setEntryRecordLoadFrom($recordSection);
         $this->em->flush();
 
         $cardSection = $this->pages->createSection('qa_er_record_card', 'text');
@@ -168,6 +168,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
         $this->setSectionField($recordSection, 'data_table', (string) $dataTable->getId(), 1);
         $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
+        $this->setEntryRecordLoadFrom($recordSection);
         $this->em->flush();
 
         $cardSection = $this->pages->createSection('qa_er_mal_card', 'text');
@@ -206,33 +207,23 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         );
     }
 
-    public function testEntryRecordFilterUsesDataConfigHelperScope(): void
+    public function testEntryRecordLoadsViaLoadRecordFromEvenWhenDataConfigPresent(): void
     {
         [$formPage, $formSection] = $this->pages->createFormPage('qa_er_helper', openAccess: true);
-        $categoryInput = $this->addNamedFormInput($formSection, 'qa_er_helper_category', 'category');
 
-        $matchEnvelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
             'page_id' => (int) $formPage->getId(),
             'section_id' => (int) $formSection->getId(),
-            'form_data' => ['qa_answer' => 'visible', 'category' => 'keep'],
+            'form_data' => ['qa_answer' => 'visible'],
         ]);
-        $matchRecordId = $this->assertEnvelopeSuccess($matchEnvelope)['record_id'] ?? null;
-        self::assertIsInt($matchRecordId);
+        $recordId = $this->assertEnvelopeSuccess($envelope)['record_id'] ?? null;
+        self::assertIsInt($recordId);
 
-        $skipEnvelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
-            'page_id' => (int) $formPage->getId(),
-            'section_id' => (int) $formSection->getId(),
-            'form_data' => ['qa_answer' => 'hidden', 'category' => 'skip'],
-        ]);
-        $skipRecordId = $this->assertEnvelopeSuccess($skipEnvelope)['record_id'] ?? null;
-        self::assertIsInt($skipRecordId);
-
-        $matchRow = $this->em->getRepository(DataRow::class)->find($matchRecordId);
-        self::assertInstanceOf(DataRow::class, $matchRow);
-        $dataTable = $matchRow->getDataTable();
+        $row = $this->em->getRepository(DataRow::class)->find($recordId);
+        self::assertInstanceOf(DataRow::class, $row);
+        $dataTable = $row->getDataTable();
         self::assertInstanceOf(DataTable::class, $dataTable);
         $tableName = (string) $dataTable->getName();
-        $categoryFieldKey = 'section_' . $categoryInput->getId();
 
         $detailPage = $this->pages->createPage('qa_er_helper_detail', openAccess: false);
         $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
@@ -248,6 +239,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
 
         $recordSection = $this->pages->createSection('qa_er_helper_holder', 'entry-record');
         $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
+        // data_config must not choose the row; load_record_from + data_table do.
         $this->setSectionDataConfig($recordSection, [[
             'scope' => 'filters',
             'table' => $tableName,
@@ -256,12 +248,7 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         ]]);
         $this->setSectionField($recordSection, 'data_table', (string) $dataTable->getId(), 1);
         $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
-        $this->setSectionField(
-            $recordSection,
-            'filter',
-            sprintf("%s = '{{filters.%s}}'", $categoryFieldKey, $categoryFieldKey),
-            1,
-        );
+        $this->setEntryRecordLoadFrom($recordSection);
 
         $cardSection = $this->pages->createSection('qa_er_helper_card', 'text');
         $this->linkChild($recordSection, $cardSection);
@@ -272,23 +259,13 @@ final class EntryRecordHydrationTest extends QaWebTestCase
 
         $matchData = $this->assertEnvelopeSuccess($this->jsonRequest(
             'GET',
-            '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-helper/' . $matchRecordId) . '&preview=true',
+            '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-helper/' . $recordId) . '&preview=true',
             null,
             $token,
         ));
         $matchRecord = $this->findSectionByStyle($this->sectionsFromPayload($matchData), 'entry-record');
         self::assertNotNull($matchRecord);
         self::assertSame('visible', $this->firstChildTextContent($matchRecord));
-
-        $skipData = $this->assertEnvelopeSuccess($this->jsonRequest(
-            'GET',
-            '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-helper/' . $skipRecordId) . '&preview=true',
-            null,
-            $token,
-        ));
-        $skipRecord = $this->findSectionByStyle($this->sectionsFromPayload($skipData), 'entry-record');
-        self::assertNotNull($skipRecord);
-        self::assertSame('', $this->firstChildTextContent($skipRecord));
     }
 
     public function testEntryRecordDataConfigTableAloneDoesNotLoadRowWithoutPropertyDataTable(): void
@@ -351,18 +328,14 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         );
     }
 
-    public function testEntryRecordFilterRejectsUnsafeValueFromDataConfigHelperScope(): void
+    public function testEntryRecordWrongLoadRecordFromParamDoesNotHydrate(): void
     {
-        [$formPage, $formSection] = $this->pages->createFormPage('qa_er_unsafe_helper', openAccess: true);
-        $categoryInput = $this->addNamedFormInput($formSection, 'qa_er_unsafe_category', 'category');
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_er_wrong_param', openAccess: true);
 
         $envelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
             'page_id' => (int) $formPage->getId(),
             'section_id' => (int) $formSection->getId(),
-            'form_data' => [
-                'qa_answer' => 'leak',
-                'category' => "'; DELETE FROM data_rows WHERE '1'='1",
-            ],
+            'form_data' => ['qa_answer' => 'leak'],
         ]);
         $recordId = $this->assertEnvelopeSuccess($envelope)['record_id'] ?? null;
         self::assertIsInt($recordId);
@@ -371,39 +344,27 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         self::assertInstanceOf(DataRow::class, $row);
         $dataTable = $row->getDataTable();
         self::assertInstanceOf(DataTable::class, $dataTable);
-        $tableName = (string) $dataTable->getName();
-        $categoryFieldKey = 'section_' . $categoryInput->getId();
 
-        $detailPage = $this->pages->createPage('qa_er_unsafe_helper_detail', openAccess: false);
+        $detailPage = $this->pages->createPage('qa_er_wrong_param_detail', openAccess: false);
         $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
 
         $route = new PageRoute();
         $route->setPage($detailPage);
-        $route->setPathPattern('/qa-er-unsafe/{record_id}');
+        $route->setPathPattern('/qa-er-wrong/{record_id}');
         $route->setRequirements(['record_id' => '\\d+']);
         $route->setIsCanonical(true);
         $route->setIsActive(true);
         $this->em->persist($route);
         $this->em->flush();
 
-        $recordSection = $this->pages->createSection('qa_er_unsafe_helper_holder', 'entry-record');
+        $recordSection = $this->pages->createSection('qa_er_wrong_param_holder', 'entry-record');
         $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
-        $this->setSectionDataConfig($recordSection, [[
-            'scope' => 'filters',
-            'table' => $tableName,
-            'retrieve' => 'first',
-            'current_user' => false,
-        ]]);
         $this->setSectionField($recordSection, 'data_table', (string) $dataTable->getId(), 1);
         $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
-        $this->setSectionField(
-            $recordSection,
-            'filter',
-            sprintf("%s = '{{filters.%s}}'", $categoryFieldKey, $categoryFieldKey),
-            1,
-        );
+        // Param name does not match the route → fail closed.
+        $this->setEntryRecordLoadFrom($recordSection, 'other_id');
 
-        $cardSection = $this->pages->createSection('qa_er_unsafe_helper_card', 'text');
+        $cardSection = $this->pages->createSection('qa_er_wrong_param_card', 'text');
         $this->linkChild($recordSection, $cardSection);
         $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
 
@@ -411,7 +372,58 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         $token = $this->loginAsQaUser();
         $data = $this->assertEnvelopeSuccess($this->jsonRequest(
             'GET',
-            '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-unsafe/' . $recordId) . '&preview=true',
+            '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-wrong/' . $recordId) . '&preview=true',
+            null,
+            $token,
+        ));
+        $entryRecord = $this->findSectionByStyle($this->sectionsFromPayload($data), 'entry-record');
+        self::assertNotNull($entryRecord);
+        self::assertSame('', $this->firstChildTextContent($entryRecord));
+    }
+
+    public function testEntryRecordWithoutLoadRecordFromDoesNotHydrate(): void
+    {
+        [$formPage, $formSection] = $this->pages->createFormPage('qa_er_no_filter', openAccess: true);
+
+        $envelope = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
+            'page_id' => (int) $formPage->getId(),
+            'section_id' => (int) $formSection->getId(),
+            'form_data' => ['qa_answer' => 'secret'],
+        ]);
+        $recordId = $this->assertEnvelopeSuccess($envelope)['record_id'] ?? null;
+        self::assertIsInt($recordId);
+
+        $row = $this->em->getRepository(DataRow::class)->find($recordId);
+        self::assertInstanceOf(DataRow::class, $row);
+        $dataTable = $row->getDataTable();
+        self::assertInstanceOf(DataTable::class, $dataTable);
+
+        $detailPage = $this->pages->createPage('qa_er_no_filter_detail', openAccess: false);
+        $this->pages->grantGroupAcl($detailPage, $this->subjectGroup(), select: true, insert: false, update: false, delete: false);
+
+        $route = new PageRoute();
+        $route->setPage($detailPage);
+        $route->setPathPattern('/qa-er-no-filter/{record_id}');
+        $route->setRequirements(['record_id' => '\\d+']);
+        $route->setIsCanonical(true);
+        $route->setIsActive(true);
+        $this->em->persist($route);
+        $this->em->flush();
+
+        $recordSection = $this->pages->createSection('qa_er_no_filter_holder', 'entry-record');
+        $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
+        $this->setSectionField($recordSection, 'data_table', (string) $dataTable->getId(), 1);
+        $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
+
+        $cardSection = $this->pages->createSection('qa_er_no_filter_card', 'text');
+        $this->linkChild($recordSection, $cardSection);
+        $this->setSectionField($cardSection, 'text', '{{qa_answer}}', 2);
+
+        $this->pages->invalidatePageScopedCaches();
+        $token = $this->loginAsQaUser();
+        $data = $this->assertEnvelopeSuccess($this->jsonRequest(
+            'GET',
+            '/cms-api/v1/pages/resolve?path=' . rawurlencode('/qa-er-no-filter/' . $recordId) . '&preview=true',
             null,
             $token,
         ));
@@ -431,6 +443,11 @@ final class EntryRecordHydrationTest extends QaWebTestCase
         }
 
         return is_array($data['sections'] ?? null) ? $data['sections'] : [];
+    }
+
+    private function setEntryRecordLoadFrom(Section $section, string $urlParam = 'record_id'): void
+    {
+        $this->setSectionField($section, 'load_record_from', $urlParam, 1);
     }
 
     private function addNamedFormInput(Section $formSection, string $sectionName, string $inputName): Section

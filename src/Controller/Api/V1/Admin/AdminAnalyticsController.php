@@ -61,7 +61,13 @@ class AdminAnalyticsController extends AbstractController
         try {
             $today = $this->adminAnalyticsService->getTodayOperations();
 
-            return $this->responseFormatter->formatSuccess($today, 'responses/admin/analytics/analytics_today');
+            return $this->responseFormatter->formatSuccess(
+                $today,
+                'responses/admin/analytics/analytics_today',
+                Response::HTTP_OK,
+                false,
+                true,
+            );
         } catch (\Exception $e) {
             return $this->responseFormatter->formatError(
                 'Failed to retrieve today\'s operations: ' . $e->getMessage(),

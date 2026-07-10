@@ -172,6 +172,7 @@ final class FilterSafetyTest extends QaWebTestCase
         $this->pages->linkSectionToPage($detailPage, $recordSection, 10);
         $this->setSectionField($recordSection, 'data_table', (string) $tableId, 1);
         $this->setSectionField($recordSection, 'own_entries_only', '0', 1);
+        $this->setSectionField($recordSection, 'filter', 'AND record_id = {{route.record_id}}', 1);
 
         $cardSection = $this->pages->createSection('qa_fs_erec_card', 'text');
         $this->linkChild($recordSection, $cardSection);

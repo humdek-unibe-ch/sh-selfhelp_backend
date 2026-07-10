@@ -100,14 +100,14 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
 
             $isMultiple = ($this->fieldContentOptional($fields, 'is_multiple', 'all') ?? '') === '1'
                 || ($this->fieldContentOptional($fields, 'web_combobox_multi_select', 'all') ?? '') === '1';
-            $runtimeToken = $isMultiple
-                ? '{{_' . $fieldName . '_labels}}'
-                : '{{_' . $fieldName . '_label}}';
-            self::assertStringContainsString($runtimeToken, $frontendJson);
-
-            $labelColumn = $isMultiple
-                ? '_' . $fieldName . '_labels'
-                : '_' . $fieldName . '_label';
+            $labelSuffix = $isMultiple ? '_labels' : '_label';
+            $labelColumn = '_' . $fieldName . $labelSuffix;
+            // Accept unscoped `{{_role_label}}` or scoped `{{team_member._role_label}}`.
+            self::assertMatchesRegularExpression(
+                '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($labelColumn, '/') . '\}\}/',
+                $frontendJson,
+                sprintf('%s must interpolate hydrated option labels via %s.', $id, $labelColumn),
+            );
             self::assertStringContainsString(
                 $labelColumn,
                 $frontendJson,

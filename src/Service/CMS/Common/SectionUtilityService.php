@@ -747,18 +747,19 @@ class SectionUtilityService
     {
         $section['section_data'] = [];
 
-        // Handle form record data. Default: prefill the current user's latest
-        // own record. Record edit mode (issue #30): when the style's
-        // `load_record_from` property names a route parameter, the record
-        // context comes ONLY from the URL — param present: prefill THAT record
-        // (permission-gated through DataService::getFormRecordDataForRecord —
-        // own record always; foreign records need own_entries_only=0 + table
-        // UPDATE permission); param absent: stay EMPTY (create mode), so one
-        // section serves both the "add new" modal and the edit-by-URL modal.
+        // Plain form-record: always prefill the current user's latest own record.
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
+            $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages(
+                $this->resolveFormDataTableName($section),
+            );
+        }
+
+        // entry-record-form: dual-route create/edit via load_record_from.
+        if ($section['style_name'] == StyleNames::STYLE_ENTRY_RECORD_FORM) {
             $loadRecordFrom = is_array($section['load_record_from'] ?? null)
                 ? trim($this->asString($section['load_record_from']['content'] ?? ''))
                 : '';
+            $tableName = $this->resolveFormDataTableName($section);
 
             if ($loadRecordFrom !== '') {
                 $routeRecordId = is_numeric($routeParams[$loadRecordFrom] ?? null)
@@ -768,13 +769,11 @@ class SectionUtilityService
                     $ownEntriesOnly = !is_array($section['own_entries_only'] ?? null)
                         || ($section['own_entries_only']['content'] ?? '1') !== '0';
                     $section['section_data'] = $this->dataService->getFormRecordDataForRecord(
-                        $this->asString($section['id']),
+                        $tableName,
                         $routeRecordId,
-                        $ownEntriesOnly
+                        $ownEntriesOnly,
                     );
                 }
-            } else {
-                $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
             }
         }
 
@@ -870,6 +869,7 @@ class SectionUtilityService
                 // the entry-table renderer shows human headers while keying
                 // cells by the stable field_key (issue #56 v2).
                 $section['field_labels'] = $this->dataService->getColumnDisplayLabels($dataTableId);
+                $this->applyFieldsMapLabelOverrides($section, $languageId);
             }
         }
 
@@ -958,6 +958,62 @@ class SectionUtilityService
     private function asInt(mixed $value): int
     {
         return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * Resolve the data-table name used for form prefill/submit.
+     *
+     * @param array<string, mixed> $section
+     */
+    private function resolveFormDataTableName(array $section): string
+    {
+        if (($section['style_name'] ?? '') === StyleNames::STYLE_ENTRY_RECORD_FORM) {
+            $raw = is_array($section['data_table'] ?? null)
+                ? trim($this->asString($section['data_table']['content'] ?? ''))
+                : '';
+            if ($raw !== '' && ctype_digit($raw)) {
+                $dataTable = $this->dataService->getDataTableById((int) $raw);
+                if ($dataTable !== null) {
+                    return (string) $dataTable->getName();
+                }
+            }
+        }
+
+        return $this->asString($section['id']);
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function applyFieldsMapLabelOverrides(array &$section, int $languageId): void
+    {
+        $raw = is_array($section['fields_map_labels'] ?? null)
+            ? trim($this->asString($section['fields_map_labels']['content'] ?? ''))
+            : '';
+        if ($raw === '') {
+            return;
+        }
+
+        try {
+            $parsed = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return;
+        }
+
+        if (!is_array($parsed)) {
+            return;
+        }
+
+        if (!isset($section['field_labels']) || !is_array($section['field_labels'])) {
+            $section['field_labels'] = [];
+        }
+
+        foreach ($parsed as $fieldKey => $label) {
+            if (!is_string($fieldKey) || $fieldKey === '' || !is_string($label) || trim($label) === '') {
+                continue;
+            }
+            $section['field_labels'][$fieldKey] = $label;
+        }
     }
 
     /**

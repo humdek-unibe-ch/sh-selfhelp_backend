@@ -83,7 +83,7 @@ final class CmsAppEndpointsPermissionTest extends QaWebTestCase
             Response::HTTP_NOT_FOUND,
             $envelope['status'] ?? null,
             sprintf(
-                'Legacy POST /admin/pages/cms-app must be gone after Version20260706221100 (got %s)',
+                'Legacy POST /admin/pages/cms-app must be absent after Version20260710093044 (got %s)',
                 var_export($envelope['status'] ?? null, true)
             )
         );

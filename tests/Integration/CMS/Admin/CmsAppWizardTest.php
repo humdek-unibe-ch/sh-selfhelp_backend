@@ -75,6 +75,12 @@ final class CmsAppWizardTest extends QaWebTestCase
             $publicBody = $this->sectionsBody($byRole['public_list'], $admin);
             self::assertStringContainsString('entry-list', $publicBody);
             self::assertNull($this->pageProperty($byRole['public_detail'], 'open_in_modal', $admin));
+            self::assertSame(
+                'record_id',
+                $this->sectionFieldValue($byRole['public_detail'], 'entry-record', 'load_record_from', $admin)
+            );
+            self::assertNull($this->sectionFieldValue($byRole['public_detail'], 'entry-record', 'filter', $admin));
+            self::assertNull($this->sectionFieldValue($byRole['public_detail'], 'entry-record', 'url_param', $admin));
             self::assertNotNull(
                 $this->sectionFieldValue($byRole['public_list'], 'link', 'url', $admin),
                 'Public list cards must carry a detail link template.'

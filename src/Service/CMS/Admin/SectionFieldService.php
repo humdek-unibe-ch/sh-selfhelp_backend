@@ -278,17 +278,25 @@ class SectionFieldService extends BaseService
                 $cacheKey,
                 function () {
                     $qb = $this->entityManager->createQueryBuilder();
-                    $qb->select('dt.id, dt.name')
+                    $qb->select('dt.id, dt.name, dt.displayName')
                         ->from(DataTable::class, 'dt')
-                        ->orderBy('dt.name', 'ASC');
+                        ->orderBy('dt.displayName', 'ASC')
+                        ->addOrderBy('dt.name', 'ASC');
 
-                    /** @var list<array{id: mixed, name: mixed}> $dataTables */
+                    /** @var list<array{id: mixed, name: mixed, displayName: mixed}> $dataTables */
                     $dataTables = $qb->getQuery()->getResult();
 
-                    return array_map(fn (array $table): array => [
-                        'value' => $this->asString($table['id']),
-                        'text' => $table['name']
-                    ], $dataTables);
+                    return array_map(function (array $table): array {
+                        $id = $this->asString($table['id']);
+                        $name = $this->asString($table['name']);
+                        $displayName = trim($this->asString($table['displayName'] ?? ''));
+                        $label = $displayName !== '' ? $displayName : $name;
+
+                        return [
+                            'value' => $id,
+                            'text' => sprintf('%s (#%s, table %s)', $label, $id, $name),
+                        ];
+                    }, $dataTables);
                 }
             );
     }

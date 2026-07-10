@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "selfhelp://schemas/api/v1/requests/admin/data_query_preview",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "section_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "data_table": {
+      "type": ["integer", "string"]
+    },
+    "filter": {
+      "type": "string"
+    },
+    "selected_columns": {
+      "type": "string"
+    },
+    "own_entries_only": {
+      "type": "boolean"
+    },
+    "language_id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timezone_code": {
+      "type": "string"
+    },
+    "route_params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "route_requirements": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "data_table": {
+          "type": ["integer", "string"]
+        },
+        "filter": {
+          "type": "string"
+        },
+        "selected_columns": {
+          "type": "string"
+        },
+        "own_entries_only": {
+          "type": "boolean"
+        },
+        "language_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timezone_code": {
+          "type": "string"
+        },
+        "route_params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "route_requirements": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
