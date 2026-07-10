@@ -56,7 +56,8 @@ on list). Detail scoping uses an explicit author `filter` with
   `{ "all": { "content": "…" } }` shape (and `language_code: "all"`), so
   CMS-in-CMS templates with an explicit `entry-record` filter no longer fail
   as `missing_entry_record_filter`.
-- Pairs with frontend `0.1.62` and `@selfhelp/shared` `3.0.0`.
+- Pairs with frontend `0.1.62` and `@selfhelp/shared` `1.21.5`
+  (wave previously staged as shared `3.0.0`, republished as `1.21.5`).
 
 ---
 
@@ -137,8 +138,9 @@ hydration existed — lists rendered a single template card with empty tokens.
 ## Breaking: CMS-in-CMS polish wave — entry-table, record edit mode, portable bundles, template gallery
 
 The list/detail pattern becomes a first-class, polished product. Pairs with
-frontend `0.1.59`, mobile `0.1.33`, and `@selfhelp/shared` **`3.0.0`**
-(breaking major: the style rename below). See
+frontend `0.1.59`, mobile `0.1.33`, and `@selfhelp/shared` **`1.21.5`**
+(breaking wave previously staged as shared `3.0.0`, then republished as
+`1.21.5`: the style rename below). See
 `docs/cookbook/cms-in-cms-list-detail.md` and
 `docs/developer/27-db-driven-public-routing.md`.
 
@@ -243,9 +245,10 @@ model, one API payload, one bundle schema. See
   bundle `examples/navigation/menu-demo.bundle.json` is rewritten as the v2.0
   regression fixture (double header layers, footer groups + standalone link,
   nested drawer, segment tabs).
-- **Cross-repo:** pairs with `@selfhelp/shared` 2.0.0 (strict
+- **Cross-repo:** pairs with `@selfhelp/shared` `1.21.5` (strict
   `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/
-  `activeTrail` helpers, bundle v2.0 types) and frontend 0.1.59.
+  `activeTrail` helpers, bundle v2.0 types; wave previously staged as shared
+  `2.0.0`) and frontend 0.1.59.
   `supports.frontend` raised to `>=0.1.59`.
 
 ## Added: Child-page navigation presentation (sidebar / pills / breadcrumbs)
@@ -264,7 +267,7 @@ configurable contract instead of the hardcoded pill tabs (same 0.1.33 wave).
   presentation). `PATCH /admin/navigation/menus/{key}` accepts them
   (web menus only), and menu items accept/return `children_nav` on
   create/update; the navigation bundle v2.0 carries both.
-- **Rendering contract:** `@selfhelp/shared` 2.0.0 `branchNav` resolves the
+- **Rendering contract:** `@selfhelp/shared` `1.21.5` `branchNav` resolves the
   effective mode (item override → menu default → `sidebar`), the branch
   group, the breadcrumb trail, and the prev/next pager from the same payload;
   the frontend renders the left-sidebar layout (sticky, collapses to pills on

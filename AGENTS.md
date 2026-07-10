@@ -258,7 +258,7 @@ mobile renderers, so a rename must land in every repo at once.
 
 - **Style names (`styles.name`) are `kebab-case`** (e.g. `reset-password`,
   `two-factor-auth`, `no-access`, `not-found`, `ref-container`, `entry-list`,
-  `entry-record`, `entry-record-delete`, `show-user-input`, `data-container`),
+  `entry-record`, `entry-record-delete`, `entry-table`, `data-container`),
   never camelCase (`resetPassword`) or snake_case. The legacy camelCase style
   names were renamed to kebab-case in v0.1.14 (migration
   `Version20260618120000`). New styles must be seeded kebab-case from the start.

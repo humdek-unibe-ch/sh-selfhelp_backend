@@ -441,10 +441,10 @@ the same change wave:
 > frontend `supports.core` `0.1.32 → 0.1.33` and backend `supports.frontend`
 > `0.1.58 → 0.1.59`. The live pairing is now **frontend `>=0.1.59` ⇄ core
 > `>=0.1.33`** (both `<0.2.0`). The cross-layer anchor is `@selfhelp/shared`
-> **`2.0.0`** (breaking major: strict `INavigationMenu`/`INavigationMenuItem`
+> **`1.21.5`** (breaking wave previously staged as shared **`2.0.0`**: strict `INavigationMenu`/`INavigationMenuItem`
 > with `layer`/`description`/`aria_label` and no `config`, `TWebFooterPreset`,
 > `headerLayers` + `footerPreset` + `activeTrail` helper modules, strict bundle
-> v2.0 types); frontend and mobile must adopt `2.0.0` in the same wave.
+> v2.0 types); frontend and mobile must adopt `1.21.5` in the same wave.
 > **Mobile 0.1.33** ships the matching adoption in the same wave (collapsible
 > drawer with active-trail auto-expand via `expandedIdsForActiveTrail`, shared
 > `isMenuItemActiveOnMobile` active states, tab `item_limit` slice, local
@@ -456,8 +456,8 @@ the same change wave:
 > `show_breadcrumbs` toggle, per-item `children_nav` override, emitted on web
 > menus in `GET /navigation` and mirrored in the admin payloads + bundle v2.0.
 > Frontend 0.1.59 renders it (sticky branch sidebar / pill strip / breadcrumbs
-> / prev-next pager) via the `@selfhelp/shared` 2.0.0 `branchNav` resolver
-> (`resolveWebBranchNavContext`), and the all-language content search + admin
+> / prev-next pager) via the `@selfhelp/shared` 1.21.5 `branchNav` resolver
+> (`resolveWebBranchNavContext`; wave previously staged as shared 2.0.0), and the all-language content search + admin
 > pages `title`/`titles` fields land in the same versions — no extra floor
 > moves beyond the 0.1.33 ⇄ 0.1.59 pairing above.
 > The wave's remaining additions are **additive inside the same pairing**:
@@ -477,10 +477,10 @@ the same change wave:
 > release pair. The **`show-user-input` style is renamed `entry-table`**
 > (migration `Version20260710093048`; sections keep their `id_styles` FK) — a
 > breaking render-contract change, so the cross-layer anchor moves to
-> `@selfhelp/shared` **`3.0.0`** (breaking major: `IEntryTableStyle` /
+> `@selfhelp/shared` **`1.21.5`** (breaking wave previously staged as shared 3.0.0: `IEntryTableStyle` /
 > `IEntryTableEntry` replace the `IShowUserInput*` types, `STYLE_REGISTRY` key
 > `entry-table`, `IEntryTableEntry._can_edit`, `IFormRecordStyle` gains
-> `load_record_from` + `own_entries_only`); frontend and mobile adopt `3.0.0`
+> `load_record_from` + `own_entries_only`); frontend and mobile adopt `1.21.5`
 > in the same wave (renderers renamed `EntryTableStyle.tsx` / `EntryTable.tsx`).
 > The same wave ships **record edit mode** (`form-record` `load_record_from`;
 > `PUT /cms-api/v1/forms/update` accepts an explicit `record_id` under the
@@ -494,7 +494,7 @@ the same change wave:
 > unreleased 0.1.33 ⇄ 0.1.59 pair, the `release-manifest.json` floors do not
 > move again: frontend `supports.core` stays `>=0.1.33` and backend
 > `supports.frontend` stays `>=0.1.59` (both `<0.2.0`). Mobile 0.1.33 adopts
-> the rename in the same wave via `@selfhelp/shared` `3.0.0`.
+> the rename in the same wave via `@selfhelp/shared` `1.21.5`.
 
 > **Core 0.1.34 (first-class `cms_app` product unit ⇄ frontend 0.1.60 —
 > breaking):** CMS-in-CMS apps become a first-class entity. Migrations
@@ -513,7 +513,7 @@ the same change wave:
 > frontend `supports.core` `0.1.33 → 0.1.34` and backend `supports.frontend`
 > `0.1.59 → 0.1.60`. The live pairing is now **frontend `>=0.1.60` ⇄ core
 > `>=0.1.34`** (both `<0.2.0`). Host `selfhelp.cms_version` becomes `0.1.34`.
-> `@selfhelp/shared` keeps `3.0.0` and adds the `ICmsApp*` / `TCmsAppRole` +
+> `@selfhelp/shared` `1.21.5` adds the `ICmsApp*` / `TCmsAppRole` +
 > `admin.cms_app.*` permission constants (additive within the same major).
 >
 > **User-owned enum options (additive inside the same unreleased pair):**
@@ -521,7 +521,7 @@ the same change wave:
 > frontend 0.1.60 and mobile 0.1.33 consume the canonical shared resolver, and
 > the six CMS-in-CMS templates adopt stable codes. This lands before the
 > 0.1.34 / 0.1.60 pair is tagged, so the manifest floors remain
-> **frontend `>=0.1.60` ⇄ core `>=0.1.34`**. `@selfhelp/shared` remains 3.0.0
+> **frontend `>=0.1.60` ⇄ core `>=0.1.34`**. `@selfhelp/shared` remains 1.21.5
 > with additive helpers in the same release wave.
 
 > **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
@@ -706,8 +706,8 @@ import format.
 |------|---------|-------|
 | `sh-selfhelp_backend` | `0.1.33` | `supports.frontend` `>=0.1.59` |
 | `sh-selfhelp_frontend` | `0.1.59` | `supports.core` `>=0.1.33` |
-| `sh-selfhelp_mobile` | `0.1.33` | `supports.core` `>=0.1.33` (collapsible drawer, active-trail auto-expand, tab `item_limit`, shared 2.0.0) |
-| `@selfhelp/shared` | `2.0.0` | strict `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/`activeTrail`, bundle v2.0 |
+| `sh-selfhelp_mobile` | `0.1.33` | `supports.core` `>=0.1.36` (package version stayed 0.1.33 across later core minors; pair via `supports.core` + shared 1.21.5) |
+| `@selfhelp/shared` | `1.21.5` | strict `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/`activeTrail`, bundle v2.0 (wave previously staged as 2.0.0-3.0.1) |
 
 Working-tree implementations across all four repos are aligned to these floors.
 Tag and publish together — partial deploy breaks navigation for migrated installs.

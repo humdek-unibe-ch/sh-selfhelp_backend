@@ -2,8 +2,8 @@
 
 Audience: Developers and technical product owners.
 Status: active.
-Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts (`@selfhelp/shared` `2.0.0`).
-Last verified: 2026-07-06.
+Applies to: SelfHelp2 backend `0.1.33+`, frontend/mobile/shared navigation contracts (`@selfhelp/shared` `1.21.5`).
+Last verified: 2026-07-10.
 Source of truth: `NavigationMenuService`, admin navigation APIs, `GET /navigation`, `@selfhelp/shared` navigation types.
 
 ## Overview

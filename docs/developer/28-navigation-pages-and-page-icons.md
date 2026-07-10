@@ -83,7 +83,7 @@ headless state, or `has_content`.
 
 ### Cross-repo contracts
 
-Shared types (`@selfhelp/shared` `2.0.0`): `INavigationPayload`,
+Shared types (`@selfhelp/shared` `1.21.5`): `INavigationPayload`,
 `TWebHeaderPreset`, `TWebFooterPreset`, header layer helpers
 (`splitHeaderLayers` / `mergeHeaderLayers`), footer preset helpers
 (`flattenFooterItems`), active-trail helpers (`isMenuItemActiveOnWeb` /
@@ -91,7 +91,8 @@ Shared types (`@selfhelp/shared` `2.0.0`): `INavigationPayload`,
 `resolveMobileSegmentGroup`, `isOnAnyMobileMenuFromPayload`.
 
 See `docs/developer/cross-repo-compatibility-matrix.md` for the navigation-wave
-version floors (core `0.1.33` / frontend `0.1.59` / mobile `0.1.33` / shared `2.0.0`).
+version floors (core `0.1.33` / frontend `0.1.59` / mobile `0.1.33` / shared
+`1.21.5` — wave previously staged as shared `2.0.0`).
 
 ### Related docs
 
