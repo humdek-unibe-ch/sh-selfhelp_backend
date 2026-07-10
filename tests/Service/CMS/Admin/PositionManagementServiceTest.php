@@ -13,6 +13,10 @@ use App\Service\CMS\Admin\PositionManagementService;
 use App\Tests\Controller\Api\V1\BaseControllerTest;
 use Doctrine\ORM\EntityManagerInterface;
 
+/**
+ * Section and section-hierarchy position normalization only.
+ * Public menu ordering lives in navigation_menu_items (menu builder).
+ */
 class PositionManagementServiceTest extends BaseControllerTest
 {
     private PositionManagementService $positionManagementService;
@@ -115,64 +119,6 @@ class PositionManagementServiceTest extends BaseControllerTest
         $expectedPosition = 0;
         foreach ($hierarchies as $hierarchy) {
             $this->assertEquals($expectedPosition, $hierarchy->getPosition());
-            $expectedPosition += 10;
-        }
-    }
-
-    /**
-     * Test reorderPagePositions method
-     */
-    public function testReorderPagePositions(): void
-    {
-        // Call the method with real database (use null for root pages)
-        $this->positionManagementService->reorderPagePositions(null, 'nav', true);
-        
-        // Verify the result by checking the database state
-        $pages = $this->entityManager->createQueryBuilder()
-            ->select('p')
-            ->from('App\\Entity\\Page', 'p')
-            ->where('p.nav_position IS NOT NULL')
-            ->andWhere('p.parentPage IS NULL')  // Changed to parentPage IS NULL for root pages
-            ->orderBy('p.nav_position', 'ASC')
-            ->addOrderBy('p.id', 'ASC')
-            ->getQuery()
-            ->getResult();
-
-        // If no pages found, that's okay - the method should handle it gracefully.
-        $this->assertIsArray($pages);
-        $expectedPosition = 10;
-        foreach ($pages as $page) {
-            self::assertInstanceOf(Page::class, $page);
-            $this->assertEquals($expectedPosition, $page->getNavPosition());
-            $expectedPosition += 10;
-        }
-    }
-
-    /**
-     * Test reorderPagePositions method with footer position type
-     */
-    public function testReorderPagePositionsWithFooterType(): void
-    {
-        // Call the method with real database (use null for root pages)
-        $this->positionManagementService->reorderPagePositions(null, 'footer', true);
-        
-        // Verify the result by checking the database state
-        $pages = $this->entityManager->createQueryBuilder()
-            ->select('p')
-            ->from('App\\Entity\\Page', 'p')
-            ->where('p.footer_position IS NOT NULL')
-            ->andWhere('p.parentPage IS NULL')  // Changed to parentPage IS NULL for root pages
-            ->orderBy('p.footer_position', 'ASC')
-            ->addOrderBy('p.id', 'ASC')
-            ->getQuery()
-            ->getResult();
-
-        // If no pages found, that's okay - the method should handle it gracefully.
-        $this->assertIsArray($pages);
-        $expectedPosition = 10;
-        foreach ($pages as $page) {
-            self::assertInstanceOf(Page::class, $page);
-            $this->assertEquals($expectedPosition, $page->getFooterPosition());
             $expectedPosition += 10;
         }
     }

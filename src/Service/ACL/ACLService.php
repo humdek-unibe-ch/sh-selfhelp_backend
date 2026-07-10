@@ -14,6 +14,7 @@ use App\Entity\Page;
 use App\Entity\User;
 use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
+use App\Service\Security\DataAccessSecurityService;
 use App\Repository\AclRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -30,6 +31,7 @@ class ACLService
     public function __construct(
         private readonly AclRepository $aclRepository,
         private readonly CacheService $cache,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
     ) {
     }
 
@@ -47,6 +49,15 @@ class ACLService
         // has no group memberships, so only open-access pages resolve), strings
         // are coerced to int.
         $userId = $userId === null ? UserContextService::GUEST_USER_ID : (is_int($userId) ? $userId : (int) $userId);
+
+        // Admin role always has full frontend page access. Group ACL rows are
+        // still written for the admin group on create/import, but relying on
+        // role membership matches the documented contract ("admins always have
+        // access") and covers operators whose account has the admin role without
+        // an up-to-date admin-group ACL snapshot / cache entry.
+        if ($userId > 0 && $this->dataAccessSecurityService->userHasAdminRole($userId)) {
+            return true;
+        }
 
         $cacheKey = "user_acl_{$pageId}";
         return $this->cache
@@ -133,10 +144,13 @@ class ACLService
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_GROUP, (int) $group->getId());
         $this->cache->invalidateEntityScope(CacheService::ENTITY_SCOPE_PAGE, (int) $page->getId());
         
-        // Invalidate permission lists
+        // Bump the whole permissions category generation. `hasAccess` nests a
+        // CATEGORY_PERMISSIONS item that is NOT user-scoped, and list-tag
+        // invalidation alone does not retire those item keys — leaving stale
+        // "deny" snapshots after create/import until the TTL expired.
         $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-            ->invalidateAllListsInCategory();
+            ->invalidateCategory();
     }
 
 }

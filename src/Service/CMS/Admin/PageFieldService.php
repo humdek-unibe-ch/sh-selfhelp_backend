@@ -14,6 +14,8 @@ use App\Entity\PagesFieldsTranslation;
 use App\Exception\ServiceException;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
+use App\Service\CMS\NavigationAssignmentService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\UserContextAwareService;
@@ -32,6 +34,9 @@ class PageFieldService extends BaseService
         private readonly CacheService $cache,
         private readonly UserContextAwareService $userContextAwareService,
         private readonly PagePublishedVersionRepairService $pagePublishedVersionRepairService,
+        private readonly PageRouteService $pageRouteService,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly NavigationAssignmentService $navigationAssignmentService,
     ) {
     }
 
@@ -143,6 +148,7 @@ class PageFieldService extends BaseService
                 'type' => $field->getType() ? $field->getType()->getName() : null,
                 'default_value' => $pageField ? $pageField->getDefaultValue() : null,
                 'help' => $pageField ? $pageField->getHelp() : null,
+                'config' => $field->getConfig(),
                 'display' => $field->isDisplay(),  // Whether it's a content field (1) or property field (0)
                 'translations' => []
             ];
@@ -179,6 +185,7 @@ class PageFieldService extends BaseService
         }
 
         $pageAccessType = $page->getPageAccessType();
+        $pageSurface = $page->getPageSurface();
 
         // Return page data with fields and their translations
         return [
@@ -199,13 +206,25 @@ class PageFieldService extends BaseService
                     "lookupValue" => $pageAccessType->getLookupValue(),
                     "lookupDescription" => $pageAccessType->getLookupDescription()
                 ] : null,
+                // CMS-in-CMS surface axis (issue #30). NULL FK resolves to
+                // `public`; `pageSurface` carries the full lookup for editors.
+                "pageSurface" => $pageSurface ? [
+                    "id" => $pageSurface->getId(),
+                    "typeCode" => "pageSurface",
+                    "lookupCode" => $pageSurface->getLookupCode(),
+                    "lookupValue" => $pageSurface->getLookupValue(),
+                    "lookupDescription" => $pageSurface->getLookupDescription()
+                ] : null,
+                "surface" => $page->getPageSurfaceCode(),
                 "headless" => $page->isHeadless(),
-                "navPosition" => $page->getNavPosition(),
-                "footerPosition" => $page->getFooterPosition(),
                 "openAccess" => $page->isOpenAccess(),
-                "system" => $page->isSystem()
+                "system" => $page->isSystem(),
+                "navigationMembership" => $this->navigationAssignmentService->getMembershipBadgesForPage((int) $page->getId()),
             ],
-            'fields' => $formattedFields
+            'fields' => $formattedFields,
+            // CMS-editable public route contract for the locked Routes panel
+            // (issue #30). Round-trips with updatePage's `pageData.routes` sync.
+            'routes' => $this->pageRouteService->getRoutesForPage((int) $page->getId())
         ];
     }
 
@@ -244,5 +263,6 @@ class PageFieldService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_PAGES)
             ->invalidateAllListsInCategory();
+        $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
     }
 }

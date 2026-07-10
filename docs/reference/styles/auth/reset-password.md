@@ -3,8 +3,8 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (auth password-reset flow, `@selfhelp/shared`, frontend renderer).
-Last verified: 2026-06-22.
-Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, and `MailTemplateService`.
+Last verified: 2026-06-30.
+Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, `MailTemplateService`, and the seeded `page_routes` (migration `Version20260710093044`).
 
 ## Summary
 
@@ -44,20 +44,28 @@ link") so the form does not reveal which addresses are registered.
 
 ## For developers
 
-`ResetPasswordStyle.tsx` reads the `[[...slug]]` path to decide which screen to
-render:
+The reset-password page owns two seeded `page_routes` (plus the legacy
+`/reset-password` alias): canonical `/reset` and `/reset/{user_id}/{token}`
+(requirements `user_id = \d+`, `token = [A-Za-z0-9._~-]+`). The backend resolver
+extracts the params, so `ResetPasswordStyle.tsx` reads `route_params.user_id` /
+`route_params.token` (from `GET /pages/resolve`) — **not** the raw slug — to
+decide which screen to render:
 
-- **Request mode** (`/reset`): posts the email to `POST /auth/forgot-password`.
-  The endpoint always returns a generic success (no account enumeration). For a
-  known active account, `PasswordResetService::requestReset()` stores a one-time
-  token on the user (`users.token`) and sends the `mail_recovery` email
-  immediately via the job scheduler. The link points at
-  `<FRONTEND_BASE_URL>/reset/{user_id}/{token}`.
-- **Set-password mode** (`/reset/{user_id}/{token}`): posts the new password to
-  `POST /auth/reset-password`. `PasswordResetService::resetPassword()` validates
-  the token, sets the password, clears the token (single-use), sends the
-  `mail_password_changed` confirmation email immediately, and the UI redirects
-  to login.
+- **Request mode** (`/reset`, no params): posts the email to
+  `POST /auth/forgot-password`. The endpoint always returns a generic success (no
+  account enumeration). For a known active account,
+  `PasswordResetService::requestReset()` stores a one-time token on the user
+  (`users.token`) and sends the `mail_recovery` email immediately via the job
+  scheduler. The link points at `<FRONTEND_BASE_URL>/reset/{user_id}/{token}`.
+- **Set-password mode** (`/reset/{user_id}/{token}`, params present): posts the
+  new password to `POST /auth/reset-password`.
+  `PasswordResetService::resetPassword()` validates the token, sets the password,
+  clears the token (single-use), sends the `mail_password_changed` confirmation
+  email immediately, and the UI redirects to login.
+
+The `user_id` / `token` route parameter names are `snake_case` and identical
+across backend, frontend, and mobile (see
+[27-db-driven-public-routing.md](../../../developer/27-db-driven-public-routing.md)).
 
 The email copy comes from `MailTemplateService` (`mail_recovery_subject` /
 `mail_recovery_body` on the `sh-mail-config` page), **not** from this style's

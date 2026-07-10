@@ -1,5 +1,5 @@
 {
-    "generated_at": "2026-06-22T19:23:11+00:00",
+    "generated_at": "2026-07-06T23:30:29+00:00",
     "generator": "scripts/build-style-audit.php",
     "note": "Source of truth = live DB catalog + cross-repo TS. Regenerate after schema/renderer changes.",
     "warnings": [],
@@ -10,8 +10,8 @@
         "styles_mobile_renderer": 90,
         "distinct_fields_in_use": 473,
         "scope_field_instances": {
-            "content": 276,
-            "common": 453,
+            "content": 275,
+            "common": 449,
             "web": 232,
             "mobile": 12
         }
@@ -52,11 +52,9 @@
         "web_height": 5,
         "gap": 5,
         "alert_fail": 4,
-        "own_entries_only": 4,
         "translatable": 4,
         "align": 4,
         "justify": 4,
-        "scope": 4,
         "label_pw": 3,
         "button_label": 3,
         "message": 3,
@@ -72,7 +70,7 @@
         "buttons_variant": 3,
         "redirect_at_end": 3,
         "web_border": 3,
-        "data_table": 3,
+        "own_entries_only": 3,
         "open_in_new_tab": 3,
         "border": 3,
         "has_controls": 3,
@@ -84,7 +82,9 @@
         "web_width": 3,
         "label_pw_reset": 2,
         "label_user": 2,
-        "subtitle": 2
+        "subtitle": 2,
+        "login_label": 2,
+        "label_code": 2
     },
     "styles": {
         "login": {
@@ -1097,7 +1097,7 @@
                     "default": "Account validation failed"
                 },
                 "error_text": {
-                    "type": "text",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": "This validation link is invalid or has expired. Please request a new validation email."
@@ -1157,7 +1157,7 @@
                     "default": "Update"
                 },
                 "loading_text": {
-                    "type": "text",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": "Please wait while we validate your account activation link..."
@@ -1329,6 +1329,190 @@
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
+        "entry-table": {
+            "id": 156,
+            "group": "Form",
+            "category_shared": "forms",
+            "render_target_db": "both",
+            "registry_platforms": null,
+            "can_have_children_db": 0,
+            "can_have_children_shared": false,
+            "in_shared_registry": true,
+            "has_shared_type": true,
+            "web_renderer": true,
+            "mobile_renderer": true,
+            "field_count": 26,
+            "scope_counts": {
+                "content": 5,
+                "common": 14,
+                "web": 7,
+                "mobile": 0
+            },
+            "fields": {
+                "delete_modal_body": {
+                    "type": "textarea",
+                    "scope": "content",
+                    "display": 1,
+                    "default": "Are you sure you want to delete this entry?"
+                },
+                "delete_modal_title": {
+                    "type": "text",
+                    "scope": "content",
+                    "display": 1,
+                    "default": "Delete entry"
+                },
+                "empty_text": {
+                    "type": "textarea",
+                    "scope": "content",
+                    "display": 1,
+                    "default": "No entries found."
+                },
+                "fields_map": {
+                    "type": "json",
+                    "scope": "content",
+                    "display": 1,
+                    "default": ""
+                },
+                "title": {
+                    "type": "markdown-inline",
+                    "scope": "content",
+                    "display": 1,
+                    "default": ""
+                },
+                "add_url": {
+                    "type": "text",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
+                },
+                "csv_export": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
+                "data_table": {
+                    "type": "select-data_table",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
+                },
+                "delete_entry": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "1"
+                },
+                "dt_default_order_column": {
+                    "type": "text",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
+                },
+                "dt_default_order_dir": {
+                    "type": "select",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "asc"
+                },
+                "dt_info": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
+                "dt_paginate": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
+                "dt_searching": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
+                "dt_sortable": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
+                "edit_url": {
+                    "type": "text",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
+                },
+                "own_entries_only": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "1"
+                },
+                "show_timestamp": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
+                "spacing": {
+                    "type": "spacing",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
+                },
+                "web_table_caption_side": {
+                    "type": "segment",
+                    "scope": "web",
+                    "display": 0,
+                    "default": ""
+                },
+                "web_table_highlight_on_hover": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                },
+                "web_table_sticky_header": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
+                },
+                "web_table_striped": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
+                },
+                "web_table_with_column_borders": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                },
+                "web_table_with_row_borders": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "0"
+                },
+                "web_table_with_table_border": {
+                    "type": "checkbox",
+                    "scope": "web",
+                    "display": 0,
+                    "default": "1"
+                }
+            },
+            "drift_db_fields_missing_from_type": [],
+            "drift_type_fields_missing_from_db": [
+                "entries",
+                "field_labels"
+            ],
+            "duplicate_candidates": []
+        },
         "form-log": {
             "id": 148,
             "group": "Form",
@@ -1341,10 +1525,10 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 21,
+            "field_count": 23,
             "scope_counts": {
                 "content": 9,
-                "common": 12,
+                "common": 14,
                 "web": 0,
                 "mobile": 0
             },
@@ -1386,7 +1570,7 @@
                     "default": "Save"
                 },
                 "confirm_message": {
-                    "type": "text",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": "Are you sure you want to submit?"
@@ -1451,6 +1635,12 @@
                     "display": 0,
                     "default": "filled"
                 },
+                "close_modal_on_save": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
                 "confirm_submit": {
                     "type": "checkbox",
                     "scope": "common",
@@ -1468,6 +1658,12 @@
                     "scope": "common",
                     "display": 0,
                     "default": null
+                },
+                "redirect_on_save": {
+                    "type": "text",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
                 },
                 "spacing": {
                     "type": "spacing",
@@ -1494,9 +1690,11 @@
                 "buttons_radius",
                 "buttons_size",
                 "buttons_variant",
+                "close_modal_on_save",
                 "confirm_submit",
                 "name",
-                "redirect_at_end"
+                "redirect_at_end",
+                "redirect_on_save"
             ],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
@@ -1513,10 +1711,10 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 23,
+            "field_count": 27,
             "scope_counts": {
                 "content": 10,
-                "common": 13,
+                "common": 17,
                 "web": 0,
                 "mobile": 0
             },
@@ -1564,7 +1762,7 @@
                     "default": "Update"
                 },
                 "confirm_message": {
-                    "type": "text",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": "Are you sure you want to submit?"
@@ -1635,11 +1833,23 @@
                     "display": 0,
                     "default": "filled"
                 },
+                "close_modal_on_save": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "0"
+                },
                 "confirm_submit": {
                     "type": "checkbox",
                     "scope": "common",
                     "display": 0,
                     "default": "0"
+                },
+                "load_record_from": {
+                    "type": "text",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
                 },
                 "name": {
                     "type": "text",
@@ -1647,11 +1857,23 @@
                     "display": 0,
                     "default": null
                 },
+                "own_entries_only": {
+                    "type": "checkbox",
+                    "scope": "common",
+                    "display": 0,
+                    "default": "1"
+                },
                 "redirect_at_end": {
                     "type": "select-page-keyword",
                     "scope": "common",
                     "display": 0,
                     "default": null
+                },
+                "redirect_on_save": {
+                    "type": "text",
+                    "scope": "common",
+                    "display": 0,
+                    "default": ""
                 },
                 "spacing": {
                     "type": "spacing",
@@ -1678,182 +1900,13 @@
                 "buttons_radius",
                 "buttons_size",
                 "buttons_variant",
+                "close_modal_on_save",
                 "confirm_submit",
                 "name",
-                "redirect_at_end"
+                "redirect_at_end",
+                "redirect_on_save"
             ],
             "drift_type_fields_missing_from_db": [],
-            "duplicate_candidates": []
-        },
-        "show-user-input": {
-            "id": 156,
-            "group": "Form",
-            "category_shared": "forms",
-            "render_target_db": "both",
-            "registry_platforms": null,
-            "can_have_children_db": 0,
-            "can_have_children_shared": false,
-            "in_shared_registry": true,
-            "has_shared_type": true,
-            "web_renderer": true,
-            "mobile_renderer": true,
-            "field_count": 24,
-            "scope_counts": {
-                "content": 5,
-                "common": 12,
-                "web": 7,
-                "mobile": 0
-            },
-            "fields": {
-                "delete_modal_body": {
-                    "type": "text",
-                    "scope": "content",
-                    "display": 1,
-                    "default": "Are you sure you want to delete this entry?"
-                },
-                "delete_modal_title": {
-                    "type": "text",
-                    "scope": "content",
-                    "display": 1,
-                    "default": "Delete entry"
-                },
-                "empty_text": {
-                    "type": "text",
-                    "scope": "content",
-                    "display": 1,
-                    "default": "No entries found."
-                },
-                "fields_map": {
-                    "type": "json",
-                    "scope": "content",
-                    "display": 1,
-                    "default": ""
-                },
-                "title": {
-                    "type": "markdown-inline",
-                    "scope": "content",
-                    "display": 1,
-                    "default": ""
-                },
-                "csv_export": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "data_table": {
-                    "type": "select-data_table",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                },
-                "delete_entry": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "1"
-                },
-                "dt_default_order_column": {
-                    "type": "text",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                },
-                "dt_default_order_dir": {
-                    "type": "select",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "asc"
-                },
-                "dt_info": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "dt_paginate": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "dt_searching": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "dt_sortable": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "own_entries_only": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "1"
-                },
-                "show_timestamp": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "spacing": {
-                    "type": "spacing",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                },
-                "web_table_caption_side": {
-                    "type": "segment",
-                    "scope": "web",
-                    "display": 0,
-                    "default": ""
-                },
-                "web_table_highlight_on_hover": {
-                    "type": "checkbox",
-                    "scope": "web",
-                    "display": 0,
-                    "default": "1"
-                },
-                "web_table_sticky_header": {
-                    "type": "checkbox",
-                    "scope": "web",
-                    "display": 0,
-                    "default": "0"
-                },
-                "web_table_striped": {
-                    "type": "checkbox",
-                    "scope": "web",
-                    "display": 0,
-                    "default": "0"
-                },
-                "web_table_with_column_borders": {
-                    "type": "checkbox",
-                    "scope": "web",
-                    "display": 0,
-                    "default": "1"
-                },
-                "web_table_with_row_borders": {
-                    "type": "checkbox",
-                    "scope": "web",
-                    "display": 0,
-                    "default": "0"
-                },
-                "web_table_with_table_border": {
-                    "type": "checkbox",
-                    "scope": "web",
-                    "display": 0,
-                    "default": "1"
-                }
-            },
-            "drift_db_fields_missing_from_type": [],
-            "drift_type_fields_missing_from_db": [
-                "entries"
-            ],
             "duplicate_candidates": []
         },
         "input": {
@@ -1997,9 +2050,9 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 16,
+            "field_count": 15,
             "scope_counts": {
-                "content": 4,
+                "content": 3,
                 "common": 11,
                 "web": 0,
                 "mobile": 1
@@ -2007,12 +2060,6 @@
             "fields": {
                 "label": {
                     "type": "markdown-inline",
-                    "scope": "content",
-                    "display": 1,
-                    "default": null
-                },
-                "multi_select_data": {
-                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": null
@@ -2103,7 +2150,6 @@
                 }
             },
             "drift_db_fields_missing_from_type": [
-                "multi_select_data",
                 "locked_after_submit",
                 "radius",
                 "size"
@@ -3238,7 +3284,7 @@
             },
             "fields": {
                 "blockquote_content": {
-                    "type": "markdown-inline",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": null
@@ -4168,7 +4214,7 @@
                     "default": "hex"
                 },
                 "web_color_picker_swatches": {
-                    "type": "textarea",
+                    "type": "json",
                     "scope": "web",
                     "display": 0,
                     "default": "[\"#2e2e2e\", \"#868e96\", \"#fa5252\", \"#e64980\", \"#be4bdb\", \"#7950f2\", \"#4c6ef5\", \"#228be6\"]"
@@ -4501,7 +4547,7 @@
                     "default": "24"
                 },
                 "web_datepicker_time_grid_config": {
-                    "type": "textarea",
+                    "type": "json",
                     "scope": "web",
                     "display": 0,
                     "default": null
@@ -5112,7 +5158,7 @@
                     "default": "highlight"
                 },
                 "text": {
-                    "type": "markdown-inline",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": "Highlight some text in this content"
@@ -5341,9 +5387,7 @@
                 "web_list_list_style_type",
                 "web_list_spacing"
             ],
-            "drift_type_fields_missing_from_db": [
-                "web_spacing"
-            ],
+            "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
         "list-item": {
@@ -6035,7 +6079,7 @@
                     "default": ""
                 },
                 "range_slider_marks_values": {
-                    "type": "textarea",
+                    "type": "json",
                     "scope": "content",
                     "display": 1,
                     "default": ""
@@ -6445,7 +6489,7 @@
                     "default": null
                 },
                 "segmented_control_data": {
-                    "type": "textarea",
+                    "type": "json",
                     "scope": "content",
                     "display": 1,
                     "default": "[{\"value\":\"option1\",\"label\":\"Option 1\"},{\"value\":\"option2\",\"label\":\"Option 2\"},{\"value\":\"option3\",\"label\":\"Option 3\"}]"
@@ -6637,7 +6681,7 @@
                     "default": ""
                 },
                 "slider_marks_values": {
-                    "type": "textarea",
+                    "type": "json",
                     "scope": "content",
                     "display": 1,
                     "default": ""
@@ -7230,7 +7274,7 @@
             },
             "fields": {
                 "text": {
-                    "type": "markdown-inline",
+                    "type": "textarea",
                     "scope": "content",
                     "display": 1,
                     "default": null
@@ -8061,52 +8105,15 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 5,
+            "field_count": 0,
             "scope_counts": {
                 "content": 0,
-                "common": 5,
+                "common": 0,
                 "web": 0,
                 "mobile": 0
             },
-            "fields": {
-                "data_table": {
-                    "type": "select-data_table",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                },
-                "filter": {
-                    "type": "code",
-                    "scope": "common",
-                    "display": 0,
-                    "default": null
-                },
-                "load_as_table": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "0"
-                },
-                "own_entries_only": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "1"
-                },
-                "scope": {
-                    "type": "text",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                }
-            },
-            "drift_db_fields_missing_from_type": [
-                "data_table",
-                "filter",
-                "load_as_table",
-                "own_entries_only",
-                "scope"
-            ],
+            "fields": [],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [
                 "line_clamp"
             ],
@@ -8124,52 +8131,15 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 5,
+            "field_count": 0,
             "scope_counts": {
                 "content": 0,
-                "common": 5,
+                "common": 0,
                 "web": 0,
                 "mobile": 0
             },
-            "fields": {
-                "data_table": {
-                    "type": "select-data_table",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                },
-                "filter": {
-                    "type": "code",
-                    "scope": "common",
-                    "display": 0,
-                    "default": null
-                },
-                "own_entries_only": {
-                    "type": "checkbox",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "1"
-                },
-                "scope": {
-                    "type": "text",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
-                },
-                "url_param": {
-                    "type": "text",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "record_id"
-                }
-            },
-            "drift_db_fields_missing_from_type": [
-                "data_table",
-                "filter",
-                "own_entries_only",
-                "scope",
-                "url_param"
-            ],
+            "fields": [],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },
@@ -8185,10 +8155,10 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 7,
+            "field_count": 6,
             "scope_counts": {
                 "content": 5,
-                "common": 2,
+                "common": 1,
                 "web": 0,
                 "mobile": 0
             },
@@ -8228,22 +8198,10 @@
                     "scope": "common",
                     "display": 0,
                     "default": "1"
-                },
-                "type": {
-                    "type": "style-bootstrap",
-                    "scope": "common",
-                    "display": 0,
-                    "default": "danger"
                 }
             },
             "drift_db_fields_missing_from_type": [
-                "confirmation_cancel",
-                "confirmation_continue",
-                "confirmation_message",
-                "confirmation_title",
-                "label_delete",
-                "own_entries_only",
-                "type"
+                "own_entries_only"
             ],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
@@ -8269,7 +8227,7 @@
             },
             "fields": {
                 "html_tag_content": {
-                    "type": "textarea",
+                    "type": "code",
                     "scope": "content",
                     "display": 1,
                     "default": null
@@ -8297,10 +8255,10 @@
             "has_shared_type": true,
             "web_renderer": true,
             "mobile_renderer": true,
-            "field_count": 2,
+            "field_count": 1,
             "scope_counts": {
                 "content": 0,
-                "common": 2,
+                "common": 1,
                 "web": 0,
                 "mobile": 0
             },
@@ -8310,17 +8268,9 @@
                     "scope": "common",
                     "display": 0,
                     "default": null
-                },
-                "scope": {
-                    "type": "text",
-                    "scope": "common",
-                    "display": 0,
-                    "default": ""
                 }
             },
-            "drift_db_fields_missing_from_type": [
-                "scope"
-            ],
+            "drift_db_fields_missing_from_type": [],
             "drift_type_fields_missing_from_db": [],
             "duplicate_candidates": []
         },

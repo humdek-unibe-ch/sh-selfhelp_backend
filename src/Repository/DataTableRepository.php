@@ -8,6 +8,7 @@
 
 namespace App\Repository;
 
+use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\Cache\Core\CacheService;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\DBAL\ParameterType;
@@ -20,7 +21,7 @@ use App\Entity\User;
  */
 class DataTableRepository extends ServiceEntityRepository
 {
-    public function __construct(ManagerRegistry $registry, private readonly CacheService $cache)
+    public function __construct(ManagerRegistry $registry, private readonly CacheService $cache, private readonly DataTableFilterService $dataTableFilterService)
     {
         parent::__construct($registry, DataTable::class);
     }
@@ -43,8 +44,17 @@ class DataTableRepository extends ServiceEntityRepository
      *
      * @return list<array<string, mixed>>
      */
-    public function getDataTableWithFilter(int $tableId, int $userId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
-    {
+    public function getDataTableWithFilter(
+        int $tableId,
+        int $userId,
+        string $filter,
+        bool $excludeDeleted,
+        int $languageId = 1,
+        string $timezoneCode = 'UTC',
+        string $selectedColumns = '',
+    ): array {
+        $filter = $this->dataTableFilterService->guardForStoredProcedure($filter);
+        $selectedColumns = $this->dataTableFilterService->sanitizeSelectedColumns($selectedColumns);
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId);
@@ -57,12 +67,13 @@ class DataTableRepository extends ServiceEntityRepository
         // Sanitize the filter parameter for cache key usage
         $sanitizedFilter = $this->sanitizeFilterForCacheKey($filter);
         $sanitizedTimezone = $this->sanitizeFilterForCacheKey($timezoneCode);
+        $sanitizedColumns = $this->sanitizeFilterForCacheKey($selectedColumns);
 
         /** @var list<array<string, mixed>> $rows */
         $rows = $cache
-            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId, $timezoneCode) {
+            ->getList("data_table_with_filter_{$tableId}_{$userId}_{$sanitizedFilter}_{$excludeDeleted}_{$languageId}_{$sanitizedTimezone}_{$sanitizedColumns}", function () use ($tableId, $userId, $filter, $excludeDeleted, $languageId, $timezoneCode, $selectedColumns) {
                 $conn = $this->getEntityManager()->getConnection();
-                $sql = 'CALL get_data_table_filtered(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode)';
+                $sql = 'CALL get_data_table_filtered(:tableId, :userId, :filter, :excludeDeleted, :languageId, :timezoneCode, :selectedColumns)';
                 $stmt = $conn->prepare($sql);
                 $stmt->bindValue('tableId', $tableId, ParameterType::INTEGER);
                 $stmt->bindValue('userId', $userId, ParameterType::INTEGER);
@@ -70,6 +81,7 @@ class DataTableRepository extends ServiceEntityRepository
                 $stmt->bindValue('excludeDeleted', $excludeDeleted, ParameterType::BOOLEAN);
                 $stmt->bindValue('languageId', $languageId, ParameterType::INTEGER);
                 $stmt->bindValue('timezoneCode', $timezoneCode, ParameterType::STRING);
+                $stmt->bindValue('selectedColumns', $selectedColumns, ParameterType::STRING);
                 $result = $stmt->executeQuery();
 
                 return $result->fetchAllAssociative();
@@ -87,6 +99,7 @@ class DataTableRepository extends ServiceEntityRepository
      */
     public function getDataTableWithUserGroupFilter(int $tableId, int $currentUserId, string $filter, bool $excludeDeleted, int $languageId = 1, string $timezoneCode = 'UTC'): array
     {
+        $filter = $this->dataTableFilterService->guardForStoredProcedure($filter);
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_PERMISSIONS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $tableId)            
@@ -135,6 +148,7 @@ class DataTableRepository extends ServiceEntityRepository
      */
     public function getDataTableWithAllLanguages(int $tableId, int $userId, string $filter, bool $excludeDeleted, string $timezoneCode = 'UTC'): array
     {
+        $filter = $this->dataTableFilterService->guardForStoredProcedure($filter);
         $cache = $this->cache
             ->withCategory(CacheService::CATEGORY_DATA_TABLES)
             ->withEntityScope(entityType: CacheService::ENTITY_SCOPE_DATA_TABLE, entityId: $tableId);

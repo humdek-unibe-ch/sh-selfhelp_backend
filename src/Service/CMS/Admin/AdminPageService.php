@@ -13,15 +13,17 @@ use App\Entity\PageTypeField;
 use App\Exception\ServiceException;
 use App\Repository\PageRepository;
 use App\Repository\PageTypeRepository;
+use App\Repository\PagesFieldsTranslationRepository;
 use App\Repository\RoleDataAccessRepository;
 use App\Repository\SectionRepository;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
-use App\Service\CMS\Admin\PositionManagementService;
 use App\Service\CMS\Admin\PageFieldService;
 use App\Service\CMS\Admin\SectionRelationshipService;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\CmsPreferenceService;
+use App\Service\CMS\NavigationAssignmentService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\LookupService;
 use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
@@ -53,7 +55,6 @@ class AdminPageService extends BaseService
         private readonly LookupService $lookupService,
         private readonly PageTypeRepository $pageTypeRepository,
         private readonly TransactionService $transactionService,
-        private readonly PositionManagementService $positionManagementService,
         private readonly SectionUtilityService $sectionUtilityService,
         private readonly PageFieldService $pageFieldService,
         private readonly SectionRelationshipService $sectionRelationshipService,
@@ -64,6 +65,13 @@ class AdminPageService extends BaseService
         private readonly CacheService $cache,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly RoleDataAccessRepository $roleDataAccessRepository,
+        private readonly PageRouteService $pageRouteService,
+        private readonly PageParentRouteSyncService $pageParentRouteSyncService,
+        private readonly NavigationAssignmentService $navigationAssignmentService,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
+        private readonly PagesFieldsTranslationRepository $pagesFieldsTranslationRepository,
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly CmsAppService $cmsAppService,
     ) {
     }
 
@@ -123,10 +131,19 @@ class AdminPageService extends BaseService
      * @param bool $isHeadless Whether the page is headless
      * @param bool $isOpenAccess Whether the page has open access
      * @param string|null $url URL for the page
-     * @param int|null $navPosition Navigation position
-     * @param int|null $footerPosition Footer position
      * @param int|null $parentId ID of the parent page
-     * 
+     * @param string $surfaceCode CMS-in-CMS surface (`public` | `cms`); defaults to `public`
+     * @param list<int> $accessGroups Extra group ids that should be granted access to the page
+     * @param list<array<string, mixed>>|null $navigationAssignments Menu builder assignments for the new page
+     * @param list<array<string, mixed>>|null $initialRoutes Public route handling for the new page:
+     *        `null` (default) auto-creates one canonical, active route derived from `$url` so the
+     *        page is reachable immediately; an explicit non-empty set is synced as-is (wizard); an
+     *        empty array `[]` skips route creation entirely (importer manages routes itself).
+     * @param bool $syncUrlWithParent When true and a parent page is set, derive URL + canonical route from the parent.
+     * @param string|null $oldRoutePolicy Override for old-route handling (`keep_alias`, `remove_old_route`).
+     * @param int|null $cmsAppId Optional first-class CMS app to assign via {@see CmsAppService::assignPage()}.
+     * @param string|null $cmsAppRole Role for the optional CMS app assignment (required when `$cmsAppId` is set).
+     *
      * @return Page The created page entity
      * @throws ServiceException If validation fails or required entities not found
      */
@@ -136,9 +153,15 @@ class AdminPageService extends BaseService
         bool $isHeadless = false,
         bool $isOpenAccess = false,
         ?string $url = null,
-        ?int $navPosition = null,
-        ?int $footerPosition = null,
         ?int $parentId = null,
+        string $surfaceCode = LookupService::PAGE_SURFACE_PUBLIC,
+        array $accessGroups = [],
+        ?array $navigationAssignments = null,
+        ?array $initialRoutes = null,
+        bool $syncUrlWithParent = false,
+        ?string $oldRoutePolicy = null,
+        ?int $cmsAppId = null,
+        ?string $cmsAppRole = null,
     ): Page {
 
         // Check if keyword already exists
@@ -160,6 +183,18 @@ class AdminPageService extends BaseService
             $this->throwNotFound("Page access type with code '{$pageAccessTypeCode}' not found");
         }
 
+        // Resolve the CMS-in-CMS surface (public|cms). A NULL FK would resolve
+        // to `public` at read time, but we always persist the explicit lookup
+        // so the admin grouping/ACL defaults are unambiguous.
+        $isCmsSurface = $surfaceCode === LookupService::PAGE_SURFACE_CMS;
+        $pageSurface = $this->lookupService->findByTypeAndCode(
+            LookupService::PAGE_SURFACE,
+            $surfaceCode
+        );
+        if (!$pageSurface) {
+            $this->throwNotFound("Page surface with code '{$surfaceCode}' not found");
+        }
+
         // Get parent page if provided
         $parentPage = null;
         if ($parentId) {
@@ -179,11 +214,10 @@ class AdminPageService extends BaseService
         $page = new Page();
         $page->setKeyword($keyword);
         $page->setPageAccessType($pageAccessType);
+        $page->setPageSurface($pageSurface);
         $page->setIsHeadless($isHeadless);
         $page->setIsOpenAccess($isOpenAccess);
         $page->setUrl($url);
-        $page->setNavPosition($navPosition);
-        $page->setFooterPosition($footerPosition);
         $page->setParentPage($parentPage);
         $page->setPageType($pageType);
         $page->setIsSystem(false);
@@ -202,26 +236,72 @@ class AdminPageService extends BaseService
                 throw new ServiceException('One or more required groups not found.', Response::HTTP_INTERNAL_SERVER_ERROR);
             }
 
-            // ACL for admin group (full access)
+            // Admin always gets full access, regardless of surface. Track the
+            // group ids already granted so author-selected groups never create
+            // duplicate ACL rows.
+            $grantedGroupIds = [];
             $this->aclService->addGroupAcl($page, $adminGroup, true, true, true, true, $this->entityManager);
+            $grantedGroupIds[(int) $adminGroup->getId()] = true;
 
-            // ACL for subject group (select only)
-            $this->aclService->addGroupAcl($page, $subjectGroup, true, false, false, false, $this->entityManager);
+            if (!$isCmsSurface) {
+                // Public website pages keep the historical default reader ACL
+                // for the subject + therapist groups (select only).
+                $this->aclService->addGroupAcl($page, $subjectGroup, true, false, false, false, $this->entityManager);
+                $grantedGroupIds[(int) $subjectGroup->getId()] = true;
+                $this->aclService->addGroupAcl($page, $therapistGroup, true, false, false, false, $this->entityManager);
+                $grantedGroupIds[(int) $therapistGroup->getId()] = true;
+            }
+            // CMS application pages stay admin/editor-only: no default reader
+            // groups are added; the author grants editor groups explicitly.
 
-            // ACL for therapist group (select only)
-            $this->aclService->addGroupAcl($page, $therapistGroup, true, false, false, false, $this->entityManager);
-
-
-            // Reorder page positions if needed
-            if ($navPosition !== null) {
-                $this->reorderPagePositions($parentId, 'nav');
+            // Author-selected groups: full CRUD on cms-app pages (they are the
+            // app's editors), read-only on public pages (they are viewers).
+            foreach ($accessGroups as $groupId) {
+                if (isset($grantedGroupIds[$groupId])) {
+                    continue;
+                }
+                $group = $groupRepo->find($groupId);
+                if (!$group) {
+                    $this->throwNotFound("Group with ID {$groupId} not found");
+                }
+                $this->aclService->addGroupAcl(
+                    $page,
+                    $group,
+                    true,
+                    $isCmsSurface,
+                    $isCmsSurface,
+                    $isCmsSurface,
+                    $this->entityManager
+                );
+                $grantedGroupIds[$groupId] = true;
             }
 
-            if ($footerPosition !== null) {
-                $this->reorderPagePositions($parentId, 'footer');
+
+            if (is_array($navigationAssignments) && $navigationAssignments !== []) {
+                $this->navigationAssignmentService->applyAssignmentsForPage($page, $navigationAssignments);
             }
 
             $this->entityManager->flush();
+
+            // Auto-create the page's public route so a new page is reachable by
+            // URL immediately. The create modal generates a URL pattern but
+            // historically never persisted it as a `page_route`, so every new
+            // page landed with "no active route". `syncRoutes` runs the global
+            // conflict validator, enforces a single canonical, and invalidates
+            // the resolver cache (it shares this transaction). Callers that own
+            // their route set (importer/wizard) pass `$initialRoutes` explicitly.
+            if ($initialRoutes === null) {
+                if ($syncUrlWithParent && $parentPage instanceof Page) {
+                    $this->pageParentRouteSyncService->syncPageUrlWithParent($page, $oldRoutePolicy);
+                } else {
+                    $derived = $url !== null ? PageRouteService::buildCanonicalRouteFromUrl($url) : null;
+                    if ($derived !== null) {
+                        $this->pageRouteService->syncRoutes((int) $page->getId(), [$derived]);
+                    }
+                }
+            } elseif ($initialRoutes !== []) {
+                $this->pageRouteService->syncRoutes((int) $page->getId(), $initialRoutes);
+            }
 
             // Log the page creation transaction
             $this->transactionService->logTransaction(
@@ -235,10 +315,23 @@ class AdminPageService extends BaseService
             // Invalidate all page lists since a new page was created
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PAGES)
-                ->invalidateAllListsInCategory();
+                ->invalidateCategory();
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
-                ->invalidateAllListsInCategory();
+                ->invalidateCategory();
+            $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
+
+            // Optional CMS app membership — sole writer path is CmsAppService::assignPage
+            // (hub FKs via CmsAppHubSyncService; never set hubs here).
+            if ($cmsAppId !== null) {
+                if ($cmsAppRole === null || $cmsAppRole === '') {
+                    throw new ServiceException(
+                        'cms_app_role is required when cms_app_id is set on page create.',
+                        Response::HTTP_BAD_REQUEST
+                    );
+                }
+                $this->cmsAppService->assignPage($cmsAppId, (int) $page->getId(), $cmsAppRole);
+            }
 
             $this->entityManager->commit();
 
@@ -251,19 +344,6 @@ class AdminPageService extends BaseService
             );
         }
         return $page;
-    }
-
-    /**
-     * Reorder page positions when a new page is added or an existing page position is changed
-     * This function ensures all pages have positions in multiples of 10 (10, 20, 30...)
-     *
-     * @param int|null $pageId ID of the page
-     * @param string $positionType 'nav' or 'footer'
-     * @return void
-     */
-    private function reorderPagePositions(?int $pageId, string $positionType): void
-    {
-        $this->positionManagementService->reorderPagePositions($pageId, $positionType);
     }
 
     /**
@@ -302,32 +382,6 @@ class AdminPageService extends BaseService
                 $page->setIsHeadless((bool) $pageData['headless']);
             }
 
-            if (array_key_exists('navPosition', $pageData)) {
-                $page->setNavPosition($this->asIntOrNull($pageData['navPosition']));
-                $this->entityManager->flush();
-                // Only reorder positions if setting to a non-null value
-                if ($pageData['navPosition'] !== null) {
-                    // Reorder nav positions if needed
-                    $this->reorderPagePositions(
-                        $page->getParentPage() ? $page->getParentPage()->getId() : null,
-                        'nav'
-                    );
-                }
-            }
-
-            if (array_key_exists('footerPosition', $pageData)) {
-                $page->setFooterPosition($this->asIntOrNull($pageData['footerPosition']));
-                $this->entityManager->flush();
-                // Only reorder positions if setting to a non-null value
-                if ($pageData['footerPosition'] !== null) {
-                    // Reorder footer positions if needed
-                    $this->reorderPagePositions(
-                        $page->getParentPage() ? $page->getParentPage()->getId() : null,
-                        'footer'
-                    );
-                }
-            }
-
             if (array_key_exists('openAccess', $pageData)) {
                 $page->setIsOpenAccess($pageData['openAccess'] === null ? null : (bool) $pageData['openAccess']);
             }
@@ -352,6 +406,65 @@ class AdminPageService extends BaseService
 
                     $page->setPageAccessType($pageAccessType);
                 }
+            }
+
+            // CMS-in-CMS surface (public|cms). NULL clears the FK (resolves to
+            // `public` at read time); any other value must be a valid lookup.
+            if (array_key_exists('surface', $pageData)) {
+                if ($pageData['surface'] === null) {
+                    $page->setPageSurface(null);
+                } else {
+                    $pageSurface = $this->lookupService->findByTypeAndCode(
+                        LookupService::PAGE_SURFACE,
+                        $this->asString($pageData['surface'])
+                    );
+                    if (!$pageSurface) {
+                        throw new ServiceException(
+                            'Invalid page surface',
+                            Response::HTTP_BAD_REQUEST
+                        );
+                    }
+                    $page->setPageSurface($pageSurface);
+                }
+            }
+
+            if (array_key_exists('parent', $pageData)) {
+                $parentId = $pageData['parent'];
+                if ($parentId === null) {
+                    $page->setParentPage(null);
+                } else {
+                    $parentPage = $this->pageRepository->find($this->asInt($parentId));
+                    if (!$parentPage) {
+                        $this->throwNotFound('Parent page not found');
+                    }
+                    $page->setParentPage($parentPage);
+                }
+            }
+
+            $syncUrlWithParent = (bool) ($pageData['syncUrlWithParent'] ?? false);
+            $oldRoutePolicy = isset($pageData['oldRoutePolicy']) && is_string($pageData['oldRoutePolicy'])
+                ? $pageData['oldRoutePolicy']
+                : null;
+            if ($syncUrlWithParent) {
+                $this->pageParentRouteSyncService->syncPageUrlWithParent($page, $oldRoutePolicy);
+            }
+
+            // CMS-editable public routes (issue #30). The locked Routes panel
+            // sends the full desired set; the route service syncs (create/
+            // update/delete), runs the global conflict validator, enforces a
+            // single canonical, and invalidates the resolver cache.
+            if (array_key_exists('routes', $pageData) && is_array($pageData['routes'])) {
+                $routesInput = [];
+                foreach ($pageData['routes'] as $route) {
+                    if (is_array($route)) {
+                        $assoc = [];
+                        foreach ($route as $routeKey => $routeValue) {
+                            $assoc[(string) $routeKey] = $routeValue;
+                        }
+                        $routesInput[] = $assoc;
+                    }
+                }
+                $this->pageRouteService->syncRoutes((int) $page->getId(), $routesInput);
             }
 
             // Flush page changes first to ensure we have a valid page ID
@@ -406,6 +519,9 @@ class AdminPageService extends BaseService
             // Flush all changes again
             $this->entityManager->flush();
 
+            // Optional CMS app assign / role change / unassign (hub sync only via CmsAppService).
+            $this->applyCmsAppAssignmentFromPageData($page, $pageData);
+
             // Log the transaction
             $this->transactionService->logTransaction(
                 LookupService::TRANSACTION_TYPES_UPDATE,
@@ -427,8 +543,9 @@ class AdminPageService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateAllListsInCategory();
+            $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
 
-            // Check if this is the CMS preferences page and perform additional cache invalidation
+            // Check if this is the CMS preferences page
             if ($page->getKeyword() == CmsPreferenceService::SH_CMS_PREFERENCES_KEYWORD) {
                 // Clear ALL cache categories when CMS preferences are updated
                 foreach (CacheService::ALL_CATEGORIES as $category) {
@@ -512,6 +629,10 @@ class AdminPageService extends BaseService
                 ->setParameter('pageId', $page->getId())
                 ->execute();
 
+            // Remember CMS app membership before the page row is removed so hubs
+            // can be rebuilt after delete (ON DELETE SET NULL clears the FK).
+            $formerCmsApp = $page->getCmsApp();
+
             // Store page keyword for logging before deletion
             $pageKeywordForLog = $page->getKeyword();
             $pageIdForLog = (int) $page->getId();
@@ -520,6 +641,9 @@ class AdminPageService extends BaseService
             $this->entityManager->remove($page);
             $this->entityManager->flush();
 
+            if ($formerCmsApp !== null && $formerCmsApp->getId() !== null) {
+                $this->cmsAppService->onPageDeleted($formerCmsApp);
+            }
 
             // Log the page deletion transaction after commit to avoid EntityManager conflicts
             // This ensures we capture the page data even after it's removed from the database
@@ -542,6 +666,13 @@ class AdminPageService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_PERMISSIONS)
                 ->invalidateAllListsInCategory();
+
+            // The deleted page's `page_routes` rows are removed by FK ON DELETE
+            // CASCADE, but the DB-driven public-path resolver caches its
+            // active-row snapshot — drop it so the deleted page's pattern stops
+            // resolving (create/update already invalidate via syncRoutes()).
+            $this->pageRouteService->invalidateResolverCache();
+            $this->navigationCacheInvalidator->invalidateForPageDeletion($pageIdForLog);
 
             return $deleted_page;
         } catch (\Throwable $e) {
@@ -672,21 +803,31 @@ class AdminPageService extends BaseService
                 // Get all pages from repository
                 $pages = $this->pageRepository->findAll();
 
+                $pageIds = array_values(array_filter(array_map(
+                    static fn (Page $page): ?int => $page->getId(),
+                    $pages,
+                )));
+                $membershipByPage = $this->navigationAssignmentService->getMembershipBadgesForPageIds($pageIds);
+
                 // Convert entities to array manually for better control and performance
                 $allPages = [];
                 foreach ($pages as $page) {
+                    $pageId = (int) $page->getId();
                     $allPages[] = [
-                        'id_pages' => $page->getId(),
+                        'id_pages' => $pageId,
                         'id_parent_page' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
                         'keyword' => $page->getKeyword(),
                         'url' => $page->getUrl(),
-                        'nav_position' => $page->getNavPosition(),
-                        'footer_position' => $page->getFooterPosition(),
                         'is_headless' => $page->isHeadless() ? 1 : 0,
                         'is_open_access' => $page->isOpenAccess() ? 1 : 0,
                         'is_system' => $page->isSystem() ? 1 : 0,
                         'id_page_access_types' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
                         'id_page_types' => $page->getPageType() ? $page->getPageType()->getId() : null,
+                        'page_surface' => $page->getPageSurfaceCode(),
+                        'cms_app_id' => $page->getCmsApp()?->getId(),
+                        'cms_app_slug' => $page->getCmsApp()?->getSlug(),
+                        'cms_app_role' => $page->getCmsAppRole(),
+                        'navigationMembership' => $membershipByPage[$pageId] ?? [],
                     ];
                 }
 
@@ -783,6 +924,134 @@ class AdminPageService extends BaseService
             });
         }
 
-        return array_values($pages);
+        return $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)));
+    }
+
+    /**
+     * Apply optional cms_app_id / cms_app_role from page update payload via assign/unassign.
+     * Hub FKs are never written here — only through CmsAppService.
+     *
+     * @param array<string, mixed> $pageData
+     */
+    private function applyCmsAppAssignmentFromPageData(Page $page, array $pageData): void
+    {
+        $hasAppId = array_key_exists('cms_app_id', $pageData);
+        $hasRole = array_key_exists('cms_app_role', $pageData);
+        if (!$hasAppId && !$hasRole) {
+            return;
+        }
+
+        $pageId = (int) $page->getId();
+        $currentApp = $page->getCmsApp();
+        $currentAppId = $currentApp?->getId();
+
+        if ($hasAppId && ($pageData['cms_app_id'] === null || $pageData['cms_app_id'] === '')) {
+            if ($currentAppId !== null) {
+                $this->cmsAppService->unassignPage((int) $currentAppId, $pageId);
+            }
+            return;
+        }
+
+        $targetAppId = $hasAppId
+            ? $this->asIntOrNull($pageData['cms_app_id'] ?? null)
+            : ($currentAppId !== null ? (int) $currentAppId : null);
+
+        if ($targetAppId === null) {
+            throw new ServiceException(
+                'cms_app_id is required when setting cms_app_role on a page that is not already assigned.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        $role = $hasRole
+            ? $this->asString($pageData['cms_app_role'] ?? '')
+            : ($page->getCmsAppRole() ?? '');
+
+        if ($role === '') {
+            throw new ServiceException(
+                'cms_app_role is required when assigning a page to a CMS app.',
+                Response::HTTP_BAD_REQUEST
+            );
+        }
+
+        if ($currentAppId !== null && (int) $currentAppId === $targetAppId) {
+            if ($page->getCmsAppRole() !== $role) {
+                $this->cmsAppService->changePageRole($targetAppId, $pageId, $role);
+            }
+            return;
+        }
+
+        if ($currentAppId !== null && (int) $currentAppId !== $targetAppId) {
+            $this->cmsAppService->unassignPage((int) $currentAppId, $pageId);
+        }
+
+        $this->cmsAppService->assignPage($targetAppId, $pageId, $role);
+    }
+
+    /**
+     * Attach `navigationMembership` badges (menu key + item id per active menu
+     * item referencing the page) so the admin navbar/search can group pages by
+     * where they actually appear instead of listing everything as content.
+     *
+     * @param list<array<string, mixed>> $pages
+     * @return list<array<string, mixed>>
+     */
+    private function attachNavigationMembership(array $pages): array
+    {
+        $pageIds = [];
+        foreach ($pages as $page) {
+            if (isset($page['id_pages']) && is_numeric($page['id_pages'])) {
+                $pageIds[] = (int) $page['id_pages'];
+            }
+        }
+        $membershipByPage = $this->navigationAssignmentService->getMembershipBadgesForPageIds($pageIds);
+
+        foreach ($pages as &$page) {
+            $pageId = isset($page['id_pages']) && is_numeric($page['id_pages']) ? (int) $page['id_pages'] : null;
+            $page['navigationMembership'] = $pageId !== null ? ($membershipByPage[$pageId] ?? []) : [];
+        }
+        unset($page);
+
+        return $pages;
+    }
+
+    /**
+     * Attach human titles to admin page rows: `title` in the default CMS
+     * language plus a `titles` list per language so pickers can label pages
+     * in the admin's current UI language (no per-language refetch needed).
+     *
+     * @param list<array<string, mixed>> $pages
+     * @return list<array<string, mixed>>
+     */
+    private function attachPageTitles(array $pages): array
+    {
+        $pageIds = [];
+        foreach ($pages as $page) {
+            if (isset($page['id_pages']) && is_numeric($page['id_pages'])) {
+                $pageIds[] = (int) $page['id_pages'];
+            }
+        }
+        $titlesByPage = $this->pagesFieldsTranslationRepository->fetchTitleByLanguageForPages($pageIds);
+        $defaultLanguageId = $this->cmsPreferenceService->getDefaultLanguageId();
+
+        foreach ($pages as &$page) {
+            $pageId = isset($page['id_pages']) && is_numeric($page['id_pages']) ? (int) $page['id_pages'] : null;
+            $byLanguage = $pageId !== null ? ($titlesByPage[$pageId] ?? []) : [];
+            $default = null;
+            if ($defaultLanguageId !== null && isset($byLanguage[$defaultLanguageId])) {
+                $default = $byLanguage[$defaultLanguageId];
+            } elseif ($byLanguage !== []) {
+                $default = reset($byLanguage);
+            }
+            $page['title'] = $default;
+            $titles = [];
+            foreach ($byLanguage as $languageId => $title) {
+                $titles[] = ['language_id' => $languageId, 'title' => $title];
+            }
+            $page['titles'] = $titles;
+        }
+        unset($page);
+
+        return $pages;
     }
 }

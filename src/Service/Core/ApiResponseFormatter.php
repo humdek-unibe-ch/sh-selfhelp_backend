@@ -42,14 +42,15 @@ class ApiResponseFormatter
      * @param int $status The HTTP status code
      * @param bool $isLoggedIn Whether the user is logged in
      * @param string|null $responseSchemaName Optional name of the JSON schema to validate the response against (e.g., 'responses/auth_login_success')
+     * @param bool $skipNormalization Skip Symfony serializer normalization (preserves stdClass empty maps for JSON objects)
      * @return JsonResponse The formatted response
      */
-    public function formatSuccess($data = null, ?string $responseSchemaName = null, int $status = Response::HTTP_OK, bool $isLoggedIn = false): JsonResponse
+    public function formatSuccess($data = null, ?string $responseSchemaName = null, int $status = Response::HTTP_OK, bool $isLoggedIn = false, bool $skipNormalization = false): JsonResponse
     {
         $isLoggedIn = $isLoggedIn || $this->security->getUser() !== null;
 
         // Normalize any Doctrine entities in the data using Symfony Serializer
-        $normalizedData = Utils::normalizeWithSymfonySerializer($data);
+        $normalizedData = $skipNormalization ? $data : Utils::normalizeWithSymfonySerializer($data);
         
         $responseData = [
             'status' => $status,

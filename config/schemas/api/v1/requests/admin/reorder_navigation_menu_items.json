@@ -1,0 +1,23 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Reorder navigation menu items",
+    "type": "object",
+    "required": ["items"],
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["item_id", "position"],
+                "properties": {
+                    "item_id": { "type": "integer" },
+                    "position": { "type": "integer" },
+                    "parent_item_id": { "type": ["integer", "null"] },
+                    "layer": { "enum": ["top", null] }
+                },
+                "additionalProperties": false
+            }
+        }
+    },
+    "additionalProperties": false
+}

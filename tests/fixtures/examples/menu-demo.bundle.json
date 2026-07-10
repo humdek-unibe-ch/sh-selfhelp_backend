@@ -1,0 +1,2238 @@
+{
+    "format": "selfhelp/navigation-bundle",
+    "version": "2.0",
+    "title": "Menu demo mini-site",
+    "description": "22-page realistic demo with all four navigation menus wired: double-dropdown header with top-row utility links, mega-menu descriptions and a three-level Services branch (Training grandchildren), grouped footer columns with a standalone link and an external status link, nested mobile drawer, and bottom tabs with a segment child plus a More holder tab (first-child redirect).",
+    "min_core_version": "0.1.33",
+    "exported_at": "2026-07-06T08:00:00+00:00",
+    "core_version": "0.1.36",
+    "export_mode": "full_snapshot",
+    "import_hints": {
+        "default_keyword_prefix": "",
+        "default_route_prefix": "/demo"
+    },
+    "menus": {
+        "web_header": {
+            "preset": "double-dropdown",
+            "max_depth": 2,
+            "item_limit": null,
+            "children_nav": "sidebar",
+            "show_breadcrumbs": true,
+            "show_pager": true,
+            "items": [
+                {
+                    "ref": "wh-top-careers",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-careers",
+                    "icon": "IconUsers",
+                    "layer": "top"
+                },
+                {
+                    "ref": "wh-top-university",
+                    "parent_ref": null,
+                    "item_type": "external_url",
+                    "position": 20,
+                    "is_active": true,
+                    "external_url": "https://www.example.org",
+                    "icon": "IconExternalLink",
+                    "layer": "top",
+                    "label": "University",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "University",
+                            "aria_label": "University website (external)"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Universität",
+                            "aria_label": "Universitätswebseite (extern)"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-home",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-home",
+                    "icon": "IconHome"
+                },
+                {
+                    "ref": "wh-about",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-about",
+                    "icon": "IconInfoCircle"
+                },
+                {
+                    "ref": "wh-services",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 30,
+                    "is_active": true,
+                    "page_keyword": "demo-services",
+                    "icon": "IconBriefcase"
+                },
+                {
+                    "ref": "wh-consulting",
+                    "parent_ref": "wh-services",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-consulting",
+                    "icon": "IconStethoscope",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Personal guidance from our expert team"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Persönliche Beratung durch unser Expertenteam"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-training",
+                    "parent_ref": "wh-services",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training",
+                    "icon": "IconSchool",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Workshops and trainings for your team"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Workshops und Schulungen für Ihr Team"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-training-basics",
+                    "parent_ref": "wh-training",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training-basics"
+                },
+                {
+                    "ref": "wh-training-cert",
+                    "parent_ref": "wh-training",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training-cert"
+                },
+                {
+                    "ref": "wh-support",
+                    "parent_ref": "wh-services",
+                    "item_type": "page",
+                    "position": 30,
+                    "is_active": true,
+                    "page_keyword": "demo-services-support",
+                    "icon": "IconLifebuoy",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Fast help whenever you need it"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Schnelle Hilfe, wann immer Sie sie brauchen"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-products",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 40,
+                    "is_active": true,
+                    "page_keyword": "demo-products",
+                    "icon": "IconPackage"
+                },
+                {
+                    "ref": "wh-product-a",
+                    "parent_ref": "wh-products",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-products-a",
+                    "icon": "IconBox",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Our platform for structured programs"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Unsere Plattform für strukturierte Programme"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-product-b",
+                    "parent_ref": "wh-products",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-products-b",
+                    "icon": "IconBox",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "Add-ons and integrations for existing setups"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Erweiterungen und Integrationen für bestehende Setups"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-news",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 50,
+                    "is_active": true,
+                    "page_keyword": "demo-news",
+                    "icon": "IconNews"
+                },
+                {
+                    "ref": "wh-resources",
+                    "parent_ref": null,
+                    "item_type": "group",
+                    "position": 55,
+                    "is_active": true,
+                    "icon": "IconBook",
+                    "label": "Resources",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Resources",
+                            "description": "Guides and updates",
+                            "aria_label": "Resources menu"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Ressourcen",
+                            "description": "Anleitungen und Neuigkeiten"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-res-overview",
+                    "parent_ref": "wh-resources",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-resources",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "All guides and materials at a glance"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Alle Anleitungen und Materialien im Überblick"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-res-blog",
+                    "parent_ref": "wh-resources",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-blog",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": null,
+                            "description": "News and insights from the team"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": null,
+                            "description": "Neuigkeiten und Einblicke aus dem Team"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wh-contact",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 60,
+                    "is_active": true,
+                    "page_keyword": "demo-contact",
+                    "icon": "IconMail"
+                }
+            ]
+        },
+        "web_footer": {
+            "preset": "columns",
+            "max_depth": 2,
+            "item_limit": null,
+            "items": [
+                {
+                    "ref": "wf-company",
+                    "parent_ref": null,
+                    "item_type": "group",
+                    "position": 10,
+                    "is_active": true,
+                    "label": "Company",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Company",
+                            "description": "About our organisation",
+                            "aria_label": "Company footer links"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Unternehmen",
+                            "description": "Über unsere Organisation"
+                        }
+                    ]
+                },
+                {
+                    "ref": "wf-about",
+                    "parent_ref": "wf-company",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-about"
+                },
+                {
+                    "ref": "wf-team",
+                    "parent_ref": "wf-company",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-team"
+                },
+                {
+                    "ref": "wf-careers",
+                    "parent_ref": "wf-company",
+                    "item_type": "page",
+                    "position": 30,
+                    "is_active": true,
+                    "page_keyword": "demo-careers"
+                },
+                {
+                    "ref": "wf-legal",
+                    "parent_ref": null,
+                    "item_type": "group",
+                    "position": 20,
+                    "is_active": true,
+                    "label": "Legal",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Legal"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Rechtliches",
+                            "description": null
+                        }
+                    ]
+                },
+                {
+                    "ref": "wf-privacy",
+                    "parent_ref": "wf-legal",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-privacy"
+                },
+                {
+                    "ref": "wf-imprint",
+                    "parent_ref": "wf-legal",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-imprint"
+                },
+                {
+                    "ref": "wf-resources",
+                    "parent_ref": null,
+                    "item_type": "group",
+                    "position": 30,
+                    "is_active": true,
+                    "label": "Resources",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Resources"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Ressourcen",
+                            "description": null
+                        }
+                    ]
+                },
+                {
+                    "ref": "wf-faq",
+                    "parent_ref": "wf-resources",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-faq"
+                },
+                {
+                    "ref": "wf-blog",
+                    "parent_ref": "wf-resources",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-blog"
+                },
+                {
+                    "ref": "wf-partners",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 40,
+                    "is_active": true,
+                    "page_keyword": "demo-partners"
+                },
+                {
+                    "ref": "wf-status",
+                    "parent_ref": null,
+                    "item_type": "external_url",
+                    "position": 50,
+                    "is_active": true,
+                    "external_url": "https://status.example.org",
+                    "label": "Service status",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "Service status",
+                            "aria_label": "Service status page (external)"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Systemstatus",
+                            "aria_label": "Systemstatus-Seite (extern)"
+                        }
+                    ]
+                }
+            ]
+        },
+        "mobile_drawer": {
+            "preset": null,
+            "max_depth": 2,
+            "item_limit": null,
+            "items": [
+                {
+                    "ref": "md-home",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-home",
+                    "mobile_icon": "House"
+                },
+                {
+                    "ref": "md-services",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services",
+                    "mobile_icon": "Briefcase"
+                },
+                {
+                    "ref": "md-consulting",
+                    "parent_ref": "md-services",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-consulting",
+                    "mobile_icon": "Users"
+                },
+                {
+                    "ref": "md-training",
+                    "parent_ref": "md-services",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training",
+                    "mobile_icon": "GraduationCap"
+                },
+                {
+                    "ref": "md-training-basics",
+                    "parent_ref": "md-training",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-training-basics",
+                    "mobile_icon": "BookOpen"
+                },
+                {
+                    "ref": "md-news",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 30,
+                    "is_active": true,
+                    "page_keyword": "demo-news",
+                    "mobile_icon": "Bell"
+                },
+                {
+                    "ref": "md-contact",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 40,
+                    "is_active": true,
+                    "page_keyword": "demo-contact",
+                    "mobile_icon": "Mail"
+                }
+            ]
+        },
+        "mobile_bottom_tabs": {
+            "preset": null,
+            "max_depth": 2,
+            "item_limit": 5,
+            "items": [
+                {
+                    "ref": "mb-home",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-home",
+                    "mobile_icon": "House"
+                },
+                {
+                    "ref": "mb-services",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-services",
+                    "mobile_icon": "Briefcase"
+                },
+                {
+                    "ref": "mb-consulting",
+                    "parent_ref": "mb-services",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-services-consulting",
+                    "mobile_icon": "Users"
+                },
+                {
+                    "ref": "mb-news",
+                    "parent_ref": null,
+                    "item_type": "page",
+                    "position": 30,
+                    "is_active": true,
+                    "page_keyword": "demo-news",
+                    "mobile_icon": "Bell"
+                },
+                {
+                    "ref": "mb-more",
+                    "parent_ref": null,
+                    "item_type": "group",
+                    "position": 40,
+                    "is_active": true,
+                    "mobile_icon": "Menu",
+                    "label": "More",
+                    "translations": [
+                        {
+                            "locale": "en-GB",
+                            "label": "More",
+                            "aria_label": "More pages"
+                        },
+                        {
+                            "locale": "de-CH",
+                            "label": "Mehr",
+                            "aria_label": "Weitere Seiten"
+                        }
+                    ]
+                },
+                {
+                    "ref": "mb-faq",
+                    "parent_ref": "mb-more",
+                    "item_type": "page",
+                    "position": 10,
+                    "is_active": true,
+                    "page_keyword": "demo-faq",
+                    "mobile_icon": "CircleQuestionMark"
+                },
+                {
+                    "ref": "mb-contact",
+                    "parent_ref": "mb-more",
+                    "item_type": "page",
+                    "position": 20,
+                    "is_active": true,
+                    "page_keyword": "demo-contact",
+                    "mobile_icon": "Mail"
+                }
+            ]
+        }
+    },
+    "pages": [
+        {
+            "keyword": "demo-home",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Home"
+                            },
+                            "de-CH": {
+                                "content": "Startseite"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Welcome to the SelfHelp navigation demo."
+                            },
+                            "de-CH": {
+                                "content": "Willkommen zur SelfHelp-Navigationsdemo."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Home"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Startseite"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Welcome to the SelfHelp navigation demo."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Willkommen zur SelfHelp-Navigationsdemo."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-about",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/about",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "About us"
+                            },
+                            "de-CH": {
+                                "content": "Über uns"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Learn who we are and what we do."
+                            },
+                            "de-CH": {
+                                "content": "Erfahren Sie, wer wir sind und was wir tun."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/about",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "About us"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Über uns"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Learn who we are and what we do."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Erfahren Sie, wer wir sind und was wir tun."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Services"
+                            },
+                            "de-CH": {
+                                "content": "Dienstleistungen"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Explore our service offerings."
+                            },
+                            "de-CH": {
+                                "content": "Entdecken Sie unser Dienstleistungsangebot."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/services",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Services"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Dienstleistungen"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Explore our service offerings."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Entdecken Sie unser Dienstleistungsangebot."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-consulting",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/consulting",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Consulting"
+                            },
+                            "de-CH": {
+                                "content": "Beratung"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Expert consulting for digital health projects."
+                            },
+                            "de-CH": {
+                                "content": "Expertenberatung für digitale Gesundheitsprojekte."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services",
+            "routes": [
+                {
+                    "path_pattern": "/services/consulting",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Consulting"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Beratung"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Expert consulting for digital health projects."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Expertenberatung für digitale Gesundheitsprojekte."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-training",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/training",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Training"
+                            },
+                            "de-CH": {
+                                "content": "Schulungen"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Workshops and training for your team."
+                            },
+                            "de-CH": {
+                                "content": "Workshops und Schulungen für Ihr Team."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services",
+            "routes": [
+                {
+                    "path_pattern": "/services/training",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Training"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Schulungen"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Workshops and training for your team."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Workshops und Schulungen für Ihr Team."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-training-basics",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/training/basics",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Training basics"
+                            },
+                            "de-CH": {
+                                "content": "Grundlagen"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Introductory workshop for new teams: first steps, core concepts, and hands-on exercises."
+                            },
+                            "de-CH": {
+                                "content": "Einstiegsworkshop für neue Teams: erste Schritte, Kernkonzepte und praktische Übungen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services-training",
+            "routes": [
+                {
+                    "path_pattern": "/services/training/basics",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Training basics"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Grundlagen"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Introductory workshop for new teams."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Einstiegsworkshop für neue Teams."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-training-cert",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/training/certification",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Certification"
+                            },
+                            "de-CH": {
+                                "content": "Zertifizierung"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Advanced program with a final assessment and an official certificate for your organisation."
+                            },
+                            "de-CH": {
+                                "content": "Aufbauprogramm mit Abschlussprüfung und offiziellem Zertifikat für Ihre Organisation."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services-training",
+            "routes": [
+                {
+                    "path_pattern": "/services/training/certification",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Certification"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Zertifizierung"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Advanced program with certificate."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Aufbauprogramm mit Zertifikat."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-services-support",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/services/support",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Support"
+                            },
+                            "de-CH": {
+                                "content": "Support"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Ongoing support when you need it."
+                            },
+                            "de-CH": {
+                                "content": "Laufender Support, wenn Sie ihn brauchen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-services",
+            "routes": [
+                {
+                    "path_pattern": "/services/support",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Support"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Support"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Ongoing support when you need it."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Laufender Support, wenn Sie ihn brauchen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-products",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/products",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Products"
+                            },
+                            "de-CH": {
+                                "content": "Produkte"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Browse our product catalogue."
+                            },
+                            "de-CH": {
+                                "content": "Durchstöbern Sie unser Produktangebot."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/products",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Products"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Produkte"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Browse our product catalogue."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Durchstöbern Sie unser Produktangebot."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-products-a",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/products/product-a",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Product A"
+                            },
+                            "de-CH": {
+                                "content": "Produkt A"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Details for Product A."
+                            },
+                            "de-CH": {
+                                "content": "Details zu Produkt A."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-products",
+            "routes": [
+                {
+                    "path_pattern": "/products/product-a",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Product A"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Produkt A"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Details for Product A."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Details zu Produkt A."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-products-b",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/products/product-b",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Product B"
+                            },
+                            "de-CH": {
+                                "content": "Produkt B"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Details for Product B."
+                            },
+                            "de-CH": {
+                                "content": "Details zu Produkt B."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-products",
+            "routes": [
+                {
+                    "path_pattern": "/products/product-b",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Product B"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Produkt B"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Details for Product B."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Details zu Produkt B."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-news",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/news",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "News"
+                            },
+                            "de-CH": {
+                                "content": "Neuigkeiten"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Latest updates and announcements."
+                            },
+                            "de-CH": {
+                                "content": "Aktuelle Updates und Ankündigungen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/news",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "News"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Neuigkeiten"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Latest updates and announcements."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Aktuelle Updates und Ankündigungen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-team",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/team",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Team"
+                            },
+                            "de-CH": {
+                                "content": "Team"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Meet the people behind the project."
+                            },
+                            "de-CH": {
+                                "content": "Lernen Sie die Menschen hinter dem Projekt kennen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/team",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Team"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Team"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Meet the people behind the project."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Lernen Sie die Menschen hinter dem Projekt kennen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-faq",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/faq",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "FAQ"
+                            },
+                            "de-CH": {
+                                "content": "FAQ"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Frequently asked questions answered."
+                            },
+                            "de-CH": {
+                                "content": "Antworten auf häufig gestellte Fragen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/faq",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "FAQ"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "FAQ"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Frequently asked questions answered."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Antworten auf häufig gestellte Fragen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-contact",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/contact",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Contact"
+                            },
+                            "de-CH": {
+                                "content": "Kontakt"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Get in touch with us."
+                            },
+                            "de-CH": {
+                                "content": "Nehmen Sie Kontakt mit uns auf."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/contact",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Contact"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Kontakt"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Get in touch with us."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Nehmen Sie Kontakt mit uns auf."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-legal",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/legal",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Legal"
+                            },
+                            "de-CH": {
+                                "content": "Rechtliches"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Legal information overview."
+                            },
+                            "de-CH": {
+                                "content": "Übersicht zu rechtlichen Informationen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/legal",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Legal"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Rechtliches"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Legal information overview."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Übersicht zu rechtlichen Informationen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-privacy",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/legal/privacy",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Privacy"
+                            },
+                            "de-CH": {
+                                "content": "Datenschutz"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "How we handle your data."
+                            },
+                            "de-CH": {
+                                "content": "Wie wir mit Ihren Daten umgehen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-legal",
+            "routes": [
+                {
+                    "path_pattern": "/legal/privacy",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Privacy"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Datenschutz"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "How we handle your data."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Wie wir mit Ihren Daten umgehen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-imprint",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/legal/imprint",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Imprint"
+                            },
+                            "de-CH": {
+                                "content": "Impressum"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Publisher and contact details."
+                            },
+                            "de-CH": {
+                                "content": "Herausgeber und Kontaktangaben."
+                            }
+                        }
+                    }
+                }
+            ],
+            "parent_keyword": "demo-legal",
+            "routes": [
+                {
+                    "path_pattern": "/legal/imprint",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Imprint"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Impressum"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Publisher and contact details."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Herausgeber und Kontaktangaben."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-resources",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/resources",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Resources"
+                            },
+                            "de-CH": {
+                                "content": "Ressourcen"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Guides, downloads, and references."
+                            },
+                            "de-CH": {
+                                "content": "Leitfäden, Downloads und Referenzen."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/resources",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Resources"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Ressourcen"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Guides, downloads, and references."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Leitfäden, Downloads und Referenzen."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-blog",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/blog",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Blog"
+                            },
+                            "de-CH": {
+                                "content": "Blog"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Articles and insights from our team."
+                            },
+                            "de-CH": {
+                                "content": "Artikel und Einblicke von unserem Team."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/blog",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Blog"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Blog"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Articles and insights from our team."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Artikel und Einblicke von unserem Team."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-careers",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/careers",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Careers"
+                            },
+                            "de-CH": {
+                                "content": "Karriere"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Open roles and how to apply."
+                            },
+                            "de-CH": {
+                                "content": "Offene Stellen und Bewerbung."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/careers",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Careers"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Karriere"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Open roles and how to apply."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Offene Stellen und Bewerbung."
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "keyword": "demo-partners",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/partners",
+            "sections": [
+                {
+                    "style_name": "title",
+                    "fields": {
+                        "content": {
+                            "en-GB": {
+                                "content": "Partners"
+                            },
+                            "de-CH": {
+                                "content": "Partner"
+                            }
+                        }
+                    }
+                },
+                {
+                    "style_name": "text",
+                    "fields": {
+                        "text": {
+                            "en-GB": {
+                                "content": "Organisations we collaborate with."
+                            },
+                            "de-CH": {
+                                "content": "Organisationen, mit denen wir zusammenarbeiten."
+                            }
+                        }
+                    }
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/partners",
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Partners"
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Partner"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "en-GB",
+                            "content": "Organisations we collaborate with."
+                        },
+                        {
+                            "language_code": "de-CH",
+                            "content": "Organisationen, mit denen wir zusammenarbeiten."
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

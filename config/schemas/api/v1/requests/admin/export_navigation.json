@@ -1,0 +1,47 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Export Navigation Request Schema",
+    "description": "Schema for exporting a portable navigation bundle (selfhelp/navigation-bundle v2.0)",
+    "type": "object",
+    "properties": {
+        "options": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["full_snapshot", "branch"],
+                    "default": "full_snapshot"
+                },
+                "menu_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["web_header", "web_footer", "mobile_drawer", "mobile_bottom_tabs"]
+                    }
+                },
+                "page_keywords": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "page_ids": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                },
+                "include_pages": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "include_settings": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "default_keyword_prefix": {
+                    "type": "string",
+                    "default": ""
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": false
+}

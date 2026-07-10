@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and content editors (non-technical).
 Status: active.
 Applies to: SelfHelp2 admin UI (section editor, data config, data browser, mail config).
-Last verified: 2026-06-29.
+Last verified: 2026-07-09.
 Source of truth: The live admin UI; developer details in [developer/10-interpolation-system.md](../developer/10-interpolation-system.md).
 
 This guide explains, without any code, how to put **dynamic values** into your
@@ -130,6 +130,20 @@ To get **data variables** in a section, connect it to a data source:
 
 Once saved, reopen the section editor and the new variables appear in the `{{`
 picker immediately — you do **not** need to reload the whole page.
+
+### Entry list and entry record (different rule)
+
+For **`entry-list`** and **`entry-record`** sections, which rows appear is **not**
+controlled by Data configuration. Use the **Properties** panel instead:
+
+- **Data table** — which table to load (required for rows to appear).
+- **Filter** — optional SQL constraints on those rows.
+- **Own entries only** — whether to hide other users' rows.
+
+Data configuration on the same section is only for **helper scopes** you want to
+reference elsewhere (for example `{{filters.status}}` inside the **Filter**
+field). Putting a table in Data configuration alone will **not** show list cards or
+a detail record. See [composite.md#entry-list](../reference/styles/composite.md#entry-list).
 
 ### The SQL filter box
 

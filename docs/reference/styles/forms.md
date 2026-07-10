@@ -3,8 +3,8 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 form styles (`@selfhelp/shared` `forms` category).
-Last verified: 2026-06-22.
-Source of truth: `src/types/styles/forms.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
+Last verified: 2026-07-10.
+Source of truth: backend field/style migrations and `OptionLabelHydrator`, `@selfhelp/shared` form types/helpers, the `admin/styles/schema` endpoint, and web/mobile renderers.
 
 Form styles collect input from visitors and (for the two form containers) save
 it. Read [`_conventions.md`](./_conventions.md) first; common fields and standard
@@ -12,10 +12,10 @@ Mantine cosmetic props are not repeated below.
 
 ## How forms work (developers)
 
-- A **form container** (`form-log` or `form-record`) wraps a set of input
+- A **form container** (`form-log`, `form-record`, or `entry-record-form`) wraps a set of input
   styles and a submit button. On submit it gathers each input by its `name`
   and persists the values.
-- `form-record` keeps **one record per user**, updated on each submit. `form-log`
+- `form-record` keeps **one record per user**, updated on each submit (plain profile form; text **name** identifies the data table). `entry-record-form` is the **route-aware** variant for list/detail and CMS-in-CMS (create on a bare route, edit when a record id is in the URL). `form-log`
   is **append-only** — every submit adds a new row. Which behaviour applies is
   decided by the **style** itself, not by a field.
 - Each input's `name` is the data column; `value` seeds an initial value;
@@ -39,11 +39,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Append-only form: each submit stores a **new** row.
 
-**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Optionally show an auto-styled heading (`title` + `description`) above the form; set the save label, the success/error messages **and their alert headings** (`alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`); turn on a confirm-before-submit dialog (`confirm_submit` + `confirm_message`); and optionally a cancel URL/label.
+**Administrators.** Use for surveys, journals, check-ins — anything where every submission should be kept. Optionally show an auto-styled heading (`title` + `description`) above the form; set the save label, the success/error messages **and their alert headings** (`alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`); turn on a confirm-before-submit dialog (`confirm_submit` + `confirm_message`); and optionally a cancel URL/label. For CMS-in-CMS forms shown inside a modal (a page with `open_in_modal`), enable **Close modal on save** (`close_modal_on_save`) so a successful submit closes the overlay and refreshes the parent list, and/or set **Redirect on save** (`redirect_on_save`) to navigate somewhere afterwards. Both are web-only.
 
-**Developers.** Renders a `<form>` over its input children (mobile: a custom composite); persists a new data row per submit. The heading, alert titles and confirm dialog render on **both** web (Mantine) and mobile.
+**Developers.** Renders a `<form>` over its input children (mobile: a custom composite); persists a new data row per submit. The heading, alert titles and confirm dialog render on **both** web (Mantine) and mobile. `close_modal_on_save` / `redirect_on_save` are honoured only by the web `FormStyle` (via the `PageModalContext` + the Next.js router); on a successful submit it invalidates the page-content query so the underlying list re-renders. Mobile ignores both.
 
-**Distinctive fields.** `title` / `description` (optional heading, content), `name` (form/table identifier), `btn_save_label`, `alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`, `confirm_submit` + `confirm_message` (optional confirm dialog), `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, and the shared button knobs (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `buttons_order`, `btn_save_color`, `btn_cancel_color`, `spacing`).
+**Distinctive fields.** `title` / `description` (optional heading, content), `name` (form/table identifier), `btn_save_label`, `alert_success` / `alert_success_title`, `alert_error` / `alert_error_title`, `confirm_submit` + `confirm_message` (optional confirm dialog), `close_modal_on_save` (web, close the surrounding modal on save), `redirect_on_save` (web, navigate after save), `redirect_at_end`, `btn_cancel_url`, `btn_cancel_label`, and the shared button knobs (`buttons_size`, `buttons_radius`, `buttons_variant`, `buttons_position`, `buttons_order`, `btn_save_color`, `btn_cancel_color`, `spacing`).
 
 **Children.** Yes (input styles + a submit).
 
@@ -51,13 +51,27 @@ Mantine cosmetic props are not repeated below.
 
 ## form-record
 
-**Purpose.** Per-user record form: keeps a **single** record, updated on each submit.
+**Purpose.** Plain record form: keeps a **single record per user**, updated on each submit. Use for editable profiles/settings where the latest values replace the previous ones — not for CMS list/detail edit pages (use `entry-record-form` instead).
 
-**Administrators.** Use for editable profiles/settings where the latest values replace the previous ones. Same fields as `form-log` plus a separate **update** button label/colour (`btn_update_label` / `btn_update_color`) used once a record already exists.
+**Administrators.** Same fields as `form-log` plus a separate **update** button label/colour (`btn_update_label` / `btn_update_color`) used once a record already exists. Set the text **name** field to the data-table slug (the form section creates/owns the table automatically). `own_entries_only` = `1` (default) scopes loads and saves to the current user's row.
 
-**Developers.** On submit, updates the user's existing record (or creates it the first time). Once a record exists the submit button uses `btn_update_label` + `btn_update_color`; button order honours `buttons_order` (`save-cancel` = primary first, the default). All three were previously inert in the web renderer and are now wired on both platforms.
+**Developers.** On submit, updates the user's existing record (or creates it the first time), prefilled from the user's latest own record in `section_data`. Once a record exists the submit button uses `btn_update_label` + `btn_update_color`; button order honours `buttons_order` (`save-cancel` = primary first, the default). No route-parameter edit mode — that lives on `entry-record-form`.
 
-**Distinctive fields.** All `form-log` fields, plus `btn_update_label` and `btn_update_color`.
+**Distinctive fields.** All `form-log` fields, plus `btn_update_label`, `btn_update_color`, `name` (text data-table identifier), and `own_entries_only` (`1` default).
+
+**Children.** Yes.
+
+---
+
+## entry-record-form
+
+**Purpose.** Route-aware record form for **CMS and public** surfaces: blank route = create; route with a record id = edit that row (permission-gated).
+
+**Administrators.** Use for CMS-in-CMS and public list/detail patterns. Set **Data table** to an existing table or leave empty to use the table owned by this section. Set **Load record from route parameter** (`load_record_from`, e.g. `record_id` on `/team-members/{record_id}`) so the edit page prefills that record; the create page (no param) stays empty. `own_entries_only` = `0` allows editing other users' records (needs UPDATE data access on the table; admins always pass). Pair with **Close modal on save** on CMS modal forms.
+
+**Developers.** Record context comes **only** from the URL when `load_record_from` is set: the backend resolves the route param (`DataService::getFormRecordDataForRecord`, `DataAccessSecurityService::canUpdateOwnedRecord`), serves that record (all languages) in `section_data`, and without the param the form stays empty (create mode). The web/mobile renderer submits updates with `update_based_on.record_id`; `FormController::updateForm` enforces the same rule. Registered in `BasicStyle` beside `form-record` (same `FormStyle` renderer).
+
+**Distinctive fields.** All `form-record` container fields except text `name`, plus `data_table` (`select-data_table`; stores a numeric `data_tables.id` at runtime — leave empty to use the table owned by this section), `load_record_from` (route param name), and `own_entries_only` (`0` default for shared/admin editing).
 
 **Children.** Yes.
 
@@ -123,11 +137,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** A dropdown select (HTML `select` / Mantine `Select`).
 
-**Administrators.** A dropdown of predefined options. Provide `options` (the choices), allow multiple (`is_multiple`), live search, image options, and clearing.
+**Administrators.** A dropdown of predefined options. The section inspector's Options grid stores stable codes in `options` and translated labels in `option_labels`; allow multiple (`is_multiple`), live search, image options, and clearing.
 
-**Developers.** Renders a select; `options` is a serialized option list. `max` caps multi-select count.
+**Developers.** Renders a select through the shared option resolver; `options` is the language-neutral serialized catalog and `option_labels` is the active-language map. `max` caps multi-select count. Stored rows contain codes only; hydration emits `_{name}_label` or `_{name}_labels`.
 
-**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `is_multiple`, `max`, `live_search`, `image_selector`, `allow_clear`, `is_required`, `disabled`, `mobile_select_presentation` (mobile-only: how the option list opens — bottom-sheet / dialog / popover). *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
+**Distinctive fields.** `name`, `value`, `placeholder`, `options`, `option_labels`, `is_multiple`, `max`, `searchable`, `image_selector`, `clearable`, `is_required`, `disabled`, `mobile_select_presentation` (mobile-only: how the option list opens — bottom-sheet / dialog / popover). *(The unused `alt` field was unlinked in migration `Version20260622132034`; no renderer read it.)*
 
 **Children.** No.
 
@@ -137,11 +151,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `Radio` / `RadioGroup` — pick exactly one option.
 
-**Administrators.** A single-choice question. Provide the options (`radio_options`), choose inline/orientation, and optionally render them as selectable cards.
+**Administrators.** A single-choice question. Configure codes and multilingual labels in the Options grid (`radio_options` + `option_labels`), choose inline/orientation, and optionally render them as selectable cards.
 
-**Developers.** Renders a `<Radio.Group>`. `web_radio_card` switches to card style; `web_use_input_wrapper` adds a label/description wrapper.
+**Developers.** Renders a `<Radio.Group>` through the shared option resolver. Rows store the selected code and hydration emits `_{name}_label`. `web_radio_card` switches to card style; `web_use_input_wrapper` adds a label/description wrapper.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `items`, `radio_options`, `is_inline`, `web_orientation`, `web_radio_label_position`, `web_radio_variant`, `web_radio_card`, `tooltip_label` / `web_tooltip_position`, `web_use_input_wrapper`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `radio_options`, `option_labels`, `is_inline`, `orientation`, `web_radio_label_position`, `web_radio_variant`, `web_radio_card`, `tooltip_label` / `web_tooltip_position`, `web_use_input_wrapper`.
 
 **Children.** No.
 
@@ -154,6 +168,8 @@ Mantine cosmetic props are not repeated below.
 **Administrators.** A yes/no or opt-in checkbox. Set `name`, the checked value (`checkbox_value`), label position, and required.
 
 **Developers.** Renders `<Checkbox>`. `label_position` puts the label left/right on both platforms; `web_use_input_wrapper` adds description support.
+
+A single boolean checkbox is not an option catalog and does not use `option_labels`.
 
 **Distinctive fields.** `label`, `name`, `value`, `checkbox_value`, `is_required`, `description`, `label_position` (left/right, shared), `web_checkbox_icon`, `web_use_input_wrapper`, `mobile_checkbox_variant` (mobile-only HeroUI Native primary/secondary).
 
@@ -221,11 +237,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `Combobox` — a searchable, optionally creatable/multi-select dropdown.
 
-**Administrators.** A power dropdown for long option lists: searchable, can allow creating new entries, multi-select, and clearable.
+**Administrators.** A power dropdown for long option lists. Configure codes and multilingual labels in the Options grid (`combobox_options` + `option_labels`); it can be searchable, creatable, multi-select, and clearable.
 
-**Developers.** Renders a Combobox over `combobox_options`. `web_combobox_multi_select`, `_searchable`, `_creatable`, `_clearable` toggle behaviours.
+**Developers.** Renders a Combobox through the shared option resolver. `web_combobox_multi_select` determines whether hydration emits `_{name}_labels`; `_searchable`, `_creatable`, and `_clearable` toggle behaviours.
 
-**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`, `mobile_select_presentation` (mobile-only: reuses the select renderer; bottom-sheet / dialog / popover).
+**Distinctive fields.** `label`, `name`, `value`, `placeholder`, `description`, `is_required`, `combobox_options`, `option_labels`, `web_combobox_multi_select`, `web_combobox_searchable`, `web_combobox_creatable`, `web_combobox_clearable`, `web_combobox_separator`, `web_multi_select_max_values`, `mobile_select_presentation` (mobile-only: reuses the select renderer; bottom-sheet / dialog / popover).
 
 **Children.** No.
 
@@ -291,11 +307,11 @@ Mantine cosmetic props are not repeated below.
 
 **Purpose.** Mantine `SegmentedControl` — a horizontal set of mutually exclusive buttons.
 
-**Administrators.** A compact single-choice toggle (e.g. Day/Week/Month). Provide the options in `segmented_control_data`.
+**Administrators.** A compact single-choice toggle (e.g. Day/Week/Month). Configure stable codes and multilingual labels in the Options grid (`segmented_control_data` + `option_labels`).
 
-**Developers.** Renders `<SegmentedControl data>`; `fullwidth` stretches across the container.
+**Developers.** Renders `<SegmentedControl data>` through the shared option resolver; rows store one code and hydration emits `_{name}_label`. `fullwidth` stretches across the container.
 
-**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `segmented_control_data`, `web_orientation`, `fullwidth`, `readonly`, `web_segmented_control_item_border`.
+**Distinctive fields.** `label`, `name`, `value`, `description`, `is_required`, `segmented_control_data`, `option_labels`, `orientation`, `fullwidth`, `readonly`, `web_segmented_control_item_border`.
 
 **Children.** No.
 
@@ -357,20 +373,25 @@ Mantine cosmetic props are not repeated below.
 
 ---
 
-## show-user-input
+## entry-table
 
-**Purpose.** Read-only **display** companion to `form-log` / `form-record`: renders a user's previously submitted entries from a data table as a Mantine Table.
+**Purpose.** The built-in admin CRUD grid over a form's records (renamed from `show-user-input` in core v0.1.33, migration `Version20260710093048`): renders previously submitted entries from a data table as a searchable/sortable table with optional add / edit / delete actions and CSV export.
 
-**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table. By default each column header shows the data column's curated **display name** (so renaming a form input or curating a column label updates the header automatically); use `fields_map` only when you want to pick a subset of columns or override a specific header. Optionally show an auto-styled heading above the list (`title`) and customise the empty-state message (`empty_text`, default "No entries found."). Two switches control *whose* data is shown and *what* can be deleted:
+**Administrators.** Drop it on a page to show back what people have submitted. Point `data_table` at the form's table. By default each column header shows the data column's curated **display name** (so renaming a form input or curating a column label updates the header automatically). Use **Column mapping** to pick which columns appear (`fields_map`, ordered `field_key` list) and **Column header labels** (`fields_map_labels`, per-locale `{ field_key: "Header" }` JSON) to override specific headers. Optionally show an auto-styled heading above the list (`title`) and customise the empty-state message (`empty_text`, default "No entries found."). Two switches control *whose* data is shown and *what* can be deleted:
 
 - **Own Entries Only** (`own_entries_only`, default on) — each user sees only their **own** submissions. Turn it **off** to show **all** users' entries (only do this where viewing everyone's data is allowed; it is still subject to data-access permissions).
 - **Delete** (`delete_entry`, default on) — shows a per-row delete button. A user may always delete **their own** record; deleting **another user's** record additionally requires the table's delete data-access permission. The confirmation dialog copy is set by the translatable `delete_modal_title` / `delete_modal_body`.
 
 Optional table behaviour: search (`dt_searching`), sorting (`dt_sortable` + `dt_default_order_column` / `dt_default_order_dir`), pagination (`dt_paginate`), the row-count footer (`dt_info`), a CSV export button (`csv_export`), and a leading timestamp column (`show_timestamp`).
 
-**Developers.** Web renders as a Mantine Table; **mobile renders the entries as a list of cards** (`components/styles/forms/ShowUserInput.tsx`, theme-aware via `useAppColors`) — the desktop-only DataTable options (`dt_*`, `web_table_*`) are intentionally ignored on mobile, while `title` and `empty_text` render on both. Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. **Header/cell keying (v2, issue #56):** the section payload carries `entries` keyed by the immutable `field_key` plus a `field_labels` map (`field_key => display_name`); the renderer defaults headers to `field_labels[field_key]` (falling back to the key) and reads each cell by `field_key`, so a rename only moves the label. `fields_map` is an explicit override (subset + custom labels). Standard projection columns (`record_id`, `entry_date`, …) are not in `field_labels` and render under their own key. The own-vs-permission delete rule is **centralised** in `DataAccessSecurityService::canDeleteOwnedRecord()` so the display check (`SectionUtilityService` deciding whether to show the button) and the enforcement check (`FormController::deleteForm`) stay in lockstep: own record → always deletable; another user's record → deletable only with the data table's `delete` bit. The shared contract is `IShowUserInputStyle` / `IShowUserInputEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
+**CMS-in-CMS controls.** Two optional URL fields turn the table into an admin CRUD list:
 
-**Distinctive fields.** `title` (optional heading, content), `empty_text` (empty-state message, content), `data_table`, `fields_map` (translatable column config), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export`, `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
+- **Add new URL** (`add_url`) — when set, an "Add new" button is shown above the table linking to a create form (typically a page with `open_in_modal` on web, so it opens as an overlay; mobile opens the page via the normal modal/route rule).
+- **Edit URL** (`edit_url`) — a URL **template** (e.g. `/cms/team/{record_id}`). When set, each row the user may edit (`_can_edit !== false`) gets an edit action; the single-brace `{record_id}` placeholder is substituted client-side with that row's id at click time (it is **not** a `{{…}}` backend interpolation token). The CMS-in-CMS wizard points it at the record edit page (an `entry-record-form` / `form-record` in edit mode). Web uses a pencil ActionIcon; mobile uses an Edit button that calls `navigateToPage`.
+
+**Developers.** Web renders as a Mantine Table (`EntryTableStyle.tsx`); **mobile renders the entries as a list of cards** (`components/styles/forms/EntryTable.tsx`, theme-aware via `useAppColors`) — the desktop-only DataTable options (`dt_*`, `web_table_*`) and CSV export are intentionally ignored on mobile, while `title`, `empty_text`, `add_url`, `edit_url`, and delete honour the same server flags on both platforms. Rows come from the configured data table; when `own_entries_only = 1` the query is scoped to the current user. **Header/cell keying (v2, issue #56):** the section payload carries `entries` keyed by the immutable `field_key` plus a `field_labels` map (`field_key => display_name`); the renderer defaults headers to `field_labels[field_key]` (falling back to the key) and reads each cell by `field_key`, so a rename only moves the label. **`fields_map`** (property, display=0) is an ordered JSON array of `field_key` values selecting visible columns; **`fields_map_labels`** (translatable content) supplies per-locale header overrides keyed by `field_key`. Bundle import rewrites logical column names in both fields to resolved `field_key` values. Standard projection columns (`record_id`, `entry_date`, …) are not in `field_labels` and render under their own key. **Per-row action flags:** the own-vs-permission rules are **centralised** in `DataAccessSecurityService` (`canDeleteOwnedRecord()` / `canUpdateOwnedRecord()`) so the display checks (`SectionUtilityService` computing `_can_delete` / `_can_edit` per row) and the enforcement checks (`FormController::deleteForm` / `updateForm`) stay in lockstep: own record → always deletable/editable; another user's record → only with the data table's `delete` / `update` bit on a shared (`own_entries_only` off) section. The shared contract is `IEntryTableStyle` / `IEntryTableEntry` in `@selfhelp/shared` (`src/types/styles/forms.ts`); the frontend imports those types directly (no local duplicate).
+
+**Distinctive fields.** `title` (optional heading, content), `empty_text` (empty-state message, content), `data_table` (numeric `data_tables.id` at runtime; bundle exports use portable `@section:<owner>` tokens), `fields_map` (ordered column catalog of immutable `field_key` values, property), `fields_map_labels` (per-locale header labels keyed by `field_key`, content), `own_entries_only`, `show_timestamp`, `delete_entry`, `csv_export` (web), `add_url` ("Add new" link), `edit_url` (per-row edit template with `{record_id}`), `dt_sortable`, `dt_searching`, `dt_paginate`, `dt_info`, `dt_default_order_column`, `dt_default_order_dir`, `delete_modal_title` / `delete_modal_body` (translatable), and the Mantine Table props `web_table_striped`, `web_table_highlight_on_hover`, `web_table_with_table_border`, `web_table_with_column_borders`, `web_table_with_row_borders`, `web_table_sticky_header`, `web_table_caption_side`.
 
 **Children.** No.
 

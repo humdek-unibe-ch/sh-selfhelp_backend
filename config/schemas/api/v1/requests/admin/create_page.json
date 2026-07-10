@@ -36,17 +36,61 @@
             "type": ["string", "null"],
             "description": "HTTP methods supported by the page (pipe separated list)"
         },
-        "navPosition": {
-            "type": ["integer", "null"],
-            "description": "Navigation position"
-        },
-        "footerPosition": {
-            "type": ["integer", "null"],
-            "description": "Footer position"
-        },
         "parent": {
             "type": ["integer", "null"],
             "description": "ID of the parent page"
+        },
+        "surface": {
+            "type": "string",
+            "enum": ["public", "cms"],
+            "default": "public",
+            "description": "CMS-in-CMS organization axis: public website page or cms application page"
+        },
+        "accessGroups": {
+            "type": "array",
+            "description": "Extra group ids granted access to the page (admin is always granted). On cms pages these groups get full CRUD; on public pages they get read-only access.",
+            "items": { "type": "integer" },
+            "default": []
+        },
+        "navigationAssignments": {
+            "type": "array",
+            "description": "Optional menu-builder assignments for the new page",
+            "items": {
+                "type": "object",
+                "required": ["menuKey"],
+                "properties": {
+                    "menuKey": { "type": "string" },
+                    "parentItemId": { "type": ["integer", "null"] },
+                    "position": { "type": ["integer", "null"] },
+                    "iconOverride": { "type": ["string", "null"] },
+                    "labels": {
+                        "type": "object",
+                        "additionalProperties": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
+            },
+            "default": []
+        },
+        "syncUrlWithParent": {
+            "type": "boolean",
+            "description": "When true and parent is set, derive URL and canonical route from the parent page",
+            "default": false
+        },
+        "oldRoutePolicy": {
+            "type": ["string", "null"],
+            "enum": ["ask", "keep_alias", "remove_old_route", null],
+            "description": "What to do with the previous canonical route after a parent URL sync"
+        },
+        "cms_app_id": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "description": "Optional first-class CMS app to assign the new page to (via CmsAppService::assignPage)"
+        },
+        "cms_app_role": {
+            "type": ["string", "null"],
+            "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other", null],
+            "description": "Role inside the CMS app; required when cms_app_id is set"
         }
     },
     "required": ["keyword", "pageAccessTypeCode"],

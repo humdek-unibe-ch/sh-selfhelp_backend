@@ -11,9 +11,11 @@ namespace App\Tests\Service\CMS;
 
 use App\Entity\DataTable;
 use App\Service\Cache\Core\CacheService;
+use App\Service\CMS\Common\SectionAccessibleRouteService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataVariableResolver;
 use App\Service\CMS\GlobalVariableService;
+use App\Service\Core\UserContextAwareService;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -77,6 +79,8 @@ final class DataVariableResolverTest extends TestCase
         $dataService = $this->createStub(DataService::class);
         $cache = $this->createStub(CacheService::class);
         $globals = $this->createStub(GlobalVariableService::class);
+        $userContext = $this->createStub(UserContextAwareService::class);
+        $routeService = $this->createStub(SectionAccessibleRouteService::class);
 
         $dataTable = $this->createStub(DataTable::class);
         $dataTable->method('getId')->willReturn($tableId);
@@ -88,7 +92,7 @@ final class DataVariableResolverTest extends TestCase
         $cache->method('withEntityScope')->willReturnSelf();
         $cache->method('getList')->willReturn($columns);
 
-        return new DataVariableResolver($em, $dataService, $cache, $globals);
+        return new DataVariableResolver($em, $dataService, $cache, $globals, $userContext, $routeService);
     }
 
     public function testTableTokensUseImmutableFieldKeyNotInputName(): void

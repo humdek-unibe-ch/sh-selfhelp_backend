@@ -56,8 +56,6 @@ trait ManagesTestPagesTrait
             'headless' => false,
             'openAccess' => true, // Defaulting to true as seen in AdminPageControllerTest
             'url' => '/' . $pageKeyword,
-            'navPosition' => 100, // Default nav position
-            'footerPosition' => null,
             'parent' => null,
             // 'pageTypeId' is intentionally omitted as AdminPageService hardcodes it to 'experiment'
         ];

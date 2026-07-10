@@ -30,8 +30,9 @@ This project uses a dynamic list of Tailwind CSS classes for the `select-css` fi
 
 ## When to Regenerate
 - When you update the patterns/variants in `scripts/generate-css-classes.js`.
-- When Tailwind config or your frontend safelist changes.
-- After upgrading Tailwind or adding new utility classes.
+- When Tailwind config or your frontend safelist changes (`sh-selfhelp_frontend/src/globals.css`).
+- After upgrading Tailwind or adding new utility classes used in CMS bundles (`examples/cms-in-cms/`, `examples/sections/`).
+- The generator expands responsive `grid-cols-*`, `gap-*`, display/flex, text sizes, slate palette utilities, and CMS template polish classes. It fails if required bundle classes are missing.
 
 ## Notes
 - The backend will automatically use the latest JSON file for select-css options.

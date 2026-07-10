@@ -27,6 +27,7 @@ class SectionUtilityService
         private readonly UserContextService $userContextService,
         private readonly VariableResolverService $variableResolverService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly DataTableFilterService $dataTableFilterService,
     ) {
     }
 
@@ -293,16 +294,17 @@ class SectionUtilityService
      * @param array<string, mixed> $dataConfig JSON structure defining data source
      * @param array<string, mixed> $params Parameters to replace in the config
      * @param int $languageId Language ID for data retrieval
+     * @param array<string, mixed> $interpolationContext
      * @return array<array-key, mixed> Retrieved data or empty array if failed
      */
-    public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1): array
+    public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1, array $interpolationContext = []): array
     {
         $parsedConfig = $this->parseParams($dataConfig, $params);
         if (!$parsedConfig) {
             return [];
         }
 
-        return $this->fetchData($parsedConfig, $languageId);
+        return $this->fetchData($parsedConfig, $languageId, $interpolationContext);
     }
 
     /**
@@ -340,9 +342,10 @@ class SectionUtilityService
      *
      * @param array<string, mixed> $dataConfig Parsed data configuration
      * @param int $languageId Language ID for data retrieval
+     * @param array<array-key, mixed> $interpolationContext Scopes for filter token interpolation (`route`, parent scopes, …)
      * @return array<array-key, mixed> Retrieved data
      */
-    private function fetchData(array $dataConfig, int $languageId): array
+    private function fetchData(array $dataConfig, int $languageId, array $interpolationContext = []): array
     {
         if (!isset($dataConfig['table'])) {
             return [];
@@ -350,7 +353,11 @@ class SectionUtilityService
 
         $tableName = $this->asString($dataConfig['table']);
         $retrieve = $dataConfig['retrieve'] ?? 'all';
-        $filter = $this->asString($dataConfig['filter'] ?? '');
+        $rawFilter = trim($this->asString($dataConfig['filter'] ?? ''));
+        $filter = $this->resolveDataConfigFilter($rawFilter, $interpolationContext);
+        if ($rawFilter !== '' && $filter === '') {
+            return [];
+        }
         $currentUser = $dataConfig['current_user'] ?? true;
 
         // Get data table
@@ -455,6 +462,29 @@ class SectionUtilityService
             default:
                 return $this->processAll($data, $dataConfig);
         }
+    }
+
+    /**
+     * Resolve a data_config filter that may already have been canonicalized by
+     * {@see PageService::interpolateDataConfig()} or still carry `{{ }}` tokens.
+     *
+     * @param array<array-key, mixed> $interpolationContext
+     */
+    private function resolveDataConfigFilter(string $rawFilter, array $interpolationContext): string
+    {
+        if ($rawFilter === '') {
+            return '';
+        }
+
+        if (!str_contains($rawFilter, '{{')) {
+            if (!$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return '';
+            }
+
+            return $this->dataTableFilterService->glueLeadingAnd($rawFilter);
+        }
+
+        return $this->dataTableFilterService->prepareFilter($rawFilter, $interpolationContext);
     }
 
     /**
@@ -710,18 +740,46 @@ class SectionUtilityService
      *
      * @param array<string, mixed> &$section The section to apply data to (passed by reference)
      * @param int $languageId Language ID for data retrieval
+     * @param array<string, mixed> $routeParams Public route URL parameters
+     *   ({{route.*}} scope) — used by the form-record edit mode to resolve
+     *   `load_record_from` into a concrete record id.
      */
-    public function applySectionData(array &$section, int $languageId = 1): void
+    public function applySectionData(array &$section, int $languageId = 1, array $routeParams = []): void
     {
         $section['section_data'] = [];
 
-        // Handle form record data
+        // Plain form-record: always prefill the current user's latest own record.
         if ($section['style_name'] == StyleNames::STYLE_FORM_RECORD) {
-            $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages($this->asString($section['id']));
+            $section['section_data'] = $this->dataService->getFormRecordDataWithAllLanguages(
+                $this->resolveFormDataTableName($section),
+            );
         }
 
-        // Handle showUserInput data: fetch rows from the configured data_table
-        if ($section['style_name'] == StyleNames::STYLE_SHOW_USER_INPUT) {
+        // entry-record-form: dual-route create/edit via load_record_from.
+        if ($section['style_name'] == StyleNames::STYLE_ENTRY_RECORD_FORM) {
+            $loadRecordFrom = is_array($section['load_record_from'] ?? null)
+                ? trim($this->asString($section['load_record_from']['content'] ?? ''))
+                : '';
+            $tableName = $this->resolveFormDataTableName($section);
+
+            if ($loadRecordFrom !== '') {
+                $routeRecordId = is_numeric($routeParams[$loadRecordFrom] ?? null)
+                    ? (int) $routeParams[$loadRecordFrom]
+                    : 0;
+                if ($routeRecordId > 0) {
+                    $ownEntriesOnly = !is_array($section['own_entries_only'] ?? null)
+                        || ($section['own_entries_only']['content'] ?? '1') !== '0';
+                    $section['section_data'] = $this->dataService->getFormRecordDataForRecord(
+                        $tableName,
+                        $routeRecordId,
+                        $ownEntriesOnly,
+                    );
+                }
+            }
+        }
+
+        // Handle entry-table data: fetch rows from the configured data_table
+        if ($section['style_name'] == StyleNames::STYLE_ENTRY_TABLE) {
             $dataTableId = is_array($section['data_table'] ?? null)
                 ? (int) $this->asString($section['data_table']['content'] ?? '')
                 : 0;
@@ -749,21 +807,34 @@ class SectionUtilityService
 
                 $deleteEntryEnabled = is_array($section['delete_entry'] ?? null)
                     && ($section['delete_entry']['content'] ?? '0') === '1';
+                $editEntryEnabled = is_array($section['edit_url'] ?? null)
+                    && trim($this->asString($section['edit_url']['content'] ?? '')) !== '';
 
-                if ($deleteEntryEnabled) {
+                if ($deleteEntryEnabled || $editEntryEnabled) {
                     $currentUser = $this->userContextService->getCurrentUser();
                     $currentUserId = $currentUser ? (int) $currentUser->getId() : 0;
-                    // Resolve the data-table DELETE permission once (hoisted out
-                    // of the per-row loop). Only relevant when the section shows
-                    // everyone's records; when own_entries_only is true every
-                    // visible row is the user's own and is always deletable.
-                    $hasDeletePermission = !$ownEntriesOnly
+                    // Resolve the data-table DELETE/UPDATE permissions once
+                    // (hoisted out of the per-row loop). Only relevant when the
+                    // section shows everyone's records; when own_entries_only is
+                    // true every visible row is the user's own and is always
+                    // deletable/editable.
+                    $hasDeletePermission = $deleteEntryEnabled
+                        && !$ownEntriesOnly
                         && $currentUserId > 0
                         && $this->dataAccessSecurityService->hasPermission(
                             $currentUserId,
                             'data_table',
                             $dataTableId,
                             DataAccessSecurityService::PERMISSION_DELETE
+                        );
+                    $hasUpdatePermission = $editEntryEnabled
+                        && !$ownEntriesOnly
+                        && $currentUserId > 0
+                        && $this->dataAccessSecurityService->hasPermission(
+                            $currentUserId,
+                            'data_table',
+                            $dataTableId,
+                            DataAccessSecurityService::PERMISSION_UPDATE
                         );
 
                     foreach ($entries as &$entry) {
@@ -774,21 +845,32 @@ class SectionUtilityService
                         $rawOwner = $entry['id_users'] ?? null;
                         $entryOwnerId = is_numeric($rawOwner) ? (int) $rawOwner : 0;
                         $isOwnRecord = $entryOwnerId > 0 && $entryOwnerId === $currentUserId;
-                        // Same rule as FormController::deleteForm enforcement.
-                        $entry['_can_delete'] = $this->dataAccessSecurityService->canDeleteOwnedRecord(
-                            $ownEntriesOnly,
-                            $isOwnRecord,
-                            $hasDeletePermission
-                        );
+                        if ($deleteEntryEnabled) {
+                            // Same rule as FormController::deleteForm enforcement.
+                            $entry['_can_delete'] = $this->dataAccessSecurityService->canDeleteOwnedRecord(
+                                $ownEntriesOnly,
+                                $isOwnRecord,
+                                $hasDeletePermission
+                            );
+                        }
+                        if ($editEntryEnabled) {
+                            // Same rule as FormController::updateForm enforcement.
+                            $entry['_can_edit'] = $this->dataAccessSecurityService->canUpdateOwnedRecord(
+                                $ownEntriesOnly,
+                                $isOwnRecord,
+                                $hasUpdatePermission
+                            );
+                        }
                     }
                     unset($entry);
                 }
 
                 $section['entries'] = $entries;
                 // field_key => display_name for this table's curated columns, so
-                // the show-user-input renderer shows human headers while keying
+                // the entry-table renderer shows human headers while keying
                 // cells by the stable field_key (issue #56 v2).
                 $section['field_labels'] = $this->dataService->getColumnDisplayLabels($dataTableId);
+                $this->applyFieldsMapLabelOverrides($section, $languageId);
             }
         }
 
@@ -877,6 +959,62 @@ class SectionUtilityService
     private function asInt(mixed $value): int
     {
         return is_numeric($value) ? (int) $value : 0;
+    }
+
+    /**
+     * Resolve the data-table name used for form prefill/submit.
+     *
+     * @param array<string, mixed> $section
+     */
+    private function resolveFormDataTableName(array $section): string
+    {
+        if (($section['style_name'] ?? '') === StyleNames::STYLE_ENTRY_RECORD_FORM) {
+            $raw = is_array($section['data_table'] ?? null)
+                ? trim($this->asString($section['data_table']['content'] ?? ''))
+                : '';
+            if ($raw !== '' && ctype_digit($raw)) {
+                $dataTable = $this->dataService->getDataTableById((int) $raw);
+                if ($dataTable !== null) {
+                    return (string) $dataTable->getName();
+                }
+            }
+        }
+
+        return $this->asString($section['id']);
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function applyFieldsMapLabelOverrides(array &$section, int $languageId): void
+    {
+        $raw = is_array($section['fields_map_labels'] ?? null)
+            ? trim($this->asString($section['fields_map_labels']['content'] ?? ''))
+            : '';
+        if ($raw === '') {
+            return;
+        }
+
+        try {
+            $parsed = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return;
+        }
+
+        if (!is_array($parsed)) {
+            return;
+        }
+
+        if (!isset($section['field_labels']) || !is_array($section['field_labels'])) {
+            $section['field_labels'] = [];
+        }
+
+        foreach ($parsed as $fieldKey => $label) {
+            if (!is_string($fieldKey) || $fieldKey === '' || !is_string($label) || trim($label) === '') {
+                continue;
+            }
+            $section['field_labels'][$fieldKey] = $label;
+        }
     }
 
     /**

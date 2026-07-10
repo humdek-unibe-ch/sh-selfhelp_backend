@@ -138,10 +138,10 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
     }
 
     /**
-     * The shared "may this user delete this form/showUserInput record?" rule.
+     * The shared "may this user delete this form/entry-table record?" rule.
      * It is the single source of truth used by both the delete endpoint
      * ({@see \App\Controller\Api\V1\Frontend\FormController::deleteForm})
-     * and the showUserInput renderer's per-row `_can_delete` flag
+     * and the entry-table hydration's per-row `_can_delete` flag
      * ({@see \App\Service\CMS\Common\SectionUtilityService}), so the two can
      * never drift: own_entries_only sections are always deletable; otherwise a
      * user may delete their own record, or any record with table DELETE rights.
@@ -172,6 +172,42 @@ final class DataAccessSecurityServiceTest extends QaKernelTestCase
         // someone else's row: needs the data-table DELETE grant.
         yield 'other record deletable with table delete perm' => [false, false, true, true];
         yield 'other record blocked without perm' => [false, false, false, false];
+    }
+
+    /**
+     * The mirror rule for record edit mode (issue #30): "may this user update
+     * this form record?" — the single source of truth shared by the update
+     * endpoint ({@see \App\Controller\Api\V1\Frontend\FormController::updateForm}),
+     * the form-record prefill loader and the entry-table `_can_edit` flag.
+     * The matrix covers all three ownership modes: own-entries diary
+     * (own_entries_only), shared editing (table UPDATE grant), admin edit-any.
+     */
+    #[DataProvider('updatableRecordCases')]
+    public function testCanUpdateOwnedRecordRule(
+        bool $ownEntriesOnly,
+        bool $isOwnRecord,
+        bool $hasUpdatePermission,
+        bool $expected,
+    ): void {
+        self::assertSame(
+            $expected,
+            $this->service->canUpdateOwnedRecord($ownEntriesOnly, $isOwnRecord, $hasUpdatePermission),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{bool, bool, bool, bool}>
+     */
+    public static function updatableRecordCases(): iterable
+    {
+        // Ownership mode 1 — diary: the form only loads the user's own records.
+        yield 'own_entries_only always editable' => [true, false, false, true];
+        // Ownership mode 2 — shared table: own row always editable...
+        yield 'own record editable when showing all' => [false, true, false, true];
+        // ...someone else's row needs the data-table UPDATE grant (admins get
+        // it via the role override in hasPermission()).
+        yield 'other record editable with table update perm' => [false, false, true, true];
+        yield 'other record blocked without update perm' => [false, false, false, false];
     }
 
     public function testPermissionCheckWritesAnAuditRowWithNonNullLookups(): void

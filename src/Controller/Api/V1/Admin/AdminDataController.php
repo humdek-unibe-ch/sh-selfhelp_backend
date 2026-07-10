@@ -11,8 +11,10 @@ use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
 use App\Exception\ServiceException;
 use App\Service\Auth\UserContextService;
+use App\Service\CMS\Admin\DataQueryPreviewService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\Frontend\OptionLabelHydrator;
 use App\Service\Core\LookupService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\TransactionService;
@@ -30,11 +32,34 @@ class AdminDataController extends AbstractController
     public function __construct(
         private readonly DataService $dataService,
         private readonly DataTableService $dataTableService,
+        private readonly DataQueryPreviewService $dataQueryPreviewService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly UserContextService $userContextService,
-        private readonly TransactionService $transactionService
+        private readonly TransactionService $transactionService,
+        private readonly OptionLabelHydrator $optionLabelHydrator,
     ) {
+    }
+
+    /**
+     * Preview how an entry-style filter will be prepared for get_data_table_filtered.
+     */
+    public function queryPreview(Request $request): JsonResponse
+    {
+        try {
+            $payload = $this->validateRequest($request, 'requests/admin/data_query_preview', $this->jsonSchemaValidationService);
+
+            $preview = $this->prepareQueryPreviewResponse($this->dataQueryPreviewService->preview($this->toAssocArray($payload)));
+            $this->jsonSchemaValidationService->validate($preview, 'responses/admin/data_query_preview');
+
+            return $this->responseFormatter->formatSuccess($preview, null, Response::HTTP_OK, false, true);
+        } catch (RequestValidationException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        } catch (\Throwable $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
     }
 
     /**
@@ -140,7 +165,25 @@ class AdminDataController extends AbstractController
                 );
             }
 
-            return $this->responseFormatter->formatSuccess(['rows' => $rows]);
+            $hydratedRows = [];
+            foreach ($rows as $row) {
+                if (is_array($row)) {
+                    $hydratedRows[] = $this->toAssocArray($row);
+                }
+            }
+            $rows = $this->optionLabelHydrator->hydrate(
+                $hydratedRows,
+                (string) $dataTable->getName(),
+                $languageId
+            );
+
+            return $this->responseFormatter->formatSuccess([
+                'rows' => $rows,
+                'optionLabelMaps' => $this->optionLabelHydrator->resolveFieldLabelMaps(
+                    (string) $dataTable->getName(),
+                    $languageId
+                ),
+            ]);
         } catch (ServiceException $e) {
             return $this->responseFormatter->formatThrowable($e);
         } catch (\Throwable $e) {
@@ -651,6 +694,20 @@ class AdminDataController extends AbstractController
                 Response::HTTP_INTERNAL_SERVER_ERROR
             );
         }
+    }
+
+    /**
+     * @param array<string, mixed> $preview
+     * @return array<string, mixed>
+     */
+    private function prepareQueryPreviewResponse(array $preview): array
+    {
+        foreach (['route_params', 'route_requirements'] as $key) {
+            $map = is_array($preview[$key] ?? null) ? $preview[$key] : [];
+            $preview[$key] = $map === [] ? new \stdClass() : $map;
+        }
+
+        return $preview;
     }
 }
 

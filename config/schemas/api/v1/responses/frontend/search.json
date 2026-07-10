@@ -1,0 +1,24 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "GET /search response data",
+    "type": "object",
+    "required": ["results"],
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["keyword", "title", "source"],
+                "properties": {
+                    "page_id": { "type": ["integer", "null"] },
+                    "keyword": { "type": "string" },
+                    "url": { "type": ["string", "null"] },
+                    "title": { "type": "string" },
+                    "snippet": { "type": ["string", "null"] },
+                    "source": { "type": "string" }
+                }
+            }
+        }
+    },
+    "additionalProperties": false
+}

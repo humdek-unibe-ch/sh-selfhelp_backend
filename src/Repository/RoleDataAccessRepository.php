@@ -175,13 +175,12 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'IDENTITY(p.parentPage) as id_parent_page',
                 'p.keyword',
                 'p.url',
-                'p.nav_position as nav_position',
-                'p.footer_position as footer_position',
                 'p.is_headless as is_headless',
                 'p.is_open_access as is_open_access',
                 'p.is_system as is_system',
                 'pat.id as id_page_access_types',
                 'pt.id as id_page_types',
+                "COALESCE(psurf.lookupCode, 'public') as page_surface",
                 'rda.crudPermissions as crud'
             ])
             ->innerJoin('rda.role', 'r')
@@ -189,6 +188,7 @@ class RoleDataAccessRepository extends ServiceEntityRepository
             ->innerJoin(Page::class, 'p', 'WITH', 'p.id = rda.resourceId')
             ->leftJoin('p.pageAccessType', 'pat')
             ->leftJoin('p.pageType', 'pt')
+            ->leftJoin('p.pageSurface', 'psurf')
             ->where('u.id = :userId')
             ->andWhere('rda.idResourceTypes = :resourceTypeId')
             ->andWhere('rda.crudPermissions > 0')
@@ -255,16 +255,16 @@ class RoleDataAccessRepository extends ServiceEntityRepository
                 'IDENTITY(p.parentPage) as id_parent_page', // Use IDENTITY() to get foreign key value
                 'p.keyword',
                 'p.url',
-                'p.nav_position as nav_position',
-                'p.footer_position as footer_position',
                 'p.is_headless as is_headless',
                 'p.is_open_access as is_open_access',
                 'p.is_system as is_system',
                 'IDENTITY(p.pageAccessType) as id_page_access_types',
                 'IDENTITY(p.pageType) as id_page_types',
+                "COALESCE(psurf.lookupCode, 'public') as page_surface",
                 '15 as crud' // Full permissions for admin
             ])
             ->from(Page::class, 'p')
+            ->leftJoin('p.pageSurface', 'psurf')
             ->orderBy('p.id', 'ASC');
 
         /** @var list<array<string, mixed>> $result */

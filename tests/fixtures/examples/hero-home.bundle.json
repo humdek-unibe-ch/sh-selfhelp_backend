@@ -1,0 +1,2195 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "title": "Hero landing page",
+    "description": "Polished headless landing page: full hero with imagery, feature grid, how-it-works split, testimonial, and a call-to-action panel. Works in dark and light mode, on web and mobile. Import it, then swap the copy, images, and button targets in the page editor.",
+    "exported_at": "2026-07-06T00:00:00+00:00",
+    "core_version": "0.1.36",
+    "_comment": "Landing/hero template built only from core styles (issue: beautiful importable landing pages). The page is HEADLESS: it renders without the site header/footer, so it works as a guest/logged-out landing or onboarding page. Buttons point at the system 'register' and 'login' pages via page_keyword; change them in the editor. Images are curated Unsplash URLs - replace with your own assets for production. Content ships in the default-install locales de-CH and en-GB.",
+    "pages": [
+        {
+            "keyword": "hero-home",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": true,
+            "open_access": true,
+            "url": "/hero-home",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Willkommen"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Welcome"
+                        }
+                    ]
+                },
+                {
+                    "name": "description",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Landingpage-Vorlage mit Hero, Funktionsübersicht und Call-to-Action – gebaut aus Kern-Styles."
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Landing page template with hero, feature overview, and call-to-action – built from core styles."
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/hero-home",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "hero-home-hero",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "hero-home-hero-space-top",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-hero-grid",
+                            "style_name": "simple-grid",
+                            "fields": {
+                                "cols": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "web_cols_md": {
+                                    "all": {
+                                        "content": "2"
+                                    }
+                                },
+                                "gap": {
+                                    "all": {
+                                        "content": "xl"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "hero-home-hero-copy",
+                                    "style_name": "stack",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "md"
+                                            }
+                                        },
+                                        "justify": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        },
+                                        "align": {
+                                            "all": {
+                                                "content": "flex-start"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-hero-badge",
+                                            "style_name": "badge",
+                                            "fields": {
+                                                "label": {
+                                                    "de-CH": {
+                                                        "content": "Evidenzbasiert · Selbstgeleitet"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Evidence-based · Self-guided"
+                                                    }
+                                                },
+                                                "variant": {
+                                                    "all": {
+                                                        "content": "light"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "md"
+                                                    }
+                                                },
+                                                "radius": {
+                                                    "all": {
+                                                        "content": "full"
+                                                    }
+                                                },
+                                                "web_left_icon": {
+                                                    "all": {
+                                                        "content": "IconSparkles"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-hero-title",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "Digitale Begleitung, die im Alltag ankommt"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Support that meets you where you are"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "1"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-hero-subtitle",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Erstellen Sie Programme, Kurse und Studien mit strukturierten Inhalten, mehrsprachig und auf allen Geräten – ohne eine Zeile Code."
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Build programs, courses, and studies with structured content, in every language, on every device – without writing a line of code."
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "lg"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-hero-buttons",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-hero-cta-primary",
+                                                    "style_name": "button",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "Jetzt starten"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Get started"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "filled"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "is_link": {
+                                                            "all": {
+                                                                "content": "1"
+                                                            }
+                                                        },
+                                                        "page_keyword": {
+                                                            "all": {
+                                                                "content": "register"
+                                                            }
+                                                        },
+                                                        "web_right_icon": {
+                                                            "all": {
+                                                                "content": "IconArrowRight"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-hero-cta-secondary",
+                                                    "style_name": "button",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "Anmelden"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Sign in"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "outline"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "is_link": {
+                                                            "all": {
+                                                                "content": "1"
+                                                            }
+                                                        },
+                                                        "page_keyword": {
+                                                            "all": {
+                                                                "content": "login"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "hero-home-hero-note",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Kostenlos für Pilotprojekte · Keine Installation nötig"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Free for pilot projects · No installation required"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "gray"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-hero-image",
+                                    "style_name": "image",
+                                    "fields": {
+                                        "img_src": {
+                                            "all": {
+                                                "content": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=1200&q=80&auto=format&fit=crop"
+                                            }
+                                        },
+                                        "alt": {
+                                            "de-CH": {
+                                                "content": "Person bei einer Achtsamkeitsübung im Sonnenuntergang"
+                                            },
+                                            "en-GB": {
+                                                "content": "Person practising mindfulness at sunset"
+                                            }
+                                        },
+                                        "is_fluid": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        },
+                                        "web_image_fit": {
+                                            "all": {
+                                                "content": "cover"
+                                            }
+                                        },
+                                        "web_height": {
+                                            "all": {
+                                                "content": "420px"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "hero-home-hero-space-bottom",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "section_name": "hero-home-stats",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "md"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "hero-home-stats-divider-top",
+                            "style_name": "divider",
+                            "fields": {}
+                        },
+                        {
+                            "section_name": "hero-home-stats-space",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-stats-grid",
+                            "style_name": "simple-grid",
+                            "fields": {
+                                "cols": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "web_cols_sm": {
+                                    "all": {
+                                        "content": "3"
+                                    }
+                                },
+                                "gap": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "hero-home-stat-1",
+                                    "style_name": "stack",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "0"
+                                            }
+                                        },
+                                        "align": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-stat-1-value",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "12'000+"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "12,000+"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "2"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-stat-1-label",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Aktive Teilnehmende"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Active participants"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "gray"
+                                                    }
+                                                },
+                                                "text_align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-stat-2",
+                                    "style_name": "stack",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "0"
+                                            }
+                                        },
+                                        "align": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-stat-2-value",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "40+"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "40+"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "2"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-stat-2-label",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Laufende Programme"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Programs running"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "gray"
+                                                    }
+                                                },
+                                                "text_align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-stat-3",
+                                    "style_name": "stack",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "0"
+                                            }
+                                        },
+                                        "align": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-stat-3-value",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "98%"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "98%"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "2"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-stat-3-label",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Zufriedenheit im Support"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Support satisfaction"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "gray"
+                                                    }
+                                                },
+                                                "text_align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "hero-home-stats-space-bottom",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-stats-divider-bottom",
+                            "style_name": "divider",
+                            "fields": {}
+                        }
+                    ]
+                },
+                {
+                    "section_name": "hero-home-features",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "hero-home-features-space-top",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-features-header",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": {
+                                    "all": {
+                                        "content": "xs"
+                                    }
+                                },
+                                "align": {
+                                    "all": {
+                                        "content": "center"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "hero-home-features-badge",
+                                    "style_name": "badge",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Funktionen"
+                                            },
+                                            "en-GB": {
+                                                "content": "Features"
+                                            }
+                                        },
+                                        "variant": {
+                                            "all": {
+                                                "content": "light"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "full"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "hero-home-features-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": {
+                                                "content": "Alles, was Ihr digitales Programm braucht"
+                                            },
+                                            "en-GB": {
+                                                "content": "Everything your digital program needs"
+                                            }
+                                        },
+                                        "title_order": {
+                                            "all": {
+                                                "content": "2"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "hero-home-features-subtitle",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": {
+                                                "content": "Vom ersten Entwurf bis zur laufenden Studie – gestalten, veröffentlichen und auswerten an einem Ort."
+                                            },
+                                            "en-GB": {
+                                                "content": "From first draft to running study – design, publish, and analyse in one place."
+                                            }
+                                        },
+                                        "text_align": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "gray"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "hero-home-features-space-mid",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-features-grid",
+                            "style_name": "simple-grid",
+                            "fields": {
+                                "cols": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "web_cols_sm": {
+                                    "all": {
+                                        "content": "2"
+                                    }
+                                },
+                                "web_cols_lg": {
+                                    "all": {
+                                        "content": "3"
+                                    }
+                                },
+                                "gap": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                },
+                                "vertical_spacing": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "hero-home-feature-1",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-feature-1-body",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-feature-1-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "lg"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconPuzzle"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-1-title",
+                                                    "style_name": "title",
+                                                    "fields": {
+                                                        "content": {
+                                                            "de-CH": {
+                                                                "content": "Baukasten aus Styles"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Composable styles"
+                                                            }
+                                                        },
+                                                        "title_order": {
+                                                            "all": {
+                                                                "content": "4"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-1-text",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "Seiten aus Karten, Rastern, Formularen und Medien zusammensetzen – ganz ohne Code."
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Assemble pages from cards, grids, forms, and media – no code required."
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-feature-2",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-feature-2-body",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-feature-2-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "lg"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconDeviceMobile"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-2-title",
+                                                    "style_name": "title",
+                                                    "fields": {
+                                                        "content": {
+                                                            "de-CH": {
+                                                                "content": "Web und Mobile"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Web and mobile"
+                                                            }
+                                                        },
+                                                        "title_order": {
+                                                            "all": {
+                                                                "content": "4"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-2-text",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "Einmal gestalten, überall nutzen: Ihre Inhalte rendern im Browser und in der App."
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Design once, use everywhere: your content renders in the browser and in the app."
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-feature-3",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-feature-3-body",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-feature-3-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "lg"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconLanguage"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-3-title",
+                                                    "style_name": "title",
+                                                    "fields": {
+                                                        "content": {
+                                                            "de-CH": {
+                                                                "content": "Mehrsprachig ab Werk"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Multilingual by default"
+                                                            }
+                                                        },
+                                                        "title_order": {
+                                                            "all": {
+                                                                "content": "4"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-3-text",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "Alle Inhalte pro Sprache pflegen, mit sauberen Fallbacks und durchsuchbar in jeder Sprache."
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Maintain every text per language, with clean fallbacks and search across all languages."
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-feature-4",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-feature-4-body",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-feature-4-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "lg"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconChartLine"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-4-title",
+                                                    "style_name": "title",
+                                                    "fields": {
+                                                        "content": {
+                                                            "de-CH": {
+                                                                "content": "Daten und Formulare"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Data and forms"
+                                                            }
+                                                        },
+                                                        "title_order": {
+                                                            "all": {
+                                                                "content": "4"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-4-text",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "Fragebögen und Verläufe erfassen, sicher speichern und direkt im CMS auswerten."
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Capture questionnaires and journeys, store them safely, and analyse them right in the CMS."
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-feature-5",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-feature-5-body",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-feature-5-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "lg"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconUsersGroup"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-5-title",
+                                                    "style_name": "title",
+                                                    "fields": {
+                                                        "content": {
+                                                            "de-CH": {
+                                                                "content": "Rollen und Zugriff"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Roles and access"
+                                                            }
+                                                        },
+                                                        "title_order": {
+                                                            "all": {
+                                                                "content": "4"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-5-text",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "Gruppen, Rollen und Seitenrechte steuern, wer was sieht – von Gast bis Studienteam."
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Groups, roles, and page permissions control who sees what – from guest to study team."
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "section_name": "hero-home-feature-6",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-feature-6-body",
+                                            "style_name": "stack",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-feature-6-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "lg"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconShieldLock"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-6-title",
+                                                    "style_name": "title",
+                                                    "fields": {
+                                                        "content": {
+                                                            "de-CH": {
+                                                                "content": "Sicher und transparent"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Secure and transparent"
+                                                            }
+                                                        },
+                                                        "title_order": {
+                                                            "all": {
+                                                                "content": "4"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-feature-6-text",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "2-Faktor-Login, Audit-Protokolle und volle Datenhoheit auf Ihrer eigenen Infrastruktur."
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Two-factor login, audit trails, and full data ownership on your own infrastructure."
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "gray"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "hero-home-features-space-bottom",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "section_name": "hero-home-showcase",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "hero-home-showcase-grid",
+                            "style_name": "simple-grid",
+                            "fields": {
+                                "cols": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "web_cols_md": {
+                                    "all": {
+                                        "content": "2"
+                                    }
+                                },
+                                "gap": {
+                                    "all": {
+                                        "content": "xl"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "hero-home-showcase-image",
+                                    "style_name": "image",
+                                    "fields": {
+                                        "img_src": {
+                                            "all": {
+                                                "content": "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1200&q=80&auto=format&fit=crop"
+                                            }
+                                        },
+                                        "alt": {
+                                            "de-CH": {
+                                                "content": "Team arbeitet gemeinsam an einem Laptop"
+                                            },
+                                            "en-GB": {
+                                                "content": "Team collaborating around a laptop"
+                                            }
+                                        },
+                                        "is_fluid": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        },
+                                        "web_image_fit": {
+                                            "all": {
+                                                "content": "cover"
+                                            }
+                                        },
+                                        "web_height": {
+                                            "all": {
+                                                "content": "400px"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "hero-home-showcase-copy",
+                                    "style_name": "stack",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "md"
+                                            }
+                                        },
+                                        "justify": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-showcase-badge",
+                                            "style_name": "badge",
+                                            "fields": {
+                                                "label": {
+                                                    "de-CH": {
+                                                        "content": "So funktioniert's"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "How it works"
+                                                    }
+                                                },
+                                                "variant": {
+                                                    "all": {
+                                                        "content": "light"
+                                                    }
+                                                },
+                                                "radius": {
+                                                    "all": {
+                                                        "content": "full"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-showcase-title",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "In drei Schritten zur eigenen Plattform"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Your own platform in three steps"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "2"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-step-1",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "flex-start"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-step-1-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "full"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "teal"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconCircleCheck"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-step-1-copy",
+                                                    "style_name": "stack",
+                                                    "fields": {
+                                                        "gap": {
+                                                            "all": {
+                                                                "content": "0"
+                                                            }
+                                                        }
+                                                    },
+                                                    "children": [
+                                                        {
+                                                            "section_name": "hero-home-step-1-title",
+                                                            "style_name": "title",
+                                                            "fields": {
+                                                                "content": {
+                                                                    "de-CH": {
+                                                                        "content": "Inhalte gestalten"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Design your content"
+                                                                    }
+                                                                },
+                                                                "title_order": {
+                                                                    "all": {
+                                                                        "content": "5"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "section_name": "hero-home-step-1-text",
+                                                            "style_name": "text",
+                                                            "fields": {
+                                                                "text": {
+                                                                    "de-CH": {
+                                                                        "content": "Seiten im visuellen Editor zusammensetzen und jederzeit in der Live-Vorschau prüfen."
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Compose pages in the visual editor and check them any time in the live preview."
+                                                                    }
+                                                                },
+                                                                "size": {
+                                                                    "all": {
+                                                                        "content": "sm"
+                                                                    }
+                                                                },
+                                                                "color": {
+                                                                    "all": {
+                                                                        "content": "gray"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "hero-home-step-2",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "flex-start"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-step-2-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "full"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "teal"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconCircleCheck"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-step-2-copy",
+                                                    "style_name": "stack",
+                                                    "fields": {
+                                                        "gap": {
+                                                            "all": {
+                                                                "content": "0"
+                                                            }
+                                                        }
+                                                    },
+                                                    "children": [
+                                                        {
+                                                            "section_name": "hero-home-step-2-title",
+                                                            "style_name": "title",
+                                                            "fields": {
+                                                                "content": {
+                                                                    "de-CH": {
+                                                                        "content": "Navigation aufbauen"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Build the navigation"
+                                                                    }
+                                                                },
+                                                                "title_order": {
+                                                                    "all": {
+                                                                        "content": "5"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "section_name": "hero-home-step-2-text",
+                                                            "style_name": "text",
+                                                            "fields": {
+                                                                "text": {
+                                                                    "de-CH": {
+                                                                        "content": "Header, Footer und App-Menüs im Menü-Builder pflegen – inklusive Presets und Vorschau."
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Maintain header, footer, and app menus in the menu builder – presets and preview included."
+                                                                    }
+                                                                },
+                                                                "size": {
+                                                                    "all": {
+                                                                        "content": "sm"
+                                                                    }
+                                                                },
+                                                                "color": {
+                                                                    "all": {
+                                                                        "content": "gray"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "hero-home-step-3",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "flex-start"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-step-3-icon",
+                                                    "style_name": "theme-icon",
+                                                    "fields": {
+                                                        "web_variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "full"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "teal"
+                                                            }
+                                                        },
+                                                        "web_left_icon": {
+                                                            "all": {
+                                                                "content": "IconCircleCheck"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-step-3-copy",
+                                                    "style_name": "stack",
+                                                    "fields": {
+                                                        "gap": {
+                                                            "all": {
+                                                                "content": "0"
+                                                            }
+                                                        }
+                                                    },
+                                                    "children": [
+                                                        {
+                                                            "section_name": "hero-home-step-3-title",
+                                                            "style_name": "title",
+                                                            "fields": {
+                                                                "content": {
+                                                                    "de-CH": {
+                                                                        "content": "Veröffentlichen und begleiten"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Publish and support"
+                                                                    }
+                                                                },
+                                                                "title_order": {
+                                                                    "all": {
+                                                                        "content": "5"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "section_name": "hero-home-step-3-text",
+                                                            "style_name": "text",
+                                                            "fields": {
+                                                                "text": {
+                                                                    "de-CH": {
+                                                                        "content": "Teilnehmende einladen, Fortschritt verfolgen und Inhalte laufend verbessern."
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Invite participants, track progress, and keep improving your content."
+                                                                    }
+                                                                },
+                                                                "size": {
+                                                                    "all": {
+                                                                        "content": "sm"
+                                                                    }
+                                                                },
+                                                                "color": {
+                                                                    "all": {
+                                                                        "content": "gray"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "hero-home-showcase-space",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "section_name": "hero-home-quote",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "md"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "hero-home-quote-block",
+                            "style_name": "blockquote",
+                            "fields": {
+                                "blockquote_content": {
+                                    "de-CH": {
+                                        "content": "Wir haben unser Begleitprogramm in zwei Wochen aufgebaut – ohne Entwickler. Die Teilnehmenden lieben, wie klar und ruhig sich alles anfühlt."
+                                    },
+                                    "en-GB": {
+                                        "content": "We built our companion program in two weeks – without developers. Participants love how calm and clear everything feels."
+                                    }
+                                },
+                                "cite": {
+                                    "de-CH": {
+                                        "content": "Projektleiterin, Universitätsklinik"
+                                    },
+                                    "en-GB": {
+                                        "content": "Project lead, university hospital"
+                                    }
+                                },
+                                "web_left_icon": {
+                                    "all": {
+                                        "content": "IconQuote"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-quote-space",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "section_name": "hero-home-cta",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "md"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "hero-home-cta-card",
+                            "style_name": "card",
+                            "fields": {
+                                "border": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "radius": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                },
+                                "web_card_shadow": {
+                                    "all": {
+                                        "content": "md"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "hero-home-cta-body",
+                                    "style_name": "stack",
+                                    "fields": {
+                                        "gap": {
+                                            "all": {
+                                                "content": "md"
+                                            }
+                                        },
+                                        "align": {
+                                            "all": {
+                                                "content": "center"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "hero-home-cta-title",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "Bereit loszulegen?"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Ready to get started?"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "2"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-cta-text",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Erstellen Sie ein Konto und veröffentlichen Sie Ihre erste Seite in wenigen Minuten."
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Create an account and publish your first page in minutes."
+                                                    }
+                                                },
+                                                "text_align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "gray"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "hero-home-cta-buttons",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "justify": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "hero-home-cta-primary",
+                                                    "style_name": "button",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "Konto erstellen"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Create account"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "filled"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "is_link": {
+                                                            "all": {
+                                                                "content": "1"
+                                                            }
+                                                        },
+                                                        "page_keyword": {
+                                                            "all": {
+                                                                "content": "register"
+                                                            }
+                                                        },
+                                                        "web_right_icon": {
+                                                            "all": {
+                                                                "content": "IconArrowRight"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "hero-home-cta-secondary",
+                                                    "style_name": "button",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "Anmelden"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "Sign in"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "outline"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "is_link": {
+                                                            "all": {
+                                                                "content": "1"
+                                                            }
+                                                        },
+                                                        "page_keyword": {
+                                                            "all": {
+                                                                "content": "login"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "hero-home-cta-note",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "Keine Installation nötig – läuft im Browser und als App."
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "No installation required – runs in the browser and as an app."
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "gray"
+                                                    }
+                                                },
+                                                "text_align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "hero-home-footer-space",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-footer-note",
+                            "style_name": "text",
+                            "fields": {
+                                "text": {
+                                    "de-CH": {
+                                        "content": "Vorlage «Hero landing page» – Texte, Bilder und Button-Ziele im Seiten-Editor anpassen."
+                                    },
+                                    "en-GB": {
+                                        "content": "Template “Hero landing page” – adjust texts, images, and button targets in the page editor."
+                                    }
+                                },
+                                "size": {
+                                    "all": {
+                                        "content": "sm"
+                                    }
+                                },
+                                "color": {
+                                    "all": {
+                                        "content": "gray"
+                                    }
+                                },
+                                "text_align": {
+                                    "all": {
+                                        "content": "center"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "hero-home-footer-space-bottom",
+                            "style_name": "space",
+                            "fields": {
+                                "size": {
+                                    "all": {
+                                        "content": "lg"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

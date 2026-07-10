@@ -1,6 +1,6 @@
 Essential Tailwind CSS Classes (Bootstrap 5 Equivalents)
-Generated: 2025-08-05T08:37:20.951Z
-Total Classes: 318
+Generated: 2026-07-09T11:59:34.601Z
+Total Classes: 882
 
 This curated list includes the most essential Tailwind classes that
 provide Bootstrap 5 functionality without overwhelming users.
@@ -16,29 +16,29 @@ Categories included:
 - Responsive & Interactive states
 
 Sample Classes:
-  - absolute - Position: absolute (Bootstrap: .position-absolute)
-  - appearance-none - Appearance none
-  - bg-blue-500 - Background: blue 500 (Bootstrap: .bg-primary)
-  - bg-blue-600 - Background: blue 600 (Bootstrap: .bg-primary)
-  - bg-blue-700 - Background: blue 700 (Bootstrap: .bg-primary)
-  - bg-gray-100 - Background: gray 100 (Bootstrap: .bg-*)
-  - bg-gray-200 - Background: gray 200 (Bootstrap: .bg-*)
-  - bg-gray-300 - Background: gray 300 (Bootstrap: .bg-*)
-  - bg-gray-800 - Background: gray 800 (Bootstrap: .bg-*)
-  - bg-gray-900 - Background: gray 900 (Bootstrap: .bg-*)
-  - bg-green-500 - Background: green 500 (Bootstrap: .bg-success)
-  - bg-green-600 - Background: green 600 (Bootstrap: .bg-success)
-  - bg-green-700 - Background: green 700 (Bootstrap: .bg-success)
-  - bg-indigo-500 - Background: indigo 500 (Bootstrap: .bg-*)
-  - bg-indigo-600 - Background: indigo 600 (Bootstrap: .bg-*)
-  - bg-indigo-700 - Background: indigo 700 (Bootstrap: .bg-*)
-  - bg-red-500 - Background: red 500 (Bootstrap: .bg-danger)
-  - bg-red-600 - Background: red 600 (Bootstrap: .bg-danger)
-  - bg-red-700 - Background: red 700 (Bootstrap: .bg-danger)
-  - bg-white - Background: white (Bootstrap: .bg-*)
-  - bg-yellow-400 - Background: yellow 400 (Bootstrap: .bg-warning)
-  - bg-yellow-500 - Background: yellow 500 (Bootstrap: .bg-warning)
-  - bg-yellow-600 - Background: yellow 600 (Bootstrap: .bg-warning)
-  - block - Display as block element (Bootstrap: .d-block)
-  - border - Add border (Bootstrap: .border)
-  ... and 293 more
+  - 2xl:block - Display as block element @2xl+ (Bootstrap: .d-block)
+  - 2xl:col-span-1 - Span 1 grid columns @2xl+ (Bootstrap: .col-1)
+  - 2xl:col-span-12 - Span 12 grid columns @2xl+ (Bootstrap: .col-12)
+  - 2xl:col-span-2 - Span 2 grid columns @2xl+ (Bootstrap: .col-2)
+  - 2xl:col-span-3 - Span 3 grid columns @2xl+ (Bootstrap: .col-3)
+  - 2xl:col-span-4 - Span 4 grid columns @2xl+ (Bootstrap: .col-4)
+  - 2xl:col-span-6 - Span 6 grid columns @2xl+ (Bootstrap: .col-6)
+  - 2xl:col-span-full - Span full grid columns @2xl+ (Bootstrap: .col-full)
+  - 2xl:flex - Display as flexbox container @2xl+ (Bootstrap: .d-flex)
+  - 2xl:flex-col - Flex direction column @2xl+ (Bootstrap: .flex-column)
+  - 2xl:flex-nowrap - Flex nowrap @2xl+
+  - 2xl:flex-row - Flex direction row @2xl+ (Bootstrap: .flex-row)
+  - 2xl:flex-wrap - Flex wrap @2xl+
+  - 2xl:gap-0 - Gap 0 @2xl+
+  - 2xl:gap-1 - Gap 1 @2xl+
+  - 2xl:gap-10 - Gap 10 @2xl+
+  - 2xl:gap-12 - Gap 12 @2xl+
+  - 2xl:gap-2 - Gap 2 @2xl+
+  - 2xl:gap-3 - Gap 3 @2xl+
+  - 2xl:gap-4 - Gap 4 @2xl+
+  - 2xl:gap-5 - Gap 5 @2xl+
+  - 2xl:gap-6 - Gap 6 @2xl+
+  - 2xl:gap-8 - Gap 8 @2xl+
+  - 2xl:grid - Display as CSS grid container @2xl+ (Bootstrap: .d-grid)
+  - 2xl:grid-cols-1 - Grid with 1 columns @2xl+ (Bootstrap: grid system)
+  ... and 857 more

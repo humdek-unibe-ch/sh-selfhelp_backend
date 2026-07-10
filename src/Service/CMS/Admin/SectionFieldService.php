@@ -16,11 +16,13 @@ use App\Entity\Section;
 use App\Entity\SectionsFieldsTranslation;
 use App\Entity\StylesField;
 use App\Exception\ServiceException;
+use App\Repository\SectionRepository;
 use App\Repository\StyleRepository;
 use App\Service\CMS\Admin\Traits\TranslationManagerTrait;
 use App\Service\CMS\Admin\Traits\FieldValidatorTrait;
 use App\Service\CMS\DataColumnService;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Admin\AdminAssetService;
@@ -39,7 +41,9 @@ class SectionFieldService extends BaseService
         private readonly DataTableService $dataTableService,
         private readonly DataColumnService $dataColumnService,
         private readonly CacheService $cache,
-        private readonly AdminAssetService $adminAssetService
+        private readonly AdminAssetService $adminAssetService,
+        private readonly SectionRepository $sectionRepository,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -274,17 +278,25 @@ class SectionFieldService extends BaseService
                 $cacheKey,
                 function () {
                     $qb = $this->entityManager->createQueryBuilder();
-                    $qb->select('dt.id, dt.name')
+                    $qb->select('dt.id, dt.name, dt.displayName')
                         ->from(DataTable::class, 'dt')
-                        ->orderBy('dt.name', 'ASC');
+                        ->orderBy('dt.displayName', 'ASC')
+                        ->addOrderBy('dt.name', 'ASC');
 
-                    /** @var list<array{id: mixed, name: mixed}> $dataTables */
+                    /** @var list<array{id: mixed, name: mixed, displayName: mixed}> $dataTables */
                     $dataTables = $qb->getQuery()->getResult();
 
-                    return array_map(fn (array $table): array => [
-                        'value' => $this->asString($table['id']),
-                        'text' => $table['name']
-                    ], $dataTables);
+                    return array_map(function (array $table): array {
+                        $id = $this->asString($table['id']);
+                        $name = $this->asString($table['name']);
+                        $displayName = trim($this->asString($table['displayName'] ?? ''));
+                        $label = $displayName !== '' ? $displayName : $name;
+
+                        return [
+                            'value' => $id,
+                            'text' => sprintf('%s (#%s, table %s)', $label, $id, $name),
+                        ];
+                    }, $dataTables);
                 }
             );
     }
@@ -450,6 +462,8 @@ class SectionFieldService extends BaseService
         $this->cache
             ->withCategory(CacheService::CATEGORY_SECTIONS)
             ->invalidateAllListsInCategory();
+        $pageIds = $this->sectionRepository->getPageIdsContainingSection((int) $section->getId());
+        $this->navigationCacheInvalidator->invalidateForPageIds($pageIds);
     }
 
     /**

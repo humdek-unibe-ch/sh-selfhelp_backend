@@ -1,0 +1,33 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Export Pages Request Schema",
+    "description": "Schema for requesting a portable export bundle of one or more pages (issue #30, Phase 5)",
+    "type": "object",
+    "properties": {
+        "pageIds": {
+            "type": "array",
+            "description": "Ids of the pages to include in the export bundle",
+            "items": { "type": "integer" },
+            "minItems": 1
+        },
+        "options": {
+            "type": "object",
+            "description": "Optional export switches. The page structure (including portable @section: data links) is always exported; these only control whether owned data tables / rows are bundled too.",
+            "properties": {
+                "includeDataTables": {
+                    "type": "boolean",
+                    "description": "When true, also export the column definitions of each in-bundle form-owned data table so the importer can pre-create an (empty) table. Default false.",
+                    "default": false
+                },
+                "includeDataRows": {
+                    "type": "boolean",
+                    "description": "When true, also export each owned table's rows (keyed by human field name) as sample data. Implies includeDataTables. Default false.",
+                    "default": false
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "required": ["pageIds"],
+    "additionalProperties": false
+}

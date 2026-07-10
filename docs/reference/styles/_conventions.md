@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (backend field contract, `@selfhelp/shared` types, frontend/mobile renderers).
-Last verified: 2026-06-29.
+Last verified: 2026-07-09.
 Source of truth: `styles` / `fields` / `rel_fields_styles` rows seeded by the Doctrine migrations, the live `GET /cms-api/v1/admin/styles/schema` endpoint, the `@selfhelp/shared` style types, and the frontend style components.
 
 This page describes the fields and conventions **shared by every style**, so the
@@ -106,7 +106,7 @@ it; that is not an error.
 | `css_mobile` | css | Class string used by the **mobile** app (the mobile renderer reads only this, never `css`). |
 | `condition` | condition | A JSON-Logic expression evaluated per request. When it resolves to false the section is hidden (mirrors the backend `ConditionService`). |
 | `debug` | checkbox | When on, the section emits debug data (condition result, resolved variables) for editors. |
-| `data_config` | data-config | Optional JSON that binds the section to backend data (used by data-driven styles such as `entry-list`, `loop`, and the form styles). |
+| `data_config` | data-config | Optional JSON that retrieves **helper scopes** for interpolation (used by `loop`, `data-container`, and similar). On **`entry-list` / `entry-record` it must not choose the row table** — use the style's **Data table** property field instead. A legacy `data_config.table` entry on an entry holder is ignored at render time; see [composite.md#entry-list](./composite.md#entry-list). |
 
 ## Spacing
 
@@ -176,10 +176,11 @@ explicit gaps (not implicit drift) so they are visible when planning mobile work
   tags degrade to inline via `sanitizeContent`). Authored headings/lists therefore
   appear flattened on mobile. Closing this needs a mobile block renderer — until
   then keep critical structure out of mobile-facing copy.
-- **show-user-input headers — parity restored (mobile `0.1.30`).** Rows are keyed
-  by the immutable `field_key`; both platforms now resolve human labels through
-  the section's `field_labels` (`field_key => display_name`) map, so default
-  headers and `fields_map` mappings behave the same on web and mobile.
+- **entry-table headers (then `show-user-input`) — parity restored (mobile
+  `0.1.30`).** Rows are keyed by the immutable `field_key`; both platforms now
+  resolve human labels through the section's `field_labels`
+  (`field_key => display_name`) map, so default headers and `fields_map`
+  mappings behave the same on web and mobile.
 
 ## Conventions used on the per-category pages
 

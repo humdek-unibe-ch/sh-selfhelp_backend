@@ -1,0 +1,1239 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "exported_at": "2026-07-06T00:00:00+00:00",
+    "core_version": "0.1.x",
+    "title": "News & updates",
+    "description": "Publish posts with category, date and a translatable body; public list/detail pair plus an admin grid.",
+    "tags": [
+        "cms-in-cms",
+        "list + detail",
+        "blog"
+    ],
+    "_comment": "CMS-in-CMS template: a News & Updates app in four pages. PUBLIC: /news lists posts as cards (category badge, date, summary) and /news/{record_id} renders the full article. ADMIN (CMS surface): /cms/news is an entry-table CRUD grid and /cms/news/form is one create+edit form page with two routes (blank = create, /{record_id} = update) opened as a modal. Data binding is portable via \"@section:news-form\" tokens; data_tables[] carries columns + sample rows (import with options.importData=true). The body input is translatable. Content locales: de-CH + en-GB. Use a keyword + route prefix to import a second copy — in-content links are rewritten automatically. Import via Admin > Pages > Import. NOT auto-seeded.",
+    "data_tables": [
+        {
+            "owner_section_name": "news-form",
+            "columns": [
+                "title",
+                "category",
+                "tags",
+                "published_on",
+                "summary",
+                "body"
+            ],
+            "rows": [
+                {
+                    "title": {
+                        "en-GB": "New study platform goes live",
+                        "de-CH": "Neue Studienplattform ist live"
+                    },
+                    "category": "release",
+                    "tags": "platform,study",
+                    "published_on": "2026-06-01",
+                    "summary": {
+                        "en-GB": "The redesigned participant portal is now open to all study groups.",
+                        "de-CH": "Das überarbeitete Teilnehmerportal steht allen Studiengruppen offen."
+                    },
+                    "body": {
+                        "en-GB": "After six months of building and testing, the redesigned participant portal is live. Every study group can now log in with their existing credentials. The new portal loads faster, works on phones, and lets coordinators publish content without writing code.",
+                        "de-CH": "Nach sechs Monaten Entwicklung und Tests ist das überarbeitete Teilnehmerportal live. Alle Studiengruppen können sich mit ihren bestehenden Zugangsdaten anmelden. Das neue Portal lädt schneller, funktioniert auf dem Handy und lässt Koordinatorinnen Inhalte ohne Code veröffentlichen."
+                    }
+                },
+                {
+                    "title": {
+                        "en-GB": "Maintenance window on Friday",
+                        "de-CH": "Wartungsfenster am Freitag"
+                    },
+                    "category": "notice",
+                    "tags": "platform,technical",
+                    "published_on": "2026-06-12",
+                    "summary": {
+                        "en-GB": "The platform will be read-only between 06:00 and 07:00 CET.",
+                        "de-CH": "Die Plattform ist zwischen 06:00 und 07:00 MEZ nur lesbar."
+                    },
+                    "body": {
+                        "en-GB": "We are upgrading the database cluster on Friday morning. Between 06:00 and 07:00 CET the platform stays reachable but new form submissions are paused. Drafts are kept locally and submit automatically once the window ends.",
+                        "de-CH": "Am Freitagmorgen werten wir den Datenbank-Cluster auf. Zwischen 06:00 und 07:00 MEZ bleibt die Plattform erreichbar, neue Formularabgaben sind jedoch pausiert. Entwürfe werden lokal gespeichert und nach dem Fenster automatisch übermittelt."
+                    }
+                },
+                {
+                    "title": {
+                        "en-GB": "Two new questionnaire templates",
+                        "de-CH": "Zwei neue Fragebogen-Vorlagen"
+                    },
+                    "category": "feature",
+                    "tags": "coordinators,study",
+                    "published_on": "2026-06-20",
+                    "summary": {
+                        "en-GB": "Weekly mood tracking and sleep diary templates are ready to import.",
+                        "de-CH": "Wöchentlicher Stimmungs-Tracker und Schlaftagebuch sind importierbar."
+                    },
+                    "body": {
+                        "en-GB": "The template gallery now ships a weekly mood tracker and a structured sleep diary. Both are fully translated, mobile-friendly, and can be customised in the page editor after import.",
+                        "de-CH": "Die Vorlagengalerie enthält jetzt einen wöchentlichen Stimmungs-Tracker und ein strukturiertes Schlaftagebuch. Beide sind vollständig übersetzt, mobilfreundlich und lassen sich nach dem Import im Seiteneditor anpassen."
+                    }
+                },
+                {
+                    "title": {
+                        "en-GB": "Summer office hours",
+                        "de-CH": "Sommer-Sprechzeiten"
+                    },
+                    "category": "notice",
+                    "tags": "study",
+                    "published_on": "2026-07-01",
+                    "summary": {
+                        "en-GB": "Support replies within two working days during July and August.",
+                        "de-CH": "Support antwortet im Juli und August innerhalb von zwei Arbeitstagen."
+                    },
+                    "body": {
+                        "en-GB": "During July and August the support team runs a reduced schedule. Tickets are answered within two working days. Urgent incidents are still handled around the clock through the status page.",
+                        "de-CH": "Im Juli und August arbeitet der Support mit reduziertem Pensum. Tickets werden innerhalb von zwei Arbeitstagen beantwortet. Dringende Vorfälle werden weiterhin rund um die Uhr über die Statusseite bearbeitet."
+                    }
+                }
+            ]
+        }
+    ],
+    "pages": [
+        {
+            "keyword": "cms-news-form",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/news/form",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Beitrag bearbeiten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Edit post"
+                        }
+                    ]
+                },
+                {
+                    "name": "open_in_modal",
+                    "display": false,
+                    "translations": [
+                        {
+                            "language_code": "all",
+                            "content": "1"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/cms/news/form",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                },
+                {
+                    "path_pattern": "/cms/news/{record_id}",
+                    "requirements": {
+                        "record_id": "\\d+"
+                    },
+                    "is_canonical": false,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "news-form",
+                    "style_name": "entry-record-form",
+                    "fields": {
+                        "title": {
+                            "de-CH": {
+                                "content": "Beitrag"
+                            },
+                            "en-GB": {
+                                "content": "News post"
+                            }
+                        },
+                        "alert_success": {
+                            "de-CH": {
+                                "content": "Beitrag gespeichert."
+                            },
+                            "en-GB": {
+                                "content": "Post saved."
+                            }
+                        },
+                        "btn_save_label": {
+                            "de-CH": {
+                                "content": "Speichern"
+                            },
+                            "en-GB": {
+                                "content": "Save"
+                            }
+                        },
+                        "btn_update_label": {
+                            "de-CH": {
+                                "content": "Aktualisieren"
+                            },
+                            "en-GB": {
+                                "content": "Update"
+                            }
+                        },
+                        "btn_cancel_label": {
+                            "de-CH": {
+                                "content": "Abbrechen"
+                            },
+                            "en-GB": {
+                                "content": "Cancel"
+                            }
+                        },
+                        "btn_cancel_url": {
+                            "all": {
+                                "content": "/cms/news"
+                            }
+                        },
+                        "close_modal_on_save": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "load_record_from": {
+                            "all": {
+                                "content": "record_id"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "news-form-title",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "title"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Titel"
+                                    },
+                                    "en-GB": {
+                                        "content": "Title"
+                                    }
+                                },
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "news-form-category",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "category"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Kategorie"
+                                    },
+                                    "en-GB": {
+                                        "content": "Category"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"release\",\"sort\":1},{\"value\":\"feature\",\"sort\":2},{\"value\":\"notice\",\"sort\":3}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"release\":\"Freigabe\",\"feature\":\"Funktion\",\"notice\":\"Hinweis\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"release\":\"Release\",\"feature\":\"Feature\",\"notice\":\"Notice\"}"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "news-form-tags",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "tags"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Schlagwörter"
+                                    },
+                                    "en-GB": {
+                                        "content": "Tags"
+                                    }
+                                },
+                                "is_multiple": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"platform\",\"sort\":1},{\"value\":\"study\",\"sort\":2},{\"value\":\"coordinators\",\"sort\":3},{\"value\":\"technical\",\"sort\":4}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"platform\":\"Plattform\",\"study\":\"Studie\",\"coordinators\":\"Koordination\",\"technical\":\"Technik\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"platform\":\"Platform\",\"study\":\"Study\",\"coordinators\":\"Coordination\",\"technical\":\"Technical\"}"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "news-form-published-on",
+                            "style_name": "datepicker",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "published_on"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Datum und Zeit"
+                                    },
+                                    "en-GB": {
+                                        "content": "Date and time"
+                                    }
+                                },
+                                "web_datepicker_type": {
+                                    "all": {
+                                        "content": "datetime"
+                                    }
+                                },
+                                "web_datepicker_format": {
+                                    "all": {
+                                        "content": "YYYY-MM-DD HH:mm"
+                                    }
+                                },
+                                "datepicker_placeholder": {
+                                    "all": {
+                                        "content": "2026-07-06 14:30"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "news-form-summary",
+                            "style_name": "textarea",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "summary"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Zusammenfassung"
+                                    },
+                                    "en-GB": {
+                                        "content": "Summary"
+                                    }
+                                },
+                                "rows": {
+                                    "all": {
+                                        "content": "2"
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "news-form-body",
+                            "style_name": "textarea",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "body"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Inhalt"
+                                    },
+                                    "en-GB": {
+                                        "content": "Body"
+                                    }
+                                },
+                                "description": {
+                                    "de-CH": {
+                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                    },
+                                    "en-GB": {
+                                        "content": "Translatable — enter a separate text per language."
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "rows": {
+                                    "all": {
+                                        "content": "8"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "form"
+        },
+        {
+            "keyword": "news",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/news",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Neuigkeiten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "News"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/news",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "news-page",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "news-hero",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": {
+                                    "all": {
+                                        "content": "xs"
+                                    }
+                                },
+                                "spacing": {
+                                    "all": {
+                                        "content": "{\"mb\":\"xl\"}"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "news-hero-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": {
+                                                "content": "Neuigkeiten"
+                                            },
+                                            "en-GB": {
+                                                "content": "News & updates"
+                                            }
+                                        },
+                                        "title_order": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "news-hero-subtitle",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": {
+                                                "content": "Was sich auf der Plattform ändert — Releases, Features und Hinweise."
+                                            },
+                                            "en-GB": {
+                                                "content": "What is changing on the platform — releases, features and notices."
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "dimmed"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "news-hero-divider",
+                                    "style_name": "divider",
+                                    "fields": {
+                                        "spacing": {
+                                            "all": {
+                                                "content": "{\"mt\":\"sm\"}"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "news-list",
+                            "style_name": "entry-list",
+                            "global_fields": {
+                                "css": "grid grid-cols-1 md:grid-cols-2 gap-6",
+                                "css_mobile": "gap-md"
+                            },
+                            "children": [
+                                {
+                                    "section_name": "news-list-card",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "md"
+                                            }
+                                        },
+                                        "web_card_shadow": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "news-list-card-meta",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "justify": {
+                                                    "all": {
+                                                        "content": "space-between"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                },
+                                                "web_group_wrap": {
+                                                    "all": {
+                                                        "content": "wrap"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "news-list-card-category",
+                                                    "style_name": "badge",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "{{news_item._category_label}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{news_item._category_label}}"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "news-list-card-date",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "{{news_item.published_on}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{news_item.published_on}}"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "dimmed"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "news-list-card-tags",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "{{news_item._tags_labels}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{news_item._tags_labels}}"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "dimmed"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "xs"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-list-card-title",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "{{news_item.title}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{news_item.title}}"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "3"
+                                                    }
+                                                },
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"sm\"}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-list-card-summary",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "{{news_item.summary}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{news_item.summary}}"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "dimmed"
+                                                    }
+                                                },
+                                                "web_text_line_clamp": {
+                                                    "all": {
+                                                        "content": "2"
+                                                    }
+                                                },
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"xs\",\"mb\":\"sm\"}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-list-card-open",
+                                            "style_name": "button",
+                                            "fields": {
+                                                "label": {
+                                                    "de-CH": {
+                                                        "content": "Weiterlesen"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Read more"
+                                                    }
+                                                },
+                                                "is_link": {
+                                                    "all": {
+                                                        "content": "1"
+                                                    }
+                                                },
+                                                "url": {
+                                                    "all": {
+                                                        "content": "/news/{{news_item.record_id}}"
+                                                    }
+                                                },
+                                                "variant": {
+                                                    "all": {
+                                                        "content": "light"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "xs"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "global_fields": {
+                                        "css_mobile": "px-md py-md gap-sm"
+                                    }
+                                }
+                            ],
+                            "fields": {
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:news-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "filter": {
+                                    "all": {
+                                        "content": ""
+                                    }
+                                },
+                                "scope": {
+                                    "all": {
+                                        "content": "news_item"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "public_list"
+        },
+        {
+            "keyword": "news-record",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/news/{record_id}",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Beitrag"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Article"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/news/{record_id}",
+                    "requirements": {
+                        "record_id": "\\d+"
+                    },
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "news-record-page",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "news-detail",
+                            "style_name": "entry-record",
+                            "children": [
+                                {
+                                    "section_name": "news-detail-container",
+                                    "style_name": "container",
+                                    "fields": {
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "spacing": {
+                                            "all": {
+                                                "content": "{\"mt\":\"lg\"}"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "news-detail-meta",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "news-detail-category",
+                                                    "style_name": "badge",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "{{news_item._category_label}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{news_item._category_label}}"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "light"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "news-detail-date",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "{{news_item.published_on}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{news_item.published_on}}"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "dimmed"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "news-detail-tags",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "{{news_item._tags_labels}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{news_item._tags_labels}}"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "dimmed"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-detail-title",
+                                            "style_name": "title",
+                                            "fields": {
+                                                "content": {
+                                                    "de-CH": {
+                                                        "content": "{{news_item.title}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{news_item.title}}"
+                                                    }
+                                                },
+                                                "title_order": {
+                                                    "all": {
+                                                        "content": "1"
+                                                    }
+                                                },
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"sm\"}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-detail-divider",
+                                            "style_name": "divider",
+                                            "fields": {
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"md\",\"mb\":\"md\"}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-detail-body",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "{{news_item.body}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{news_item.body}}"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "md"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "news-detail-back",
+                                            "style_name": "button",
+                                            "fields": {
+                                                "label": {
+                                                    "de-CH": {
+                                                        "content": "Zurück zu den Neuigkeiten"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "Back to all news"
+                                                    }
+                                                },
+                                                "is_link": {
+                                                    "all": {
+                                                        "content": "1"
+                                                    }
+                                                },
+                                                "url": {
+                                                    "all": {
+                                                        "content": "/news"
+                                                    }
+                                                },
+                                                "variant": {
+                                                    "all": {
+                                                        "content": "subtle"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"lg\"}"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            "fields": {
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:news-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "scope": {
+                                    "all": {
+                                        "content": "news_item"
+                                    }
+                                },
+                                "load_record_from": {
+                                    "all": {
+                                        "content": "record_id"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "public_detail"
+        },
+        {
+            "keyword": "cms-news",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/cms/news",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Neuigkeiten verwalten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Manage news"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/cms/news",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "cms-news-page",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "cms-news-table",
+                            "style_name": "entry-table",
+                            "fields": {
+                                "title": {
+                                    "de-CH": {
+                                        "content": "Alle Beiträge"
+                                    },
+                                    "en-GB": {
+                                        "content": "All posts"
+                                    }
+                                },
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:news-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "delete_entry": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_sortable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_searching": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_paginate": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_info": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "csv_export": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "fields_map": {
+                                    "all": {
+                                        "content": "[\"title\",\"category\",\"tags\",\"published_on\",\"summary\"]"
+                                    }
+                                },
+                                "add_url": {
+                                    "all": {
+                                        "content": "/cms/news/form"
+                                    }
+                                },
+                                "edit_url": {
+                                    "all": {
+                                        "content": "/cms/news/{record_id}"
+                                    }
+                                },
+                                "empty_text": {
+                                    "de-CH": {
+                                        "content": "Noch keine Beiträge — mit «Neu hinzufügen» den ersten Beitrag anlegen."
+                                    },
+                                    "en-GB": {
+                                        "content": "No posts yet — click \"Add new\" to write the first one."
+                                    }
+                                },
+                                "delete_modal_title": {
+                                    "de-CH": {
+                                        "content": "Beitrag löschen?"
+                                    },
+                                    "en-GB": {
+                                        "content": "Delete post?"
+                                    }
+                                },
+                                "delete_modal_body": {
+                                    "de-CH": {
+                                        "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
+                                    },
+                                    "en-GB": {
+                                        "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                                    }
+                                },
+                                "show_language_preview": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "fields_map_labels": {
+                                    "en-GB": {
+                                        "content": "{\"title\":\"Title\",\"category\":\"Category\",\"tags\":\"Tags\",\"published_on\":\"Published\",\"summary\":\"Summary\"}"
+                                    },
+                                    "de-CH": {
+                                        "content": "{\"title\":\"Titel\",\"category\":\"Kategorie\",\"tags\":\"Tags\",\"published_on\":\"Veröffentlicht\",\"summary\":\"Zusammenfassung\"}"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "cms_list"
+        }
+    ],
+    "cms_app": {
+        "name": "News & updates",
+        "slug": "news",
+        "description": null
+    }
+}

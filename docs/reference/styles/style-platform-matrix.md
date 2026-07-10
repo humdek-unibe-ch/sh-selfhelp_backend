@@ -153,7 +153,7 @@ There is deliberately **no** `pages.id_platform`; page targeting stays on
 | `progress` | no | `Progress` | RN `View` bar (no HeroUI progress) | adapted | both |
 | `progress-root` | yes | `Progress.Root` | RN `View` | adapted | both |
 | `progress-section` | no | `Progress.Section` | RN `View` | adapted | both |
-| `show-user-input` | no | data table | RN list/cards (not a table) | web-first | both — mobile must not copy the desktop table |
+| `entry-table` | no | data table | RN list/cards (not a table) | web-first | both — mobile must not copy the desktop table |
 
 ## composite / collection / data
 
@@ -180,7 +180,7 @@ Every style is currently `both`. The notes flag where a deliberate
 - `version` is the one concrete candidate for **`web`** (or removal) — it is a
   build/diagnostic surface with 0 author fields.
 - The `web-first` styles (`html-tag`, `typography`, `rich-text-editor`,
-  `color-picker`, `color-input`, `show-user-input`) stay `both` but need an
+  `color-picker`, `color-input`, `entry-table`) stay `both` but need an
   explicit, documented **mobile fallback** so they are not silently broken.
 - The `structural` styles (`ref-container`, `data-container`, `loop`,
   `entry-record`) carry behaviour, not UI; keep `both` and verify the behaviour

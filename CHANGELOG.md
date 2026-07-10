@@ -1,3 +1,577 @@
+# v0.1.36
+
+## Fix: mobile Live Preview may call `GET /pages/resolve`
+
+`MobilePreviewAccessGuard` now allowlists `pages_resolve_path_v1` for
+keyword-less `purpose: mobile_preview` tokens. Without it, parameterized
+in-preview navigation (`/team-members/{record_id}`) and web↔mobile Live Preview
+sync received HTTP 403 and looked like a no-op. Keyword-scoped mint sessions
+still cannot call resolve (they stay on by-keyword).
+
+## Migration history consolidation
+
+The branch-local work-in-progress migration chain is collapsed into five
+Doctrine-generated, direct-final migrations: `Version20260710092337` (ORM
+schema), `Version20260710093044` (page routing/CMS apps and authoring),
+`Version20260710093045` (navigation/search), `Version20260710093046`
+(analytics/headless system pages), and `Version20260710093048` (CMS catalog and
+data binding). Transient add/drop/re-add structures and the retired
+`POST /admin/pages/cms-app` route are not part of the final history.
+
+## Cleanup: CMS-surface public resolve policy
+
+Public `GET /pages/resolve` and `GET /pages/by-keyword/{keyword}` never return
+`page_surface=cms` pages to anonymous or non-admin callers (404). Host Admin
+callers with admin page **select** data-access may still resolve them (CMS Apps
+content host / authorized preview). Anonymous CMS-surface checks short-circuit
+before data-access audit (guest sentinel user id `0` must not be written to
+`data_access_audits`). `DataAccessSecurityService::auditLog` also skips the
+guest sentinel so permission checks cannot close the EntityManager. Pairs with
+`@selfhelp/shared` `1.21.6`.
+
+## Breaking: entry-record uses `load_record_from` (same as entry-record-form)
+
+Public/CMS detail holders no longer take an author SQL **Filter**. They use the
+visible **Load record from route parameter** field (`load_record_from`, default
+`record_id`) — the same contract as `entry-record-form`. The server builds
+`AND record_id = <int>` from the matched route. Migration
+`Version20260710093048` leaves `filter` off `entry-record` and links
+`load_record_from`. **Reimport** CMS-in-CMS detail pages (or set the field in
+the inspector). Pairs with frontend `0.1.63` and `@selfhelp/shared` `1.21.6`.
+
+---
+
+# v0.1.35
+
+## Breaking: restore legacy field-based entry-list / entry-record data binding
+
+Reverses the v0.1.33 `data_config`-only entry hydration. `entry-list` and
+`entry-record` now bind rows through style property fields (`data_table`,
+`own_entries_only`, `filter`, `scope`, plus `load_as_table` / `selected_columns`
+on list). Detail scoping uses an explicit author `filter` with
+`{{route.record_id}}` — the removed `url_param` field is not active.
+**No backward compatibility** — reimport CMS-in-CMS bundles with the new field shape.
+*(Superseded for entry-record scoping by v0.1.36 `load_record_from`.)*
+
+- Migration `Version20260710093048` applies the final catalog fields directly and creates
+  `filter`, `load_as_table`, `selected_columns`.
+- The same migration extends `get_data_table_filtered` with
+  `selected_columns_param`; `entry-list` row loading honours the field.
+- `PageService::resolveEntryRows()` reads property fields; `entry-record`
+  scopes rows through the prepared `filter` and validated route params.
+- New `DataTableFilterService` centralises filter interpolation, SQL denylist,
+  and typed route params on entry filters, `data_config` retrieval, and
+  `DataService` update predicates.
+- Rejected/malicious filters return **no rows** (never fall back to unfiltered).
+  Security regression matrix: `FilterSafetyTest` + expanded unit tests.
+  Developer note: `docs/developer/data-table-filter-safety.md`.
+- `PageExportImportService` relinks imported `entry-table` `fields_map` keys to
+  generated section field keys; `CmsAppWizardService` portable `@section:` tokens
+  on `fields.data_table`; example bundles rewritten.
+- `POST /admin/data/query-preview` (permission `admin.data.read`) previews
+  prepared filters without executing SQL; route placeholders/requirements respect
+  page read data-access grants via `SectionAccessibleRouteService`.
+- **Import validation** reads gallery property fields in the compact
+  `{ "all": { "content": "…" } }` shape (and `language_code: "all"`), so
+  CMS-in-CMS templates with an explicit `entry-record` filter no longer fail
+  as `missing_entry_record_filter`.
+- Pairs with frontend `0.1.62` and `@selfhelp/shared` `1.21.5`
+  (wave previously staged as shared `3.0.0`, republished as `1.21.5`).
+
+---
+
+# v0.1.34
+
+## Breaking: first-class CMS apps (`cms_apps`)
+
+CMS-in-CMS apps become a first-class product unit. Pairs with frontend `0.1.60`.
+See `docs/cookbook/cms-in-cms-list-detail.md` and
+`docs/developer/27-db-driven-public-routing.md`.
+
+- **Entity** `cms_apps` + hub FKs (`id_form_section`, `id_cms_list_page`,
+  `id_cms_detail_page`, `id_public_list_page`, `id_public_detail_page`); pages
+  gain `id_cms_app` + strict `cms_app_role`
+  (`form` / `cms_list` / `cms_detail` / `public_list` / `public_detail` /
+  `other`; primary roles unique per app → 409).
+- **API** `/admin/cms-apps` CRUD, assign/change-role/unassign, and
+  `POST /admin/cms-apps/{id}/scaffold`; permissions `admin.cms_app.*`.
+- **Removed** legacy `POST /admin/pages/cms-app` (pre-1.0, no alias).
+- **Hub sync** sole writer: `CmsAppHubSyncService`. Deleting an app shell
+  unassigns pages and clears hubs; pages/sections/tables/records are kept.
+- **Bundles** emit/consume `cms_app` + per-page `cms_app_role`; fixtures under
+  `tests/fixtures/examples/*.bundle.json` realigned for the six CMS-in-CMS
+  templates. Import **rejects** CMS-in-CMS bundles without `cms_app` /
+  valid roles (no dual-format). Response schemas under
+  `responses/admin/cms_apps/`. Optional `cms_app_id` + `cms_app_role` on
+  page create/update go through `CmsAppService::assignPage` only.
+- Import normalises keyword-prefixed CMS app slugs (underscores → hyphens) and
+  reuses an empty shell with the same slug; conflicts when the slug already has
+  pages. Operator guide: `docs/user/cms-apps.md`.
+- **User-owned enum options** use a language-neutral catalog plus translatable
+  `option_labels` on select, radio, combobox, and segmented-control. Entry
+  hydration adds reserved `_{field}_label` / `_{field}_labels` values while
+  persisted data stays code-only; legacy `text`/`label` catalogs remain
+  readable. Migration `Version20260710093048` adds/links the field and updates
+  catalog metadata. All six CMS-in-CMS fixture mirrors use the contract.
+
+---
+
+# v0.1.33
+
+## Fix: entry-list / entry-record data binding actually renders rows
+
+The CMS-in-CMS entry styles were data-bound in name only: the web/mobile
+renderers (and the wizard/bundle-authored `{{name}}` / `{{record_id}}` tokens)
+assumed the backend clones the entry-list child template once per row, but no
+hydration existed — lists rendered a single template card with empty tokens.
+
+- `PageService::processSectionsRecursively` now resolves the bound rows for
+  `entry-list` / `entry-record` from the section's first `data_config` entry
+  (row-preserving retrieval; the repository layer is cached so no double DB
+  hit) and remaps the immutable `section_<id>` field keys back to the current
+  input names.
+- `entry-list` clones its child template once per row (each clone interpolated
+  with that row's columns as top-level tokens; no rows → no children);
+  `entry-record` flattens its single record into top-level tokens for itself
+  and its children. The inherited `{{route.*}}` scope stays pinned.
+- `entry-record-delete` sections get the bound row's `record_id` injected as a
+  real field during hydration (both renderers read it to enable the delete
+  button), and `DELETE /cms-api/v1/forms/delete` now accepts the
+  `entry-record-delete` style alongside `show-user-input`
+  (`FormValidationService::validateFormDeletion`) — same ACL `delete` +
+  own-entries/data-table permission rules.
+- Bare `data_config` filters (`record_id = {{route.record_id}}` — the form the
+  cookbook documents and the wizard generates) are now glued to the query with
+  `AND`; filters already starting with `AND`/`OR`/`ORDER BY`/`LIMIT`/
+  `GROUP BY`/`HAVING` pass through unchanged
+  (`SectionUtilityService::fetchData`).
+- Docs: `docs/reference/styles/composite.md` (`entry-list`, `entry-record`,
+  `entry-record-delete` — button text is the catalog field `label_delete`, and
+  the web/mobile renderers + the team-members example bundle now read/write
+  that field).
+- Tests: `CmsInCmsListDetailCacheTest` (golden list/detail + per-record cache
+  isolation) and `PageBundleDataTableLinkingTest` now pass end-to-end;
+  `CmsAppWizardTest` asserts scaffolded field values through the per-section
+  detail endpoint (the page sections list is structural).
+
+## Breaking: CMS-in-CMS polish wave — entry-table, record edit mode, portable bundles, template gallery
+
+The list/detail pattern becomes a first-class, polished product. Pairs with
+frontend `0.1.59`, mobile `0.1.33`, and `@selfhelp/shared` **`1.21.5`**
+(breaking wave previously staged as shared `3.0.0`, then republished as
+`1.21.5`: the style rename below). See
+`docs/cookbook/cms-in-cms-list-detail.md` and
+`docs/developer/27-db-driven-public-routing.md`.
+
+- **Style rename `show-user-input` → `entry-table`** (migration
+  `Version20260710093048`, with round-trip test): the built-in admin CRUD grid
+  gets a name that matches the entry-style family. Sections reference styles by
+  `id_styles`, so this is a catalog `UPDATE`, no content migration. The same
+  migration drops the stale pre-`data_config` legacy binding fields from the
+  entry holders (`entry-list` / `entry-record` `data_table`, `filter`,
+  `load_as_table`, `own_entries_only`, `scope`, `url_param`; the Bootstrap-era
+  `type` on `entry-record-delete`) and seeds the `form-record` record-edit-mode
+  fields (`load_record_from` + an `own_entries_only` link). No alias remains —
+  web + mobile renderers, the wizard, docs, and bundles all say `entry-table`.
+- **Record edit mode** (`form-record`): new `load_record_from` field binds the
+  form to a route param (e.g. `record_id`) so `/cms/team-members/42` prefills
+  record 42 across all languages (translatable inputs included) and saving
+  **updates** it. One shared rule
+  (`DataAccessSecurityService::canUpdateOwnedRecord`, mirroring
+  `canDeleteOwnedRecord`) covers the three ownership modes — own-entries diary,
+  shared editing via the table UPDATE grant, admin edit-any —
+  and is enforced by `PUT /cms-api/v1/forms/update`, which now accepts an
+  explicit `record_id` (schema updated; previously hardcoded own-latest-only).
+- **`entry-table` per-row permission flags**: hydration injects `_can_edit`
+  next to `_can_delete` (same shared rules), so the grid can disable per-row
+  actions the user cannot perform.
+- **Wizard scaffolds the polished app**
+  (`POST /admin/pages/cms-app`): multi-field form builder (`form_fields[]`
+  name/style/label), the admin list is an `entry-table` grid (inline delete +
+  `add_url` / `edit_url`), and the admin detail attaches the *same shared*
+  `form-record` section in record edit mode (modal, close-on-save) instead of a
+  read-only `entry-record` copy.
+- **Bundle export/import portability**
+  (`PageExportImportService`): the `entry-table` `data_table` field is
+  tokenized to `@section:<owner>` on export and relinked on import (like
+  `data_config.table`); validation warns on unportable numeric references;
+  a section legitimately shared by several pages no longer trips the
+  duplicate-name export guard; imported page `url`s are prefixed up front (no
+  more 409 on prefixed re-import); and with `routePrefix` the importer
+  rewrites in-bundle content links (`link.url`, `add_url`, `edit_url`,
+  `redirect_on_save`, `btn_cancel_url`) onto the prefixed routes so the
+  imported copy is fully clickable.
+- **Template gallery**: six curated CMS-in-CMS bundles (team-members flagship,
+  news, FAQ accordion, events, contact directory, testimonials) with
+  translated de-CH/en-GB content, sample rows, and top-level
+  `title`/`description`/`tags` metadata; `GET /admin/pages/examples` now emits
+  `tags` for the admin UI's one-click **Start from template** tab.
+- Tests: `EntryListHydrationTest` (N cards = N rows, structural),
+  `FormRecordEditModeTest` (`#[Group('security')]` matrix across all three
+  ownership modes + admin override), `canUpdateOwnedRecord` rule matrix in
+  `DataAccessSecurityServiceTest`, `PageBundleEntryTablePortabilityTest`
+  (export token → prefixed import round trip incl. link rewriting), and the
+  golden `CmsInCmsTemplateBundlesImportTest` importing + rendering every
+  shipped template so the gallery cannot rot.
+
+## Breaking: Navigation menu system overhaul — one strict final contract
+
+Destructive pre-release cleanup wave (no backward compatibility). One data
+model, one API payload, one bundle schema. See
+`docs/developer/29-navigation-menu-builder.md`.
+
+- **Schema** (migration `Version20260706074503`, with round-trip test):
+  `navigation_menu_items` gains `layer` (`'top'`/NULL — top header row for
+  `web_header` root items) and loses the dead `id_child_source` /
+  `auto_include_depth` columns; the `navigationChildSources` lookup type and
+  its three codes are deleted; `config.footer_layout` is carried into `id_preset`
+  (`columns` / `inline` join `navigationMenuPresets`) and `navigation_menus.config`
+  is dropped; the `navigation_menu_item_translations` table engine/FKs are
+  repaired (the `description` / `aria_label` columns themselves ship since
+  `Version20260702164932` — no `n` column ever existed in this backend; `n` was
+  only the legacy bundle v1.0 translation key).
+- **Header layers:** double presets (`double-dropdown` / `double-mega-menu`)
+  split `web_header` root items into a top utility row (`layer: 'top'`, flat
+  links) and the main row. Layer is validated by
+  `NavigationHeaderLayerSupport`: `web_header` roots only, top-layer items must
+  stay leaf. Single presets merge both rows at render time; assignments are
+  preserved across preset switches.
+- **Footer presets:** `web_footer` uses the same preset mechanism as the header
+  (`columns` = group headings become columns + standalone meta row; `inline` =
+  flat centered links, groups flattened at render time only). The free-form
+  `config` JSON is gone everywhere (entity, admin API, payload, bundle).
+- **Strict payload:** `GET /navigation` items now always emit every key
+  (`description`, `aria_label`, `layer` included; `null` for absent values) and
+  menus emit `key`/`platform`/`surface`/`preset`/`max_depth`/`item_limit`.
+  Admin payloads mirror the same shape; translations carry
+  `label`/`description`/`aria_label` per locale.
+- **`selfhelp/navigation-bundle` v2.0** (the only accepted version — v1.0 is
+  rejected with a "re-export with the current version" error): items carry
+  `layer` + `aria_label`, menu blocks carry `preset`/`max_depth`/`item_limit`,
+  no `config`, no `n` key. Exports with `include_pages` embed the full
+  ancestor chain of every menu-referenced page (menu-invisible structural
+  parents included), so an export always re-imports without `missing_parent`
+  errors.
+- **API:** `POST /admin/navigation/export`, `POST /admin/navigation/import`,
+  `POST /admin/navigation/import/validate`, `?dry_run=1` on import.
+- **Permissions:** `admin.navigation.export`, `admin.navigation.import`.
+- **Menu depth cap:** three levels (top-level + children + grandchildren)
+  enforced on write; grandchildren render as indented sub-links in web
+  dropdown/mega panels and as a third collapsible drawer level on mobile.
+  Bulk "include descendants" nests up to the cap and flattens deeper pages.
+- **Examples:** canonical in `sh-selfhelp_frontend/examples/`; backend uses
+  `ExampleBundlePathResolver` + `tests/fixtures/examples/` fallback. The demo
+  bundle `examples/navigation/menu-demo.bundle.json` is rewritten as the v2.0
+  regression fixture (double header layers, footer groups + standalone link,
+  nested drawer, segment tabs).
+- **Cross-repo:** pairs with `@selfhelp/shared` `1.21.5` (strict
+  `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/
+  `activeTrail` helpers, bundle v2.0 types; wave previously staged as shared
+  `2.0.0`) and frontend 0.1.59.
+  `supports.frontend` raised to `>=0.1.59`.
+
+## Added: Child-page navigation presentation (sidebar / pills / breadcrumbs)
+
+How a web page presents its menu branch (siblings + children) is now a typed,
+configurable contract instead of the hardcoded pill tabs (same 0.1.33 wave).
+
+- **Schema** (migration `Version20260706143547`, with round-trip test): new
+  `navigationChildrenNavModes` lookup type (`sidebar` | `pills` | `none`);
+  `navigation_menus` gains `id_children_nav` (menu-level default; seeded
+  `sidebar` for `web_header`) + `show_breadcrumbs` (default off);
+  `navigation_menu_items` gains `id_children_nav` (per-parent override,
+  NULL = inherit).
+- **Payload:** `GET /navigation` web menus always emit `children_nav` +
+  `show_breadcrumbs` (mobile menus emit `null`/`false` — they have native
+  presentation). `PATCH /admin/navigation/menus/{key}` accepts them
+  (web menus only), and menu items accept/return `children_nav` on
+  create/update; the navigation bundle v2.0 carries both.
+- **Rendering contract:** `@selfhelp/shared` `1.21.5` `branchNav` resolves the
+  effective mode (item override → menu default → `sidebar`), the branch
+  group, the breadcrumb trail, and the prev/next pager from the same payload;
+  the frontend renders the left-sidebar layout (sticky, collapses to pills on
+  small screens), the pill strip, breadcrumbs, and neighbour-title pager cards.
+
+## Added: Navigation branding + pager toggles + mega-menu descriptions
+
+Same 0.1.33 wave (migration `Version20260706175630`, with round-trip test):
+
+- **Branding:** `navigation_settings` gains `logo_asset_path` / `logo_alt` /
+  `id_logo_link_page`. `GET /navigation` emits a `branding` object
+  (`logo_url`, `logo_alt`, `link_url`); `PATCH /admin/navigation/settings`
+  accepts the three fields. The web header brand slot and the mobile drawer
+  header render the configured logo/link (fallback: text + home).
+- **Pager split from sidebar:** `navigation_menus.show_pager` (menu default,
+  seeded on) + `navigation_menu_items.show_pager` (per-parent override,
+  NULL = inherit) let editors show the branch sidebar without prev/next
+  pager cards (or vice versa). Emitted on web menus/items in the public
+  payload, accepted by menu PATCH + item create/update, carried in
+  navigation bundles.
+- **Mega-menu descriptions for page items:** page items now accept
+  presentation-only translation rows (`label: null` + per-language
+  `description` / `aria_label`) via item create/update and bundle import;
+  the stored label stays NULL so the page title keeps driving the menu
+  label. The web dropdown/mega panels render the descriptions
+  (`menu-demo.bundle.json` ships examples).
+
+## Added: Search across all languages
+
+- Header/content search (`GET /navigation/search`) now matches the
+  `page_search_index` projection in **every** language, not just the request
+  language, and dedupes hits per page (preferring the requested language's
+  title/snippet). A German visitor typing an English title still finds the
+  page (`NavigationSearchService`; `content_index` mode).
+
+## Added: Admin pages list carries human titles
+
+- `GET /admin/pages` rows now include `title` (CMS default language) and
+  `titles` (per-language `{language_id, title}` list) via one batched
+  translation fetch (`PagesFieldsTranslationRepository::fetchTitleByLanguageForPages`),
+  so admin pickers (add-to-menu, start pages, parent selectors) can label
+  pages with real titles instead of raw keywords.
+
+## Added: Landing-page templates in the example gallery
+
+- `examples/pages/hero-home.bundle.json` (frontend canonical +
+  `tests/fixtures/examples/` mirror) is rewritten as a full **headless**
+  landing page in the current bundle schema: hero split with imagery, stats
+  band, six feature cards, how-it-works split, testimonial quote, and a CTA
+  card — dark/light safe, de-CH + en-GB, buttons targeting the system
+  `register`/`login` pages via `page_keyword`, curated Unsplash imagery.
+- New `examples/pages/mobile-onboarding.bundle.json`: compact mobile-first
+  guest onboarding screen (image hero, three value points, full-width
+  register/login CTAs), also headless/open-access.
+- `HeroHomeSeedService` keeps seeding the hero bundle onto an untouched
+  `home` page; `tests/Integration/CMS/Admin/ExampleLandingBundlesImportTest.php`
+  guards that both bundles validate and import end-to-end (styles, fields,
+  locales, headless flag, section tree).
+- Fresh installs now run `app:examples:seed-hero-home` automatically
+  (`scripts/fresh-test-install.php`), so a new instance starts with the
+  polished hero landing on `home` instead of the placeholder.
+
+## Added: Anonymous page-view analytics + admin dashboard API
+
+Same 0.1.33 wave (migration `Version20260706220759`, with round-trip test):
+
+- **Tracking:** `PageController` records one anonymous view per delivered page
+  (`PageViewTrackerService`; live-preview requests are never counted, failures
+  never break page delivery). Views aggregate into `page_views`
+  (day x page x platform x visitor) and `page_view_referrers` (day x external
+  host). The visitor hash is HMAC-SHA256 keyed by the app secret **and the
+  date**, so identities rotate daily and no IP/user-agent/PII is ever stored.
+- **API:** `GET /cms-api/v1/admin/analytics/summary` (range/granularity/
+  platform filters; totals, per-day series, top pages, referrers) and
+  `GET /cms-api/v1/admin/analytics/today` (visits + due/executed scheduled
+  jobs + form-submission counts), both gated by the new
+  `admin.analytics.read` permission (seeded to the admin role) with response
+  schemas under `config/schemas/api/v1/responses/admin/analytics/`.
+- Consumed by the frontend 0.1.59 admin dashboard (`/admin`) with
+  web/mobile split charts. Additive — no floor moves beyond the existing
+  0.1.33 ⇄ 0.1.59 pairing.
+
+## Added: Branding logo size + variant
+
+- `navigation_settings` gains `logo_size` (`sm|md|lg|xl`) and `logo_variant`
+  (`logo-and-name` | `logo-only` | `name-only`), emitted in the public
+  `branding` block and accepted by `PATCH /admin/navigation/settings`
+  (schema-validated enums). Pairs with `@selfhelp/shared`
+  `resolveBrandingPresentation` so web header and mobile drawer render
+  identical sizing/fallbacks.
+
+## Changed: reset-password / validate / maintenance become headless
+
+- The three remaining auth/system flow pages (`reset-password`, `validate`,
+  `maintenance`) are flagged headless like `login` / `register` / `two-factor`,
+  so the whole auth journey renders as standalone centered cards without the
+  site chrome.
+
+# v0.1.32
+
+## Feature: Menu-builder completion wave (navigation refactor)
+
+Follow-up to the menu-builder migrations (`Version20260701092652`,
+`Version20260701095332`, `Version20260701104321`):
+
+- **Admin pages list** now returns `navigationMembership` badges instead of
+  `nav_position` / `footer_position` (columns dropped from `pages`).
+- **Startup payload** includes `web_user_last_visited_page` and
+  `mobile_user_last_visited_page` for logged-in users.
+- **Search** honours `search_visibility` page field overrides; admin routes for
+  menu-item exclusions and convert-auto-children.
+- **Schemas** updated (`get_page.json`, admin page definitions, strict
+  `get_navigation.json` startup/search shapes) to match runtime.
+- **Greenfield menu seed** (`Version20260701112111`): ensures `home` and
+  `privacy` appear in core menus when no legacy `nav_position` rows existed;
+  backfills `page_search_index` title/description on migrate.
+- **Admin overview** (`GET /admin/navigation`) now includes per-menu `resolved`
+  trees (with virtual auto-children), `warnings`, and `suggestions`.
+- **Migration fixes:** `Version20260701095332` (`search_visibility` as `select` with
+  friendly options + `rel_fields_page_types` links); `Version20260701112111`
+  (`rel_pages_sections` joins, search-index backfill SQL); `HeroHomeSeedService` +
+  `NavigationSearchIndexService` table-name alignment.
+
+Pairs with frontend >=0.1.58 and `@selfhelp/shared` startup helpers.
+
+# v0.1.31
+
+> **Superseded by v0.1.32.** The additive `web_nav_render` / `mobile_nav_render`
+> page-property model described below was removed in the menu-builder breaking
+> wave (`navigation_menus`, `GET /navigation`, admin `/admin/navigation/*`).
+> See `docs/developer/28-navigation-pages-and-page-icons.md`.
+
+## Feature: Navigation pages, nav rendering & page icons (issue #30)
+
+Additive follow-up in the same wave. Pages can now act as **navigation pages**
+and carry per-platform menu icons and render types. See
+[`docs/developer/28-navigation-pages-and-page-icons.md`](docs/developer/28-navigation-pages-and-page-icons.md).
+
+- **Four page-property fields** (migration `Version20260630130327`, linked to the
+  `core` + `experiment` page types): `icon` (`select-icon`, web/Tabler),
+  `mobile_icon` (new `select-icon-mobile` type, curated lucide set),
+  `web_nav_render` (new `select-nav-render-web` type), and `mobile_nav_render`
+  (new `select-nav-render-mobile` type). Render fields store NULL ⇒ the renderer
+  applies its default (`header-dropdown` web / `segmented-tabs` mobile).
+- **Menu projection** now carries all four fields per node
+  (`PageService::getAllAccessiblePagesForUser` +
+  `PagesFieldsTranslationRepository::fetchPropertyFieldsForPages`, batched to
+  avoid N+1); the ACL page-definition response schema documents the new optional
+  fields. ACL filtering is unchanged.
+- **Example bundle.** Ships `docs/examples/cms-in-cms/team-members.bundle.json`
+  (the canonical Team Members CMS-in-CMS app: form + public/admin list+detail,
+  data table with sample rows), surfaced read-only via the new
+  `GET /admin/pages/examples` route (migration `Version20260630132428`,
+  permission `admin.page.export`) in the admin import dialog's "Example bundles"
+  tab.
+- **Cross-repo.** Pairs with `@selfhelp/shared >=1.19.0` (navigation module +
+  the four `IPageItem`/`IPageContent` fields). Additive, so the
+  `release-manifest.json` floors are unchanged (`supports.frontend >=0.1.57`).
+
+## Feature: Open-in-modal sizing + accessible imports (issue #30)
+
+Additive follow-up in the same wave, addressing two pain points: imported pages
+that were not reachable, and modal pages that had no size control.
+
+- **Modal size page properties.** Two new page-property fields `modal_width` +
+  `modal_height` (migration `Version20260630172821`, page types `core` +
+  `experiment`) are projected onto the single-page content response
+  (`PageService::resolveModalSize`, schema `get_page.json`
+  `page.modal_width|modal_height`). Each is a free CSS length (`80%`, `640px`,
+  `auto`, …); **empty ⇒ the frontend default 80%**, and the frontend caps every
+  modal (incl. `auto`) at 90% of the viewport. Web-only; mobile ignores them. The
+  default lives in the frontend so existing modal pages need no data change.
+- **Modal-size editor type.** Follow-up migration `Version20260630181203` adds the
+  `select-modal-size` field type and re-points `modal_width` + `modal_height` to it
+  (they were seeded as plain `text`), so the inspector renders a preset dropdown
+  (`auto`, `50%`…`100%`) that still accepts a typed custom length instead of a bare
+  text box. Pure metadata change — stored values keep the same CSS-length contract.
+  `Version20260630181203RoundTripTest` covers it.
+- **Imports are accessible by default.** `POST /admin/pages/import` accepts an
+  additive `accessGroups` option (`import_pages.json`). The admin **always** gets
+  full access to every created page; selected groups get surface-appropriate ACL
+  (read-only on public pages, full CRUD on cms-app pages) via
+  `AdminPageService::createPage`, so imported pages are actually visible to real
+  users.
+- **Imported links resolve.** The importer now realigns each imported page's
+  `pages.url` to its (possibly route-prefixed) **canonical route**
+  (`PageExportImportService::applyFieldsAndRoutes` + `canonicalRouteUrl`), so the
+  navigation menu / admin list links resolve through the DB router instead of
+  404-ing on the raw, unprefixed url.
+- **Tests.** `PageBundleImportUrlConsistencyTest` (golden) proves the url
+  realignment + admin access; `Version20260630172821RoundTripTest` covers the new
+  migration.
+- **Cross-repo.** Pairs with `@selfhelp/shared >=1.20.0`
+  (`IPageContent.modal_width|modal_height`). Additive, so the
+  `release-manifest.json` floors are unchanged (`supports.frontend >=0.1.57`).
+
+## Feature: DB-driven public routing + CMS-in-CMS app builder (issue #30)
+
+Public page URLs are now **data**, not client-parsed slugs. Every public page
+owns one or more rows in a new `page_routes` table; the backend resolves an
+incoming path to a page plus a map of `route_params`, and those params flow into
+the interpolation context as `{{route.*}}`. See
+[`docs/developer/27-db-driven-public-routing.md`](docs/developer/27-db-driven-public-routing.md)
+and the recipe
+[`docs/cookbook/cms-in-cms-list-detail.md`](docs/cookbook/cms-in-cms-list-detail.md).
+
+- **`page_routes` model.** New table + `PageRoute` entity + `PageRouteRepository`
+  (migrations `Version20260630083439` schema, `Version20260630083708` seed). One
+  page may own several patterns; `path_pattern` uses `{param}` placeholders with an
+  optional `requirements` regex map; exactly one `is_canonical` route per page;
+  `is_active`/`priority` ordering. The token charset is `[A-Za-z0-9._~-]+` unless a
+  tighter requirement is given. Route parameter names are `snake_case`
+  (`user_id`, `token`, `record_id`) and are a cross-layer contract — never remapped.
+- **Resolver + conflict guard.** `PageRouteResolverService` matches a path against
+  the active route set (Symfony `UrlMatcher`, cached + invalidated on change).
+  `RouteConflictValidator` rejects duplicate or ambiguous (same-shape) patterns
+  globally — enforced on admin edits, import, and the wizard.
+- **Resolve API.** `GET /cms-api/v1/pages/resolve?path=…` (route
+  `pages_resolve_path`, controller `PageController::resolvePublicPath`). It is an
+  **open-access API route** (no route permission) but the resolved content still
+  applies full page ACL, published/draft + preview, platform/language, and
+  data-access security in `PageService::getPageByPublicPath()`; unauthorized access
+  returns **404** (never leaks existence). The page-content response gains
+  `route_params`, `matched_url_pattern`, and `canonical_url`. `route_params` are
+  folded into the page cache key so the same page caches per-params.
+- **Parameterized auth flows.** The password-reset and account-validation flows are
+  now seeded routes: `/reset` + `/reset/{user_id}/{token}` (canonical `/reset`) and
+  `/validate/{user_id}/{token}`. The reset-password / validate styles read
+  `{{route.user_id}}` / `{{route.token}}` instead of parsing the slug.
+- **Page surfaces (CMS-in-CMS).** New `pageSurface` lookup (`public`, `cms`) +
+  nullable `id_page_surface` on `pages` (default `public`, migration
+  `Version20260630090150`). `AdminPageService::createPage()` accepts `surface` +
+  `accessGroups`; `cms` pages default to admin/editor-only ACL. The admin pages list
+  groups pages by surface. `page_type` stays internal; `is_system` is untouched.
+- **Entry styles as holders.** `entry-list` / `entry-record` / `entry-record-delete`
+  / `loop` are documented and used as pure data/context holders bound via
+  `data_config`; a list links rows to `/<base>/{{record_id}}` and a detail filters
+  on `record_id = {{route.record_id}}`. The `route` interpolation scope is read-only
+  and cannot be overwritten by a loop/holder data scope.
+- **Page export/import.** `PageExportImportService` + four admin routes
+  (`POST /admin/pages/export`, `GET /admin/pages/{id}/export/suggest`,
+  `POST /admin/pages/import/validate`, `POST /admin/pages/import`; migration
+  `Version20260630093155`) serialize/recreate a portable page **bundle** (metadata,
+  surface, `page_routes`, fields, nested section/style tree) with dry-run validation
+  (conflicts, patterns, canonical, styles, hierarchy, undefined `{{route.*}}`) and
+  safe options (keyword/route prefix, skip-conflicting, activate-routes). Route
+  parameter names are never remapped.
+- **"Create list + detail pages" wizard.** `CmsAppWizardService` +
+  `POST /admin/pages/cms-app` (migration `Version20260630094834`, permission
+  `admin.page.create`) atomically scaffolds a public and/or admin list+detail pair
+  bound to a data table — pages (with surface + ACL), canonical routes, and
+  `entry-list`/`entry-record` holders — and rolls back on any failure. With
+  `create_form: true` it additionally scaffolds an append (`form-log`) create page
+  that **owns a fresh data table** (with one default `text-input`, name from
+  `form_field_name`), and the admin list gains an inline `entry-record-delete`
+  control. (Editing a *specific* record in the same form — load-by-`record_id`
+  "upsert" — and a SurveyJS smart-form alternative are documented future frontend
+  enhancements.)
+- **Portable data-table links + opt-in data.** Export rewrites any
+  `entry-list`/`entry-record` `data_config.table` that points at an in-bundle form
+  section from its install-specific numeric id to the portable
+  `"@section:<owner name>"` token (owner-name uniqueness enforced); import builds a
+  bundle-wide `section name -> new id` map and relinks every token to the new
+  form-owned table. Data is opt-in: export `options.includeDataTables` /
+  `includeDataRows` emit a `data_tables[]` block (columns + rows keyed by human
+  field name); import `options.importData` recreates the owned table and re-inserts
+  the rows through the normal form-save path. Import validation now also **fails
+  with the missing locale named** when a translatable field carries an uninstalled
+  language, and rejects owner tokens / `data_tables[]` whose owner section is not in
+  the bundle.
+- **Conflict guard command.** `app:page-routes:check-conflicts` runs
+  `RouteConflictValidator::findAllConflicts()` over every active route and exits
+  non-zero on any duplicate/ambiguous set; wired into `composer validate-db` so a
+  raw SQL edit or restored backup can't leave a self-inconsistent route table. The
+  resolver also defensively fails on same-shape dynamic ambiguity at resolve time
+  (not only at write time).
+- **Example bundle.** `docs/examples/cms-in-cms/team-members.bundle.json` — a
+  **self-contained** importable Team-Members app (form-owned table via
+  `@section:team-members-form`, sample rows, admin delete, fully translatable;
+  five pages: create form + public list/detail + admin list/detail). Not
+  auto-seeded; import with `options.importData=true` to seed the sample rows.
+- **Cross-repo.** Coordinated wave: `supports.frontend` raised `>=0.1.55` →
+  `>=0.1.57`; pairs with `@selfhelp/shared >=1.18.0` and mobile `0.1.31`.
+  `pluginApiVersion` unchanged (`0.1.0`).
+
 # v0.1.30
 
 ## Fix: page render crash on array-valued interpolation tokens (issue #56 v2)

@@ -31,6 +31,7 @@ Navigation entrypoint for the backend documentation. Docs are organized by audie
 | Folder | Use for |
 | --- | --- |
 | [developer/](developer/index.md) | Backend architecture, CMS internals, services, testing, performance, and engineering workflow. |
+| [cookbook/](cookbook/index.md) | Task-based recipes (e.g. building a CMS-in-CMS list/detail application and exporting it as a bundle). |
 | [reference/](reference/index.md) | Exact API contracts, the `api_routes` table, style/email-style contracts, and endpoint usage guides. |
 | [user/](user/README.md) | Non-technical guides for CMS administrators and content editors (variables, data naming, email templates). |
 | [operations/](operations/index.md) | Runtime configuration and operational runbooks. |

@@ -1,0 +1,16 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Update CMS App",
+    "type": "object",
+    "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$",
+            "minLength": 1,
+            "maxLength": 100
+        },
+        "description": { "type": ["string", "null"], "maxLength": 5000 }
+    },
+    "additionalProperties": false
+}

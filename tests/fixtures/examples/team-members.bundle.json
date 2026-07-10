@@ -1,0 +1,1384 @@
+{
+    "format": "selfhelp/page-bundle",
+    "version": "1.0",
+    "exported_at": "2026-07-06T00:00:00+00:00",
+    "core_version": "0.1.x",
+    "title": "Team members",
+    "description": "A polished team directory: elegant public cards + profiles, and a full CMS entry-table for editors. Import with sample records for an instant demo.",
+    "tags": [
+        "cms-in-cms",
+        "list + detail",
+        "admin grid",
+        "translatable"
+    ],
+    "_comment": "Flagship CMS-in-CMS template (issue #30): a complete Team Members app in four pages. PUBLIC: /team-members renders a responsive card grid (avatar initials, role badge, bio, contact links) and /team-members/{record_id} a shareable profile page. ADMIN (CMS surface): /cms/team-members is an entry-table CRUD grid (search/sort/pagination/CSV, built-in delete, Add-new + per-row edit), and /cms/team-members/form is ONE create+edit form page with TWO routes — /cms/team-members/form (blank = create) and /cms/team-members/{record_id} (prefilled = update) — wired through the form-record load_record_from field; the page opens as a modal (open_in_modal). The data binding is fully portable: entry styles and the entry-table reference the owning form section via \"@section:team-members-form\" tokens which the importer relinks to the fresh section id; data_tables[] carries the columns plus sample rows (import with options.importData=true to seed them). The bio input is translatable (per-language values via the language tabs). Content uses the default-install locales de-CH and en-GB; if your install lacks one, import fails naming the missing locale. If /team-members is taken, set a keyword + route prefix in the import dialog — in-content links (add_url, edit_url, card links, cancel URLs) are rewritten automatically. Import via Admin > Pages > Import. NOT auto-seeded.",
+    "data_tables": [
+        {
+            "owner_section_name": "team-members-form",
+            "columns": [
+                "name",
+                "role",
+                "email",
+                "bio"
+            ],
+            "rows": [
+                {
+                    "name": "Ada Lovelace",
+                    "role": "lead-engineer",
+                    "email": "ada@example.org",
+                    "bio": {
+                        "en-GB": "Works on the analytical engine and wrote the first published algorithm. Loves turning hard problems into elegant, testable machines.",
+                        "de-CH": "Arbeitet an der analytischen Maschine und schrieb den ersten veröffentlichten Algorithmus. Verwandelt gern knifflige Probleme in elegante, testbare Maschinen."
+                    }
+                },
+                {
+                    "name": "Alan Turing",
+                    "role": "researcher",
+                    "email": "alan@example.org",
+                    "bio": {
+                        "en-GB": "Computability, cryptanalysis and the foundations of computer science. Currently asking whether machines can think.",
+                        "de-CH": "Berechenbarkeit, Kryptoanalyse und die Grundlagen der Informatik. Fragt sich derzeit, ob Maschinen denken können."
+                    }
+                },
+                {
+                    "name": "Grace Hopper",
+                    "role": "compiler-pioneer",
+                    "email": "grace@example.org",
+                    "bio": {
+                        "en-GB": "Built the first compiler and championed machine-independent programming languages. It is easier to ask forgiveness than permission.",
+                        "de-CH": "Baute den ersten Compiler und setzte sich für maschinenunabhängige Programmiersprachen ein. Vergebung erbitten ist einfacher als um Erlaubnis bitten."
+                    }
+                },
+                {
+                    "name": "Katherine Johnson",
+                    "role": "trajectory-analyst",
+                    "email": "katherine@example.org",
+                    "bio": {
+                        "en-GB": "Calculates orbital mechanics by hand and verifies what the machines print. Numbers do not lie when you check them twice.",
+                        "de-CH": "Berechnet Orbitalmechanik von Hand und prüft, was die Maschinen ausdrucken. Zahlen lügen nicht, wenn man sie zweimal kontrolliert."
+                    }
+                },
+                {
+                    "name": "Margaret Hamilton",
+                    "role": "software-director",
+                    "email": "margaret@example.org",
+                    "bio": {
+                        "en-GB": "Leads on-board flight software and coined the term software engineering. Ships systems that keep working when everything else fails.",
+                        "de-CH": "Leitet die Bordsoftware und prägte den Begriff Software Engineering. Liefert Systeme, die weiterlaufen, wenn alles andere ausfällt."
+                    }
+                },
+                {
+                    "name": "Tim Berners-Lee",
+                    "role": "web-architect",
+                    "email": "tim@example.org",
+                    "bio": {
+                        "en-GB": "Connected hypertext to the internet and gave the result away. Believes the web belongs to everyone.",
+                        "de-CH": "Verband Hypertext mit dem Internet und gab das Ergebnis frei. Ist überzeugt, dass das Web allen gehört."
+                    }
+                }
+            ]
+        }
+    ],
+    "pages": [
+        {
+            "keyword": "cms-team-members-form",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": true,
+            "open_access": false,
+            "url": "/cms/team-members/form",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Teammitglied bearbeiten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Edit team member"
+                        }
+                    ]
+                },
+                {
+                    "name": "open_in_modal",
+                    "display": false,
+                    "translations": [
+                        {
+                            "language_code": "all",
+                            "content": "1"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/cms/team-members/form",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                },
+                {
+                    "path_pattern": "/cms/team-members/{record_id}",
+                    "requirements": {
+                        "record_id": "\\d+"
+                    },
+                    "is_canonical": false,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "team-members-form",
+                    "style_name": "entry-record-form",
+                    "fields": {
+                        "title": {
+                            "de-CH": {
+                                "content": "Teammitglied"
+                            },
+                            "en-GB": {
+                                "content": "Team member"
+                            }
+                        },
+                        "description": {
+                            "de-CH": {
+                                "content": "Ohne Datensatz in der URL legt dieses Formular einen neuen Eintrag an; mit /{record_id} wird der bestehende Eintrag geladen und aktualisiert."
+                            },
+                            "en-GB": {
+                                "content": "Opened without a record in the URL this form creates a new entry; opened via /{record_id} it loads and updates that entry."
+                            }
+                        },
+                        "alert_success": {
+                            "de-CH": {
+                                "content": "Teammitglied gespeichert."
+                            },
+                            "en-GB": {
+                                "content": "Team member saved."
+                            }
+                        },
+                        "btn_save_label": {
+                            "de-CH": {
+                                "content": "Speichern"
+                            },
+                            "en-GB": {
+                                "content": "Save"
+                            }
+                        },
+                        "btn_update_label": {
+                            "de-CH": {
+                                "content": "Aktualisieren"
+                            },
+                            "en-GB": {
+                                "content": "Update"
+                            }
+                        },
+                        "btn_cancel_label": {
+                            "de-CH": {
+                                "content": "Abbrechen"
+                            },
+                            "en-GB": {
+                                "content": "Cancel"
+                            }
+                        },
+                        "btn_cancel_url": {
+                            "all": {
+                                "content": "/cms/team-members"
+                            }
+                        },
+                        "close_modal_on_save": {
+                            "all": {
+                                "content": "1"
+                            }
+                        },
+                        "load_record_from": {
+                            "all": {
+                                "content": "record_id"
+                            }
+                        },
+                        "own_entries_only": {
+                            "all": {
+                                "content": "0"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "team-members-form-name",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "name"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Name"
+                                    },
+                                    "en-GB": {
+                                        "content": "Name"
+                                    }
+                                },
+                                "placeholder": {
+                                    "de-CH": {
+                                        "content": "Vor- und Nachname"
+                                    },
+                                    "en-GB": {
+                                        "content": "First and last name"
+                                    }
+                                },
+                                "is_required": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-role",
+                            "style_name": "select",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "role"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Rolle"
+                                    },
+                                    "en-GB": {
+                                        "content": "Role"
+                                    }
+                                },
+                                "options": {
+                                    "all": {
+                                        "content": "[{\"value\":\"lead-engineer\",\"sort\":1},{\"value\":\"researcher\",\"sort\":2},{\"value\":\"compiler-pioneer\",\"sort\":3},{\"value\":\"trajectory-analyst\",\"sort\":4},{\"value\":\"software-director\",\"sort\":5},{\"value\":\"web-architect\",\"sort\":6}]"
+                                    }
+                                },
+                                "option_labels": {
+                                    "de-CH": {
+                                        "content": "{\"lead-engineer\":\"Leitende Entwicklung\",\"researcher\":\"Forschung\",\"compiler-pioneer\":\"Compiler-Pionierin\",\"trajectory-analyst\":\"Trajektorienanalyse\",\"software-director\":\"Softwareleitung\",\"web-architect\":\"Web-Architektur\"}"
+                                    },
+                                    "en-GB": {
+                                        "content": "{\"lead-engineer\":\"Lead Engineer\",\"researcher\":\"Researcher\",\"compiler-pioneer\":\"Compiler Pioneer\",\"trajectory-analyst\":\"Trajectory Analyst\",\"software-director\":\"Software Director\",\"web-architect\":\"Web Architect\"}"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-email",
+                            "style_name": "text-input",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "email"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "E-Mail"
+                                    },
+                                    "en-GB": {
+                                        "content": "Email"
+                                    }
+                                },
+                                "placeholder": {
+                                    "all": {
+                                        "content": "name@example.org"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "section_name": "team-members-form-bio",
+                            "style_name": "textarea",
+                            "fields": {
+                                "name": {
+                                    "all": {
+                                        "content": "bio"
+                                    }
+                                },
+                                "label": {
+                                    "de-CH": {
+                                        "content": "Kurzbiografie"
+                                    },
+                                    "en-GB": {
+                                        "content": "Short bio"
+                                    }
+                                },
+                                "description": {
+                                    "de-CH": {
+                                        "content": "Übersetzbar — pro Sprache einen eigenen Text erfassen."
+                                    },
+                                    "en-GB": {
+                                        "content": "Translatable — enter a separate text per language."
+                                    }
+                                },
+                                "translatable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "rows": {
+                                    "all": {
+                                        "content": "4"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "form"
+        },
+        {
+            "keyword": "team-members",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/team-members",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Unser Team"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Our team"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/team-members",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "team-members-page",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "team-members-hero",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": {
+                                    "all": {
+                                        "content": "sm"
+                                    }
+                                },
+                                "spacing": {
+                                    "all": {
+                                        "content": "{\"mb\":\"xl\"}"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "team-members-hero-eyebrow",
+                                    "style_name": "badge",
+                                    "fields": {
+                                        "label": {
+                                            "de-CH": {
+                                                "content": "Menschen & Expertise"
+                                            },
+                                            "en-GB": {
+                                                "content": "People & craft"
+                                            }
+                                        },
+                                        "variant": {
+                                            "all": {
+                                                "content": "light"
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "blue"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "xl"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "team-members-hero-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": {
+                                                "content": "Unser Team"
+                                            },
+                                            "en-GB": {
+                                                "content": "Meet the people building it"
+                                            }
+                                        },
+                                        "title_order": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        }
+                                    },
+                                    "global_fields": {
+                                        "css": "tracking-tight text-4xl md:text-5xl font-semibold text-slate-900 dark:text-white max-w-3xl"
+                                    }
+                                },
+                                {
+                                    "section_name": "team-members-hero-subtitle",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": {
+                                                "content": "Forscherinnen, Ingenieurinnen und Architektinnen — klicken Sie ein Profil für die ganze Geschichte."
+                                            },
+                                            "en-GB": {
+                                                "content": "Researchers, engineers, and builders — open any profile for the full story."
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "lg"
+                                            }
+                                        }
+                                    },
+                                    "global_fields": {
+                                        "css": "max-w-2xl text-slate-600 dark:text-slate-300 leading-relaxed"
+                                    }
+                                },
+                                {
+                                    "section_name": "team-members-hero-divider",
+                                    "style_name": "divider",
+                                    "fields": {
+                                        "spacing": {
+                                            "all": {
+                                                "content": "{\"mt\":\"sm\"}"
+                                            }
+                                        }
+                                    },
+                                    "global_fields": {
+                                        "css": "opacity-40"
+                                    }
+                                }
+                            ],
+                            "global_fields": {
+                                "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm"
+                            }
+                        },
+                        {
+                            "section_name": "team-members-list",
+                            "style_name": "entry-list",
+                            "global_fields": {
+                                "css": "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8",
+                                "css_mobile": "gap-md"
+                            },
+                            "children": [
+                                {
+                                    "section_name": "team-members-list-card",
+                                    "style_name": "card",
+                                    "fields": {
+                                        "border": {
+                                            "all": {
+                                                "content": "1"
+                                            }
+                                        },
+                                        "radius": {
+                                            "all": {
+                                                "content": "xl"
+                                            }
+                                        },
+                                        "web_card_shadow": {
+                                            "all": {
+                                                "content": "md"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "team-members-list-card-head",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "gap": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                },
+                                                "web_group_wrap": {
+                                                    "all": {
+                                                        "content": "wrap"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "team-members-list-card-avatar",
+                                                    "style_name": "avatar",
+                                                    "fields": {
+                                                        "name": {
+                                                            "all": {
+                                                                "content": "{{team_member.name}}"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "initials"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "xl"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "50%"
+                                                            }
+                                                        }
+                                                    },
+                                                    "global_fields": {
+                                                        "css": "ring-2 ring-sky-100 dark:ring-sky-900 shadow-sm"
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "team-members-list-card-head-text",
+                                                    "style_name": "stack",
+                                                    "fields": {
+                                                        "gap": {
+                                                            "all": {
+                                                                "content": "xs"
+                                                            }
+                                                        }
+                                                    },
+                                                    "children": [
+                                                        {
+                                                            "section_name": "team-members-list-card-name",
+                                                            "style_name": "title",
+                                                            "fields": {
+                                                                "content": {
+                                                                    "de-CH": {
+                                                                        "content": "{{team_member.name}}"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "{{team_member.name}}"
+                                                                    }
+                                                                },
+                                                                "title_order": {
+                                                                    "all": {
+                                                                        "content": "4"
+                                                                    }
+                                                                }
+                                                            },
+                                                            "global_fields": {
+                                                                "css": "tracking-tight"
+                                                            }
+                                                        },
+                                                        {
+                                                            "section_name": "team-members-list-card-role",
+                                                            "style_name": "badge",
+                                                            "fields": {
+                                                                "label": {
+                                                                    "de-CH": {
+                                                                        "content": "{{team_member._role_label}}"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "{{team_member._role_label}}"
+                                                                    }
+                                                                },
+                                                                "variant": {
+                                                                    "all": {
+                                                                        "content": "light"
+                                                                    }
+                                                                },
+                                                                "color": {
+                                                                    "all": {
+                                                                        "content": "cyan"
+                                                                    }
+                                                                },
+                                                                "radius": {
+                                                                    "all": {
+                                                                        "content": "xl"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "section_name": "team-members-list-card-bio",
+                                            "style_name": "text",
+                                            "fields": {
+                                                "text": {
+                                                    "de-CH": {
+                                                        "content": "{{team_member.bio}}"
+                                                    },
+                                                    "en-GB": {
+                                                        "content": "{{team_member.bio}}"
+                                                    }
+                                                },
+                                                "size": {
+                                                    "all": {
+                                                        "content": "sm"
+                                                    }
+                                                },
+                                                "color": {
+                                                    "all": {
+                                                        "content": "dimmed"
+                                                    }
+                                                },
+                                                "web_text_line_clamp": {
+                                                    "all": {
+                                                        "content": "3"
+                                                    }
+                                                },
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"sm\"}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "team-members-list-card-divider",
+                                            "style_name": "divider",
+                                            "fields": {
+                                                "spacing": {
+                                                    "all": {
+                                                        "content": "{\"mt\":\"sm\",\"mb\":\"sm\"}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "section_name": "team-members-list-card-footer",
+                                            "style_name": "group",
+                                            "fields": {
+                                                "justify": {
+                                                    "all": {
+                                                        "content": "space-between"
+                                                    }
+                                                },
+                                                "align": {
+                                                    "all": {
+                                                        "content": "center"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "team-members-list-card-email",
+                                                    "style_name": "link",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "{{team_member.email}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{team_member.email}}"
+                                                            }
+                                                        },
+                                                        "url": {
+                                                            "all": {
+                                                                "content": "mailto:{{team_member.email}}"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "team-members-list-card-open",
+                                                    "style_name": "button",
+                                                    "fields": {
+                                                        "label": {
+                                                            "de-CH": {
+                                                                "content": "Profil ansehen"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "View profile"
+                                                            }
+                                                        },
+                                                        "is_link": {
+                                                            "all": {
+                                                                "content": "1"
+                                                            }
+                                                        },
+                                                        "url": {
+                                                            "all": {
+                                                                "content": "/team-members/{{team_member.record_id}}"
+                                                            }
+                                                        },
+                                                        "variant": {
+                                                            "all": {
+                                                                "content": "filled"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "sm"
+                                                            }
+                                                        },
+                                                        "color": {
+                                                            "all": {
+                                                                "content": "blue"
+                                                            }
+                                                        },
+                                                        "radius": {
+                                                            "all": {
+                                                                "content": "xl"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    ],
+                                    "global_fields": {
+                                        "css": "h-full transition duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-sky-200 dark:hover:border-sky-800 bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm",
+                                        "css_mobile": "px-md py-md gap-sm"
+                                    }
+                                }
+                            ],
+                            "fields": {
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:team-members-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "filter": {
+                                    "all": {
+                                        "content": ""
+                                    }
+                                },
+                                "scope": {
+                                    "all": {
+                                        "content": "team_member"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "public_list"
+        },
+        {
+            "keyword": "team-members-record",
+            "surface": "public",
+            "page_access_type": "mobile_and_web",
+            "headless": false,
+            "open_access": false,
+            "url": "/team-members/{record_id}",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Teamprofil"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Team profile"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/team-members/{record_id}",
+                    "requirements": {
+                        "record_id": "\\d+"
+                    },
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "team-members-record-page",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "team-members-detail",
+                            "style_name": "entry-record",
+                            "children": [
+                                {
+                                    "section_name": "team-members-detail-container",
+                                    "style_name": "container",
+                                    "fields": {
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        },
+                                        "spacing": {
+                                            "all": {
+                                                "content": "{\"mt\":\"xl\",\"mb\":\"xl\"}"
+                                            }
+                                        }
+                                    },
+                                    "children": [
+                                        {
+                                            "section_name": "team-members-detail-card",
+                                            "style_name": "card",
+                                            "fields": {
+                                                "border": {
+                                                    "all": {
+                                                        "content": "1"
+                                                    }
+                                                },
+                                                "radius": {
+                                                    "all": {
+                                                        "content": "xl"
+                                                    }
+                                                },
+                                                "web_card_shadow": {
+                                                    "all": {
+                                                        "content": "md"
+                                                    }
+                                                }
+                                            },
+                                            "children": [
+                                                {
+                                                    "section_name": "team-members-detail-head",
+                                                    "style_name": "group",
+                                                    "fields": {
+                                                        "gap": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        },
+                                                        "align": {
+                                                            "all": {
+                                                                "content": "center"
+                                                            }
+                                                        },
+                                                        "web_group_wrap": {
+                                                            "all": {
+                                                                "content": "nowrap"
+                                                            }
+                                                        }
+                                                    },
+                                                    "children": [
+                                                        {
+                                                            "section_name": "team-members-detail-avatar",
+                                                            "style_name": "avatar",
+                                                            "fields": {
+                                                                "name": {
+                                                                    "all": {
+                                                                        "content": "{{team_member.name}}"
+                                                                    }
+                                                                },
+                                                                "color": {
+                                                                    "all": {
+                                                                        "content": "initials"
+                                                                    }
+                                                                },
+                                                                "size": {
+                                                                    "all": {
+                                                                        "content": "xl"
+                                                                    }
+                                                                },
+                                                                "radius": {
+                                                                    "all": {
+                                                                        "content": "50%"
+                                                                    }
+                                                                }
+                                                            },
+                                                            "global_fields": {
+                                                                "css": "ring-4 ring-sky-100 dark:ring-sky-900 shadow-md"
+                                                            }
+                                                        },
+                                                        {
+                                                            "section_name": "team-members-detail-head-text",
+                                                            "style_name": "stack",
+                                                            "fields": {
+                                                                "gap": {
+                                                                    "all": {
+                                                                        "content": "xs"
+                                                                    }
+                                                                }
+                                                            },
+                                                            "children": [
+                                                                {
+                                                                    "section_name": "team-members-detail-name",
+                                                                    "style_name": "title",
+                                                                    "fields": {
+                                                                        "content": {
+                                                                            "de-CH": {
+                                                                                "content": "{{team_member.name}}"
+                                                                            },
+                                                                            "en-GB": {
+                                                                                "content": "{{team_member.name}}"
+                                                                            }
+                                                                        },
+                                                                        "title_order": {
+                                                                            "all": {
+                                                                                "content": "2"
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                },
+                                                                {
+                                                                    "section_name": "team-members-detail-role",
+                                                                    "style_name": "badge",
+                                                                    "fields": {
+                                                                        "label": {
+                                                                            "de-CH": {
+                                                                                "content": "{{team_member._role_label}}"
+                                                                            },
+                                                                            "en-GB": {
+                                                                                "content": "{{team_member._role_label}}"
+                                                                            }
+                                                                        },
+                                                                        "variant": {
+                                                                            "all": {
+                                                                                "content": "light"
+                                                                            }
+                                                                        },
+                                                                        "size": {
+                                                                            "all": {
+                                                                                "content": "lg"
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            ]
+                                                        }
+                                                    ]
+                                                },
+                                                {
+                                                    "section_name": "team-members-detail-divider",
+                                                    "style_name": "divider",
+                                                    "fields": {
+                                                        "spacing": {
+                                                            "all": {
+                                                                "content": "{\"mt\":\"md\",\"mb\":\"md\"}"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "team-members-detail-bio",
+                                                    "style_name": "text",
+                                                    "fields": {
+                                                        "text": {
+                                                            "de-CH": {
+                                                                "content": "{{team_member.bio}}"
+                                                            },
+                                                            "en-GB": {
+                                                                "content": "{{team_member.bio}}"
+                                                            }
+                                                        },
+                                                        "size": {
+                                                            "all": {
+                                                                "content": "md"
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "section_name": "team-members-detail-footer",
+                                                    "style_name": "group",
+                                                    "fields": {
+                                                        "justify": {
+                                                            "all": {
+                                                                "content": "space-between"
+                                                            }
+                                                        },
+                                                        "align": {
+                                                            "all": {
+                                                                "content": "center"
+                                                            }
+                                                        },
+                                                        "spacing": {
+                                                            "all": {
+                                                                "content": "{\"mt\":\"lg\"}"
+                                                            }
+                                                        }
+                                                    },
+                                                    "children": [
+                                                        {
+                                                            "section_name": "team-members-detail-email",
+                                                            "style_name": "link",
+                                                            "fields": {
+                                                                "label": {
+                                                                    "de-CH": {
+                                                                        "content": "{{team_member.email}}"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "{{team_member.email}}"
+                                                                    }
+                                                                },
+                                                                "url": {
+                                                                    "all": {
+                                                                        "content": "mailto:{{team_member.email}}"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "section_name": "team-members-detail-back",
+                                                            "style_name": "button",
+                                                            "fields": {
+                                                                "label": {
+                                                                    "de-CH": {
+                                                                        "content": "Zurück zur Übersicht"
+                                                                    },
+                                                                    "en-GB": {
+                                                                        "content": "Back to the team"
+                                                                    }
+                                                                },
+                                                                "is_link": {
+                                                                    "all": {
+                                                                        "content": "1"
+                                                                    }
+                                                                },
+                                                                "url": {
+                                                                    "all": {
+                                                                        "content": "/team-members"
+                                                                    }
+                                                                },
+                                                                "variant": {
+                                                                    "all": {
+                                                                        "content": "subtle"
+                                                                    }
+                                                                },
+                                                                "size": {
+                                                                    "all": {
+                                                                        "content": "sm"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            ],
+                                            "global_fields": {
+                                                "css": "border border-sky-100/80 dark:border-slate-800 bg-gradient-to-b from-white to-sky-50/40 dark:from-slate-900 dark:to-slate-950"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            "fields": {
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:team-members-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "scope": {
+                                    "all": {
+                                        "content": "team_member"
+                                    }
+                                },
+                                "load_record_from": {
+                                    "all": {
+                                        "content": "record_id"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "public_detail"
+        },
+        {
+            "keyword": "cms-team-members",
+            "surface": "cms",
+            "page_access_type": "mobile_and_web",
+            "headless": true,
+            "open_access": false,
+            "url": "/cms/team-members",
+            "parent_keyword": null,
+            "is_system": false,
+            "fields": [
+                {
+                    "name": "title",
+                    "display": true,
+                    "translations": [
+                        {
+                            "language_code": "de-CH",
+                            "content": "Team verwalten"
+                        },
+                        {
+                            "language_code": "en-GB",
+                            "content": "Manage team"
+                        }
+                    ]
+                }
+            ],
+            "routes": [
+                {
+                    "path_pattern": "/cms/team-members",
+                    "requirements": null,
+                    "is_canonical": true,
+                    "is_active": true,
+                    "priority": 0
+                }
+            ],
+            "sections": [
+                {
+                    "section_name": "cms-team-members-page",
+                    "style_name": "container",
+                    "fields": {
+                        "size": {
+                            "all": {
+                                "content": "lg"
+                            }
+                        },
+                        "spacing": {
+                            "all": {
+                                "content": "{\"pt\":\"xl\",\"pb\":\"xl\",\"ps\":\"md\",\"pe\":\"md\"}"
+                            }
+                        }
+                    },
+                    "children": [
+                        {
+                            "section_name": "cms-team-members-hero",
+                            "style_name": "stack",
+                            "fields": {
+                                "gap": {
+                                    "all": {
+                                        "content": "xs"
+                                    }
+                                },
+                                "spacing": {
+                                    "all": {
+                                        "content": "{\"mb\":\"lg\"}"
+                                    }
+                                }
+                            },
+                            "children": [
+                                {
+                                    "section_name": "cms-team-members-hero-title",
+                                    "style_name": "title",
+                                    "fields": {
+                                        "content": {
+                                            "de-CH": {
+                                                "content": "Team verwalten"
+                                            },
+                                            "en-GB": {
+                                                "content": "Manage team"
+                                            }
+                                        },
+                                        "title_order": {
+                                            "all": {
+                                                "content": "2"
+                                            }
+                                        }
+                                    }
+                                },
+                                {
+                                    "section_name": "cms-team-members-hero-subtitle",
+                                    "style_name": "text",
+                                    "fields": {
+                                        "text": {
+                                            "de-CH": {
+                                                "content": "«Neu hinzufügen» öffnet das Formular als Modal; der Stift bearbeitet den Eintrag, der Papierkorb löscht ihn (mit Bestätigung)."
+                                            },
+                                            "en-GB": {
+                                                "content": "\"Add new\" opens the form as a modal; the pencil edits a row, the bin deletes it (with confirmation)."
+                                            }
+                                        },
+                                        "color": {
+                                            "all": {
+                                                "content": "dimmed"
+                                            }
+                                        },
+                                        "size": {
+                                            "all": {
+                                                "content": "sm"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "section_name": "cms-team-members-table",
+                            "style_name": "entry-table",
+                            "fields": {
+                                "title": {
+                                    "de-CH": {
+                                        "content": "Alle Teammitglieder"
+                                    },
+                                    "en-GB": {
+                                        "content": "All team members"
+                                    }
+                                },
+                                "data_table": {
+                                    "all": {
+                                        "content": "@section:team-members-form"
+                                    }
+                                },
+                                "own_entries_only": {
+                                    "all": {
+                                        "content": "0"
+                                    }
+                                },
+                                "delete_entry": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_sortable": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_searching": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_paginate": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "dt_info": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "csv_export": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "fields_map": {
+                                    "all": {
+                                        "content": "[\"name\",\"role\",\"email\",\"bio\"]"
+                                    }
+                                },
+                                "add_url": {
+                                    "all": {
+                                        "content": "/cms/team-members/form"
+                                    }
+                                },
+                                "edit_url": {
+                                    "all": {
+                                        "content": "/cms/team-members/{record_id}"
+                                    }
+                                },
+                                "empty_text": {
+                                    "de-CH": {
+                                        "content": "Noch keine Teammitglieder — mit «Neu hinzufügen» den ersten Eintrag anlegen."
+                                    },
+                                    "en-GB": {
+                                        "content": "No team members yet — click \"Add new\" to create the first one."
+                                    }
+                                },
+                                "delete_modal_title": {
+                                    "de-CH": {
+                                        "content": "Teammitglied löschen?"
+                                    },
+                                    "en-GB": {
+                                        "content": "Delete team member?"
+                                    }
+                                },
+                                "delete_modal_body": {
+                                    "de-CH": {
+                                        "content": "Der Eintrag wird als gelöscht markiert und aus der öffentlichen Ansicht ausgeblendet. Administratoren können ihn bei Bedarf wiederherstellen."
+                                    },
+                                    "en-GB": {
+                                        "content": "The entry is marked as deleted and hidden from the public site. Administrators can restore it if needed."
+                                    }
+                                },
+                                "show_language_preview": {
+                                    "all": {
+                                        "content": "1"
+                                    }
+                                },
+                                "fields_map_labels": {
+                                    "en-GB": {
+                                        "content": "{\"name\":\"Name\",\"role\":\"Role\",\"email\":\"Email\",\"bio\":\"Bio\"}"
+                                    },
+                                    "de-CH": {
+                                        "content": "{\"name\":\"Name\",\"role\":\"Rolle\",\"email\":\"E-Mail\",\"bio\":\"Bio\"}"
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
+            "cms_app_role": "cms_list"
+        }
+    ],
+    "cms_app": {
+        "name": "Team members",
+        "slug": "team-members",
+        "description": "Modern public team directory with profiles and a CMS editing grid."
+    }
+}

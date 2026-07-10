@@ -426,8 +426,50 @@ class FormController extends AbstractController
                 }
             }
 
-            // Validate form submission
-            $validationResult = $this->formValidationService->validateFormSubmission($pageId, $sectionId, $formData);
+            // Validate form update (submission checks + own_entries_only flag)
+            $validationResult = $this->formValidationService->validateFormUpdate($pageId, $sectionId, $formData);
+            $sectionOwnEntriesOnly = (bool) ($validationResult['own_entries_only'] ?? true);
+
+            // Record edit mode rule (issue #30): when the update explicitly
+            // targets a record id, users may always update their OWN record;
+            // updating another user's record requires the section to opt out
+            // of own_entries_only AND UPDATE permission on the form's data
+            // table. The rule lives in canUpdateOwnedRecord so it stays in
+            // lockstep with the form-record prefill loader
+            // (DataService::getFormRecordDataForRecord).
+            $effectiveOwnEntriesOnly = true;
+            if (is_array($updateBasedOn) && isset($updateBasedOn['record_id'])) {
+                $targetRecordId = is_numeric($updateBasedOn['record_id']) ? (int) $updateBasedOn['record_id'] : 0;
+                $userId = (int) $currentUser->getId();
+                $recordOwnerId = $targetRecordId > 0 ? $this->dataService->getRecordOwnerId($targetRecordId) : null;
+                $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
+
+                if (!$isOwnRecord) {
+                    $dataTable = $this->dataService->getDataTableByName((string) $sectionId);
+                    $dataTableId = $dataTable ? (int) $dataTable->getId() : 0;
+                    $hasUpdatePermission = $dataTableId > 0 && $this->dataAccessSecurityService->hasPermission(
+                        $userId,
+                        'data_table',
+                        $dataTableId,
+                        DataAccessSecurityService::PERMISSION_UPDATE
+                    );
+
+                    // own_entries_only sections never expose foreign records,
+                    // so a foreign target is forbidden outright; shared
+                    // sections defer to the centralized update rule.
+                    $foreignEditAllowed = !$sectionOwnEntriesOnly
+                        && $this->dataAccessSecurityService->canUpdateOwnedRecord(false, $isOwnRecord, $hasUpdatePermission);
+                    if (!$foreignEditAllowed) {
+                        return $this->apiResponseFormatter->formatError(
+                            'You do not have permission to update this entry.',
+                            Response::HTTP_FORBIDDEN
+                        );
+                    }
+
+                    // Permission granted: let DataService update the foreign record.
+                    $effectiveOwnEntriesOnly = false;
+                }
+            }
 
             // Process file uploads if any file fields are present
             $processedFormData = $this->processFileUploads($formData, $request, (int) $currentUser->getId(), $sectionId);
@@ -438,7 +480,7 @@ class FormController extends AbstractController
                 $processedFormData,
                 LookupService::TRANSACTION_BY_BY_USER,
                 $updateBasedOn,
-                true // own entries only
+                $effectiveOwnEntriesOnly
             );
 
             if ($recordId === false) {
@@ -503,7 +545,7 @@ class FormController extends AbstractController
             // Users may always delete their own records; deleting another user's
             // record requires DELETE permission on the data table. The rule lives
             // in DataAccessSecurityService::canDeleteOwnedRecord() so it stays in
-            // lockstep with the showUserInput renderer's per-row _can_delete flag.
+            // lockstep with the entry-table renderer's per-row _can_delete flag.
             if (!$ownEntriesOnly) {
                 $userId = (int) $currentUser->getId();
                 $recordOwnerId = $this->dataService->getRecordOwnerId($recordId);

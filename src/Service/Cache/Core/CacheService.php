@@ -62,6 +62,10 @@ class CacheService
     public const CATEGORY_FRONTEND_USER = 'frontend_user';
     /** @var string Cache category for CMS configuration preferences */
     public const CATEGORY_CMS_PREFERENCES = 'cms_preferences';
+    /** @var string Cache category for navigation menus and settings */
+    public const CATEGORY_NAVIGATION = 'navigation';
+
+    public const CATEGORY_SEARCH = 'search';
     /** @var string Cache category for scheduled job entities */
     public const CATEGORY_SCHEDULED_JOBS = 'scheduled_jobs';
     /** @var string Cache category for action entities and configurations */
@@ -97,6 +101,8 @@ class CacheService
         self::CATEGORY_ASSETS,
         self::CATEGORY_FRONTEND_USER,
         self::CATEGORY_CMS_PREFERENCES,
+        self::CATEGORY_NAVIGATION,
+        self::CATEGORY_SEARCH,
         self::CATEGORY_SCHEDULED_JOBS,
         self::CATEGORY_ACTIONS,
         self::CATEGORY_STYLES,

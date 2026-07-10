@@ -17,7 +17,9 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_pages_id_parent_page', columns: ['id_parent_page'])]
 #[ORM\Index(name: 'idx_pages_id_page_types', columns: ['id_page_types'])]
 #[ORM\Index(name: 'idx_pages_id_page_access_types', columns: ['id_page_access_types'])]
+#[ORM\Index(name: 'idx_pages_id_page_surface', columns: ['id_page_surface'])]
 #[ORM\Index(name: 'idx_pages_id_published_page_versions', columns: ['id_published_page_versions'])]
+#[ORM\Index(name: 'idx_pages_id_cms_app', columns: ['id_cms_app'])]
 class Page
 {
     #[ORM\Id]
@@ -43,14 +45,17 @@ class Page
     #[ORM\JoinColumn(name: 'id_page_access_types', referencedColumnName: 'id', nullable: true, onDelete: 'CASCADE')]
     private ?Lookup $pageAccessType = null;
 
+    /**
+     * CMS-in-CMS organization axis (issue #30): `public` website pages vs
+     * `cms` application pages. NULL is treated as `public`. Independent from
+     * `page_type` (field schema) and `is_system` (delete protection).
+     */
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_page_surface', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?Lookup $pageSurface = null;
+
     #[ORM\Column(name: 'is_headless', type: 'boolean', options: ['default' => 0])]
     private bool $is_headless = false;
-
-    #[ORM\Column(name: 'nav_position', type: 'integer', nullable: true)]
-    private ?int $nav_position = null;
-
-    #[ORM\Column(name: 'footer_position', type: 'integer', nullable: true)]
-    private ?int $footer_position = null;
 
     #[ORM\Column(name: 'is_open_access', type: 'boolean', options: ['default' => 0], nullable: true)]
     private ?bool $is_open_access = false;
@@ -68,6 +73,21 @@ class Page
     #[ORM\ManyToOne(targetEntity: PageVersion::class)]
     #[ORM\JoinColumn(name: 'id_published_page_versions', referencedColumnName: 'id', nullable: true)]
     private ?PageVersion $publishedVersion = null;
+
+    /**
+     * Optional CMS app this page belongs to (first-class cms_app product unit).
+     * NULL = ordinary content page (not part of a CMS app).
+     */
+    #[ORM\ManyToOne(targetEntity: CmsApp::class)]
+    #[ORM\JoinColumn(name: 'id_cms_app', referencedColumnName: 'id', nullable: true, onDelete: 'SET NULL')]
+    private ?CmsApp $cmsApp = null;
+
+    /**
+     * Role of this page inside its CMS app ({@see \App\Service\CMS\Admin\CmsAppRole}).
+     * Required when {@see $cmsApp} is set; NULL when unassigned.
+     */
+    #[ORM\Column(name: 'cms_app_role', type: 'string', length: 32, nullable: true)]
+    private ?string $cmsAppRole = null;
 
     public function getId(): ?int
     {
@@ -144,6 +164,25 @@ class Page
         return $this;
     }
 
+    public function getPageSurface(): ?Lookup
+    {
+        return $this->pageSurface;
+    }
+
+    public function setPageSurface(?Lookup $pageSurface): static
+    {
+        $this->pageSurface = $pageSurface;
+        return $this;
+    }
+
+    /**
+     * Surface code (`public` | `cms`); NULL FK resolves to `public`.
+     */
+    public function getPageSurfaceCode(): string
+    {
+        return $this->pageSurface?->getLookupCode() ?? 'public';
+    }
+
     public function isHeadless(): ?bool
     {
         return $this->is_headless;
@@ -155,31 +194,6 @@ class Page
 
         return $this;
     }
-
-    public function getNavPosition(): ?int
-    {
-        return $this->nav_position;
-    }
-
-    public function setNavPosition(?int $nav_position): static
-    {
-        $this->nav_position = $nav_position;
-
-        return $this;
-    }
-
-    public function getFooterPosition(): ?int
-    {
-        return $this->footer_position;
-    }
-
-    public function setFooterPosition(?int $footer_position): static
-    {
-        $this->footer_position = $footer_position;
-
-        return $this;
-    }
-
 
     public function isOpenAccess(): ?bool
     {
@@ -220,6 +234,30 @@ class Page
     public function getPublishedVersionId(): ?int
     {
         return $this->publishedVersion?->getId();
+    }
+
+    public function getCmsApp(): ?CmsApp
+    {
+        return $this->cmsApp;
+    }
+
+    public function setCmsApp(?CmsApp $cmsApp): static
+    {
+        $this->cmsApp = $cmsApp;
+
+        return $this;
+    }
+
+    public function getCmsAppRole(): ?string
+    {
+        return $this->cmsAppRole;
+    }
+
+    public function setCmsAppRole(?string $cmsAppRole): static
+    {
+        $this->cmsAppRole = $cmsAppRole;
+
+        return $this;
     }
 }
 // ENTITY RULE

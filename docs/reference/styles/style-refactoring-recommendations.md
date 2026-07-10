@@ -328,7 +328,9 @@ extend the DB if a field is genuinely planned. Priority styles:
 - **`form-log` / `form-record`** — add the many real DB fields (`btn_*`,
   `web_buttons_*`, `is_log`, `redirect_at_end`, …) to the types.
 - **`entry-list` / `entry-record` / `entry-record-delete`** — add
-  `data_table`, `filter`, `scope`, `own_entries_only`, `url_param`, `type`.
+  `data_table`, `filter`, `scope`, `own_entries_only`, `type`. (`url_param` was
+  removed pre-1.0; detail scoping uses explicit `filter` with
+  `{{route.record_id}}` only.)
 
 This is a `@selfhelp/shared` change → bump the package and the consumer ranges,
 and update the cross-repo compatibility floors (AGENTS.md cross-repo rule).
@@ -393,10 +395,10 @@ writing `styles.id_render_target` (mechanism: `Version20260618143215`):
 - **`version`** → `web` (or remove if unreferenced): build/diagnostic surface, 0
   author fields. Run a content-reference check first.
 - **Web-first styles** (`html-tag`, `typography`, `rich-text-editor`,
-  `color-picker`, `color-input`, `show-user-input`) → stay `both` **with a
+  `color-picker`, `color-input`, `entry-table`) → stay `both` **with a
   documented mobile fallback** (read-only viewer, RN list/cards, RN color UI).
   Do not mark them `web` just because the mobile renderer is unfinished.
-- **`show-user-input`** → mobile must render a **list/card** view, never a copied
+- **`entry-table`** (ex `show-user-input`) → mobile must render a **list/card** view, never a copied
   desktop table (mobile.md §11.6).
 - Layout styles stay `both`: they map to RN flexbox (see mobile mapping §6); they
   are not web-only even though they look web-shaped.

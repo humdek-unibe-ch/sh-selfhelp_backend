@@ -14,9 +14,29 @@
                     "type": "array",
                     "description": "List of fields associated with the page",
                     "items": { "$ref": "../../../entities/fieldEntity.json" }
+                },
+                "routes": {
+                    "type": "array",
+                    "description": "DB-driven public routes for this page (issue #30), round-tripped by the locked Routes panel",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "integer" },
+                            "path_pattern": { "type": "string" },
+                            "requirements": {
+                                "type": ["object", "null"],
+                                "additionalProperties": { "type": "string" }
+                            },
+                            "is_canonical": { "type": "boolean" },
+                            "is_active": { "type": "boolean" },
+                            "priority": { "type": "integer" }
+                        },
+                        "required": ["id", "path_pattern", "is_canonical", "is_active", "priority"],
+                        "additionalProperties": false
+                    }
                 }
             },
-            "required": ["page", "fields"]
+            "required": ["page", "fields", "routes"]
         }
     },
     "required": ["data"]

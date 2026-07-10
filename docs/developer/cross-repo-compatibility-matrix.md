@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-29.
+Last verified: 2026-07-09.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -366,6 +366,208 @@ the same change wave:
 > cores, so the `selfhelp-mobile-preview` `supports.core` stays `>=0.1.19`. **No
 > `@selfhelp/shared` change.**
 
+> **Core 0.1.30 (interpolation robustness — floor-neutral):** an internal fix so a
+> non-scalar `{{ }}` token (e.g. `{{system.user_group}}`) renders as empty instead
+> of fataling, and `\Throwable` is caught around the Mustache render. No API/route/
+> schema change, so both floors are unchanged (`supports.frontend >=0.1.55`,
+> `supports.core >=0.1.28`).
+
+> **Core 0.1.31 (DB-driven public routing + CMS-in-CMS app builder ⇄ frontend
+> 0.1.57):** issue #30 makes public page URLs **data**. A new `page_routes` table
+> backs the open-access resolver `GET /cms-api/v1/pages/resolve` (full page ACL/
+> publish/preview/data-access still applies — 404 on unauthorized), the page-content
+> response gains `route_params` / `matched_url_pattern` / `canonical_url`, dynamic
+> URL segments are exposed to interpolation as `{{route.<snake_case>}}` and folded
+> into the page cache key, the reset/validate flows become parameterized seeded
+> routes (`/reset` + `/reset/{user_id}/{token}`, `/validate/{user_id}/{token}`),
+> pages gain a `page_surface` (`public`|`cms`) split, and the admin API adds the
+> portable page-bundle **export/import** (`POST /admin/pages/export`,
+> `GET /admin/pages/{id}/export/suggest`, `POST /admin/pages/import/validate`,
+> `POST /admin/pages/import`) plus the list+detail **wizard**
+> (`POST /admin/pages/cms-app`). **Frontend 0.1.57** switches its entire public
+> routing to `/pages/resolve` (path → page) and reads `route_params` in the
+> reset/validate styles, and ships the export/import + wizard admin UI, so **both
+> floors move in lockstep**: frontend `supports.core` `0.1.28 → 0.1.31` and backend
+> `supports.frontend` `0.1.55 → 0.1.57`. The live pairing is now **frontend
+> `>=0.1.57` ⇄ core `>=0.1.31`** (both `<0.2.0`). `@selfhelp/shared` `1.18.0` adds
+> the route-metadata types (`route_params`/`matched_url_pattern`/`canonical_url` on
+> `IPageContent`, `IResolvePageResponse`) + the `PAGES.RESOLVE` endpoint (additive,
+> `^1.x` consumers unaffected). **Mobile 0.1.31** resolves deep links by path
+> (`pageService.resolvePageByPath`) and the validate screen reads `route_params`;
+> it is not in the registry resolver's pairing, so its core coupling is enforced by
+> shipping in the same wave (see "Mobile ⇄ core coupling").
+
+> **Menu-builder navigation (breaking, core `0.1.32` / frontend `0.1.58` / mobile
+> `0.1.32` wave):** replaces page-level `nav_position` / `footer_position` and
+> `web_nav_render` / `mobile_nav_render` with first-class `navigation_menus` +
+> `GET /cms-api/v1/navigation`, admin `/admin/navigation/*`, search routes, and
+> last-visited startup keys. Floors move in lockstep: backend `supports.frontend`
+> `>=0.1.58`, frontend `supports.core` `>=0.1.32`, mobile `supports.core`
+> `>=0.1.32`. The cross-layer anchor is `@selfhelp/shared` **`1.21.0`** (menu
+> payload types, `TWebHeaderPreset`, `searchMenuPagesInPayload`,
+> `resolveMobileSegmentGroup` self-segment, `isOnAnyMobileMenuFromPayload`). The
+> legacy `TWebNavRender` / `TMobileNavRender` types are no longer part of the
+> active contract.
+
+> **Navigation pages & page icons (superseded by menu-builder wave):** the earlier
+> page-property model is absent from the final consolidated history. Existing
+> page `icon` values are migrated to `navigation_menu_items.icon`; menu item
+> `icon` / `mobile_icon` and membership are then owned entirely by the menu
+> builder (`Version20260710093045`).
+
+> **Core 0.1.33 (navigation overhaul: strict contract v2 ⇄ frontend 0.1.59 —
+> breaking):** destructive pre-release cleanup of the menu-builder model into
+> one strict final contract. Migrations `Version20260710092337` and
+> `Version20260710093045` create and seed the final shape directly, including
+> `navigation_menu_items.layer` (`'top'`/NULL — top header row for `web_header`
+> root items on the double presets), drops the dead `id_child_source` /
+> `auto_include_depth` columns and the `navigationChildSources` lookup type,
+> carries `config.footer_layout` into `id_preset` (`columns` / `inline` join
+> `navigationMenuPresets` — footer layout becomes a preset like the header) and
+> has no `navigation_menus.config` column (the translation columns `description` /
+> `aria_label` are created in the final table shape; the legacy `n` key
+> only ever existed in bundle v1.0, not as a DB column). `GET /cms-api/v1/navigation` now emits the
+> strict always-present item shape (`description`, `aria_label`, `layer`
+> included; `null`, never a missing key) plus menu-level
+> `preset`/`max_depth`/`item_limit`; the admin payloads mirror it (`layer` on
+> item create/update/reorder, footer preset on menu update, translations with
+> `label`/`description`/`aria_label`). The navigation bundle becomes
+> `selfhelp/navigation-bundle` **v2.0**, the only accepted version — a v1.0
+> bundle fails validation with a "re-export with the current version" error.
+> **Frontend 0.1.59** adopts the strict payload (layered double-header
+> rendering via `splitHeaderLayers`/`mergeHeaderLayers`, preset-keyed footer via
+> the shared footer helpers, burger top-row section, admin layer sections +
+> presentation fields + bundle v2.0 panel), so **both floors move in lockstep**:
+> frontend `supports.core` `0.1.32 → 0.1.33` and backend `supports.frontend`
+> `0.1.58 → 0.1.59`. The live pairing is now **frontend `>=0.1.59` ⇄ core
+> `>=0.1.33`** (both `<0.2.0`). The cross-layer anchor is `@selfhelp/shared`
+> **`1.21.5`** (breaking wave previously staged as shared **`2.0.0`**: strict `INavigationMenu`/`INavigationMenuItem`
+> with `layer`/`description`/`aria_label` and no `config`, `TWebFooterPreset`,
+> `headerLayers` + `footerPreset` + `activeTrail` helper modules, strict bundle
+> v2.0 types); frontend and mobile must adopt `1.21.5` in the same wave.
+> **Mobile 0.1.33** ships the matching adoption in the same wave (collapsible
+> drawer with active-trail auto-expand via `expandedIdsForActiveTrail`, shared
+> `isMenuItemActiveOnMobile` active states, tab `item_limit` slice, local
+> duplicate helpers deleted); its preview-image `supports.core` floor moves
+> `0.1.32 → 0.1.33` (see "Mobile ⇄ core coupling").
+> The same 0.1.33 wave also ships the **child-page navigation presentation**
+> contract (migration `Version20260710093045`): `navigationChildrenNavModes`
+> lookups (`sidebar`/`pills`/`none`), menu-level `children_nav` default +
+> `show_breadcrumbs` toggle, per-item `children_nav` override, emitted on web
+> menus in `GET /navigation` and mirrored in the admin payloads + bundle v2.0.
+> Frontend 0.1.59 renders it (sticky branch sidebar / pill strip / breadcrumbs
+> / prev-next pager) via the `@selfhelp/shared` 1.21.5 `branchNav` resolver
+> (`resolveWebBranchNavContext`; wave previously staged as shared 2.0.0), and the all-language content search + admin
+> pages `title`/`titles` fields land in the same versions — no extra floor
+> moves beyond the 0.1.33 ⇄ 0.1.59 pairing above.
+> The wave's remaining additions are **additive inside the same pairing**:
+> anonymous page-view analytics + the admin dashboard API (migrations
+> `Version20260710092337` / `Version20260710093046`: `page_views`/`page_view_referrers` tables, the
+> `admin.analytics.read` permission, `GET /admin/analytics/summary` +
+> `GET /admin/analytics/today` consumed by the frontend 0.1.59 `/admin`
+> dashboard, which hides the widgets without the permission), the branding
+> `logo_size`/`logo_variant` columns on `navigation_settings` (emitted in the
+> `branding` block, resolved by `@selfhelp/shared`
+> `resolveBrandingPresentation` on web + mobile), and the
+> `reset-password`/`validate`/`maintenance` system pages turning headless.
+> An older frontend simply ignores all of it, so no further floor moves.
+
+> **CMS-in-CMS polish wave (same core 0.1.33 ⇄ frontend 0.1.59 pairing —
+> breaking style contract):** the list/detail feature ships polished in the same
+> release pair. The **`show-user-input` style is renamed `entry-table`**
+> (migration `Version20260710093048`; sections keep their `id_styles` FK) — a
+> breaking render-contract change, so the cross-layer anchor moves to
+> `@selfhelp/shared` **`1.21.5`** (breaking wave previously staged as shared 3.0.0: `IEntryTableStyle` /
+> `IEntryTableEntry` replace the `IShowUserInput*` types, `STYLE_REGISTRY` key
+> `entry-table`, `IEntryTableEntry._can_edit`, `IFormRecordStyle` gains
+> `load_record_from` + `own_entries_only`); frontend and mobile adopt `1.21.5`
+> in the same wave (renderers renamed `EntryTableStyle.tsx` / `EntryTable.tsx`).
+> The same wave ships **record edit mode** (`form-record` `load_record_from`;
+> `PUT /cms-api/v1/forms/update` accepts an explicit `record_id` under the
+> shared `canUpdateOwnedRecord` rule with three ownership modes), the
+> per-row `_can_edit` flag in the `entry-table` payload, **portable bundles**
+> (`entry-table` `data_table` exported as `@section:<owner>` and relinked on
+> import; prefixed imports rewrite in-bundle content links so demo copies stay
+> clickable), and the **template gallery** (six curated CMS-in-CMS bundles;
+> `GET /admin/pages/examples` emits `tags` for the frontend's one-click "Start
+> from template" tab). Because the rename + edit mode land inside the SAME
+> unreleased 0.1.33 ⇄ 0.1.59 pair, the `release-manifest.json` floors do not
+> move again: frontend `supports.core` stays `>=0.1.33` and backend
+> `supports.frontend` stays `>=0.1.59` (both `<0.2.0`). Mobile 0.1.33 adopts
+> the rename in the same wave via `@selfhelp/shared` `1.21.5`.
+
+> **Core 0.1.34 (first-class `cms_app` product unit ⇄ frontend 0.1.60 —
+> breaking):** CMS-in-CMS apps become a first-class entity. Migrations
+> `Version20260710092337` / `Version20260710093044` add the `cms_apps` table (hub FKs for form section +
+> list/detail pages), `pages.id_cms_app` / `pages.cms_app_role` (strict roles
+> `form` / `cms_list` / `cms_detail` / `public_list` / `public_detail` / `other`;
+> primary roles unique per app), separate `admin.cms_app.*` permissions, and the
+> `/admin/cms-apps` CRUD + assign/unassign + scaffold API. The legacy
+> `POST /admin/pages/cms-app` wizard route is **removed** (pre-1.0, no alias).
+> Hub FKs are written only by `CmsAppHubSyncService`; deleting an app shell
+> unassigns pages without deleting pages/sections/tables/records. Portable
+> bundles emit/consume a `cms_app` block + per-page `cms_app_role`.
+> **Frontend 0.1.60** ships `/admin/cms-apps` index/detail, CMS Apps navbar
+> accordion (Content Pages exclude assigned pages), empty-shell create + scaffold
+> modals, and Manage content → `/cms/<app>`, so **both floors move in lockstep**:
+> frontend `supports.core` `0.1.33 → 0.1.34` and backend `supports.frontend`
+> `0.1.59 → 0.1.60`. The live pairing is now **frontend `>=0.1.60` ⇄ core
+> `>=0.1.34`** (both `<0.2.0`). Host `selfhelp.cms_version` becomes `0.1.34`.
+> `@selfhelp/shared` `1.21.5` adds the `ICmsApp*` / `TCmsAppRole` +
+> `admin.cms_app.*` permission constants (additive within the same major).
+>
+> **User-owned enum options (additive inside the same unreleased pair):**
+> core adds the `option_labels` field and runtime `_{field}_label(s)` hydration;
+> frontend 0.1.60 and mobile 0.1.33 consume the canonical shared resolver, and
+> the six CMS-in-CMS templates adopt stable codes. This lands before the
+> 0.1.34 / 0.1.60 pair is tagged, so the manifest floors remain
+> **frontend `>=0.1.60` ⇄ core `>=0.1.34`**. `@selfhelp/shared` remains 1.21.5
+> with additive helpers in the same release wave.
+
+> **Open-in-modal sizing + import viewer-groups (additive, same 0.1.31 / 0.1.57
+> wave):** further additive issue #30 follow-up. Core adds two page-property
+> fields `modal_width` + `modal_height` (migration `Version20260710093044`, page
+> types `core` + `experiment`), projects them onto the single-page content
+> response (`get_page.json` `page.modal_width|modal_height`, free CSS length /
+> `auto` / null = default 80%), and accepts an additive `accessGroups` option on
+> `POST /admin/pages/import` (`import_pages.json`) so imported pages are granted
+> surface-appropriate viewer/editor ACL (admin always gets full access). The
+> importer also realigns an imported page's `pages.url` to its (prefixed)
+> canonical route so menu/admin links resolve through the DB router. All additions
+> are backward-compatible (extra optional response fields + a new request option +
+> an internal correctness fix), so **no `release-manifest.json` floor moves**:
+> backend `supports.frontend` stays `>=0.1.57` and frontend `supports.core` stays
+> `>=0.1.31`. The cross-layer anchor is `@selfhelp/shared` **`1.20.0`** (the
+> optional `IPageContent.modal_width|modal_height` + the documented form/list
+> modal-action contracts): frontend `0.1.57` (standardized `PageModal` with
+> width/height/`auto` sizing + the global header menu rendered through the shared
+> nav-render registry + the import viewer-groups multiselect) moves its
+> `@selfhelp/shared` caret to `^1.20.0`; mobile `0.1.31` also moves to `^1.20.0`
+> (the new fields are web-only, so mobile ignores them — no behavior change).
+
+> **Core 0.1.35 / frontend 0.1.62 (CMS app entry binding + filter preview —
+> breaking):** restores field-based `entry-list` / `entry-record` hydration
+> (`data_table`, `filter`, `scope`, `own_entries_only`; explicit
+> `{{route.record_id}}` in `filter` — `url_param` removed). Core adds
+> `DataTableFilterService`, `POST /admin/data/query-preview` (`admin.data.read`),
+> bundle import relink for `entry-table` `fields_map`, and
+> `SectionAccessibleRouteService` so interpolation + query-preview expose route
+> placeholders only from pages the caller can read. **Frontend 0.1.62** ships
+> column mapper / fields-map editors, filter preview UI, and entry-record edit
+> support. Floors move in lockstep: frontend `supports.core` `0.1.34 → 0.1.35`
+> and backend `supports.frontend` `0.1.60 → 0.1.62`. *(Superseded for
+> entry-record scoping by core 0.1.36 / frontend 0.1.63.)*
+
+> **Core 0.1.36 / frontend 0.1.63 (entry-record `load_record_from` — breaking):**
+> `entry-record` drops author SQL `filter` and uses the same visible
+> **Load record from route parameter** field as `entry-record-form`. Floors:
+> frontend `supports.core` `0.1.35 → 0.1.36`, backend `supports.frontend`
+> `0.1.62 → 0.1.63`. Live pairing: **frontend `>=0.1.63` ⇄ core `>=0.1.36`**.
+> `@selfhelp/shared` `1.21.7` (catalog wave landed as `1.21.5`; resolve +
+> form-record prefill in `1.21.6`; `should_fallback` on `IPageContent` in
+> `1.21.7`). Do not treat staged shared `2.x` /
+> `3.x` tags as this release line.
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -373,17 +575,18 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.29` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.36` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.17.1` | npm (1.17.1 adds the optional `IShowUserInputStyle.field_labels` `field_key => display_name` type — additive, `^1.17.x` consumers unaffected; 1.15.3 extends the Live Preview bridge with the shared theme+language contract — `selfhelp-preview:set-preferences` / `selfhelp-preview:preferences-changed` messages + `IPreviewPreferences` / `TPreviewColorScheme`; additive, `^1.15.x` consumers unaffected; 1.14.26 added the CMS-driven mobile-preview update contract — `TUpdateKind` `mobile-preview`, `IMobilePreviewUpdate*`, `ISystemVersion.mobile_preview_version`, `IUpdateStatus.target_mobile_preview_version` — and promoted `reactNativeVersion`/`expoSdkVersion` to **top-level**; 1.14.25 added the mobile preview-session contracts + `MOBILE_RENDERER_VERSION` / `isMobileRendererCompatible()`; 1.14.22 dropped the `shared_` field-name prefix paired with migration `Version20260622165615`) |
-| `sh-selfhelp_frontend` | `0.1.55` | `0.1.55` renders the **block** structure of the rich-text `text`/`blockquote` fields (headings/lists instead of inline-flattening) + ships the closable field-help popover with copyable JSON examples (issue #56); `0.1.54` makes the CMS editor type-driven (`textarea` = rich WYSIWYG, new `code` = Monaco, standard projection columns + lockable SQL filter, condition-builder datetime portals above the modal) |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `^1.17.1` | shared `1.x` line (Live Preview preference bridge; runtime syncs theme live and applies language by mobile remount); `1.17.1` consumes the optional `IShowUserInputStyle.field_labels` type |
-| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.28 <0.2.0` | raised `0.1.27` → `0.1.28`: frontend `0.1.55` renders the rich-text/blockquote **block** content that first ships in core `0.1.28` (issue #56); core `0.1.29` (per-section route removal) is floor-neutral for the frontend |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.55 <0.2.0` | raised `0.1.54` → `0.1.55`: core `0.1.28` retypes `text`/`blockquote_content` to rich `textarea` whose block structure a pre-`0.1.55` frontend would flatten; core `0.1.29` removes the unused per-section data-variables route (floor-neutral — every supported frontend already uses the unified picker) |
+| `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
+| `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
+| `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.63 <0.2.0` | frontend adopts filter preview UI + column/fields-map editors |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
-| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.19 <0.2.0` | requires the core mobile-preview session endpoints + `MobilePreviewAccessGuard` read allowlist (`0.1.19`); the off-menu modal preview is a local embed-contract param needing no core change |
+| `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `^1.17.1` | shared `1.x` line (mobile UI adapter + preview contract; theme-only live sync, URL-bound language); mobile `0.1.30` reads the section `field_labels` header map for show-user-input |
+| `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers; entry-table renderer rename |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.21.7` | strict menu payload + active-trail helpers + entry-table style types + `buildPagesResolveUrl` (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
@@ -396,19 +599,17 @@ the same change wave:
 > is the exception: it is a published SDK already on the `1.x` line, so the standard
 > "MAJOR = breaking" SemVer applies to it.
 
-> **Mobile ⇄ core coupling (no automated gate).** The registry resolver's
-> bidirectional `release-manifest.json` gate pairs **only frontend ⇄ core** — the
-> mobile app ships no `release-manifest.json` and is not assembled by the resolver,
-> so the `@selfhelp/shared` caret range is currently mobile's only machine-checked
-> compatibility anchor. That anchor catches *typed response-shape* drift, **not
-> version pairing or behavioral coupling**: e.g. the core 0.1.18 anonymous-preview
-> 401 needed mobile 0.1.10 (`services/previewPolicy.ts`) even though no shared type
-> changed. Until a mobile manifest + resolver support exist, **a mobile↔core
-> behavioral coupling MUST be shipped as a coordinated release** (bump mobile in the
-> same wave as the core change and note it here), and an old mobile build against a
-> newer core is not blocked automatically. Adding `supports.core` to a mobile
-> `release-manifest.json` (and teaching the resolver to read it) is the tracked
-> follow-up that would turn this convention into a gate.
+> **Mobile ⇄ core coupling (one-directional `supports.core`).** The registry
+> resolver's bidirectional `release-manifest.json` gate pairs **frontend ⇄
+> core**. The mobile-preview image also ships `release-manifest.json` with
+> `supports.core` (currently `>=0.1.36 <0.2.0`); that range is emitted into
+> `mobile-preview-release.json` as `requiredCoreRange` and is the authoritative
+> pairing signal — **not** equality between the mobile package SemVer (may stay
+> `0.1.33`) and the core version. Core intentionally does **not** declare
+> `supports.mobile`. `@selfhelp/shared` still catches typed response-shape
+> drift. Until the auto-core-release resolver also assembles mobile-preview
+> candidates, treat mobile↔core behavioral couplings as coordinated releases
+> and keep `supports.core` floors honest.
 
 ## What the plugin `compatibility` block means
 
@@ -481,6 +682,36 @@ consumer.
 - Required per-repo gates still apply (see
   [`23-ci-quality-gate.md`](./23-ci-quality-gate.md) → "Required GitHub branch
   protection checks").
+
+## Navigation menu-builder wave (shipped 2026-07-01)
+
+Coordinated refactor replaces page-level `nav_position` / `footer_position` and
+per-page render modes with first-class navigation menus (`GET /cms-api/v1/navigation`,
+admin `/admin/navigation/*`, search routes, last-visited).
+
+| Repo | Version | Floor |
+|------|---------|-------|
+| `sh-selfhelp_backend` | `0.1.32` | `supports.frontend` `>=0.1.58` |
+| `sh-selfhelp_frontend` | `0.1.58` | `supports.core` `>=0.1.32` |
+| `sh-selfhelp_mobile` | `0.1.32` | `supports.core` `>=0.1.32` |
+| `@selfhelp/shared` | `1.21.0` | `INavigationPayload`, `TWebHeaderPreset`, menu helpers |
+
+## Navigation overhaul wave (strict contract v2, 2026-07-06)
+
+Destructive follow-up: one strict final menu model (header layers, footer
+presets, complete item payload with `description`/`aria_label`/`layer`, no
+`config`) and the `selfhelp/navigation-bundle` v2.0 as the only accepted
+import format.
+
+| Repo | Version | Floor |
+|------|---------|-------|
+| `sh-selfhelp_backend` | `0.1.33` | `supports.frontend` `>=0.1.59` |
+| `sh-selfhelp_frontend` | `0.1.59` | `supports.core` `>=0.1.33` |
+| `sh-selfhelp_mobile` | `0.1.33` | `supports.core` `>=0.1.36` (package version stayed 0.1.33 across later core minors; pair via `supports.core` + shared 1.21.7) |
+| `@selfhelp/shared` | `1.21.5` → pin consumers to **`1.21.7`** for this wave | strict `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/`activeTrail`, bundle v2.0 (wave previously staged as 2.0.0-3.0.1; cleanup in 1.21.6; `should_fallback` in 1.21.7) |
+
+Working-tree implementations across all four repos are aligned to these floors.
+Tag and publish together — partial deploy breaks navigation for migrated installs.
 
 ## Examples
 

@@ -32,13 +32,17 @@
                             "type": "boolean",
                             "description": "Whether this page is headless (no navigation)"
                         },
-                        "nav_position": {
-                            "type": ["integer", "null"],
-                            "description": "Position in navigation menu"
+                        "open_in_modal": {
+                            "type": "boolean",
+                            "description": "When true, the web frontend renders this page's content inside a modal overlay (page title as header + close button) instead of a full page. Web-only behaviour; mobile renders the page as a normal screen. Mirrors the open_in_modal page property field."
                         },
-                        "footer_position": {
-                            "type": ["integer", "null"],
-                            "description": "Position in footer"
+                        "modal_width": {
+                            "type": ["string", "null"],
+                            "description": "Optional modal width applied when open_in_modal is true (web only). A CSS length (e.g. \"80%\", \"640px\") or \"auto\" (fit content, capped at 90% of the viewport). Null means the frontend default (80%). Mirrors the modal_width page property field."
+                        },
+                        "modal_height": {
+                            "type": ["string", "null"],
+                            "description": "Optional modal height applied when open_in_modal is true (web only). A CSS length (e.g. \"80%\", \"600px\") or \"auto\" (fit content, capped at 90% of the viewport). Null means the frontend default (80%). Mirrors the modal_height page property field."
                         },
                         "title": {
                             "type": ["string", "null"],
@@ -51,6 +55,19 @@
                         "should_fallback": {
                             "type": "boolean",
                             "description": "True when the page has no section whose style name matches the page keyword (e.g. login page with no login-style section). Frontend should fall back to its hardcoded route."
+                        },
+                        "route_params": {
+                            "type": "object",
+                            "description": "Snake_case route parameters extracted from the matched public URL pattern (e.g. {\"user_id\":\"42\",\"token\":\"abc\"} or {\"record_id\":\"7\"}). Present only when the page was resolved via GET /pages/resolve. Also available to interpolation as {{route.<name>}}.",
+                            "additionalProperties": { "type": "string" }
+                        },
+                        "matched_url_pattern": {
+                            "type": ["string", "null"],
+                            "description": "The page_routes path_pattern that matched the resolved path (e.g. \"/reset/{user_id}/{token}\"). Present only for GET /pages/resolve."
+                        },
+                        "canonical_url": {
+                            "type": ["string", "null"],
+                            "description": "The canonical active route pattern for the resolved page, for canonical-link generation. Present only for GET /pages/resolve."
                         },
                         "sections": {
                             "type": "array",

@@ -96,8 +96,6 @@ final class HealthSmokeTest extends QaWebTestCase
             'headless' => false,
             'openAccess' => true,
             'url' => '/' . $keyword,
-            'navPosition' => 100,
-            'footerPosition' => null,
             'parent' => null,
         ], $token);
         $createdData = $this->assertEnvelopeSuccess($created, Response::HTTP_CREATED);

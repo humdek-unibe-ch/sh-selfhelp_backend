@@ -9,6 +9,7 @@ namespace App\Controller\Api\V1\Frontend;
 
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\CMS\Frontend\PageService;
+use App\Service\CMS\Frontend\PageViewTrackerService;
 use App\Service\Core\LookupService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -47,7 +48,8 @@ class PageController extends AbstractController
      */
     public function __construct(
         private readonly PageService $pageService,
-        private readonly ApiResponseFormatter $responseFormatter
+        private readonly ApiResponseFormatter $responseFormatter,
+        private readonly PageViewTrackerService $pageViewTracker
     ) {
     }
 
@@ -100,6 +102,8 @@ class PageController extends AbstractController
 
             $page = $this->pageService->getPageByKeyword($keyword, $language_id, $preview, $mode);
 
+            $this->trackPageView($page, $mode, $preview, $request);
+
             $response = $this->responseFormatter->formatSuccess(
                 $page,
                 'responses/frontend/get_page',
@@ -120,6 +124,87 @@ class PageController extends AbstractController
                 $e->getMessage(),
                 $statusCode
             );
+        }
+    }
+
+    /**
+     * Resolve a public URL path to a full page payload using the DB-driven
+     * `page_routes` contract (issue #30). This is the single entry point the
+     * web/mobile frontends call for parameterized public URLs (`/reset/42/abc`,
+     * `/team/7`) instead of hardcoding slug parsing.
+     *
+     * Route is DB-defined (loaded by {@see \App\Routing\ApiRouteLoader}) — see
+     * the `pages_resolve_path` row (GET /cms-api/v1/pages/resolve). The route
+     * carries NO permission (open-access API, like `pages_get_by_keyword`), but
+     * the resolved page itself still applies full page ACL, published/draft +
+     * preview, platform/language and data-access security in
+     * {@see PageService::getPageByPublicPath()} — unauthorized access returns
+     * 404 to avoid leaking page existence.
+     *
+     * Query params: `path` (required), `language_id`, `preview`.
+     * `preview=true` requires authentication.
+     */
+    public function resolvePublicPath(Request $request): JsonResponse
+    {
+        try {
+            $path = $request->query->get('path');
+            if (!is_string($path) || $path === '') {
+                return $this->responseFormatter->formatError(
+                    'Missing required query parameter: path',
+                    Response::HTTP_BAD_REQUEST
+                );
+            }
+
+            $language_id = $request->query->get('language_id') ? (int) $request->query->get('language_id') : null;
+            $preview = $request->query->getBoolean('preview', false);
+            $mode = $this->resolvePageAccessMode($request);
+
+            $page = $this->pageService->getPageByPublicPath($path, $language_id, $preview, $mode);
+
+            $this->trackPageView($page, $mode, $preview, $request);
+
+            $response = $this->responseFormatter->formatSuccess(
+                $page,
+                'responses/frontend/get_page',
+                Response::HTTP_OK
+            );
+
+            if ($preview) {
+                $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+                $response->headers->set('Pragma', 'no-cache');
+                $response->headers->set('Expires', '0');
+                $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+            }
+
+            return $response;
+        } catch (\Throwable $e) {
+            $statusCode = (is_int($e->getCode()) && $e->getCode() >= 100 && $e->getCode() <= 599) ? $e->getCode() : Response::HTTP_INTERNAL_SERVER_ERROR;
+            return $this->responseFormatter->formatError(
+                $e->getMessage(),
+                $statusCode
+            );
+        }
+    }
+
+    /**
+     * Record an anonymous page-view for the analytics dashboard. Live-preview
+     * requests are never counted; failures never break page delivery (the
+     * tracker swallows and logs internally).
+     *
+     * @param array<string, mixed> $page
+     */
+    private function trackPageView(array $page, string $mode, bool $preview, Request $request): void
+    {
+        if ($preview) {
+            return;
+        }
+
+        $pageNode = $page['page'] ?? null;
+        $pageId = is_array($pageNode) && isset($pageNode['id']) && is_numeric($pageNode['id'])
+            ? (int) $pageNode['id']
+            : null;
+        if ($pageId !== null && $pageId > 0) {
+            $this->pageViewTracker->recordView($pageId, $mode, $request);
         }
     }
 

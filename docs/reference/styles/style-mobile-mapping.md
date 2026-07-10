@@ -255,7 +255,7 @@ first**, then register the Pro override where it exists.
 | `radio` | `radio-group` | `RadioButtonGroup` |
 | `range-slider` | `slider` (range) | `WheelPicker` family where it fits |
 | `button` (variants) | `button` | `ProgressButton` / `SlideButton` / `SocialAuthButton` / `ToggleButton(+Group)` (opt-in via `variant` or dedicated styles) |
-| `show-user-input` empty state | RN text | `EmptyState` |
+| `entry-table` empty state | RN text | `EmptyState` |
 | future data/chart styles | — | `AreaChart` / `BarChart` / `LineChart` / `PieChart` / `RadarChart` / `RadialChart` / `ComposedChart` (+ `ChartCrosshair` / `ChartIndicator` / `ChartTooltip`) |
 | future KPI/dashboard styles | — | `Widget` / `NumberValue` / `TrendChip` |
 | future multi-pane layout | RN stack | `SplitView` |

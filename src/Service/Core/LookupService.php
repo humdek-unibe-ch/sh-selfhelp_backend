@@ -38,6 +38,7 @@ final class LookupService
     public const TRANSACTION_BY = 'transactionBy';
     public const JOB_TYPES = 'jobTypes';
     public const PAGE_ACCESS_TYPES = 'pageAccessTypes';
+    public const PAGE_SURFACE = 'pageSurface';
     public const STYLE_RENDER_TARGETS = 'styleRenderTargets';
     public const HOOK_TYPES = 'hookTypes';
     public const ASSET_TYPES = 'assetTypes';
@@ -137,6 +138,90 @@ final class LookupService
     public const PAGE_ACCESS_TYPES_MOBILE = 'mobile';
     public const PAGE_ACCESS_TYPES_WEB = 'web';
     public const PAGE_ACCESS_TYPES_MOBILE_AND_WEB = 'mobile_and_web';
+
+    // pageSurface (CMS-in-CMS organization axis, issue #30)
+    public const PAGE_SURFACE_PUBLIC = 'public';
+    public const PAGE_SURFACE_CMS = 'cms';
+
+    // navigation lookup types
+    public const NAVIGATION_MENU_KEYS = 'navigationMenuKeys';
+    public const NAVIGATION_PLATFORMS = 'navigationPlatforms';
+    public const NAVIGATION_SURFACES = 'navigationSurfaces';
+    public const NAVIGATION_MENU_PRESETS = 'navigationMenuPresets';
+    public const NAVIGATION_MENU_ITEM_TYPES = 'navigationMenuItemTypes';
+    public const NAVIGATION_SEARCH_MODES = 'navigationSearchModes';
+    public const NAVIGATION_SEARCH_VISIBILITY = 'navigationSearchVisibility';
+    public const NAVIGATION_SEARCH_VISIBILITY_OVERRIDES = 'navigationSearchVisibilityOverrides';
+    public const NAVIGATION_SEARCH_FIELD_POLICIES = 'navigationSearchFieldPolicies';
+    public const NAVIGATION_START_MODES = 'navigationStartModes';
+    public const NAVIGATION_MOBILE_START_SOURCES = 'navigationMobileStartSources';
+    public const NAVIGATION_ROUTE_SYNC_POLICIES = 'navigationRouteSyncPolicies';
+    public const NAVIGATION_CHILDREN_NAV_MODES = 'navigationChildrenNavModes';
+
+    public const NAVIGATION_MENU_KEY_WEB_HEADER = 'web_header';
+    public const NAVIGATION_MENU_KEY_WEB_FOOTER = 'web_footer';
+    public const NAVIGATION_MENU_KEY_MOBILE_DRAWER = 'mobile_drawer';
+    public const NAVIGATION_MENU_KEY_MOBILE_BOTTOM_TABS = 'mobile_bottom_tabs';
+
+    public const NAVIGATION_ITEM_TYPE_PAGE = 'page';
+    public const NAVIGATION_ITEM_TYPE_EXTERNAL_URL = 'external_url';
+    public const NAVIGATION_ITEM_TYPE_GROUP = 'group';
+
+    public const NAVIGATION_SEARCH_MODE_OFF = 'off';
+    public const NAVIGATION_SEARCH_MODE_MENU_PAGES = 'menu_pages';
+    public const NAVIGATION_SEARCH_MODE_SEARCHABLE_PAGES = 'searchable_pages';
+    public const NAVIGATION_SEARCH_MODE_CONTENT_INDEX = 'content_index';
+
+    public const NAVIGATION_START_MODE_FIXED_PAGE = 'fixed_page';
+    public const NAVIGATION_START_MODE_LAST_VISITED = 'last_visited_then_fixed_page';
+
+    public const NAVIGATION_MOBILE_START_SAME_AS_WEB = 'same_as_web';
+    public const NAVIGATION_MOBILE_START_CUSTOM = 'custom_mobile_pages';
+
+    public const NAVIGATION_ROUTE_SYNC_POLICY_ASK = 'ask';
+    public const NAVIGATION_ROUTE_SYNC_POLICY_KEEP_ALIAS = 'keep_alias';
+    public const NAVIGATION_ROUTE_SYNC_POLICY_REMOVE_OLD_ROUTE = 'remove_old_route';
+
+    // navigationChildrenNavModes: how a web page presents its menu branch
+    // (children/siblings). Menu-level default with a per-parent-item override.
+    public const NAVIGATION_CHILDREN_NAV_SIDEBAR = 'sidebar';
+    public const NAVIGATION_CHILDREN_NAV_PILLS = 'pills';
+    public const NAVIGATION_CHILDREN_NAV_NONE = 'none';
+    public const NAVIGATION_CHILDREN_NAV_MODE_CODES = [
+        self::NAVIGATION_CHILDREN_NAV_SIDEBAR,
+        self::NAVIGATION_CHILDREN_NAV_PILLS,
+        self::NAVIGATION_CHILDREN_NAV_NONE,
+    ];
+
+    // navigation menu presets: web_header rows use the header presets, the
+    // web_footer row uses the footer presets; mobile menus have no preset.
+    public const NAVIGATION_HEADER_PRESETS = [
+        'simple',
+        'dropdown',
+        'mega-menu',
+        'tabs',
+        'double-dropdown',
+        'double-mega-menu',
+    ];
+    public const NAVIGATION_FOOTER_PRESETS = [
+        self::NAVIGATION_PRESET_COLUMNS,
+        self::NAVIGATION_PRESET_INLINE,
+    ];
+    public const NAVIGATION_PRESET_DROPDOWN = 'dropdown';
+    public const NAVIGATION_PRESET_COLUMNS = 'columns';
+    public const NAVIGATION_PRESET_INLINE = 'inline';
+
+    /**
+     * @return list<string> preset codes valid for the given navigation menu key ([] = no presets)
+     */
+    public static function allowedNavigationPresetsForMenuKey(string $menuKey): array
+    {
+        return match ($menuKey) {
+            self::NAVIGATION_MENU_KEY_WEB_HEADER => self::NAVIGATION_HEADER_PRESETS,
+            self::NAVIGATION_MENU_KEY_WEB_FOOTER => self::NAVIGATION_FOOTER_PRESETS,
+            default => [],
+        };
+    }
 
     // hookTypes
     public const HOOK_TYPES_HOOK_OVERWRITE_RETURN = 'hook_overwrite_return';

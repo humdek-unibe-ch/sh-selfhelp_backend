@@ -134,14 +134,21 @@ abstract class QaWebTestCase extends WebTestCase
      * Perform a JSON request and return the decoded envelope.
      *
      * @param array<string, mixed>|null $body
+     * @param array<string, string> $extraHeaders
      * @return array<string, mixed>
      */
-    protected function jsonRequest(string $method, string $uri, ?array $body = null, ?string $token = null): array
-    {
+    protected function jsonRequest(
+        string $method,
+        string $uri,
+        ?array $body = null,
+        ?string $token = null,
+        array $extraHeaders = [],
+    ): array {
         $headers = ['CONTENT_TYPE' => 'application/json'];
         if ($token !== null) {
             $headers['HTTP_Authorization'] = 'Bearer ' . $token;
         }
+        $headers = array_merge($headers, $extraHeaders);
 
         $this->client->request(
             $method,
@@ -185,7 +192,13 @@ abstract class QaWebTestCase extends WebTestCase
     protected function assertEnvelopeSuccess(array $envelope, int $expectedStatus = Response::HTTP_OK): array
     {
         self::assertArrayHasKey('status', $envelope, 'Envelope missing "status"');
-        self::assertSame($expectedStatus, $envelope['status'], 'Unexpected envelope status');
+        self::assertSame(
+            $expectedStatus,
+            $envelope['status'],
+            'Unexpected envelope status. Envelope: ' . json_encode(
+                ['status' => $envelope['status'] ?? null, 'message' => $envelope['message'] ?? null, 'error' => $envelope['error'] ?? null],
+            ),
+        );
         self::assertArrayHasKey('error', $envelope, 'Envelope missing "error"');
         self::assertNull($envelope['error'], 'Success envelope must have null error');
         self::assertArrayHasKey('logged_in', $envelope, 'Envelope missing "logged_in"');

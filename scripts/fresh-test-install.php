@@ -49,6 +49,8 @@ try {
     run([$php, 'bin/console', 'doctrine:database:create'], $projectDir);
     run([$php, 'bin/console', 'doctrine:migrations:migrate', '--no-interaction'], $projectDir);
     run([$php, 'bin/console', 'app:create-admin-user', $adminEmail, $adminName, '--password=' . $adminPassword], $projectDir);
+    // Fresh installs get the polished hero landing on `home` instead of the placeholder.
+    run([$php, 'bin/console', 'app:examples:seed-hero-home'], $projectDir, allowFailure: true);
     run([$php, 'bin/console', 'cache:pool:clear', '--all'], $projectDir, allowFailure: true);
     run([$php, 'bin/console', 'cache:clear'], $projectDir);
 

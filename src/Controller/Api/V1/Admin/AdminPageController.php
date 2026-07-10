@@ -36,7 +36,8 @@ class AdminPageController extends AbstractController
         private readonly AdminPageService $adminPageService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
-        private readonly UserContextService $userContextService
+        private readonly UserContextService $userContextService,
+        private readonly \App\Service\CMS\Admin\PageExportImportService $pageExportImportService,
     ) {
     }
 
@@ -136,6 +137,25 @@ class AdminPageController extends AbstractController
             // This will throw an exception if validation fails
             $data = $this->validateRequest($request, 'requests/admin/create_page', $this->jsonSchemaValidationService);
 
+            // Normalize the optional CMS-in-CMS access group ids into list<int>.
+            $accessGroups = [];
+            $accessGroupsRaw = $data['accessGroups'] ?? [];
+            if (is_array($accessGroupsRaw)) {
+                foreach ($accessGroupsRaw as $groupId) {
+                    if (is_int($groupId)) {
+                        $accessGroups[] = $groupId;
+                    } elseif (is_numeric($groupId)) {
+                        $accessGroups[] = (int) $groupId;
+                    }
+                }
+            }
+
+            $navigationAssignments = null;
+            if (isset($data['navigationAssignments']) && is_array($data['navigationAssignments'])) {
+                /** @var list<array<string, mixed>> $navigationAssignments */
+                $navigationAssignments = array_values(array_filter($data['navigationAssignments'], 'is_array'));
+            }
+
             // Create page using pageAccessTypeCode
             $page = $this->adminPageService->createPage(
                 $this->asStringField($data, 'keyword'),
@@ -143,9 +163,15 @@ class AdminPageController extends AbstractController
                 $this->asBoolField($data, 'headless'),
                 $this->asBoolField($data, 'openAccess'),
                 $this->asStringOrNullField($data, 'url'),
-                $this->asIntOrNullField($data, 'navPosition'),
-                $this->asIntOrNullField($data, 'footerPosition'),
                 $this->asIntOrNullField($data, 'parent'),
+                $this->asStringField($data, 'surface', \App\Service\Core\LookupService::PAGE_SURFACE_PUBLIC),
+                $accessGroups,
+                $navigationAssignments,
+                null,
+                $this->asBoolField($data, 'syncUrlWithParent', false),
+                $this->asStringOrNullField($data, 'oldRoutePolicy'),
+                $this->asIntOrNullField($data, 'cms_app_id'),
+                $this->asStringOrNullField($data, 'cms_app_role'),
             );
 
             // Page cache is automatically invalidated by the service
@@ -265,6 +291,116 @@ class AdminPageController extends AbstractController
         $this->adminPageService->removeSectionFromPage($page_id, $section_id);
 
         return $this->responseFormatter->formatSuccess(null, null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Export one or more pages as a portable bundle (issue #30, Phase 5).
+     *
+     * @route /admin/pages/export
+     * @method POST
+     */
+    public function exportPages(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/export_pages', $this->jsonSchemaValidationService);
+            $bundle = $this->pageExportImportService->exportBundle(
+                $this->toIntList($data['pageIds'] ?? null),
+                is_array($data['options'] ?? null) ? $this->toAssocArray($data['options']) : []
+            );
+
+            return $this->responseFormatter->formatSuccess($bundle, null, Response::HTTP_OK);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Suggest the related page ids that belong in a bundle with the given page
+     * (its list/detail counterpart and `/cms/...` admin pair).
+     *
+     * @route /admin/pages/{page_id}/export/suggest
+     * @method GET
+     */
+    public function suggestExportBundle(int $page_id): JsonResponse
+    {
+        try {
+            $pageIds = $this->pageExportImportService->suggestRelatedPageIds($page_id);
+
+            return $this->responseFormatter->formatSuccess(['page_ids' => $pageIds], null, Response::HTTP_OK);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Dry-run validation of a page bundle before import (issue #30, Phase 5).
+     *
+     * @route /admin/pages/import/validate
+     * @method POST
+     */
+    public function validateImportPages(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/import_pages', $this->jsonSchemaValidationService);
+            $report = $this->pageExportImportService->validateImport(
+                $this->asArrayField($data, 'bundle'),
+                is_array($data['options'] ?? null) ? $this->toAssocArray($data['options']) : []
+            );
+
+            return $this->responseFormatter->formatSuccess($report, null, Response::HTTP_OK);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Import a validated page bundle (issue #30, Phase 5).
+     *
+     * @route /admin/pages/import
+     * @method POST
+     */
+    public function importPages(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/import_pages', $this->jsonSchemaValidationService);
+            $result = $this->pageExportImportService->importBundle(
+                $this->asArrayField($data, 'bundle'),
+                is_array($data['options'] ?? null) ? $this->toAssocArray($data['options']) : []
+            );
+
+            return $this->responseFormatter->formatSuccess($result, null, Response::HTTP_CREATED);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * List the shipped importable example page bundles (issue #30, decision E),
+     * so the admin import UI can offer ready-made "Example bundles" that load
+     * straight into the existing validate/import flow.
+     *
+     * @route /admin/pages/examples
+     * @method GET
+     */
+    public function getExampleBundles(): JsonResponse
+    {
+        try {
+            $examples = $this->pageExportImportService->listExampleBundles();
+
+            return $this->responseFormatter->formatSuccess(['examples' => $examples], null, Response::HTTP_OK);
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatException($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatError($e->getMessage(), Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 
     /**

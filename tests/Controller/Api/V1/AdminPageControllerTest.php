@@ -161,8 +161,8 @@ class AdminPageControllerTest extends BaseControllerTest
             // Test update without fields first to verify basic functionality
             $basicUpdateData = [
                 'pageData' => [
-                    'headless' => true,  // Update headless to true
-                    'navPosition' => 55  // Change nav position
+                    'headless' => true,
+                    'openAccess' => false,
                 ],
                 'fields' => [] // No fields to avoid validation issues
             ];

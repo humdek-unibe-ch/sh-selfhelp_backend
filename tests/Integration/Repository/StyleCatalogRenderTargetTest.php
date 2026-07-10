@@ -22,19 +22,20 @@ use App\Tests\Support\QaKernelTestCase;
  * backfill to `both`):
  *   - every catalog style exposes a `renderTarget` in {web, mobile, both};
  *   - ordinary core styles report `both`;
- *   - the established catalog has exactly 90 styles (milestone-one parity);
+ *   - the established catalog has exactly 91 styles (milestone-one + entry-record-form);
  *   - the 8 styles previously missing from shared/mobile are present;
  *   - none of the 16 deferred speculative styles are seeded.
  */
 final class StyleCatalogRenderTargetTest extends QaKernelTestCase
 {
-    /** Established backend catalog size for milestone one. */
-    private const ESTABLISHED_STYLE_COUNT = 90;
+    /** Established backend catalog size (milestone one + entry-record-form). */
+    private const ESTABLISHED_STYLE_COUNT = 91;
 
     /** Styles that must exist (previously absent from shared/mobile registries). */
     private const FORMERLY_MISSING = [
         'data-container', 'timeline-item', 'version', 'no-access',
-        'missing', 'not-found', 'ref-container', 'show-user-input',
+        // `entry-table` is the renamed `show-user-input` (Version20260710093048).
+        'missing', 'not-found', 'ref-container', 'entry-table',
     ];
 
     /** Deferred speculative styles that must NOT be in the milestone-one catalog. */
@@ -111,7 +112,7 @@ final class StyleCatalogRenderTargetTest extends QaKernelTestCase
         self::assertCount(
             self::ESTABLISHED_STYLE_COUNT,
             $this->catalogStyles(),
-            'The established milestone-one catalog must contain exactly 90 styles.'
+            'The established catalog must contain exactly 91 styles.'
         );
     }
 

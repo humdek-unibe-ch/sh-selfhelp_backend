@@ -1,0 +1,13 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Change CMS App Page Role",
+    "type": "object",
+    "properties": {
+        "role": {
+            "type": "string",
+            "enum": ["form", "cms_list", "cms_detail", "public_list", "public_detail", "other"]
+        }
+    },
+    "required": ["role"],
+    "additionalProperties": false
+}

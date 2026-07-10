@@ -11,10 +11,12 @@ use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
 use App\Repository\PagesFieldsTranslationRepository;
+use App\Exception\ServiceException;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
 use App\Service\Core\LookupService;
+use App\Service\CMS\Common\DataTableFilterService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\CMS\Common\StyleNames;
 use App\Service\CMS\CmsPreferenceService;
@@ -28,6 +30,25 @@ class PageService extends BaseService
 {
     // Default values for language
     private const PROPERTY_LANGUAGE_ID = 1; // Language ID 1 is for properties, not a real language
+
+    /**
+     * Page behaviour property field (display=0) projected onto the single-page
+     * content response so the web renderer can open the page inside a modal.
+     * Seeded by Version20260710093044; consumed by `@selfhelp/shared`
+     * `IPageContent.open_in_modal` and the frontend `DynamicPageClient`.
+     */
+    private const OPEN_IN_MODAL_FIELD = 'open_in_modal';
+
+    /**
+     * Modal-size page property fields (display=0) projected next to
+     * `open_in_modal` on the single-page content response. Free-text CSS
+     * lengths or `auto`; empty means "use the frontend default (80%)". Seeded by
+     * Version20260710093044; consumed by `@selfhelp/shared`
+     * `IPageContent.modal_width|modal_height` and `DynamicPageClient`.
+     *
+     * @var list<string>
+     */
+    private const MODAL_SIZE_FIELDS = ['modal_width', 'modal_height'];
 
     // Pages where should_fallback is meaningful: keyword must match a section style name.
     // keyword => style name to look for. If style name equals keyword, just use keyword as value.
@@ -55,39 +76,22 @@ class PageService extends BaseService
         private readonly InterpolationService $interpolationService,
         private readonly ConditionService $conditionService,
         private readonly \App\Repository\PageVersionRepository $pageVersionRepository,
-        private readonly CmsPreferenceService $cmsPreferenceService
+        private readonly CmsPreferenceService $cmsPreferenceService,
+        private readonly \App\Routing\PageRouteResolverService $pageRouteResolver,
+        private readonly OptionLabelHydrator $optionLabelHydrator,
+        private readonly DataTableFilterService $dataTableFilterService,
     ) {
     }
 
     /**
-     * Recursively sorts pages by nav_position
-     * Pages with null nav_position will be placed at the end and sorted alphabetically by keyword
+     * Recursively sorts pages alphabetically by keyword.
      *
      * @param list<array<string, mixed>> $pages
      */
     private function sortPagesRecursively(array &$pages): void
     {
         usort($pages, function (array $a, array $b): int {
-            $aPos = $a['nav_position'] ?? null;
-            $bPos = $b['nav_position'] ?? null;
-
-            // If both positions are null, sort alphabetically by keyword
-            if ($aPos === null && $bPos === null) {
-                return strcasecmp($this->asString($a['keyword'] ?? ''), $this->asString($b['keyword'] ?? ''));
-            }
-
-            // If only a's position is null, it should go after b
-            if ($aPos === null) {
-                return 1;
-            }
-
-            // If only b's position is null, it should go after a
-            if ($bPos === null) {
-                return -1;
-            }
-
-            // If both have positions, compare them normally
-            return $aPos <=> $bPos;
+            return strcasecmp($this->asString($a['keyword'] ?? ''), $this->asString($b['keyword'] ?? ''));
         });
 
         foreach ($pages as &$page) {
@@ -222,7 +226,7 @@ class PageService extends BaseService
                 }
                 unset($page); // Break the reference
     
-                // Optional: Sort children by nav_position if needed
+                // Children are ordered by page tree; menu order is owned by navigation_menu_items.
                 $this->sortPagesRecursively($nestedPages);
 
                 // Cache the result for this user
@@ -262,6 +266,79 @@ class PageService extends BaseService
     }
 
     /**
+     * Resolve a page by its public URL path using the DB-driven `page_routes`
+     * contract (issue #30). The resolver maps a path like `/reset/42/abc123` or
+     * `/team/7` to a page keyword plus snake_case route params; those params are
+     * threaded into the render so `{{route.user_id}}` / `{{route.record_id}}`
+     * resolve in section content and `data_config` filters, and are included in
+     * the page/section cache keys so different params never collide.
+     *
+     * Resolving a path to a page does NOT bypass any access rule: the resolved
+     * page still applies full page ACL, published/draft + preview rules, the
+     * platform/language checks, and data-access security (a 404 is returned for
+     * unauthorized access to avoid leaking page existence). The open-access
+     * `/pages/resolve` API route only governs reaching this resolver, not the
+     * page it returns.
+     *
+     * @return array<string, mixed>
+     */
+    public function getPageByPublicPath(string $path, ?int $language_id = null, bool $preview = false, ?string $mode = null): array
+    {
+        $resolved = $this->pageRouteResolver->resolve($path);
+        if ($resolved === null) {
+            $this->throwNotFound('Page not found');
+        }
+
+        $languageId = $this->determineLanguageId($language_id);
+
+        $page = $this->pageRepository->findOneBy(['keyword' => $resolved['keyword']]);
+        if (!$page) {
+            $this->throwNotFound('Page not found');
+        }
+
+        $routeParams = $resolved['route_params'];
+        $routeRequirements = $resolved['route_requirements'];
+
+        try {
+            $response = $this->resolvePageResponse(
+                $page,
+                (int) $page->getId(),
+                $languageId,
+                $preview,
+                $mode,
+                $routeParams,
+                $routeRequirements
+            );
+        } catch (\App\Exception\ServiceException $e) {
+            // Existence-leak guard (issue #30 locked decision): the public path
+            // resolver must NEVER reveal that a path maps to a page the caller
+            // cannot access. A page-ACL denial (403 Forbidden) is remapped to a
+            // 404 so an unauthorized caller cannot distinguish "exists but
+            // forbidden" from "does not exist" — critical for cms/surfaced
+            // pages. The 401 preview-auth case is left intact (it is a generic
+            // "authenticate to preview", not a page-specific existence signal).
+            if ($e->getCode() === \Symfony\Component\HttpFoundation\Response::HTTP_FORBIDDEN) {
+                $this->throwNotFound('Page not found');
+            }
+            throw $e;
+        }
+
+        // Attach route metadata so the frontend/mobile can read params and the
+        // canonical URL without re-parsing the slug. route_params is omitted
+        // when empty (static route) so the wire payload stays a clean object
+        // map per the response schema.
+        if (isset($response['page']) && is_array($response['page'])) {
+            if ($routeParams !== []) {
+                $response['page']['route_params'] = $routeParams;
+            }
+            $response['page']['matched_url_pattern'] = $resolved['matched_pattern'];
+            $response['page']['canonical_url'] = $resolved['canonical_url'];
+        }
+
+        return $response;
+    }
+
+    /**
      * Shared resolution path used by getPageByKeyword().
      *
      * Page-access enforcement:
@@ -279,10 +356,19 @@ class PageService extends BaseService
      *   enforced on top, so a logged-in user can only preview pages they
      *   already have `select` access to.
      *
+     * @param array<string, string> $routeParams Public route params ({{route.*}}); empty for keyword resolution.
+     * @param array<string, string> $routeRequirements Matched Symfony route requirements for the public path.
      * @return array<string, mixed>
      */
-    private function resolvePageResponse(\App\Entity\Page $page, int $page_id, int $languageId, bool $preview, ?string $mode = null): array
-    {
+    private function resolvePageResponse(
+        \App\Entity\Page $page,
+        int $page_id,
+        int $languageId,
+        bool $preview,
+        ?string $mode = null,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         if ($mode !== null) {
             $this->assertPageAccessForMode($page, $mode);
         }
@@ -292,16 +378,75 @@ class PageService extends BaseService
             $this->throwUnauthorized('Authentication required to preview unpublished drafts');
         }
 
+        // CMS-surface pages are Host Admin only (CMS Apps content host / admin
+        // preview). Public consumers — anonymous or authenticated without admin
+        // data-access — never receive them via keyword or path resolve (404 so
+        // existence is not leaked). Admin select on the page is the explicit
+        // authorization gate; frontend ACL alone is not enough.
+        if ($page->getPageSurfaceCode() === LookupService::PAGE_SURFACE_CMS) {
+            // Anonymous callers cannot hold admin data-access; deny before the
+            // permission service audits with the guest sentinel user id.
+            if ($this->userContextAwareService->getCurrentUser() === null) {
+                $this->throwNotFound('Page not found');
+            }
+            try {
+                $this->userContextAwareService->checkAdminAccessById((int) $page->getId(), 'select');
+            } catch (ServiceException $e) {
+                if ($e->getCode() === \Symfony\Component\HttpFoundation\Response::HTTP_UNAUTHORIZED) {
+                    throw $e;
+                }
+                $this->throwNotFound('Page not found');
+            }
+        }
+
         // Check if user has access to the page
         $this->userContextAwareService->checkAclAccess((string) $page->getKeyword(), 'select');
 
         // If preview mode is disabled and a published version exists, serve it
         if (!$preview && $page->getPublishedVersionId()) {
-            return $this->servePublishedVersion($page_id, $languageId);
+            return $this->servePublishedVersion($page_id, $languageId, $routeParams, $routeRequirements);
         }
 
         // Otherwise serve the draft version (fresh from database)
-        return $this->serveDraftVersion($page_id, $languageId, $page);
+        return $this->serveDraftVersion($page_id, $languageId, $page, $routeParams, $routeRequirements);
+    }
+
+    /**
+     * Wrap public route params as a top-level `route` interpolation scope so
+     * `{{route.<name>}}` resolves in section content and `data_config` filters.
+     * Returns an empty array (no scope) when there are no params.
+     *
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
+     * @return array<array-key, mixed>
+     */
+    private function buildRouteScope(array $routeParams, array $routeRequirements = []): array
+    {
+        $scope = [];
+        if ($routeParams !== []) {
+            $scope['route'] = $routeParams;
+        }
+        if ($routeRequirements !== []) {
+            $scope['route_requirements'] = $routeRequirements;
+        }
+
+        return $scope;
+    }
+
+    /**
+     * Deterministic cache-key suffix derived from the route params, so a
+     * parameterized page (e.g. `/team/{record_id}`) caches one entry per param
+     * set instead of colliding. Empty string when there are no params.
+     *
+     * @param array<string, string> $routeParams
+     */
+    private function routeCacheSuffix(array $routeParams): string
+    {
+        if ($routeParams === []) {
+            return '';
+        }
+        ksort($routeParams);
+        return '_route_' . substr(md5((string) json_encode($routeParams)), 0, 12);
     }
 
     /**
@@ -340,10 +485,16 @@ class PageService extends BaseService
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<string, mixed> The hydrated page data
      */
-    private function servePublishedVersion(int $page_id, int $languageId): array
-    {
+    private function servePublishedVersion(
+        int $page_id,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Get the published version from database
         $page = $this->pageRepository->find($page_id);
         if (!$page) {
@@ -361,7 +512,7 @@ class PageService extends BaseService
         $storedPageData = $publishedVersion->getPageJson();
 
         // Hydrate the published page with fresh dynamic elements
-        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId);
+        $hydrated = $this->hydratePublishedPage($storedPageData, $languageId, $routeParams, $routeRequirements);
 
         // Inject translated SEO fields (title/description) — these live in
         // pages_fields_translation, not in the versioned JSON, so they must
@@ -370,6 +521,13 @@ class PageService extends BaseService
             $seo = $this->resolvePageSeoFields($page_id, $languageId);
             $hydrated['page']['title'] = $seo['title'];
             $hydrated['page']['description'] = $seo['description'];
+            // open_in_modal lives in pages_fields_translation (a behaviour
+            // property), not in the versioned JSON, so resolve it fresh. The
+            // modal-size properties travel with it.
+            $hydrated['page']['open_in_modal'] = $this->resolveOpenInModal($page_id);
+            $modalSize = $this->resolveModalSize($page_id);
+            $hydrated['page']['modal_width'] = $modalSize['modal_width'];
+            $hydrated['page']['modal_height'] = $modalSize['modal_height'];
             $flatSections = $this->sectionRepository->fetchSectionsHierarchicalByPageId($page_id);
             $keyword = $page->getKeyword();
             if ($keyword !== null) {
@@ -394,10 +552,16 @@ class PageService extends BaseService
      * 
      * @param array<string, mixed> $storedPageData The stored page JSON structure with ALL languages
      * @param int $languageId The language ID to extract and serve
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<string, mixed> The hydrated page data with single language
      */
-    private function hydratePublishedPage(array $storedPageData, int $languageId): array
-    {
+    private function hydratePublishedPage(
+        array $storedPageData,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Extract sections from stored data
         if (!isset($storedPageData['page']) || !is_array($storedPageData['page']) || !isset($storedPageData['page']['sections']) || !is_array($storedPageData['page']['sections'])) {
             return $storedPageData;
@@ -412,8 +576,13 @@ class PageService extends BaseService
         // Step 2: Re-process sections with dynamic element refresh (data retrieval, conditions, interpolation)
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : null;
-        
-        $hydratedSections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
+
+        $hydratedSections = $this->processSectionsRecursively(
+            $sections,
+            $this->buildRouteScope($routeParams, $routeRequirements),
+            $userId,
+            $languageId
+        );
 
         // Update the page data with hydrated sections
         $storedPageData['page']['sections'] = $hydratedSections;
@@ -472,16 +641,24 @@ class PageService extends BaseService
      * @param int $page_id The page ID
      * @param int $languageId The language ID
      * @param \App\Entity\Page $page The page entity
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return array<string, mixed> The page data
      */
-    private function serveDraftVersion(int $page_id, int $languageId, \App\Entity\Page $page): array
-    {
+    private function serveDraftVersion(
+        int $page_id,
+        int $languageId,
+        \App\Entity\Page $page,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
-        // Try to get from cache first
-        $cacheKey = "page_draft_{$page_id}_{$languageId}";
+        // Try to get from cache first. The route-param suffix keeps one cache
+        // entry per param set so e.g. /team/7 and /team/8 never collide.
+        $cacheKey = "page_draft_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections to extract data table dependencies for page-level cache
         /** @var list<array<string, mixed>> $flatSections */
@@ -510,13 +687,14 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections) {
+        return $cacheService->getItem($cacheKey, function () use ($languageId, $page, $flatSections, $routeParams, $routeRequirements) {
             // Resolve the translated SEO fields (title + description) for this
             // single page. Keeps the payload self-contained so the frontend
             // doesn't have to cross-reference the nav list to render <title>
             // / <meta name="description">.
             $seo = $this->resolvePageSeoFields((int) $page->getId(), $languageId);
 
+            $modalSize = $this->resolveModalSize((int) $page->getId());
             $pageData = [
                 'page' => [
                     'id' => $page->getId(),
@@ -524,11 +702,13 @@ class PageService extends BaseService
                     'url' => $page->getUrl(),
                     'parent_page_id' => $page->getParentPage()?->getId(),
                     'is_headless' => $page->isHeadless(),
-                    'nav_position' => $page->getNavPosition(),
-                    'footer_position' => $page->getFooterPosition(),
+                    'page_surface' => $page->getPageSurfaceCode(),
+                    'open_in_modal' => $this->resolveOpenInModal((int) $page->getId()),
+                    'modal_width' => $modalSize['modal_width'],
+                    'modal_height' => $modalSize['modal_height'],
                     'title' => $seo['title'],
                     'description' => $seo['description'],
-                    'sections' => $this->getPageSections((int) $page->getId(), $languageId)
+                    'sections' => $this->getPageSections((int) $page->getId(), $languageId, $routeParams, $routeRequirements)
                 ]
             ];
 
@@ -542,6 +722,49 @@ class PageService extends BaseService
 
             return $pageData;
         });
+    }
+
+    /**
+     * Resolve the `open_in_modal` page behaviour property (display=0, stored
+     * under the property language in `pages_fields_translation`). Returns true
+     * only when the authored value is the boolean-like string `1`/`true`.
+     */
+    private function resolveOpenInModal(int $pageId): bool
+    {
+        $properties = $this->pagesFieldsTranslationRepository->fetchPropertyFieldsForPages(
+            [$pageId],
+            [self::OPEN_IN_MODAL_FIELD]
+        );
+
+        $value = $properties[$pageId][self::OPEN_IN_MODAL_FIELD] ?? null;
+
+        return $value === '1' || $value === 'true';
+    }
+
+    /**
+     * Resolve the optional `modal_width` / `modal_height` page properties
+     * (display=0, stored under the property language in
+     * `pages_fields_translation`). Returns a `{modal_width, modal_height}` map
+     * with the authored CSS length / `auto`, or `null` per field when unset so
+     * the frontend applies its default (80%). Only meaningful together with
+     * `open_in_modal`.
+     *
+     * @return array{modal_width: ?string, modal_height: ?string}
+     */
+    private function resolveModalSize(int $pageId): array
+    {
+        $properties = $this->pagesFieldsTranslationRepository->fetchPropertyFieldsForPages(
+            [$pageId],
+            self::MODAL_SIZE_FIELDS
+        );
+
+        $resolved = ['modal_width' => null, 'modal_height' => null];
+        foreach (self::MODAL_SIZE_FIELDS as $field) {
+            $value = $properties[$pageId][$field] ?? null;
+            $resolved[$field] = ($value === null || $value === '') ? null : $this->asStringOrNull($value);
+        }
+
+        return $resolved;
     }
 
     /**
@@ -665,31 +888,34 @@ class PageService extends BaseService
                     }
                 }
 
-                // showUserInput sections reference their data table through the
+                // entry-table sections reference their data table through the
                 // `data_table` property field, NOT data_config. Without registering
                 // it here the page render cache never carries the data-table entity
                 // scope, so DataService's write-path invalidation
                 // (invalidateEntityScope(DATA_TABLE, id) on submit/update/delete)
                 // cannot bust the cached page and the rendered rows stay stale until
                 // a manual cache clear.
-                $showUserInputSectionIds = [];
+                $entryHolderSectionIds = [];
                 foreach ($flatSections as $section) {
-                    if (($section['style_name'] ?? null) === StyleNames::STYLE_SHOW_USER_INPUT) {
+                    $style = $section['style_name'] ?? null;
+                    if ($style === StyleNames::STYLE_ENTRY_TABLE
+                        || $style === StyleNames::STYLE_ENTRY_LIST
+                        || $style === StyleNames::STYLE_ENTRY_RECORD) {
                         $rawSectionId = $section['id'] ?? null;
                         $sectionId = is_numeric($rawSectionId) ? (int) $rawSectionId : 0;
                         if ($sectionId > 0) {
-                            $showUserInputSectionIds[] = $sectionId;
+                            $entryHolderSectionIds[] = $sectionId;
                         }
                     }
                 }
 
-                if ($showUserInputSectionIds !== []) {
-                    $showUserInputProperties = $this->translationRepository->fetchTranslationsForSections(
-                        $showUserInputSectionIds,
+                if ($entryHolderSectionIds !== []) {
+                    $entryTableProperties = $this->translationRepository->fetchTranslationsForSections(
+                        $entryHolderSectionIds,
                         self::PROPERTY_LANGUAGE_ID
                     );
 
-                    foreach ($showUserInputProperties as $fields) {
+                    foreach ($entryTableProperties as $fields) {
                         $dataTableId = isset($fields['data_table']['content'])
                             ? (int) $this->asString($fields['data_table']['content'])
                             : 0;
@@ -726,15 +952,21 @@ class PageService extends BaseService
      * 
      * @param int $page_id The page ID
      * @param int $languageId The language ID for translations
+     * @param array<string, string> $routeParams Public route params ({{route.*}}).
+     * @param array<string, string> $routeRequirements Matched route placeholder requirements.
      * @return list<array<string, mixed>> The page sections in a hierarchical structure with translations
      */
-    public function getPageSections(int $page_id, int $languageId): array
-    {
+    public function getPageSections(
+        int $page_id,
+        int $languageId,
+        array $routeParams = [],
+        array $routeRequirements = []
+    ): array {
         // Get current user for caching
         $user = $this->userContextAwareService->getCurrentUser();
         $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID; // anonymous guest sentinel
 
-        $cacheKey = "page_sections_{$page_id}_{$languageId}";
+        $cacheKey = "page_sections_{$page_id}_{$languageId}" . $this->routeCacheSuffix($routeParams);
 
         // Get flat sections first to extract data table dependencies
         /** @var list<array<string, mixed>> $flatSections */
@@ -764,7 +996,7 @@ class PageService extends BaseService
             }
         }
 
-        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId) {
+        return $cacheService->getList($cacheKey, function () use ($flatSections, $languageId, $routeParams, $routeRequirements) {
             // Build nested hierarchical structure (without applying data initially)
             $sections = $this->sectionUtilityService->buildNestedSections($flatSections, false, $languageId);
 
@@ -797,10 +1029,18 @@ class PageService extends BaseService
             $this->sectionUtilityService->applySectionTranslations($sections, $translations, [], $propertyTranslations);
 
             // Process sections recursively with proper data inheritance and sequential operations
-            // This replaces the bulk applySectionsData, interpolation, and condition filtering
+            // This replaces the bulk applySectionsData, interpolation, and condition filtering.
+            // Seed the top-level parentData with the public route scope so
+            // {{route.<name>}} resolves in data_config filters + content and
+            // propagates to children.
             $user = $this->userContextAwareService->getCurrentUser();
             $userId = $user ? (int) $user->getId() : null;
-            $sections = $this->processSectionsRecursively($sections, [], $userId, $languageId);
+            $sections = $this->processSectionsRecursively(
+                $sections,
+                $this->buildRouteScope($routeParams, $routeRequirements),
+                $userId,
+                $languageId
+            );
 
             return $sections;
         });
@@ -864,14 +1104,66 @@ class PageService extends BaseService
             // This allows filters like "record_id = {{parent.record_id}}" to work
             $this->interpolateDataConfigInSection($section, $parentData);
 
-            // Step 2: Apply section data (for form-record sections)
-            $this->sectionUtilityService->applySectionData($section, $languageId);
+            // Step 2: Apply section data (for form-record sections). Route
+            // params flow in so the form-record edit mode (`load_record_from`)
+            // can prefill the URL-addressed record.
+            $routeParams = [];
+            if (is_array($parentData['route'] ?? null)) {
+                foreach ($parentData['route'] as $routeKey => $routeValue) {
+                    $routeParams[(string) $routeKey] = $routeValue;
+                }
+            }
+            $this->sectionUtilityService->applySectionData($section, $languageId, $routeParams);
 
             // Step 3: Retrieve data from data_config (now with properly interpolated filters)
             $this->retrieveSectionData($section, $parentData, $languageId);
 
             // Step 4: Merge parent data with newly retrieved data efficiently
             $sectionData = $this->mergeDataEfficiently($parentData, $this->asArray($section['retrieved_data'] ?? []));
+
+            // Step 4b: Guarantee the public route scope ({{route.*}}) survives
+            // data binding (issue #30). `loop` may still bind rows through
+            // `data_config`, but entry-list / entry-record load rows from style
+            // property fields. A retrieved scope accidentally named `route` must
+            // never shadow the URL-derived route params that descendant sections
+            // (e.g. entry-list filters with `{{route.*}}`, or entry-record
+            // `load_record_from`) depend on.
+            if (isset($parentData['route'])) {
+                $sectionData['route'] = $parentData['route'];
+            }
+
+            // Step 4c: Entry row hydration (issue #30). entry-list / entry-record
+            // load their rows ONLY from style property fields (`data_table`,
+            // `own_entries_only`, `filter` on lists, `load_record_from` on
+            // entry-record, …) — never from `data_config.table`.
+            // `data_config` on the same section may still run above (Step 3) to
+            // populate helper scopes in `$sectionData` (e.g. `filters`) that an
+            // entry-list author `filter` may reference via `{{filters.*}}`.
+            $styleName = isset($section['style_name']) ? $this->asString($section['style_name']) : '';
+            $isRepeater = $styleName === StyleNames::STYLE_ENTRY_LIST || $styleName === StyleNames::STYLE_LOOP;
+            $entryRows = [];
+            if ($isRepeater || $styleName === StyleNames::STYLE_ENTRY_RECORD) {
+                $entryRows = $this->resolveEntryRows($section, $sectionData, $languageId);
+                if ($entryRows === [] && $styleName === StyleNames::STYLE_LOOP) {
+                    $entryRows = $this->resolveLoopFieldRows($section, $sectionData);
+                }
+                if (!$isRepeater && isset($entryRows[0])) {
+                    $sectionData = array_merge($sectionData, $entryRows[0]);
+                    if (isset($parentData['route'])) {
+                        $sectionData['route'] = $parentData['route'];
+                    }
+                }
+            }
+
+            // entry-record-delete needs the bound row's record id as a real
+            // FIELD (both renderers read `record_id` off the section to call
+            // the delete API), not just as an interpolation token.
+            if ($styleName === StyleNames::STYLE_ENTRY_RECORD_DELETE && !isset($section['record_id'])) {
+                $recordId = $sectionData['record_id'] ?? null;
+                if (is_int($recordId) || is_float($recordId) || (is_string($recordId) && $recordId !== '')) {
+                    $section['record_id'] = ['content' => (string) $recordId, 'meta' => null];
+                }
+            }
 
             // Step 5: CRITICAL - Interpolate ALL content fields using combined data
             // Now we have both parent data and newly retrieved data available
@@ -891,11 +1183,19 @@ class PageService extends BaseService
                     $section['condition_debug'] = $conditionResult['debug'];
                 }
 
-                // Step 8: Process children recursively with inherited data
+                // Step 8: Process children recursively with inherited data.
+                // entry-list / loop are data-bound repeaters: their children
+                // are a TEMPLATE cloned once per bound row (the web/mobile
+                // renderers just render the already-cloned children). No rows
+                // -> no children.
                 if (isset($section['children']) && is_array($section['children'])) {
                     /** @var array<int, array<string, mixed>> $children */
                     $children = $section['children'];
-                    $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
+                    if ($isRepeater) {
+                        $section['children'] = $this->hydrateEntryListChildren($children, $entryRows, $sectionData, $userId, $languageId);
+                    } else {
+                        $section['children'] = $this->processSectionsRecursively($children, $sectionData, $userId, $languageId);
+                    }
                 }
 
                 // Step 9: `retrieved_data` is internal scaffolding for the
@@ -928,6 +1228,226 @@ class PageService extends BaseService
         }
 
         return $processedSections;
+    }
+
+    /**
+     * Resolve bound rows for entry-list / entry-record from style property fields
+     * (`data_table`, `own_entries_only`, `filter`, `scope`).
+     *
+     * Row table and retrieve mode come **only** from those fields — never from
+     * `data_config`. `$interpolationContext` carries parent/route data plus any
+     * helper scopes already retrieved from `data_config` on this section.
+     *
+     * @param array<string, mixed> $section
+     * @param array<array-key, mixed> $interpolationContext Parent + retrieved helper scopes
+     * @return list<array<string, mixed>>
+     */
+    private function resolveEntryRows(array $section, array $interpolationContext, int $languageId): array
+    {
+        $styleName = $this->asString($section['style_name'] ?? '');
+        $dataTableId = (int) $this->getSectionPropertyContent($section, 'data_table');
+        if ($dataTableId <= 0) {
+            return [];
+        }
+
+        $dataTable = $this->dataService->getDataTableById($dataTableId);
+        if ($dataTable === null) {
+            return [];
+        }
+
+        $ownEntriesOnly = $this->getSectionPropertyBool($section, 'own_entries_only', true);
+
+        // entry-record: same visible contract as entry-record-form —
+        // `load_record_from` names the route param; the server builds the
+        // record_id predicate (no author SQL filter).
+        if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
+            $loadRecordFrom = trim($this->getSectionPropertyContent($section, 'load_record_from'));
+            if ($loadRecordFrom === '') {
+                return [];
+            }
+            $routeParams = is_array($interpolationContext['route'] ?? null)
+                ? $interpolationContext['route']
+                : [];
+            $routeRecordId = is_numeric($routeParams[$loadRecordFrom] ?? null)
+                ? (int) $routeParams[$loadRecordFrom]
+                : 0;
+            if ($routeRecordId <= 0) {
+                return [];
+            }
+            $filter = 'AND record_id = ' . $routeRecordId;
+        } else {
+            $rawFilter = $this->getSectionPropertyContent($section, 'filter');
+            $filter = $this->dataTableFilterService->prepareFilter(
+                $rawFilter,
+                $interpolationContext,
+                $this->asStringKeyedMap($interpolationContext['route_requirements'] ?? null),
+            );
+            if ($rawFilter !== '' && $filter === '') {
+                return [];
+            }
+        }
+
+        try {
+            $dbFirst = $styleName === StyleNames::STYLE_ENTRY_RECORD;
+            $selectedColumns = '';
+            if ($styleName === StyleNames::STYLE_ENTRY_LIST) {
+                $selectedColumns = $this->getSectionPropertyContent($section, 'selected_columns');
+            }
+            $rows = $this->dataService->getData(
+                $dataTableId,
+                $filter,
+                $ownEntriesOnly,
+                null,
+                $dbFirst,
+                true,
+                $languageId,
+                $selectedColumns,
+            );
+        } catch (\Exception) {
+            return [];
+        }
+
+        if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
+            $rows = $rows !== [] ? [$rows] : [];
+        } elseif (!array_is_list($rows)) {
+            $rows = [$rows];
+        }
+
+        $tableName = (string) $dataTable->getName();
+        if ($rows !== []) {
+            $rows = $this->dataService->remapEntriesToInputNames($dataTableId, $rows);
+        }
+
+        $scope = $this->getSectionPropertyContent($section, 'scope');
+        $normalized = [];
+        $index = 0;
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowArray = [];
+            foreach ($row as $key => $value) {
+                $rowArray[(string) $key] = $value;
+            }
+            if ($styleName === StyleNames::STYLE_ENTRY_LIST) {
+                $rowArray['_index'] = $index;
+                $index++;
+            }
+            if ($scope !== '') {
+                $scoped = [];
+                foreach ($rowArray as $key => $value) {
+                    if ($key === '_index' || str_contains((string) $key, '.')) {
+                        continue;
+                    }
+                    $scoped[$key] = $value;
+                    $rowArray[$scope . '.' . $key] = $value;
+                }
+                if ($scoped !== []) {
+                    $rowArray[$scope] = $scoped;
+                }
+            }
+            $normalized[] = $rowArray;
+        }
+
+        if ($tableName !== '' && $normalized !== []) {
+            $normalized = $this->optionLabelHydrator->hydrate($normalized, $tableName, $languageId);
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function getSectionPropertyContent(array $section, string $fieldName, string $default = ''): string
+    {
+        $field = $section[$fieldName] ?? null;
+        if (is_array($field) && array_key_exists('content', $field)) {
+            return $this->asString($field['content']);
+        }
+
+        return $default;
+    }
+
+    /**
+     * @param array<string, mixed> $section
+     */
+    private function getSectionPropertyBool(array $section, string $fieldName, bool $default = true): bool
+    {
+        $raw = $this->getSectionPropertyContent($section, $fieldName, $default ? '1' : '0');
+
+        return $raw !== '0';
+    }
+
+    /**
+     * Rows for a `loop` section without data binding: the style's `loop`
+     * field carries a static JSON array of row objects. The raw JSON is
+     * interpolated with the section's data first (authors may reference
+     * parent scopes inside the array), then decoded. Invalid JSON, a
+     * non-list value, or non-object items yield no rows.
+     *
+     * @param array<string, mixed> $section
+     * @param array<array-key, mixed> $sectionData
+     * @return list<array<string, mixed>>
+     */
+    private function resolveLoopFieldRows(array $section, array $sectionData): array
+    {
+        $loopField = $section['loop'] ?? null;
+        $raw = is_array($loopField) ? ($loopField['content'] ?? null) : null;
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        if (str_contains($raw, '{{')) {
+            $raw = $this->interpolationService->interpolate($raw, $sectionData);
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || !array_is_list($decoded)) {
+            return [];
+        }
+
+        $rows = [];
+        foreach ($decoded as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $row = [];
+            foreach ($item as $key => $value) {
+                $row[(string) $key] = $value;
+            }
+            $rows[] = $row;
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Clone the entry-list / loop child template once per bound row and
+     * process each clone with the row's columns flattened into the
+     * interpolation data (so `{{name}}` / `{{record_id}}` resolve per row).
+     * The inherited `route` scope is re-pinned after the flatten (same rule
+     * as Step 4b).
+     *
+     * @param array<int, array<string, mixed>> $templateChildren
+     * @param list<array<string, mixed>> $rows
+     * @param array<array-key, mixed> $sectionData
+     * @return list<array<string, mixed>>
+     */
+    private function hydrateEntryListChildren(array $templateChildren, array $rows, array $sectionData, ?int $userId, int $languageId): array
+    {
+        $hydrated = [];
+        foreach ($rows as $row) {
+            $rowData = array_merge($sectionData, $row);
+            if (isset($sectionData['route'])) {
+                $rowData['route'] = $sectionData['route'];
+            }
+            foreach ($this->processSectionsRecursively($templateChildren, $rowData, $userId, $languageId) as $child) {
+                $hydrated[] = $child;
+            }
+        }
+
+        return $hydrated;
     }
 
     /**
@@ -1122,7 +1642,12 @@ class PageService extends BaseService
                         // Interpolate the config before retrieving data
                         // availableData contains the structured parent data (system, globals, parent scopes)
                         $interpolatedConfig = $this->interpolateDataConfig($this->toConfigArray($config), $availableData);
-                        $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId);
+                        $configData = $this->sectionUtilityService->retrieveData(
+                            $interpolatedConfig,
+                            [],
+                            $languageId,
+                            $this->toConfigArray($availableData),
+                        );
                         // Use the scope as key if available, otherwise use index
                         $key = isset($config['scope']) ? $this->asString($config['scope']) : $configIndex;
                         $retrievedData[$key] = $configData;
@@ -1165,7 +1690,15 @@ class PageService extends BaseService
 
         foreach ($fieldsToInterpolate as $field) {
             if (isset($interpolatedConfig[$field]) && is_string($interpolatedConfig[$field])) {
-                $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
+                if ($field === 'filter') {
+                    $interpolatedConfig[$field] = $this->dataTableFilterService->prepareFilter(
+                        $interpolatedConfig[$field],
+                        $availableData,
+                        $this->asStringKeyedMap($availableData['route_requirements'] ?? null),
+                    );
+                } else {
+                    $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
+                }
             }
         }
 
@@ -1234,6 +1767,26 @@ class PageService extends BaseService
             'passes' => $conditionResult['result'],
             'debug' => $this->conditionService->buildConditionDebug($conditionResult, $condition),
         ];
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    private function asStringKeyedMap(mixed $value): ?array
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($value as $key => $item) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+            $out[$key] = is_scalar($item) ? (string) $item : '';
+        }
+
+        return $out;
     }
 
 }

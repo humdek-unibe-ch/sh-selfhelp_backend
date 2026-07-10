@@ -24,7 +24,8 @@ use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\UserContextAwareService;
 use App\Repository\SectionRepository;
-use App\Service\CMS\FormFileUploadService;
+use App\Service\CMS\Common\DataTableFilterService;
+use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -52,7 +53,9 @@ class DataService extends BaseService
         private readonly ActionOrchestratorService $actionOrchestratorService,
         private readonly DataColumnService $dataColumnService,
         private readonly FormFieldKeyResolver $formFieldKeyResolver,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly DataAccessSecurityService $dataAccessSecurityService,
+        private readonly DataTableFilterService $dataTableFilterService,
     ) {
     }
 
@@ -105,7 +108,13 @@ class DataService extends BaseService
             // Ensure user ID is set. Anonymous submissions store NULL (the
             // column is nullable and carries no FK) instead of the admin's
             // id 1 — attributing guest data to the admin was a security bug.
-            if (!isset($data['id_users'])) {
+            // Remember whether the caller provided the owner explicitly: on
+            // UPDATE the auto-seeded acting user must never reassign the row
+            // owner (a foreign editor updating a shared record would silently
+            // steal ownership) — only an explicit id_users (system/job flows
+            // acting on behalf of a user) may.
+            $reassignOwnerOnUpdate = isset($data['id_users']);
+            if (!$reassignOwnerOnUpdate) {
                 $data['id_users'] = $currentUser ? $currentUser->getId() : null;
             }
 
@@ -137,7 +146,7 @@ class DataService extends BaseService
                         }
 
                         // Update the existing record
-                        $updatedRecordId = $this->updateExistingRecord($recordId, $data, $transactionBy, $fieldLabels);
+                        $updatedRecordId = $this->updateExistingRecord($recordId, $data, $transactionBy, $fieldLabels, $reassignOwnerOnUpdate);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -162,13 +171,21 @@ class DataService extends BaseService
                     // Handle other types of update filters using the stored procedure
                     $filter = '';
                     foreach ($updateBasedOn as $key => $value) {
-                        $filter = $filter . ' AND ' . $key . ' = "' . $this->asString($value) . '"';
+                        $predicate = $this->dataTableFilterService->buildStringEqualityPredicate(
+                            $this->asString($key),
+                            $this->asString($value),
+                        );
+                        if ($predicate === '') {
+                            $filter = '';
+                            break;
+                        }
+                        $filter .= $predicate;
                     }
 
                     $existingRecord = $this->getData((int) $dataTable->getId(), $filter, $ownEntriesOnly, $currentUser?->getId(), true);
 
                     if ($existingRecord) {
-                        $recordId = $this->updateExistingRecord($this->asInt($existingRecord['record_id']), $data, $transactionBy, $fieldLabels);
+                        $recordId = $this->updateExistingRecord($this->asInt($existingRecord['record_id']), $data, $transactionBy, $fieldLabels, $reassignOwnerOnUpdate);
                         $this->entityManager->commit();
 
                         // Invalidate data table cache after updating record
@@ -468,9 +485,12 @@ class DataService extends BaseService
      * @param array<string, mixed> $data New data
      * @param string $transactionBy Transaction initiator
      * @param array<string, string|null>|null $fieldLabels Optional field_key => label map
+     * @param bool $reassignOwner Whether $data['id_users'] was explicitly provided
+     *                            by the caller; when false the existing owner is
+     *                            preserved (a foreign editor must not steal the row)
      * @return int Record ID
      */
-    private function updateExistingRecord(int $recordId, array $data, string $transactionBy, ?array $fieldLabels = null): int
+    private function updateExistingRecord(int $recordId, array $data, string $transactionBy, ?array $fieldLabels = null, bool $reassignOwner = true): int
     {
 
         $dataRow = $this->entityManager->getRepository(DataRow::class)->find($recordId);
@@ -485,7 +505,9 @@ class DataService extends BaseService
 
         // Update timestamp and trigger type (use UTC for consistency)
         $dataRow->setTimestamp(new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
-        $dataRow->setIdUsers($this->asIntOrNull($data['id_users'] ?? null));
+        if ($reassignOwner) {
+            $dataRow->setIdUsers($this->asIntOrNull($data['id_users'] ?? null));
+        }
 
         $triggerTypeId = $this->getTriggerTypeId($data);
         $dataRow->setIdActionTriggerTypes($triggerTypeId);
@@ -675,6 +697,14 @@ class DataService extends BaseService
     }
 
     /**
+     * Get data table by numeric id
+     */
+    public function getDataTableById(int $dataTableId): ?DataTable
+    {
+        return $this->dataTableRepository->find($dataTableId);
+    }
+
+    /**
      * Get data table by display name
      * 
      * @param string $displayName Display name
@@ -757,7 +787,7 @@ class DataService extends BaseService
     }
 
     /**
-     * Remap showUserInput entries (keyed by `field_key`) back to the current
+     * Remap entry-table entries (keyed by `field_key`) back to the current
      * human input name for display, so a renamed input shows the new label and
      * one logical column instead of section ids. No-op for non-form data tables
      * (e.g. SurveyJS tables keep `question.name` headers).
@@ -777,7 +807,7 @@ class DataService extends BaseService
 
     /**
      * `field_key => display_name` for a data table's curated columns, so
-     * renderers (e.g. show-user-input) can show human labels as headers while
+     * renderers (e.g. entry-table) can show human labels as headers while
      * keying cells by the immutable `field_key` (issue #56 v2). `display_name`
      * falls back to the `field_key` when not curated. Standard projection
      * columns (record_id, entry_date, …) are not included — they render under
@@ -870,6 +900,72 @@ class DataService extends BaseService
     }
 
     /**
+     * Record-scoped variant of {@see getFormRecordDataWithAllLanguages} for the
+     * form-record edit mode (issue #30): load ONE specific record (all
+     * languages) for prefill, identified by its record id (typically taken
+     * from a route parameter via the style's `load_record_from` field).
+     *
+     * Permission mirrors {@see FormController::updateForm} through
+     * DataAccessSecurityService::canUpdateOwnedRecord: the user's own record
+     * always loads; with $ownEntriesOnly=true a foreign record never loads;
+     * with $ownEntriesOnly=false a foreign record loads only when the user
+     * holds UPDATE permission on the form's data table. A record the user may
+     * not edit prefills nothing (empty array).
+     *
+     * @return array<array-key, mixed>
+     */
+    public function getFormRecordDataForRecord(string $dataTableName, int $recordId, bool $ownEntriesOnly): array
+    {
+        $dataTable = $this->dataTableRepository->findOneBy(['name' => $dataTableName]);
+        if (!$dataTable || $recordId <= 0) {
+            return [];
+        }
+
+        $dataTableId = (int) $dataTable->getId();
+        $currentUser = $this->userContextService->getCurrentUser();
+        $userId = $currentUser ? (int) $currentUser->getId() : null;
+
+        if ($userId === null) {
+            return []; // No user, no record prefill
+        }
+
+        $recordOwnerId = $this->getRecordOwnerId($recordId);
+        $isOwnRecord = $recordOwnerId !== null && $recordOwnerId === $userId;
+        if (!$isOwnRecord) {
+            $hasUpdatePermission = $this->dataAccessSecurityService->hasPermission(
+                $userId,
+                'data_table',
+                $dataTableId,
+                DataAccessSecurityService::PERMISSION_UPDATE
+            );
+            // own_entries_only=true blocks foreign records outright here (the
+            // query below is user-unscoped when own_entries_only=false only).
+            if ($ownEntriesOnly || !$this->dataAccessSecurityService->canUpdateOwnedRecord(false, false, $hasUpdatePermission)) {
+                return [];
+            }
+        }
+
+        $cacheKey = "form_record_data_{$dataTableName}_{$userId}_r{$recordId}";
+
+        $records = $this->cache
+            ->withCategory(CacheService::CATEGORY_DATA_TABLES)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_DATA_TABLE, $dataTableId)
+            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
+            ->getList($cacheKey, function () use ($dataTableId, $recordId) {
+                return $this->getDataWithAllLanguages(
+                    $dataTableId,
+                    sprintf('AND record_id = %d', $recordId),
+                    false,
+                    null,
+                    false,
+                    true
+                );
+            });
+
+        return $this->remapRecordKeysToInputNames($dataTableName, $records);
+    }
+
+    /**
      * Fetch data records from a data table using the legacy stored procedure behavior.
      * Mirrors the old get_data($dataTableId, $filter, $own_entries_only, $user_id, $db_first, $exclude_deleted) logic.
      *
@@ -887,13 +983,26 @@ class DataService extends BaseService
         ?int $userId = null,
         bool $dbFirst = false,
         bool $excludeDeleted = true,
-        int $languageId = 1
+        int $languageId = 1,
+        string $selectedColumns = '',
     ): array {
         try {
-            // Guard: ignore malformed dynamic filter attempts
-            if (str_contains($filter, '{{')) {
-                $filter = '';
+            $rawFilter = $filter;
+            // Guard: reject malformed or unsafe dynamic filter attempts (return no rows).
+            if (str_contains($rawFilter, '{{')) {
+                return $dbFirst ? [] : [];
             }
+
+            if ($rawFilter !== '' && !$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return $dbFirst ? [] : [];
+            }
+
+            $filter = $this->dataTableFilterService->guardForStoredProcedure($rawFilter);
+            if ($rawFilter !== '' && $filter === '') {
+                return $dbFirst ? [] : [];
+            }
+
+            $selectedColumns = $this->dataTableFilterService->sanitizeSelectedColumns($selectedColumns);
 
             // Resolve user id as per legacy rules
             $resolvedUserId = $userId;
@@ -912,7 +1021,8 @@ class DataService extends BaseService
                 $filter,
                 $excludeDeleted,
                 $languageId,
-                $this->cmsPreferenceService->getDefaultTimezoneCode()
+                $this->cmsPreferenceService->getDefaultTimezoneCode(),
+                $selectedColumns,
             );
 
             if ($dbFirst) {
@@ -949,9 +1059,19 @@ class DataService extends BaseService
         int $languageId = 1
     ): array {
         try {
-            // Guard: ignore malformed dynamic filter attempts
-            if (str_contains($filter, '{{')) {
-                $filter = '';
+            $rawFilter = $filter;
+            // Guard: reject malformed or unsafe dynamic filter attempts (return no rows).
+            if (str_contains($rawFilter, '{{')) {
+                return [];
+            }
+
+            if ($rawFilter !== '' && !$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return [];
+            }
+
+            $filter = $this->dataTableFilterService->guardForStoredProcedure($rawFilter);
+            if ($rawFilter !== '' && $filter === '') {
+                return [];
             }
 
             $rows = $this->dataTableRepository->getDataTableWithUserGroupFilter(
@@ -994,9 +1114,19 @@ class DataService extends BaseService
         bool $excludeDeleted = true
     ): array {
         try {
-            // Guard: ignore malformed dynamic filter attempts
-            if (str_contains($filter, '{{')) {
-                $filter = '';
+            $rawFilter = $filter;
+            // Guard: reject malformed or unsafe dynamic filter attempts (return no rows).
+            if (str_contains($rawFilter, '{{')) {
+                return $dbFirst ? [] : [];
+            }
+
+            if ($rawFilter !== '' && !$this->dataTableFilterService->isSafeFilterFragment($rawFilter)) {
+                return $dbFirst ? [] : [];
+            }
+
+            $filter = $this->dataTableFilterService->guardForStoredProcedure($rawFilter);
+            if ($rawFilter !== '' && $filter === '') {
+                return $dbFirst ? [] : [];
             }
 
             // Resolve user id as per legacy rules

@@ -155,6 +155,14 @@ All variables must now be accessed via their namespace prefix to prevent collisi
 └─────────────────────────────────────────────────────────┘
 ```
 
+**Entry holders (`entry-list` / `entry-record`).** Steps 1–3 still run when
+`data_config` is present — they add helper scopes to the interpolation context
+(e.g. `filters`). Row cloning for entry holders happens in a separate step
+(`PageService::resolveEntryRows`) and reads **only** style property fields
+(`data_table`, `own_entries_only`, `filter`, `scope`, …). A `data_config.table`
+entry on an entry holder does **not** select rows. See
+[composite.md](../reference/styles/composite.md#entry-list).
+
 ---
 
 ## Preview vs Published Pages
@@ -356,7 +364,7 @@ in the live `token => label` map. Because the chip is token-agnostic (it renders
 whatever label the map provides for the stored token), a later input/display
 rename only changes the chip text — the stored token is unchanged.
 
-**show-user-input headers (v2, issue #56).** A `show-user-input` section's render
+**entry-table headers (v2, issue #56).** An `entry-table` section's render
 payload carries a `field_labels` map (`field_key => display_name`) alongside
 `entries` (rows kept keyed by `field_key`). The renderer defaults each column
 header to the curated `display_name` and reads cells by the stable `field_key`,

@@ -266,11 +266,11 @@ not used at runtime.
 | `id_page_access_types` | `mobile_and_web` (lookup `pageAccessTypes`) |
 | `is_open_access`       | `1` for pre-login pages, `0` otherwise |
 | `is_system`            | `1` |
-| `nav_position`         | `NULL` for non-nav pages, integer for nav menu |
-| `footer_position`      | integer for footer links, `NULL` otherwise |
+
+Menu membership is configured through `navigation_menu_items` (menu builder), not page columns.
 
 If the page should appear in the admin pages tree but not in any nav
-menu, leave both positions `NULL`.
+menu, do not create a navigation menu item for it.
 
 ### Step 2 — Decide the page content shape
 

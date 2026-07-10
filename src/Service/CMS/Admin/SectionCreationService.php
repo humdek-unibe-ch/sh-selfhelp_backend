@@ -13,6 +13,7 @@ use App\Entity\PagesSection;
 use App\Entity\SectionsHierarchy;
 use App\Exception\ServiceException;
 use App\Service\CMS\DataTableService;
+use App\Service\CMS\NavigationCacheInvalidator;
 use App\Service\Core\BaseService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\TransactionService;
@@ -39,7 +40,8 @@ class SectionCreationService extends BaseService
         private readonly SectionRepository $sectionRepository,
         private readonly SectionRelationshipService $sectionRelationshipService,
         private readonly UserContextAwareService $userContextAwareService,
-        private readonly TransactionService $transactionService
+        private readonly TransactionService $transactionService,
+        private readonly NavigationCacheInvalidator $navigationCacheInvalidator,
     ) {
     }
 
@@ -114,6 +116,7 @@ class SectionCreationService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
+            $this->navigationCacheInvalidator->invalidateForPage((int) $page->getId());
 
             $this->entityManager->commit();
             return [
@@ -218,6 +221,7 @@ class SectionCreationService extends BaseService
             $this->cache
                 ->withCategory(CacheService::CATEGORY_SECTIONS)
                 ->invalidateAllListsInCategory();
+            $this->navigationCacheInvalidator->invalidateForPage($pageId);
             
             $this->entityManager->commit();
             return [

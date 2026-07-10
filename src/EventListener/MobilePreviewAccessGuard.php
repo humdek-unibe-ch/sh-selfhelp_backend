@@ -43,14 +43,18 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
     /**
      * The core routes a `purpose: mobile_preview` token may call with GET. All
      * are read-only reads the preview renderer needs: resolve + render a page,
-     * list languages, read the plugin manifest, and read the (admin) user
-     * data the shared renderer expects. Plugin PUBLIC runtime routes are
-     * allowed in addition to this list — see {@see isPluginPublicRoute()}.
+     * fetch the navigation payload (drawer/bottom-tab menus + startup pages —
+     * without it the preview shell falls back to modal-only rendering), list
+     * languages, read the plugin manifest, and read the (admin) user data the
+     * shared renderer expects. Plugin PUBLIC runtime routes are allowed in
+     * addition to this list — see {@see isPluginPublicRoute()}.
      */
     private const ALLOWED_ROUTES = [
         'pages_get_by_keyword_v1',
+        'pages_resolve_path_v1',
         'pages_get_all_v1',
         'pages_get_all_with_language_v1',
+        'navigation_get_v1',
         'languages_get_all_v1',
         'plugins_manifest_v1',
         'auth_user_data_get_v1',
@@ -197,14 +201,29 @@ class MobilePreviewAccessGuard implements EventSubscriberInterface
             }
         }
 
-        if ($routeName === 'pages_get_all_with_language_v1' || $routeName === 'pages_get_by_keyword_v1') {
+        // Keyword-scoped mint: path resolve is only for free-navigation sessions.
+        // A pinned keyword must keep using by-keyword fetches.
+        if ($routeName === 'pages_resolve_path_v1') {
+            if (array_key_exists('keyword', $scope) && $scope['keyword'] !== null) {
+                return false;
+            }
+            if (($scope['page_id'] ?? null) !== null) {
+                return false;
+            }
+        }
+
+        if (
+            $routeName === 'pages_get_all_with_language_v1'
+            || $routeName === 'pages_get_by_keyword_v1'
+            || $routeName === 'pages_resolve_path_v1'
+        ) {
             $languageId = $this->requestInt($request, 'language_id');
             if (array_key_exists('language_id', $scope) && $scope['language_id'] !== null && $languageId !== null && $scope['language_id'] !== $languageId) {
                 return false;
             }
         }
 
-        if ($routeName === 'pages_get_by_keyword_v1') {
+        if ($routeName === 'pages_get_by_keyword_v1' || $routeName === 'pages_resolve_path_v1') {
             $preview = $request->query->getBoolean('preview', false);
             if (($scope['draft'] ?? null) === false && $preview) {
                 return false;

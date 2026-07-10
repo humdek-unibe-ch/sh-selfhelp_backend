@@ -3,7 +3,7 @@
 Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 composite styles (`@selfhelp/shared` `composite` category).
-Last verified: 2026-06-22.
+Last verified: 2026-07-09.
 Source of truth: `src/types/styles/composite.ts`, `src/registry/styles.registry.ts`, the `admin/styles/schema` endpoint, and `src/app/components/frontend/styles/` renderers.
 
 Composite styles combine child sections into a richer widget (accordions, tabs,
@@ -141,27 +141,50 @@ the matching item children inside it.
 
 ## entry-list
 
-**Purpose.** A **data-driven** list that renders the rows saved by a `form-log` (one block per stored entry).
+**Purpose.** A **data/context holder** that renders one block per row of a bound data table (any table, not only a `form-log`).
 
-**Administrators.** Show submitted entries back to the user (e.g. a list of past journal entries). Bind it to the source form via the section's data config; lay out how each entry looks using child sections, which can interpolate the entry's fields with `{{field_name}}`.
+**Administrators.** Show a collection of records (e.g. team members, journal entries). Bind it to a data table via the **Data table** property field in the section inspector (Properties panel); lay out how each row looks using child sections, which interpolate the row's fields with `{{field_name}}`. Optional **Filter** accepts a SQL WHERE fragment (route tokens like `{{route.category}}` are validated server-side). **Own entries only** limits rows to the current user (default on). **Scope** prefixes row keys (`scope.name`). **Load as table** wraps each clone in a `<table>` row on web. To make a list/detail pattern, give each row a link to its detail page using `/<base>/{{record_id}}`. The **Create list + detail pages** wizard (Admin → Pages) scaffolds this for you — see [../../cookbook/cms-in-cms-list-detail.md](../../cookbook/cms-in-cms-list-detail.md).
 
-**Developers.** Driven by `data_config`. Renders its child template once per backend-provided row; `line_clamp` truncates long text. Pairs with `entry-record` / `entry-record-delete`.
+**Data binding (important).** Which rows appear is controlled **only** by the style property fields below — not by **Data configuration** (`global_fields.data_config`).
 
-**Distinctive fields.** `line_clamp` (max lines per entry). Data binding via `data_config` (see [_conventions.md](./_conventions.md)).
+| Task | Where to configure it |
+|------|------------------------|
+| Choose the data table | **Data table** property field |
+| Limit rows to the current user | **Own entries only** property field |
+| SQL constraints on loaded rows | **Filter** property field (SQL builder) |
+| Prefix row tokens (`item.name`) | **Scope** property field |
+| Optional column subset | **Selected columns** property field |
 
-**Children.** Yes (the per-entry template).
+**Do not** use Data configuration → *Table* on an `entry-list` section to bind rows. That path applies to other styles (`loop`, `data-container`, …) but is **ignored** for entry holders since core `0.1.35`. A section with only a legacy `data_config.table` binding and an empty **Data table** field renders **no rows**.
+
+You **may** still add Data configuration on the same section when you need **helper scopes** only — for example a `filters` scope whose values you reference inside the **Filter** property field (`{{filters.category}}`). Helper scopes do not replace **Data table**.
+
+**Developers.** Pure holder driven by style property fields (`data_table`, `own_entries_only`, `filter`, `scope`, `load_as_table`, `selected_columns`); the **backend** clones the child template once per bound row during page render (`PageService::resolveEntryRows` / `processSectionsRecursively`, Step 8) and flattens each row's columns into top-level interpolation tokens, so `{{name}}` / `{{record_id}}` resolve per clone (row keys are remapped from the immutable `section_<id>` field keys back to the current input names). Row table and retrieve mode come **only** from those property fields — never from `data_config.table`. `data_config` on the same section may still run earlier in the pipeline to populate helper scopes (e.g. `filters`) that the author `filter` field may reference via `{{filters.*}}`. Filters pass through `DataTableFilterService` (typed route params, SQL denylist). The web/mobile renderers just render the already-cloned children. No rows → no children. Carries no presentational fields of its own. Pairs with `entry-record` / `entry-record-delete`. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+
+**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `filter` (code/SQL), `scope` (text), `load_as_table` (checkbox), `selected_columns` (`select-data_table_columns`, optional column subset).
+
+Filter safety: see [data-table-filter-safety.md](../../developer/data-table-filter-safety.md).
+
+**Children.** Yes (the per-entry template, cloned per row by the backend).
 
 ---
 
 ## entry-record
 
-**Purpose.** A **data-driven** container for a single stored record (the `form-record` row).
+**Purpose.** A **data/context holder** for a single record of a bound data table. Pair of `entry-record-form`: the form creates/edits a row; this holder **displays** one row.
 
-**Administrators.** Display one saved record and interpolate its fields with `{{field_name}}` in child sections.
+**Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`):
 
-**Developers.** Driven by `data_config`; exposes one record's fields to its children.
+1. Set **Data table** to the owning form's table (or `@section:<form>` in bundles).
+2. Set **Load record from route parameter** to the route param name (usually `record_id`) — the **same field** as on `entry-record-form`.
 
-**Distinctive fields.** None beyond the common fields; binding via `data_config`.
+There is **no SQL Filter** on this style. The server reads the named route param and loads that `record_id`. If the param is missing or empty, nothing is shown (fail-closed). Optional **Scope** prefixes interpolation tokens (e.g. `team_member.name`).
+
+**Data binding (important).** The record comes **only** from property fields (**Data table**, **Own entries only**, **Load record from route parameter**, **Scope**). **Data configuration** → *Table* does **not** load the record.
+
+**Developers.** `PageService::resolveEntryRows()` for `entry-record` builds `AND record_id = <int>` from `load_record_from` + the matched route params (same resolution path as `entry-record-form` / `SectionUtilityService::applySectionData`). No author SQL; no `DataTableFilterService` on this style. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+
+**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `load_record_from` (text; route param name, default `record_id`), `scope` (text). Removed: `url_param`, author `filter`.
 
 **Children.** Yes.
 
@@ -173,9 +196,9 @@ the matching item children inside it.
 
 **Administrators.** Add inside an entry template to let users delete that entry (with confirmation).
 
-**Developers.** Renders a delete action scoped to the current entry/record context.
+**Developers.** Renders a delete action scoped to the current entry/record context. The backend hydrates `record_id` into the section during entry rendering; both renderers read the button text from `label_delete` (the generic `label` field is not linked to this style). The delete call goes to `DELETE /cms-api/v1/forms/delete`, whose validation accepts `entry-record-delete` (and `entry-table`) sections — ACL `delete` on the page plus the own-entries/data-table permission rules apply.
 
-**Distinctive fields.** None beyond the common fields.
+**Distinctive fields.** `label_delete` (button text, default "Delete"); `confirmation_title` / `confirmation_message` / `confirmation_continue` / `confirmation_cancel` (confirmation dialog copy); `own_entries_only`.
 
 **Children.** No.
 
@@ -187,9 +210,9 @@ the matching item children inside it.
 
 **Administrators.** Repeat a block of child sections once per item in a data set, interpolating each item's values. Use when you have a list of items to template that is not a form-log table.
 
-**Developers.** Iterates the `loop` data array, rendering its child template per item. Bind the collection via `data_config`.
+**Developers.** Server-hydrated repeater, same mechanism as `entry-list`: the backend clones the child template once per row and flattens the row's keys into the interpolation data, so `{{key}}` resolves per item (see `PageService::processSectionsRecursively`). Rows come from the first `data_config` entry when one is bound; otherwise from the style's `loop` field — a static JSON array of row objects that is itself interpolated before decoding, so it may reference parent scopes. No rows means no children. Like the other holders it must **not** overwrite the read-only `route` interpolation scope, so child sections can still reference `{{route.*}}` URL params inside a loop.
 
-**Distinctive fields.** `loop` (the collection); binding via `data_config`.
+**Distinctive fields.** `loop` (static JSON array of row objects, e.g. `[{"title":"First"},{"title":"Second"}]`); binding via `data_config` takes precedence.
 
 **Children.** Yes (the per-item template).
 

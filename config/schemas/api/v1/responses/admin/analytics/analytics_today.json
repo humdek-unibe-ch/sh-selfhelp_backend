@@ -1,0 +1,54 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Analytics Today Operations Response",
+    "description": "Today's operations snapshot for the admin dashboard (UTC day): scheduled jobs due/executed by status, data submissions, and page visits.",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "required": ["date", "scheduled_jobs", "data", "visits"],
+            "additionalProperties": false,
+            "properties": {
+                "date": { "type": "string" },
+                "scheduled_jobs": {
+                    "type": "object",
+                    "required": ["due_today", "executed_today", "by_status"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "due_today": { "type": "integer", "minimum": 0 },
+                        "executed_today": { "type": "integer", "minimum": 0 },
+                        "by_status": {
+                            "type": "object",
+                            "additionalProperties": { "type": "integer", "minimum": 0 }
+                        }
+                    }
+                },
+                "data": {
+                    "type": "object",
+                    "required": ["entries_today", "users_submitted_today", "total_tables", "total_rows"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "entries_today": { "type": "integer", "minimum": 0 },
+                        "users_submitted_today": { "type": "integer", "minimum": 0 },
+                        "total_tables": { "type": "integer", "minimum": 0 },
+                        "total_rows": { "type": "integer", "minimum": 0 }
+                    }
+                },
+                "visits": {
+                    "type": "object",
+                    "required": ["views_today", "unique_visitors_today", "web_views_today", "mobile_views_today"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "views_today": { "type": "integer", "minimum": 0 },
+                        "unique_visitors_today": { "type": "integer", "minimum": 0 },
+                        "web_views_today": { "type": "integer", "minimum": 0 },
+                        "mobile_views_today": { "type": "integer", "minimum": 0 }
+                    }
+                }
+            }
+        }
+    }
+}

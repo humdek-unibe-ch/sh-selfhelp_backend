@@ -279,7 +279,7 @@ only the **style-specific** notes on top of those.
 | `rating` | `web_color`→`color`; `web_rating_*` web-only; mobile custom stars; **Pro `Rating`** (RF-27). |
 | `progress`/`progress-root`/`progress-section` | `web_tooltip_label` translatable → un-prefix (RF-35); `web_color`→`color`; mobile RN bar; **Pro ProgressBar/Circle** (RF-28). |
 | `rich-text-editor` | `web_rich_text_editor_placeholder` translatable → un-prefix (RF-35); web-first (Tiptap); mobile read-only viewer v1. |
-| `show-user-input` | `web_table_*` web-only; **mobile must render list/cards, not a table** (mobile.md §11.6); Pro `EmptyState` for the empty case. |
+| `entry-table` (ex `show-user-input`) | `web_table_*` web-only; **mobile must render list/cards, not a table** (mobile.md §11.6); Pro `EmptyState` for the empty case. |
 
 ### Composite / collection / data
 

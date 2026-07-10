@@ -546,7 +546,7 @@ INSERT INTO `api_routes` (`route_name`, `version`, `path`, `controller`) VALUES
         "keyword": "welcome",
         "url": "/welcome",
         "isHeadless": false,
-        "navPosition": 1,
+        "navigationMembership": ["web_header"],
         "createdAt": "2024-01-15T10:30:00Z",
         "updatedAt": "2024-01-20T14:45:00Z"
     }

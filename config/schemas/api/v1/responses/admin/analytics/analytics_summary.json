@@ -1,0 +1,93 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Analytics Summary Response",
+    "description": "Anonymous page-view analytics for the admin dashboard: per-period series, totals, top pages, and external referrer hosts. Uniques are privacy-preserving visitor-days (the visitor hash rotates daily).",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "required": ["range", "totals", "series", "top_pages", "referrers"],
+            "additionalProperties": false,
+            "properties": {
+                "range": {
+                    "type": "object",
+                    "required": ["from", "to", "granularity", "platform"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "from": { "type": "string" },
+                        "to": { "type": "string" },
+                        "granularity": { "type": "string", "enum": ["day", "month"] },
+                        "platform": { "type": "string", "enum": ["all", "web", "mobile"] }
+                    }
+                },
+                "totals": {
+                    "type": "object",
+                    "required": ["views", "unique_visitors", "web", "mobile"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "views": { "type": "integer", "minimum": 0 },
+                        "unique_visitors": { "type": "integer", "minimum": 0 },
+                        "web": { "$ref": "#/$defs/platformTotals" },
+                        "mobile": { "$ref": "#/$defs/platformTotals" }
+                    }
+                },
+                "series": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["period", "web_views", "mobile_views", "web_uniques", "mobile_uniques"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "period": { "type": "string" },
+                            "web_views": { "type": "integer", "minimum": 0 },
+                            "mobile_views": { "type": "integer", "minimum": 0 },
+                            "web_uniques": { "type": "integer", "minimum": 0 },
+                            "mobile_uniques": { "type": "integer", "minimum": 0 }
+                        }
+                    }
+                },
+                "top_pages": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["page_id", "keyword", "url", "views", "unique_visitors"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "page_id": { "type": "integer" },
+                            "keyword": { "type": "string" },
+                            "url": { "type": ["string", "null"] },
+                            "views": { "type": "integer", "minimum": 0 },
+                            "unique_visitors": { "type": "integer", "minimum": 0 }
+                        }
+                    }
+                },
+                "referrers": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["host", "views"],
+                        "additionalProperties": false,
+                        "properties": {
+                            "host": { "type": "string" },
+                            "views": { "type": "integer", "minimum": 0 }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "$defs": {
+        "platformTotals": {
+            "type": "object",
+            "required": ["views", "unique_visitors"],
+            "additionalProperties": false,
+            "properties": {
+                "views": { "type": "integer", "minimum": 0 },
+                "unique_visitors": { "type": "integer", "minimum": 0 }
+            }
+        }
+    }
+}
