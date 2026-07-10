@@ -171,17 +171,20 @@ Filter safety: see [data-table-filter-safety.md](../../developer/data-table-filt
 
 ## entry-record
 
-**Purpose.** A **data/context holder** for a single record of a bound data table.
+**Purpose.** A **data/context holder** for a single record of a bound data table. Pair of `entry-record-form`: the form creates/edits a row; this holder **displays** one row.
 
-**Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`), set **Data table** to the owning form's table and keep **URL parameter** at `record_id` (default). The backend loads the row whose `record_id` matches that route parameter automatically. Use **Filter** for additional constraints only — do not author `record_id = {{route.record_id}}` manually.
+**Administrators.** Display one record and interpolate its fields with `{{field_name}}` in child sections. On a detail page reached via a parameterized route (e.g. `/team-members/{record_id}`):
 
-**Data binding (important).** Same rule as `entry-list`: the record comes **only** from property fields (**Data table**, **URL parameter**, **Own entries only**, **Filter**, **Scope**). **Data configuration** → *Table* does **not** load the record. Legacy `data_config.table` bindings are ignored; an empty **Data table** field means the detail page shows no record content.
+1. Set **Data table** to the owning form's table (or `@section:<form>` in bundles).
+2. Set **Load record from route parameter** to the route param name (usually `record_id`) — the **same field** as on `entry-record-form`.
 
-Helper scopes from Data configuration (e.g. `filters`) remain valid when referenced from the **Filter** property field or child interpolation — they do not choose which table or row to load.
+There is **no SQL Filter** on this style. The server reads the named route param and loads that `record_id`. If the param is missing or empty, nothing is shown (fail-closed). Optional **Scope** prefixes interpolation tokens (e.g. `team_member.name`).
 
-**Developers.** Pure holder driven by style property fields (`data_table`, `own_entries_only`, `filter`, `scope`, `url_param`); the **backend** selects exactly one row (`getData` with `dbFirst`), appending `AND record_id = <int>` from the validated route param, then flattens the record's columns into top-level interpolation tokens for the section and its children. Row table and retrieve mode come **only** from those property fields — never from `data_config.table`. `data_config` on the same section may still populate helper scopes for filter interpolation (e.g. `{{filters.category}}`). Author filters pass through `DataTableFilterService`. The `{{route.*}}` params come from the matched public route (see [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md)). Carries no presentational fields of its own.
+**Data binding (important).** The record comes **only** from property fields (**Data table**, **Own entries only**, **Load record from route parameter**, **Scope**). **Data configuration** → *Table* does **not** load the record.
 
-**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `filter` (code/SQL), `scope` (text), `url_param` (text, default `record_id`).
+**Developers.** `PageService::resolveEntryRows()` for `entry-record` builds `AND record_id = <int>` from `load_record_from` + the matched route params (same resolution path as `entry-record-form` / `SectionUtilityService::applySectionData`). No author SQL; no `DataTableFilterService` on this style. See [27-db-driven-public-routing.md](../../developer/27-db-driven-public-routing.md).
+
+**Distinctive fields.** `data_table` (`select-data_table`), `own_entries_only` (checkbox), `load_record_from` (text; route param name, default `record_id`), `scope` (text). Removed: `url_param`, author `filter`.
 
 **Children.** Yes.
 

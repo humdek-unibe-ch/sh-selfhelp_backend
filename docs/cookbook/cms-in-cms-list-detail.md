@@ -41,28 +41,35 @@ The two list surfaces are presented differently on purpose:
   list refreshes automatically.
 
 The detail page loads exactly one row: set **Data table** on the `entry-record`
-section and keep **URL parameter** at `record_id` (default). The backend injects
-the validated route id automatically; use **Filter** only for extra constraints.
-With `create_form` the form page **owns the data table** (named by the form
-section id); list and detail holders bind through their **Data table** property
-field — **not** through Data configuration → *Table*.
+section and **Load record from route parameter** to the route param name (usually
+`record_id`) — the **same field** as on `entry-record-form`. The backend reads
+that param from the matched URL and loads the row; there is no author SQL
+**Filter** on `entry-record`. Without `load_record_from` (or when the param is
+missing) the section stays empty (fail-closed).
+With `create_form` the form page **owns the data table** (via the
+`entry-record-form` section); list and detail holders bind through their **Data
+table** property field — **not** through Data configuration → *Table*.
 
 > **Common mistake:** On `entry-list` / `entry-record` sections, authors sometimes
 > configure **Data configuration** with a table and expect rows to appear. Since
 > core `0.1.35`, row loading uses **only** the property fields (**Data table**,
-> **Filter**, **Own entries only**, …). Data configuration on the same section
-> is for **helper scopes** (e.g. a `filters` scope referenced as
-> `{{filters.category}}` inside **Filter**), not for choosing which table to
-> hydrate. See [composite.md#entry-list](../reference/styles/composite.md#entry-list).
+> **Load record from route parameter** on detail, optional **Filter** on lists,
+> **Own entries only**, …). Data configuration on the same section is for
+> **helper scopes** on lists (e.g. a `filters` scope referenced as
+> `{{filters.category}}` inside an entry-list **Filter**), not for choosing which
+> table to hydrate. See [composite.md#entry-list](../reference/styles/composite.md#entry-list).
 
-**Record editing** works out of the box: the wizard reuses the *same*
-`form-record` section on the admin detail page, configured with
-`load_record_from = record_id` and *Own entries only* **off**. Opening
-`/cms/team-members/42` prefills the form with record 42 (all languages —
+**Record editing** works out of the box: the wizard places an
+`entry-record-form` section on the admin detail page (and the create form page),
+configured with `load_record_from = record_id` and *Own entries only* **off**.
+Opening `/cms/team-members/42` prefills the form with record 42 (all languages —
 translatable inputs get their per-language values) and saving **updates** that
 record instead of appending a new one. Updating another user's record requires
 UPDATE permission on the form's data table; admins pass automatically. See
-[forms.md#form-record](../reference/styles/forms.md#form-record).
+[forms.md#entry-record-form](../reference/styles/forms.md#entry-record-form).
+
+The public detail page uses the same `load_record_from = record_id` on
+`entry-record` so `/team-members/42` displays that profile.
 
 ## Option A — CMS Apps (recommended)
 
@@ -109,17 +116,17 @@ Permissions: `admin.cms_app.*` (separate from `admin.page.*`).
 4. **Create the detail page**: surface = *public*, URL `/team-members/{record_id}`.
    In the page editor's **Routes** panel confirm the canonical route
    `/team-members/{record_id}` with requirement `record_id = \d+`.
-5. Add an **entry-record** section. Set **Data table** to the same table,
-   **URL parameter** to `record_id` (default), and optional **Filter** for extra
-   constraints only — the backend injects `record_id` from the route automatically.
+5. Add an **entry-record** section. Set **Data table** to the same table and
+   **Load record from route parameter** to `record_id` (same field as on
+   `entry-record-form`).
 6. Add child fields that reference the record (`{{name}}`, `{{role}}`, …).
 
 Repeat with `surface = cms` and `/cms/...` URLs for an admin-only pair. For the
 admin list, prefer an **entry-table** section (a real data table) instead of
 an `entry-list`: point its `data_table` at the table, turn on `delete_entry`, set
 `add_url` to the create form and `edit_url` to `/cms/team-members/{record_id}`
-(single-brace `{record_id}` is substituted per row). For the admin detail, reuse
-the create form's `form-record` section and set its **Load record from route
+(single-brace `{record_id}` is substituted per row). For the admin detail, add an
+`entry-record-form` section and set its **Load record from route
 parameter** field (`load_record_from`) to `record_id` with *Own entries only*
 off — the form then prefills and updates the addressed record.
 

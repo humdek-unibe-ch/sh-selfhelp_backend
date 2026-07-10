@@ -21,14 +21,14 @@ CMS UI or bundle import. All server paths must pass through
 | Denylist | `;`, `--`, `/*`, `DROP`, `DELETE`, `UPDATE`, `INSERT`, `UNION`, `INTO OUTFILE`, `LOAD_FILE`, `INFORMATION_SCHEMA`, `SLEEP`, `BENCHMARK`, `EXEC`/`EXECUTE` |
 | Max length | 1000 chars (`VARCHAR(1000)` SP parameter) |
 | AND glue | Bare conditions receive a leading `AND` in one place (`glueLeadingAnd`) |
-| `record_id` on entry-record | Always injected server-side from `url_param` + validated route value; authors must not rely on manual `record_id = {{route.record_id}}` in `filter` |
+| `record_id` on entry-record | **Not via author filter.** `load_record_from` names the route param; `PageService::resolveEntryRows()` builds `AND record_id = <int>` from the matched route (same idea as `entry-record-form`) |
 
 ## Audited call sites
 
 | # | Call site | Used by | Protection |
 |---|-----------|---------|------------|
-| 1 | `DataTableFilterService::prepareFilter()` | entry-list / entry-record `filter`, `PageService::interpolateDataConfig()` | Full pipeline |
-| 2 | `PageService::resolveEntryRows()` | entry-list / entry-record hydration | `prepareFilter()` + `appendRecordIdFilter()`; interpolation context includes parent/route data **and** `data_config` helper scopes retrieved on the same section (never `data_config.table` for row source) |
+| 1 | `DataTableFilterService::prepareFilter()` | entry-list `filter`, `PageService::interpolateDataConfig()` | Full pipeline |
+| 2 | `PageService::resolveEntryRows()` | entry-list / entry-record hydration | Lists: `prepareFilter()`. Records: typed int from `load_record_from` + route params (no author SQL) |
 | 3 | `SectionUtilityService::fetchData()` | `data_config` retrieval | `resolveDataConfigFilter()` → `prepareFilter()` |
 | 4 | `DataService::getData()` / `getDataWithUserGroupFilter()` / `getDataWithAllLanguages()` | SP callers | Strips `{{` + `isSafeFilterFragment()` |
 | 5 | `DataTableRepository::getDataTableWith*()` | repository boundary | `guardForStoredProcedure()` (length + unresolved tokens) |
@@ -42,20 +42,29 @@ CMS UI or bundle import. All server paths must pass through
 interpolation context (helper scopes such as `filters`, parent scopes, route
 tokens). **`entry-list` and `entry-record` never use `data_config` to choose
 their row table or retrieve mode.** Entry row loading is configured only through
-`fields.data_table`, `own_entries_only`, `filter`, `scope`, and related style
-fields. Missing `fields.data_table` means no entry rows, even when a legacy
-`data_config.table` binding is still present on the section.
+`fields.data_table`, `own_entries_only`, `filter` (lists), `load_record_from`
+(records), `scope`, and related style fields. Missing `fields.data_table` means
+no entry rows, even when a legacy `data_config.table` binding is still present
+on the section.
 
 **Inspector UX:** authors who only edit **Data configuration** on an entry holder
 will see an empty public list or detail until they set **Data table** under
 **Properties**. Helper-scope `data_config` entries are optional and do not
 substitute for **Data table**.
 
+## Admin filter preview
+
+`POST /cms-api/v1/admin/data/query-preview` (permission `admin.data.read`) returns
+the normalized filter fragment, stored-procedure call shape, route params used,
+and validation errors — **without executing arbitrary SQL**. The section
+inspector filter builder debounces preview calls separately from auto-save.
+
 ## Tests
 
 - Unit: `tests/Unit/Service/CMS/Common/DataTableFilterServiceTest.php`
 - Integration matrix: `tests/Integration/CMS/FilterSafetyTest.php` (one regression per call site above)
 - Entry holder binding: `tests/Integration/CMS/EntryListHydrationTest.php`, `tests/Integration/CMS/EntryRecordHydrationTest.php` (helper-scope filters, no `data_config` row fallback)
+- Preview contract: `tests/Controller/Api/V1/Admin/DataQueryPreviewSchemaContractTest.php`
 
 ## Related references
 

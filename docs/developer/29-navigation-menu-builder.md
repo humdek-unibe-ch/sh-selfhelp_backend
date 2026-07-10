@@ -155,7 +155,7 @@ contract (`navigationChildrenNavModes` lookup type):
   (`resolveWebBranchNavContext`): effective mode (item override → menu default
   → `sidebar`), branch group, breadcrumb trail, and the prev/next pager
   (neighbour page titles, auto-translated). Migration
-  `Version20260706143547` (+ round-trip test) seeds the lookups and columns.
+  `Version20260710093045` (+ round-trip test) seeds the navigation lookups and final presentation contract.
 
 ## Mobile drawer and bottom tabs
 

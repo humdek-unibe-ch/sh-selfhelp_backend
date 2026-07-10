@@ -19,7 +19,7 @@ All curated bundles live in **`sh-selfhelp_frontend/examples/`** (`pages/`, `cms
 
 The polished marketing-style landing lives in [`hero-home.bundle.json`](../../sh-selfhelp_frontend/examples/pages/hero-home.bundle.json).
 
-**Fresh installs:** migration `Version20260701112111` replaces the baseline `home-sys*` placeholder on the system `home` page when that page is still untouched. A normal `doctrine:migrations:migrate` run is enough — no extra console step.
+**Fresh installs:** migration `Version20260710093045` replaces the baseline `home-sys*` placeholder on the system `home` page when that page is still untouched. A normal `doctrine:migrations:migrate` run is enough — no extra console step.
 
 **Re-import later**, use the guarded CLI:
 

@@ -4,7 +4,7 @@ Audience: Developers and technical operators (backend, frontend, mobile, shared)
 Status: active.
 Applies to: SelfHelp2 navigation refactor across backend, frontend, shared, and mobile.
 Last verified: 2026-07-06.
-Source of truth: runtime code in `NavigationMenuService`, `GET /cms-api/v1/navigation`, and the menu-builder tables seeded by `Version20260701092652.php` (cleaned up by `Version20260706074503.php`).
+Source of truth: runtime code in `NavigationMenuService`, `GET /cms-api/v1/navigation`, the final tables created by `Version20260710092337.php`, and the menu-builder contract seeded by `Version20260710093045.php`.
 
 > **This document supersedes the earlier per-page `web_nav_render` / `mobile_nav_render`
 > design.** That model grouped header presentation by page-level render fields.

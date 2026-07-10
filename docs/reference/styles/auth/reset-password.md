@@ -4,7 +4,7 @@ Audience: Developers and CMS administrators.
 Status: active.
 Applies to: SelfHelp2 (auth password-reset flow, `@selfhelp/shared`, frontend renderer).
 Last verified: 2026-06-30.
-Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, `MailTemplateService`, and the seeded `page_routes` (migration `Version20260630083708`).
+Source of truth: `IResetPasswordStyle` in `@selfhelp/shared`, `ResetPasswordStyle.tsx`, `AuthController::forgotPassword`/`resetPassword`, `PasswordResetService`, `MailTemplateService`, and the seeded `page_routes` (migration `Version20260710093044`).
 
 ## Summary
 

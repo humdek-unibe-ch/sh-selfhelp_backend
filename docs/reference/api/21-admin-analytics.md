@@ -4,7 +4,7 @@ Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 backend `0.1.33+`.
 Last verified: 2026-07-07.
-Source of truth: `src/Controller/Api/V1/Admin/AdminAnalyticsController.php`, `src/Service/CMS/Admin/AdminAnalyticsService.php`, `src/Service/CMS/Frontend/PageViewTrackerService.php`, schemas under `config/schemas/api/v1/responses/admin/analytics/`, migration `Version20260706220759`.
+Source of truth: `src/Controller/Api/V1/Admin/AdminAnalyticsController.php`, `src/Service/CMS/Admin/AdminAnalyticsService.php`, `src/Service/CMS/Frontend/PageViewTrackerService.php`, schemas under `config/schemas/api/v1/responses/admin/analytics/`, and migrations `Version20260710092337` / `Version20260710093046`.
 
 Read-only aggregates that power the `/admin` dashboard: anonymous page-view
 analytics (split by web/mobile) and a "today's operations" snapshot. Both
@@ -108,7 +108,7 @@ that reached `done` today.
 ## Permissions and routes
 
 Both routes are DB-backed (`api_routes` rows `admin_analytics_summary` and
-`admin_analytics_today`, seeded by migration `Version20260706220759`) and
+`admin_analytics_today`, seeded by migration `Version20260710093046`) and
 linked to the `admin.analytics.read` permission. Users without the permission
 receive `403`; the frontend hides the dashboard widgets via
 `canReadAnalytics()`.
@@ -122,5 +122,5 @@ receive `403`; the frontend hides the dashboard widgets via
 
 - `tests/Integration/CMS/Admin/AdminAnalyticsTest.php` — permission matrix,
   tracked-view aggregation, platform split, referrer validation.
-- `tests/Integration/Migrations/Version20260706220759RoundTripTest.php` —
+- `tests/Integration/Migrations/Version20260710093046RoundTripTest.php` —
   migration up/down round trip.

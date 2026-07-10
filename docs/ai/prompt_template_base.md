@@ -382,6 +382,17 @@ leaves the field blank for the default audience.
 
 ---
 
+## CMS app entry-record detail pages
+
+For `entry-record` sections on parameterized detail routes (for example
+`/news/{record_id}`), set `load_record_from` to the route parameter name
+(usually `record_id`) — the same field as on `entry-record-form`. Do **not**
+emit an author `filter` or the removed `url_param` field on `entry-record`.
+Route placeholders are only visible when the caller has page read access to
+the linked page.
+
+---
+
 ## Validation you can anticipate
 
 The importer pre-validates the whole tree and returns HTTP **422** with

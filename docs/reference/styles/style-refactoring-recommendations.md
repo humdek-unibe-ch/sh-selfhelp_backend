@@ -328,7 +328,9 @@ extend the DB if a field is genuinely planned. Priority styles:
 - **`form-log` / `form-record`** — add the many real DB fields (`btn_*`,
   `web_buttons_*`, `is_log`, `redirect_at_end`, …) to the types.
 - **`entry-list` / `entry-record` / `entry-record-delete`** — add
-  `data_table`, `filter`, `scope`, `own_entries_only`, `url_param`, `type`.
+  `data_table`, `filter`, `scope`, `own_entries_only`, `type`. (`url_param` was
+  removed pre-1.0; detail scoping uses explicit `filter` with
+  `{{route.record_id}}` only.)
 
 This is a `@selfhelp/shared` change → bump the package and the consumer ranges,
 and update the cross-repo compatibility floors (AGENTS.md cross-repo rule).

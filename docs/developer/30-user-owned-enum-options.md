@@ -9,7 +9,7 @@ Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 option-based CMS form styles.
 Last verified: 2026-07-09.
-Source of truth: `src/Service/CMS/Frontend/OptionLabelHydrator.php`, `DataColumnService.php`, migration `Version20260709102039`, and `@selfhelp/shared/src/content/optionLabels.ts`.
+Source of truth: `src/Service/CMS/Frontend/OptionLabelHydrator.php`, `DataColumnService.php`, migration `Version20260710093048`, and `@selfhelp/shared/src/content/optionLabels.ts`.
 
 User-owned enums are style configuration, not system lookups. Existing `select`, `radio`, `combobox`, and `segmented-control` styles use two fields:
 

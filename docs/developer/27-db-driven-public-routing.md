@@ -161,11 +161,10 @@ helper scopes (e.g. `filters`) that the author `filter` field references via
   and merges each row's columns at the clone's interpolation root, so
   `{{name}}` / `{{record_id}}` resolve per card; each item links to the detail
   page with `/<base>/{{record_id}}`. No rows → no children.
-- **Detail** (`entry-record`): same property fields plus `url_param` (default
-  `record_id`). The backend validates the route param and appends
-  `AND record_id = <int>`; author `filter` is for extra constraints only. The
-  single record's fields are merged at the interpolation root for the holder and
-  its children.
+- **Detail** (`entry-record`): `data_table`, `own_entries_only`,
+  `load_record_from` (route param name, same as `entry-record-form`), and
+  optional `scope`. The backend reads the named route param and loads that
+  `record_id` (no author SQL filter). Missing param → no row.
 - **Delete button** (`entry-record-delete`): inside an entry subtree the bound
   row's `record_id` is injected as a real field during hydration, which is what
   enables the per-row delete button on web and mobile.

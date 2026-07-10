@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: CMS administrators and content editors (non-technical).  
 Status: active.  
 Applies to: SelfHelp2 Host Admin (`/admin/cms-apps`) and the public/CMS site shell.  
-Last verified: 2026-07-08.  
+Last verified: 2026-07-09.  
 Source of truth: Live Host Admin UI + first-class `cms_apps` backend behaviour.
 
 This guide explains **CMS Apps**: little products inside your site (team directory,
@@ -101,6 +101,19 @@ delete those pages deliberately.
 Someone needs `admin.cms_app.*` rights to see and change CMS Apps. Editing
 records on `/cms/...` uses normal page / CMS access for those pages. Ask an
 administrator if buttons are missing.
+
+## Data binding reminders
+
+- **Detail pages** (`entry-record`) and **create/edit forms** (`entry-record-form`)
+  both use **Load record from route parameter** (`load_record_from`, usually
+  `record_id`). The holder displays that row; the form prefills it for edit.
+  Leave **Data table** empty on the form to use the table owned by the form
+  section.
+- **Admin grids** (`entry-table`) map columns with **Column mapping**
+  (`fields_map` field keys) and optional **Column header labels**
+  (`fields_map_labels`).
+- **Public lists** (`entry-list`) may use an optional **Filter** for SQL
+  constraints; detail pages do **not** use Filter.
 
 ## Related
 

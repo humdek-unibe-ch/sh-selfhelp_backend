@@ -4,7 +4,7 @@ Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 (account-activation API, `@selfhelp/shared`, frontend renderer).
 Last verified: 2026-06-30.
-Source of truth: `IValidateStyle` in `@selfhelp/shared`, `ValidateStyle.tsx`, the token-validation endpoints, `migrations/Version20260604111011.php` (lifecycle status fields), and the seeded `page_routes` (migration `Version20260630083708`).
+Source of truth: `IValidateStyle` in `@selfhelp/shared`, `ValidateStyle.tsx`, the token-validation endpoints, `migrations/Version20260604111011.php` (lifecycle status fields), and the seeded `page_routes` (migration `Version20260710093044`).
 
 ## Summary
 
