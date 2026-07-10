@@ -563,7 +563,7 @@ the same change wave:
 > **Load record from route parameter** field as `entry-record-form`. Floors:
 > frontend `supports.core` `0.1.35 → 0.1.36`, backend `supports.frontend`
 > `0.1.62 → 0.1.63`. Live pairing: **frontend `>=0.1.63` ⇄ core `>=0.1.36`**.
-> `@selfhelp/shared` `3.0.1`.
+> `@selfhelp/shared` `1.21.5`.
 
 ## Current matrix (snapshot)
 
@@ -574,16 +574,16 @@ the same change wave:
 |-----------|---------|-------------|
 | Host CMS (`selfhelp.cms_version`) | `0.1.36` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `3.0.1` | npm (`3.0.0` `show-user-input` → `entry-table` rename — `IEntryTableStyle`/`IEntryTableEntry` + `_can_edit`, `IFormRecordStyle.load_record_from`/`own_entries_only`; additive `ICmsApp*` / `TCmsAppRole` + `admin.cms_app.*`; `2.0.0` strict navigation contract v2 — strict `INavigationMenu`/`INavigationMenuItem` with `layer`/`description`/`aria_label`, no `config`, `TWebFooterPreset`, `headerLayers`/`footerPreset`/`activeTrail` helpers, bundle v2.0 types; `1.21.0` menu-builder navigation contract; `1.20.0` CMS-in-CMS modal sizing; earlier entries unchanged) |
+| `@selfhelp/shared` | `1.21.5` | npm (DB-routing / CMS-apps / navigation / entry-binding wave: `entry-table` rename, `load_record_from`, `ICmsApp*`, option labels, strict nav v2 — see shared CHANGELOG v1.21.5) |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `3.0.1` (local tgz) | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.5` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
 | `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.63 <0.2.0` | frontend adopts filter preview UI + column/fields-map editors |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
 | `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers; entry-table renderer rename |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `3.0.1` | strict menu payload + active-trail helpers + entry-table style types (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.21.5` | strict menu payload + active-trail helpers + entry-table style types (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |

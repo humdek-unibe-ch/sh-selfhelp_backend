@@ -18,7 +18,7 @@ visible **Load record from route parameter** field (`load_record_from`, default
 `AND record_id = <int>` from the matched route. Migration
 `Version20260710093048` leaves `filter` off `entry-record` and links
 `load_record_from`. **Reimport** CMS-in-CMS detail pages (or set the field in
-the inspector). Pairs with frontend `0.1.63` and `@selfhelp/shared` `3.0.1`.
+the inspector). Pairs with frontend `0.1.63` and `@selfhelp/shared` `1.21.5`.
 
 ---
 
