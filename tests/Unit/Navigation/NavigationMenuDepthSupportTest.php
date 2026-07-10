@@ -39,11 +39,21 @@ final class NavigationMenuDepthSupportTest extends TestCase
         self::assertTrue($this->support->isDepthAllowed($parent));
     }
 
-    public function testGrandchildDepthIsRejected(): void
+    public function testGrandchildDepthIsAllowed(): void
     {
         $root = new NavigationMenuItem();
         $child = (new NavigationMenuItem())->setParentItem($root);
-        self::assertFalse($this->support->isDepthAllowed($child));
+        self::assertSame(1, $this->support->computeDepth($child));
+        self::assertTrue($this->support->isDepthAllowed($child));
+    }
+
+    public function testGreatGrandchildDepthIsRejected(): void
+    {
+        $root = new NavigationMenuItem();
+        $child = (new NavigationMenuItem())->setParentItem($root);
+        $grandchild = (new NavigationMenuItem())->setParentItem($child);
+        self::assertSame(2, $this->support->computeDepth($grandchild));
+        self::assertFalse($this->support->isDepthAllowed($grandchild));
     }
 
     public function testMenuMaxDepthIsCappedAtTwo(): void

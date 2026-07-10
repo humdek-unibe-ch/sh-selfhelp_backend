@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\CMS;
 
+use App\Tests\Support\ExampleBundleTestPaths;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -39,14 +40,27 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
         $frontendPath = dirname($backendRoot) . '/sh-selfhelp_frontend/examples/cms-in-cms/' . $id . '.bundle.json';
         $fixturePath = $backendRoot . '/tests/fixtures/examples/' . $id . '.bundle.json';
 
-        self::assertFileExists($frontendPath);
         self::assertFileExists($fixturePath);
-        $frontendJson = file_get_contents($frontendPath);
-        $fixtureJson = file_get_contents($fixturePath);
-        self::assertIsString($frontendJson);
-        self::assertSame($frontendJson, $fixtureJson, 'Frontend example and backend fixture mirror must be byte-identical.');
 
-        $bundle = json_decode($frontendJson, true, 512, JSON_THROW_ON_ERROR);
+        // When the frontend sibling is checked out (local monorepo), keep the
+        // gallery example and backend fixture byte-identical. CI only has the
+        // backend checkout, so fall back to the fixture via ExampleBundleTestPaths.
+        if (is_file($frontendPath)) {
+            $frontendJson = file_get_contents($frontendPath);
+            $fixtureJson = file_get_contents($fixturePath);
+            self::assertIsString($frontendJson);
+            self::assertIsString($fixtureJson);
+            self::assertSame($frontendJson, $fixtureJson, 'Frontend example and backend fixture mirror must be byte-identical.');
+            $bundleJson = $frontendJson;
+        } else {
+            $resolved = ExampleBundleTestPaths::cmsInCmsBundles()[$id] ?? null;
+            self::assertNotNull($resolved);
+            self::assertFileExists($resolved);
+            $bundleJson = file_get_contents($resolved);
+            self::assertIsString($bundleJson);
+        }
+
+        $bundle = json_decode($bundleJson, true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($bundle);
         $optionSections = $this->optionSections($bundle['pages'] ?? []);
         self::assertNotSame([], $optionSections, sprintf('%s must exercise the option-label contract.', $id));
@@ -105,12 +119,12 @@ final class CmsInCmsEnumBundleContractTest extends TestCase
             // Accept unscoped `{{_role_label}}` or scoped `{{team_member._role_label}}`.
             self::assertMatchesRegularExpression(
                 '/\{\{(?:[A-Za-z0-9_]+\.)?' . preg_quote($labelColumn, '/') . '\}\}/',
-                $frontendJson,
+                $bundleJson,
                 sprintf('%s must interpolate hydrated option labels via %s.', $id, $labelColumn),
             );
             self::assertStringContainsString(
                 $labelColumn,
-                $frontendJson,
+                $bundleJson,
                 sprintf('%s CMS entry-table must display hydrated labels via fields_map.', $id),
             );
         }
