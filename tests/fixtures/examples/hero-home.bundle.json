@@ -4,7 +4,7 @@
     "title": "Hero landing page",
     "description": "Polished headless landing page: full hero with imagery, feature grid, how-it-works split, testimonial, and a call-to-action panel. Works in dark and light mode, on web and mobile. Import it, then swap the copy, images, and button targets in the page editor.",
     "exported_at": "2026-07-06T00:00:00+00:00",
-    "core_version": "0.1.33",
+    "core_version": "0.1.36",
     "_comment": "Landing/hero template built only from core styles (issue: beautiful importable landing pages). The page is HEADLESS: it renders without the site header/footer, so it works as a guest/logged-out landing or onboarding page. Buttons point at the system 'register' and 'login' pages via page_keyword; change them in the editor. Images are curated Unsplash URLs - replace with your own assets for production. Content ships in the default-install locales de-CH and en-GB.",
     "pages": [
         {

@@ -4,7 +4,7 @@
     "title": "Mobile onboarding landing",
     "description": "Compact mobile-first onboarding screen for guest users: welcome hero, three value points, and register/login actions. Assign it as the mobile guest start page, or link it from the app menu. Works in dark and light mode.",
     "exported_at": "2026-07-06T00:00:00+00:00",
-    "core_version": "0.1.33",
+    "core_version": "0.1.36",
     "_comment": "Guest onboarding template built only from core styles. Single-column layout tuned for phone screens; also renders cleanly on web (headless). Buttons target the system 'register' and 'login' pages via page_keyword. Content ships in the default-install locales de-CH and en-GB.",
     "pages": [
         {

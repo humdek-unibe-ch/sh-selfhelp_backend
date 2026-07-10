@@ -5,7 +5,7 @@
     "description": "22-page realistic demo with all four navigation menus wired: double-dropdown header with top-row utility links, mega-menu descriptions and a three-level Services branch (Training grandchildren), grouped footer columns with a standalone link and an external status link, nested mobile drawer, and bottom tabs with a segment child plus a More holder tab (first-child redirect).",
     "min_core_version": "0.1.33",
     "exported_at": "2026-07-06T08:00:00+00:00",
-    "core_version": "0.1.33",
+    "core_version": "0.1.36",
     "export_mode": "full_snapshot",
     "import_hints": {
         "default_keyword_prefix": "",

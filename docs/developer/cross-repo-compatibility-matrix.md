@@ -563,7 +563,10 @@ the same change wave:
 > **Load record from route parameter** field as `entry-record-form`. Floors:
 > frontend `supports.core` `0.1.35 → 0.1.36`, backend `supports.frontend`
 > `0.1.62 → 0.1.63`. Live pairing: **frontend `>=0.1.63` ⇄ core `>=0.1.36`**.
-> `@selfhelp/shared` `1.21.5`.
+> `@selfhelp/shared` `1.21.7` (catalog wave landed as `1.21.5`; resolve +
+> form-record prefill in `1.21.6`; `should_fallback` on `IPageContent` in
+> `1.21.7`). Do not treat staged shared `2.x` /
+> `3.x` tags as this release line.
 
 ## Current matrix (snapshot)
 
@@ -574,16 +577,16 @@ the same change wave:
 |-----------|---------|-------------|
 | Host CMS (`selfhelp.cms_version`) | `0.1.36` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
-| `@selfhelp/shared` | `1.21.6` | npm (1.21.5 wave + `buildPagesResolve*` + form-record prefill). Do not use staged git tags `v2*` / `v3*` from this branch. |
+| `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
-| `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.6` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers |
+| `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
 | `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.63 <0.2.0` | frontend adopts filter preview UI + column/fields-map editors |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |
 | `sh-selfhelp_mobile` | `0.1.33` | collapsible drawer with active-trail auto-expand, tab `item_limit` slice, shared active-state helpers; entry-table renderer rename |
-| `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.21.6` | strict menu payload + active-trail helpers + entry-table style types + `buildPagesResolveUrl` (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
+| `sh-selfhelp_mobile` → `@selfhelp/shared` | `1.21.7` | strict menu payload + active-trail helpers + entry-table style types + `buildPagesResolveUrl` (pinned via `overrides` until the SurveyJS mobile package raises its peer range) |
 | `sh-manager` (tool) | `1.6.6` | installs/routes/updates the mobile-preview service; **provisions it by default on every install** (auxiliary — a registry with no compatible preview does not fail the install) and bootstraps it via `update-mobile-preview`; runs the dual-axis plugin mobile gate (RN/Expo read from the descriptor's top-level `reactNativeVersion`/`expoSdkVersion`) |
 | `sh2-shp-survey-js` (`compatibility.selfhelp`) | `>=0.1.0 <0.2.0` | host CMS minor `0.1` |
 | `sh2-shp-survey-js` (`pluginApiVersion`) | `0.1.0` | host plugin API `0.1.0` |
@@ -596,19 +599,17 @@ the same change wave:
 > is the exception: it is a published SDK already on the `1.x` line, so the standard
 > "MAJOR = breaking" SemVer applies to it.
 
-> **Mobile ⇄ core coupling (no automated gate).** The registry resolver's
-> bidirectional `release-manifest.json` gate pairs **only frontend ⇄ core** — the
-> mobile app ships no `release-manifest.json` and is not assembled by the resolver,
-> so the `@selfhelp/shared` caret range is currently mobile's only machine-checked
-> compatibility anchor. That anchor catches *typed response-shape* drift, **not
-> version pairing or behavioral coupling**: e.g. the core 0.1.18 anonymous-preview
-> 401 needed mobile 0.1.10 (`services/previewPolicy.ts`) even though no shared type
-> changed. Until a mobile manifest + resolver support exist, **a mobile↔core
-> behavioral coupling MUST be shipped as a coordinated release** (bump mobile in the
-> same wave as the core change and note it here), and an old mobile build against a
-> newer core is not blocked automatically. Adding `supports.core` to a mobile
-> `release-manifest.json` (and teaching the resolver to read it) is the tracked
-> follow-up that would turn this convention into a gate.
+> **Mobile ⇄ core coupling (one-directional `supports.core`).** The registry
+> resolver's bidirectional `release-manifest.json` gate pairs **frontend ⇄
+> core**. The mobile-preview image also ships `release-manifest.json` with
+> `supports.core` (currently `>=0.1.36 <0.2.0`); that range is emitted into
+> `mobile-preview-release.json` as `requiredCoreRange` and is the authoritative
+> pairing signal — **not** equality between the mobile package SemVer (may stay
+> `0.1.33`) and the core version. Core intentionally does **not** declare
+> `supports.mobile`. `@selfhelp/shared` still catches typed response-shape
+> drift. Until the auto-core-release resolver also assembles mobile-preview
+> candidates, treat mobile↔core behavioral couplings as coordinated releases
+> and keep `supports.core` floors honest.
 
 ## What the plugin `compatibility` block means
 
@@ -706,8 +707,8 @@ import format.
 |------|---------|-------|
 | `sh-selfhelp_backend` | `0.1.33` | `supports.frontend` `>=0.1.59` |
 | `sh-selfhelp_frontend` | `0.1.59` | `supports.core` `>=0.1.33` |
-| `sh-selfhelp_mobile` | `0.1.33` | `supports.core` `>=0.1.36` (package version stayed 0.1.33 across later core minors; pair via `supports.core` + shared 1.21.5) |
-| `@selfhelp/shared` | `1.21.5` | strict `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/`activeTrail`, bundle v2.0 (wave previously staged as 2.0.0-3.0.1) |
+| `sh-selfhelp_mobile` | `0.1.33` | `supports.core` `>=0.1.36` (package version stayed 0.1.33 across later core minors; pair via `supports.core` + shared 1.21.7) |
+| `@selfhelp/shared` | `1.21.5` → pin consumers to **`1.21.7`** for this wave | strict `INavigationMenu`/`INavigationMenuItem`, `headerLayers`/`footerPreset`/`activeTrail`, bundle v2.0 (wave previously staged as 2.0.0-3.0.1; cleanup in 1.21.6; `should_fallback` in 1.21.7) |
 
 Working-tree implementations across all four repos are aligned to these floors.
 Tag and publish together — partial deploy breaks navigation for migrated installs.
