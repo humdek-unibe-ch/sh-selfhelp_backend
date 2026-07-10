@@ -60,6 +60,8 @@ final class PermissionCoverageChecklistTest extends QaKernelTestCase
         'admin api-routes' => ['prefix' => '/admin/api-routes', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminApiRoutePermissionTest::class],
         'admin assets' => ['prefix' => '/admin/assets', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminAssetPermissionTest::class],
         'admin audit' => ['prefix' => '/admin/audit', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminAuditControllerTest::class],
+        'admin analytics' => ['prefix' => '/admin/analytics', 'test' => \App\Tests\Integration\CMS\Admin\AdminAnalyticsTest::class],
+        'admin cms-apps' => ['prefix' => '/admin/cms-apps', 'test' => \App\Tests\Controller\Api\V1\Admin\CmsAppEndpointsPermissionTest::class],
         'admin cms-preferences' => ['prefix' => '/admin/cms-preferences', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminCmsPreferenceControllerTest::class],
         'admin groups' => ['prefix' => '/admin/groups', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminGroupPermissionTest::class],
         'admin interpolation' => ['prefix' => '/admin/interpolation', 'test' => \App\Tests\Controller\Api\V1\Admin\AdminInterpolationPermissionTest::class],

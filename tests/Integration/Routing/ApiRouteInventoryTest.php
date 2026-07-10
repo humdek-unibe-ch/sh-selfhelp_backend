@@ -81,6 +81,16 @@ final class ApiRouteInventoryTest extends QaKernelTestCase
         'pages_get_all_v1',
         'pages_get_by_keyword_v1',
         'pages_get_all_with_language_v1',
+        // DB-driven public path resolve: open route, page ACL / CMS-surface
+        // denial remapped to 404 inside PageService (issue #30).
+        'pages_resolve_path_v1',
+        // Public navigation + search payloads (ACL / access-type filtered in
+        // NavigationMenuService / SearchService). Last-visited is JWT-optional
+        // and only writes the caller's own preference when authenticated.
+        'navigation_get_v1',
+        'navigation_last_visited_put_v1',
+        'search_get_v1',
+        'search_pages_get_v1',
         'plugins_manifest_v1',
         // Health probe + the public user-validation (set-password) flow.
         'health_v1',
