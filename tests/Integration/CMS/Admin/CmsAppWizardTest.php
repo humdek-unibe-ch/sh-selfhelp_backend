@@ -46,15 +46,15 @@ final class CmsAppWizardTest extends QaWebTestCase
 
         try {
             $formBody = $this->sectionsBody($byRole['form'], $admin);
-            self::assertStringContainsString('form-record', $formBody);
+            self::assertStringContainsString('entry-record-form', $formBody);
             self::assertStringContainsString('text-input', $formBody);
             // Field contents live on the section-detail endpoint (list is structural).
-            self::assertSame('1', $this->sectionFieldValue($byRole['form'], 'form-record', 'close_modal_on_save', $admin));
-            self::assertSame('record_id', $this->sectionFieldValue($byRole['form'], 'form-record', 'load_record_from', $admin));
+            self::assertSame('1', $this->sectionFieldValue($byRole['form'], 'entry-record-form', 'close_modal_on_save', $admin));
+            self::assertSame('record_id', $this->sectionFieldValue($byRole['form'], 'entry-record-form', 'load_record_from', $admin));
 
             $adminDetailBody = $this->sectionsBody($byRole['cms_detail'], $admin);
-            self::assertStringContainsString('form-record', $adminDetailBody);
-            self::assertStringNotContainsString('entry-record', str_replace('form-record', '', $adminDetailBody));
+            self::assertStringContainsString('entry-record-form', $adminDetailBody);
+            self::assertStringNotContainsString('entry-record', str_replace('entry-record-form', '', $adminDetailBody));
 
             self::assertSame('1', $this->pageProperty($byRole['form'], 'open_in_modal', $admin));
             self::assertSame('1', $this->pageProperty($byRole['cms_detail'], 'open_in_modal', $admin));
@@ -86,7 +86,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                 'Public list cards must carry a detail link template.'
             );
             self::assertStringContainsString(
-                '{{record_id}}',
+                '{{qa_team_wizard.record_id}}',
                 (string) $this->sectionFieldValue($byRole['public_list'], 'link', 'url', $admin)
             );
 
@@ -139,10 +139,10 @@ final class CmsAppWizardTest extends QaWebTestCase
             self::assertNotNull($this->sectionFieldValue($byRole['cms_list'], 'entry-table', 'edit_url', $admin));
 
             $detailBody = $this->sectionsBody($byRole['cms_detail'], $admin);
-            self::assertStringContainsString('form-record', $detailBody);
+            self::assertStringContainsString('entry-record-form', $detailBody);
             self::assertSame(
                 'record_id',
-                $this->sectionFieldValue($byRole['cms_detail'], 'form-record', 'load_record_from', $admin)
+                $this->sectionFieldValue($byRole['cms_detail'], 'entry-record-form', 'load_record_from', $admin)
             );
             // Same shared form section is attached; inputs live under the form page tree.
             self::assertStringContainsString('first_name', $this->sectionsBody($byRole['form'], $admin));
@@ -168,10 +168,10 @@ final class CmsAppWizardTest extends QaWebTestCase
         ], 'qa-editmode-shell');
 
         try {
-            $formSectionId = $this->firstSectionIdByStyle($byRole['form'], 'form-record', $admin);
+            $formSectionId = $this->firstSectionIdByStyle($byRole['form'], 'entry-record-form', $admin);
             self::assertGreaterThan(0, $formSectionId);
 
-            $detailSectionId = $this->firstSectionIdByStyle($byRole['cms_detail'], 'form-record', $admin);
+            $detailSectionId = $this->firstSectionIdByStyle($byRole['cms_detail'], 'entry-record-form', $admin);
             self::assertSame($formSectionId, $detailSectionId);
 
             $submit = $this->jsonRequest('POST', '/cms-api/v1/forms/submit', [
@@ -190,7 +190,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                 $admin
             );
             $createData = $this->assertEnvelopeSuccess($createRender);
-            $createForm = $this->findSectionByStyleInPage($createData, 'form-record');
+            $createForm = $this->findSectionByStyleInPage($createData, 'entry-record-form');
             self::assertNotNull($createForm);
             self::assertSame([], $createForm['section_data'] ?? null);
 
@@ -201,7 +201,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                 $admin
             );
             $editData = $this->assertEnvelopeSuccess($editRender);
-            $editForm = $this->findSectionByStyleInPage($editData, 'form-record');
+            $editForm = $this->findSectionByStyleInPage($editData, 'entry-record-form');
             self::assertNotNull($editForm);
             $sectionData = $editForm['section_data'] ?? null;
             self::assertIsArray($sectionData);
