@@ -953,7 +953,7 @@ class AdminPageService extends BaseService
         }
 
         $targetAppId = $hasAppId
-            ? (int) $pageData['cms_app_id']
+            ? $this->asIntOrNull($pageData['cms_app_id'] ?? null)
             : ($currentAppId !== null ? (int) $currentAppId : null);
 
         if ($targetAppId === null) {

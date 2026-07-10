@@ -97,7 +97,6 @@ final class CmsAppEndpointsSchemaContractTest extends QaWebTestCase
                 $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $admin)
             );
             $rows = is_array($pagesList['pages'] ?? null) ? $pagesList['pages'] : $pagesList;
-            self::assertIsArray($rows);
             foreach ($rows as $row) {
                 if (!is_array($row)) {
                     continue;
@@ -118,12 +117,15 @@ final class CmsAppEndpointsSchemaContractTest extends QaWebTestCase
                 )
             );
             $this->assertLastResponseMatchesSchema('responses/admin/cms_apps/assign_page');
+            $assignedPageIds = [];
+            foreach (is_array($assigned['pages'] ?? null) ? $assigned['pages'] : [] as $page) {
+                if (is_array($page)) {
+                    $assignedPageIds[] = self::coerceInt($page['page_id'] ?? null);
+                }
+            }
             self::assertContains(
                 $assignPageId,
-                array_map(
-                    static fn(array $page): int => (int) ($page['page_id'] ?? 0),
-                    is_array($assigned['pages'] ?? null) ? $assigned['pages'] : []
-                ),
+                $assignedPageIds,
                 'Assigned page must appear on the app detail payload.'
             );
 
@@ -146,10 +148,12 @@ final class CmsAppEndpointsSchemaContractTest extends QaWebTestCase
                 )
             );
             $this->assertLastResponseMatchesSchema('responses/admin/cms_apps/unassign_page');
-            $remainingIds = array_map(
-                static fn(array $page): int => (int) ($page['page_id'] ?? 0),
-                is_array($unassigned['pages'] ?? null) ? $unassigned['pages'] : []
-            );
+            $remainingIds = [];
+            foreach (is_array($unassigned['pages'] ?? null) ? $unassigned['pages'] : [] as $page) {
+                if (is_array($page)) {
+                    $remainingIds[] = self::coerceInt($page['page_id'] ?? null);
+                }
+            }
             self::assertNotContains($assignPageId, $remainingIds, 'Unassigned page must drop off the app detail payload.');
 
             $deleted = $this->jsonRequest(

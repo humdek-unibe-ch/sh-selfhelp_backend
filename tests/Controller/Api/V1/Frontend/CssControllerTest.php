@@ -91,10 +91,13 @@ class CssControllerTest extends BaseControllerTest
             $this->assertNotEmpty($class['value'], "Each class value should not be empty");
         }
 
-        $values = array_map(static fn (array $class): string => $class['value'], array_map(
-            fn ($raw) => $this->asArray($raw),
-            $classes,
-        ));
+        $values = array_map(
+            static fn (array $class): string => self::coerceString($class['value'] ?? null),
+            array_map(
+                fn ($raw) => $this->asArray($raw),
+                $classes,
+            ),
+        );
 
         foreach (['grid', 'grid-cols-1', 'sm:grid-cols-2', 'xl:grid-cols-3', 'gap-6', 'md:gap-8'] as $required) {
             $this->assertContains(

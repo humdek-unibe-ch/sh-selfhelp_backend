@@ -297,9 +297,7 @@ class PageService extends BaseService
         }
 
         $routeParams = $resolved['route_params'];
-        $routeRequirements = is_array($resolved['route_requirements'] ?? null)
-            ? $resolved['route_requirements']
-            : [];
+        $routeRequirements = $resolved['route_requirements'];
 
         try {
             $response = $this->resolvePageResponse(
@@ -1282,9 +1280,7 @@ class PageService extends BaseService
             $filter = $this->dataTableFilterService->prepareFilter(
                 $rawFilter,
                 $interpolationContext,
-                is_array($interpolationContext['route_requirements'] ?? null)
-                    ? $interpolationContext['route_requirements']
-                    : null,
+                $this->asStringKeyedMap($interpolationContext['route_requirements'] ?? null),
             );
             if ($rawFilter !== '' && $filter === '') {
                 return [];
@@ -1314,7 +1310,7 @@ class PageService extends BaseService
         if ($styleName === StyleNames::STYLE_ENTRY_RECORD) {
             $rows = $rows !== [] ? [$rows] : [];
         } elseif (!array_is_list($rows)) {
-            $rows = $rows === [] ? [] : [$rows];
+            $rows = [$rows];
         }
 
         $tableName = (string) $dataTable->getName();
@@ -1646,7 +1642,12 @@ class PageService extends BaseService
                         // Interpolate the config before retrieving data
                         // availableData contains the structured parent data (system, globals, parent scopes)
                         $interpolatedConfig = $this->interpolateDataConfig($this->toConfigArray($config), $availableData);
-                        $configData = $this->sectionUtilityService->retrieveData($interpolatedConfig, [], $languageId, $availableData);
+                        $configData = $this->sectionUtilityService->retrieveData(
+                            $interpolatedConfig,
+                            [],
+                            $languageId,
+                            $this->toConfigArray($availableData),
+                        );
                         // Use the scope as key if available, otherwise use index
                         $key = isset($config['scope']) ? $this->asString($config['scope']) : $configIndex;
                         $retrievedData[$key] = $configData;
@@ -1690,13 +1691,10 @@ class PageService extends BaseService
         foreach ($fieldsToInterpolate as $field) {
             if (isset($interpolatedConfig[$field]) && is_string($interpolatedConfig[$field])) {
                 if ($field === 'filter') {
-                    $routeRequirements = is_array($availableData['route_requirements'] ?? null)
-                        ? $availableData['route_requirements']
-                        : null;
                     $interpolatedConfig[$field] = $this->dataTableFilterService->prepareFilter(
                         $interpolatedConfig[$field],
                         $availableData,
-                        $routeRequirements,
+                        $this->asStringKeyedMap($availableData['route_requirements'] ?? null),
                     );
                 } else {
                     $interpolatedConfig[$field] = $this->interpolationService->interpolate($interpolatedConfig[$field], $availableData);
@@ -1769,6 +1767,26 @@ class PageService extends BaseService
             'passes' => $conditionResult['result'],
             'debug' => $this->conditionService->buildConditionDebug($conditionResult, $condition),
         ];
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    private function asStringKeyedMap(mixed $value): ?array
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($value as $key => $item) {
+            if (!is_string($key) || $key === '') {
+                continue;
+            }
+            $out[$key] = is_scalar($item) ? (string) $item : '';
+        }
+
+        return $out;
     }
 
 }

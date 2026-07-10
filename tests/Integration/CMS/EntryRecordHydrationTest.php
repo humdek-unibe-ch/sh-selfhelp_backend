@@ -438,25 +438,35 @@ final class EntryRecordHydrationTest extends QaWebTestCase
      */
     private function sectionsFromPayload(array $data): array
     {
+        $raw = null;
         if (is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)) {
-            return $data['page']['sections'];
+            $raw = $data['page']['sections'];
+        } elseif (is_array($data['sections'] ?? null)) {
+            $raw = $data['sections'];
         }
 
-        return is_array($data['sections'] ?? null) ? $data['sections'] : [];
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $sections = [];
+        foreach ($raw as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $normalized = [];
+            foreach ($section as $key => $value) {
+                $normalized[(string) $key] = $value;
+            }
+            $sections[] = $normalized;
+        }
+
+        return $sections;
     }
 
     private function setEntryRecordLoadFrom(Section $section, string $urlParam = 'record_id'): void
     {
         $this->setSectionField($section, 'load_record_from', $urlParam, 1);
-    }
-
-    private function addNamedFormInput(Section $formSection, string $sectionName, string $inputName): Section
-    {
-        $input = $this->pages->createSection($sectionName, 'input');
-        $this->linkChild($formSection, $input);
-        $this->setSectionField($input, 'name', $inputName, 1);
-
-        return $input;
     }
 
     /**

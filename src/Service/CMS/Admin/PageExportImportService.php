@@ -1115,7 +1115,14 @@ class PageExportImportService extends BaseService
             // CMS-in-cms bundles must carry first-class cms_app metadata + roles
             // (no dual-format / no silent downgrade to plain pages).
             $isCmsInCmsBundle = $this->bundleLooksLikeCmsInCms($bundle, $pages);
-            $cmsAppPayload = is_array($bundle['cms_app'] ?? null) ? $bundle['cms_app'] : null;
+            $cmsAppRaw = $bundle['cms_app'] ?? null;
+            $cmsAppPayload = null;
+            if (is_array($cmsAppRaw)) {
+                $cmsAppPayload = [];
+                foreach ($cmsAppRaw as $key => $value) {
+                    $cmsAppPayload[(string) $key] = $value;
+                }
+            }
             if ($isCmsInCmsBundle) {
                 $this->assertCmsInCmsBundleContract($bundle, $pages, $cmsAppPayload);
             } elseif ($cmsAppPayload !== null) {
@@ -1423,7 +1430,7 @@ class PageExportImportService extends BaseService
                 }
             }
 
-            $labelTranslations = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
+            $labelTranslationsResult = $this->entityManager->getRepository(SectionsFieldsTranslation::class)
                 ->createQueryBuilder('t')
                 ->join('t.field', 'f')
                 ->where('t.section = :sectionId')
@@ -1433,6 +1440,7 @@ class PageExportImportService extends BaseService
                 ->getQuery()
                 ->getResult();
 
+            $labelTranslations = is_array($labelTranslationsResult) ? $labelTranslationsResult : [];
             foreach ($labelTranslations as $labelTranslation) {
                 if (!$labelTranslation instanceof SectionsFieldsTranslation) {
                     continue;
@@ -1534,7 +1542,7 @@ class PageExportImportService extends BaseService
                 if (!is_array($item)) {
                     continue;
                 }
-                $logical = trim((string) ($item['field_name'] ?? ''));
+                $logical = trim($this->asString($item['field_name'] ?? ''));
                 if ($logical === '') {
                     continue;
                 }
@@ -1546,7 +1554,7 @@ class PageExportImportService extends BaseService
             return null;
         }
 
-        $encoded = json_encode(array_values($keys));
+        $encoded = json_encode($keys);
 
         return $encoded === false ? null : $encoded;
     }
@@ -1637,6 +1645,7 @@ class PageExportImportService extends BaseService
      *
      * @param array<string, mixed> $bundle
      * @param array<string, int> $sourceNameToNewId
+     * @param array<string, int> $localeMap
      */
     private function restoreDataTables(array $bundle, array $sourceNameToNewId, bool $importData, array $localeMap): void
     {
@@ -2400,10 +2409,10 @@ class PageExportImportService extends BaseService
             : null;
 
         $rawSlug = $bundleSlug;
-        if ($keywordPrefix !== '' && $bundleSlug !== '') {
-            $rawSlug = $this->prefixKeyword($keywordPrefix, $bundleSlug);
-        } elseif ($keywordPrefix !== '' && $bundleSlug === '') {
-            $rawSlug = $keywordPrefix;
+        if ($keywordPrefix !== '') {
+            $rawSlug = $bundleSlug !== ''
+                ? $this->prefixKeyword($keywordPrefix, $bundleSlug)
+                : $keywordPrefix;
         }
 
         $slug = $this->sanitizeCmsAppSlug($rawSlug);
@@ -2443,7 +2452,7 @@ class PageExportImportService extends BaseService
             $description !== null && trim($description) !== '' ? $description : null,
         );
 
-        return (int) $createdApp['id'];
+        return $this->asInt($createdApp['id'] ?? null);
     }
 
     /**
@@ -2705,7 +2714,7 @@ class PageExportImportService extends BaseService
             if (!is_array($entry)) {
                 continue;
             }
-            if ((int) ($entry['language_id'] ?? 0) === 1) {
+            if ($this->asInt($entry['language_id'] ?? null) === 1) {
                 return $this->asString($entry['content'] ?? '');
             }
             $languageCode = $this->asString($entry['language_code'] ?? '');

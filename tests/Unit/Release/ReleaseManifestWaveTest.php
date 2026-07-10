@@ -18,11 +18,14 @@ use PHPUnit\Framework\TestCase;
  */
 final class ReleaseManifestWaveTest extends TestCase
 {
+    use \App\Tests\Support\NarrowsJson;
+
     public function testSupportsFrontendRequires063ForCore036(): void
     {
         $manifest = $this->loadManifest();
         self::assertSame('core', $manifest['kind'] ?? null);
-        self::assertSame('>=0.1.63 <0.2.0', $manifest['supports']['frontend'] ?? null);
+        $supports = self::asArray($manifest['supports'] ?? null);
+        self::assertSame('>=0.1.63 <0.2.0', $supports['frontend'] ?? null);
     }
 
     public function testCore036WithFrontend063IsSupportedByDeclaredRange(): void
@@ -40,10 +43,11 @@ final class ReleaseManifestWaveTest extends TestCase
     public function testDoesNotDeclareSupportsMobile(): void
     {
         $manifest = $this->loadManifest();
-        self::assertIsString($manifest['supports']['frontend'] ?? null);
+        $supports = self::asArray($manifest['supports'] ?? null);
+        self::assertIsString($supports['frontend'] ?? null);
         self::assertArrayNotHasKey(
             'mobile',
-            $manifest['supports'],
+            $supports,
             'core does not declare supports.mobile; mobile→core is one-directional via mobile supports.core',
         );
     }
@@ -67,16 +71,16 @@ final class ReleaseManifestWaveTest extends TestCase
     {
         $path = dirname(__DIR__, 3) . '/release-manifest.json';
         self::assertFileExists($path);
-        /** @var array<string, mixed> $manifest */
-        $manifest = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
 
-        return $manifest;
+        return self::asArray($decoded);
     }
 
     private function frontendSupportRange(): string
     {
         $manifest = $this->loadManifest();
-        $range = $manifest['supports']['frontend'] ?? null;
+        $supports = self::asArray($manifest['supports'] ?? null);
+        $range = $supports['frontend'] ?? null;
         self::assertIsString($range);
 
         return $range;

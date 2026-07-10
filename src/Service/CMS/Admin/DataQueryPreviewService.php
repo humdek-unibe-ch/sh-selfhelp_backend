@@ -33,7 +33,6 @@ final class DataQueryPreviewService
         private readonly DataTableService $dataTableService,
         private readonly DataService $dataService,
         private readonly UserContextService $userContextService,
-        private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly SectionAccessibleRouteService $sectionAccessibleRouteService,
     ) {
     }
@@ -49,7 +48,7 @@ final class DataQueryPreviewService
             throw new ServiceException('User not authenticated', Response::HTTP_UNAUTHORIZED);
         }
 
-        $sectionId = isset($input['section_id']) ? (int) $input['section_id'] : 0;
+        $sectionId = $this->resolveInt($input['section_id'] ?? null);
         $draft = is_array($input['draft'] ?? null) ? $input['draft'] : [];
 
         $dataTableId = $this->resolveInt($draft['data_table'] ?? $input['data_table'] ?? null);
@@ -140,11 +139,8 @@ final class DataQueryPreviewService
         $columns = [];
         if ($tableName !== '') {
             $columnRows = $this->dataTableService->getColumns($tableName);
-            if (is_array($columnRows)) {
+            if ($columnRows !== false) {
                 foreach ($columnRows as $column) {
-                    if (!is_array($column)) {
-                        continue;
-                    }
                     $columns[] = [
                         'fieldKey' => $column['fieldKey'] ?? null,
                         'displayName' => $column['displayName'] ?? null,
@@ -209,7 +205,7 @@ final class DataQueryPreviewService
                 if (!is_array($translation)) {
                     continue;
                 }
-                if ((int) ($translation['language_id'] ?? 0) === 1) {
+                if ($this->resolveInt($translation['language_id'] ?? null) === 1) {
                     return $this->asString($translation['content'] ?? '');
                 }
             }
@@ -262,7 +258,6 @@ final class DataQueryPreviewService
     }
 
     /**
-     * @param array<array-key, mixed> $map
      * @return array<string, string>
      */
     private function normalizeStringMap(mixed $map): array

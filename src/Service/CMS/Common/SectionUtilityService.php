@@ -294,6 +294,7 @@ class SectionUtilityService
      * @param array<string, mixed> $dataConfig JSON structure defining data source
      * @param array<string, mixed> $params Parameters to replace in the config
      * @param int $languageId Language ID for data retrieval
+     * @param array<string, mixed> $interpolationContext
      * @return array<array-key, mixed> Retrieved data or empty array if failed
      */
     public function retrieveData(array $dataConfig, array $params = [], int $languageId = 1, array $interpolationContext = []): array

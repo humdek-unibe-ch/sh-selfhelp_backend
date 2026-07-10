@@ -51,7 +51,7 @@ final class PageBundleEntryTablePortabilityTest extends QaWebTestCase
             ], $admin),
             201
         );
-        $appId = (int) ($shell['id'] ?? 0);
+        $appId = self::coerceInt($shell['id'] ?? null);
         self::assertGreaterThan(0, $appId);
 
         $wizard = $this->jsonRequest(

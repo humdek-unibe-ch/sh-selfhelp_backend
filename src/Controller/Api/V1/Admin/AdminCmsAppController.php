@@ -56,9 +56,9 @@ class AdminCmsAppController extends AbstractController
             $data = $this->validateRequest($request, 'requests/admin/cms_apps/create', $this->jsonSchemaValidationService);
             $payload = $this->toAssocArray($data);
             $result = $this->cmsAppService->createApp(
-                (string) ($payload['name'] ?? ''),
-                (string) ($payload['slug'] ?? ''),
-                isset($payload['description']) ? (string) $payload['description'] : null,
+                $this->asStringField($payload, 'name'),
+                $this->asStringField($payload, 'slug'),
+                $this->asStringOrNullField($payload, 'description'),
             );
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/cms_apps/create', Response::HTTP_CREATED);
@@ -133,8 +133,8 @@ class AdminCmsAppController extends AbstractController
             $payload = $this->toAssocArray($data);
             $result = $this->cmsAppService->assignPage(
                 $id,
-                (int) $payload['page_id'],
-                (string) $payload['role'],
+                $this->asIntField($payload, 'page_id'),
+                $this->asStringField($payload, 'role'),
             );
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/cms_apps/assign_page', Response::HTTP_OK);
@@ -150,7 +150,7 @@ class AdminCmsAppController extends AbstractController
         try {
             $data = $this->validateRequest($request, 'requests/admin/cms_apps/change_page_role', $this->jsonSchemaValidationService);
             $payload = $this->toAssocArray($data);
-            $result = $this->cmsAppService->changePageRole($id, $page_id, (string) $payload['role']);
+            $result = $this->cmsAppService->changePageRole($id, $page_id, $this->asStringField($payload, 'role'));
 
             return $this->responseFormatter->formatSuccess($result, 'responses/admin/cms_apps/change_page_role', Response::HTTP_OK);
         } catch (ServiceException $e) {

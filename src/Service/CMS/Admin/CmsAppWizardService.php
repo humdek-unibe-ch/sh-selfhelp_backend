@@ -590,7 +590,10 @@ class CmsAppWizardService extends BaseService
     private function entryScopeFromBaseName(string $baseName): string
     {
         $parts = explode('-', $baseName);
-        $last = array_pop($parts) ?? $baseName;
+        $last = (string) array_pop($parts);
+        if ($last === '') {
+            $last = $baseName;
+        }
         if (str_ends_with($last, 'ies') && strlen($last) > 3) {
             $last = substr($last, 0, -3) . 'y';
         } elseif (str_ends_with($last, 's') && strlen($last) > 1 && !str_ends_with($last, 'ss')) {

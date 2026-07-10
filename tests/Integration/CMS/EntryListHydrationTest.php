@@ -117,9 +117,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         );
         $data = $this->assertEnvelopeSuccess($envelope);
 
-        $sections = is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)
-            ? $data['page']['sections']
-            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $sections = $this->sectionsFromPayload($data);
         $entryList = $this->findSectionByStyle($sections, 'entry-list');
         self::assertNotNull($entryList, 'The rendered page must contain the entry-list section.');
 
@@ -307,9 +305,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
-        $sections = is_array($data['page']['sections'] ?? null)
-            ? $data['page']['sections']
-            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $sections = $this->sectionsFromPayload($data);
         $entryList = $this->findSectionByStyle($sections, 'entry-list');
         self::assertNotNull($entryList);
         self::assertSame('Scoped', $this->firstChildTextContent($entryList));
@@ -364,9 +360,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
-        $sections = is_array($data['page']['sections'] ?? null)
-            ? $data['page']['sections']
-            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $sections = $this->sectionsFromPayload($data);
         $entryList = $this->findSectionByStyle($sections, 'entry-list');
         self::assertNotNull($entryList);
         $children = is_array($entryList['children'] ?? null) ? $entryList['children'] : [];
@@ -432,9 +426,7 @@ final class EntryListHydrationTest extends QaWebTestCase
         $data = $this->assertEnvelopeSuccess(
             $this->jsonRequest('GET', '/cms-api/v1/pages/by-keyword/' . $listPage->getKeyword() . '?preview=true', null, $token),
         );
-        $sections = is_array($data['page']['sections'] ?? null)
-            ? $data['page']['sections']
-            : (is_array($data['sections'] ?? null) ? $data['sections'] : []);
+        $sections = $this->sectionsFromPayload($data);
         $entryList = $this->findSectionByStyle($sections, 'entry-list');
         self::assertNotNull($entryList);
         self::assertSame('only-col', $this->firstChildTextContent($entryList));
@@ -669,11 +661,30 @@ final class EntryListHydrationTest extends QaWebTestCase
      */
     private function sectionsFromPayload(array $data): array
     {
+        $raw = null;
         if (is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)) {
-            return $data['page']['sections'];
+            $raw = $data['page']['sections'];
+        } elseif (is_array($data['sections'] ?? null)) {
+            $raw = $data['sections'];
         }
 
-        return is_array($data['sections'] ?? null) ? $data['sections'] : [];
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $sections = [];
+        foreach ($raw as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $normalized = [];
+            foreach ($section as $key => $value) {
+                $normalized[(string) $key] = $value;
+            }
+            $sections[] = $normalized;
+        }
+
+        return $sections;
     }
 
     /**

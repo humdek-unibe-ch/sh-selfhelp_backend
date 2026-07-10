@@ -47,7 +47,10 @@ final class DataQueryPreviewSchemaContractTest extends QaWebTestCase
             ], $admin),
         );
         $decoded = json_decode((string) $this->client->getResponse()->getContent(), false, 512, JSON_THROW_ON_ERROR);
-        $errors = $this->schema->validate($decoded->data, 'responses/admin/data_query_preview');
+        $decoded = self::asObject($decoded);
+        $payload = $decoded->data;
+        self::assertTrue(is_array($payload) || is_object($payload));
+        $errors = $this->schema->validate($payload, 'responses/admin/data_query_preview');
         self::assertSame([], $errors, sprintf("Response failed schema responses/admin/data_query_preview:\n%s", implode("\n", $errors)));
     }
 

@@ -43,7 +43,7 @@ class SectionAccessibleRouteService
 
         foreach ($this->accessiblePagesForSection($sectionId, $effectiveUserId) as $pageId) {
             foreach ($this->pageRouteRepository->findByPageId($pageId) as $route) {
-                if (!$route instanceof PageRoute || !$route->isActive()) {
+                if (!$route->isActive()) {
                     continue;
                 }
                 foreach ($this->extractRoutePlaceholders((string) $route->getPathPattern()) as $placeholder) {
@@ -80,7 +80,7 @@ class SectionAccessibleRouteService
 
         foreach ($this->accessiblePagesForSection($sectionId, $effectiveUserId) as $pageId) {
             foreach ($this->pageRouteRepository->findByPageId($pageId) as $route) {
-                if (!$route instanceof PageRoute || !$route->isActive()) {
+                if (!$route->isActive()) {
                     continue;
                 }
                 foreach ($this->decodeRouteRequirements($route) as $name => $pattern) {
@@ -99,7 +99,7 @@ class SectionAccessibleRouteService
     {
         $pageIds = [];
         foreach ($this->sectionRepository->getPagesContainingSections([$sectionId]) as $page) {
-            $pageId = (int) ($page['id'] ?? 0);
+            $pageId = $page['id'];
             if ($pageId <= 0) {
                 continue;
             }
@@ -128,7 +128,7 @@ class SectionAccessibleRouteService
 
         $names = [];
         foreach ($matches[1] as $name) {
-            $trimmed = trim((string) $name);
+            $trimmed = trim($name);
             if ($trimmed !== '') {
                 $names[$trimmed] = true;
             }
@@ -143,16 +143,13 @@ class SectionAccessibleRouteService
     private function decodeRouteRequirements(PageRoute $route): array
     {
         $raw = $route->getRequirements();
-        if (!is_array($raw)) {
+        if ($raw === null) {
             return [];
         }
 
         $out = [];
         foreach ($raw as $key => $value) {
-            if (!is_string($key) || $key === '') {
-                continue;
-            }
-            $out[$key] = is_scalar($value) ? (string) $value : '';
+            $out[$key] = $value;
         }
 
         return $out;

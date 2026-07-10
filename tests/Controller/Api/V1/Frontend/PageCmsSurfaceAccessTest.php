@@ -40,7 +40,7 @@ final class PageCmsSurfaceAccessTest extends QaWebTestCase
             'surface' => 'cms',
         ], $admin);
         $pageData = $this->assertEnvelopeSuccess($created, 201);
-        $pageId = (int) $pageData['id'];
+        $pageId = self::coerceInt($pageData['id'] ?? null);
 
         try {
             $anonPath = $this->jsonRequest(
@@ -81,8 +81,9 @@ final class PageCmsSurfaceAccessTest extends QaWebTestCase
                 $admin
             );
             $adminPathData = $this->assertEnvelopeSuccess($adminPath);
-            self::assertSame(self::KEYWORD, $adminPathData['page']['keyword'] ?? null);
-            self::assertSame('cms', $adminPathData['page']['page_surface'] ?? null);
+            $adminPathPage = self::asArray($adminPathData['page'] ?? null);
+            self::assertSame(self::KEYWORD, $adminPathPage['keyword'] ?? null);
+            self::assertSame('cms', $adminPathPage['page_surface'] ?? null);
 
             $adminKeyword = $this->jsonRequest(
                 'GET',
@@ -91,7 +92,8 @@ final class PageCmsSurfaceAccessTest extends QaWebTestCase
                 $admin
             );
             $adminKeywordData = $this->assertEnvelopeSuccess($adminKeyword);
-            self::assertSame(self::KEYWORD, $adminKeywordData['page']['keyword'] ?? null);
+            $adminKeywordPage = self::asArray($adminKeywordData['page'] ?? null);
+            self::assertSame(self::KEYWORD, $adminKeywordPage['keyword'] ?? null);
             self::assertSame(Response::HTTP_OK, $this->client->getResponse()->getStatusCode());
         } finally {
             $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);

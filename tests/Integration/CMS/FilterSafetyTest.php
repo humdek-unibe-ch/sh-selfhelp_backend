@@ -102,13 +102,14 @@ final class FilterSafetyTest extends QaWebTestCase
             "1; DROP TABLE data_rows",
         );
 
-        self::assertIsArray($rows);
+        self::assertSame([], $rows);
     }
 
     /** Call site #3 — SectionUtilityService::fetchData / retrieveData (data_config path). */
     public function testCallSiteDataConfigRetrieveDataRejectsMaliciousFilter(): void
     {
         [, , $tableName] = $this->seedSingleRowTable('qa_fs_datacfg', returnTableName: true);
+        self::assertIsString($tableName);
 
         $utility = $this->service(SectionUtilityService::class);
         $rows = $utility->retrieveData([
@@ -234,7 +235,7 @@ final class FilterSafetyTest extends QaWebTestCase
     }
 
     /**
-     * @return array{0: int, 1: int, 2?: string}
+     * @return array{0: int, 1: int, 2: string|null}
      */
     private function seedSingleRowTable(string $keyword, bool $returnTableName = false): array
     {
@@ -253,12 +254,7 @@ final class FilterSafetyTest extends QaWebTestCase
         self::assertInstanceOf(DataTable::class, $dataTable);
         $tableId = (int) $dataTable->getId();
 
-        $result = [$tableId, $recordId];
-        if ($returnTableName) {
-            $result[] = (string) $dataTable->getName();
-        }
-
-        return $result;
+        return [$tableId, $recordId, $returnTableName ? (string) $dataTable->getName() : null];
     }
 
     /**
@@ -267,11 +263,30 @@ final class FilterSafetyTest extends QaWebTestCase
      */
     private function sectionsFromPagePayload(array $data): array
     {
+        $raw = null;
         if (is_array($data['page'] ?? null) && is_array($data['page']['sections'] ?? null)) {
-            return $data['page']['sections'];
+            $raw = $data['page']['sections'];
+        } elseif (is_array($data['sections'] ?? null)) {
+            $raw = $data['sections'];
         }
 
-        return is_array($data['sections'] ?? null) ? $data['sections'] : [];
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $sections = [];
+        foreach ($raw as $section) {
+            if (!is_array($section)) {
+                continue;
+            }
+            $normalized = [];
+            foreach ($section as $key => $value) {
+                $normalized[(string) $key] = $value;
+            }
+            $sections[] = $normalized;
+        }
+
+        return $sections;
     }
 
     /**

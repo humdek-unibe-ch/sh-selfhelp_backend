@@ -49,7 +49,7 @@ class AdminDataController extends AbstractController
         try {
             $payload = $this->validateRequest($request, 'requests/admin/data_query_preview', $this->jsonSchemaValidationService);
 
-            $preview = $this->prepareQueryPreviewResponse($this->dataQueryPreviewService->preview($payload));
+            $preview = $this->prepareQueryPreviewResponse($this->dataQueryPreviewService->preview($this->toAssocArray($payload)));
             $this->jsonSchemaValidationService->validate($preview, 'responses/admin/data_query_preview');
 
             return $this->responseFormatter->formatSuccess($preview, null, Response::HTTP_OK, false, true);
@@ -165,8 +165,14 @@ class AdminDataController extends AbstractController
                 );
             }
 
+            $hydratedRows = [];
+            foreach ($rows as $row) {
+                if (is_array($row)) {
+                    $hydratedRows[] = $this->toAssocArray($row);
+                }
+            }
             $rows = $this->optionLabelHydrator->hydrate(
-                $rows,
+                $hydratedRows,
                 (string) $dataTable->getName(),
                 $languageId
             );

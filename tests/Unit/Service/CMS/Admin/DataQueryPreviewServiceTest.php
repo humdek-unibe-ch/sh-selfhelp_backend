@@ -18,11 +18,12 @@ use App\Service\CMS\Common\SectionAccessibleRouteService;
 use App\Service\CMS\DataService;
 use App\Service\CMS\DataTableService;
 use App\Service\Core\InterpolationService;
-use App\Service\Security\DataAccessSecurityService;
+use App\Tests\Support\NarrowsJson;
 use PHPUnit\Framework\TestCase;
 
 final class DataQueryPreviewServiceTest extends TestCase
 {
+    use NarrowsJson;
     public function testPreviewNormalizesFilterWithRouteParams(): void
     {
         $user = $this->createMock(\App\Entity\User::class);
@@ -53,7 +54,6 @@ final class DataQueryPreviewServiceTest extends TestCase
             $dataTableService,
             $dataService,
             $userContext,
-            $this->createMock(DataAccessSecurityService::class),
             $routeService,
         );
 
@@ -65,7 +65,8 @@ final class DataQueryPreviewServiceTest extends TestCase
 
         self::assertSame('AND record_id = 7', $result['prepared_filter']);
         self::assertSame([], $result['errors']);
-        self::assertStringContainsString('get_data_table_filtered', $result['stored_procedure']['call']);
+        $storedProcedure = self::asArray($result['stored_procedure'] ?? null);
+        self::assertStringContainsString('get_data_table_filtered', self::coerceString($storedProcedure['call'] ?? null));
     }
 
     public function testPreviewDelegatesRouteDiscoveryToAccessibleRouteService(): void
@@ -118,7 +119,6 @@ final class DataQueryPreviewServiceTest extends TestCase
             $dataTableService,
             $dataService,
             $userContext,
-            $this->createMock(DataAccessSecurityService::class),
             $routeService,
         );
 

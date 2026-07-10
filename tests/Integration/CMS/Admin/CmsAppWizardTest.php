@@ -95,10 +95,12 @@ final class CmsAppWizardTest extends QaWebTestCase
                 $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
             );
             self::assertSame($byRole['cms_list'], $appDetail['id_cms_list_page'] ?? null);
-            $assignedIds = array_map(
-                static fn(array $page): int => (int) ($page['page_id'] ?? 0),
-                is_array($appDetail['pages'] ?? null) ? $appDetail['pages'] : []
-            );
+            $assignedIds = [];
+            foreach (is_array($appDetail['pages'] ?? null) ? $appDetail['pages'] : [] as $page) {
+                if (is_array($page)) {
+                    $assignedIds[] = self::coerceInt($page['page_id'] ?? null);
+                }
+            }
             self::assertContains($byRole['form'], $assignedIds);
         } finally {
             $this->cleanupApp($admin, $appId, $pageIds);
@@ -120,7 +122,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             ],
         ], 'qa-team-wizard-multi-app');
 
-        self::assertIsArray($created);
+        self::assertNotSame([], $created);
         self::assertArrayHasKey('form', $byRole);
         self::assertArrayHasKey('cms_list', $byRole);
         self::assertArrayHasKey('cms_detail', $byRole);
@@ -203,10 +205,9 @@ final class CmsAppWizardTest extends QaWebTestCase
             $editData = $this->assertEnvelopeSuccess($editRender);
             $editForm = $this->findSectionByStyleInPage($editData, 'entry-record-form');
             self::assertNotNull($editForm);
-            $sectionData = $editForm['section_data'] ?? null;
-            self::assertIsArray($sectionData);
+            $sectionData = self::asArray($editForm['section_data'] ?? null);
             self::assertNotSame([], $sectionData);
-            self::assertStringContainsString('qa Alice', (string) json_encode($sectionData));
+            self::assertStringContainsString('qa Alice', self::jsonEncodeMessage($sectionData));
         } finally {
             $this->cleanupApp($admin, $appId, $pageIds);
         }
@@ -229,7 +230,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             $extra = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('POST', '/cms-api/v1/admin/pages', [
                     'keyword' => 'qa-uniq-extra',
-                    'url' => '/cms/qa-uniq-extra',
+                    'url' => '/qa-cms/qa-uniq-extra',
                     'pageAccessTypeCode' => 'mobile_and_web',
                     'headless' => false,
                     'openAccess' => false,
@@ -237,7 +238,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                 ], $admin),
                 201
             );
-            $extraPageId = (int) ($extra['id'] ?? 0);
+            $extraPageId = self::coerceInt($extra['id'] ?? null);
             self::assertGreaterThan(0, $extraPageId);
 
             $conflict = $this->jsonRequest(
@@ -278,16 +279,15 @@ final class CmsAppWizardTest extends QaWebTestCase
             $page = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/pages/%d', $listId), null, $admin)
             );
-            self::assertIsArray($page);
             self::assertArrayHasKey('fields', $page);
 
             $list = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', '/cms-api/v1/admin/pages', null, $admin)
             );
-            $pages = is_array($list['pages'] ?? null) ? $list['pages'] : (is_array($list) ? $list : []);
+            $pages = is_array($list['pages'] ?? null) ? $list['pages'] : $list;
             $row = null;
             foreach ($pages as $candidate) {
-                if (is_array($candidate) && (int) ($candidate['id_pages'] ?? 0) === $listId) {
+                if (is_array($candidate) && self::coerceInt($candidate['id_pages'] ?? null) === $listId) {
                     $row = $candidate;
                     break;
                 }
@@ -316,7 +316,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             $detail = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/%d', $appId), null, $admin)
             );
-            self::assertSame($byRole['cms_list'], (int) ($detail['id_cms_list_page'] ?? 0));
+            self::assertSame($byRole['cms_list'], self::coerceInt($detail['id_cms_list_page'] ?? null));
             self::assertNotNull($detail['id_form_section'] ?? null);
 
             $listPageId = $byRole['cms_list'];
@@ -339,7 +339,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                     $admin
                 )
             );
-            self::assertSame($listPageId, (int) ($restored['id_cms_list_page'] ?? 0));
+            self::assertSame($listPageId, self::coerceInt($restored['id_cms_list_page'] ?? null));
 
             $formPageId = $byRole['form'];
             $unassigned = $this->assertEnvelopeSuccess(
@@ -352,7 +352,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             );
             self::assertArrayHasKey('id_form_section', $unassigned);
             self::assertNull($unassigned['id_form_section']);
-            self::assertSame($listPageId, (int) ($unassigned['id_cms_list_page'] ?? 0));
+            self::assertSame($listPageId, self::coerceInt($unassigned['id_cms_list_page'] ?? null));
 
             $this->assertEnvelopeSuccess(
                 $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $listPageId), null, $admin)
@@ -380,7 +380,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                 'tags' => ['cms-in-cms'],
                 'pages' => [[
                     'keyword' => 'qa-legacy-cms-list',
-                    'url' => '/cms/qa-legacy-cms-list',
+                    'url' => '/qa-cms/qa-legacy-cms-list',
                     'page_access_type' => 'mobile_and_web',
                     'surface' => 'cms',
                     'headless' => false,
@@ -390,9 +390,9 @@ final class CmsAppWizardTest extends QaWebTestCase
             ],
         ], $admin);
 
-        self::assertSame(400, $response['status'] ?? 0, json_encode($response));
+        self::assertSame(400, $response['status'] ?? 0, self::jsonEncodeMessage($response));
         $haystack = strtolower(
-            (string) ($response['message'] ?? '') . ' ' . (string) ($response['error'] ?? '') . ' ' . json_encode($response)
+            self::coerceString($response['message'] ?? '') . ' ' . self::coerceString($response['error'] ?? '') . ' ' . self::jsonEncodeMessage($response)
         );
         self::assertStringContainsString('cms_app', $haystack);
     }
@@ -415,7 +415,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                 ],
                 'pages' => [[
                     'keyword' => 'qa-import-hubs-list',
-                    'url' => '/cms/qa-import-hubs-list',
+                    'url' => '/qa-cms/qa-import-hubs-list',
                     'page_access_type' => 'mobile_and_web',
                     'surface' => 'cms',
                     'headless' => false,
@@ -427,15 +427,16 @@ final class CmsAppWizardTest extends QaWebTestCase
         ], $admin);
         $data = $this->assertEnvelopeSuccess($ok, 201);
         $created = is_array($data['created'] ?? null) ? $data['created'] : [];
-        $pageId = (int) ($created[0]['page_id'] ?? 0);
+        $firstCreated = is_array($created[0] ?? null) ? $created[0] : [];
+        $pageId = self::coerceInt($firstCreated['page_id'] ?? null);
         self::assertGreaterThan(0, $pageId);
 
         try {
             $bySlug = $this->assertEnvelopeSuccess(
                 $this->jsonRequest('GET', sprintf('/cms-api/v1/admin/cms-apps/by-slug/%s', $slug), null, $admin)
             );
-            self::assertSame($pageId, (int) ($bySlug['id_cms_list_page'] ?? 0));
-            $appId = (int) ($bySlug['id'] ?? 0);
+            self::assertSame($pageId, self::coerceInt($bySlug['id_cms_list_page'] ?? null));
+            $appId = self::coerceInt($bySlug['id'] ?? null);
 
             $bad = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
                 'bundle' => [
@@ -450,7 +451,7 @@ final class CmsAppWizardTest extends QaWebTestCase
                     ],
                     'pages' => [[
                         'keyword' => 'qa-bad-role-page',
-                        'url' => '/cms/qa-bad-role-page',
+                        'url' => '/qa-cms/qa-bad-role-page',
                         'page_access_type' => 'mobile_and_web',
                         'surface' => 'cms',
                         'headless' => false,
@@ -460,9 +461,9 @@ final class CmsAppWizardTest extends QaWebTestCase
                     ]],
                 ],
             ], $admin);
-            self::assertSame(400, $bad['status'] ?? 0, json_encode($bad));
+            self::assertSame(400, $bad['status'] ?? 0, self::jsonEncodeMessage($bad));
             $haystack = strtolower(
-                (string) ($bad['message'] ?? '') . ' ' . (string) ($bad['error'] ?? '') . ' ' . json_encode($bad)
+                self::coerceString($bad['message'] ?? '') . ' ' . self::coerceString($bad['error'] ?? '') . ' ' . self::jsonEncodeMessage($bad)
             );
             self::assertStringContainsString('cms_app_role', $haystack);
 
@@ -478,7 +479,7 @@ final class CmsAppWizardTest extends QaWebTestCase
     {
         $admin = $this->loginAsQaAdmin();
         $keywordPrefix = 'demo_team_members_';
-        $expectedSlug = 'demo-team-members-team-members';
+        $expectedSlug = 'demo-team-members-qa-team-members';
 
         $response = $this->jsonRequest('POST', '/cms-api/v1/admin/pages/import', [
             'bundle' => [
@@ -488,12 +489,12 @@ final class CmsAppWizardTest extends QaWebTestCase
                 'tags' => ['cms-in-cms'],
                 'cms_app' => [
                     'name' => 'Team members',
-                    'slug' => 'team-members',
+                    'slug' => 'qa-team-members',
                     'description' => null,
                 ],
                 'pages' => [[
-                    'keyword' => 'cms-team-members',
-                    'url' => '/cms/team-members',
+                    'keyword' => 'qa-cms-team-members',
+                    'url' => '/qa-cms/team-members',
                     'page_access_type' => 'mobile_and_web',
                     'surface' => 'cms',
                     'headless' => false,
@@ -509,7 +510,8 @@ final class CmsAppWizardTest extends QaWebTestCase
         ], $admin);
         $data = $this->assertEnvelopeSuccess($response, 201);
         $created = is_array($data['created'] ?? null) ? $data['created'] : [];
-        $pageId = (int) ($created[0]['page_id'] ?? 0);
+        $firstCreated = is_array($created[0] ?? null) ? $created[0] : [];
+        $pageId = self::coerceInt($firstCreated['page_id'] ?? null);
         self::assertGreaterThan(0, $pageId);
 
         try {
@@ -518,7 +520,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             );
             self::assertSame('Team members', $bySlug['name'] ?? null);
             self::assertSame($expectedSlug, $bySlug['slug'] ?? null);
-            $appId = (int) ($bySlug['id'] ?? 0);
+            $appId = self::coerceInt($bySlug['id'] ?? null);
             self::assertGreaterThan(0, $appId);
 
             $this->jsonRequest('DELETE', sprintf('/cms-api/v1/admin/pages/%d', $pageId), null, $admin);
@@ -542,7 +544,7 @@ final class CmsAppWizardTest extends QaWebTestCase
             ], $token),
             201
         );
-        $appId = (int) ($createdApp['id'] ?? 0);
+        $appId = self::coerceInt($createdApp['id'] ?? null);
         self::assertGreaterThan(0, $appId);
 
         $response = $this->jsonRequest(
@@ -552,20 +554,33 @@ final class CmsAppWizardTest extends QaWebTestCase
             $token
         );
         $data = $this->assertEnvelopeSuccess($response, 201);
-        $created = is_array($data['created'] ?? null) ? $data['created'] : [];
+        $createdRaw = is_array($data['created'] ?? null) ? $data['created'] : [];
 
+        $created = [];
         $byRole = [];
         $pageIds = [];
-        foreach ($created as $entry) {
+        foreach ($createdRaw as $entry) {
             if (!is_array($entry) || !is_int($entry['page_id'] ?? null)) {
                 continue;
             }
+            $normalized = [];
+            foreach ($entry as $key => $value) {
+                $normalized[(string) $key] = $value;
+            }
+            $created[] = $normalized;
             $pageIds[] = $entry['page_id'];
             $role = is_string($entry['role'] ?? null) ? $entry['role'] : '';
             $byRole[$role] = $entry['page_id'];
         }
 
         return [$appId, $created, $byRole, $pageIds];
+    }
+
+    private static function jsonEncodeMessage(mixed $value): string
+    {
+        $encoded = json_encode($value);
+
+        return $encoded === false ? 'json_encode_failed' : $encoded;
     }
 
     /** @param list<int> $pageIds */
@@ -685,7 +700,11 @@ final class CmsAppWizardTest extends QaWebTestCase
                     $style = $node['style']['name'] ?? null;
                 }
                 if ($style === $styleName) {
-                    $found = $node;
+                    $normalized = [];
+                    foreach ($node as $key => $value) {
+                        $normalized[(string) $key] = $value;
+                    }
+                    $found = $normalized;
 
                     return;
                 }

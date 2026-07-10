@@ -9,6 +9,7 @@
 namespace App\Service\CMS;
 
 use App\Entity\SectionsHierarchy;
+use App\Entity\Section;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\Common\SectionAccessibleRouteService;
 use App\Service\CMS\DataService;
