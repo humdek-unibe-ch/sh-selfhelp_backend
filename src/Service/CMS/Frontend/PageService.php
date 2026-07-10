@@ -11,6 +11,7 @@ use App\Repository\PageRepository;
 use App\Repository\SectionRepository;
 use App\Repository\SectionsFieldsTranslationRepository;
 use App\Repository\PagesFieldsTranslationRepository;
+use App\Exception\ServiceException;
 use App\Service\ACL\ACLService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\CMS\DataService;
@@ -377,6 +378,27 @@ class PageService extends BaseService
         // Drafts are never served anonymously: preview requires authentication.
         if ($preview && $this->userContextAwareService->getCurrentUser() === null) {
             $this->throwUnauthorized('Authentication required to preview unpublished drafts');
+        }
+
+        // CMS-surface pages are Host Admin only (CMS Apps content host / admin
+        // preview). Public consumers — anonymous or authenticated without admin
+        // data-access — never receive them via keyword or path resolve (404 so
+        // existence is not leaked). Admin select on the page is the explicit
+        // authorization gate; frontend ACL alone is not enough.
+        if ($page->getPageSurfaceCode() === LookupService::PAGE_SURFACE_CMS) {
+            // Anonymous callers cannot hold admin data-access; deny before the
+            // permission service audits with the guest sentinel user id.
+            if ($this->userContextAwareService->getCurrentUser() === null) {
+                $this->throwNotFound('Page not found');
+            }
+            try {
+                $this->userContextAwareService->checkAdminAccessById((int) $page->getId(), 'select');
+            } catch (ServiceException $e) {
+                if ($e->getCode() === \Symfony\Component\HttpFoundation\Response::HTTP_UNAUTHORIZED) {
+                    throw $e;
+                }
+                $this->throwNotFound('Page not found');
+            }
         }
 
         // Check if user has access to the page

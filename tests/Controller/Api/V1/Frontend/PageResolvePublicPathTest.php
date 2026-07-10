@@ -66,19 +66,9 @@ final class PageResolvePublicPathTest extends QaWebTestCase
         $pageId = (int) $pageData['id'];
 
         try {
-            // Attach a canonical DB-driven route through the normal update path.
-            $update = $this->jsonRequest('PUT', sprintf('/cms-api/v1/admin/pages/%d', $pageId), [
-                'pageData' => [
-                    'routes' => [[
-                        'path_pattern' => self::URL,
-                        'is_canonical' => true,
-                        'is_active' => true,
-                        'priority' => 0,
-                    ]],
-                ],
-                'fields' => [],
-            ], $admin);
-            $this->assertEnvelopeSuccess($update);
+            // Create already persists a canonical active route from `url`
+            // (AdminPageService auto-sync). Re-PUTting the same route is
+            // unnecessary and historically raced the EntityManager in tests.
 
             // Preview mode (authenticated) resolves the draft and must be no-store.
             $this->client->request(

@@ -152,8 +152,11 @@ class DataAccessSecurityService
      */
     private function auditLog(?int $userId, string $resourceType, int $resourceId, string $action, string $result, ?int $permission, ?string $notes = null): void
     {
-        // Skip audit logging if no user ID (not authenticated)
-        if ($userId === null) {
+        // Skip audit logging when there is no real user. Anonymous callers are
+        // represented as the guest sentinel (id 0) in permission checks; that
+        // id is not a `users` row, so persisting an audit FK to it closes the
+        // EntityManager on flush and poisons the rest of the request.
+        if ($userId === null || $userId === \App\Service\Auth\UserContextService::GUEST_USER_ID) {
             return;
         }
 
