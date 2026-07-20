@@ -1,0 +1,46 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "User Import Result Schema",
+    "description": "Result of a CSV user import. Import is NOT atomic by design: valid rows are created even when other rows fail, so a single bad line does not discard the file. Imported users are created WITHOUT an activation email — the admin invites them deliberately via POST /admin/users/bulk-send-activation.",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "imported": {
+                    "type": "integer",
+                    "description": "Number of users created",
+                    "minimum": 0
+                },
+                "skipped": {
+                    "type": "integer",
+                    "description": "Rows skipped because the email already exists (not an error)",
+                    "minimum": 0
+                },
+                "errors": {
+                    "type": "array",
+                    "description": "Per-row failures",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "row": {
+                                "type": "integer",
+                                "description": "1-based row number in the uploaded file, including the header row, so the admin can find the line in their spreadsheet"
+                            },
+                            "message": {
+                                "type": "string",
+                                "description": "Human-readable reason, shown verbatim to the admin"
+                            }
+                        },
+                        "required": ["row", "message"]
+                    }
+                }
+            },
+            "required": ["imported", "skipped", "errors"]
+        }
+    },
+    "required": ["data"]
+}

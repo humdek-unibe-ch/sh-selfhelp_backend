@@ -1,0 +1,26 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Bulk User Group Membership Request Schema",
+    "description": "Request body for POST /admin/users/bulk-add-to-group and POST /admin/users/bulk-remove-from-group. One schema for both: the shape is identical and only the verb differs, so a second copy would be duplication. Both are idempotent (already-a-member on add, and not-a-member on remove, are successes) and both reject unknown group_ids with 400 for the whole request (a caller bug, not a per-user outcome).",
+    "type": "object",
+    "properties": {
+        "user_ids": {
+            "type": "array",
+            "description": "IDs of the users whose group membership changes",
+            "items": {
+                "type": "integer"
+            },
+            "minItems": 1
+        },
+        "group_ids": {
+            "type": "array",
+            "description": "IDs of the groups to add the users to / remove them from",
+            "items": {
+                "type": "integer"
+            },
+            "minItems": 1
+        }
+    },
+    "required": ["user_ids", "group_ids"],
+    "additionalProperties": false
+}

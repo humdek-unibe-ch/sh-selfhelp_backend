@@ -1,0 +1,39 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "User Stats Response Schema",
+    "description": "Counts per status bucket for the admin Users page tiles. Scoped to the caller's visible users (same intern/id_status/group-access rules as the user list), so `total` equals the unfiltered list's totalCount for the same admin and the tiles always reconcile with the table. Ignores the current search/status/group filters.",
+    "type": "object",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "description": "User counts. PRECEDENCE: `blocked` wins over status, so a blocked+invited user is counted under `blocked` only and the buckets are mutually exclusive. NOT EXHAUSTIVE: the userStatus lookup group also contains the legacy `interested` and `auto_created` codes, whose users are counted in `total` but in no bucket — therefore active + invited + blocked <= total. Do not render the tiles as a breakdown that must sum.",
+            "properties": {
+                "total": {
+                    "type": "integer",
+                    "description": "All users visible to the caller",
+                    "minimum": 0
+                },
+                "active": {
+                    "type": "integer",
+                    "description": "Not blocked, status = active",
+                    "minimum": 0
+                },
+                "invited": {
+                    "type": "integer",
+                    "description": "Not blocked, status = invited (activation not yet completed)",
+                    "minimum": 0
+                },
+                "blocked": {
+                    "type": "integer",
+                    "description": "blocked = true, regardless of status",
+                    "minimum": 0
+                }
+            },
+            "required": ["total", "active", "invited", "blocked"]
+        }
+    },
+    "required": ["data"]
+}
