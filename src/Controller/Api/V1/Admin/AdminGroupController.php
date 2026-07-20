@@ -117,8 +117,45 @@ class AdminGroupController extends AbstractController
     }
 
     /**
+     * List the members of a group (for the "View members" modal).
+     * Filtered by group access permissions, same as the group detail route.
+     */
+    #[Route('/cms-api/v1/admin/groups/{groupId}/users', name: 'admin_groups_users', methods: ['GET'], requirements: ['groupId' => '\d+'])]
+    public function getGroupMembers(int $groupId): JsonResponse
+    {
+        try {
+            $currentUserId = $this->userContextService->getCurrentUser()?->getId();
+
+            if ($currentUserId === null) {
+                return $this->responseFormatter->formatError(
+                    'User not authenticated',
+                    Response::HTTP_UNAUTHORIZED
+                );
+            }
+
+            // Same access rule as getGroupById: admins bypass; others need
+            // READ on this specific group.
+            if (!$this->dataAccessSecurityService->userHasAdminRole($currentUserId)) {
+                if (!$this->dataAccessSecurityService->hasPermission(
+                    $currentUserId,
+                    LookupService::RESOURCE_TYPES_GROUP,
+                    $groupId,
+                    DataAccessSecurityService::PERMISSION_READ
+                )) {
+                    return $this->responseFormatter->formatError('Access denied', Response::HTTP_FORBIDDEN);
+                }
+            }
+
+            $members = $this->adminGroupService->getGroupMembers($groupId);
+            return $this->responseFormatter->formatSuccess($members, 'responses/admin/groups/group_members');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
      * Create new group
-     * 
+     *
      * @route /admin/groups
      * @method POST
      */
