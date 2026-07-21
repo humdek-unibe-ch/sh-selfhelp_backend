@@ -134,6 +134,35 @@ class RegistrationCodeService extends BaseService
     }
 
     /**
+     * Count every registration code, split into available (never consumed) and
+     * used (consumed). Unfiltered by design: it describes the whole visible set,
+     * so `total` equals the unfiltered `totalCount` {@see getAll()} returns for
+     * the same caller. The list is not group/ACL scoped, so neither is this.
+     *
+     * Contract: available + used === total.
+     *
+     * @return array{total: int, available: int, used: int}
+     */
+    public function getStats(): array
+    {
+        $row = $this->entityManager->getConnection()->fetchAssociative(
+            'SELECT
+                 COUNT(*)                                      AS total,
+                 SUM(CASE WHEN vc.consumed IS NULL THEN 1 ELSE 0 END) AS available
+               FROM validation_codes vc'
+        );
+
+        $total     = is_array($row) && is_numeric($row['total'] ?? null) ? (int) $row['total'] : 0;
+        $available = is_array($row) && is_numeric($row['available'] ?? null) ? (int) $row['available'] : 0;
+
+        return [
+            'total'     => $total,
+            'available' => $available,
+            'used'      => $total - $available,
+        ];
+    }
+
+    /**
      * @param array{search?: string|null, id_groups?: int|null, status?: string|null, sort?: string|null, sortDirection?: string|null} $filters
      * @return list<array{code: string, group_name: string|null, status: string, created_at: string, consumed_at: string, user_email: string}>
      */

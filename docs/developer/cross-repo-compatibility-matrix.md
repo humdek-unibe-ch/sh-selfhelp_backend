@@ -568,6 +568,35 @@ the same change wave:
 > `1.21.7`). Do not treat staged shared `2.x` /
 > `3.x` tags as this release line.
 
+> **Core 0.1.37 / frontend 0.1.64 (admin user/group/role management +
+> registration-code stats — additive):** a wave of new admin API surface the
+> frontend consumes, all additive (new routes/permissions/schemas, no existing
+> contract changed):
+> - **Users** (migrations `Version20260716180311`, `Version20260717134503`):
+>   `admin.user.{read,create,update,delete}`; `GET /admin/users` (filters),
+>   `GET /admin/users/stats` (`total`/`active`/`invited`/`blocked`, scoped to the
+>   caller's visible users), `GET /admin/users/{id}` + CRUD, bulk
+>   delete/add-to-group/remove-from-group/send-activation, CSV export/import.
+> - **Groups**: `GET /admin/groups/{groupId}/members` (View-members modal), and
+>   `GET /admin/groups/{groupId}/users` (member list; migration
+>   `Version20260720132523`).
+> - **Roles**: `GET /admin/roles/{roleId}/users` (member list, same migration);
+>   reusable member JSON moved to `responses/admin/common/`.
+> - **Registration codes**: `GET /admin/registration-codes/stats` (permission
+>   `admin.registration_code.read`, migration `Version20260721085447`) returning
+>   `{total, available, used}` with `available + used === total`. Unfiltered and
+>   unscoped (like the list), so `total` equals the list's unfiltered
+>   `totalCount` for the same caller.
+>
+> Frontend 0.1.64 adopts these admin surfaces (Users/Groups/Roles management +
+> the registration-codes tiles). These are admin-only surfaces the mobile app
+> does not use, so their response types stay local to the frontend rather than
+> in `@selfhelp/shared`; each response is anchored by its JSON Schema under
+> `config/schemas/api/v1/`. Floors: frontend `supports.core`
+> `0.1.36 → 0.1.37`, backend `supports.frontend` `0.1.63 → 0.1.64`. Live
+> pairing: **frontend `>=0.1.64` ⇄ core `>=0.1.37`**. `pluginApiVersion`
+> unchanged (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -575,13 +604,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.36` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.37` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.63 <0.2.0` | frontend adopts filter preview UI + column/fields-map editors |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.64 <0.2.0` | frontend 0.1.64 consumes the admin user/group/role management endpoints + registration-code stats (admin-only; types local to the frontend, anchored by JSON Schemas) |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

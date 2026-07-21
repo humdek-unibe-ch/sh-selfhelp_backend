@@ -18,6 +18,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Permission matrix for the admin registration-code routes (plan §26 / §29).
  *
  *   GET  /admin/registration-codes          -> admin.registration_code.read
+ *   GET  /admin/registration-codes/stats    -> admin.registration_code.read
  *   GET  /admin/registration-codes/export   -> admin.registration_code.read
  *   POST /admin/registration-codes/generate -> admin.registration_code.create
  *
@@ -42,6 +43,13 @@ final class AdminRegistrationCodePermissionTest extends QaWebTestCase
     public function testListEnforcesAdminOnlyMatrix(): void
     {
         $this->assertAdminOnlyMatrix('GET', self::BASE);
+    }
+
+    public function testStatsEnforcesAdminOnlyMatrix(): void
+    {
+        // Same admin.registration_code.read permission as the list; its success
+        // path is a non-mutating GET, so the full matrix applies.
+        $this->assertAdminOnlyMatrix('GET', self::BASE . '/stats');
     }
 
     public function testGenerateIsForbiddenForNonAdmins(): void

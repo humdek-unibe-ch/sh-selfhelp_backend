@@ -1,0 +1,32 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Admin Registration Codes Stats Success Response",
+    "description": "Code counts for the admin Registration Codes page tiles. Unfiltered: describes the whole set the caller can see, so `total` equals the unfiltered `totalCount` the list endpoint returns for the same caller. The list is not group/ACL scoped, so neither is this. Contract: available + used === total.",
+    "allOf": [
+        { "$ref": "../../common/_response_envelope.json" }
+    ],
+    "properties": {
+        "data": {
+            "type": "object",
+            "properties": {
+                "total": {
+                    "type": "integer",
+                    "description": "All registration codes.",
+                    "minimum": 0
+                },
+                "available": {
+                    "type": "integer",
+                    "description": "Codes with no consumer (consumed IS NULL / is_consumed = false).",
+                    "minimum": 0
+                },
+                "used": {
+                    "type": "integer",
+                    "description": "Consumed codes (total - available).",
+                    "minimum": 0
+                }
+            },
+            "required": ["total", "available", "used"]
+        }
+    },
+    "required": ["data"]
+}
