@@ -77,6 +77,19 @@ class AdminRoleController extends AbstractController
     }
 
     /**
+     * List the users who hold a role.
+     */
+    public function getRoleUsers(int $roleId): JsonResponse
+    {
+        try {
+            $users = $this->adminRoleService->getRoleUsers($roleId);
+            return $this->responseFormatter->formatSuccess($users, 'responses/admin/common/group_members');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
      * Create new role
      */
     #[Route('/cms-api/v1/admin/roles', name: 'admin_roles_create', methods: ['POST'])]

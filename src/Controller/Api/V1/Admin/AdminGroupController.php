@@ -117,10 +117,8 @@ class AdminGroupController extends AbstractController
     }
 
     /**
-     * List the members of a group (for the "View members" modal).
-     * Filtered by group access permissions, same as the group detail route.
+     * List the members of a group.
      */
-    #[Route('/cms-api/v1/admin/groups/{groupId}/users', name: 'admin_groups_users', methods: ['GET'], requirements: ['groupId' => '\d+'])]
     public function getGroupMembers(int $groupId): JsonResponse
     {
         try {
@@ -147,7 +145,7 @@ class AdminGroupController extends AbstractController
             }
 
             $members = $this->adminGroupService->getGroupMembers($groupId);
-            return $this->responseFormatter->formatSuccess($members, 'responses/admin/groups/group_members');
+            return $this->responseFormatter->formatSuccess($members, 'responses/admin/common/group_members');
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
