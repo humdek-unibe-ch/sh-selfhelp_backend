@@ -95,6 +95,23 @@ class AdminScheduledJobService extends BaseService
     }
 
     /**
+     * Global scheduled-job status breakdown for the admin stats tiles.
+     *
+     * Unfiltered by design: it describes the whole set of scheduled jobs (no
+     * date/search/status/type filtering), returned from a single grouped
+     * aggregate. `queued`/`done`/`failed`/`deleted` map to the
+     * `scheduledJobsStatus` lookup codes; `total` counts all jobs and the four
+     * status counts are independent (deleted jobs still count toward total), so
+     * they are not required to sum to `total`.
+     *
+     * @return array{total: int, queued: int, done: int, failed: int, deleted: int}
+     */
+    public function getStats(): array
+    {
+        return $this->scheduledJobRepository->getStatusStats();
+    }
+
+    /**
      * Get ALL scheduled jobs without pagination (used for calendar view, export, etc.)
      * 
      * Returns the same formatted structure as the list view for consistency.

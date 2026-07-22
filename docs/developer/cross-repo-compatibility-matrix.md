@@ -587,12 +587,19 @@ the same change wave:
 >   `{total, available, used}` with `available + used === total`. Unfiltered and
 >   unscoped (like the list), so `total` equals the list's unfiltered
 >   `totalCount` for the same caller.
+> - **Scheduled jobs**: `GET /admin/scheduled-jobs/stats` (route
+>   `admin_scheduled_jobs_stats`, permission `admin.scheduled_job.read` — same as
+>   the list, migration `Version20260721135036`) returning a global, unfiltered
+>   status breakdown `{total, queued, done, failed, deleted}` from a single
+>   grouped aggregate. `queued`/`done`/`failed`/`deleted` map to the
+>   `scheduledJobsStatus` lookup codes and are independent counts (deleted jobs
+>   still count toward `total`), so they need not sum to `total`.
 >
 > Frontend 0.1.64 adopts these admin surfaces (Users/Groups/Roles management +
-> the registration-codes tiles). These are admin-only surfaces the mobile app
-> does not use, so their response types stay local to the frontend rather than
-> in `@selfhelp/shared`; each response is anchored by its JSON Schema under
-> `config/schemas/api/v1/`. Floors: frontend `supports.core`
+> the registration-codes and scheduled-jobs tiles). These are admin-only surfaces
+> the mobile app does not use, so their response types stay local to the frontend
+> rather than in `@selfhelp/shared`; each response is anchored by its JSON Schema
+> under `config/schemas/api/v1/`. Floors: frontend `supports.core`
 > `0.1.36 → 0.1.37`, backend `supports.frontend` `0.1.63 → 0.1.64`. Live
 > pairing: **frontend `>=0.1.64` ⇄ core `>=0.1.37`**. `pluginApiVersion`
 > unchanged (`0.1.0`).
@@ -610,7 +617,7 @@ the same change wave:
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.64 <0.2.0` | frontend 0.1.64 consumes the admin user/group/role management endpoints + registration-code stats (admin-only; types local to the frontend, anchored by JSON Schemas) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.64 <0.2.0` | frontend 0.1.64 consumes the admin user/group/role management endpoints + registration-code / scheduled-jobs stats (admin-only; types local to the frontend, anchored by JSON Schemas) |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

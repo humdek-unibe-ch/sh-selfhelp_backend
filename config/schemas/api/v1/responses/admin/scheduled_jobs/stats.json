@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Admin Scheduled Jobs Stats Success Response",
+  "description": "Global scheduled-job status breakdown for the admin Scheduled Jobs page tiles. Unfiltered: describes the whole set (ignores date/search/status/type). queued/done/failed/deleted map to the scheduledJobsStatus lookup codes; total counts all jobs. The four status counts are independent, not a partition (deleted jobs still count toward total), so they need not sum to total.",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" },
+    {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "object",
+          "properties": {
+            "total": { "type": "integer", "minimum": 0, "description": "All scheduled jobs." },
+            "queued": { "type": "integer", "minimum": 0, "description": "Jobs with the `queued` status." },
+            "done": { "type": "integer", "minimum": 0, "description": "Jobs with the `done` status." },
+            "failed": { "type": "integer", "minimum": 0, "description": "Jobs with the `failed` status." },
+            "deleted": { "type": "integer", "minimum": 0, "description": "Jobs with the `deleted` status." }
+          },
+          "required": ["total", "queued", "done", "failed", "deleted"]
+        }
+      },
+      "required": ["data"]
+    }
+  ]
+}

@@ -162,6 +162,41 @@ class ScheduledJobRepository extends ServiceEntityRepository
     }
 
     /**
+     * Global scheduled-job status breakdown for the admin stats tiles.
+     *
+     * Unfiltered by design: a single grouped aggregate over the whole table so
+     * the caller gets one count per status code in one round-trip. `total` is
+     * the count of all jobs; the per-status counts are independent (deleted jobs
+     * still count toward total), so they are not required to sum to `total`.
+     *
+     * @return array{total: int, queued: int, done: int, failed: int, deleted: int}
+     */
+    public function getStatusStats(): array
+    {
+        /** @var list<array{code: string|null, cnt: int|string}> $rows */
+        $rows = $this->createQueryBuilder('sj')
+            ->select('status.lookupCode AS code', 'COUNT(sj.id) AS cnt')
+            ->leftJoin('sj.status', 'status')
+            ->groupBy('status.lookupCode')
+            ->getQuery()
+            ->getArrayResult();
+
+        $stats = ['total' => 0, 'queued' => 0, 'done' => 0, 'failed' => 0, 'deleted' => 0];
+
+        foreach ($rows as $row) {
+            $count = (int) $row['cnt'];
+            $stats['total'] += $count;
+
+            $code = $row['code'];
+            if (is_string($code) && array_key_exists($code, $stats)) {
+                $stats[$code] = $count;
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Find scheduled jobs by status
      *
      * @param string $status

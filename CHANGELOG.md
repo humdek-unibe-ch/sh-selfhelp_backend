@@ -1,7 +1,8 @@
 # v0.1.37
 
-The admin **user / group / role management** wave plus the **registration-code
-stats** endpoint. All of these ship together in this release.
+The admin **user / group / role management** wave plus the **registration-code**
+and **scheduled-jobs stats** endpoints. All of these ship together in this
+release.
 
 ## Feature: users management endpoints
 
@@ -46,6 +47,24 @@ rest, and `available + used === total`. The endpoint is **unfiltered** (it
 describes the whole set, not the current list filter) and, like the
 registration-codes list, is not group/ACL scoped — so `total` equals the
 unfiltered `totalCount` the list returns for the same caller.
+
+## Feature: scheduled-jobs stats endpoint
+
+Adds `GET /cms-api/v1/admin/scheduled-jobs/stats` (route
+`admin_scheduled_jobs_stats`, permission `admin.scheduled_job.read` — the same
+as the list endpoint, migration `Version20260721135036`) for the admin Scheduled
+Jobs page tiles. It returns a global status breakdown:
+
+```json
+{ "total": 200, "queued": 30, "done": 150, "failed": 12, "deleted": 8 }
+```
+
+`queued`/`done`/`failed`/`deleted` map to the `scheduledJobsStatus` lookup
+codes; `total` counts all jobs. The four status counts are **independent, not a
+partition** — deleted jobs still count toward `total`, so they need not sum to
+it. Computed from a single grouped aggregate (`GROUP BY status`). The endpoint
+is **unfiltered** (ignores date/search/status/type): it describes the whole set
+the caller can see, not the current list query.
 
 ## Cross-repo
 
