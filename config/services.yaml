@@ -67,7 +67,7 @@ parameters:
     # admin manifest endpoint. Override with `SELFHELP_CMS_VERSION` to
     # match the deployed application version.
     selfhelp.cms_version: '%env(default:selfhelp_cms_version_default:SELFHELP_CMS_VERSION)%'
-    selfhelp_cms_version_default: '0.1.37'
+    selfhelp_cms_version_default: '0.1.38'
 
     # Plugin SDK contract version exposed to plugin compatibility
     # checks. Mirrors `PLUGIN_API_VERSION` in @selfhelp/shared/plugin-sdk.
@@ -484,6 +484,11 @@ services:
     
     # Admin Asset Service - needs explicit project directory
     App\Service\CMS\Admin\AdminAssetService:
+        arguments:
+            $projectDir: '%kernel.project_dir%'
+
+    # Asset export/import bundle service - needs explicit project directory
+    App\Service\CMS\Admin\AssetExportImportService:
         arguments:
             $projectDir: '%kernel.project_dir%'
 

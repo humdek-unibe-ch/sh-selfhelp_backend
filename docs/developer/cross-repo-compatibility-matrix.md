@@ -8,7 +8,7 @@ SPDX-License-Identifier: MPL-2.0
 Audience: Developers and technical operators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-07-09.
+Last verified: 2026-07-22.
 Source of truth: Runtime code, configuration, migrations, and tests in this repository.
 
 > For the end-to-end install/update/maintain picture (the Manager Docker path and
@@ -604,6 +604,36 @@ the same change wave:
 > pairing: **frontend `>=0.1.64` ⇄ core `>=0.1.37`**. `pluginApiVersion`
 > unchanged (`0.1.0`).
 
+> **Core 0.1.38 (asset export/import + folder-ACL — additive):** a new admin
+> asset surface the frontend consumes, all additive (migration
+> `Version20260722092220`; existing asset endpoints keep their response shapes):
+> - **Bundle export/import**: `POST /admin/assets/export` (permission
+>   `admin.asset.read`) returns `application/zip` (`manifest.json`
+>   `{bundle_type: selfhelp/asset-bundle, bundle_version: 1.0, exported_at,
+>   assets[]}` + `files/<folder>/<name>`); `POST /admin/assets/import`
+>   (permission `admin.asset.create`) is `multipart` `file`+`overwrite` and
+>   returns `{imported, skipped, errors[]}`, re-using the normal asset-create
+>   path.
+> - **Folder ACLs (group-scoped, closed-by-default)**: new
+>   `assets_folders_groups` table (folder × `id_groups` × `access_level`
+>   `read`|`manage`), edited per group next to the page ACLs via
+>   `GET`/`PUT /admin/groups/{groupId}/asset-acls` (both reuse the existing
+>   `admin.group.acl` permission; PUT is a full replacement, empty `acls`
+>   clears the group's grants). Enforcement is a second layer over the asset
+>   route permissions, resource-side (union across the caller's groups),
+>   closed-by-default: a non-admin sees a folder only if one of their groups is
+>   granted on it (a folder with no grant for their groups — including one with
+>   no rows — is not visible); `read` = list/get, `manage` = also
+>   create/delete/import; the admin role bypasses folder ACLs entirely. `GET
+>   /admin/assets` returns only the caller's readable folders and
+>   get-by-id/create/delete/direct-denied return `403`.
+>
+> Admin-only surfaces the mobile app does not use, so response types stay local
+> to the frontend (anchored by JSON Schemas under `config/schemas/api/v1/`).
+> Because every change is additive, `supports.frontend` stays `>=0.1.64`; the
+> frontend that adopts the asset bundle + folder-ACL UI raises ITS
+> `supports.core` floor to `0.1.38`. `pluginApiVersion` unchanged (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -611,7 +641,7 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.37` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.38` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |

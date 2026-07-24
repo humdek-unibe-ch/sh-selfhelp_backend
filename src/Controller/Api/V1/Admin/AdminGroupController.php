@@ -11,6 +11,7 @@ namespace App\Controller\Api\V1\Admin;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Service\Auth\UserContextService;
 use App\Service\CMS\Admin\AdminGroupService;
+use App\Service\CMS\Admin\AssetFolderAclService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\Core\LookupService;
 use App\Service\JSON\JsonSchemaValidationService;
@@ -35,7 +36,8 @@ class AdminGroupController extends AbstractController
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
-        private readonly UserContextService $userContextService
+        private readonly UserContextService $userContextService,
+        private readonly AssetFolderAclService $assetFolderAclService
     ) {
     }
 
@@ -276,12 +278,76 @@ class AdminGroupController extends AbstractController
             $data = $this->validateRequest($request, 'requests/admin/update_group_acls', $this->jsonSchemaValidationService);
             
             $acls = $this->adminGroupService->updateGroupAcls($groupId, $this->asListOfArrays($data['acls'] ?? null));
-            
+
             // Permissions cache is automatically invalidated by the service
-            
+
             return $this->responseFormatter->formatSuccess(['acls' => $acls]);
         } catch (\Exception $e) {
             return $this->responseFormatter->formatThrowable($e);
         }
     }
-} 
+
+    /**
+     * Get the asset-folder ACLs a group holds.
+     *
+     * @route /admin/groups/{groupId}/asset-acls
+     * @method GET
+     */
+    public function getGroupAssetAcls(int $groupId): JsonResponse
+    {
+        try {
+            $result = $this->assetFolderAclService->getGroupAssetAcls($groupId);
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/groups/group_asset_acls_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Replace the asset-folder ACL set a group holds (bulk update).
+     *
+     * @route /admin/groups/{groupId}/asset-acls
+     * @method PUT
+     */
+    public function updateGroupAssetAcls(int $groupId, Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/update_group_asset_acls', $this->jsonSchemaValidationService);
+
+            $result = $this->assetFolderAclService->updateGroupAssetAcls(
+                $groupId,
+                $this->normalizeAssetAclEntries($data['acls'] ?? null)
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/groups/group_asset_acls_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Coerce the validated `acls` payload into the service's typed entry list.
+     *
+     * @param mixed $raw
+     * @return list<array{folder: string, access_level: string}>
+     */
+    private function normalizeAssetAclEntries(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $entries = [];
+        foreach ($raw as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $entries[] = [
+                'folder' => is_string($item['folder'] ?? null) ? $item['folder'] : '',
+                'access_level' => is_string($item['access_level'] ?? null) ? $item['access_level'] : '',
+            ];
+        }
+
+        return $entries;
+    }
+}

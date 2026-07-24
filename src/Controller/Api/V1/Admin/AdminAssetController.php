@@ -9,10 +9,12 @@
 namespace App\Controller\Api\V1\Admin;
 
 use App\Service\CMS\Admin\AdminAssetService;
+use App\Service\CMS\Admin\AssetExportImportService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Controller\Trait\RequestValidatorTrait;
 use App\Exception\RequestValidationException;
+use App\Exception\ServiceException;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -30,6 +32,7 @@ class AdminAssetController extends AbstractController
 
     public function __construct(
         private readonly AdminAssetService $adminAssetService,
+        private readonly AssetExportImportService $assetExportImportService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService
     ) {
@@ -164,8 +167,64 @@ class AdminAssetController extends AbstractController
     }
 
     /**
+     * Export assets as a ZIP bundle (files + manifest.json)
+     *
+     * @route /admin/assets/export
+     * @method POST
+     */
+    public function exportAssets(Request $request): Response
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/export_assets', $this->jsonSchemaValidationService);
+            $folders = $this->toStringList($data['folders'] ?? []);
+
+            $zipPath = $this->assetExportImportService->exportToZipFile($folders);
+
+            $zipContent = (string) file_get_contents($zipPath);
+            @unlink($zipPath);
+
+            return new Response(
+                $zipContent,
+                Response::HTTP_OK,
+                [
+                    'Content-Type' => 'application/zip',
+                    'Content-Disposition' => 'attachment; filename="asset_export.zip"',
+                ]
+            );
+        } catch (ServiceException $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Import assets from an uploaded ZIP bundle
+     *
+     * @route /admin/assets/import
+     * @method POST
+     */
+    public function importAssets(Request $request): JsonResponse
+    {
+        try {
+            $file = $request->files->get('file');
+            if (!$file instanceof UploadedFile) {
+                return $this->responseFormatter->formatError('A bundle file is required', Response::HTTP_BAD_REQUEST);
+            }
+
+            $overwrite = $request->request->getBoolean('overwrite', false);
+
+            $result = $this->assetExportImportService->importFromZip($file, $overwrite);
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/assets_import_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
      * Validate asset form data against JSON schema
-     * 
+     *
      * @param Request $request
      * @return array<string, mixed>
      * @throws RequestValidationException

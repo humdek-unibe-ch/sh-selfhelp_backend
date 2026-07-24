@@ -1,3 +1,64 @@
+# v0.1.38
+
+Asset **export/import bundles** and **folder-level access control**. All
+additive: new routes, one new permission, one new table; the existing asset
+endpoints keep their response shapes and gain a second (folder-ACL) enforcement
+layer.
+
+## Feature: asset export/import bundles
+
+Adds a ZIP bundle export/import for assets, mirroring the pages/navigation
+bundle pattern (migration `Version20260722092220`):
+
+- `POST /cms-api/v1/admin/assets/export` (permission `admin.asset.read`) —
+  body `{ folders?: string[] }`; returns a binary ZIP
+  (`application/zip`, `asset_export.zip`). Empty/omitted `folders` exports every
+  folder the caller may read. The bundle is `manifest.json`
+  (`{ bundle_type: "selfhelp/asset-bundle", bundle_version: "1.0", exported_at,
+  assets: [{ folder, file_name, asset_type, bundle_path }] }`) plus
+  `files/<folder>/<name>`.
+- `POST /cms-api/v1/admin/assets/import` (permission `admin.asset.create`) —
+  `multipart/form-data` with `file` (the `.zip`) + `overwrite`; returns
+  `{ imported, skipped, errors[] }`. Each entry is created through the normal
+  asset-create path, so file-type validation, dedup/overwrite, transactions,
+  cache invalidation, and folder manage-ACL all apply. Manifest paths are
+  traversal-guarded.
+
+## Feature: group-scoped asset-folder ACLs
+
+Adds `assets_folders_groups` (folder string × group × `read`/`manage`). The ACLs
+are edited **per group**, alongside the page ACLs, on the admin Groups page, and
+reuse the existing `admin.group.acl` permission (same as the page-ACL routes):
+
+- `GET /cms-api/v1/admin/groups/{groupId}/asset-acls` (permission
+  `admin.group.acl`) — returns `{ id_groups, acls: [{ folder, access_level }] }`.
+- `PUT /cms-api/v1/admin/groups/{groupId}/asset-acls` (permission
+  `admin.group.acl`) — body `{ acls: [{ folder, access_level }] }`; a full
+  replacement of the group's grants, empty `acls` clears them.
+
+Enforcement is a second layer on top of the asset route permissions and is
+resource-side (a union across the caller's groups). It is **closed-by-default**:
+a non-admin user sees a folder only if one of their groups is explicitly granted
+`read`/`manage` on it — a folder with no grant for their groups (including a
+folder with no ACL rows at all) is not visible to them. `read` = list/get,
+`manage` = also create/delete/import. The **admin role** bypasses folder ACLs
+entirely (full access to every folder), mirroring the page-ACL contract.
+`GET /admin/assets` returns only the folders the caller may read;
+get-by-id / create / delete / a directly-requested denied folder return `403`.
+
+To keep newly-restricted folders usable, `read` is seeded by default: on the
+first upload into a new folder the runtime seeds `admin=manage`, `subject=read`,
+`therapist=read` (mirroring page create) — but only for the groups that exist.
+Pre-existing folders carry no ACL rows and are therefore admin-only until a
+group is granted on them.
+
+## Compatibility
+
+`supports.frontend` stays `>=0.1.64` — every change here is additive, so an
+older frontend keeps working against this core; the frontend that adopts the
+asset bundle + folder-ACL UI raises ITS `supports.core` floor to `0.1.38`.
+`pluginApiVersion` is unchanged (`0.1.0`): no plugin API surface changed.
+
 # v0.1.37
 
 The admin **user / group / role management** wave plus the **registration-code**

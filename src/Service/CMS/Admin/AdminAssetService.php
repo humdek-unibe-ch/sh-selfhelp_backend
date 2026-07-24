@@ -58,6 +58,7 @@ class AdminAssetService extends BaseService
         private readonly TransactionService $transactionService,
         private readonly LookupService $lookupService,
         private readonly CacheService $cache,
+        private readonly AssetFolderAclService $folderAclService,
         private readonly string $projectDir
     ) {
     }
@@ -73,23 +74,35 @@ class AdminAssetService extends BaseService
      */
     public function getAllAssets(int $page = 1, int $pageSize = 100, ?string $search = null, ?string $folder = null): array
     {
-        // Create cache key based on parameters
-        $cacheKey = "assets_list_{$page}_{$pageSize}_" . md5(($search ?? '') . ($folder ?? ''));
+        // Closed-by-default: the folders this caller may read. null = admin
+        // (no restriction); a list = only those folders; [] = no folders at all.
+        $visibleFolders = $this->folderAclService->getVisibleFoldersOrNull();
+
+        // If a specific folder is requested and it is not in the allow-list, deny.
+        if ($folder !== null && $visibleFolders !== null && !in_array($folder, $visibleFolders, true)) {
+            $this->throwForbidden('You do not have access to this asset folder');
+        }
+
+        // Create cache key based on parameters (per-caller ACL scope included so
+        // users with different folder access never share a cached list).
+        $aclScope = $visibleFolders === null ? 'all' : md5(implode(',', $visibleFolders));
+        $cacheKey = "assets_list_{$page}_{$pageSize}_" . md5(($search ?? '') . ($folder ?? '')) . "_{$aclScope}";
 
         return $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->getList(
                 $cacheKey,
-                fn() => $this->fetchAssetsFromDatabase($page, $pageSize, $search, $folder)
+                fn() => $this->fetchAssetsFromDatabase($page, $pageSize, $search, $folder, $visibleFolders)
             );
     }
 
     /**
+     * @param list<string>|null $visibleFolders null = no restriction (admin); a list = only those folders
      * @return array<string, mixed>
      */
-    private function fetchAssetsFromDatabase(int $page, int $pageSize, ?string $search, ?string $folder): array
+    private function fetchAssetsFromDatabase(int $page, int $pageSize, ?string $search, ?string $folder, ?array $visibleFolders = null): array
     {
-        $result = $this->assetRepository->findAssetsWithPagination($page, $pageSize, $search, $folder);
+        $result = $this->assetRepository->findAssetsWithPagination($page, $pageSize, $search, $folder, $visibleFolders);
 
         $assets = array_map(function (Asset $asset) {
             return [
@@ -123,14 +136,14 @@ class AdminAssetService extends BaseService
     {
         $cacheKey = "asset_id_{$id}";
 
-        return $this->cache
+        $asset = $this->cache
             ->withCategory(CacheService::CATEGORY_ASSETS)
             ->withEntityScope(CacheService::ENTITY_SCOPE_ASSET, $id)
             ->getItem(
                 $cacheKey,
                 function () use ($id) {
                     // get the asset from the DB
-        
+
                     $asset = $this->assetRepository->findOneBy(['id' => $id]);
 
                     if (!$asset) {
@@ -149,6 +162,12 @@ class AdminAssetService extends BaseService
                     return $asset;
                 }
             );
+
+        // Enforce folder-level read access OUTSIDE the cache closure so the
+        // check runs on every call (cache hit or miss) and per current user.
+        $this->folderAclService->assertCanRead($this->asStringOrNull($asset['folder'] ?? null));
+
+        return $asset;
     }
 
     /**
@@ -189,6 +208,9 @@ class AdminAssetService extends BaseService
 
             // Get folder from data or use default
             $folder = $this->asString($data['folder'] ?? 'general');
+
+            // Enforce folder-level manage access before writing into the folder.
+            $this->folderAclService->assertCanManage($folder);
 
             // Create filename - preserve original name if no custom name provided
             $fileName = !empty($data['file_name']) ? $this->asString($data['file_name']) : $file->getClientOriginalName();
@@ -231,6 +253,11 @@ class AdminAssetService extends BaseService
 
             $this->entityManager->persist($asset);
             $this->entityManager->flush();
+
+            // Seed default folder ACLs (admin=manage, subject/therapist=read)
+            // the first time an asset lands in a new folder, mirroring the
+            // page-create contract. No-op for folders that already have rows.
+            $this->folderAclService->seedDefaultFolderAclsIfNew($folder);
 
             // Log transaction
             $this->transactionService->logTransaction(
@@ -324,6 +351,9 @@ class AdminAssetService extends BaseService
             if (!$asset) {
                 throw new ServiceException('Asset not found', Response::HTTP_NOT_FOUND);
             }
+
+            // Enforce folder-level manage access before deleting.
+            $this->folderAclService->assertCanManage($asset->getFolder());
 
             // Store file path for cleanup
             $fullPath = $this->projectDir . '/public/' . $asset->getFilePath();

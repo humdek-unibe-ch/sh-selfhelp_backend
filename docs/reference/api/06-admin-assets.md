@@ -3,7 +3,7 @@
 Audience: Developers and integrators.
 Status: active.
 Applies to: SelfHelp2 Symfony backend.
-Last verified: 2026-06-03.
+Last verified: 2026-07-22.
 Source of truth: Controllers, JSON schemas, route definitions, and exported types in this repository.
 
 ## Overview
@@ -298,6 +298,155 @@ Remove an asset from the system.
 ```
 
 **Permissions:** `admin.asset.delete`
+
+## Export Assets
+
+Export assets as a downloadable ZIP bundle (physical files + `manifest.json`), following the same bundle pattern as pages/navigation.
+
+**Endpoint:** `POST /cms-api/v1/admin/assets/export`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Content-Type:** `application/json`
+
+**Body:**
+```json
+{
+  "folders": ["images", "documents"]
+}
+```
+- `folders` (optional): folders to include. Empty or omitted exports **every folder the caller may read** (folders the caller has no ACL access to are always excluded).
+
+[View request JSON Schema](../../../config/schemas/api/v1/requests/admin/export_assets.json)
+
+**Response:** a binary ZIP download (not the JSON envelope).
+- `Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="asset_export.zip"`
+
+Bundle layout:
+```
+manifest.json            # { bundle_type, bundle_version, exported_at, assets: [...] }
+files/<folder>/<name>    # the physical asset bytes
+```
+Each `manifest.assets[]` entry: `{ folder, file_name, asset_type, bundle_path }`.
+
+Returns `404` if no readable assets match the request.
+
+**Permissions:** `admin.asset.read`
+
+## Import Assets
+
+Import an asset bundle ZIP. Each manifest entry is created via the normal asset-create path, so file-type validation, dedup/overwrite, and folder-level manage ACLs all apply.
+
+**Endpoint:** `POST /cms-api/v1/admin/assets/import`
+
+**Authentication:** Required (JWT Bearer token)
+
+**Content-Type:** `multipart/form-data`
+
+**Form Data:**
+- `file`: the `.zip` bundle to import (required)
+- `overwrite`: whether to overwrite existing files with the same name (default: false)
+
+**Response:**
+```json
+{
+  "status": 200,
+  "message": "OK",
+  "error": null,
+  "logged_in": true,
+  "meta": { "version": "v1", "timestamp": "2026-07-22T10:30:00Z" },
+  "data": {
+    "imported": 4,
+    "skipped": 1,
+    "errors": [
+      { "file": "broken.png", "error": "File missing from bundle" }
+    ]
+  }
+}
+```
+- `imported`: assets created/overwritten from the bundle.
+- `skipped`: assets that already existed while `overwrite` was `false`.
+- `errors`: per-file failures (invalid bundle path, missing file, validation error). A create into a folder the caller lacks **manage** access to fails per-file here.
+
+[View response JSON Schema](../../../config/schemas/api/v1/responses/admin/assets/assets_import_envelope.json)
+
+**Permissions:** `admin.asset.create`
+
+## Folder Access Control (group-scoped)
+
+Asset folders can be restricted to specific groups. The ACLs are **edited per
+group**, alongside the page ACLs, on the admin **Groups** page. Both endpoints
+are gated by `admin.group.acl` (the same permission as the sibling page-ACL
+routes).
+
+### Get a group's asset-folder ACLs
+
+**Endpoint:** `GET /cms-api/v1/admin/groups/{groupId}/asset-acls`
+
+**Response `data`:**
+```json
+{
+  "id_groups": 3,
+  "acls": [
+    { "folder": "images", "access_level": "manage" },
+    { "folder": "documents", "access_level": "read" }
+  ]
+}
+```
+An **empty `acls` array means the group has no folder-specific grants.**
+`access_level` is `read` (view/download) or `manage` (also create/import/delete).
+
+[View response JSON Schema](../../../config/schemas/api/v1/responses/admin/groups/group_asset_acls_envelope.json)
+
+**Permissions:** `admin.group.acl`
+
+### Replace a group's asset-folder ACLs
+
+Full replacement of the group's grants. Sending an empty `acls` array removes
+every folder grant for the group.
+
+**Endpoint:** `PUT /cms-api/v1/admin/groups/{groupId}/asset-acls`
+
+**Content-Type:** `application/json`
+
+**Body:**
+```json
+{
+  "acls": [
+    { "folder": "images", "access_level": "manage" },
+    { "folder": "documents", "access_level": "read" }
+  ]
+}
+```
+- `acls` (required): full replacement set. Each entry needs `folder` and
+  `access_level` (`read` | `manage`). Empty array = clear.
+
+[View request JSON Schema](../../../config/schemas/api/v1/requests/admin/update_group_asset_acls.json)
+
+**Response:** the updated grant set, identical shape to **Get a group's
+asset-folder ACLs**.
+
+**Permissions:** `admin.group.acl`
+
+### Enforcement (applies to the asset endpoints above)
+
+Folder ACLs are a **second layer** on top of the asset route permissions, are
+resource-side (a union across the caller's groups), and are **closed-by-default**:
+
+- A non-admin user sees a folder **only if** one of their groups is explicitly
+  granted `read`/`manage` on it. A folder with no grant for their groups —
+  including a folder with **no** ACL rows at all — is not visible to them.
+- `read` can list/get; `manage` can also create/delete/import.
+- The **admin role** bypasses folder ACLs entirely (full access to every
+  folder), mirroring the page-ACL contract.
+- `read` is seeded by default: the first upload into a **new** folder seeds
+  `admin=manage`, `subject=read`, `therapist=read` (only for groups that exist),
+  so a freshly-created folder is usable by those groups. Pre-existing folders
+  carry no rows and are admin-only until a group is granted on them.
+- `GET /admin/assets` returns only the folders the caller may read;
+  `GET /admin/assets/{assetId}`, create, delete, and a directly-requested denied
+  folder return `403`.
 
 ## File Upload Specifications
 

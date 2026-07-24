@@ -45,9 +45,11 @@ class AssetRepository extends ServiceEntityRepository
      * @param int $pageSize
      * @param string|null $search
      * @param string|null $folder
+     * @param list<string>|null $visibleFolders Closed-by-default allow-list: null = no restriction (admin);
+     *        a list = restrict to those folders; an empty list = no folders visible
      * @return array{assets: list<Asset>, total: int}
      */
-    public function findAssetsWithPagination(int $page, int $pageSize, ?string $search = null, ?string $folder = null): array
+    public function findAssetsWithPagination(int $page, int $pageSize, ?string $search = null, ?string $folder = null, ?array $visibleFolders = null): array
     {
         $qb = $this->createQueryBuilder('a')
             ->leftJoin('a.assetType', 'at');
@@ -62,6 +64,17 @@ class AssetRepository extends ServiceEntityRepository
         if ($folder) {
             $qb->andWhere('a.folder = :folder')
                ->setParameter('folder', $folder);
+        }
+
+        // Closed-by-default ACL scoping (null = admin, no restriction).
+        if ($visibleFolders !== null) {
+            if ($visibleFolders === []) {
+                // Non-admin with no granted folders sees nothing.
+                $qb->andWhere('1 = 0');
+            } else {
+                $qb->andWhere('a.folder IN (:visibleFolders)')
+                   ->setParameter('visibleFolders', $visibleFolders);
+            }
         }
 
         // Get total count
@@ -138,4 +151,42 @@ class AssetRepository extends ServiceEntityRepository
 
         return $result;
     }
-} 
+
+    /**
+     * Assets to include in an export bundle.
+     *
+     * @param list<string> $folders        Restrict to these folders; empty = all folders
+     * @param list<string>|null $visibleFolders Closed-by-default allow-list: null = no restriction (admin);
+     *        a list = restrict to those folders; an empty list = no folders visible
+     * @return list<Asset>
+     */
+    public function findForExport(array $folders, ?array $visibleFolders = null): array
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->leftJoin('a.assetType', 'at')
+            ->addSelect('at');
+
+        if ($folders !== []) {
+            $qb->andWhere('a.folder IN (:folders)')
+               ->setParameter('folders', $folders);
+        }
+
+        // Closed-by-default ACL scoping (null = admin, no restriction).
+        if ($visibleFolders !== null) {
+            if ($visibleFolders === []) {
+                $qb->andWhere('1 = 0');
+            } else {
+                $qb->andWhere('a.folder IN (:visibleFolders)')
+                   ->setParameter('visibleFolders', $visibleFolders);
+            }
+        }
+
+        /** @var list<Asset> $result */
+        $result = $qb->orderBy('a.folder', 'ASC')
+            ->addOrderBy('a.fileName', 'ASC')
+            ->getQuery()
+            ->getResult();
+
+        return $result;
+    }
+}
