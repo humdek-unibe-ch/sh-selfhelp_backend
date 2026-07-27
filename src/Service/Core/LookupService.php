@@ -244,6 +244,7 @@ final class LookupService
     public const USER_STATUS_INVITED = 'invited';
     public const USER_STATUS_ACTIVE = 'active';
     public const USER_STATUS_LOCKED = 'locked';
+    public const USER_STATUS_IMPORTED = 'imported';
 
     // styleType
     public const STYLE_TYPE_VIEW = 'view';

@@ -57,14 +57,15 @@ class AdminUserService extends BaseService
      * NOT EXHAUSTIVE: the `userStatus` lookup group also seeds `interested`
      * and `auto_created` (legacy codes with no writer in this codebase). Users
      * holding those statuses are counted in `total` but in no bucket, so
-     * `active + invited + blocked <= total`. Do not present the tiles as a
-     * breakdown that must sum. There is no `locked` status: the constant
-     * LookupService::USER_STATUS_LOCKED has no seeded lookup row and no
-     * writer, so it is deliberately not a bucket.
+     * `active + invited + imported + blocked <= total`. Do not present the
+     * tiles as a breakdown that must sum. There is no `locked` status: the
+     * constant LookupService::USER_STATUS_LOCKED has no seeded lookup row and
+     * no writer, so it is deliberately not a bucket.
      */
     private const STATUS_BUCKETS = [
         LookupService::USER_STATUS_ACTIVE,
         LookupService::USER_STATUS_INVITED,
+        LookupService::USER_STATUS_IMPORTED,
     ];
 
     /** Bucket that is derived from the `blocked` column rather than a status lookup. */
@@ -341,6 +342,8 @@ class AdminUserService extends BaseService
                     'user_name' => $this->nullIfBlank($row['user_name'] ?? null),
                     'group_ids' => $this->resolveGroupNames($row['groups'] ?? null),
                     'enable_validation' => false,
+                    // Mark CSV-created users as `imported` (duplicates are skipped above).
+                    'status_code' => LookupService::USER_STATUS_IMPORTED,
                 ]);
 
                 $imported++;
@@ -1332,6 +1335,18 @@ class AdminUserService extends BaseService
 
         if (isset($userData['receives_emails'])) {
             $user->setReceivesEmails((bool) $userData['receives_emails']);
+        }
+
+        // Optional explicit initial status (CSV import sets `imported`).
+        if (isset($userData['status_code'])) {
+            $status = $this->lookupService->findByTypeAndCode(
+                LookupService::USER_STATUS,
+                $this->asString($userData['status_code'])
+            );
+            if (!$status) {
+                throw new ServiceException('Invalid user status', Response::HTTP_BAD_REQUEST);
+            }
+            $user->setStatus($status);
         }
 
         $this->setUserRelatedEntities($user, $userData);

@@ -1,3 +1,39 @@
+# v0.1.39
+
+Dedicated **`imported` user status** for CSV-imported users. Additive: one new
+`userStatus` lookup, one extra stats field, one extra accepted list filter
+value; every existing response keeps its shape.
+
+## Feature: `imported` user status
+
+CSV-imported users now land in a dedicated `imported` status instead of keeping
+the User entity's default `id_status`, so an admin can tell "came in via a CSV
+import, never touched" apart from a genuinely `invited` or `active` user.
+
+- New `userStatus` lookup `imported` (`lookup_code = "imported"`, label
+  `Imported`) seeded on fresh installs and added to existing instances by
+  migration `Version20260727132047`. The numeric lookup id is per-instance
+  (auto-increment) — match on the `imported` code, not the id.
+- `POST /cms-api/v1/admin/users/import` now sets every **newly created** row's
+  status to `imported`. Rows skipped as duplicate emails keep their existing
+  status untouched.
+- `GET /cms-api/v1/admin/users?status=imported` is now an accepted filter value
+  (the endpoint previously 400'd on anything but `active`/`invited`/`blocked`).
+- `GET /cms-api/v1/admin/users/stats` gains an additive `imported` count:
+  `{ total, active, invited, imported, blocked }`. As before, the buckets are
+  independent counts, not a breakdown that sums to `total`.
+
+`imported` is a **passive marker only** — no auth impact. Login keys off
+`active`, activation off `invited`; neither uses a status allow-list, so an
+`imported` user behaves exactly like the previous import default. The activation
+invite moves the user `imported → invited → active` through the normal flow, so
+nobody is stuck in `imported`. The activation-mail behaviour on import is
+unchanged (import still creates users without sending mail).
+
+Coupled FE↔BE change (the FE `users list`/`stats` UI consumes the new value):
+`supports.frontend` is raised to `>=0.1.65` in lockstep; the frontend that adopts
+the `imported` tile/filter raises ITS `supports.core` floor to `0.1.39`.
+
 # v0.1.38
 
 Asset **export/import bundles** and **folder-level access control**. All
