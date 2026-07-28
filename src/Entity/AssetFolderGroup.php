@@ -23,6 +23,12 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'uq_assets_folders_groups_folder_group', columns: ['id_assets_folders', 'id_groups'])]
 class AssetFolderGroup
 {
+    /**
+     * Access-level lookup codes (`assetFolderAccessLevels`). These mirror
+     * {@see \App\Service\Core\LookupService::ASSET_FOLDER_ACCESS_LEVELS_READ}
+     * and are the values persisted as `lookups.lookup_code`, not free text:
+     * the level itself is stored as an FK so an unknown value cannot exist.
+     */
     public const ACCESS_READ = 'read';
     public const ACCESS_MANAGE = 'manage';
 
@@ -39,8 +45,9 @@ class AssetFolderGroup
     #[ORM\JoinColumn(name: 'id_groups', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
     private Group $group;
 
-    #[ORM\Column(name: 'access_level', type: 'string', length: 20)]
-    private string $accessLevel = self::ACCESS_READ;
+    #[ORM\ManyToOne(targetEntity: Lookup::class)]
+    #[ORM\JoinColumn(name: 'id_access_level', referencedColumnName: 'id', nullable: false)]
+    private Lookup $accessLevel;
 
     public function getId(): ?int
     {
@@ -79,15 +86,24 @@ class AssetFolderGroup
         return $this;
     }
 
-    public function getAccessLevel(): string
+    public function getAccessLevelLookup(): Lookup
     {
         return $this->accessLevel;
     }
 
-    public function setAccessLevel(string $accessLevel): static
+    public function setAccessLevelLookup(Lookup $accessLevel): static
     {
         $this->accessLevel = $accessLevel;
 
         return $this;
+    }
+
+    /**
+     * The access-level code (`read` | `manage`), read through the FK. This is
+     * what the API emits and what the enforcement layer compares against.
+     */
+    public function getAccessLevel(): string
+    {
+        return (string) $this->accessLevel->getLookupCode();
     }
 }

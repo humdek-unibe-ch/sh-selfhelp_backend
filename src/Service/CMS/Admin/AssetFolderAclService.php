@@ -11,6 +11,7 @@ namespace App\Service\CMS\Admin;
 use App\Entity\AssetFolder;
 use App\Entity\AssetFolderGroup;
 use App\Entity\Group;
+use App\Entity\Lookup;
 use App\Repository\AssetFolderGroupRepository;
 use App\Repository\AssetFolderRepository;
 use App\Service\Auth\UserContextService;
@@ -56,6 +57,7 @@ class AssetFolderAclService extends BaseService
         private readonly EntityManagerInterface $entityManager,
         private readonly TransactionService $transactionService,
         private readonly CacheService $cache,
+        private readonly LookupService $lookupService,
     ) {
     }
 
@@ -114,7 +116,7 @@ class AssetFolderAclService extends BaseService
             $seenFolders = [];
             foreach ($entries as $entry) {
                 $folder = $this->normalizeFolder($entry['folder']);
-                $accessLevel = $this->normalizeAccessLevel($entry['access_level']);
+                $accessLevel = $this->resolveAccessLevel($entry['access_level']);
 
                 if (isset($seenFolders[$folder])) {
                     $this->throwBadRequest('Duplicate folder in group asset ACL: ' . $folder);
@@ -124,7 +126,7 @@ class AssetFolderAclService extends BaseService
                 $acl = new AssetFolderGroup();
                 $acl->setAssetFolder($this->findOrCreateFolder($folder));
                 $acl->setGroup($group);
-                $acl->setAccessLevel($accessLevel);
+                $acl->setAccessLevelLookup($accessLevel);
                 $this->entityManager->persist($acl);
             }
 
@@ -296,7 +298,7 @@ class AssetFolderAclService extends BaseService
             $acl = new AssetFolderGroup();
             $acl->setAssetFolder($folderEntity);
             $acl->setGroup($group);
-            $acl->setAccessLevel($accessLevel);
+            $acl->setAccessLevelLookup($this->resolveAccessLevel($accessLevel));
             $this->entityManager->persist($acl);
             $seeded = true;
         }
@@ -412,9 +414,14 @@ class AssetFolderAclService extends BaseService
         return $folder;
     }
 
-    private function normalizeAccessLevel(string $accessLevel): string
+    /**
+     * Resolve an access-level code to its `assetFolderAccessLevels` lookup row,
+     * rejecting anything outside the catalog. Validation and resolution are one
+     * step so an unknown level can never reach the database.
+     */
+    private function resolveAccessLevel(string $accessLevel): Lookup
     {
-        return match ($accessLevel) {
+        $level = match ($accessLevel) {
             AssetFolderGroup::ACCESS_MANAGE => AssetFolderGroup::ACCESS_MANAGE,
             AssetFolderGroup::ACCESS_READ => AssetFolderGroup::ACCESS_READ,
             default => throw new \App\Exception\ServiceException(
@@ -422,6 +429,21 @@ class AssetFolderAclService extends BaseService
                 Response::HTTP_BAD_REQUEST
             ),
         };
+
+        $lookup = $this->lookupService->findByTypeAndCode(
+            LookupService::ASSET_FOLDER_ACCESS_LEVELS,
+            $level
+        );
+        if (!$lookup instanceof Lookup) {
+            // The catalog is seeded by migration, so a missing row is a broken
+            // install rather than bad input.
+            throw new \App\Exception\ServiceException(
+                'Asset folder access level lookup missing: ' . $level,
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+
+        return $lookup;
     }
 
     private function invalidateCache(): void
