@@ -447,6 +447,154 @@ resource-side (a union across the caller's groups), and are **closed-by-default*
 - `GET /admin/assets` returns only the folders the caller may read;
   `GET /admin/assets/{assetId}`, create, delete, and a directly-requested denied
   folder return `403`.
+- A folder flagged **open access** is exempt: it is readable by everyone,
+  including anonymous callers, without any group grant (see below).
+
+### Folder open access
+
+A folder can be marked **open access**, mirroring the page contract
+(`pages.is_open_access`). An open-access folder is readable by **everyone,
+including anonymous (not logged-in) callers**, bypassing group grants entirely.
+
+Open access grants `read` only — it **never** confers `manage`. Creating,
+importing and deleting in an open-access folder still require an explicit group
+grant (or the admin role).
+
+Open access is what makes ACL-enforced delivery workable: a folder that must be
+readable by logged-out visitors (logos, public-page imagery) is marked open,
+while every other folder is refused to callers without a grant. See
+**Asset delivery** below.
+
+#### List folders
+
+**Endpoint:** `GET /cms-api/v1/admin/assets/folders`
+
+**Response `data`:**
+```json
+{
+  "folders": [
+    { "folder": "images", "is_open_access": true },
+    { "folder": "champ", "is_open_access": false }
+  ]
+}
+```
+
+[View response JSON Schema](../../../config/schemas/api/v1/responses/admin/assets/asset_folders_envelope.json)
+
+**Permissions:** `admin.asset.read`
+
+#### Toggle folder open access
+
+**Endpoint:** `PUT /cms-api/v1/admin/assets/folders/{folder}/open-access`
+
+**Content-Type:** `application/json`
+
+**Body:**
+```json
+{ "is_open_access": true }
+```
+- `is_open_access` (required): `true` = readable by everyone including anonymous
+  callers; `false` = closed-by-default.
+
+Returns `404` for a folder that does not exist. Folders are created implicitly
+by the first upload into them (or by granting a group on them).
+
+[View request JSON Schema](../../../config/schemas/api/v1/requests/admin/update_asset_folder_open_access.json)
+
+**Response `data`:**
+```json
+{ "folder": "images", "is_open_access": true }
+```
+
+**Permissions:** `admin.group.acl` (the toggle is an access-control decision, so
+it is gated by the same permission as the group-scoped folder ACL routes, not by
+asset-editing permissions).
+
+## Asset delivery
+
+**Endpoint:** `GET /cms-api/v1/assets/{folder}/{filename}`
+
+This is the **only** way asset bytes reach a client. Files are stored outside the
+document root (`var/assets/`, not `public/uploads/assets/`), so the web server
+cannot serve them directly and every request is authorized against the folder
+ACLs.
+
+Previously assets were static files under `public/`. Apache's
+`RewriteCond %{REQUEST_FILENAME} !-f` serves an existing file **before** PHP
+runs, so folder ACLs filtered only the admin listing endpoint — anyone with the
+URL could fetch any asset, including logged-out visitors. That is fixed: the
+delivery route applies the same `read` check as `GET /admin/assets/{assetId}`.
+
+**Access rules:**
+
+| Caller | Closed folder | Open-access folder |
+| --- | --- | --- |
+| Anonymous | `403` | `200` |
+| Logged in, no grant | `403` | `200` |
+| Logged in, `read`/`manage` grant | `200` | `200` |
+| Admin role | `200` | `200` |
+
+The route carries **no permission link** in `api_routes` (like `health` and
+`plugins_manifest`), because access is resource-side: a route-level permission
+would wrongly reject anonymous readers of public folders.
+
+**Responses:** `200` with the file inline (`Content-Disposition: inline`,
+`X-Content-Type-Options: nosniff`), `403` for an unreadable folder, `404` for a
+missing file or a rejected path. `ETag`/`Last-Modified` are emitted and
+conditional requests return `304`; responses are `Cache-Control: private` so a
+shared proxy can never serve one user's ACL-scoped asset to another.
+
+**Path safety:** `{folder}` and `{filename}` are constrained by route
+requirements to reject separators, and the resolved path is verified to stay
+inside the folder (defeating `..` and symlink escapes). The ACL check runs
+*before* the filesystem is touched, so a denied caller cannot probe which files
+exist.
+
+**No content negotiation:** the response is always the file bytes with the
+file's own `Content-Type`, whatever the request's `Accept` header says. Proxies
+that set `Accept: application/json` on every forwarded call still receive the
+image. Do not add `Accept`-based branching to this route.
+
+### Identity must reach this route
+
+Access is resolved from the caller's identity, so **the request must carry the
+caller's credentials**. A browser cannot attach an `Authorization` header to an
+`<img>`/`<video>` element, and where the JWT is stored in an httpOnly cookie
+client-side code cannot read it to build one. A frontend that points an `<img>`
+straight at this endpoint therefore sends an **anonymous** request, and the
+result is misleading rather than obviously broken:
+
+- closed folders are correctly denied — but for the wrong reason (no identity,
+  not an evaluated grant);
+- admins see nothing, because the admin bypass reads the role from the JWT;
+- users holding a `read` grant see nothing, for the same reason.
+
+The frontend must proxy asset requests server-side and attach
+`Authorization: Bearer <token>` there, omitting the header when there is no
+session so anonymous reads of open-access folders still succeed. Do not add a
+public route or reverse-proxy rule that forwards `/cms-api/v1/assets/*` to the
+backend while stripping identity.
+
+**Emitted URLs:** `GET /admin/assets` and `GET /admin/assets/{assetId}` return
+`url` pointing at this route. `file_path` keeps its historical
+`uploads/assets/<folder>/<name>` value as a **logical key** — it is no longer a
+document-root path, and clients must use `url`, not `file_path`, to fetch bytes.
+
+### Deployment requirement
+
+Moving the files is what actually closes the gap; the application change alone is
+not sufficient. On upgrade:
+
+1. Move `public/uploads/assets/` to `var/assets/` (preserving folder structure).
+2. Ensure `var/assets/` is **not** served by the web server and is writable by
+   PHP.
+3. Migration `Version20260728092021` rewrites asset references already stored in
+   CMS content onto the delivery prefix.
+
+`public/.htaccess` additionally denies `/uploads/assets/` as defence-in-depth in
+case a legacy tree is left behind. If your vhost serves `uploads/` through its
+own alias or a separate nginx `location`, remove that rule — an alias outside
+`public/` would bypass both the deny rule and the ACL.
 
 ## File Upload Specifications
 

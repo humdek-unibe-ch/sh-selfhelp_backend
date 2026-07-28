@@ -12,6 +12,15 @@
     RewriteCond %{HTTP:Authorization} ^(.*)
     RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
 
+    # Assets are served ONLY through the ACL-enforcing route
+    # GET /cms-api/v1/assets/{folder}/{filename} and are stored outside the
+    # document root (var/assets/). This rule is defence-in-depth: if a legacy
+    # public/uploads/assets/ tree is left behind by an older install, refuse it
+    # rather than let Apache serve bytes straight off disk (the rewrite below
+    # short-circuits to any existing file BEFORE PHP runs, which would bypass
+    # folder ACLs entirely).
+    RewriteRule ^uploads/assets/ - [F,L]
+
     # Redirect Trailing Slashes...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.+)/$ $1 [L,R=301]

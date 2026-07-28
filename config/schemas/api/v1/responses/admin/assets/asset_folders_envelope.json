@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Asset Folders Response Envelope",
+  "description": "Standard API response envelope for the list of asset folders and their open-access flags",
+  "allOf": [
+    { "$ref": "../../common/_response_envelope.json" }
+  ],
+  "properties": {
+    "data": {
+      "type": "object",
+      "properties": {
+        "folders": {
+          "type": "array",
+          "description": "Every known asset folder, ordered by name",
+          "items": {
+            "type": "object",
+            "properties": {
+              "folder": { "type": "string", "description": "Folder name" },
+              "is_open_access": {
+                "type": "boolean",
+                "description": "true = readable by everyone including anonymous callers; false = closed-by-default"
+              }
+            },
+            "required": ["folder", "is_open_access"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["folders"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["data"]
+}

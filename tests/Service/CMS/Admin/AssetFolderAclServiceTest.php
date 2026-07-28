@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Service\CMS\Admin;
 
+use App\Entity\AssetFolder;
 use App\Entity\Group;
 use App\Repository\AssetFolderGroupRepository;
+use App\Repository\AssetFolderRepository;
 use App\Service\CMS\Admin\AssetFolderAclService;
 use App\Tests\Support\QaKernelTestCase;
 use PHPUnit\Framework\Attributes\Group as TestGroup;
@@ -33,12 +35,14 @@ final class AssetFolderAclServiceTest extends QaKernelTestCase
 
     private AssetFolderAclService $service;
     private AssetFolderGroupRepository $repo;
+    private AssetFolderRepository $folderRepo;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->service = $this->service(AssetFolderAclService::class);
         $this->repo = $this->service(AssetFolderGroupRepository::class);
+        $this->folderRepo = $this->service(AssetFolderRepository::class);
     }
 
     protected function tearDown(): void
@@ -58,6 +62,15 @@ final class AssetFolderAclServiceTest extends QaKernelTestCase
                 $this->service->updateGroupAssetAcls((int) $group->getId(), []);
             }
         }
+
+        // The folder rows outlive their grants, so drop them explicitly.
+        foreach ([self::FOLDER, self::SEED_FOLDER] as $folder) {
+            $row = $this->folderRepo->findOneByFolder($folder);
+            if ($row instanceof AssetFolder) {
+                $this->em->remove($row);
+            }
+        }
+        $this->em->flush();
 
         parent::tearDown();
     }
@@ -177,6 +190,79 @@ final class AssetFolderAclServiceTest extends QaKernelTestCase
         self::assertCount(1, $rows, 'seeding must not touch a folder that already has rows');
         self::assertSame('subject', (string) $rows[0]->getGroup()->getName());
         self::assertSame('manage', $rows[0]->getAccessLevel());
+    }
+
+    public function testOpenAccessFolderIsReadableWithoutAnyGroupGrant(): void
+    {
+        // The folder exists (grants created it) but the therapist group has no
+        // grant on it — closed-by-default would deny.
+        $this->service->updateGroupAssetAcls($this->groupId('subject'), [
+            ['folder' => self::FOLDER, 'access_level' => 'read'],
+        ]);
+        self::assertNotContains(
+            self::FOLDER,
+            $this->repo->findFoldersGrantedToGroups([$this->groupId('therapist')]),
+            'precondition: therapist must hold no grant on the folder'
+        );
+
+        $result = $this->service->setFolderOpenAccess(self::FOLDER, true);
+        self::assertSame(self::FOLDER, $result['folder']);
+        self::assertTrue($result['is_open_access']);
+
+        // Open access is readable by everyone — including a caller with no
+        // grant at all — so the folder is now in the open-access allow-list.
+        self::assertContains(self::FOLDER, $this->folderRepo->findOpenAccessFolders());
+        self::assertTrue($this->folderRepo->isOpenAccess(self::FOLDER));
+    }
+
+    public function testOpenAccessCanBeTurnedBackOffRestoringClosedByDefault(): void
+    {
+        $this->service->updateGroupAssetAcls($this->groupId('subject'), [
+            ['folder' => self::FOLDER, 'access_level' => 'read'],
+        ]);
+
+        $this->service->setFolderOpenAccess(self::FOLDER, true);
+        self::assertTrue($this->folderRepo->isOpenAccess(self::FOLDER));
+
+        $result = $this->service->setFolderOpenAccess(self::FOLDER, false);
+        self::assertFalse($result['is_open_access']);
+        self::assertFalse($this->folderRepo->isOpenAccess(self::FOLDER));
+        self::assertNotContains(self::FOLDER, $this->folderRepo->findOpenAccessFolders());
+    }
+
+    public function testOpenAccessNeverConfersManage(): void
+    {
+        $this->service->updateGroupAssetAcls($this->groupId('subject'), [
+            ['folder' => self::FOLDER, 'access_level' => 'read'],
+        ]);
+        $this->service->setFolderOpenAccess(self::FOLDER, true);
+
+        // Open access grants read only: no group gained a manage grant, so
+        // writing the folder still requires an explicit grant.
+        $levels = $this->repo->findAccessLevelsForGroups(self::FOLDER, [$this->groupId('therapist')]);
+        self::assertSame([], $levels, 'open access must not create manage grants');
+    }
+
+    public function testTogglingOpenAccessOnAnUnknownFolderIsRejected(): void
+    {
+        $this->expectException(\App\Exception\ServiceException::class);
+        $this->service->setFolderOpenAccess('qa_svc_folder_that_does_not_exist', true);
+    }
+
+    public function testFolderListingReportsTheOpenAccessFlag(): void
+    {
+        $this->service->updateGroupAssetAcls($this->groupId('subject'), [
+            ['folder' => self::FOLDER, 'access_level' => 'read'],
+        ]);
+        $this->service->setFolderOpenAccess(self::FOLDER, true);
+
+        $byFolder = [];
+        foreach ($this->service->listFolders() as $entry) {
+            $byFolder[$entry['folder']] = $entry['is_open_access'];
+        }
+
+        self::assertArrayHasKey(self::FOLDER, $byFolder);
+        self::assertTrue($byFolder[self::FOLDER]);
     }
 
     private function groupId(string $name): int

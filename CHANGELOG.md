@@ -1,3 +1,107 @@
+# v0.1.41
+
+**Security fix (breaking).** Asset files are no longer served statically; folder
+ACLs are now enforced on delivery. Requires a filesystem move on upgrade and a
+frontend that reads `url` instead of `file_path`.
+
+## Fix: folder ACLs were unenforceable on the files themselves
+
+Assets lived in `public/uploads/assets/`. Apache's
+`RewriteCond %{REQUEST_FILENAME} !-f` serves an existing file **before** PHP
+runs, so `GET /uploads/assets/<folder>/<file>` returned the bytes to anyone with
+the URL — including logged-out visitors and users explicitly denied the folder.
+Folder ACLs (v0.1.38) only ever filtered the admin **listing** endpoint, which
+made the restriction look effective while the content stayed public. URLs are
+guessable from folder + original filename, so this was not obscurity-protected.
+
+**The fix has three parts:**
+
+1. Assets move **out of the document root**: `public/uploads/assets/` →
+   `var/assets/`, so the web server cannot reach them.
+2. All delivery goes through `GET /cms-api/v1/assets/{folder}/{filename}`
+   (`AssetController`), which calls the same `read` ACL check as the admin
+   get-by-id endpoint. Closed folder → `403`; open-access folder → `200` even for
+   anonymous callers; admin role → always `200`.
+3. `AssetStorageService` is the single source of truth for on-disk location and
+   public URL, and canonicalises delivery paths (separators and `..` rejected by
+   route requirements, resolved path verified to stay inside the folder,
+   defeating symlink escapes). The ACL check runs **before** the filesystem is
+   touched, so a denied caller cannot probe which files exist.
+
+Conditional requests are preserved (`ETag`/`Last-Modified` → `304`) so
+image-heavy pages do not re-download bytes. Responses are `Cache-Control:
+private` so a shared proxy cannot serve one user's asset to another.
+
+## Breaking: `url` is now the only way to fetch bytes
+
+`GET /admin/assets` and `GET /admin/assets/{assetId}` still return both fields,
+but `file_path` is now a **logical key** (`uploads/assets/<folder>/<name>`), not
+a document-root path. Clients must use `url`. The `select-image` / `select-video`
+pickers now offer the delivery URL as the field value, and migration
+`Version20260728092021` rewrites asset references already stored in CMS content.
+
+`supports.frontend` is raised to `>=0.1.67`.
+
+## Upgrade steps
+
+1. Move `public/uploads/assets/` to `var/assets/`, preserving folder structure.
+2. Ensure `var/assets/` is not web-served and is writable by PHP.
+3. Run migrations (`Version20260728091825` registers the route,
+   `Version20260728092021` rewrites stored content references).
+4. If your vhost serves `uploads/` via its own alias or nginx `location`, remove
+   it — an alias outside `public/` bypasses both the new `.htaccess` deny rule
+   and the ACL.
+
+`public/.htaccess` denies `/uploads/assets/` as defence-in-depth for legacy
+trees. Note the deny rule and the application check are independent: the
+filesystem move is what actually closes the gap.
+
+# v0.1.40
+
+Folder-level **open access** for assets. Additive: two new admin routes and a
+new `assets_folders` table; every existing asset endpoint keeps its shape.
+
+## Feature: asset folder open access
+
+A folder can now be marked **open access**, mirroring the page contract
+(`pages.is_open_access`). An open-access folder is readable by **everyone,
+including anonymous (not logged-in) callers**, bypassing group grants — the
+escape hatch for folders that are legitimately public (logos, public-page
+imagery) under the closed-by-default folder ACLs added in v0.1.38.
+
+- Open access grants **`read` only — never `manage`**. Creating, importing and
+  deleting still require an explicit group grant or the admin role.
+- `GET /cms-api/v1/admin/assets/folders` (permission `admin.asset.read`) lists
+  every known folder with its flag: `{ folders: [{ folder, is_open_access }] }`.
+- `PUT /cms-api/v1/admin/assets/folders/{folder}/open-access` (permission
+  `admin.group.acl`) toggles it, returning `{ folder, is_open_access }`. It is
+  gated by the ACL permission rather than an asset-editing one because the
+  toggle is an access-control decision. Unknown folder returns `404`; folders
+  are created implicitly by the first upload into them.
+
+## Schema: asset folders become a first-class table
+
+Migration `Version20260728083949` adds `assets_folders` (`folder` unique +
+`is_open_access`) and repoints `assets_folders_groups.folder` to the FK
+`id_assets_folders`. Existing grants are **backfilled** by matching on the old
+string before it is dropped, so no ACL is lost, and a grant can no longer point
+at a folder that does not exist (previously a typo produced a phantom folder
+that, under closed-by-default, silently hid its assets from every non-admin).
+
+`assets.folder` intentionally stays a `varchar` — that column doubles as the
+on-disk path segment.
+
+Migration `Version20260728084108` registers the two API routes.
+
+## Scope note
+
+Asset files are still served **statically** from `public/uploads/assets/`, so
+the bytes remain reachable by direct URL regardless of this flag. Open access
+marks a folder as *intentionally* public in the authorization model; it does not
+by itself restrict the folders left closed. Enforcing folder ACLs on file
+**delivery** requires moving assets behind an authenticated route (and changing
+the emitted `url` field), which is a separate coordinated wave.
+
 # v0.1.39
 
 Dedicated **`imported` user status** for CSV-imported users. Additive: one new

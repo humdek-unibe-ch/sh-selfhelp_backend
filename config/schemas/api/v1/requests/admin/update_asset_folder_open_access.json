@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "title": "Update Asset Folder Open Access Request",
+  "description": "Toggle open access on an asset folder. An open-access folder is readable by everyone, including anonymous (not logged-in) callers, bypassing group grants. It never confers manage access — creating, importing and deleting still require an explicit group grant.",
+  "properties": {
+    "is_open_access": {
+      "type": "boolean",
+      "description": "true = readable by everyone including anonymous callers; false = closed-by-default (admins and explicitly granted groups only)"
+    }
+  },
+  "required": ["is_open_access"],
+  "additionalProperties": false
+}

@@ -10,6 +10,7 @@ namespace App\Controller\Api\V1\Admin;
 
 use App\Service\CMS\Admin\AdminAssetService;
 use App\Service\CMS\Admin\AssetExportImportService;
+use App\Service\CMS\Admin\AssetFolderAclService;
 use App\Service\Core\ApiResponseFormatter;
 use App\Service\JSON\JsonSchemaValidationService;
 use App\Controller\Trait\RequestValidatorTrait;
@@ -33,9 +34,49 @@ class AdminAssetController extends AbstractController
     public function __construct(
         private readonly AdminAssetService $adminAssetService,
         private readonly AssetExportImportService $assetExportImportService,
+        private readonly AssetFolderAclService $assetFolderAclService,
         private readonly ApiResponseFormatter $responseFormatter,
         private readonly JsonSchemaValidationService $jsonSchemaValidationService
     ) {
+    }
+
+    /**
+     * List every asset folder with its open-access flag.
+     *
+     * @route /admin/assets/folders
+     * @method GET
+     */
+    public function getAssetFolders(): JsonResponse
+    {
+        try {
+            $result = ['folders' => $this->assetFolderAclService->listFolders()];
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/asset_folders_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
+    }
+
+    /**
+     * Toggle open access on a folder. Open access makes every asset in the
+     * folder readable by everyone, including anonymous callers.
+     *
+     * @route /admin/assets/folders/{folder}/open-access
+     * @method PUT
+     */
+    public function updateAssetFolderOpenAccess(string $folder, Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validateRequest($request, 'requests/admin/update_asset_folder_open_access', $this->jsonSchemaValidationService);
+
+            $result = $this->assetFolderAclService->setFolderOpenAccess(
+                $folder,
+                (bool) ($data['is_open_access'] ?? false)
+            );
+
+            return $this->responseFormatter->formatSuccess($result, 'responses/admin/assets/asset_folder_envelope');
+        } catch (\Exception $e) {
+            return $this->responseFormatter->formatThrowable($e);
+        }
     }
 
     /**

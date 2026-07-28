@@ -22,7 +22,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminAssetService extends BaseService
 {
-    private const UPLOAD_DIR = 'uploads/assets/';
     private const ALLOWED_EXTENSIONS = [
         'jpg',
         'jpeg',
@@ -59,7 +58,7 @@ class AdminAssetService extends BaseService
         private readonly LookupService $lookupService,
         private readonly CacheService $cache,
         private readonly AssetFolderAclService $folderAclService,
-        private readonly string $projectDir
+        private readonly AssetStorageService $storage,
     ) {
     }
 
@@ -111,7 +110,7 @@ class AdminAssetService extends BaseService
                 'folder' => $asset->getFolder(),
                 'file_name' => $asset->getFileName(),
                 'file_path' => $asset->getFilePath(),
-                'url' => '/' . $asset->getFilePath()
+                'url' => $this->storage->publicUrl((string) $asset->getFilePath())
             ];
         }, $result['assets']);
 
@@ -156,7 +155,7 @@ class AdminAssetService extends BaseService
                         'folder' => $asset->getFolder(),
                         'file_name' => $asset->getFileName(),
                         'file_path' => $asset->getFilePath(),
-                        'url' => '/' . $asset->getFilePath()
+                        'url' => $this->storage->publicUrl((string) $asset->getFilePath())
                     ];
 
                     return $asset;
@@ -221,14 +220,15 @@ class AdminAssetService extends BaseService
                 throw new ServiceException('File already exists. Use overwrite option to replace it.', Response::HTTP_CONFLICT);
             }
 
-            // Create upload directory if it doesn't exist
-            $uploadPath = $this->projectDir . '/public/' . self::UPLOAD_DIR . $folder;
+            // Create upload directory if it doesn't exist. Assets live OUTSIDE
+            // the document root so folder ACLs can be enforced on delivery.
+            $uploadPath = $this->storage->folderPath($folder);
             if (!is_dir($uploadPath)) {
                 mkdir($uploadPath, 0755, true);
             }
 
             // Move uploaded file FIRST to avoid file size errors on temp files
-            $filePath = self::UPLOAD_DIR . $folder . '/' . $fileName;
+            $filePath = AssetStorageService::LOGICAL_PREFIX . $folder . '/' . $fileName;
             $fullUploadPath = $uploadPath . '/' . $fileName;
 
             // Move the file immediately
@@ -356,7 +356,7 @@ class AdminAssetService extends BaseService
             $this->folderAclService->assertCanManage($asset->getFolder());
 
             // Store file path for cleanup
-            $fullPath = $this->projectDir . '/public/' . $asset->getFilePath();
+            $fullPath = $this->storage->absolutePath((string) $asset->getFilePath());
 
             // Log transaction before deletion
             $this->transactionService->logTransaction(

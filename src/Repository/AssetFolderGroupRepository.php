@@ -32,8 +32,9 @@ class AssetFolderGroupRepository extends ServiceEntityRepository
         /** @var list<AssetFolderGroup> $result */
         $result = $this->createQueryBuilder('afg')
             ->innerJoin('afg.group', 'g')
+            ->innerJoin('afg.assetFolder', 'af')
             ->addSelect('g')
-            ->where('afg.folder = :folder')
+            ->where('af.folder = :folder')
             ->setParameter('folder', $folder)
             ->orderBy('g.id', 'ASC')
             ->getQuery()
@@ -52,9 +53,11 @@ class AssetFolderGroupRepository extends ServiceEntityRepository
         /** @var list<AssetFolderGroup> $result */
         $result = $this->createQueryBuilder('afg')
             ->innerJoin('afg.group', 'g')
+            ->innerJoin('afg.assetFolder', 'af')
+            ->addSelect('af')
             ->where('g.id = :groupId')
             ->setParameter('groupId', $groupId)
-            ->orderBy('afg.folder', 'ASC')
+            ->orderBy('af.folder', 'ASC')
             ->getQuery()
             ->getResult();
 
@@ -70,7 +73,8 @@ class AssetFolderGroupRepository extends ServiceEntityRepository
     {
         /** @var list<array{folder: string}> $rows */
         $rows = $this->createQueryBuilder('afg')
-            ->select('DISTINCT afg.folder AS folder')
+            ->select('DISTINCT af.folder AS folder')
+            ->innerJoin('afg.assetFolder', 'af')
             ->getQuery()
             ->getResult();
 
@@ -92,8 +96,9 @@ class AssetFolderGroupRepository extends ServiceEntityRepository
 
         /** @var list<array{folder: string}> $rows */
         $rows = $this->createQueryBuilder('afg')
-            ->select('DISTINCT afg.folder AS folder')
+            ->select('DISTINCT af.folder AS folder')
             ->innerJoin('afg.group', 'g')
+            ->innerJoin('afg.assetFolder', 'af')
             ->where('g.id IN (:groupIds)')
             ->setParameter('groupIds', $groupIds)
             ->getQuery()
@@ -119,7 +124,8 @@ class AssetFolderGroupRepository extends ServiceEntityRepository
         $rows = $this->createQueryBuilder('afg')
             ->select('afg.accessLevel AS access_level')
             ->innerJoin('afg.group', 'g')
-            ->where('afg.folder = :folder')
+            ->innerJoin('afg.assetFolder', 'af')
+            ->where('af.folder = :folder')
             ->andWhere('g.id IN (:groupIds)')
             ->setParameter('folder', $folder)
             ->setParameter('groupIds', $groupIds)

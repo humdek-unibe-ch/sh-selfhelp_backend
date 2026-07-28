@@ -8,9 +8,11 @@
 
 namespace App\Service\CMS\Admin;
 
+use App\Entity\AssetFolder;
 use App\Entity\AssetFolderGroup;
 use App\Entity\Group;
 use App\Repository\AssetFolderGroupRepository;
+use App\Repository\AssetFolderRepository;
 use App\Service\Auth\UserContextService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
@@ -48,6 +50,7 @@ class AssetFolderAclService extends BaseService
 
     public function __construct(
         private readonly AssetFolderGroupRepository $aclRepository,
+        private readonly AssetFolderRepository $folderRepository,
         private readonly UserContextService $userContextService,
         private readonly DataAccessSecurityService $dataAccessSecurityService,
         private readonly EntityManagerInterface $entityManager,
@@ -119,7 +122,7 @@ class AssetFolderAclService extends BaseService
                 $seenFolders[$folder] = true;
 
                 $acl = new AssetFolderGroup();
-                $acl->setFolder($folder);
+                $acl->setAssetFolder($this->findOrCreateFolder($folder));
                 $acl->setGroup($group);
                 $acl->setAccessLevel($accessLevel);
                 $this->entityManager->persist($acl);
@@ -184,12 +187,19 @@ class AssetFolderAclService extends BaseService
             return null;
         }
 
+        // Open-access folders are readable by everyone, including anonymous
+        // callers, so they are always in the allow-list regardless of groups.
+        $openFolders = $this->folderRepository->findOpenAccessFolders();
+
         $groupIds = $this->currentUserGroupIds();
         if ($groupIds === []) {
-            return [];
+            return $openFolders;
         }
 
-        return $this->aclRepository->findFoldersGrantedToGroups($groupIds);
+        return array_values(array_unique(array_merge(
+            $openFolders,
+            $this->aclRepository->findFoldersGrantedToGroups($groupIds)
+        )));
     }
 
     /**
@@ -212,6 +222,12 @@ class AssetFolderAclService extends BaseService
         if ($normalized === '') {
             // A null/empty folder carries no ACL rows; closed to non-admins.
             return null;
+        }
+
+        // Open-access folders grant read to everyone, including anonymous
+        // callers, without consulting group grants.
+        if ($this->folderRepository->isOpenAccess($normalized)) {
+            return AssetFolderGroup::ACCESS_READ;
         }
 
         $levels = $this->aclRepository->findAccessLevelsForGroups($normalized, $this->currentUserGroupIds());
@@ -268,6 +284,7 @@ class AssetFolderAclService extends BaseService
         }
 
         $groupRepo = $this->entityManager->getRepository(Group::class);
+        $folderEntity = $this->findOrCreateFolder($folder);
         $seeded = false;
         foreach (self::DEFAULT_FOLDER_ACL as $groupName => $accessLevel) {
             $group = $groupRepo->findOneBy(['name' => $groupName]);
@@ -277,7 +294,7 @@ class AssetFolderAclService extends BaseService
             }
 
             $acl = new AssetFolderGroup();
-            $acl->setFolder($folder);
+            $acl->setAssetFolder($folderEntity);
             $acl->setGroup($group);
             $acl->setAccessLevel($accessLevel);
             $this->entityManager->persist($acl);
@@ -288,6 +305,89 @@ class AssetFolderAclService extends BaseService
             $this->entityManager->flush();
             $this->invalidateCache();
         }
+    }
+
+    /**
+     * List every known folder with its open-access flag, for the admin UI.
+     *
+     * @return list<array{folder: string, is_open_access: bool}>
+     */
+    public function listFolders(): array
+    {
+        return array_map(
+            static fn (AssetFolder $folder): array => [
+                'folder' => $folder->getFolder(),
+                'is_open_access' => $folder->isOpenAccess(),
+            ],
+            $this->folderRepository->findAllOrdered()
+        );
+    }
+
+    /**
+     * Toggle the open-access flag on a folder.
+     *
+     * Open access makes every asset in the folder readable by everyone,
+     * including anonymous (not logged-in) callers, bypassing group grants. It
+     * never confers `manage` — writing still requires an explicit group grant.
+     *
+     * @return array{folder: string, is_open_access: bool}
+     */
+    public function setFolderOpenAccess(string $folder, bool $isOpenAccess): array
+    {
+        $normalized = $this->normalizeFolder($folder);
+
+        $this->entityManager->beginTransaction();
+
+        try {
+            $entity = $this->folderRepository->findOneByFolder($normalized);
+            if (!$entity instanceof AssetFolder) {
+                $this->throwNotFound('Asset folder not found: ' . $normalized);
+            }
+
+            $entity->setIsOpenAccess($isOpenAccess);
+            $this->entityManager->flush();
+
+            $this->transactionService->logTransaction(
+                LookupService::TRANSACTION_TYPES_UPDATE,
+                LookupService::TRANSACTION_BY_BY_USER,
+                'assets_folders',
+                $entity->getId(),
+                false,
+                'Asset folder open access ' . ($isOpenAccess ? 'enabled' : 'disabled') . ' for folder: ' . $normalized
+            );
+
+            $this->entityManager->commit();
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+
+        $this->invalidateCache();
+
+        return [
+            'folder' => $normalized,
+            'is_open_access' => $isOpenAccess,
+        ];
+    }
+
+    /**
+     * Resolve a folder row by name, creating it (unflagged) if it does not
+     * exist yet. Runs inside the caller's transaction: it persists + flushes so
+     * the row can be referenced by FK immediately, but never begins/commits.
+     */
+    private function findOrCreateFolder(string $folder): AssetFolder
+    {
+        $existing = $this->folderRepository->findOneByFolder($folder);
+        if ($existing instanceof AssetFolder) {
+            return $existing;
+        }
+
+        $entity = new AssetFolder();
+        $entity->setFolder($folder);
+        $this->entityManager->persist($entity);
+        $this->entityManager->flush();
+
+        return $entity;
     }
 
     /**

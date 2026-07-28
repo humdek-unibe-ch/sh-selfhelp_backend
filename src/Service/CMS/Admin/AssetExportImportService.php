@@ -36,7 +36,7 @@ class AssetExportImportService extends BaseService
         private readonly AssetRepository $assetRepository,
         private readonly AdminAssetService $adminAssetService,
         private readonly AssetFolderAclService $folderAclService,
-        private readonly string $projectDir,
+        private readonly AssetStorageService $storage,
     ) {
     }
 
@@ -66,7 +66,7 @@ class AssetExportImportService extends BaseService
 
         $manifestEntries = [];
         foreach ($assets as $asset) {
-            $sourcePath = $this->projectDir . '/public/' . $asset->getFilePath();
+            $sourcePath = $this->storage->absolutePath((string) $asset->getFilePath());
             if (!is_file($sourcePath)) {
                 // Skip DB rows whose physical file is missing rather than failing
                 // the whole export; the manifest only lists files actually bundled.
