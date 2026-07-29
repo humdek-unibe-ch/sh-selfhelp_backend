@@ -634,6 +634,37 @@ the same change wave:
 > frontend that adopts the asset bundle + folder-ACL UI raises ITS
 > `supports.core` floor to `0.1.38`. `pluginApiVersion` unchanged (`0.1.0`).
 
+> **Core 0.1.42 / frontend 0.1.68 (clean user data actually erases —
+> behavioural fix, additive response):** `POST /admin/users/{userId}/clean-data`
+> existed end-to-end (route, controller, `admin.user.update` mapping,
+> impersonation block) but `AdminUserService::cleanUserData()` was a stub that
+> returned `true` without deleting anything, so the API answered
+> `200 {"cleaned": true}` while every record remained. The frontend shipped the
+> row action + confirmation modal against that no-op — an admin could confirm an
+> irreversible GDPR erasure and be told it succeeded. **This is exactly the
+> incompatible pair the registry gate exists to refuse**, which is why the floors
+> move even though no route or schema was added.
+>
+> The service now erases in one transaction: `Transaction` (the Users list
+> "Activity" column, `User::$transactions`, drops to 0), `DataRow` + `DataCell`
+> (cells deleted explicitly — a bulk DQL `DELETE` bypasses Doctrine's ORM-level
+> cascade), `ScheduledJob` (recipients + reminder metadata cascade via FK), and
+> `ScheduledJobRecipient` including rows on *other users'* jobs naming this user
+> (FK is `ON DELETE SET NULL`, so they would otherwise survive orphaned).
+> Deliberately kept: `DataAccessAudit` (security audit surface) and session/auth
+> state. The account itself is kept. The audit entry is written **after** the
+> wipe and **inside** the same transaction; failures surface as a non-2xx
+> `ServiceException` rather than `200 {"cleaned": false}`.
+>
+> Authorization tightens to `PERMISSION_DELETE` on the target plus a
+> `SYSTEM_USERS` guard, while the **route** permission stays `admin.user.update`
+> to match the frontend's client-side gate. The response is additive: `data`
+> gains `removed` (`{scheduled_job_recipients, scheduled_jobs, data_cells,
+> data_rows, transactions}`); kept entities have no key rather than a `0`. No
+> migration ships. Frontend `supports.core` `0.1.41 → 0.1.42`, backend
+> `supports.frontend` `0.1.67 → 0.1.68`. Live pairing: **frontend `>=0.1.68` ⇄
+> core `>=0.1.42`**. `pluginApiVersion` unchanged (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -641,13 +672,13 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.38` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.42` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |
 | `sh-selfhelp_frontend` → `@selfhelp/shared` | `1.21.7` | strict menu payload + header layer + footer preset contract + entry-table style types + cms-app types + resolve helpers + `should_fallback` |
 | `sh-selfhelp_frontend` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | query-preview endpoint, field-based entry binding, fields_map import relink |
-| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.64 <0.2.0` | frontend 0.1.64 consumes the admin user/group/role management endpoints + registration-code / scheduled-jobs stats (admin-only; types local to the frontend, anchored by JSON Schemas) |
+| `sh-selfhelp_backend` → frontend (`release-manifest.json` `supports.frontend`) | `>=0.1.68 <0.2.0` | frontend 0.1.68 ships the clean-user-data row action + confirmation modal, which requires a core that actually erases (core 0.1.42); carries the earlier admin user/group/role + asset-delivery floors |
 | `selfhelp-mobile-preview` image (`sh-selfhelp_mobile`) | `0.1.20` | `0.1.20` pins the web-preview bottom tab bar + hides the desktop scrollbar in the embedded pane; floor-neutral |
 | `selfhelp-mobile-preview` → core (`release-manifest.json` `supports.core`) | `>=0.1.36 <0.2.0` | entry-record load_record_from + field-based entry binding; pair via `supports.core` (package SemVer may stay `0.1.33`) |
 | `selfhelp-mobile-preview` `mobileRendererVersion` | `0.1.0` | the mobile renderer contract the image advertises; plugin `compatibility.mobile` ranges gate against it |

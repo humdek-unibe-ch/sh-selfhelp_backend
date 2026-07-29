@@ -1,3 +1,65 @@
+# v0.1.42
+
+**Clean user data now actually erases data.** `POST /admin/users/{userId}/clean-data`
+was a stub that returned `200 {"cleaned": true}` while deleting nothing.
+
+## Fix: the endpoint reported success without erasing anything
+
+`AdminUserService::cleanUserData()` looked up the user, hit a
+`// TODO: Implement data cleaning logic`, and returned `true`. Once the admin UI
+exposed the action, an admin could confirm an irreversible GDPR erasure and be
+told it succeeded while every record remained.
+
+The service now erases, in one transaction:
+
+- `Transaction` — the user's activity record; the Users list "Activity" column
+  drops to 0 as the confirmation modal promises.
+- `DataRow` + `DataCell` — all form/entry input the user submitted. Cells are
+  deleted explicitly rather than relying on the FK cascade, because a bulk DQL
+  `DELETE` bypasses Doctrine's ORM-level cascade entirely.
+- `ScheduledJob` — jobs owned by the user; recipients and reminder metadata
+  cascade via their FKs.
+- `ScheduledJobRecipient` — including rows on *other users'* jobs naming this
+  user as a recipient. Their FK is `ON DELETE SET NULL`, so deleting the jobs
+  would otherwise leave them behind with a null user.
+
+Deliberately **kept**: `DataAccessAudit` (a security audit surface recording who
+accessed what, not content the user produced) and session/auth state
+(`RefreshToken`, `Users2faCode`, `ValidationCode`, `UserNavigationState`).
+`PageView`/`PageViewReferrer` carry no `id_users` — pseudonymous daily
+aggregates with nothing per-user to erase. The account itself is kept: this is
+the "erase what I produced, keep the (inactive) account" path, not `deleteUser`.
+
+The operation writes its own audit entry **after** the wipe (so it survives the
+transaction delete) and **inside** the same DB transaction, so a failure at any
+point rolls the whole erasure back rather than leaving it unlogged. Failures
+surface as a non-2xx `ServiceException` instead of `200 {"cleaned": false}` —
+the frontend treats any 2xx as "data is gone".
+
+## Authorization
+
+`cleanUserData()` takes the acting user:
+`cleanUserData(int $currentUserId, int $userId)`. It requires
+`PERMISSION_DELETE` on the target (erasure is irreversible) and refuses
+`SYSTEM_USERS` with `403`. The **route** permission stays `admin.user.update`,
+matching the frontend's client-side gate. The route remains blocked under an
+impersonation token.
+
+## Response (additive)
+
+`data` gains a per-entity `removed` count map alongside `cleaned`:
+
+```json
+{ "cleaned": true,
+  "removed": { "scheduled_job_recipients": 2, "scheduled_jobs": 3,
+               "data_cells": 18, "data_rows": 7, "transactions": 42 } }
+```
+
+Entities deliberately kept have **no key** rather than a `0`.
+`supports.frontend` is raised 0.1.67 -> 0.1.68 in lockstep (the frontend that
+ships the confirmation modal + row action raises ITS `supports.core` floor to
+0.1.42). `pluginApiVersion` is unchanged (0.1.0).
+
 # v0.1.41
 
 **Security fix (breaking).** Asset files are no longer served statically; folder

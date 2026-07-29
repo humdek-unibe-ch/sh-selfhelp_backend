@@ -1065,13 +1065,120 @@ class AdminUserService extends BaseService
     }
 
     /**
-     * Clean user data (placeholder)
+     * Erase the content a user produced while keeping the account itself.
+     *
+     * This is the GDPR "erase what I produced, keep the (inactive) account"
+     * path — deliberately not deleteUser(). Restores the behaviour of the
+     * SelfHelp v1 UserModel::clean_user_data().
+     *
+     * Scope decisions:
+     * - Transactions ARE erased. They are v2's user-activity record and the
+     *   admin Users list counts them as the "Activity" column. Note the column
+     *   holds the ACTING user, so this erases what the user DID, while admin
+     *   actions performed ON them survive attributed to that admin (see the
+     *   note at the delete itself). This operation writes its own transaction
+     *   entry AFTER the wipe so the erasure itself stays audited.
+     * - DataAccessAudit is intentionally KEPT: it records who accessed what,
+     *   which is a security audit surface rather than content this user
+     *   produced. Revisit only with a compliance decision.
+     * - Session/auth state (RefreshToken, Users2faCode, ValidationCode,
+     *   UserNavigationState) is out of scope — it is not user-produced content
+     *   and dies with the account or expires on its own.
+     * - PageView/PageViewReferrer hold no id_users (pseudonymous daily
+     *   aggregates), so there is nothing per-user to erase there.
+     *
+     * @return array{cleaned: bool, removed: array<string, int>}
      */
-    public function cleanUserData(int $userId): bool
+    public function cleanUserData(int $currentUserId, int $userId): array
     {
-        $user = $this->findUserOrThrow($userId);
-        // TODO: Implement data cleaning logic
-        return true;
+        // The ROUTE permission stays `admin.user.update` (see the api_routes
+        // row) and must not be raised — the frontend's client-side gate is
+        // pinned to it, so moving the route to `admin.user.delete` would lock
+        // out admins the UI still offers the action to. This is an ADDITIONAL
+        // resource-side check on top of it: erasure is irreversible, so the
+        // caller must also have delete-level access to this particular user.
+        if (!$this->canAccessUser($currentUserId, $userId, DataAccessSecurityService::PERMISSION_DELETE)) {
+            throw new ServiceException('Insufficient permissions to clean user data', Response::HTTP_FORBIDDEN);
+        }
+
+        return $this->executeInTransaction(function () use ($userId) {
+            $user = $this->findUserOrThrow($userId);
+
+            if (in_array($user->getName(), self::SYSTEM_USERS, true)) {
+                throw new ServiceException('Cannot clean data of system users', Response::HTTP_FORBIDDEN);
+            }
+
+            $removed = [];
+
+            // Recipient rows pointing at this user on jobs owned by SOMEONE
+            // ELSE. These are not reachable from "jobs this user owns" below,
+            // but they are a record of what this user was sent, so an erasure
+            // request covers them. Their FK is ON DELETE SET NULL, so deleting
+            // the jobs would otherwise leave them behind with a null user.
+            $removed['scheduled_job_recipients'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\ScheduledJobRecipient r WHERE r.user = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // Jobs owned by the user. scheduled_job_recipients and
+            // scheduled_job_reminders both FK to scheduled_jobs with
+            // ON DELETE CASCADE, so their remaining rows go with these.
+            $removed['scheduled_jobs'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\ScheduledJob j WHERE j.user = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // Data cells are deleted explicitly rather than relying on the
+            // fk_data_cells_id_data_rows ON DELETE CASCADE: a bulk DQL DELETE
+            // bypasses Doctrine's ORM-level cascade entirely, so the erasure
+            // must not depend on the DB constraint staying in place.
+            $removed['data_cells'] = $this->asInt($this->entityManager
+                ->createQuery(
+                    'DELETE FROM App\Entity\DataCell c WHERE c.dataRow IN ('
+                    . 'SELECT dr FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId)'
+                )
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            $removed['data_rows'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\DataRow dr WHERE dr.idUsers = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // NOTE: transactions.id_users is the ACTING user, not the subject —
+            // TransactionService::logTransaction() fills it from
+            // getCurrentUser(). So this erases what THIS USER DID; an admin
+            // action performed ON them (block, role change, impersonation) is
+            // attributed to that admin and SURVIVES the wipe. This is the same
+            // relation (User::$transactions) the admin Users list counts as its
+            // "Activity" column, so that column does drop to 0.
+            $removed['transactions'] = $this->asInt($this->entityManager
+                ->createQuery('DELETE FROM App\Entity\Transaction t WHERE t.user = :userId')
+                ->setParameter('userId', $userId)
+                ->execute());
+
+            // Written AFTER the wipe so this entry survives the transaction
+            // delete above, and inside the same DB transaction so a failure
+            // here rolls the whole erasure back rather than leaving it
+            // unlogged.
+            $this->logUserTransaction(
+                LookupService::TRANSACTION_TYPES_DELETE,
+                $user,
+                'User data cleaned: ' . $user->getEmail() . ' (' . implode(', ', array_map(
+                    static fn(string $key, int $count): string => $key . '=' . $count,
+                    array_keys($removed),
+                    array_values($removed)
+                )) . ')'
+            );
+
+            $this->entityManager->flush();
+
+            // The Users list caches the activity count, so the list caches
+            // must go too (invalidateUserCaches covers both list + entity).
+            $this->invalidateUserCaches($userId);
+
+            return ['cleaned' => true, 'removed' => $removed];
+        });
     }
 
     /**
