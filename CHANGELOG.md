@@ -1,3 +1,90 @@
+# v0.1.43
+
+**Public-navigable page types are resolved by name, and the admin navigation
+payload now states whether an item actually renders publicly.**
+
+## Fix: the `[2, 3]` page-type filter was positional
+
+`PageService::getAllAccessiblePagesForUser()` restricted non-admin page trees
+with `!in_array($item['id_page_types'], [2, 3])`. `page_types` is a plain table
+with auto-increment ids and no stable lookup codes, so `2` and `3` meant `core`
+and `experiment` only because of legacy seed order. A fresh install seeding in a
+different order, or a plugin inserting a page type, silently changes which pages
+the public menu may render — with no failing test.
+
+The set is now named once, on the entity:
+
+```php
+PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment'];
+```
+
+and resolved to ids by name via `PageTypeRepository::findPublicNavigableIds()`
+(memoized per repository instance). Behaviour is identical for current seed
+data — this is a robustness change, not a behaviour change. Public navigation
+renders content pages only; system types (`intern`, `maintenance`, `emails`,
+`global_css`, …) never appear.
+
+## Add: `public_visibility` on admin navigation items (additive)
+
+The admin navigation builder let you nest a page under another, save it, and see
+the nesting — while the public menu silently dropped it, making the `dropdown`
+and `mega-menu` header presets look broken (they only differ from `simple` when
+a root item has children). The frontend had to duplicate the exclusion rule to
+render its "Not in public menu" badge.
+
+Each item in the admin payload now carries:
+
+```json
+"public_visibility": { "rendered": true, "reason": null }
+```
+
+`reason` is a stable machine-readable code — the frontend owns the wording:
+
+- `headless` — the page is headless
+- `page_type_excluded` — the page type is not public-navigable
+- `page_not_accessible` — dropped by ACL or the page-type filter during payload
+  building (the per-user `$pageMap` collapses both into "absent")
+
+The verdict is derived from the same predicate the public payload uses
+(`NavigationMenuService::evaluatePagePublicVisibility()` and its `$pageMap`
+counterpart), and an integration test asserts the admin verdict matches actual
+public rendering so the two cannot drift.
+
+## Add: `menu_eligible` on the admin pages list (additive)
+
+So the menu picker can filter out pages that may never be added to a public menu,
+without hardcoding page-type ids. `IAdminPage` already carries `id_page_types`,
+so the frontend *could* filter client-side — but only by hardcoding `[2, 3]`
+again, the exact fragility this release removes. `GET /admin/pages` now answers
+directly:
+
+```json
+"menu_eligible": true
+```
+
+`true` when the page's type is in `PageType::PUBLIC_NAVIGABLE_PAGE_TYPES`,
+derived from the same `findPublicNavigableIds()` above.
+
+**It covers the page-type case only.** The three exclusions are not
+interchangeable, and conflating them is the way this goes wrong:
+
+- **Page type** — permanently unfixable → `menu_eligible: false`, filter from the picker.
+- **Headless** — a checkbox an admin can untick → stays `menu_eligible: true`; keep
+  it visible with a tag, or you hide a page they could legitimately fix.
+- **Not accessible** — per-visitor, no per-page answer → stays eligible; tag only.
+
+A headless `core` page therefore returns `menu_eligible: true`, asserted directly
+by `testMenuEligibilityCoversPageTypeOnlyNotHeadless`. Per-item reasons stay on
+`public_visibility`.
+
+## Compatibility
+
+Additive response fields only — every existing response keeps its shape, so
+`supports.frontend` stays `>=0.1.68`. The frontend that adopts these fields (and
+deletes its local `PUBLIC_NAVIGABLE_PAGE_TYPE_IDS = [2, 3]` constant) raises its
+own `supports.core` floor to 0.1.43. No migration ships. `pluginApiVersion` is
+unchanged (0.1.0).
+
 # v0.1.42
 
 **Clean user data now actually erases data.** `POST /admin/users/{userId}/clean-data`

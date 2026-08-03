@@ -29,7 +29,6 @@ use App\Service\Core\TransactionService;
 use App\Service\Core\BaseService;
 use App\Service\CMS\Common\SectionUtilityService;
 use App\Service\Core\UserContextAwareService;
-use App\Service\Auth\UserContextService;
 use App\Service\Security\DataAccessSecurityService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Response;
@@ -780,64 +779,6 @@ class AdminPageService extends BaseService
     }
 
     /**
-     * Get all pages for admin purposes without ACL filtering
-     * Returns pages in the same format as PageService for compatibility
-     *
-     * @return list<array<string, mixed>> Array of pages in hierarchical structure
-     */
-    public function getAllPagesForAdmin(): array
-    {
-        // Get current user for caching. This endpoint is admin-only (the
-        // firewall requires authentication), so the guest branch is never
-        // reached in practice; we use the shared sentinel for consistency.
-        $user = $this->userContextAwareService->getCurrentUser();
-        $userId = $user ? (int) $user->getId() : UserContextService::GUEST_USER_ID;
-
-        // Cache key for admin pages (no ACL filtering)
-        $cacheKey = "admin_pages";
-
-        $pages = $this->cache
-            ->withCategory(CacheService::CATEGORY_PAGES)
-            ->withEntityScope(CacheService::ENTITY_SCOPE_USER, $userId)
-            ->getList($cacheKey, function () {
-                // Get all pages from repository
-                $pages = $this->pageRepository->findAll();
-
-                $pageIds = array_values(array_filter(array_map(
-                    static fn (Page $page): ?int => $page->getId(),
-                    $pages,
-                )));
-                $membershipByPage = $this->navigationAssignmentService->getMembershipBadgesForPageIds($pageIds);
-
-                // Convert entities to array manually for better control and performance
-                $allPages = [];
-                foreach ($pages as $page) {
-                    $pageId = (int) $page->getId();
-                    $allPages[] = [
-                        'id_pages' => $pageId,
-                        'id_parent_page' => $page->getParentPage() ? $page->getParentPage()->getId() : null,
-                        'keyword' => $page->getKeyword(),
-                        'url' => $page->getUrl(),
-                        'is_headless' => $page->isHeadless() ? 1 : 0,
-                        'is_open_access' => $page->isOpenAccess() ? 1 : 0,
-                        'is_system' => $page->isSystem() ? 1 : 0,
-                        'id_page_access_types' => $page->getPageAccessType() ? $page->getPageAccessType()->getId() : null,
-                        'id_page_types' => $page->getPageType() ? $page->getPageType()->getId() : null,
-                        'page_surface' => $page->getPageSurfaceCode(),
-                        'cms_app_id' => $page->getCmsApp()?->getId(),
-                        'cms_app_slug' => $page->getCmsApp()?->getSlug(),
-                        'cms_app_role' => $page->getCmsAppRole(),
-                        'navigationMembership' => $membershipByPage[$pageId] ?? [],
-                    ];
-                }
-
-                return $allPages;
-            });
-
-        return $pages;
-    }
-
-    /**
      * Get filtered pages with permission-based access control
      * Includes proper caching with user scope
      * Uses RoleDataAccessRepository optimized methods
@@ -924,7 +865,37 @@ class AdminPageService extends BaseService
             });
         }
 
-        return $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)));
+        return $this->attachMenuEligibility(
+            $this->attachNavigationMembership($this->attachPageTitles(array_values($pages)))
+        );
+    }
+
+    /**
+     * Flag whether each page may EVER be added to a public menu.
+     *
+     * Page type only — it is the one permanently unfixable exclusion, so a menu
+     * picker can filter on it without hardcoding page-type ids. Headless (a
+     * checkbox an admin can untick) and per-visitor accessibility are
+     * deliberately NOT folded in: those pages stay eligible and are surfaced as
+     * tags instead, via NavigationMenuService::evaluatePagePublicVisibility().
+     *
+     * @param list<array<string, mixed>> $pages
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function attachMenuEligibility(array $pages): array
+    {
+        // Resolved by NAME (see PageType::PUBLIC_NAVIGABLE_PAGE_TYPES).
+        $publicNavigableTypeIds = $this->pageTypeRepository->findPublicNavigableIds();
+
+        foreach ($pages as &$page) {
+            $pageTypeId = $page['id_page_types'] ?? null;
+            $page['menu_eligible'] = !is_numeric($pageTypeId)
+                || in_array((int) $pageTypeId, $publicNavigableTypeIds, true);
+        }
+        unset($page);
+
+        return $pages;
     }
 
     /**

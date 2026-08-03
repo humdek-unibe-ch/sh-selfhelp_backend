@@ -15,6 +15,19 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\UniqueConstraint(name: 'uq_page_types_name', columns: ['name'])]
 class PageType
 {
+    /**
+     * Page types that public navigation may render. Content pages only —
+     * system types (`intern`, `maintenance`, `emails`, `global_css`, …) never
+     * appear in a public menu.
+     *
+     * Resolved by name rather than id: `page_types` uses auto-increment ids
+     * (no stable lookup codes), so the ids behind these names depend on seed
+     * order and can shift on a fresh install or when a plugin inserts a type.
+     *
+     * @var list<string>
+     */
+    public const PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment'];
+
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column(type: 'integer')]

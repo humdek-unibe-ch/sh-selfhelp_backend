@@ -80,6 +80,7 @@ class PageService extends BaseService
         private readonly \App\Routing\PageRouteResolverService $pageRouteResolver,
         private readonly OptionLabelHydrator $optionLabelHydrator,
         private readonly DataTableFilterService $dataTableFilterService,
+        private readonly \App\Repository\PageTypeRepository $pageTypeRepository,
     ) {
     }
 
@@ -139,8 +140,13 @@ class PageService extends BaseService
                 $removeType = $mode === LookupService::PAGE_ACCESS_TYPES_MOBILE ? LookupService::PAGE_ACCESS_TYPES_WEB : LookupService::PAGE_ACCESS_TYPES_MOBILE;
                 $removeTypeId = $this->lookupService->getLookupIdByCode(LookupService::PAGE_ACCESS_TYPES, $removeType);
 
+                // Public navigation renders content pages only; system page types
+                // (intern, maintenance, emails, global_css, …) never appear.
+                // Resolved by name — see PageType::PUBLIC_NAVIGABLE_PAGE_TYPES.
+                $publicNavigableTypeIds = $this->pageTypeRepository->findPublicNavigableIds();
+
                 // If mode is both, do not remove any type
-                $filteredPages = array_values(array_filter($allPages, function (array $item) use ($removeTypeId, $mode, $admin) {
+                $filteredPages = array_values(array_filter($allPages, function (array $item) use ($removeTypeId, $mode, $admin, $publicNavigableTypeIds) {
 
                     // Base ACL check
                     if ($item['acl_select'] != 1) {
@@ -148,9 +154,10 @@ class PageService extends BaseService
                     }
 
                     // If admin is true, then all pages (normal filtering)
-                    // If not admin, then only pages with id_page_types = 2 or 3
-                    // (core and experiment pages)
-                    if (!$admin && isset($item['id_page_types']) && !in_array($item['id_page_types'], [2, 3])) {
+                    // If not admin, then only public-navigable (content) page types
+                    if (!$admin && isset($item['id_page_types']) && is_numeric($item['id_page_types'])
+                        && !in_array((int) $item['id_page_types'], $publicNavigableTypeIds, true)
+                    ) {
                         return false;
                     }
 

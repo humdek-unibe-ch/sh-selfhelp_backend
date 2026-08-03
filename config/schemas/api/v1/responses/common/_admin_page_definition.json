@@ -20,6 +20,10 @@
                 "is_system": { "type": "boolean" },
                 "id_page_access_types": { "type": "integer" },
                 "id_page_types": { "type": "integer" },
+                "menu_eligible": {
+                    "type": "boolean",
+                    "description": "May this page ever be added to a public menu? Page type only (PageType::PUBLIC_NAVIGABLE_PAGE_TYPES) — the one permanently unfixable exclusion, so menu pickers can filter on it. Headless pages and per-visitor accessibility are NOT folded in here: they stay eligible and are surfaced as tags instead."
+                },
                 "page_surface": {
                     "type": "string",
                     "enum": ["public", "cms"],

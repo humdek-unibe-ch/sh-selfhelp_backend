@@ -9,12 +9,14 @@ namespace App\Service\CMS;
 
 use App\Entity\NavigationMenu;
 use App\Entity\NavigationMenuItem;
+use App\Entity\Page;
 use App\Navigation\NavigationMenuItemTranslationSupport;
 use App\Navigation\NavigationMenuResolveSupport;
 use App\Repository\NavigationMenuItemRepository;
 use App\Repository\NavigationMenuItemTranslationRepository;
 use App\Repository\NavigationMenuRepository;
 use App\Repository\NavigationSettingsRepository;
+use App\Repository\PageTypeRepository;
 use App\Service\CMS\Frontend\PageService;
 use App\Service\Cache\Core\CacheService;
 use App\Service\Core\BaseService;
@@ -48,6 +50,7 @@ class NavigationMenuService extends BaseService
         private readonly CacheService $cache,
         private readonly UserContextService $userContextAwareService,
         private readonly UserNavigationStateService $userNavigationStateService,
+        private readonly PageTypeRepository $pageTypeRepository,
     ) {
     }
 
@@ -189,6 +192,74 @@ class NavigationMenuService extends BaseService
         }
 
         return 0;
+    }
+
+    /**
+     * Machine-readable reasons the public menu drops a page item.
+     * The frontend owns the wording — these are codes, not display text.
+     */
+    public const PUBLIC_VISIBILITY_REASON_HEADLESS = 'headless';
+    public const PUBLIC_VISIBILITY_REASON_PAGE_TYPE_EXCLUDED = 'page_type_excluded';
+    public const PUBLIC_VISIBILITY_REASON_PAGE_NOT_ACCESSIBLE = 'page_not_accessible';
+
+    /**
+     * Single definition of "will the public menu render this page item?".
+     *
+     * Both the public payload (formatMenuItem) and the admin payload
+     * (AdminNavigationService::formatMenuItemEntity) derive their verdict from
+     * this method, so the builder badge can never drift from what actually
+     * renders. Non-page items (group / external_url / separator) are always
+     * rendered as far as page filtering is concerned.
+     *
+     * @return array{rendered: bool, reason: string|null}
+     */
+    public function evaluatePagePublicVisibility(?Page $page): array
+    {
+        if (!$page instanceof Page) {
+            return ['rendered' => true, 'reason' => null];
+        }
+
+        if ($page->isHeadless() === true) {
+            return ['rendered' => false, 'reason' => self::PUBLIC_VISIBILITY_REASON_HEADLESS];
+        }
+
+        $pageTypeId = $page->getPageType()?->getId();
+        if ($pageTypeId !== null
+            && !in_array($pageTypeId, $this->pageTypeRepository->findPublicNavigableIds(), true)
+        ) {
+            return ['rendered' => false, 'reason' => self::PUBLIC_VISIBILITY_REASON_PAGE_TYPE_EXCLUDED];
+        }
+
+        return ['rendered' => true, 'reason' => null];
+    }
+
+    /**
+     * Public-rendering verdict for a page item during payload building.
+     *
+     * Operates on the ACL-filtered $pageMap (per user), so it additionally
+     * catches pages the current user cannot access — something the entity-based
+     * evaluatePagePublicVisibility() cannot see. Reason codes are shared
+     * between the two so the admin payload and the public menu speak the same
+     * language.
+     *
+     * @param array<int, array<string, mixed>> $pageMap
+     *
+     * @return array{rendered: bool, reason: string|null}
+     */
+    private function resolvePublicVisibilityFromPageMap(int $pageId, array $pageMap): array
+    {
+        if (!array_key_exists($pageId, $pageMap)) {
+            // Dropped by ACL or by the public-navigable page-type filter in
+            // PageService::getAllAccessiblePagesForUser (both collapse to
+            // "absent from the map" here).
+            return ['rendered' => false, 'reason' => self::PUBLIC_VISIBILITY_REASON_PAGE_NOT_ACCESSIBLE];
+        }
+
+        if ($this->isHeadlessNode($pageMap[$pageId])) {
+            return ['rendered' => false, 'reason' => self::PUBLIC_VISIBILITY_REASON_HEADLESS];
+        }
+
+        return ['rendered' => true, 'reason' => null];
     }
 
     /**
@@ -369,14 +440,13 @@ class NavigationMenuService extends BaseService
         $pageNode = null;
         $pageId = $item->getPage()?->getId();
         if ($pageId !== null) {
-            if (!array_key_exists($pageId, $pageMap)) {
+            // Same exclusion rule the admin payload reports as
+            // `public_visibility`; see resolvePublicVisibilityFromPageMap().
+            if ($this->resolvePublicVisibilityFromPageMap($pageId, $pageMap)['reason'] !== null) {
                 return null;
             }
             /** @var array<string, mixed> $pageNode */
             $pageNode = $pageMap[$pageId];
-            if ($this->isHeadlessNode($pageNode)) {
-                return null;
-            }
         }
 
         $children = [];

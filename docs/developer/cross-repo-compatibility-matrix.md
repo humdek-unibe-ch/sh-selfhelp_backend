@@ -665,6 +665,50 @@ the same change wave:
 > `supports.frontend` `0.1.67 → 0.1.68`. Live pairing: **frontend `>=0.1.68` ⇄
 > core `>=0.1.42`**. `pluginApiVersion` unchanged (`0.1.0`).
 
+> **Core 0.1.43 (public-navigable page types by name + `public_visibility` —
+> additive, floor-neutral):** two related navigation-builder fixes, no migration.
+>
+> `PageService::getAllAccessiblePagesForUser()` filtered non-admin page trees
+> with a positional `!in_array($item['id_page_types'], [2, 3])`. `page_types` is
+> a plain auto-increment table with no stable lookup codes (unlike
+> `pageAccessTypes` / `pageSurface`, which have named constants in
+> `LookupService`), so `2`/`3` meant `core`/`experiment` only by legacy seed
+> order — a fresh install seeding differently, or a plugin inserting a page type,
+> silently changed which pages the public menu may render, with no failing test.
+> The set is now named once on the entity
+> (`PageType::PUBLIC_NAVIGABLE_PAGE_TYPES = ['core', 'experiment']`) and resolved
+> to ids **by name** via `PageTypeRepository::findPublicNavigableIds()`.
+> Behaviour is identical for current seed data.
+>
+> Each item in the admin navigation payload gains `public_visibility`
+> (`{rendered: bool, reason: string|null}`), where `reason` is a stable
+> machine-readable code — `headless`, `page_type_excluded`, or
+> `page_not_accessible` (the per-user ACL-filtered `$pageMap` collapses ACL
+> denial and the page-type filter into one "absent" case during payload
+> building). The frontend owns the wording. The verdict comes from the **same**
+> predicate the public payload uses, and an integration test asserts the admin
+> verdict matches actual public `/navigation` rendering so the builder badge
+> cannot drift. This removes the frontend's duplicated
+> `PUBLIC_NAVIGABLE_PAGE_TYPE_IDS = [2, 3]` constant and fixes the
+> `dropdown`/`mega-menu` presets appearing broken when a nested child was
+> silently filtered server-side.
+>
+> The same wave adds `menu_eligible` (bool) to every item on `GET /admin/pages`
+> (anchored by `responses/common/_admin_page_definition.json`): may this page
+> **ever** be added to a public menu? `IAdminPage` already carries
+> `id_page_types`, so the frontend could filter client-side — but only by
+> hardcoding `[2, 3]` again, so the backend answers instead. It covers the
+> **page-type case only**: page type is permanently unfixable → filter it out of
+> the picker; **headless is a checkbox an admin can untick → stays
+> `menu_eligible: true`**, tagged not filtered, or you hide a page they could
+> legitimately fix; not-accessible is per-visitor → tag only. Conflating the
+> three is the one way this goes wrong.
+>
+> Every existing response keeps its shape, so `supports.frontend` stays
+> `>=0.1.68`; the frontend that adopts `public_visibility` + `menu_eligible`
+> raises ITS `supports.core` floor to `0.1.43`. `pluginApiVersion` unchanged
+> (`0.1.0`).
+
 ## Current matrix (snapshot)
 
 > Keep this table in sync when bumping any anchor version. The authoritative
@@ -672,7 +716,7 @@ the same change wave:
 
 | Component | Version | Anchored to |
 |-----------|---------|-------------|
-| Host CMS (`selfhelp.cms_version`) | `0.1.42` | — |
+| Host CMS (`selfhelp.cms_version`) | `0.1.43` | — |
 | Host plugin API (`selfhelp.plugin_api_version`) | `0.1.0` | consumed by plugin `compatibility.pluginApi` |
 | `@selfhelp/shared` | `1.21.7` | npm (1.21.5 wave + resolve/prefill in 1.21.6 + `should_fallback` in 1.21.7). Do not use staged git tags `v2*` / `v3*` from this branch. |
 | `sh-selfhelp_frontend` | `0.1.63` | entry-record load_record_from (same as form); entry-table column mapper, filter preview UI |

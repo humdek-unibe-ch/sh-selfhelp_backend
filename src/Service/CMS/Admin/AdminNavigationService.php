@@ -603,6 +603,10 @@ class AdminNavigationService extends BaseService
             'children_nav' => $item->getChildrenNav()?->getLookupCode(),
             'show_pager' => $item->getShowPager(),
             'is_active' => $item->isActive(),
+            // Whether the public menu will actually render this item, and why
+            // not. Derived from the same predicate the public payload uses so
+            // the builder badge cannot drift from real rendering.
+            'public_visibility' => $this->navigationMenuService->evaluatePagePublicVisibility($item->getPage()),
         ];
 
         // Group/external items are label-driven; page items are presentation-only
