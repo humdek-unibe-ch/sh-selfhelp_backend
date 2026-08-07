@@ -499,7 +499,8 @@
                                 }
                             ],
                             "global_fields": {
-                                "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm"
+                                "css": "relative overflow-hidden rounded-3xl px-6 py-10 md:px-10 md:py-14 bg-gradient-to-br from-sky-50 via-white to-indigo-50 dark:from-slate-900 dark:via-slate-950 dark:to-indigo-950 border border-sky-100/80 dark:border-slate-800 shadow-sm",
+                                "css_mobile": "flex flex-col gap-2 mb-6"
                             }
                         },
                         {
@@ -507,7 +508,7 @@
                             "style_name": "entry-list",
                             "global_fields": {
                                 "css": "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8",
-                                "css_mobile": "gap-md"
+                                "css_mobile": "flex flex-col gap-4"
                             },
                             "children": [
                                 {
@@ -643,9 +644,15 @@
                                                                 }
                                                             }
                                                         }
-                                                    ]
+                                                    ],
+                                                    "global_fields": {
+                                                        "css_mobile": "flex-1 flex flex-col items-start gap-2"
+                                                    }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-center gap-3"
+                                            }
                                         },
                                         {
                                             "section_name": "team-members-list-card-bio",
@@ -679,6 +686,9 @@
                                                         "content": "{\"mt\":\"sm\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-4"
                                             }
                                         },
                                         {
@@ -690,6 +700,9 @@
                                                         "content": "{\"mt\":\"sm\",\"mb\":\"sm\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-4 mb-4"
                                             }
                                         },
                                         {
@@ -771,12 +784,15 @@
                                                         }
                                                     }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-center justify-between gap-3"
+                                            }
                                         }
                                     ],
                                     "global_fields": {
                                         "css": "h-full transition duration-300 ease-out hover:-translate-y-1 hover:shadow-xl hover:border-sky-200 dark:hover:border-sky-800 bg-white/90 dark:bg-slate-900/80 backdrop-blur-sm",
-                                        "css_mobile": "px-md py-md gap-sm"
+                                        "css_mobile": "mb-4 px-4 py-4"
                                     }
                                 }
                             ],
@@ -803,7 +819,10 @@
                                 }
                             }
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css_mobile": "px-4 py-6"
+                    }
                 }
             ],
             "cms_app_role": "public_list"
@@ -1006,9 +1025,15 @@
                                                                         }
                                                                     }
                                                                 }
-                                                            ]
+                                                            ],
+                                                            "global_fields": {
+                                                                "css_mobile": "flex-1 flex flex-col items-start gap-2"
+                                                            }
                                                         }
-                                                    ]
+                                                    ],
+                                                    "global_fields": {
+                                                        "css_mobile": "flex flex-row items-center gap-3"
+                                                    }
                                                 },
                                                 {
                                                     "section_name": "team-members-detail-divider",
@@ -1019,6 +1044,9 @@
                                                                 "content": "{\"mt\":\"md\",\"mb\":\"md\"}"
                                                             }
                                                         }
+                                                    },
+                                                    "global_fields": {
+                                                        "css_mobile": "mt-4 mb-4"
                                                     }
                                                 },
                                                 {
@@ -1038,6 +1066,9 @@
                                                                 "content": "md"
                                                             }
                                                         }
+                                                    },
+                                                    "global_fields": {
+                                                        "css_mobile": "mt-2"
                                                     }
                                                 },
                                                 {
@@ -1114,11 +1145,15 @@
                                                                 }
                                                             }
                                                         }
-                                                    ]
+                                                    ],
+                                                    "global_fields": {
+                                                        "css_mobile": "flex flex-row items-center justify-between gap-3 mt-4"
+                                                    }
                                                 }
                                             ],
                                             "global_fields": {
-                                                "css": "border border-sky-100/80 dark:border-slate-800 bg-gradient-to-b from-white to-sky-50/40 dark:from-slate-900 dark:to-slate-950"
+                                                "css": "border border-sky-100/80 dark:border-slate-800 bg-gradient-to-b from-white to-sky-50/40 dark:from-slate-900 dark:to-slate-950",
+                                                "css_mobile": "flex flex-col mb-4 px-4 py-4"
                                             }
                                         }
                                     ]
@@ -1147,7 +1182,10 @@
                                 }
                             }
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 py-6"
+                    }
                 }
             ],
             "cms_app_role": "public_detail"

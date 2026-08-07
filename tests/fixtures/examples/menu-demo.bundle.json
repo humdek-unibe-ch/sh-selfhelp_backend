@@ -616,6 +616,9 @@
                                 "content": "Startseite"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -629,6 +632,9 @@
                                 "content": "Willkommen zur SelfHelp-Navigationsdemo."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -690,6 +696,9 @@
                                 "content": "Über uns"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -703,6 +712,9 @@
                                 "content": "Erfahren Sie, wer wir sind und was wir tun."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -764,6 +776,9 @@
                                 "content": "Dienstleistungen"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -777,6 +792,9 @@
                                 "content": "Entdecken Sie unser Dienstleistungsangebot."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -838,6 +856,9 @@
                                 "content": "Beratung"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -851,6 +872,9 @@
                                 "content": "Expertenberatung für digitale Gesundheitsprojekte."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -913,6 +937,9 @@
                                 "content": "Schulungen"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -926,6 +953,9 @@
                                 "content": "Workshops und Schulungen für Ihr Team."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -988,6 +1018,9 @@
                                 "content": "Grundlagen"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1001,6 +1034,9 @@
                                 "content": "Einstiegsworkshop für neue Teams: erste Schritte, Kernkonzepte und praktische Übungen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1063,6 +1099,9 @@
                                 "content": "Zertifizierung"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1076,6 +1115,9 @@
                                 "content": "Aufbauprogramm mit Abschlussprüfung und offiziellem Zertifikat für Ihre Organisation."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1138,6 +1180,9 @@
                                 "content": "Support"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1151,6 +1196,9 @@
                                 "content": "Laufender Support, wenn Sie ihn brauchen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1213,6 +1261,9 @@
                                 "content": "Produkte"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1226,6 +1277,9 @@
                                 "content": "Durchstöbern Sie unser Produktangebot."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1287,6 +1341,9 @@
                                 "content": "Produkt A"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1300,6 +1357,9 @@
                                 "content": "Details zu Produkt A."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1362,6 +1422,9 @@
                                 "content": "Produkt B"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1375,6 +1438,9 @@
                                 "content": "Details zu Produkt B."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1437,6 +1503,9 @@
                                 "content": "Neuigkeiten"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1450,6 +1519,9 @@
                                 "content": "Aktuelle Updates und Ankündigungen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1511,6 +1583,9 @@
                                 "content": "Team"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1524,6 +1599,9 @@
                                 "content": "Lernen Sie die Menschen hinter dem Projekt kennen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1585,6 +1663,9 @@
                                 "content": "FAQ"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1598,6 +1679,9 @@
                                 "content": "Antworten auf häufig gestellte Fragen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1659,6 +1743,9 @@
                                 "content": "Kontakt"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1672,6 +1759,9 @@
                                 "content": "Nehmen Sie Kontakt mit uns auf."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1733,6 +1823,9 @@
                                 "content": "Rechtliches"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1746,6 +1839,9 @@
                                 "content": "Übersicht zu rechtlichen Informationen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1807,6 +1903,9 @@
                                 "content": "Datenschutz"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1820,6 +1919,9 @@
                                 "content": "Wie wir mit Ihren Daten umgehen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1882,6 +1984,9 @@
                                 "content": "Impressum"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1895,6 +2000,9 @@
                                 "content": "Herausgeber und Kontaktangaben."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -1957,6 +2065,9 @@
                                 "content": "Ressourcen"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -1970,6 +2081,9 @@
                                 "content": "Leitfäden, Downloads und Referenzen."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -2031,6 +2145,9 @@
                                 "content": "Blog"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -2044,6 +2161,9 @@
                                 "content": "Artikel und Einblicke von unserem Team."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -2105,6 +2225,9 @@
                                 "content": "Karriere"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -2118,6 +2241,9 @@
                                 "content": "Offene Stellen und Bewerbung."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],
@@ -2179,6 +2305,9 @@
                                 "content": "Partner"
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 mb-2"
                     }
                 },
                 {
@@ -2192,6 +2321,9 @@
                                 "content": "Organisationen, mit denen wir zusammenarbeiten."
                             }
                         }
+                    },
+                    "global_fields": {
+                        "css_mobile": "px-4 mb-4"
                     }
                 }
             ],

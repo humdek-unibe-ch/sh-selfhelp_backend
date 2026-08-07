@@ -423,7 +423,10 @@
                                         }
                                     }
                                 }
-                            ]
+                            ],
+                            "global_fields": {
+                                "css_mobile": "flex flex-col gap-2 mb-6"
+                            }
                         },
                         {
                             "section_name": "faq-accordion",
@@ -481,6 +484,9 @@
                                                                 "content": "sm"
                                                             }
                                                         }
+                                                    },
+                                                    "global_fields": {
+                                                        "css_mobile": "py-2"
                                                     }
                                                 }
                                             ]
@@ -509,12 +515,15 @@
                                         }
                                     },
                                     "global_fields": {
-                                        "css_mobile": "gap-md"
+                                        "css_mobile": "flex flex-col gap-4"
                                     }
                                 }
                             ]
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css_mobile": "px-4 py-6"
+                    }
                 }
             ],
             "cms_app_role": "public_list"

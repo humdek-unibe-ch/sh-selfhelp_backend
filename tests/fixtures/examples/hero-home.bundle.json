@@ -1629,9 +1629,15 @@
                                                                 }
                                                             }
                                                         }
-                                                    ]
+                                                    ],
+                                                    "global_fields": {
+                                                        "css_mobile": "flex-1 flex-shrink flex flex-col"
+                                                    }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-start gap-3 w-full"
+                                            }
                                         },
                                         {
                                             "section_name": "hero-home-step-2",
@@ -1734,9 +1740,15 @@
                                                                 }
                                                             }
                                                         }
-                                                    ]
+                                                    ],
+                                                    "global_fields": {
+                                                        "css_mobile": "flex-1 flex-shrink flex flex-col"
+                                                    }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-start gap-3 w-full"
+                                            }
                                         },
                                         {
                                             "section_name": "hero-home-step-3",
@@ -1839,11 +1851,20 @@
                                                                 }
                                                             }
                                                         }
-                                                    ]
+                                                    ],
+                                                    "global_fields": {
+                                                        "css_mobile": "flex-1 flex-shrink flex flex-col"
+                                                    }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-start gap-3 w-full"
+                                            }
                                         }
-                                    ]
+                                    ],
+                                    "global_fields": {
+                                        "css_mobile": "flex flex-col gap-4"
+                                    }
                                 }
                             ]
                         },
@@ -1858,7 +1879,10 @@
                                 }
                             }
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css_mobile": "px-4 py-4"
+                    }
                 },
                 {
                     "section_name": "hero-home-quote",

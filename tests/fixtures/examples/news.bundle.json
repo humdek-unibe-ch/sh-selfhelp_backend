@@ -539,14 +539,17 @@
                                         }
                                     }
                                 }
-                            ]
+                            ],
+                            "global_fields": {
+                                "css_mobile": "flex flex-col gap-2 mb-6"
+                            }
                         },
                         {
                             "section_name": "news-list",
                             "style_name": "entry-list",
                             "global_fields": {
                                 "css": "grid grid-cols-1 md:grid-cols-2 gap-6",
-                                "css_mobile": "gap-md"
+                                "css_mobile": "flex flex-col gap-4"
                             },
                             "children": [
                                 {
@@ -634,7 +637,10 @@
                                                         }
                                                     }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-center gap-2 mb-2"
+                                            }
                                         },
                                         {
                                             "section_name": "news-list-card-tags",
@@ -754,7 +760,7 @@
                                         }
                                     ],
                                     "global_fields": {
-                                        "css_mobile": "px-md py-md gap-sm"
+                                        "css_mobile": "flex flex-col items-start mb-4 px-4 py-4 gap-3"
                                     }
                                 }
                             ],
@@ -781,7 +787,10 @@
                                 }
                             }
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css_mobile": "px-4 py-6"
+                    }
                 }
             ],
             "cms_app_role": "public_list"
@@ -918,7 +927,10 @@
                                                         }
                                                     }
                                                 }
-                                            ]
+                                            ],
+                                            "global_fields": {
+                                                "css_mobile": "flex flex-row items-center gap-2 mb-2"
+                                            }
                                         },
                                         {
                                             "section_name": "news-detail-tags",
@@ -966,6 +978,9 @@
                                                         "content": "{\"mt\":\"sm\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mb-2"
                                             }
                                         },
                                         {
@@ -977,6 +992,9 @@
                                                         "content": "{\"mt\":\"md\",\"mb\":\"md\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-4 mb-4"
                                             }
                                         },
                                         {
@@ -996,6 +1014,9 @@
                                                         "content": "md"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-2"
                                             }
                                         },
                                         {
@@ -1035,6 +1056,9 @@
                                                         "content": "{\"mt\":\"lg\"}"
                                                     }
                                                 }
+                                            },
+                                            "global_fields": {
+                                                "css_mobile": "mt-4"
                                             }
                                         }
                                     ]
@@ -1063,7 +1087,10 @@
                                 }
                             }
                         }
-                    ]
+                    ],
+                    "global_fields": {
+                        "css_mobile": "mt-4 px-4 py-6"
+                    }
                 }
             ],
             "cms_app_role": "public_detail"
