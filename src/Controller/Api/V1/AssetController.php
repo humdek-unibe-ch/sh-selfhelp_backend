@@ -47,6 +47,14 @@ use Symfony\Component\HttpFoundation\ResponseHeaderBag;
  */
 final class AssetController extends AbstractController
 {
+    private const SCRIPTABLE_MIME_TYPES = [
+        'image/svg+xml',
+        'text/html',
+        'application/xhtml+xml',
+        'text/xml',
+        'application/xml',
+    ];
+
     public function __construct(
         private readonly AssetFolderAclService $folderAclService,
         private readonly AssetStorageService $storage,
@@ -78,6 +86,14 @@ final class AssetController extends AbstractController
         // revalidated cheaply via ETag/304.
         $response->setPrivate();
         $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        // Markup files (SVG, HTML, XML) can carry script that would run on the
+        // app's own origin when opened directly; sandbox them. Not applied to
+        // every file because it would block the browser's PDF viewer.
+        $mimeType = $response->getFile()->getMimeType();
+        if (in_array($mimeType, self::SCRIPTABLE_MIME_TYPES, true) || str_ends_with(strtolower($filename), '.svg')) {
+            $response->headers->set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox");
+        }
 
         return $response;
     }

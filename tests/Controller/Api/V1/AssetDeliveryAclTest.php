@@ -40,6 +40,7 @@ final class AssetDeliveryAclTest extends QaWebTestCase
     private const CLOSED_FOLDER = 'qa_delivery_closed';
     private const OPEN_FOLDER = 'qa_delivery_open';
     private const FILE_NAME = 'qa-pixel.txt';
+    private const SVG_NAME = 'qa-script.svg';
 
     private AssetFolderAclService $aclService;
     private AssetFolderRepository $folderRepo;
@@ -83,14 +84,20 @@ final class AssetDeliveryAclTest extends QaWebTestCase
             }
             file_put_contents($dir . '/' . self::FILE_NAME, 'qa-delivery-body');
         }
+        file_put_contents(
+            $this->storage->folderPath(self::OPEN_FOLDER) . '/' . self::SVG_NAME,
+            '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+        );
     }
 
     protected function tearDown(): void
     {
         foreach ([self::CLOSED_FOLDER, self::OPEN_FOLDER] as $folder) {
-            $file = $this->storage->folderPath($folder) . '/' . self::FILE_NAME;
-            if (is_file($file)) {
-                unlink($file);
+            foreach ([self::FILE_NAME, self::SVG_NAME] as $name) {
+                $file = $this->storage->folderPath($folder) . '/' . $name;
+                if (is_file($file)) {
+                    unlink($file);
+                }
             }
             if (is_dir($this->storage->folderPath($folder))) {
                 rmdir($this->storage->folderPath($folder));
@@ -148,6 +155,31 @@ final class AssetDeliveryAclTest extends QaWebTestCase
         $response->sendContent();
         $body = (string) ob_get_clean();
         self::assertStringContainsString('qa-delivery-body', $body);
+    }
+
+    /**
+     * Regression: an uploaded SVG opened directly ran its script on the app's
+     * origin. Markup assets must be sandboxed; plain files must not be, so the
+     * browser's PDF viewer keeps working.
+     */
+    public function testSvgAssetIsServedSandboxedSoItsScriptCannotRun(): void
+    {
+        $this->client->request('GET', sprintf('/cms-api/v1/assets/%s/%s', self::OPEN_FOLDER, self::SVG_NAME));
+
+        $response = $this->client->getResponse();
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('sandbox', (string) $response->headers->get('Content-Security-Policy'));
+        self::assertStringContainsString("default-src 'none'", (string) $response->headers->get('Content-Security-Policy'));
+        self::assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
+    }
+
+    public function testPlainAssetIsServedWithoutTheSandboxPolicy(): void
+    {
+        $this->client->request('GET', sprintf('/cms-api/v1/assets/%s/%s', self::OPEN_FOLDER, self::FILE_NAME));
+
+        $response = $this->client->getResponse();
+        self::assertSame(200, $response->getStatusCode());
+        self::assertFalse($response->headers->has('Content-Security-Policy'));
     }
 
     /**
