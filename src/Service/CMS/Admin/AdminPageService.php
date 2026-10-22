@@ -627,6 +627,9 @@ class AdminPageService extends BaseService
             )
                 ->setParameter('pageId', $page->getId())
                 ->execute();
+            // The returned copy is serialized after commit, when its version
+            // rows are already cascade-deleted.
+            $deleted_page->setPublishedVersion(null);
 
             // Remember CMS app membership before the page row is removed so hubs
             // can be rebuilt after delete (ON DELETE SET NULL clears the FK).
